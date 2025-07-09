@@ -1,5 +1,7 @@
 import copy
 import datetime
+import pathlib
+import time
 from datetime import datetime as DT, timedelta
 import shutil
 import os
@@ -73,6 +75,63 @@ def name_of_executable_file_c():
     tmp = os.path.abspath(sys.modules['__main__'].__file__).split(os.sep)[-1]
     return tmp
 
+#++08.07.25
+def cache_result(minutes: int, tmp_path: str = None):
+    """
+    Использование:
+        @cache_results(minutes=120)
+        def get_many_data():
+            return []
+
+    Поведение: Кэширует результат функции на указанное кол-во минут
+        Сохранение кэша: Если результат отсутствует запись в файл кэша не будет совершена
+        Загрузка кэша: Если кэш каким-либо образом был загружен пустым/повредился/отчистился
+
+    Если ошибка чтение/запись/хэширование аргументов:
+        Оповещение ошибки в консоль + функция вызывается без кэширования не нарушая поведение программы
+
+    Директория хранения:
+        Кэш(tmp_path) хранится в папке ${TEMP} Windows
+    """
+    if tmp_path is None:
+        tmp_path = tempfile.gettempdir()
+    def wrap_fn(func):
+        executor = name_of_executable_file_c()
+        func_module = func.__module__
+        func_name = func.__name__
+
+        error_write = f"Cust_Functions.cache_results | Ошибка кэширования функции: {func_name!r} в путь: {tmp_path!r}"
+        error_read = f"Cust_Functions.cache_results | Ошибка чтения кэша функции: {func_name!r} из пути: {tmp_path!r}"
+        error_hash = f"Cust_Functions.cache_results | Ошибка хэширования аргументов: %s функции: {func_name!r} из пути: {tmp_path!r}"
+
+        filename = f'{executor}.{func_module}.{func_name}.pickle'
+        def wrapper(*args, **kwargs):
+            now_stamp = time.time()
+            try:
+                binary_args = pickle.dumps((args, kwargs))
+                hash_args = hashlib.md5(binary_args).hexdigest()
+            except Exception as e:
+                print(error_hash % f"args: {args} kwargs: {kwargs}")
+                return func(*args, **kwargs)
+            cache_path = pathlib.Path(tmp_path) / (hash_args + filename)
+            if cache_path.exists() and now_stamp - cache_path.stat().st_mtime < minutes * 60:
+                try:
+                    cache = pickle.loads(cache_path.read_bytes())
+                except Exception as e:
+                    print(error_read)
+                    return func(*args, **kwargs)
+                if cache:
+                    return cache
+            result = func(*args, **kwargs)
+            if result:
+                try:
+                    cache_path.write_bytes(pickle.dumps(result))
+                except Exception as e:
+                    print(error_write, e)
+            return result
+        return wrapper
+    return wrap_fn
+#-- 08.07.25
 
 def path_to_execut_file_c():
     if getattr(sys, 'frozen', False):

@@ -3087,7 +3087,7 @@ class mywindow(QtWidgets.QMainWindow):
                         spisok[currentItem.text(3)] = sp
             if level_c == 2:
                 if currentItem.text(currentItem.columnCount() - 1) == "2":
-                    if kod_par in currentItem.text(3):
+                    if kod_par == currentItem.text(3): # по задаче (100056163 )
                         sp = []
                         for i in range(0, currentItem.columnCount()):
                             sp.append(currentItem.text(i))

@@ -155,6 +155,7 @@ def vibor_additional_sort_report(self: mywindow, *args):
         if podr == '':
             return
         fill_cmb_addit_sort_c_report_by_podr(self,podr)
+        self.ui.cmb_addit_sort_c_report.setEnabled(True) #08.07.25
     if vid == 'Динамика производительности сотрудников':
         podr = self.ui.cmb_podrazdelenie.currentText()
         if podr == '':
@@ -251,8 +252,8 @@ def vibor_sort_c_report_c(self: mywindow, *args):
         podrazdel_none(self)
     if vid == 'Внеплановые работы по направлениям':
         dat = F.date_add_days(F.datetostr(DT.today()), -31)
-        konec = F.start_end_dates_c(date=dat, vid='m')[1]
-        nach = '2023-01-01 00:00:00'
+        nach, konec = F.start_end_dates_c(date=dat, vid='y') #07.07.25
+        # nach = '2023-01-01 00:00:00'
         self.ui.le_start_of_period.setText(nach)
         self.ui.le_end_of_period.setText(konec)
         self.ui.cmb_podrazdelenie.clear()

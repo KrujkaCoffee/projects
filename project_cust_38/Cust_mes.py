@@ -2489,11 +2489,13 @@ class Naryads():
         self.Кол_повт_приемок = None
         self.Распред_дата = None
         self.month_closing_block = None
+        self.ДатаМК = None
         if type(p_nom_or_row) == int:
             if db_naryad == None:
                 print(f'Не задан db_naryad')
                 return 
-            row = CSQ.custom_request_c(db_naryad,f'''SELECT * FROM naryad WHERE Пномер == {p_nom_or_row};''',rez_dict=True)
+            row = CSQ.custom_request_c(db_naryad,f'''SELECT naryad.*, mk.Дата as ДатаМК FROM naryad JOIN mk ON mk.Пномер = naryad.Номер_мк 
+            WHERE naryad.Пномер == {p_nom_or_row};''',rez_dict=True)
             if row == None or row == False or row == []:
                 return 
             row = row[0]
@@ -2516,13 +2518,27 @@ class Naryads():
     GROUP BY
     	ФИО
     HAVING COUNT(*) >= 1 )) order by ФИО;""",rez_dict=True),'ФИО')
+            if self.ДатаМК is None: #07.07.25
+                print('[Cust_mes.Naryads.__init__] не задано поле ДатаМК')
+                row = CSQ.custom_request_c(db_naryad,f'''SELECT mk.Дата as ДатаМК FROM naryad JOIN mk ON mk.Пномер = naryad.Номер_мк 
+            WHERE naryad.Пномер == {p_nom_or_row};''',rez_dict=True, one=True)
+                self.__dict__.update(row)
             if self.ФИО != '':    
-                self.Этап_фио_1 = dict_dolgn_etap[dict_empl[self.ФИО]['Должность']]['этап']
+                self.Этап_фио_1 = etap_by_employee(date_str=self.ДатаМК, key_employee=self.ФИО) # 07.07.25
             if self.ФИО2 != '':
-                self.Этап_фио_2 = dict_dolgn_etap[dict_empl[self.ФИО2]['Должность']]['этап']
+                self.Этап_фио_2 = etap_by_employee(date_str=self.ДатаМК, key_employee=self.ФИО) # 07.07.25
         self.dict_dolgn_etap = dict_dolgn_etap
         self.dict_empl = dict_empl
-        
+    
+    def etap_by_fio(self, fio: str):
+        match str(fio):
+            case self.ФИО:
+                return self.Этап_фио_1
+            case self.ФИО2:
+                return self.Этап_фио_2
+            case _:
+                return ''
+
     def recalc_jur_n_time(self,fio):
         jur = Jurnal_nar(self.db, self.Пномер, fio)
         if jur.selected_fragment_end_date == None:
@@ -3070,8 +3086,8 @@ class Jurnal_nar():
             CQT.msgbox(f'В КПЛ {s_num_kpl} Не заполнены этапы при создании, обратиться в ПДО')
             return 
         part_py = data_etap_erp['НомПартии_ЗП']
-        etap = parent_self.Data.ETAP_BY_FIO[self.user]['этап']
-        nar = Naryads(nom_nar, self.db_nar, parent_self.Data.DICT_DOLGN_ETAP, db_usres, parent_self.Data.DICT_EMPL_FULL)
+        nar = Naryads(nom_nar, self.db_nar, parent_self.Data.DICT_DOLGN_ETAP, db_usres, parent_self.Data.DICT_EMPL_FULL) #07.07.25 по задаче(100056203)
+        etap = nar.etap_by_fio(self.user)
         if etap in parent_self.Data.DICT_ETAPI_FULL:
             if parent_self.Data.DICT_ETAPI_FULL[etap]['ДляЕРП'] == 0:
                 CQT.msgbox(f'Этап {etap} не может быть выгуржен в ЕРП')
@@ -9775,8 +9791,80 @@ def ETAP_BY_FIO(bd_users, bd_naryad):
     #    user['этап'] = etap
     #    user['ДляЕРП'] = for_erp
     return F.deploy_dict_c(first_tbl,'ФИО')
-            
-    
+# +++07.07.25
+@F.cache_result(minutes=3)
+def list_dolgn_etap(date_str: str, date_maska: str = '%y-%m-%d'):
+    replace_null_date = """
+    CASE 
+        WHEN ДействуетДо IS NULL OR ДействуетДо = ''
+        THEN datetime(CURRENT_TIMESTAMP) 
+        ELSE datetime(ДействуетДо) 
+    END
+    """
+    date_obj = F.strtodate(date_str, date_maska)
+    query = f"""
+    SELECT employee.ФИО, employee.Пномер, employee.Должность, employee.Подразделение, dolgn_etap.этап, dolgn_etap.ДействуетДо
+    from employee
+    LEFT JOIN (
+        SELECT *,
+            ROW_NUMBER() OVER (
+                PARTITION BY Должность, Подразделение, Производство 
+                ORDER BY ({replace_null_date}) 
+                ) as rowNumber
+        FROM dolgn_etap
+        where ({replace_null_date}) > datetime({date_obj.isoformat()!r}) 
+    ) as dolgn_etap ON employee.Должность = dolgn_etap.Должность AND employee.Подразделение = dolgn_etap.Подразделение AND 
+               employee.Компания = dolgn_etap.Производство AND rowNumber = 1
+    WHERE employee.Пномер IN (SELECT Пномер FROM (SELECT
+    	MAX(Пномер) as Пномер,
+    	ФИО
+    FROM
+    	employee
+    GROUP BY
+    	ФИО
+    HAVING COUNT(*) >= 1 ))
+    """
+    etaps = CSQ.custom_request_c(
+        CFG.Config.project.db_naryad,
+        query,
+        attach_dbs=(CFG.Config.project.db_users,),
+        rez_dict=True
+    )
+    return etaps
+
+def etap_by_employee(date_str: str, key_employee: str, date_maska: str = '%y-%m-%d'):
+    patterns = {
+        r'^[0-9]+$': 'Пномер',
+        r'^[А-ЯЁа-яё]+\s[А-ЯЁа-яё]+\s[А-ЯЁа-яё]+$': 'ФИО',
+        r'^[a-f0-9\-]{36}$': 'ID_ФизЛица'
+    }
+    value_str = str(key_employee)
+    key = None
+    for pattern, description in patterns.items():
+        if re.match(pattern, value_str.strip()):
+            key = description
+            break
+    if key is None:
+        return
+    etaps = list_dolgn_etap(date_str, date_maska)
+    cur_employee = []
+    for employee in etaps:
+        if employee[key] == key_employee:
+            cur_employee.append(employee)
+    target_obj = None
+    try:
+        date_mk = datetime.datetime.strptime(date_str, date_maska)
+    except Exception as e:
+        print(e)
+    for empl in cur_employee:
+        end_etap = empl['ДействуетДо']
+        if not target_obj and not end_etap:
+            target_obj = empl
+        elif end_etap and date_mk < datetime.datetime.strptime(end_etap, '%Y-%m-%d'):
+            target_obj = empl
+    return target_obj['этап']
+# ---07.07.25
+
     
 def NAPRAVL_DEYAT(DB_kplan):
     PLACE = CFG.Config.place

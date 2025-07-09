@@ -629,8 +629,8 @@ class mywindow(QtWidgets.QMainWindow):
                 if F.keep_extention_c(file) == '.jpg':
                     self.ui.cmb_schems.addItem(F.throw_out_extention_c(file))
 
-        self.ui.btn_obnovit_naruadi_po_mk.setEnabled(False)
-        self.ui.btn_obnovit_naruadi_po_mk.setToolTip('На корректировке') # todo
+        # self.ui.btn_obnovit_naruadi_po_mk.setEnabled(False)
+        # self.ui.btn_obnovit_naruadi_po_mk.setToolTip('На корректировке') # todo
         if not CMS.user_access(self.bd_naryad, 'mkart_mk_korrect_res_xml', F.user_name(), msg=False):
             self.ui.btn_update_norm.setEnabled(False)
             self.ui.btn_update_norm_rc.setEnabled(False)
@@ -2257,26 +2257,25 @@ class mywindow(QtWidgets.QMainWindow):
 
                         if vid == 'mat':
                             if res[i]['Операции'][j]['Материалы'] != materials:
-                                res[i]['Операции'][j]['Материалы'] = materials
                                 journal.append([nn, oper['name_ver'], 'Материалы', operation['Материалы'], materials])
-
+                                res[i]['Операции'][j]['Материалы'] = materials
                         if vid == 'vrem':
                             tpz_new, tpz_old = oper['t_pz'], operation['Опер_Тпз']
                             if round(res[i]['Операции'][j]['Опер_Тпз'], 3) != round(oper['t_pz'], 3):
-                                res[i]['Операции'][j]['Опер_Тпз'] = oper['t_pz']
                                 journal.append([nn, oper['name_ver'], 'Опер_Тпз', tpz_old, oper['t_pz']])
+                                res[i]['Операции'][j]['Опер_Тпз'] = oper['t_pz']
                             if round(res[i]['Операции'][j]['Опер_Тшт_ед'], 3) != round(oper['t_sht'], 3):
-                                res[i]['Операции'][j]['Опер_Тшт_ед'] = oper['t_sht']
                                 journal.append(
                                     [nn, oper['name_ver'], 'Опер_Тшт_ед', operation['Опер_Тшт_ед'], oper['t_sht']])
+                                res[i]['Операции'][j]['Опер_Тшт_ед'] = oper['t_sht']
                             if round(res[i]['Операции'][j]['Опер_Тшт'], 3) != round(oper['t_sht'] * dse['Количество'], 3):
-                                res[i]['Операции'][j]['Опер_Тшт'] = oper['t_sht'] * dse['Количество']
                                 journal.append([nn, oper['name_ver'], 'Опер_Тшт', operation['Опер_Тшт'],
                                                 oper['t_sht'] * dse['Количество']])
+                                res[i]['Операции'][j]['Опер_Тшт'] = oper['t_sht'] * dse['Количество']
                         if vid == 'rc':
                             if res[i]['Операции'][j]['Опер_РЦ_код'] != oper['rab_centr']:
-                                res[i]['Операции'][j]['Опер_РЦ_код'] = oper['rab_centr']
                                 journal.append([nn, oper['name_ver'], 'РЦ', oper['rab_centr'], oper['rab_centr']])
+                                res[i]['Операции'][j]['Опер_РЦ_код'] = oper['rab_centr']
                         if vid == 'prof':
                             if res[i]['Операции'][j]['Опер_профессия_код'] != oper['profession']:
                                 if oper['profession'] not in self.DICT_PROF_CODE:
@@ -2421,8 +2420,8 @@ class mywindow(QtWidgets.QMainWindow):
             nar.recalc_by_mk(self.DICT_OP_NAME)
         user = F.user_full_namre()
         CMS.send_info_mk_b24_by_action(
-            msg=f'{user} пересчитал(а) Опер_время, Теор_время в нарядах по МК {nom_mk}',
-            action='Ошибки МК'
+            f'{user} пересчитал(а) Опер_время, Теор_время в нарядах по МК {nom_mk}',
+            'Ошибки МК'
         )
         CQT.msgbox(f'Наряды по мк {nom_mk} обновлены')
 

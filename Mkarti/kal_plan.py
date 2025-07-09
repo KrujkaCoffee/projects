@@ -100,6 +100,7 @@ def recalc_fact_by_date(self: mywindow,pozition_num:int, date_calc:datetime.date
             postfix= f'datetime(jurnal.Дата) > datetime("{nach}") and datetime(jurnal.Дата) < datetime("{konec}") and'
         list_nars = CSQ.custom_request_c(self.bd_naryad, f"""SELECT DISTINCT
                     {', '.join(['naryad.' + _ for _ in CSQ.list_types_table(self.bd_naryad, 'naryad').keys()])}
+                    , mk.Дата as ДатаМК
          FROM naryad 
         INNER JOIN mk ON mk.Пномер = naryad.Номер_мк 
         INNER JOIN jurnal ON jurnal.Номер_наряда = naryad.Пномер 
