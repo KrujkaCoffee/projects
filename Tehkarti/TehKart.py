@@ -1174,7 +1174,7 @@ class mywindow(QtWidgets.QMainWindow):
         CQT.clear_tbl(self.ui.tbl_mat_edit_filtr)
         if tbl_name == '':
             return
-        if not CMS.user_access(self.db_naryad,'тк_tbl_mat_edit_cutted',F.user_name()):
+        if not CMS.user_access(self.db_naryad,'тк_tbl_mat_view',F.user_name()):  # 11.07.25
             return
 
         list = CSQ.custom_request_c(self.db_mater,f"""SELECT * FROM {tbl_name};""")
@@ -1202,6 +1202,8 @@ class mywindow(QtWidgets.QMainWindow):
             self.ui.tbl_mat_edit_filtr.horizontalScrollBar().setValue)
     @CQT.onerror
     def edit_tbl_mat(self,*args):
+        if not CMS.user_access(self.db_naryad,'тк_tbl_mat_edit_full',F.user_name(),msg=False):
+            return CQT.msgbox('Нет доступа') # 11.07.25
         row,col = args
         tbl_name = self.ui.cmb_mat_tbl.currentText()
         tbl = self.ui.tbl_mat_edit
@@ -1213,6 +1215,8 @@ class mywindow(QtWidgets.QMainWindow):
 
     @CQT.onerror
     def edit_mat_add_row(self,*args):
+        if not CMS.user_access(self.db_naryad,'тк_tbl_mat_edit_full',F.user_name(),msg=False):
+            return CQT.msgbox('Нет доступа') # 11.07.25
         tbl_name = self.ui.cmb_mat_tbl.currentText()
         list_columns = CSQ.list_of_columns_c(self.db_mater,tbl_name)
         CSQ.custom_request_c(self.db_mater,f"""INSERT INTO {tbl_name} ({str(list_columns[1])}) VALUES (?);""",list_of_lists_c=[['']])
@@ -1220,6 +1224,8 @@ class mywindow(QtWidgets.QMainWindow):
 
     @CQT.onerror
     def edit_mat_del_row(self,*args):
+        if not CMS.user_access(self.db_naryad,'тк_tbl_mat_edit_full',F.user_name(),msg=False):
+            return CQT.msgbox('Нет доступа') # 11.07.25
         tbl_name = self.ui.cmb_mat_tbl.currentText()
         tbl = self.ui.tbl_mat_edit
         row = CQT.get_dict_line_form_tbl(tbl)
@@ -3308,7 +3314,7 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
         self.ui2.btn_del_one_weld.setAutoDefault(False)
         tab_v = self.ui2.tab_vib
         tab_v.doubleClicked.connect(self.vibor_iz_tab_vib_v_tableW_oper_mat)
-        tab_v.cellPressed[int,int].connect(self.get_prim)
+        tab_v.itemSelectionChanged.connect(self.get_prim) #14.07.25
 
         try:
             pself.obj_tbl_tbl_nomen.horizontalScrollBar().valueChanged.connect(
@@ -3498,15 +3504,37 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
     def btn_del_welds(self):
         operacii.del_welds(self)
 
-    def get_prim(self,row,column):
-        if row == -1:
+    #+++14.07.25
+    def get_prim(self,*args, **kwargs):
+        column = self.ui2.tab_vib.currentColumn()
+        if column == -1:
             return
-        oper= self.ui2.combo2.currentText()
-        if oper in operacii.Data_oper_norm.DICT_OPERS_CALC:
+        tree = self.pself.ui.tree
+        current_item = tree.currentItem()
+        selected_text = self.ui2.combo2.currentText()
+        level = self.pself.ui.tree.currentItem().text(20)
+        oper, pereh = '', ''
+        is_excel = False
+        if level == '1':
+            oper = selected_text
+            is_excel = self.pself.xl_formulas.check_op(operation=oper, approved=True)
+        elif level == '2':
+            oper = current_item.parent().text(0)
+            pereh = selected_text
+            is_excel = self.pself.xl_formulas.check_per(operation=oper, pereh=pereh, approved=True)
+        if is_excel:
+            credentials = self.pself.xl_formulas.convert_old_struct(oper, pereh)
             name = self.ui2.tab_vib.horizontalHeaderItem(column).text()
-            if name in operacii.Data_oper_norm.DICT_OPERS_CALC[oper]:
-                prim = operacii.Data_oper_norm.DICT_OPERS_CALC[oper][name]["comment"]
-                self.ui2.lbl_prim.setText(prim)
+            if isinstance(credentials, dict) and name in credentials:
+                comment = credentials[name].get('comment', '')
+                self.ui2.lbl_prim.setText(comment)
+        elif CFG.Config.place.poki == 1 and oper in operacii.Data_oper_norm.DICT_OPERS_CALC:
+            if oper in operacii.Data_oper_norm.DICT_OPERS_CALC:
+                name = self.ui2.tab_vib.horizontalHeaderItem(column).text()
+                if name in operacii.Data_oper_norm.DICT_OPERS_CALC[oper]:
+                    comment = operacii.Data_oper_norm.DICT_OPERS_CALC[oper][name].get("comment", '')
+                    self.ui2.lbl_prim.setText(comment)
+    #---14.07.25
 
 
     @CQT.onerror
@@ -4083,7 +4111,9 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
                             ]
                             rez = [*rez, *result]
                         set_corr = set(range(len(rez[0])))
-                        CQT.fill_wtabl_old_c(self, rez, tbl, separ='', isp_hat_c=True, set_editeble_col_nomera=set_corr)
+                        CQT.fill_wtabl(rez, tbl, set_editeble_col_nomera=set_corr, auto_type=False) #14.07.25
+                        tbl.resizeColumnsToContents()
+                        # CQT.fill_wtabl_old_c(self, rez, tbl, separ='', isp_hat_c=True, set_editeble_col_nomera=set_corr)
                         if is_xl:
                             #TODO 3 Заполнение combobox переходов
                             struct = self.pself.xl_formulas.convert_old_struct(ima_oper, combo2.currentText())

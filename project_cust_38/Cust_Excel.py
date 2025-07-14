@@ -3,6 +3,10 @@ from builtins import range
 from typing import Generator, Iterable, Any
 from datetime import datetime
 import xlwings as XL
+try:
+    from docxtpl import DocxTemplate
+except ImportError:
+    print('docxtpl not installed')
 import project_cust_38.Cust_Functions as F
 import openpyxl as xlo
 from openpyxl.utils import get_column_letter
@@ -822,3 +826,20 @@ class ExcelParser:
         if isinstance(val, datetime):
             return val.strftime('%Y-%m-%d %H:%M:%S')
         return str(val)
+
+def make_docx_report(
+        report_name: str,
+        input_rows: list[dict],
+        output_rows: list[dict],
+        template_name: str = "report.docx",
+        output_docx_path: str = "output.docx"
+):
+    doc = DocxTemplate(template_name)
+    data = {
+        'report_name': report_name,  # Название отчета
+        'input_rows': input_rows,
+        'output_rows': output_rows
+    }
+    doc.render(data)
+    doc.save(output_docx_path)
+    return output_docx_path

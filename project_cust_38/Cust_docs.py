@@ -1,7 +1,7 @@
 import os
-from urllib.parse import urlparse, parse_qs, quote
+from urllib.parse import urlparse, parse_qs, quote, unquote
 
-from requests import Session
+from requests import Session, Response
 
 from project_cust_38 import Cust_Functions as F
 from project_cust_38 import Cust_SQLite as CSQ
@@ -92,15 +92,30 @@ class HTTPClient:
             return
         return response.json()
 
-class TFlexMaterialFinderClient(HTTPClient):
-    BASE_URL = 'http://srv-docs:30100'
+class TFlexHttpClient(HTTPClient):
+    BASE_URL = 'http://srv-tdocs:30100'
 
+    # KOD ERP ENDPOINTS
     GET_CODE_ERP_BY_MATERIAL_NAME = '/api/kod-erp/mat/one/'
     GET_CODE_ERP_BY_STANDARD_PROD_NAME = '/api/kod-erp/standart/one/'
-    GET_FILENAMES_BY_NOMEN_NAME = '/api/files/file/objectid'
 
+    # FILES ENDPOINTS
+    GET_FILENAMES_BY_NOMEN_NAME = '/api/files/file/objectid'
+    GET_BINARY_CONTENT_BY_OBJECT_ID = '/api/files/objectid'
+
+    # Process TKP ENDPOINTS
+    GET_ALL_PROCESS_TKP_FROM_FITTING_FOLDER = '/api/process_tkp/armatura'
+
+    def make_url(self, endpoint: str):
+        return f'{self.BASE_URL}{endpoint}'
+
+class TFlexMaterialFinderClient(TFlexHttpClient):
+    """
+    with TFlexMaterialFinderClient() as client:
+        client.get_kod_erp_by_mat('Лист ...')
+    """
     def get_kod_erp_by_mat(self, mat_name: str):
-        url = f'{self.BASE_URL}{self.GET_CODE_ERP_BY_MATERIAL_NAME}'
+        url = self.make_url(self.GET_CODE_ERP_BY_MATERIAL_NAME)
         response = self.session.post(url, json=mat_name)
         if response.status_code != 200:
             return response.status_code, f'"Ошибка DOCs:"\n{response.text}\nuri: "{url}"\nМат.: "{mat_name}"\nОбратиться к администратору Docs'
@@ -111,7 +126,7 @@ class TFlexMaterialFinderClient(HTTPClient):
         return response.status_code, ''
 
     def get_kod_erp_by_standard_izd(self, name: str):
-        url = f'{self.BASE_URL}{self.GET_CODE_ERP_BY_STANDARD_PROD_NAME}'
+        url = self.make_url(self.GET_CODE_ERP_BY_STANDARD_PROD_NAME)
         response = self.session.post(url, json=name)
         data = response.json()
         if isinstance(data, dict) and len(data) >= 1:
@@ -128,12 +143,11 @@ class TFlexMaterialFinderClient(HTTPClient):
             return value
         return ''
 
-class TFlexFileClient(HTTPClient):
-    BASE_URL = 'http://srv-docs:30100'
-
-    GET_FILENAMES_BY_NOMEN_NAME = '/api/files/file/objectid'
-    GET_BINARY_CONTENT_BY_OBJECT_ID = '/api/files/objectid'
-
+class TFlexFileClient(TFlexHttpClient):
+    """
+    with TFlexFileClient() as client:
+        client.get_filenames_by_nomen_name()
+    """
     def get_filenames_by_nomen_name(self, name: str) -> list:
         """
         1. Если в выборке присутсвует несколько идентификаторов номенклатур -> поиск наличия ссылки docs
@@ -160,7 +174,7 @@ class TFlexFileClient(HTTPClient):
         2. Извлекаем объекты связанные с номенклатурой привязанной к ссылке docs
         3. Если ссылка отсутсвует или объект с id из ссылки отсутствуют, возвращаем пустой список
         """
-        url = f'{self.BASE_URL}{self.GET_BINARY_CONTENT_BY_OBJECT_ID}'
+        url = self.make_url(self.GET_BINARY_CONTENT_BY_OBJECT_ID)
         response = self.session.get(url, params={
             'srvName': srv_name,
             'folder': object_id,
@@ -168,3 +182,17 @@ class TFlexFileClient(HTTPClient):
         })
         if response.ok:
             return response.content
+
+
+class TFlexTkpProcessClient(TFlexHttpClient):
+    """
+    with TFlexTkpProcessClient() as client:
+        code, data = client.get_process_tkp_from_fittings_folder()
+    """
+    def get_process_tkp_from_fittings_folder(self) -> tuple[int, list | Response]:
+        url = self.make_url(self.GET_ALL_PROCESS_TKP_FROM_FITTING_FOLDER)
+        response = self.session.get(url)
+        if response.ok:
+            return response.status_code, response.json()
+        return response.status_code, response
+

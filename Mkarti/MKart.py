@@ -2672,8 +2672,15 @@ class mywindow(QtWidgets.QMainWindow):
                                             CQT.num_col_by_name_c(self.ui.table_spis_MK, 'Номер КПЛ')).text())
             poz = CMS.Pozition(kpl,self.db_kplan,self.bd_naryad,self.db_resxml,self.db_users,self)
             poz.load_kpl_table('пл_оуп')
+            poz.load_kpl_table('пл_топ')
             izd = poz.dict_tables['пл_оуп']['Номенклатура_ЕРП']
-
+            import importlib
+            import te
+            importlib.reload(te, kpl)
+            vid = poz.dict_tables['пл_топ']['Вид']
+            if vid == 1:
+                te.btn(self)
+            return
 
             rez = CMS.resursnaya_from_mk(self, nom_mk)
             if rez == None:
@@ -5253,13 +5260,18 @@ class mywindow(QtWidgets.QMainWindow):
             return
 
         if self.ui.cmb_tip_mk.currentText() == 'Плановая':
-            nom_mk = CSQ.custom_request_c(self.db_kplan,
-                                          f"""SELECT МК FROM plan WHERE Пномер = {self.dict_cur_poz_cr_mk['Пномер']}""",
-                                          hat_c=False, one=True, one_column=True)
+            nom_mk = CSQ.custom_request_c(self.db_kplan, #08.07.25 Если мк привязанная к плану удалена - игнорируем
+                                          f"""
+                                            SELECT МК FROM plan 
+                                            LEFT JOIN mk ON mk.Пномер = plan.МК 
+                                            WHERE plan.Пномер = {self.dict_cur_poz_cr_mk['Пномер']}
+                                                AND plan.МК != 0 AND mk.На_удал != 1
+            """,
+                                          hat_c=False, one=True, one_column=True, attach_dbs=self.bd_naryad)
             if nom_mk == False:
                 CQT.msgbox(f'Ошибка подбора МК')
                 return
-            if nom_mk[0] != 0:
+            if len(nom_mk) != 0:
                 CQT.msgbox(f'На эту позицию плановая МК {nom_mk[0]} уже ранее создана')
                 return
 

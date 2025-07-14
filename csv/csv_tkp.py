@@ -143,9 +143,18 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.btn_red_tree_load.clicked.connect(lambda: ANAL.red_tree_load(self))
         self.ui.btn_red_tree_up.clicked.connect(lambda: ANAL.red_tree_move(self, operator.sub))
         self.ui.btn_red_tree_down.clicked.connect(lambda: ANAL.red_tree_move(self, operator.add))
-        self.ui.btn_mat_apply_mat.clicked.connect(lambda: ANAL.mat_apply_mat(self))
-        self.ui.btn_mat_apply_only_mat.clicked.connect(lambda: ANAL.change_mat(self))
-        self.ui.btn_mat_apply_wout_mat.clicked.connect(lambda: ANAL.mat_apply_wout_mat(self))
+        # self.ui.btn_mat_apply_mat.clicked.connect(lambda: ANAL.mat_apply_mat(self))
+        @CQT.onerror
+        def fn(self, replace_weight: bool = False, replace_material: bool = False):
+            import importlib
+            import analogues_tree as ANAL
+            importlib.reload(ANAL)
+            return ANAL.mat_apply_2(self, replace_weight, replace_material)
+        self.ui.btn_mat_apply_mat.clicked.connect(lambda: fn(self, replace_weight=True, replace_material=True))
+        # self.ui.btn_mat_apply_only_mat.clicked.connect(lambda: ANAL.change_mat(self))
+        self.ui.btn_mat_apply_only_mat.clicked.connect(lambda: fn(self, replace_material=True))
+        # self.ui.btn_mat_apply_wout_mat.clicked.connect(lambda: ANAL.mat_apply_wout_mat(self))
+        self.ui.btn_mat_apply_wout_mat.clicked.connect(lambda: fn(self, replace_weight=True))
         self.ui.btn_dse_apply.clicked.connect(lambda: ANAL.apply_dse(self))
         self.ui.btn_save_red_tree.clicked.connect(lambda: ANAL.save_red_tree(self))
         self.ui.cmb_vid_napr.currentIndexChanged.connect(lambda: ANAL.check_tree_on_type_tkp(self))
@@ -181,7 +190,6 @@ class mywindow(QtWidgets.QMainWindow):
 
         #=============combobox============
         self.ui.cmb_select_year.currentTextChanged.connect(self.on_cmb_select_year_changed)
-
         self.put_csv = ""
         ANAL.prepare_tbl_red_stukt(self)
         ANAL.load_mats(self)
