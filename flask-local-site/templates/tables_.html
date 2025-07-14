@@ -1,0 +1,96 @@
+
+
+
+{% extends "base.html" %} 
+
+{% block content %}
+<div class="container">
+{% if is_error %}
+  <h2>Ошибка: Не заданы даты начала и/или конца периода или не выбрано подразделение</h2>
+{% endif %}
+  <head>
+        <link rel="apple-touch-icon" sizes="60x60" href="/static/images/apple-touch-icon.png">
+        <link rel="icon" type="image/png" sizes="32x32" href="/static/images/favicon-32x32.png">
+        <link rel="icon" type="image/png" sizes="16x16" href="/static/images/favicon-16x16.png">
+        <link rel="manifest" href="/static/images/site.webmanifest">
+        <link rel="mask-icon" href="/static/images/safari-pinned-tab.svg" color="#5bbad5">
+        <meta name="msapplication-TileColor" content="#da532c">
+        <meta name="theme-color" content="#ffffff">
+
+
+<style>
+
+
+        table, th, td {
+          border: 2px solid black;
+          overflow:hidden;
+          padding: 5px;
+
+        }
+
+        </style>
+
+    </head>
+<form method = "post" action = "/table_reports">
+  <div class="form-group">
+    <label for="reports-select">Выбрать отчет</label>
+    <select name="reports" id="reports-select">
+      <option value="">--Выберите отчет--</option>
+      {% for rep in all_reports %}
+        <option name='report' class="form-control" value="{{ rep }}">{{ rep }}</option>
+      {% endfor %}
+    </select>
+    <br>
+     <label for="month-select">Выбрать период</label>
+    <select onchange="val()" name="sel_month" id="month-select">
+      <option value="">--Выберите период--</option>
+      {% for month_tbl in all_month %}
+        <option name='month' class="form-control" value="{{ month_tbl }}">{{ month_tbl }}</option>
+      {% endfor %}
+    </select>
+
+
+
+  </div>
+  <button type = "submit" class="btn btn-default">Сформировать отчет</button>
+</form> 
+
+
+
+
+
+{% if table %}
+<form method = "post" action = "/download_report">
+  <input type="hidden" class="form-control" name="filename" value="{{ filename }}">
+  <button type ="submit" class="btn btn-default">Сохранить в excel</button>
+</form>
+
+
+
+
+{% endif %}
+</div>
+  {% if table %}
+  <div class="container-fluid">
+    <font size="1" face="Times" >
+  <table  class="tbl_reports word-wrap" id="id_tbl_reports">
+    <tr>
+      {% for column in table[0] %}
+        <th style ="font-size: 24px;">{{ column }}</th>
+      {% endfor %}
+    </tr>
+      {% for row in table[1:] %}
+        {% set i = loop.index0 %}
+          <tr>
+            {% for cell in row %}
+              {% set j = loop.index0 %}
+                <td style ="background-color:{{tbl_color[i][j]}}; font-size: 24px;">{{ cell }}</td>
+            {% endfor %}
+          </tr>
+      {% endfor %}
+    <tr>
+    </table>
+  </font>
+  </div>
+  {% endif %}
+{% endblock content %}

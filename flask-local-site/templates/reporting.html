@@ -1,0 +1,18 @@
+{% extends "base.html" %} {% block content %}<div class="container">
+
+<div id="workstation-slider" class="owl-carousel">
+  {% for card in report_cards %}
+  <div class="item">
+    <a href="/report/{{ card.png_id }}">
+      <div class="vira-card">
+        <div class="vira-card-header">
+              <h3>{{ card.title }}</h3>
+          <img class="img-responsive" src="{{ card.path }}" />
+        </div>
+      </div>
+    </a>
+  </div>
+  {% endfor %}
+</div>
+</div>
+{% endblock content %}

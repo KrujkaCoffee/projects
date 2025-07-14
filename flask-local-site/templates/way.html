@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+{% include "header.html" %}
+<body>
+{% include "menu.html" %}
+        <div class="main element">
+            {% include "navbar.html" %}
+            <div class="container">
+                {% for m in list_projects %}
+                        <a  href="{{ title }}/{{ m['nn'] }}"><p>{{ m['nn'] }}</p></a>
+                {% endfor %}
+                </div>
+            <div class="container">
+                <h2 class="mt80">Форма связи для корректировки приоритета</h2>
+                <form class="mb80" method="post">
+                    <div class="row">
+                        <div class="col-sm-6">
+                            <input type="text" name="fio" class="form-control" placeholder="Имя">
+                        </div>
+                        <div class="col-sm-6">
+                            <input type="email" name="emails" class="form-control" placeholder="Email адрес">
+                        </div>
+                        <div class="col-sm-6" >
+                            <select class="form-control" name="proj" >
+                                <option value="" disabled selected>Выберите проект</option>
+                                {% for m in list_projects %}
+                                    <option value="{{ m['nn'] }}"> {{ m['nn'] }} </option>
+                                {% endfor %}
+                            </select>
+                            <!-- <input type="text" class="form-control" placeholder="-Select a catagory"> -->
+                        </div>
+                        <div class="col-sm-6">
+                            <!-- <textarea class="form-control" rows="8" placeholder="Сообщение"></textarea> -->
+                            <select class="form-control" name="prior" >
+                                <option value="" disabled selected>Выберите приоритет</option>
+                                {% for m in range(1,6) %}
+                                    <option> {{ m }} </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-sm-12">
+                            <button type="submit" name="send" class="btn vira-btn mr60">Отправить</button>
+                            <button type="reset" name="reset" class="btn vira-btn">Сбросить</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            </div >
+
+
+{% include 'footer.html' %}
+{% include 'scripts.html' %}
+</body>
+</html>

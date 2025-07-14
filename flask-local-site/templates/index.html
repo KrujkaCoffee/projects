@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+    {% include "header.html" %}
+    <body>
+        {% include "menu.html" %}
+        <div class="main">
+            <header class="bg-img header">
+                {% include "navbar.html" %}
+                <div class="container">
+                    <div class="row">
+                        <div class="intro-box">
+                            <div class="intro">
+                                <h1>Страница производства</h1>
+                                <p>Панковка ул.индустриальная 19</p>
+                                <a class="btn vira-btn" href="#">Подняться</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </header>
+            <section id="about" class="about section">
+                <div class="container">
+                    <div class="row">
+                        <div class="col-sm-8 col-sm-offset-2">
+                            <h2 class="title">Наш слоган</h2>
+                            <p>
+                                {{ o_nas[0] }}
+                            </p>
+
+                            <span>{{ o_nas[1] }}</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            <section class="purpose section">
+                <div class="container">
+                    <h2 class="title">Наши возможности</h2>
+                    <div class="row">
+                        <div class="col-sm-4">
+                            <div class="vira-card">
+                                <div class="vira-card-header">
+                                    <div class="card-icon">
+                                        <span class="fa fa-object-group" aria-hidden="true"></span>
+                                    </div>
+                                </div>
+                                <div class="vira-card-content">
+                                    <h3>{{ opportunity[0][0] }}</h3>
+                                    {% for m in opportunity[0][1] %}
+                                    <p>{{ m }}</p>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-sm-4">
+                            <div class="vira-card">
+                                <div class="vira-card-header">
+                                    <div class="card-icon">
+                                        <span class="fa fa-cogs" aria-hidden="true"></span>
+                                    </div>
+                                </div>
+                                <div class="vira-card-content">
+                                    <h3>{{ opportunity[1][0] }}</h3>
+                                    {% for m in opportunity[1][1] %}
+                                    <p>{{ m }}</p>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-sm-4">
+                            <div class="vira-card">
+                                <div class="vira-card-header">
+                                    <div class="card-icon">
+                                        <span class="fa fa-puzzle-piece" aria-hidden="true"></span>
+                                    </div>
+                                </div>
+                                <div class="vira-card-content">
+                                    <h3>{{ opportunity[2][0] }}</h3>
+                                           {% for m in opportunity[2][1] %}
+                                    <p>{{ m }}</p>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-sm-4">
+                            <div class="vira-card">
+                                <div class="vira-card-header">
+                                    <div class="card-icon">
+                                        <span class="fa fa-tint" aria-hidden="true"></span>
+                                    </div>
+                                </div>
+                                <div class="vira-card-content">
+                                    <h3>{{ opportunity[3][0] }}</h3>
+                                    {% for m in opportunity[3][1] %}
+                                    <p>{{ m }}</p>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            <section id="expertise" class="expert">
+                <div class="container-fluid">
+                    <div class="row">
+                        <div class="col-sm-6 bg-img">
+                            <div></div>
+                        </div>
+                        <div class="col-sm-5 section">
+                            <h2 class="title">{{ documents['title'] }}</h2>
+                            <div id="expert-slider" class="owl-carousel">
+                                <div class="item">
+                                    <p>
+                                        {{ documents['body'][0] }}
+                                    </p>
+                                </div>
+                                <div class="item">
+                                    <p>
+                                        {{ documents['body'][1] }}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            <section class="vira-quote section bg-img">
+                <div class="container">
+                    <div class="row">
+                        <div class="col-sm-12">
+                            <img class="quote" src="../static/images/quote.png">
+                           <p>
+                                {{ fun_msg[0] }}
+                           </p>
+                           <p class="author">{{ fun_msg[1] }}</p>
+                           <img src="../static/images/mouse.png">
+                        </div>
+                    </div>
+                </div>
+            </section>
+            {% include "divisions.html" %}
+            <section class="watch bg-img">
+                <div class="container">
+                    <div class="row">
+                        <div class="col-sm-12">
+                            <span>{{ media[0] }}</span>
+                            <a class="popup-youtube btn" href={{ media[2] }}><span class="fa fa-play"></span></a>
+                            <span>{{ media[1] }}</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            {% include 'leaders.html' %}
+            <section class="subscribe section bg-img">
+                <div class="container">
+                    <div class="row">
+                        <div class="col-sm-12">
+                            <p>Написать нам письмо</p>
+                            <form class="form-inline">
+                                <div class="form-group">
+                                    <input type="email" class="form-control" id="user-email" placeholder="Пиши текст email сюда....">
+                                </div>
+                                <button type="submit" class="btn vira-btn">Отправить</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            <section id="contact" class="contact section">
+                <div class="container">
+                    <h2 class="title">Связаться</h2>
+                    <div class="row">
+                        <div class="col-sm-4">
+                            <div class="vira-card">
+                                <div class="vira-card-header">
+                                        <span class="fa fa-map-o" aria-hidden="true"></span>
+                                </div>
+                                <div class="vira-card-content">
+                                    <h3>Адрес</h3>
+                                    <p>
+                                        Панковка ул. Индустриальная д.19, д.20
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-sm-4">
+                            <div class="vira-card">
+                                <div class="vira-card-header">
+                                        <span class="fa fa-phone" aria-hidden="true"></span>
+                                </div>
+                                <div class="vira-card-content">
+                                    <h3>Телефоны</h3>
+                                    <p>
+                                        +7.....
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-sm-4">
+                            <div class="vira-card">
+                                <div class="vira-card-header">
+                                        <span class="fa fa-paper-plane" aria-hidden="true"></span>
+                                </div>
+                                <div class="vira-card-content">
+                                    <h3>Почта</h3>
+                                    <p>
+                                        hey@wagon.taf
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-sm-12">
+                            <div class="social-icons">
+                                <ul>
+                                    <a href="#"><li><span class="ion-social-facebook"></span></li></a>
+                                    <a href="#"><li><span class="ion-social-twitter"></span></li></a>
+                                    <a href="#"><li><span class="ion-social-pinterest"></span></li></a>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            {% include 'footer.html' %}
+        </div>
+        {% include 'scripts.html' %}
+    </body>
+</html>
