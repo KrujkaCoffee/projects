@@ -1,0 +1,8 @@
+*.txt
+*.lnk
+.idea
+*.qss
+__pycache__
+*.pyc
+*.xlsx
+*.docx
