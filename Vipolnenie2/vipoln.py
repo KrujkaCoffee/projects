@@ -1143,7 +1143,14 @@ class mywindow(QtWidgets.QMainWindow):
             return
         self.ui.le_nom_nar_prost.setText('')
         self.zapoln_tabl_naryadov()
-
+    #+++ 15.07.25 по задаче 100056733
+    def get_current_abstract_name(self, nom_nar: int | str):
+        nar_obj = CMS.Naryads(db_naryad=self.db_naryd, p_nom_or_row=nom_nar,
+                              dict_empl=self.DICT_EMPL_FULL,
+                              dict_dolgn_etap=self.DICT_DOLGN_ETAP)
+        nick = self.get_free_abstract_fio_place(nom_nar, self.glob_fio) # 15.07.25 Если имя уже числиться в наряде отдаст имя
+        return getattr(nar_obj, nick)                                   # 15.07.25 Иначе отдаст имя абстракта
+    #--- 15.07.25
     @CQT.onerror
     def nachat_nar(self,*args):
         if not CMS.check_actual_parol(self.glob_fio):
@@ -1179,18 +1186,31 @@ class mywindow(QtWidgets.QMainWindow):
             tab.setCurrentIndex(CQT.number_table_by_name_c(tab, 'Доступные наряды'))
             CQT.msgbox('Наряд недоступен')
             return
-        jur_obj = CMS.Jurnal_nar(self.db_naryd, user=self.glob_fio, nom_nar=nom_nar) #23.04.25 Объект журнала по наряду
+        # ++ 15.07.25 по задаче 100056733
+        user = self.glob_fio
+        if self.glob_otk_kontrol:
+            user = self.get_current_abstract_name(nom_nar)
+            jur_obj = CMS.Jurnal_nar(self.db_naryd, user=user, nom_nar=nom_nar)
+            tek_abstract = jur_obj.get_ontime_naruad()
+            if tek_abstract[0]:
+                return CQT.msgbox(f'Наряд: {nom_nar} уже начат!')
+            if self.check_zav_nar(nom_nar, user):
+                return CQT.msgbox(f'Наряд {nom_nar} уже завершен ранее')
+
+        jur_obj = CMS.Jurnal_nar(self.db_naryd, user=user, nom_nar=nom_nar) #23.04.25 Объект журнала по наряду
+        # -- 15.07.25 по задаче 100056733
         rez = jur_obj.add_new_row(
             DICT_EMPL_FULL=self.DICT_EMPL_FULL,
             lbl_abstract_text='',
             date_time=now,
             primech=primech
         )  # 21.04.25
-        self.replace_abstract_name(nom_nar, self.glob_fio)
         if not rez:
             CQT.msgbox(f'Не удачно попробуй чуть позже')
             F.sleep(2)
             return
+        if not self.glob_otk_kontrol:
+            self.replace_abstract_name(nom_nar, self.glob_fio) # 15.07.25 по задаче 100056733
         self.clear_naryad_bar()
         CQT.msgbox('Наряд успешно запущен')
         self.load_naruad(self.ui.tbl_naryadi.currentRow(), 1)
@@ -1325,9 +1345,17 @@ class mywindow(QtWidgets.QMainWindow):
         if vid_stop == 'Завершен':
             if not CMS.check_id_peresil(self, nom_nar, self.ui.le_id_peresil.text(), kod_oper=2):
                 return
+        # ++ 15.07.25 по задаче 100056733
+        lbl_abstract = self.ui.lbl_abstract.text()
         try:
-
-            jur_obj = CMS.Jurnal_nar(self.db_naryd, user=self.glob_fio)
+            if self.glob_otk_kontrol:
+                lbl_abstract = self.glob_fio
+                abstract_name = self.get_current_abstract_name(nom_nar)
+                self.ui.lbl_nom_nar.setText(str(nom_nar))
+                jur_obj = CMS.Jurnal_nar(self.db_naryd, user=abstract_name, nom_nar=nom_nar)
+            else:
+                jur_obj = CMS.Jurnal_nar(self.db_naryd, user=self.glob_fio)
+        # -- 15.07.25 по задаче 100056733
             nomer_naryada, pnomer, data_nach = jur_obj.get_ontime_naruad(True)
             if nomer_naryada == False:
                 return
@@ -1392,7 +1420,7 @@ class mywindow(QtWidgets.QMainWindow):
         nom_mk = int(self.ui.lbl_nom_mk.text())
 
         is_idle = zadanie == 'ПРОСТОЙ'
-        if not jur_obj.add_new_row(self.DICT_EMPL_FULL,self.ui.lbl_abstract.text(),now,vid_stop,primech, is_idle):
+        if not jur_obj.add_new_row(self.DICT_EMPL_FULL,lbl_abstract,now,vid_stop,primech, is_idle): #15.05.25
             return
 
 
@@ -1409,12 +1437,12 @@ class mywindow(QtWidgets.QMainWindow):
                     if not msg:
                         custom_request_c = f'''UPDATE пл_отк  SET (Контр_покрытие_ФИО, Контр_покрытие_дата) = (?,?) 
                                 WHERE НомПл == ?;'''
-                        param = [jur_obj.user, F.now(), nom_kpl]
+                        param = [self.glob_fio, F.now(), nom_kpl] # 15.07.25
                         CSQ.custom_request_c(self.db_kplan, custom_request_c, list_of_lists_c=param)
                         try:
                             sender = B24.B24Sender()
                             msg_rows = f'По {nar_obj.mk.Номер_заказа} {nar_obj.mk.Номер_проекта} MK №{nar_obj.mk.Пномер} контроль\n ' \
-                                       f'после Пассивирование/Окрашивание/Дробеструйная успешно пройден {jur_obj.user} по наряду {nom_nar}'
+                                       f'после Пассивирование/Окрашивание/Дробеструйная успешно пройден {self.glob_fio} по наряду {nom_nar}' #15.07.25
                             sender.send_msg_by_action('Отгрузка на склад', msg_rows)
                         except:
                             pass

@@ -1747,14 +1747,13 @@ class Operations:
         self.params = params
 
     def convert_params(self):
-        if isinstance(self.params[1][0], str):
-            count = len(self.params[1][0].split(';'))
-            converted_params = []
+        count = len(self.params[1][0].split(';'))
+        converted_params = []
 
-            for num in range(count):
-                row = [elem.split(';')[num] for elem in self.params[1]]
-                converted_params.append(row)
-            return converted_params
+        for num in range(count):
+            row = [elem.split(';')[num] for elem in self.params[1]]
+            converted_params.append(row)
+        return converted_params
 
 def vremya_tsht(ima_operacii, arr_tmp):
     try:

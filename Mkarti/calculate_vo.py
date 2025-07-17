@@ -759,7 +759,14 @@ def load_vid_izd(self:mywindow):
     #if row['вид_по_напр'] == '1':
     for vid in self.Data_plan.DICT_VID_PO_NAPR_NAME.keys():
         self.ui.cmb_vid_izd.addItem(vid)
-
+    self.ui.cmb_cr_mk_pr.setCurrentText('КТ.ВО')
+    self.cmb_cr_mk_select_pr()
+    self.ui.cmb_cr_mk_plpr.setCurrentIndex(0)
+    self.cmb_cr_mk_select_plpr()
+    self.ui.cmb_cr_mk_py.setCurrentIndex(0)
+    self.cmb_cr_mk_select_py()
+    self.ui.cmb_cr_mk_poz.setCurrentIndex(0)
+    self.cmb_cr_mk_select_poz()
 
 def cmb_select_vid_izd(self:mywindow):
     tbl = self.ui.tbL_tkp_list
@@ -849,7 +856,7 @@ def btn_tkp_load_strukt(self:mywindow,*args):
 
     path = self.ui.le_tkp_dir_res.text()
     if not F.existence_file_c(path):
-        CQT.msgbox(f'Директория вывода не обнаружена')
+        CQT.msgbox(f'Директория вывода\n`{path}`\nне обнаружена')
         return
 
     nk_pnom = CQT.num_col_by_name_c(self.ui.tbL_tkp_list, CMS.DICT_NAME_SQL['tkp']['s_nom'])
@@ -864,14 +871,6 @@ def btn_tkp_load_strukt(self:mywindow,*args):
         CQT.msgbox(f'Ошибка загрузки БД')
         return
 
-    self.ui.cmb_cr_mk_pr.setCurrentText('КТ.ВО')
-    self.cmb_cr_mk_select_pr()
-    self.ui.cmb_cr_mk_plpr.setCurrentIndex(0)
-    self.cmb_cr_mk_select_plpr()
-    self.ui.cmb_cr_mk_py.setCurrentIndex(0)
-    self.cmb_cr_mk_select_py()
-    self.ui.cmb_cr_mk_poz.setCurrentIndex(0)
-    self.cmb_cr_mk_select_poz()
 
     dict_tkp_byte = result['pickle_file']
     dict_tkp = F.from_binary_pickle(dict_tkp_byte)

@@ -36,6 +36,7 @@ import make_poz_plan as POZPL
 import recalc_norm as RECLC
 import equipment_rc as EQRC
 import tabel_edit as TABEL
+import tatkuz_molding as TTKZ
 import project_cust_38.Cust_config as USRCNF
 import data_class
 import project_cust_38.api_erp_commands as APIERP
@@ -173,6 +174,9 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.tabW_rab_places.currentChanged[int].connect(self.tabW_rab_places_click)
         # ============================================================
         # ==================TABLE=====================================
+        self.ui.tbl_data_mold.cellChanged.connect(lambda row, col: TTKZ.data_mold_cellchanged(self, row, col))
+        self.ui.tbl_data_mold_tch.cellChanged.connect(lambda row, col: TTKZ.mold_tch_cellchanged(self, row, col))
+        self.ui.tbl_list_orders_mold.itemSelectionChanged.connect(lambda: TTKZ.select_order(self))
         self.ui.tbl_state.clicked.connect(lambda: STATE.select_field_tbl_state(self))
         self.ui.tbL_tkp_list.cellDoubleClicked[int, int].connect(self.CVO_path_kd_dbl_clk)
         self.ui.tbL_tkp_list.itemSelectionChanged.connect(lambda: CVO.load_vid_izd(self))
@@ -434,6 +438,11 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.btn_plan_day_edit_recalc.clicked.connect(lambda: KPL.plan_day_edit_recalc(self))
         self.ui.btn_plan_day_edit_set_weekend.clicked.connect(lambda: KPL.plan_day_edit_set_weekend(self))
         self.ui.btn_show_gui_res.clicked.connect(self.laod_res_board)
+        self.ui.btn_apply_data_mold.clicked.connect(lambda: TTKZ.apply_new_or_edit_order(self))
+        self.ui.btn_cancel_data_mold.clicked.connect(lambda: TTKZ.cancel_new_or_edit_order(self))
+        self.ui.btn_sand_data.clicked.connect(lambda: TTKZ.add_sand_data(self))
+        self.ui.btn_add_row_mold_tch.clicked.connect(lambda: TTKZ.add_row_mold_tch(self))
+        self.ui.btn_mat_mold_calc.clicked.connect(lambda: TTKZ.mat_mold_calc(self))
         # =================================================================
         # ===========COMBOBOX===========================================
         self.ui.cmb_pl_tabel_place.activated[int].connect(self.cmb_pl_tabel_place)
@@ -446,12 +455,12 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.cmb_tabeli.activated[int].connect(lambda: TABEL.cmb_select_month(self))
         CQT.freeze_mouse_wheel(self.ui.cmb_vid_izd)
         self.ui.cmb_vid_izd.activated.connect(lambda: CVO.cmb_select_vid_izd(self))
-        combo_nap = self.ui.comboBox_napravlenia
+        #combo_nap = self.ui.comboBox_napravlenia
         # spis_napr = F.open_file_c(F.scfg('mk_data') + os.sep + 'Направления.txt')
         # for i in range(len(spis_napr)):
         #    combo_nap.addItem(spis_napr[i])
 
-        combo_sort_c = self.ui.comboBox_sort_c
+        #combo_sort_c = self.ui.comboBox_sort_c
         # spis_sort_c = F.open_file_c(F.scfg('mk_data') + os.sep + 'Виды.txt')
         # for i in range(len(spis_sort_c)):
         #    combo_sort_c.addItem(spis_sort_c[i])
@@ -672,7 +681,10 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.lbl_shema.mousePressEvent = self.getPos
 
         self._tkp_current_schema = CMS.TkpSchema()
+        self._ttkz_tmp_settings = TTKZ.Ttkz_tmp_settings()
         IND.load_control_schema_output(self)
+        self.apply_visible_by_places()
+
     @property
     def tkp_current_schema(self):
         return self._tkp_current_schema
@@ -699,8 +711,54 @@ class mywindow(QtWidgets.QMainWindow):
         return
 
 
+    @CQT.onerror
+    def apply_visible_by_places(self):
+        hide_elems_names = {}
+        show_elems_names = {}
+        invisible_tab_texts = {}
+        visible_tab_texts = {}
+        place = self.place.Имя
+        if place == 'Пауэрз':
+            invisible_tab_texts = { "РС для литья"}
+        if place == 'Келаст':
+            invisible_tab_texts = { "РС для литья"}
+        if place == 'ТатКуз':
+            hide_elems_names = {'fr_cr_mk_btns', 'fr_weight'}
+            show_elems_names = {}
 
+            invisible_tab_texts = {'*'}
+            visible_tab_texts = {"Создание МК","РС для литья"}
+            TTKZ.load_form_rs_for_molding(self)
 
+        for item in self.ui.__dict__:
+            obj = eval(f'self.ui.{item}')
+            if hide_elems_names:
+                if item in hide_elems_names or '*' in hide_elems_names :
+                    obj.blockSignals(True)
+                    obj.setVisible(False)
+                    obj.blockSignals(False)
+            if show_elems_names:
+                if item in show_elems_names or '*' in show_elems_names:
+                    obj.blockSignals(True)
+                    obj.setVisible(True)
+                    obj.blockSignals(False)
+
+            if isinstance(obj,QtWidgets.QTabWidget):
+                count_tabs = obj.count()
+                for i  in range(count_tabs) :
+                    tab_name = obj.tabText(i)
+
+                    if invisible_tab_texts:
+                        if tab_name in invisible_tab_texts or '*' in invisible_tab_texts:
+                            obj.blockSignals(True)
+                            obj.setTabVisible(i, False)
+                            obj.blockSignals(False)
+
+                    if visible_tab_texts:
+                        if tab_name in visible_tab_texts or '*' in visible_tab_texts:
+                            obj.blockSignals(True)
+                            obj.setTabVisible(i, True)
+                            obj.blockSignals(False)
 
 
     @tkp_current_schema.setter
@@ -1242,7 +1300,9 @@ class mywindow(QtWidgets.QMainWindow):
                             list_vals = data[name_field]
                             focus.item(0,focus.currentColumn()).setText(list_vals)
 
-
+        if self.ui.tbl_list_orders_mold.hasFocus():
+            if key_val == 16777268:
+                TTKZ.load_form_rs_for_molding(self)
         if key_val == 80 and set_modifiers == (QtCore.Qt.ControlModifier | QtCore.Qt.ShiftModifier):
             if CQT.focus_is_QTableWidget():
                 CQT.refill_tbl_into_msgbox_get_table(self, QtWidgets.QApplication.focusWidget())
@@ -1524,6 +1584,7 @@ class mywindow(QtWidgets.QMainWindow):
 
     def tab_click2(self, nom):
         self.ui.fr_cr_mk_btns.setHidden(False)
+        self.ui.gr_select_proj.setHidden(False)
         if self.ui.tabWidget_2.tabText(nom) == 'Разработка МК':
             self.ui.btn_vigruzka_norm_mat.setEnabled(True)
             self.list_vars_vo = []
@@ -1535,6 +1596,7 @@ class mywindow(QtWidgets.QMainWindow):
             self.load_mk_to_edit()
             self.load_xml_to_edit()
             self.ui.fr_cr_mk_btns.setHidden(True)
+            self.ui.gr_select_proj.setHidden(True)
 
         if self.ui.tabWidget_2.tabText(nom) == 'ТКП':
             CMS.load_tkp_list(self, self.db_dse, CMS.DICT_NAME_SQL['tkp'], self.ui.tbL_tkp_list,
@@ -1554,6 +1616,9 @@ class mywindow(QtWidgets.QMainWindow):
             self.ui.chk_deleted_for_select_tkp.setCheckState(QtCore.Qt.CheckState.Unchecked)
             self.ui.cmb_year_for_select_tkp.blockSignals(False)
             self.ui.fr_cr_mk_btns.setHidden(True)
+            self.ui.gr_select_proj.setHidden(False)
+        if self.ui.tabWidget_2.tabText(nom) == 'РС для литья':
+            TTKZ.load_form_rs_for_molding(self)
 
     def tab_mk_click(self, nom):
         self.glob_nom_mk_obesp = ''
@@ -2672,15 +2737,8 @@ class mywindow(QtWidgets.QMainWindow):
                                             CQT.num_col_by_name_c(self.ui.table_spis_MK, 'Номер КПЛ')).text())
             poz = CMS.Pozition(kpl,self.db_kplan,self.bd_naryad,self.db_resxml,self.db_users,self)
             poz.load_kpl_table('пл_оуп')
-            poz.load_kpl_table('пл_топ')
             izd = poz.dict_tables['пл_оуп']['Номенклатура_ЕРП']
-            import importlib
-            import te
-            importlib.reload(te, kpl)
-            vid = poz.dict_tables['пл_топ']['Вид']
-            if vid == 1:
-                te.btn(self)
-            return
+
 
             rez = CMS.resursnaya_from_mk(self, nom_mk)
             if rez == None:

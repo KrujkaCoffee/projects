@@ -1824,7 +1824,81 @@ def round_up(num):
     return int(-1 * valm(num) // 1 * -1)
 
 class dotdict(dict):
-    """dot.notation access to dictionary attributes"""
+    """dot.notation access to dictionary attributes"""#TODO
     __getattr__ = dict.get
     __setattr__ = dict.__setitem__
     __delattr__ = dict.__delitem__
+
+
+def inner_join(left_list, right_list, left_key, right_key):
+    """
+    Выполняет INNER JOIN двух списков словарей по указанным ключам.
+
+    :param left_list: Левый список словарей
+    :param right_list: Правый список словарей
+    :param left_key: Ключ в словарях левого списка для соединения
+    :param right_key: Ключ в словарях правого списка для соединения
+    :return: Список объединенных словарей
+    """
+    # Создаем хеш-таблицу для правого списка по ключу соединения
+    right_lookup = {}
+    for item in right_list:
+        key_value = item.get(right_key)
+        if key_value is not None:
+            if key_value not in right_lookup:
+                right_lookup[key_value] = []
+            right_lookup[key_value].append(item)
+
+    # Выполняем соединение
+    result = []
+    for left_item in left_list:
+        key_value = left_item.get(left_key)
+        if key_value in right_lookup:
+            for right_item in right_lookup[key_value]:
+                # Создаем новый словарь, объединяя поля из обоих словарей
+                merged = left_item.copy()
+                merged.update(right_item)
+                result.append(merged)
+
+    return result
+
+
+def left_join(left_list, right_list, left_key, right_key):
+    """
+    Выполняет LEFT JOIN двух списков словарей по указанным ключам.
+
+    :param left_list: Левый список словарей
+    :param right_list: Правый список словарей
+    :param left_key: Ключ в словарях левого списка для соединения
+    :param right_key: Ключ в словарях правого списка для соединения
+    :return: Список объединенных словарей (все записи из left_list + совпадения из right_list)
+    """
+    # Создаем хеш-таблицу для правого списка по ключу соединения
+    right_lookup = {}
+    for item in right_list:
+        key_value = item.get(right_key)
+        if key_value is not None:
+            if key_value not in right_lookup:
+                right_lookup[key_value] = []
+            right_lookup[key_value].append(item)
+
+    # Выполняем LEFT JOIN
+    result = []
+    for left_item in left_list:
+        key_value = left_item.get(left_key)
+        if key_value in right_lookup:
+            # Если есть совпадения, добавляем все комбинации
+            for right_item in right_lookup[key_value]:
+                merged = left_item.copy()
+                merged.update(right_item)
+                result.append(merged)
+        else:
+            # Если нет совпадений, добавляем левый словарь с NULL (None) для правых ключей
+            merged = left_item.copy()
+            # Добавляем ключи из правого списка с None, если их нет в левом
+            for right_item_key in right_list[0].keys() if right_list else []:
+                if right_item_key != right_key and right_item_key not in merged:
+                    merged[right_item_key] = None
+            result.append(merged)
+
+    return result

@@ -24,6 +24,7 @@ from pl_graf_pad_mosh import generate as GEN_PLG
 import project_cust_38.Cust_odata_erp as CODAT
 from typing import TYPE_CHECKING, TypeVar
 import project_cust_38.api_erp_commands as APIERP
+import project_cust_38.Cust_b24 as CB24
 if TYPE_CHECKING:
     from MKart import mywindow
 
@@ -1561,6 +1562,30 @@ def show_del_zp_kpl(self: mywindow):
 
 @CQT.onerror
 def add_zp_kpl(self: mywindow):
+
+    def generate_msg(poz):
+        poz.load_kpl_table('пл_оуп')
+        proj = poz.dict_tables['пл_оуп']['№проекта']
+        py = poz.dict_tables['пл_оуп']['№ERP']
+        poz_num = poz.dict_tables['пл_оуп']['№ERP']
+        fio_technolog = poz.Позиция
+        str_fio_technolog = fio_technolog
+        wet_req_text = f"""ВЫБРАТЬ
+                                    Пользователи.ПБ24_id_bitrix КАК ПБ24_id_bitrix
+                                ИЗ
+                                    Справочник.Пользователи КАК Пользователи
+                                ГДЕ
+                                    Пользователи.Наименование = "{fio_technolog}"
+                                    ИЛИ Пользователи.ФизическоеЛицо.ФИО = "{fio_technolog}";"""
+        key, data_rez = APIERP.get_wet_request(wet_req_text)
+        if key != 200:
+            CQT.msgbox(f'Ошибка получения данных код ({key}) из ERP')
+        else:
+            if data_rez['data']:
+                id_technolog = data_rez['data'][0]['ПБ24_id_bitrix']
+                str_fio_technolog = f"[USER={id_technolog}]{fio_technolog}[/USER]"
+        msg = f'{str_fio_technolog}!\nДля закупа материалов по\n{proj} {py} поз. {poz_num} (КПЛ№ {num_kpl})\nнеобходимо указать пл_топ.Предв_спецификация_ЕРП\nв Объемно-календарном планировании'
+        return msg
     tbl = self.ui.tbl_kal_pl
     num_row = tbl.currentRow()
     if num_row == -1:
@@ -1628,6 +1653,13 @@ def add_zp_kpl(self: mywindow):
 
     sootv.add_compliance(num_kpl,list_zp_obj)
     if len(list_zp_obj):
+        poz = CMS.Pozition(num_kpl, self.db_kplan, self.bd_naryad, self.db_resxml, self.db_users, self)
+        poz.load_kpl_table('пл_топ')
+        if not poz.dict_tables['пл_топ']['Предв_спецификация_ЕРП'].strip():
+            msg = generate_msg(poz)
+            result = CB24.B24Sender().send_msg_by_chat_id('chat48346', msg)
+            if not result:
+                CQT.msgbox('Ошибка отправки сообщения в б24')
         CQT.msgbox(f'Успешно',time_life=0.5)
     return
 
@@ -1825,9 +1857,37 @@ def btn_pl_load_norm(self: mywindow):
         fl_calc_vo = False
 
         if name_predv_res != '':
+            def is_name_predv_res_as_code(name_predv_res):
+                return name_predv_res.startswith('00-')
             # ================по ТКП================
-            resp = CSQ.custom_request_c(self.db_resxml, f"""SELECT data FROM predv_res WHERE Имя = ?;""",
+            if  is_name_predv_res_as_code(name_predv_res):
+                wet_req_text = f"""ВЫБРАТЬ
+                                        РесурсныеСпецификации.Наименование КАК Наименование
+                                    ИЗ
+                                        Справочник.РесурсныеСпецификации КАК РесурсныеСпецификации
+                                    ГДЕ
+                                         РесурсныеСпецификации.ЭтоГруппа = ЛОЖЬ
+                                        И РесурсныеСпецификации.Код = "{name_predv_res}"
+                                    """
+                key, data_rez = APIERP.get_wet_request(wet_req_text)
+                if key != 200:
+                    CQT.msgbox(f'Ошибка получения данных код ({key}) из ERP')
+                    return
+                if data_rez['data']:
+                    name_predv_res = data_rez['data'][0]['Наименование']
+
+            if name_predv_res.startswith('ТКПА_'):
+                list_name_predv_res = name_predv_res.split('_')
+                if len(list_name_predv_res)>1 and F.is_numeric(list_name_predv_res[1]):
+                    s_num_tkp = list_name_predv_res[1]
+                    resp = CSQ.custom_request_c(self.db_resxml, f"""SELECT data FROM predv_res WHERE Имя LIKE "ТКПА_{s_num_tkp}%";""")
+                else:
+                    CQT.msgbox(f'Не корректное значение Предв_спецификация_ЕРП')
+                    return
+            else:
+                resp = CSQ.custom_request_c(self.db_resxml, f"""SELECT data FROM predv_res WHERE Имя = ?;""",
                                         list_of_lists_c=(name_predv_res,))
+
             if resp != False and resp != None and len(resp) == 2:
                 if not CQT.msgboxgYN(f'МК не создана, загрузить нормы по аналогу/ТКП?'):
                     return
@@ -1835,6 +1895,7 @@ def btn_pl_load_norm(self: mywindow):
                                                   nk_stat_norm)
             else:
                 fl_calc_vo = True
+
             # ======================================
         else:
             if not CQT.msgboxgYN(f'МК не создана и Ресурсная на аналог не создана, загрузить нормы по ВО?'):
@@ -4277,12 +4338,13 @@ def tbl_kal_pl_cellChanged(self: mywindow, *args):
 
         obj_jur = CMS.Logs(self.bd_files)
         obj_jur.add_note(s_num, name_field, new_val, 'tbl_kal_pl')
-        print()
+        tbl.blockSignals(False)
+        return True
     else:
         tbl.item(row, column).setText(str(old_val))
         CQT.msgbox(msg_err)
-    tbl.blockSignals(False)
-    return
+        tbl.blockSignals(False)
+        return
 
 
 @CQT.onerror
@@ -4318,16 +4380,64 @@ def delete_from_cell(self:mywindow):
 @CQT.progress_decorator
 def load_table_db(self, hook_prog_bar=None):
     def oforml_table(self):
+
+
+
         tbl = self.ui.tbl_kal_pl
         nk_s_num = CQT.num_col_by_name_c(tbl, 'plan.Пномер')
         nk_pseudo = CQT.num_col_by_name_c(tbl, 'Псевдоним')
         nk_napr = CQT.num_col_by_name_c(tbl, 'plan.Направление_деятельности')
         nk_nom_pr = CQT.num_col_by_name_c(tbl, 'пл_оуп.№проекта')
+        nk_pred_spec_erp = CQT.num_col_by_name_c(tbl, 'пл_топ.Предв_спецификация_ЕРП')
         nk_local_graf = CQT.num_col_by_name_c(tbl, 'plan.local_graf')
         nk_pkk = CQT.num_col_by_name_c(tbl, 'пл_оуп.ПКК')
         nk_state_norm = CQT.num_col_by_name_c(tbl, 'plan.Статус_норм')
         nk_state = CQT.num_col_by_name_c(tbl, 'plan.Статус')
         nk_mk = CQT.num_col_by_name_c(tbl, 'plan.МК')
+
+        def fcn_pred_spec_erp(lnk, i, j, name, file, parent_self, *args):
+            def fnc_oform_tbl_res(tbl):
+                pass
+
+            def fnc_select_tbl_res(tbl):
+                pass
+
+            nom_pr = tbl.item(i,nk_nom_pr).text()
+            wet_req_text = f"""
+                    ВЫБРАТЬ
+                        РесурсныеСпецификации.Наименование КАК Наименование,
+                        РесурсныеСпецификации.Код КАК Код,
+                        РесурсныеСпецификации.Статус КАК Статус,
+                        РесурсныеСпецификации.Описание КАК Описание
+                    ИЗ
+                        Справочник.РесурсныеСпецификации КАК РесурсныеСпецификации
+                    ГДЕ
+                        РесурсныеСпецификации.ПометкаУдаления = ЛОЖЬ
+                        И РесурсныеСпецификации.ЭтоГруппа = ЛОЖЬ
+                        И РесурсныеСпецификации.Наименование ПОДОБНО "%ТКПА_%"
+                        И РесурсныеСпецификации.Наименование ПОДОБНО "%{nom_pr}%"
+                    """
+            key, data_rez = APIERP.get_wet_request(wet_req_text)
+            if key != 200:
+                CQT.msgbox(f'Ошибка получения данных код ({key}) из ERP')
+                return
+            if data_rez['data']:
+                data_rez['data'].insert(0,{k:'' for k in data_rez['data'][0].keys()})
+            result = CQT.msgboxg_get_table(self, f'Выбор ресурсной', data_rez['data'], 'Выбор',
+                                           func_oform_tbl=fnc_oform_tbl_res,
+                                           func_btn0=fnc_select_tbl_res,
+                                           ExtendedSelection=False, selectRows=True, styleSheet=CQT.ERP_CSS,
+                                           sortingEnabled=True)
+            if result:
+                res_code = result['Код']
+                tbl.item(i, j).setText(res_code)
+                if tbl_kal_pl_cellChanged(self):
+                    if not res_code:
+                        res_code = '...'
+                    tbl.cellWidget(i, j).deleteLater()
+                    CQT.add_label_link(tbl, i, j, res_code, res_code, fcn_pred_spec_erp, self)
+
+
         self.ui.tbl_kal_pl.setColumnHidden(nk_local_graf, True)
         if nk_nom_pr != None:
             for i in range(tbl.rowCount()):
@@ -4359,6 +4469,14 @@ def load_table_db(self, hook_prog_bar=None):
                     if state in self.Data_plan.DICT_STATUS_POZ_NAME:
                         r, g, b = self.Data_plan.DICT_STATUS_POZ_NAME[state]['color'].split(';')
                         CQT.set_color_wtab_c(tbl, i, nk_state, r, g, b)
+        if nk_pred_spec_erp != None:
+            for i in range(tbl.rowCount()):
+                if tbl.item(i, nk_pred_spec_erp):
+                    pred_spec_erp = tbl.item(i, nk_pred_spec_erp).text()
+                    pred_spec_erp_name = pred_spec_erp.strip()
+                    if not pred_spec_erp_name:
+                        pred_spec_erp_name = '...'
+                    CQT.add_label_link(tbl, i, nk_pred_spec_erp, pred_spec_erp_name, pred_spec_erp_name, fcn_pred_spec_erp, self)
 
         if nk_mk != None:
             for i in range(tbl.rowCount()):

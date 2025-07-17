@@ -543,136 +543,155 @@ def fill_select_poz_kpl(self,row=None):
 @CQT.onerror
 def update_dates_obesp(self:mywindow,*args):
     tbl = self.ui.tbl_kal_pl  # 17.04.2025
-    num_row = tbl.currentRow()
-    if num_row == -1:
-        return
-    row = CQT.get_dict_line_form_tbl(tbl, num_row)
-    num_kpl = int(row['plan.Пномер'])
-
-    data_res_num = CSQ.custom_request_c(self.db_kplan,f"""SELECT Спецификация_ЕРП, Спецификация_код_ЕРП FROM пл_топ WHERE НомПл = {num_kpl}""", rez_dict=True,one=True)
-
-    if data_res_num['Спецификация_код_ЕРП'] == '':
-        CQT.msgbox(f'Не заполен пл_топ.Спецификация_код_ЕРП')
-        return
-    if data_res_num['Спецификация_ЕРП'] == '':
-        CQT.msgbox(f'Не заполен пл_топ.Спецификация_ЕРП')
-        return
-    Спецификация_код_ЕРП = data_res_num['Спецификация_код_ЕРП']
-    text = f"""ВЫБРАТЬ
-                    РесурсныеСпецификацииМатериалыИУслуги.Номенклатура.Наименование КАК НоменклатураНаименование,
-                    РесурсныеСпецификацииМатериалыИУслуги.Номенклатура.Код КАК НоменклатураКод,
-                    РесурсныеСпецификацииМатериалыИУслуги.Этап.Наименование КАК ЭтапНаименование,
-                    РесурсныеСпецификацииМатериалыИУслуги.КоличествоУпаковок КАК КоличествоУпаковок,
-                    РесурсныеСпецификацииМатериалыИУслуги.Упаковка.Наименование КАК УпаковкаНаименование,
-                    РесурсныеСпецификацииМатериалыИУслуги.Номенклатура.ЕдиницаИзмерения КАК НоменклатураЕдиницаИзмерения
-                ИЗ   
-                    Справочник.РесурсныеСпецификации.МатериалыИУслуги КАК РесурсныеСпецификацииМатериалыИУслуги
-                ГДЕ    
-                    РесурсныеСпецификацииМатериалыИУслуги.Ссылка.Код = "{Спецификация_код_ЕРП}"
-            """
-
-    key, res = APIERP.get_wet_request(text=text)
-    if key != 200:
-        CQT.msgbox(f'Ошибка получения данных из ЕРП')
-        return
-    if not res['data']:
-        CQT.msgbox(f'Ресурсная {Спецификация_код_ЕРП} пустая в материалах')
-        return
-    list_mat_etaps = res['data']
-
-
-
-
-    sootv = CMS.Zp_kpl(self)
-    list_refs = F.list_of_lists_to_list_of_dicts(sootv.get_by_kpl(num_kpl))
-    #list_refs = ['85dc77a4-2044-11f0-a3cb-30e1716be59f']
-    if not list_refs:
-        CQT.msgbox(f'Связанных ЗП не обнаружено')
-        return
-    result = []
-
-
-    for data_refs in list_refs:
-        ref = data_refs['Ref_Key_зп_абстракт']
-        text = """ВЫБРАТЬ
-
-    ЗаказПоставщикуТовары.Ссылка КАК ЗП_Реальный,
-    ЗаказПоставщикуТовары.Номенклатура КАК Номенклатура,
-    ЗаказПоставщикуТовары.КоличествоУпаковок КАК Количество,
-    ВЫБОР
-        КОГДА ЗаказПоставщикуТовары.Ссылка.ПоступлениеОднойДатой = ИСТИНА
-            ТОГДА ЗаказПоставщикуТовары.Ссылка.ДатаПоступления
-        ИНАЧЕ ЗаказПоставщикуТовары.ДатаПоступления
-    КОНЕЦ КАК ПлановаяДата,
-    ЗаказПоставщикуТоварыВиртуальный.НомерСтроки КАК НомерСтрокиЗППДО,
-    "" КАК ЭтапКПЛ,
-    "" КАК ДатаОбеспСтарая,
-    ЗаказПоставщикуТоварыВиртуальный.ИдентификаторСтроки КАК ИдентификаторСтроки
-ПОМЕСТИТЬ ВТ_1
-ИЗ
-    Документ.ЗаказПоставщику.Товары КАК ЗаказПоставщикуТовары
-        ЛЕВОЕ СОЕДИНЕНИЕ Документ.ЗаказПоставщику.MES_ТоварыДеталировка КАК ЗаказПоставщикуMES_ТоварыДеталировка
-            ЛЕВОЕ СОЕДИНЕНИЕ Документ.ЗаказПоставщику.Товары КАК ЗаказПоставщикуТоварыВиртуальный
-            ПО (ЗаказПоставщикуMES_ТоварыДеталировка.ВиртуальныйЗаказПоставщику = ЗаказПоставщикуТоварыВиртуальный.Ссылка)
-                И (ЗаказПоставщикуMES_ТоварыДеталировка.ИдентификаторСтрокиВиртуальныйЗаказПоставщику = ЗаказПоставщикуТоварыВиртуальный.ИдентификаторСтроки)
-        ПО (ЗаказПоставщикуТовары.Ссылка = ЗаказПоставщикуMES_ТоварыДеталировка.Ссылка)
-            И (ЗаказПоставщикуТовары.Номенклатура = ЗаказПоставщикуMES_ТоварыДеталировка.Номенклатура)
-ГДЕ
-    ЗаказПоставщикуMES_ТоварыДеталировка.ВиртуальныйЗаказПоставщику = &ВиртуальныйЗаказПоставщику
-;
-
-////////////////////////////////////////////////////////////////////////////////
-ВЫБРАТЬ
-    ВТ_1.ЗП_Реальный КАК ЗП_Реальный,
-    ЗаказПоставщикуТовары.Номенклатура.Код КАК НоменклатураКод,
-    ЗаказПоставщикуТовары.Номенклатура КАК Номенклатура,
-    ЗаказПоставщикуТовары.Количество КАК Количество,
-    ВТ_1.ПлановаяДата КАК ПлановаяДата,
-    ВТ_1.ЭтапКПЛ КАК ЭтапКПЛ,
-    ВТ_1.ДатаОбеспСтарая КАК ДатаОбеспСтарая
-ИЗ
-    Документ.ЗаказПоставщику.Товары КАК ЗаказПоставщикуТовары
-        ЛЕВОЕ СОЕДИНЕНИЕ ВТ_1 КАК ВТ_1
-        ПО (ВТ_1.ИдентификаторСтроки = ЗаказПоставщикуТовары.ИдентификаторСтроки)
-ГДЕ
-    ЗаказПоставщикуТовары.Ссылка = &Ссылка"""
-
-        refs = APIERP.Refs_wet(text)
-        ref_obj = APIERP.Ref_wet('ВиртуальныйЗаказПоставщику', 'Документы.ЗаказПоставщику', ref)
-        ref_obj2 = APIERP.Ref_wet('Ссылка', 'Документы.ЗаказПоставщику', ref)
-        refs.add_ref(ref_obj)
-        refs.add_ref(ref_obj2)
-        key, res = APIERP.get_wet_request(text=text, refs=refs)
-        if key == 200:
-            if res['data']:
-                for item in res['data']:
-
-                    for k,v in data_refs.items():
-                        item[k] = v
-                    result.append(item)
-            else:
-                item = {
-
-                'ЗП_Реальный' : '',
-                'Номенклатура' : '',
-                'Количество' : '',
-                'ПлановаяДата' : '',
-                'НомерСтрокиЗППДО' : '',
-                'ЭтапКПЛ' : '',
-                'ДатаОбеспСтарая' : '',
-                }
-                for k, v in data_refs.items():
-                    item[k] = v
-                result.append(item)
-        else:
-            CQT.msgbox(f'Ошибка получения данных из ЕРП')
-            return
-
-
-    poz = CMS.Pozition(num_kpl, self.db_kplan, self.bd_naryad, self.db_resxml, self.db_users, self)
-
+    result_all = []
     list_not_identity_mats = []
-    dict_custom_etaps_compliance = sootv.get_custom_compliance_etaps(num_kpl)
+    LIMIT = 50
+    sootv = CMS.Zp_kpl(self)
+    if 'shift' in CQT.get_key_modifiers(self):
+        count = 0
+        for i in range(tbl.rowCount()):
+            if not tbl.isRowHidden(i):
+                count+=1
+        if count > LIMIT:
+            CQT.msgbox(f'Выборка в ТЧ более {LIMIT} строк')
+            return
+        nums_kpl = dict()
+        for i in range(tbl.rowCount()):
+            if not tbl.isRowHidden(i):
+                row = CQT.get_dict_line_form_tbl(tbl, i)
+                num_kpl = int(row['plan.Пномер'])
+                dict_custom_etaps_compliance = sootv.get_custom_compliance_etaps(num_kpl)
+                poz = CMS.Pozition(num_kpl, self.db_kplan, self.bd_naryad, self.db_resxml, self.db_users, self)
+                data = {"poz": poz, 'dict_custom_etaps_compliance':dict_custom_etaps_compliance, 'new_dates': dict()}
+                nums_kpl[num_kpl] = data
+
+    else:
+        num_row = tbl.currentRow()
+        if num_row == -1:
+            return
+        row = CQT.get_dict_line_form_tbl(tbl, num_row)
+        num_kpl = int(row['plan.Пномер'])
+        dict_custom_etaps_compliance = sootv.get_custom_compliance_etaps(num_kpl)
+        poz = CMS.Pozition(num_kpl, self.db_kplan, self.bd_naryad, self.db_resxml, self.db_users, self)
+        data = {"poz": poz, 'dict_custom_etaps_compliance': dict_custom_etaps_compliance, 'new_dates': dict()}
+        nums_kpl = {num_kpl: data,}
+
+    for num_kpl in nums_kpl:
+
+        data_res_num = CSQ.custom_request_c(self.db_kplan,f"""SELECT Спецификация_ЕРП, 
+        Спецификация_код_ЕРП FROM пл_топ WHERE НомПл = {num_kpl}""", rez_dict=True,one=True)
+
+        if data_res_num['Спецификация_код_ЕРП'] == '':
+            CQT.msgbox(f'Не заполен пл_топ.Спецификация_код_ЕРП')
+            return
+        if data_res_num['Спецификация_ЕРП'] == '':
+            CQT.msgbox(f'Не заполен пл_топ.Спецификация_ЕРП')
+            return
+        Спецификация_код_ЕРП = data_res_num['Спецификация_код_ЕРП']
+        text = f"""ВЫБРАТЬ
+                        РесурсныеСпецификацииМатериалыИУслуги.Номенклатура.Наименование КАК НоменклатураНаименование,
+                        РесурсныеСпецификацииМатериалыИУслуги.Номенклатура.Код КАК НоменклатураКод,
+                        РесурсныеСпецификацииМатериалыИУслуги.Этап.Наименование КАК ЭтапНаименование,
+                        РесурсныеСпецификацииМатериалыИУслуги.КоличествоУпаковок КАК КоличествоУпаковок,
+                        РесурсныеСпецификацииМатериалыИУслуги.Упаковка.Наименование КАК УпаковкаНаименование,
+                        РесурсныеСпецификацииМатериалыИУслуги.Номенклатура.ЕдиницаИзмерения КАК НоменклатураЕдиницаИзмерения
+                    ИЗ   
+                        Справочник.РесурсныеСпецификации.МатериалыИУслуги КАК РесурсныеСпецификацииМатериалыИУслуги
+                    ГДЕ    
+                        РесурсныеСпецификацииМатериалыИУслуги.Ссылка.Код = "{Спецификация_код_ЕРП}"
+                """
+
+        key, res = APIERP.get_wet_request(text=text)
+        if key != 200:
+            CQT.msgbox(f'Ошибка получения данных из ЕРП')
+
+            return
+        if not res['data']:
+            CQT.msgbox(f'Ресурсная {Спецификация_код_ЕРП} пустая в материалах')
+            return
+        nums_kpl[num_kpl]['list_mat_etaps'] = res['data']
+
+        list_refs = F.list_of_lists_to_list_of_dicts(sootv.get_by_kpl(num_kpl))
+        #list_refs = ['85dc77a4-2044-11f0-a3cb-30e1716be59f']
+        if not list_refs:
+            continue
+
+        for data_refs in list_refs:
+            ref = data_refs['Ref_Key_зп_абстракт']
+            text = """ВЫБРАТЬ
+    
+        ЗаказПоставщикуТовары.Ссылка КАК ЗП_Реальный,
+        ЗаказПоставщикуТовары.Номенклатура КАК Номенклатура,
+        ЗаказПоставщикуТовары.КоличествоУпаковок КАК Количество,
+        ВЫБОР
+            КОГДА ЗаказПоставщикуТовары.Ссылка.ПоступлениеОднойДатой = ИСТИНА
+                ТОГДА ЗаказПоставщикуТовары.Ссылка.ДатаПоступления
+            ИНАЧЕ ЗаказПоставщикуТовары.ДатаПоступления
+        КОНЕЦ КАК ПлановаяДата,
+        ЗаказПоставщикуТоварыВиртуальный.НомерСтроки КАК НомерСтрокиЗППДО,
+        "" КАК ЭтапКПЛ,
+        "" КАК ДатаОбеспСтарая,
+        ЗаказПоставщикуТоварыВиртуальный.ИдентификаторСтроки КАК ИдентификаторСтроки
+    ПОМЕСТИТЬ ВТ_1
+    ИЗ
+        Документ.ЗаказПоставщику.Товары КАК ЗаказПоставщикуТовары
+            ЛЕВОЕ СОЕДИНЕНИЕ Документ.ЗаказПоставщику.MES_ТоварыДеталировка КАК ЗаказПоставщикуMES_ТоварыДеталировка
+                ЛЕВОЕ СОЕДИНЕНИЕ Документ.ЗаказПоставщику.Товары КАК ЗаказПоставщикуТоварыВиртуальный
+                ПО (ЗаказПоставщикуMES_ТоварыДеталировка.ВиртуальныйЗаказПоставщику = ЗаказПоставщикуТоварыВиртуальный.Ссылка)
+                    И (ЗаказПоставщикуMES_ТоварыДеталировка.ИдентификаторСтрокиВиртуальныйЗаказПоставщику = ЗаказПоставщикуТоварыВиртуальный.ИдентификаторСтроки)
+            ПО (ЗаказПоставщикуТовары.Ссылка = ЗаказПоставщикуMES_ТоварыДеталировка.Ссылка)
+                И (ЗаказПоставщикуТовары.Номенклатура = ЗаказПоставщикуMES_ТоварыДеталировка.Номенклатура)
+    ГДЕ
+        ЗаказПоставщикуMES_ТоварыДеталировка.ВиртуальныйЗаказПоставщику = &ВиртуальныйЗаказПоставщику
+    ;
+    
+    ////////////////////////////////////////////////////////////////////////////////
+    ВЫБРАТЬ
+        ВТ_1.ЗП_Реальный КАК ЗП_Реальный,
+        ЗаказПоставщикуТовары.Номенклатура.Код КАК НоменклатураКод,
+        ЗаказПоставщикуТовары.Номенклатура КАК Номенклатура,
+        ЗаказПоставщикуТовары.Количество КАК Количество,
+        ВТ_1.ПлановаяДата КАК ПлановаяДата,
+        ВТ_1.ЭтапКПЛ КАК ЭтапКПЛ,
+        ВТ_1.ДатаОбеспСтарая КАК ДатаОбеспСтарая
+    ИЗ
+        Документ.ЗаказПоставщику.Товары КАК ЗаказПоставщикуТовары
+            ЛЕВОЕ СОЕДИНЕНИЕ ВТ_1 КАК ВТ_1
+            ПО (ВТ_1.ИдентификаторСтроки = ЗаказПоставщикуТовары.ИдентификаторСтроки)
+    ГДЕ
+        ЗаказПоставщикуТовары.Ссылка = &Ссылка"""
+
+            refs = APIERP.Refs_wet(text)
+            ref_obj = APIERP.Ref_wet('ВиртуальныйЗаказПоставщику', 'Документы.ЗаказПоставщику', ref)
+            ref_obj2 = APIERP.Ref_wet('Ссылка', 'Документы.ЗаказПоставщику', ref)
+            refs.add_ref(ref_obj)
+            refs.add_ref(ref_obj2)
+            key, res = APIERP.get_wet_request(text=text, refs=refs)
+            if key == 200:
+                if res['data']:
+                    for item in res['data']:
+
+                        for k,v in data_refs.items():
+                            item[k] = v
+                        result_all.append(item)
+                else:
+                    item = {
+
+                    'ЗП_Реальный' : '',
+                    'Номенклатура' : '',
+                    'Количество' : '',
+                    'ПлановаяДата' : '',
+                    'НомерСтрокиЗППДО' : '',
+                    'ЭтапКПЛ' : '',
+                    'ДатаОбеспСтарая' : '',
+                    }
+                    for k, v in data_refs.items():
+                        item[k] = v
+                    result_all.append(item)
+            else:
+                CQT.msgbox(f'Ошибка получения данных из ЕРП')
+                return
+
 
     def add_etap_kpl_in_calc(etap_kpl,poz):
         if etap_kpl == None:
@@ -690,18 +709,24 @@ def update_dates_obesp(self:mywindow,*args):
         date_supply = poz.row_dates_supply[field_dates_supply]
         list_old_dates_supply.append(date_supply)
 
+    if not result_all:
+        CQT.msgbox(f'Связанных ЗП не обнаружено')
+        return
+    for item in result_all:
 
-    for item in result:
+        num_kpl = item['КПЛ']
+        poz = nums_kpl[num_kpl]['poz']
         cod = item['НоменклатураКод']
         list_etaps_kpl = []
         list_names_etaps_kpl = []
         list_old_dates_supply = []
-        if item['s_num_zp'] in dict_custom_etaps_compliance:
-            if cod  in dict_custom_etaps_compliance[item['s_num_zp']]:
-                etap_kpl = dict_custom_etaps_compliance[item['s_num_zp']][cod]
+        if item['s_num_zp'] in nums_kpl[num_kpl]['dict_custom_etaps_compliance']:
+            if cod in nums_kpl[num_kpl]['dict_custom_etaps_compliance'][item['s_num_zp']]:
+                etap_kpl = nums_kpl[num_kpl]['dict_custom_etaps_compliance'][item['s_num_zp']][cod]
                 add_etap_kpl_in_calc(etap_kpl,poz)
-        for mat_res in list_mat_etaps:
-            if cod == mat_res['НоменклатураКод']:
+
+        for mat_res in nums_kpl[num_kpl]['list_mat_etaps']:
+            if cod == mat_res['НоменклатураКод'] or item['Номенклатура'] == mat_res['НоменклатураНаименование']:
                 etap = mat_res['ЭтапНаименование']
                 if etap not in self.Data_plan.DICT_ETAPS_NAME:
                     CQT.msgbox(f'Ошибка. Этап {etap} отсутствет в БД')
@@ -721,6 +746,9 @@ def update_dates_obesp(self:mywindow,*args):
             item['ПлановаяДата'] =F.datetostr(F.strtodate(item['ПлановаяДата'], "%d.%m.%Y %H:%M:%S"),"%Y-%m-%d" )
         except:
             pass
+
+
+
     def hide_fields_list_not_identity_mats(tbl:QtWidgets.QTableWidget):
         def select_etap(self, text, row, col):
             if text:
@@ -762,9 +790,7 @@ def update_dates_obesp(self:mywindow,*args):
         else:
             dialog.reject()
 
-
-
-
+    list_not_identity_mats = []
     if list_not_identity_mats:
         if not CQT.msgboxg_get_table(self, f'Не найдено в рес. {Спецификация_код_ЕРП}', list_not_identity_mats, 'Принять',
                                      WindowTitle='Выбрать этап КПЛ', yesNoMode=True,
@@ -774,8 +800,6 @@ def update_dates_obesp(self:mywindow,*args):
         return
 
 
-
-
     def hide_fields(tbl:QtWidgets.QTableWidget):
         tbl.setColumnHidden(CQT.num_col_by_name_c(tbl,'s_num'),True)
         tbl.setColumnHidden(CQT.num_col_by_name_c(tbl, 's_num_zp'), True)
@@ -783,13 +807,13 @@ def update_dates_obesp(self:mywindow,*args):
         tbl.setColumnHidden(CQT.num_col_by_name_c(tbl, 'ЭтапКПЛ'), True)
         tbl.setColumnHidden(CQT.num_col_by_name_c(tbl, 'Ref_Key_зп_абстракт'), True)
 
-    if not CQT.msgboxg_get_table(self, 'Даты обеспечения из ЕРП', result,'Обновить даты',
+    if not CQT.msgboxg_get_table(self, 'Даты обеспечения из ЕРП', result_all,'Обновить даты',
                                  WindowTitle='Даты обеспечения к обновлению',yesNoMode=True,func_oform_tbl=hide_fields):
         return
 
 
-    new_dates = dict()
-    for item in result:
+    for item in result_all:
+        num_kpl = item['КПЛ']
         list_etaps = item['ЭтапКПЛ'].split(';')
         date = F.strtodate(item['ПлановаяДата'],"%Y-%m-%d")
         for i, field in enumerate(list_etaps):
@@ -797,12 +821,15 @@ def update_dates_obesp(self:mywindow,*args):
                 'name_field_obespech']
             name_tbl = field.split('.')[0]
             field_dates_supply = f'{name_tbl}.{name_field_obespech}'
-            if field_dates_supply in new_dates:
-                if date > F.strtodate(new_dates[field_dates_supply],"%Y-%m-%d"):
-                    new_dates[field_dates_supply] = F.datetostr(date, "%Y-%m-%d")
+            if field_dates_supply in nums_kpl[num_kpl]['new_dates']:
+                if date > F.strtodate(nums_kpl[num_kpl]['new_dates'][field_dates_supply],"%Y-%m-%d"):
+                    nums_kpl[num_kpl]['new_dates'][field_dates_supply] = F.datetostr(date, "%Y-%m-%d")
             else:
-                new_dates[field_dates_supply] = F.datetostr(date, "%Y-%m-%d")
-    poz.update_dates_supply(new_dates)
+                nums_kpl[num_kpl]['new_dates'][field_dates_supply] = F.datetostr(date, "%Y-%m-%d")
+    for data in nums_kpl.values():
+        poz = data['poz']
+        new_dates = data['new_dates']
+        poz.update_dates_supply(new_dates)
     CQT.msgbox(f'Обновлено')
     return
 

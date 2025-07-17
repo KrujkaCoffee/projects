@@ -170,7 +170,10 @@ def get_wet_request(text:str,refs:Refs_wet|None=None, **kwargs):
     for k,v in kwargs.items():
         dict_data[k] = v
     url = f'{CFG.Config.project.ERB_BASE_URL}/{CFG.Config.user_config.ERP_base_name["Значение"]}/ru_RU/hs/mes/sysexchange/v1/wet_request/none'
-    response = requests.get(url, json=dict_data, headers=headers, params=params, auth=(USER_ERP, PASS_ERP))
+    try:
+        response = requests.get(url, json=dict_data, headers=headers, params=params, auth=(USER_ERP, PASS_ERP))
+    except:
+        return 408, None
     # print(F.convert_binary_to_data(response.content))
     if response.status_code == 200:
         return response.status_code, JS.loads(F.convert_binary_to_data(response.content))
@@ -237,3 +240,5 @@ def get_file(path:str|list = None):
         return response.status_code, [{k:base64.b64decode(v) for k,v in item.items() if v != None} for item in data_['Данные'] if isinstance(item,dict)]
     else:
         return response.status_code, JS.loads(F.convert_binary_to_data(response.content))
+
+

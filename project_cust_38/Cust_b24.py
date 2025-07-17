@@ -36,7 +36,6 @@ class B24Sender:
         logging.error('[b24-chat]Ошибка отправки сообщения')
 
     def send_msg_by_chat_id(self, chat_id: str, msg: str) -> bool:
-        return True
         response = requests.post(f'{self._URL}im.message.add', json={
             'DIALOG_ID': chat_id,
             'MESSAGE': msg,

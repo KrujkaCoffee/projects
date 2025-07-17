@@ -166,7 +166,7 @@ class OrdersComposit():
 
 
         try:
-            response = requests.get(url, headers=headers, params=params, auth=(self.user, self.pswd))
+            response = requests.get(url, headers=headers, params=params, auth=(self.user, self.pswd), timeout=5) #07.07.25
             cod = response.status_code
             if cod != 200:
                 err_val = F.convert_binary_to_data(response.content)

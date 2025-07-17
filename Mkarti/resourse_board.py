@@ -624,6 +624,7 @@ class mywindow_res(QtWidgets.QDialog):  # диалоговое окно
         wo_erp = False
         if 'shift' in CQT.get_key_modifiers(self):
             wo_erp=True
+
         if not check():
             return
 

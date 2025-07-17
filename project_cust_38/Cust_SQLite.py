@@ -254,6 +254,16 @@ def list_of_columns_c(bd, table, dict=False):
         return dict_tmp
     return rez
 
+def dict_types_tbl(db,tbl_name):
+    list_dicts = custom_request_c(db, custom_request_c=f"""SELECT name, type FROM pragma_table_info('{tbl_name}')""",
+                                  rez_dict=True)
+    objs = {
+        'INTEGER':int,
+        'REAL':float,
+        'TEXT':str,
+        'BLOB':bytes,
+            }
+    return {_['name']:objs[_['type']] for _ in list_dicts}
 
 def list_types_table(bd, table):
     list_dicts = custom_request_c(bd, custom_request_c=f"""SELECT name, type FROM pragma_table_info('{table}')""",
@@ -307,17 +317,25 @@ def apply_alias_list(list_resp, dict_alias):
     if list_resp == []:
         return list_resp
     result = copy.deepcopy(list_resp)
-    if isinstance(result[0],dict):
+    if isinstance(result[0], dict):
         for i in range(len(result)):
-            for key in result[i]:
-                if key in dict_alias:
-                    result[i][dict_alias[key]] = result[i].pop(key)
+            new_dict = dict()
+            for k, v in result[i].items():
+                if k in dict_alias:
+                    new_dict[dict_alias[k]] = v
+                else:
+                    print(f'CSQ.apply_alias_list err not found alias for {k}')
+                    new_dict[k] = v
+            result[i] = new_dict
     else:
-        for j in range(len(result[0])):
-            for k in dict_alias.keys():
-                if k == result[0][j]:
-                    result[0][j] = dict_alias[k]
-                    break
+        for i in range(len(result)):
+            for j in range(len(result[i])):
+                fl_found = False
+                if result[i][j] in dict_alias:
+                    result[i][j] = dict_alias[result[i][j]]
+                    fl_found = True
+                if not fl_found:
+                    print(f'CMS.apply_alias_list err not found alias for {result[i][j]}')
     return result
 
 def prepare_list_to_tuple(list_nums:list|set) -> str:

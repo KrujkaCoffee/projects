@@ -1,4 +1,6 @@
 import copy
+import pathlib
+
 import requests
 import subprocess
 from collections import namedtuple, defaultdict, deque
@@ -7,7 +9,7 @@ from functools import partial
 from itertools import count
 import inspect
 from PyQt5 import QtWidgets, QtCore, QtGui, uic
-from PyQt5.QtWidgets import QStyledItemDelegate, QMainWindow, QTableWidget, QHeaderView
+from PyQt5.QtWidgets import QStyledItemDelegate, QMainWindow, QTableWidget, QHeaderView, QApplication
 from PyQt5.QtGui import QPixmap, QPen, QColor
 from PyQt5.QtCore import Qt ,QObject, QEvent
 import project_cust_38.border_painter as CBPAINT
@@ -1366,6 +1368,7 @@ def set_color_text_header_wtab_vertical_c(obj, j, r, g, b, size= 10, blod=False,
     obj.horizontalHeader().blockSignals(False)
     
 def set_font_color_wtab_c(obj, i, j, r='', g='', b=''):
+    obj.blockSignals(True)
     if r == '' or g == '' or b == '':
         pass
     else:
@@ -1373,7 +1376,7 @@ def set_font_color_wtab_c(obj, i, j, r='', g='', b=''):
         g = int(g)
         b = int(b)
         obj.item(i, j).setForeground(QtGui.QColor(r, g, b))
-    
+    obj.blockSignals(False)
 
 def set_color_row_wtab_c(obj, i, r, g, b):
     for j in range(obj.columnCount()):
@@ -1736,6 +1739,7 @@ class Delegate(QStyledItemDelegate):
             painter.drawLine(option.rect.topRight(), option.rect.bottomRight())
 
 def set_cell_editable(tbl, i, j, val:bool=True):
+    tbl.blockSignals(True)
     cellinfo = tbl.item(i, j)
     if val:
         cellinfo.setFlags(QtCore.Qt.ItemIsSelectable | QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsEditable)
@@ -1743,7 +1747,8 @@ def set_cell_editable(tbl, i, j, val:bool=True):
     else:
         cellinfo.setFlags(QtCore.Qt.ItemIsSelectable | QtCore.Qt.ItemIsEnabled)
         set_color_wtab_c(tbl, i, j, 240, 240, 240)
-
+    tbl.blockSignals(False)
+    
 def lbl_linkActivated(link, *args):
     try:
         link = urllib.parse.unquote(link) 
@@ -1840,11 +1845,11 @@ def is_link_like(text: str):
 def fill_wtabl(dict_or_list, object, set_editeble_col_nomera={}, ogr_maxshir_kol=200,
                  min_width_col=20, height_row=30, colorful_edit = True, auto_type=True,head_column:int = None,
                hide_head_column:bool=False,hide_head_rows:bool=False,StretchLastSection=True,select_last_row=False,
-               list_column_widths:list=[],StretchLastRow=False,tbl_vidget:tuple|None=None,count_unhide_rows=5, 
+               list_column_widths:list=[],save_column_sort_hh: bool = False, StretchLastRow=False,tbl_vidget:tuple|None=None,count_unhide_rows=5,
                selectionBehavior="SelectItems",count_rows_cell_max=1, load_links=False, conn_func_label_link=None,
-               styleSheet=None,parent_self=None,sortingEnabled=False):
+               styleSheet=None,parent_self=None,sortingEnabled=False,selectionMode="ExtendedSelection"):
 
-
+#16.07.25
     """
     
     :param dict_or_list: 
@@ -1865,12 +1870,18 @@ def fill_wtabl(dict_or_list, object, set_editeble_col_nomera={}, ogr_maxshir_kol
     :param tbl_vidget: 
     :param count_unhide_rows: 
     :param selectionBehavior: SelectItems|SelectRows|SelectColumns
-    :return: 
+    :param selectionMode:
+            Число	Константа (SelectionMode)	Описание
+            0	    NoSelection	                Выделение запрещено
+            1	    SingleSelection	            Только один элемент (по умолчанию)
+            2	    MultiSelection	            Множественный выбор (Ctrl+ЛКМ, но без Shift)
+            3	    ExtendedSelection	        Расширенный выбор (как в проводнике — работает Shift и Ctrl)
+            4	    ContiguousSelection	        Только смежные элементы (работает Shift, но не Ctrl)
+    :return:
     """
 
     if dict_or_list == None or len(dict_or_list) == 0:
         return
-
     if isinstance(tbl_vidget,tuple):
         object_tbl = QtWidgets.QTableWidget()
         paret_item = object
@@ -1881,10 +1892,11 @@ def fill_wtabl(dict_or_list, object, set_editeble_col_nomera={}, ogr_maxshir_kol
     object_tbl.reset()
     if isinstance(object_tbl, QtWidgets.QTableWidget):
         object_tbl.blockSignals(True)
-
     object_tbl.horizontalHeader().blockSignals(True)
     object_tbl.clear()
     object_tbl.setSelectionBehavior(eval(f'QtWidgets.QTableWidget.SelectionBehavior.{selectionBehavior}'))
+    object_tbl.setSelectionMode(eval(f'QtWidgets.QTableWidget.SelectionMode.{selectionMode}'))
+    tbl_object_name = object_tbl.objectName()
     if type(dict_or_list) == type(dict()):
         list_of_data = F.dict_of_dicts_to_list_of_lists(dict_or_list)
     if type(dict_or_list) == type(['']):
@@ -1931,11 +1943,20 @@ def fill_wtabl(dict_or_list, object, set_editeble_col_nomera={}, ogr_maxshir_kol
 
             if auto_type:
                 if F.is_numeric(list_of_data[i][j]):
-                    cellinfo.setData(QtCore.Qt.DisplayRole,F.valm(text))
+                    if text == None:                        
+                        cellinfo.setData(QtCore.Qt.DisplayRole,0)
+                    else:
+                        cellinfo.setData(QtCore.Qt.DisplayRole,F.valm(text))
+                else:
+                    if text == None:                        
+                        cellinfo.setData(QtCore.Qt.DisplayRole,'')
+                    else:
+                        cellinfo.setText(str(text))
+            else:
+                if text == None:
+                    cellinfo.setData(QtCore.Qt.DisplayRole, '')
                 else:
                     cellinfo.setText(str(text))
-            else:
-                cellinfo.setText(str(text))
 
             if j not in set_editeble_col_nomera:
                 cellinfo.setFlags(QtCore.Qt.ItemIsSelectable | QtCore.Qt.ItemIsEnabled)
@@ -2068,6 +2089,8 @@ def fill_wtabl(dict_or_list, object, set_editeble_col_nomera={}, ogr_maxshir_kol
         if len(list_column_widths) == object_tbl.columnCount():
             for i in range(object_tbl.columnCount()):
                 object_tbl.setColumnWidth(i,int(list_column_widths[i]))
+    if save_column_sort_hh and tbl_object_name:#16.07.25
+        FillHorizontalHeaderSort(object_tbl)
     if paret_item == None:
         return object_tbl
     paret_item.setCellWidget(tbl_vidget[0], tbl_vidget[1], object_tbl)
@@ -2930,7 +2953,7 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
                  use_first_row_as_header=True, print_hat=True,
                  func_btn0=None, selection_from_tbl=False, ExtendedSelection=True, selectRows=False,
                  func_oform_filtr=None, load_links=False, conn_func_label_link=None, styleSheet=None, parent_self=None,
-                 sortingEnabled=False, not_standart_close=False):
+                 sortingEnabled=False, not_standart_close=False, save_column_sort_hh: bool = False):
         """        #SP_MessageBoxCritical
         #SP_MessageBoxInformation
         #SP_MessageBoxQuestion
@@ -3023,7 +3046,8 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
                         new_item.setForeground(item.foreground())
                         new_item.setFlags(item.flags())
                         tbl.setItem(i, j, new_item)
-
+            if FillHorizontalHeaderSort.is_mutable(dict_or_list): # 16.07.25
+                FillHorizontalHeaderSort(tbl)
         else:
             if not use_first_row_as_header:
                 colorful_edit = False
@@ -3033,7 +3057,8 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
                 else:
                     dict_or_list.insert(0, [str(i) for i, v in enumerate(dict_or_list[0])])
             fill_wtabl(dict_or_list, tbl, height_row=25, auto_type=False, colorful_edit=colorful_edit,
-                       load_links=load_links, conn_func_label_link=conn_func_label_link,styleSheet=styleSheet,parent_self=parent_self,sortingEnabled=sortingEnabled)
+                       load_links=load_links, conn_func_label_link=conn_func_label_link,styleSheet=styleSheet,parent_self=parent_self,sortingEnabled=sortingEnabled,
+                       save_column_sort_hh=save_column_sort_hh)
         if func_oform_tbl:
             if parent_self:
                 func_oform_tbl(tbl,parent_self)
@@ -3684,7 +3709,8 @@ def msgboxg_get_table(self, msg, dict_or_list, btn0_name="Ввод", btn1_name="
                       style_icon='SP_MessageBoxInformation',func_oform_tbl=None,use_first_row_as_header=True,
                       print_hat=True,func_btn0=None,selection_from_tbl=False,ExtendedSelection=True,
                       selectRows=False,func_oform_filtr=None,load_links=False, conn_func_label_link=None,
-                      styleSheet=None,parent_self=None,sortingEnabled=False,yesNoMode=False,not_standart_close=False):
+                      styleSheet=None,parent_self=None,sortingEnabled=False,yesNoMode=False,not_standart_close=False,
+                      save_column_sort_hh: bool = False):
     self.__ansver_Dialog_tbl = None
     dialog_tbl = Dialog_tbl(self,msg, dict_or_list, btn0_name, btn1_name, func_validate,
                             disable_btn0=disable_btn0,disable_btn1=disable_btn1,load_summ=load_summ,
@@ -3694,7 +3720,8 @@ def msgboxg_get_table(self, msg, dict_or_list, btn0_name="Ввод", btn1_name="
                             ExtendedSelection=ExtendedSelection,selectRows=selectRows,
                             func_oform_filtr=func_oform_filtr,load_links=load_links,
                             conn_func_label_link=conn_func_label_link,styleSheet=styleSheet,parent_self=parent_self,
-                            sortingEnabled=sortingEnabled,not_standart_close=not_standart_close)
+                            sortingEnabled=sortingEnabled,not_standart_close=not_standart_close,
+                            save_column_sort_hh=save_column_sort_hh)
 
     returnValue = dialog_tbl.exec()
     if yesNoMode:
@@ -3717,7 +3744,7 @@ def msgboxg_get_table_ok_inf(self, msg, dict_or_list, btn0_name="OK", btn1_name=
                              style_icon='SP_MessageBoxInformation',func_oform_tbl=None,use_first_row_as_header=True,
                              print_hat=True,func_btn0=None,selection_from_tbl=False,ExtendedSelection=True,
                              selectRows=False,func_oform_filtr=None,load_links=False, conn_func_label_link=None,
-                             styleSheet=None,parent_self=None,sortingEnabled=False):
+                             styleSheet=None,parent_self=None,sortingEnabled=False, save_column_sort_hh: bool = False):
     self.__ansver_Dialog_tbl = None
     dialog_tbl = Dialog_tbl(self,msg, dict_or_list, btn0_name, btn1_name, func_validate,disable_btn0=disable_btn0,
                             disable_btn1=disable_btn1,load_summ=load_summ,show_filtr=show_filtr,WindowTitle=WindowTitle,
@@ -3726,7 +3753,7 @@ def msgboxg_get_table_ok_inf(self, msg, dict_or_list, btn0_name="OK", btn1_name=
                             print_hat=print_hat,func_btn0=func_btn0,selection_from_tbl=selection_from_tbl,
                             ExtendedSelection=ExtendedSelection,selectRows=selectRows,func_oform_filtr=func_oform_filtr,
                             load_links=load_links, conn_func_label_link=conn_func_label_link,styleSheet=styleSheet,parent_self=parent_self,
-                            sortingEnabled=sortingEnabled)
+                            sortingEnabled=sortingEnabled, save_column_sort_hh=save_column_sort_hh)
     returnValue = dialog_tbl.exec()
     return
 #++20.05.25
@@ -3742,7 +3769,8 @@ def get_answer_dialog_table(parent, msg:str, dict_or_list, btn0_name:str="Вво
              line_edit_default_value: str = '',
              on_confirm: callable = None,
              return_entire: bool = False,
-             info_point_size: int = 15
+             info_point_size: int = 15,
+             save_column_sort_hh: bool = False
             ):
     """
     Поля дополняющие Dialog_tbl
@@ -3777,7 +3805,7 @@ def get_answer_dialog_table(parent, msg:str, dict_or_list, btn0_name:str="Вво
         use_first_row_as_header, print_hat,
         func_btn0, selection_from_tbl, ExtendedSelection, selectRows,
         func_oform_filtr, load_links, conn_func_label_link, styleSheet, parent_self,
-        sortingEnabled, not_standart_close
+        sortingEnabled, not_standart_close, save_column_sort_hh
     )
     dialog.ui.buttonBox.setHidden(True)
     font = QtGui.QFont()
@@ -3793,7 +3821,6 @@ def get_answer_dialog_table(parent, msg:str, dict_or_list, btn0_name:str="Вво
         data = list_from_wtabl_c(dialog.ui.tbl, rez_dict=True)  # 23.06.25
         if not on_confirm or on_confirm(text, data): #24.05.25
             return dialog.accept()
-        return dialog.reject()
 
     def keyReleaseEvent(e: QtGui.QKeyEvent):
         if e.key() == QtCore.Qt.Key_Return:
@@ -4133,14 +4160,20 @@ def fill_filtr_c(self, tblf:QtWidgets.QTableWidget, tbl:QtWidgets.QTableWidget, 
         apply_filtr_c(self,tblf,tbl)
 
 class ConnectFilterKeyEvents:
+    FILTER_TABLE_EVENTS_INITIALIZED_PROPERTY = 'FILTER_TABLE_EVENTS_INITIALIZED'
+    TABLE_RELATION_PROPERTY = 'TABLE_RELATION_MARK'
+
     def __init__(self, window, tbl: QtWidgets.QTableWidget, tblf: QtWidgets.QTableWidget):
         self.window = window
         self.tbl: QtWidgets.QTableWidget = tbl
         self.tblf: QtWidgets.QTableWidget = tblf
-        key = '__usr_events_initialized__'
-        if key not in tblf.__dict__:
-            tblf.keyReleaseEvent = self.keyReleaseEvent
-            setattr(tblf, key, True)
+        init_property = tblf.property(self.FILTER_TABLE_EVENTS_INITIALIZED_PROPERTY)
+        if not init_property:
+            tblf.keyReleaseEvent = self.keyReleaseEvent #17.07.25
+            tblf.setProperty(self.FILTER_TABLE_EVENTS_INITIALIZED_PROPERTY, True)
+            tbl.setProperty(self.TABLE_RELATION_PROPERTY, tblf.objectName())
+        if FillHorizontalHeaderSort.is_mutable(tbl):
+            FillHorizontalHeaderSort(table=tbl, filter_tbl=tblf)
 
     def apply_filter_state(self, new_state):
         self.tblf.clearSelection()
@@ -4167,6 +4200,13 @@ class ConnectFilterKeyEvents:
         print(f'[ConnectFilterKeyEvents] Окно {self.window} не содержит метода keyReleaseEvent '
             f'чтобы делегировать эвент родительскому окну')
 
+    @classmethod
+    def get_filter_object_by_main_table(cls, table: QTableWidget):
+        filter_table_name = table.property(cls.TABLE_RELATION_PROPERTY)
+        active_window = QApplication.activeWindow()
+        if not filter_table_name or not active_window:
+            return
+        return active_window.findChild(QtWidgets.QTableWidget, filter_table_name)
 
 def qt_tmp_dir():
     ima_module = F.name_of_executable_file_c().split('.')[0]
@@ -4496,3 +4536,161 @@ class RollBackUserChangesDelegator(QStyledItemDelegate):
         if e.key() == 90 and e.modifiers() == QtCore.Qt.ControlModifier:
             self.undo_red_tree()
         return self.prev_key_listener_func(e)
+
+# 16.07.25 ++
+class FillHorizontalHeaderSort(QtCore.QObject):
+    """
+    Сохранение позиции секций QTableWidget.HorizontalHeaderItem
+    События:
+        По событию фактического перемещения drag on drop колонки происходит сохранение состояния колонок в путь указанный
+            в аргументе tmp_dir/имя объекта таблицы_sort_horizontal_header_columns.pickle
+            если tmp_dir не задан формируется путь ${USER}/mes_tmp/{APP}/имя объекта таблицы_sort_horizontal_header_columns.pickle
+
+    FillHorizontalHeaderSort(table_widget)
+    """
+    # Марки мутации объекта QTableWidget
+    SIGNAL_PROPERTY = 'horizontal_header_section_moved_saver'
+
+    # Курсоры
+    hover_cursor: int = Qt.OpenHandCursor # Qt.PointingHandCursor # Курсор при наведении
+    press_cursor: int = Qt.ClosedHandCursor                       # Курсор при клике
+
+    def __init__(self,
+                 table: QTableWidget,
+                 filter_tbl: QTableWidget = None,
+                 tmp_dir: str = None) -> None:
+        super().__init__()
+        self.table = table
+        self.filter_tbl = filter_tbl
+        self.tmp_dir = tmp_dir
+        self.__mutable_table()
+        self.fill_horizontal_header_sort()
+        self.timer = QtCore.QTimer(self.table)
+        self.timer.setSingleShot(True)
+        self.timer.timeout.connect(self.check_mouse_state)
+        self.is_focus = False
+
+    @classmethod
+    def is_mutable(cls, tbl: QtWidgets.QTableWidget):
+        return tbl.property(cls.SIGNAL_PROPERTY)
+
+    @property
+    def tmp_path(self) -> pathlib.Path:
+        if self.tmp_dir is None:
+            executor, _ = F.name_of_executable_file_c().split('.')
+            base_path = pathlib.Path().home() / 'mes_tmp' / executor
+        else:
+            base_path = pathlib.Path(self.tmp_dir)
+        base_path.mkdir(parents=True, exist_ok=True)
+        filename = self.table.objectName() + "_sort_horizontal_header_columns.pickle"
+        return base_path / filename
+
+    def fill_horizontal_header_sort(self):
+        data = self.__load_column_data()
+        if data is None:
+            return
+        current_sections = self.get_horizontal_header_sections(self.table)
+        filter_sections = self.get_horizontal_header_sections(self.filter_tbl)
+        if not isinstance(current_sections, list) or len(current_sections) == 0:
+            return
+        tables_for_replace = []
+        if set(current_sections) == set(data) and len(data) == len(current_sections):
+            print('[fill_horizontal_header_sort] Количество колонок изменилось, значение порядка из кэша не будет применено')
+            tables_for_replace.append(self.table)
+        if isinstance(filter_sections, list) and set(filter_sections) == set(data) and len(data) == len(filter_sections):
+            tables_for_replace.append(self.filter_tbl)
+        for table in tables_for_replace:
+            for target_index, column in enumerate(data):
+                current_index = self.__current_logical_position(table, column)
+                table.horizontalHeader().blockSignals(True)
+                table.horizontalHeader().moveSection(current_index, target_index)
+                table.horizontalHeader().repaint()
+                table.horizontalHeader().blockSignals(False)
+
+    def __current_logical_position(self, tbl: QtWidgets.QTableWidget, column_text: str) -> int:
+        return next(
+            col
+            for col in range(tbl.columnCount())
+            if tbl.horizontalHeaderItem(tbl.horizontalHeader().logicalIndex(col)).text() == column_text
+        )
+
+    def __mutable_table(self):
+        is_mutable = self.table.property(self.SIGNAL_PROPERTY)
+        if not is_mutable:
+            self.table.setDragEnabled(True)
+            self.table.setAcceptDrops(True)
+            self.table.setDropIndicatorShown(True)
+            self.table.setMouseTracking(True)
+            self.table.setFocusPolicy(Qt.StrongFocus)
+            self.table.horizontalHeader().setSectionsMovable(True)
+            self.table.horizontalHeader().setFocusPolicy(Qt.StrongFocus)
+            self.table.horizontalHeader().setSectionsClickable(True)
+            self.table.horizontalHeader().setMouseTracking(True)
+            self.table.horizontalHeader().installEventFilter(self)
+
+            self.table.horizontalHeader().sectionMoved.connect(
+                lambda struct_ind, old_ind, new_ind: self.__save_column_order(struct_ind, old_ind, new_ind)
+            )
+            self.table.horizontalHeader().sectionPressed.connect(self.__pressed_header)
+            self.table.setProperty(self.SIGNAL_PROPERTY, True)
+
+    def __save_column_order(self, logic_ind, old_ind, new_ind):
+        headers = [
+            self.table.horizontalHeaderItem(self.table.horizontalHeader().logicalIndex(i)).text()
+            for i in range(self.table.columnCount())
+        ]
+        self.tmp_path.write_bytes(F.to_binary_pickle(headers))
+        filter_table = ConnectFilterKeyEvents.get_filter_object_by_main_table(self.table)
+        if filter_table:
+            self.filter_tbl = filter_table
+            filter_table.horizontalHeader().setUpdatesEnabled(False)
+            filter_table.setUpdatesEnabled(False)
+
+            for idx, column in enumerate(headers):
+                current_index = self.__current_logical_position(filter_table, column)
+                filter_table.horizontalHeader().blockSignals(True)
+                filter_table.horizontalHeader().moveSection(current_index, idx)
+                filter_table.horizontalHeader().blockSignals(False)
+            filter_table.horizontalHeader().setUpdatesEnabled(True)
+            filter_table.setUpdatesEnabled(True)
+
+    def check_mouse_state(self, *args):
+        buttons = QApplication.mouseButtons()
+        if buttons & Qt.LeftButton:
+            QApplication.setOverrideCursor(self.press_cursor)
+            self.timer.start(200)
+        else:
+            QApplication.setOverrideCursor(self.hover_cursor)
+
+    def __pressed_header(self, *args, **kwargs):
+        QApplication.setOverrideCursor(self.press_cursor)
+        self.timer.start(200)
+
+    def __load_column_data(self):
+        try:
+            if self.tmp_path.exists():
+                return F.from_binary_pickle(self.tmp_path.read_bytes())
+        except (FileNotFoundError, EOFError):
+            return
+
+    def get_horizontal_header_sections(self, table: QtWidgets.QTableWidget):
+        if table is None: return
+        if table.columnCount() == 0:
+            return
+        places = [None] * table.columnCount()
+        for col in range(table.columnCount()):
+            places[table.horizontalHeader().logicalIndex(col)] = table.horizontalHeaderItem(col).text()
+        return places
+
+    def eventFilter(self, obj, event: QEvent):
+        event_type = event.type()
+        obj_cursor = obj.cursor().shape()
+        if event_type == QEvent.CursorChange:
+            QApplication.setOverrideCursor(obj_cursor)
+        if event_type in (QEvent.Enter, QEvent.HoverEnter, QEvent.HoverMove) and obj_cursor == 0:
+            if not QApplication.mouseButtons() & Qt.LeftButton:
+                QApplication.setOverrideCursor(self.hover_cursor)
+        if event.type() in (QEvent.HoverLeave, QEvent.Leave):
+            self.timer.stop()
+            QApplication.setOverrideCursor(Qt.ArrowCursor)
+        return super().eventFilter(obj, event)
