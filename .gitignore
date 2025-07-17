@@ -10,3 +10,4 @@ __pycache__
 *.html
 Setup.py
 drag
+get-pip.py
