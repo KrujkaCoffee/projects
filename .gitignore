@@ -8,6 +8,7 @@ __pycache__
 *.docx
 *.png
 *.html
+*.svg
 Setup.py
 drag
 get-pip.py

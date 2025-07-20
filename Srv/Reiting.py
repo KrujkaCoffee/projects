@@ -129,7 +129,9 @@ def update_vid_rab_from_1c():
 
 
     DICT_CTALOGS = {"Новые виды работ": {'Code': '00-000060', 'Description': 'Новые виды работ', 'Ref_Key': 'a99e57e8-4e02-11ed-8469-00d861dd2b4a'},
-                    'Келаст': {'Code': '00-000012', 'Description': 'Келаст', 'Ref_Key': '03181fa9-fc30-11e7-80cd-4ccc6a67082d'}}
+                    'Келаст': {'Code': '00-000012', 'Description': 'Келаст', 'Ref_Key': '03181fa9-fc30-11e7-80cd-4ccc6a67082d'},
+                    'Таткуз': {'Code': '00-000092', 'Description': 'Таткуз', 'Ref_Key': '1ace4f2d-9cfb-11ef-85c2-00d861dd2b4a'},
+                    }
 
 
     m = ERP.OrdersComposit()
@@ -817,6 +819,7 @@ vrem = 600
 #quit()
 #user_calendar.main()
 #quit()
+#nomen_erp.obn_mat_erp_file(db_mater)
 while True:
     counter_timer += vrem
     counter_timer_middle += vrem

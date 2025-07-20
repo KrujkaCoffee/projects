@@ -1463,7 +1463,16 @@ class Pozition():
 
     def set_new_active_res(self,new_ver_res:int):
         CSQ.custom_request_c(self.db,f"""UPDATE пл_топ SET ВерсияРесурсной = {new_ver_res} WHERE НомПл = {self.Пномер}""")
-    
+
+    def set_new_type_by_direction(self, new_type: int): #21.07.25
+        CSQ.custom_request_c(self.db,f"""
+            UPDATE пл_топ 
+            SET Вид = {new_type} 
+            WHERE НомПл = {self.Пномер}
+            RETURNING *
+        """, rez_dict=True)
+        self.load_kpl_table('пл_топ')
+
     def get_unicue_fild_name(self,name_table):
         if name_table == 'plan':
             return 'Пномер'
@@ -1672,60 +1681,6 @@ class Pozition():
         self.update_day_plan_etap_jurnal(dict_days)
         return dict_days
 
-# class Organization(): # TODO 20.02.2025 Переход на Cust_Config (удалить если не будет конфликтов)
-#     def __init__(self,bd_naryad,qt_self=None,organization_str:str=None):
-#
-#
-#         self._parent_self = qt_self
-#         self._bd_naryad = bd_naryad
-#         if qt_self== None:
-#             organization = organization_str
-#         else:
-#             if 'name_module' not in qt_self.__dict__:
-#                 raise Exception('Свойство name_module не определено')
-#             organization = self._parent_self.USER_CONFIG.Organization['Значение']
-#         if organization == None or organization=='':
-#             if QtWidgets.QApplication.instance() is not None:
-#                 CQT.msgbox(f'Не выбрана организация')
-#                 self.select_organiztion()
-#             return
-#
-#         self.Код = None
-#         self.Имя = None
-#         self.Примечание = None
-#         self.Организация_Key = None
-#         self.Код = None
-#         self.poki = None
-#         self.letter = None
-#         self.doc_prefix = None
-#         self.ИспПроверкуВнесенияТрудозатрат = None
-#         self.ИспПроверкуТехартыВнесениеВидаИВесаТО = None
-#         row = CSQ.custom_request_c(self._bd_naryad, f"""SELECT * FROM places WHERE Имя = "{organization}";""", one=True,
-#                                    rez_dict=True)
-#         for key in row.keys():
-#             exec(f'self.{str(key).replace(".", "_")} = row[key]')
-#
-#         if not self._parent_self == None:
-#             self.set_tooltip()
-#
-#     def set_tooltip(self):
-#         self._parent_self.setWindowTitle(f"{self._parent_self.name_module}({self.Имя})")
-#
-#     def select_organiztion(self):
-#         CFG.Config.user_config.gui_load(self._parent_self)
-#         #orgnizations = CSQ.custom_request_c(self._bd_naryad, f"""SELECT * FROM places""", rez_dict=True)
-#         #organiztion = CQT.msgboxg_get_table(self._parent_self, 'Выбрать организацию', orgnizations,disable_btn1=True)
-#         #F.save_file(tmp_mes_dir() + F.sep() + 'place.txt', organiztion['Код'])
-#         self = Organization(self._bd_naryad,self._parent_self)
-#
-#
-#     def add_action(self,self_ui):
-#         self_ui.action_place = QtWidgets.QAction('Сменить организацию ', self._parent_self)
-#         self_ui.action_place.triggered.connect(lambda checked: self.select_organiztion())
-#         self_ui.menu.addSeparator()
-#         self_ui.menu.addAction(self_ui.action_place)
-#         self_ui.menu.addSeparator()
-#
 
 
 class Techkards():
@@ -5244,71 +5199,6 @@ def add_action_config_save_tbl_filtrs(self,self_ui):
     self_ui.menu.addSeparator()
     self.USER_CONFIG = CFG.Config.user_config
 
-# @CQT.onerror # TODO 20.02.2025 Переход на Cust_Config(удалить если не будет конфликтов)
-# def user_config_gui_load(self,*args):
-#     conf = CFG.Config.user_config
-#     data_config = conf.tbl_config()
-#     def oforml(tbl: QtWidgets.QTableWidget):
-#         def set_val_int(val,i,j):
-#             tbl.item(i,j).setText(str(F.valm(val)))
-#         def set_val_str(val,i,j):
-#             tbl.item(i,j).setText(val)
-#         nf_val = CQT.num_col_by_name_c(tbl,'Значение')
-#         nf_type = CQT.num_col_by_name_c(tbl, 'type')
-#         nf_list = CQT.num_col_by_name_c(tbl, 'list')
-#         for i in range(tbl.rowCount()):
-#             if tbl.item(i, nf_list).text() == None:
-#                 continue
-#             CQT.set_cell_editable(tbl,i,nf_val,True)
-#             if tbl.item(i,nf_type).text() == 'check_box':
-#                 val = F.boolm(tbl.item(i,nf_val).text())
-#                 CQT.add_check_box(tbl,i, nf_val,val=val, conn_func_checked_row_col=set_val_int)
-#             if tbl.item(i,nf_type).text() == 'combo_box':
-#                 val = tbl.item(i,nf_val).text()
-#                 CQT.add_combobox('',tbl,i, nf_val,list=eval(tbl.item(i, nf_list).text()),first_void=False, conn_func=set_val_str)
-#                 tbl.cellWidget(i,nf_val).setCurrentText(val)
-#         tbl.setColumnHidden(CQT.num_col_by_name_c(tbl,'Nick_name'),True)
-#         tbl.setColumnHidden(CQT.num_col_by_name_c(tbl, 'Default_val'),True)
-#         tbl.setColumnHidden(CQT.num_col_by_name_c(tbl, 'type'), True)
-#         tbl.setColumnHidden(CQT.num_col_by_name_c(tbl, 'list'), True)
-#         tbl.setColumnHidden(CQT.num_col_by_name_c(tbl, 'necessary_reload'), True)
-#         tbl.setColumnWidth(nf_val,90)
-#
-#     def apply_new_vals(tbl):
-#         data = F.deploy_dict_c(CQT.list_from_wtabl_c(tbl,rez_dict=True),'Nick_name')
-#         CFG.Config.user_config.save_config(data)
-#
-#     old_config = copy.deepcopy(data_config)
-#     NAME_MODULE_BASE = ''
-#     if 'NAME_MODULE_BASE' in self.__dict__:
-#         NAME_MODULE_BASE = self.NAME_MODULE_BASE
-#     rez = CQT.msgboxg_get_table(self,'Настройки',data_config,'Принять',WindowTitle=NAME_MODULE_BASE + ' Пользовательские настройки' ,
-#                           style_icon='SP_MessageBoxQuestion',func_oform_tbl=oforml,func_btn0=apply_new_vals)
-#
-#     if not rez == False:
-#         conf = CFG.Config.user_config
-#         data_config = conf.tbl_config()
-#         fl_reload = False
-#         for elem in data_config:
-#             for elem_old in old_config:
-#                 if elem['Nick_name'] == elem_old['Nick_name']:
-#                     if elem['Значение'] != elem_old['Значение'] and elem['necessary_reload']:
-#                         fl_reload = True
-#                         break
-#             if fl_reload:
-#                 break
-#         if fl_reload:
-#             CQT.msgbox(f'Перезапустить приложение')
-#             quit()
-#         load_user_config(self)
-#
-# def load_user_config(self):
-#     CFG.Config.user_config.load_config()
-#     self.USER_CONFIG = CFG.Config.user_config
-#     self.ERP_base_name = self.USER_CONFIG.ERP_base_name['Значение']
-#     self.name_module = f'{self.ERP_base_name}-{self.NAME_MODULE_BASE}'
-#     # self.place = Organization(CFG.Config.project.db_naryad, self)
-#     CQT.load_css(self)
 
 @CQT.onerror
 def access_kpl_tbl(DICT_INFO_FIELDS_KPL:dict,full_name_field:str) -> bool:
@@ -6116,53 +6006,6 @@ def fix_path_mes_setup(put):
         return False
     return put.replace(goal, new_path)
 
-# def check_ver(ver,ima):
-#     try:
-#         F.write_file_c('ver.txt',[[ver]],'|',False,True)
-#         print('     Наличие списка модулей')
-#         path = F.scfg('setup') + r'\list.txt'
-#         if F.existence_file_c(path) == False:
-#
-#             print(f"     {path} не найден")
-#             return False
-#         print(f"     {path} найден")
-#         spis_prog = F.open_file_c(path,True,"|")
-#         put = ''
-#         for i in range(len(spis_prog)):
-#             if spis_prog[i][0] == ima:
-#                 put = spis_prog[i][1]
-#                 put = fix_path_mes_setup(put)
-#                 if put == False:
-#                     return False
-#                 break
-#         if put == '':
-#             return False
-#         #os.system(r'net use z: \\powerz.ru\share')
-#         path = put + os.sep + r'embed\ver.txt'
-#         if F.existence_file_c(path) == False:
-#             print(f"     {path} не найден")
-#             return False
-#         print(f"     {path} найден")
-#         ver_z = F.open_file_c(path,utf8=True,separ='|')
-#         if ver_z[0][0] == ver:
-#             print(f"     {ver} актуальна")
-#             return True
-#         else:
-#             print(f"     {ver} не актуальна")
-#                 #path_to_launcher = F.sep().join(F.scfg('setup').split(F.sep())[:-1]) + F.sep() + 'Setup'
-#                 #full_path = path_to_launcher + F.sep() + 'Setup.py'
-#                 #if F.existence_file_c(full_path):
-#                     #F.run_file_os_c(full_path)
-#                 #else:
-#             F.open_dir_c(F.scfg('setup'))
-#
-#             if F.user_name() == 'a.belyakov':
-#
-#                 F.open_dir_c(F.path_to_execut_file_c())
-#                 F.open_dir_c(r"C:\Users\a.belyakov\AppData\Local\Programs\Python\Python312")
-#             return f"Необходимо обновить {ima}"
-#     except:
-#         return False
 
 
 def check_last_entry(last_date_update: str) -> bool:
@@ -6210,7 +6053,7 @@ def check_ver(ver,ima):
             return True
         else:
             print(f"     {ver} не актуальна")
-            if any(F.user_name() == user for user in Config.project.developers.split('|')):
+            if Config.user_config.is_developer: #18.07.25
                 Config.app.set(version=ver)
                 F.open_dir_c(Config.app.path)
                 F.open_dir_c(F.path_to_execut_file_c())
@@ -6576,7 +6419,7 @@ def resursnaya_from_cust_struktura(self, spis_dse, kol_vo_izdeliy=None, ruchnoi=
 
 @CQT.onerror
 def check_possibility_statistic_calc_tkp(vid_izd:str|int):
-    VID_PO_NAPR = CSQ.custom_request_c(CFG.Config.project.db_kplan, f"""SELECT * FROM виды_по_напр""", rez_dict=True)
+    VID_PO_NAPR = CSQ.custom_request_c(CFG.Config.project.db_kplan, f"""SELECT * FROM виды_по_направлению""", rez_dict=True) #18.07.25
     if isinstance(vid_izd,str):
         DICT_VID_PO_NAPR = F.deploy_dict_c(VID_PO_NAPR, 'Имя')
     if isinstance(vid_izd,int):
@@ -10612,3 +10455,129 @@ class TkpSchema:
 
     def clear(self):
         self.__init__()
+
+
+#18.07.25++
+class TypesWorkingByDirections:
+    """
+    Представление таблицы: DB_kplan.виды_по_направлениям
+    """
+    PK_KEY_FOR_GROUP = 'Пномер'
+
+    # Настройки редуцирования группы
+    COLUMN_KEY_FOR_GROUP_UNPACK = 'etaps.имя_в_виды_по_напр' # Ключ, значение которого будет введено как имя колонки
+    COLUMN_VAL_FOR_GROUP_UNPACK = 'коэфф.ratio'            # Ключ, значение которого будет введено как значение колонки
+
+    def get_table_for_select_type(self, poz: Pozition, window, *args, **kwargs): #++ 21.07.25
+        types = self.get_old_view_response()
+        result = []
+        for item in types:
+            type_pk = item['Пномер']
+            type_name = item['Имя']
+            if not type_name:
+                continue
+            napr_nickname = item['napravl_deyat.Псевдоним']
+            napr_name = item['napravl_deyat.Имя']
+            result.append({
+                'Пномер': type_pk,
+                'Вид': type_name,
+                'Наименование направления': napr_name,
+                'Псевдоним направления': napr_nickname
+            })
+        if CQT.msgboxgYN(
+                f'Для КПЛ: {poz.Пномер} не заполнен "пл_топ.Вид"',
+                btn0_name='Продолжить без вида',
+                btn1_name='Заполнить вид'
+        ):
+            return True
+        answer = CQT.msgboxg_get_table(
+            window,
+            btn0_name='Записать',
+            msg=f'Выберите вид по направлению',
+            dict_or_list=result,
+            ExtendedSelection=False,
+            selectRows=True
+        )
+        if not answer:
+            return
+        new_type_pk = answer.get('Пномер')
+        new_type = answer.get('Вид')
+        if not new_type_pk:
+            return
+        if not CQT.msgboxgYN(f'Вид: {new_type!r} будет записан в "пл_топ.Вид" КПЛ: {poz.Пномер}. Продолжить?'):
+            return
+        poz.set_new_type_by_direction(new_type_pk)
+        confirm_change_type = poz.dict_tables['пл_топ']['Вид']
+        if confirm_change_type == 1:
+            return
+        msg_b24_by_poz_action = Msg_b24(CFG.Config.project.db_kplan,
+                                            CFG.Config.project.db_naryad,
+                                            db_resxml=CFG.Config.project.db_resxml,
+                                            db_users=CFG.Config.project.db_users,
+                                            nom_kpl=poz.Пномер)
+        msg_b24_by_poz_action.send_msg(type_msg='recalc_time_technolog')
+        return True #-- 21.07.25
+
+    def get_old_view_response(self):
+        poki = CFG.Config.place.poki
+        query = f"""
+                    SELECT
+                        виды_по_направлению.Пномер as "{self.PK_KEY_FOR_GROUP}",
+                        виды_по_направлению.Имя as "Имя",
+                        виды_по_направлению.Примечание as "Примечание",
+                        виды_по_направлению.Выборка as "Выборка",
+                        виды_по_направлению.кг_на_пост_см as "кг_на_пост_см",
+                        виды_по_направлению.vneplan_percent as "vneplan_percent",
+                        виды_по_направлению.Утверждены_нормы as "Утверждены_нормы",
+                        виды_по_направлению.Направл as "Направл",
+                        виды_по_направлению.ВозможностьСозданияНоменМеталоармДляСозданияРесЕРП as "ВозможностьСозданияНоменМеталоармДляСозданияРесЕРП",
+                        виды_по_направлению.НомерВидаНоменДляСозданияРесЕРП as "НомерВидаНоменДляСозданияРесЕРП",
+                        коэфф.ratio as "коэфф.ratio",
+                        etaps.имя_в_виды_по_напр as "etaps.имя_в_виды_по_напр",
+                        napravl_deyat.Имя as 'napravl_deyat.Имя',
+                        napravl_deyat.Псевдоним as 'napravl_deyat.Псевдоним'
+                    FROM виды_по_направлению
+                     LEFT JOIN коэфф_норм_этапов_по_видам_направлений коэфф ON коэфф.виды_по_напр_id = виды_по_направлению.Пномер
+                     LEFT JOIN etaps ON etaps.s_num = коэфф.etaps_id
+                    INNER JOIN napravl_deyat ON виды_по_направлению.Направл = napravl_deyat.Пномер
+                    WHERE napravl_deyat.poki = {poki} OR napravl_deyat.poki IS NULL
+            """
+        db_result = CSQ.custom_request_c(CFG.Config.project.db_kplan,
+                                         query, rez_dict=True, attach_dbs=CFG.Config.project.db_naryad)
+        if not db_result:
+            return
+        grouped_data = self.__group_by(db_result, 'Пномер')
+        return self.__unpack_groups_on_column(
+            grouped_data,
+            self.COLUMN_KEY_FOR_GROUP_UNPACK,
+            self.COLUMN_VAL_FOR_GROUP_UNPACK
+        )
+
+    def __group_by(self, collection, key: str):
+        """Формирование структуры {unique_key: [groups...]}"""
+        groups = {}
+        for item in collection:
+            groups.setdefault(item[key], []).append(item)
+        return groups
+
+    def __unpack_groups_on_column(self, grouped_collection: dict[int, list], column_key: str, value_key: str):
+        """
+        Редуцирование горизонтальных значений группы по
+        Из каждого элемента группы берется:
+        * значение по ключу @column_key, которое будет выступать колонкой для агрегата.
+        * значение по ключу @value_key, которое будет выступать значением колонки для агрегата.
+        """
+        result = []
+        for group_key, group in grouped_collection.items():
+            item = {self.PK_KEY_FOR_GROUP: group_key}
+            for el in group:
+                if column_key in el and value_key in el:
+                    key_for_result = el.pop(column_key)
+                    val_for_result = el.pop(value_key)
+                    if key_for_result is not None and val_for_result is not None:
+                        item[key_for_result] = val_for_result
+                for key, val in el.items():
+                    if key != column_key and key != value_key:
+                        item[key] = val
+            result.append(item)
+        return result

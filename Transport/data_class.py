@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import Optional
 import project_cust_38.Cust_config as MESCNF
 import os
 import Config.srv_config as SRVCFG
@@ -128,14 +129,29 @@ class Client_data():
             name = name.upper()# Т.К В Windows переменные окружения COMPUTERNAME и USERNAME традиционно хранятся в верхнем регистре
         return name
 class Module_cfg():
-    def __init__(self,alias:str|None,route:str|None):
+    _dict_routes = dict()
+    def __init__(self,alias:str|None='genesis',route:str|None=None,name:str='',icon:ft.Icons|None=None, tooltip:str='',sub_module:Optional['Module_cfg']=None):
         self.alias:str = alias
         self.route:str = route
         self.sub_dir:str|None = None
         if self.alias:
             self.sub_dir = os.sep.join([SRVCFG.DIR_ROOT,'Modules_data',self.alias])
         self.cust_data:Any = None
+        self.name = name
+        self.icon = icon
+        self.tooltip = tooltip
 
+        self.sub_modules:dict[str, Module_cfg] = dict()
+        if sub_module:
+            self.sub_modules[sub_module.alias] = sub_module
+        Module_cfg._dict_routes[route] = self
+    def add_submodule(self, module: 'Module_cfg'):
+        """Добавляет подмодуль к текущему модулю"""
+        self.sub_modules[module.alias] = module
+
+    def get_module_by_route(self,route:str):
+        if route in Module_cfg._dict_routes:
+            return Module_cfg._dict_routes[route]
 class Srv_data(metaclass=SingletonMeta):
     def __init__(self):
         self.ip =  SRVCFG.HOST

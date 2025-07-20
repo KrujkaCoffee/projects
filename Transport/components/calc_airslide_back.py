@@ -392,7 +392,7 @@ def get_vals_from_input_data_tbl(tbl: ft.DataTable):
     return data_params
 
 
-def save_exel(list_dict_rez_input: list, list_dict_rez_output: list, name: str, dir_save: str) -> str | bool:
+def save_exel(list_dict_rez_input: list, list_dict_rez_output: list, name: str, dir_save: str, name_module: str) -> str | bool:
     list_dict_rez_input = [{k: v for k, v in _.items() if k != 'Имя'} for _ in list_dict_rez_input]
     list_dict_rez_output = [{k: v for k, v in _.items() if k != 'Имя'} for _ in list_dict_rez_output]
 
@@ -445,17 +445,16 @@ def save_exel(list_dict_rez_input: list, list_dict_rez_output: list, name: str, 
         return table
 
     # rez_spis = dict_lists_to_side_by_side_table(list_dict_rez_input, list_dict_rez_output)
-    # folder = dir_save
+    folder = dir_save
     name_file = f'{name}.docx'
-    path = os.path.join(dir_save, name_file)
     template_path = os.path.join(SRVCFG.DOCX_TEMPLATES_PATH, 'report.docx')
-    rez = CEX.make_docx_report(name, list_dict_rez_input, list_dict_rez_output, output_docx_path=path,
-                               template_name=template_path)
+    path = os.path.join(dir_save, name_file)
+    rez = CEX.make_docx_report(name_module, list_dict_rez_input, list_dict_rez_output, output_docx_path=path,
+                           template_name=template_path)
     # rez = CEX.zap_spis(rez_spis, folder, name_file, '1', 1, 1, return_putf=True)
     if not rez:
         return False
     return rez
-
 
 def file_into_blob(putf):
     return F.file_into_blob(putf)

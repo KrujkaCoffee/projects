@@ -419,9 +419,10 @@ def reload_tbl_empl(ima_table_empl, LIST_DICT_EMPLOYEE_FULL, res, dict_rab_vrema
         key, result_req = APIERP.get_wet_request(text=text)
         if key != 200:
             print(f'Ошибка получения данных из ЕРП')
-
+            return
         if not result_req['data']:
             print(f'Табели Факт. явки за  {ПериодРегистрации_str} пуст')
+            return
         else:
             list_erp_tabels = result_req['data']
 

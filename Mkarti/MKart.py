@@ -2737,9 +2737,13 @@ class mywindow(QtWidgets.QMainWindow):
                                             CQT.num_col_by_name_c(self.ui.table_spis_MK, 'Номер КПЛ')).text())
             poz = CMS.Pozition(kpl,self.db_kplan,self.bd_naryad,self.db_resxml,self.db_users,self)
             poz.load_kpl_table('пл_оуп')
+            poz.load_kpl_table('пл_топ')
             izd = poz.dict_tables['пл_оуп']['Номенклатура_ЕРП']
-
-
+            type_dse = poz.dict_tables['пл_топ']['Вид']
+            if type_dse == 1: #21.07.25
+                confirm_continue = CMS.TypesWorkingByDirections().get_table_for_select_type(window=self, poz=poz)
+                if not confirm_continue:
+                    return
             rez = CMS.resursnaya_from_mk(self, nom_mk)
             if rez == None:
                 return

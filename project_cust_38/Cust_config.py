@@ -226,7 +226,8 @@ def load_tmp_stukt(ima,default_val = None):
 
 
 class User_config(metaclass=SingletonMeta):
-    def __init__(self):
+    def __init__(self, common_config: ProjectConfig = None):
+        self.common_config = common_config #18.07.25
         orgnizations = CSQ.custom_request_c(ProjectConfig().db_naryad, f"""SELECT Имя FROM places""",
                                             hat_c=False, one_column=True)
         orgnizations.insert(0, '')
@@ -281,10 +282,12 @@ class User_config(metaclass=SingletonMeta):
         self.ERP_base_name = None
         self.css_theme = None
         self.Organization = None
-        self.is_developer = False
-        if F.user_full_namre() == "Беляков Антон Геннадьевич":
-            self.is_developer = True
         self.load_config()
+
+    @property
+    def is_developer(self): #18.07.25
+        current_login = F.user_name()
+        return current_login in self.common_config.developers.split('|')
 
     def load_config(self):
         data = load_tmp_stukt('user_config', {})
@@ -472,5 +475,5 @@ class Place(metaclass=SingletonMeta):
 class Config(metaclass=SingletonMeta):
     project: ProjectConfig = ProjectConfig()
     app: AppConfig = AppConfig()
-    user_config: User_config = User_config()
+    user_config: User_config = User_config(common_config=project) #18.07.25
     place: Place = Place()

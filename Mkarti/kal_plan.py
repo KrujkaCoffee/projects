@@ -4224,14 +4224,14 @@ def load_db(self: mywindow, pnom=False, only_hat=False):
     napravl_deyat ON napravl_deyat.Пномер = plan.Направление_деятельности,
     status_poz ON status_poz.Пномер = plan.Статус,
     status_etapi_erp ON status_etapi_erp.Пномер = знпр.Этапы_ЕРП,
-    виды_по_напр ON виды_по_напр.Пномер = пл_топ.Вид,
+    виды_по_направлению as виды_по_напр ON виды_по_напр.Пномер = пл_топ.Вид,
     napravlenie ON napravlenie.Пномер = napravl_deyat.Направление,
     status_norm ON status_norm.Код = plan.Статус_норм,
     status_tara ON status_tara.s_num = пл_компл.Статус_тара,
     знпр ON знпр.s_num = пл_оуп.Пномер_ЗП,
     mk ON mk.Пномер = plan.МК 
     {postfix} {limit};
-    """,attach_dbs=(self.bd_naryad))
+    """,attach_dbs=(self.bd_naryad)) #18.07.25
 
     return list, list_conf
 

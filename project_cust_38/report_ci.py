@@ -2910,7 +2910,8 @@ def analysis_vneplan_by_vid_rab(self: mywindow, nach, konec, podrazd=None, *args
                 print(f'if {vid_param} not in DICT_PROF_ALL')
         res_list.append(tmp_dict)
 
-    if CMS.user_access(self.bd_naryad,'созданиемаршрутныхкарт_удалить',F.user_name(),False):
+    # if CMS.user_access(self.bd_naryad,'созданиемаршрутныхкарт_удалить',F.user_name(),False):
+    if USRCNF.Config.user_config.is_developer: #18.07.25
         if CQT.msgboxgYN(f'Обновить процент внеплановых работ в таблице видов по направлениям?'):
             dict_vids_napr_percent = dict()
             for item in res_list:
@@ -2927,7 +2928,7 @@ def analysis_vneplan_by_vid_rab(self: mywindow, nach, konec, podrazd=None, *args
                 if dict_vids_napr_percent[vid]['p'] > 0:
                     delta = round(dict_vids_napr_percent[vid]['v'] / dict_vids_napr_percent[vid]['p'], 2)
                 CSQ.custom_request_c(self.db_kplan,
-                                     f"""UPDATE виды_по_напр SET (vneplan_percent) = {delta} WHERE Пномер = {vid}""")
+                                     f"""UPDATE виды_по_направлениям SET (vneplan_percent) = {delta} WHERE Пномер = {vid}""") #18.07.25
 
 
     for mk in set_mk:
@@ -4022,7 +4023,7 @@ def plan_fact_grafic_mes(self, data_nach, data_kon, *args):
     self.DICT_NN_NTK = CMS.load_dict_dse(self.db_dse)
     self.list_month_plan = list_month_plan = CSQ.custom_request_c(self.db_kplan, f"""SELECT * FROM mnts_plan WHERE 
             datetime(Дата) >= datetime("{data_nach}") 
-            and datetime(Дата) < datetime("{data_kon}") and poki == 0""", rez_dict=True)
+            and datetime(Дата) < datetime("{data_kon}") and poki = {USRCNF.Config.place.poki}""", rez_dict=True)
     get_list_month_fact(self)
 
 
@@ -4035,7 +4036,7 @@ def plan_fact_grafic_mes(self, data_nach, data_kon, *args):
 
     
     plan_tab_time_req = F.deploy_dict_c(CSQ.custom_request_c(self.db_kplan,f"""SELECT month, sum(normo_smen)  FROM plan_tabel_workforce 
-     WHERE depatment == "сборочный цех производства" GROUP BY month;""",rez_dict=True),'month')
+     WHERE depatment == "сборочный цех производства" and poki == {USRCNF.Config.place.poki} GROUP BY month ;""",rez_dict=True),'month')
         
 
     dict_cat_vnepl = dict()
@@ -4570,9 +4571,7 @@ def udel_trud_sort_c(self: mywindow, data_nach, data_kon, *args):
 
     #query = f"""SELECT plan.МК, пл_топ.Вид FROM plan INNER JOIN пл_топ ON пл_топ.НомПл = plan.Пномер WHERE plan.МК != 0 AND пл_топ.Вид != 1"""
     #dict_mk_sort_c = F.deploy_dict_c(CSQ.custom_request_c(self.db_kplan, query, rez_dict=True), 'МК')
-
-    query = f"""SELECT Пномер, Имя, Направл FROM виды_по_напр"""
-    dict_sort_c = F.deploy_dict_c(CSQ.custom_request_c(self.db_kplan, query, rez_dict=True), 'Пномер')
+    dict_sort_c = self.Data.DICT_VID_PO_NAPR #18.07.25
 
     list_napr = sorted(list(dict_sort_c.keys()))
     dict_shabl_napr = dict()

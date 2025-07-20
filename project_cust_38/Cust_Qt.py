@@ -11,7 +11,7 @@ import inspect
 from PyQt5 import QtWidgets, QtCore, QtGui, uic
 from PyQt5.QtWidgets import QStyledItemDelegate, QMainWindow, QTableWidget, QHeaderView, QApplication
 from PyQt5.QtGui import QPixmap, QPen, QColor
-from PyQt5.QtCore import Qt ,QObject, QEvent
+from PyQt5.QtCore import Qt ,QObject, QEvent, QSignalBlocker
 import project_cust_38.border_painter as CBPAINT
 import project_cust_38.Cust_Functions as F
 import os
@@ -1525,6 +1525,11 @@ def getDirectory(self, path):  # <-----
     dirlist = os.path.normpath(dirlist)
     return dirlist
 
+def tbl_set_val_wo_signal(tbl:QTableWidget,i:int,j:int,val):
+    # Получаем указатель на данные элемента
+    item = tbl.item(i, j)
+    with QSignalBlocker(tbl):  # Контекстный менеджер
+        item.setText(val)
 
 def use_CSS_c(spis):
     tmp_dict = dict()
@@ -2087,8 +2092,9 @@ def fill_wtabl(dict_or_list, object, set_editeble_col_nomera={}, ogr_maxshir_kol
         object_tbl.selectRow(lastIndex)
     if list_column_widths:
         if len(list_column_widths) == object_tbl.columnCount():
-            for i in range(object_tbl.columnCount()):
-                object_tbl.setColumnWidth(i,int(list_column_widths[i]))
+            with QSignalBlocker(object_tbl.horizontalHeader()):
+                for i in range(object_tbl.columnCount()):
+                    object_tbl.setColumnWidth(i,int(list_column_widths[i]))
     if save_column_sort_hh and tbl_object_name:#16.07.25
         FillHorizontalHeaderSort(object_tbl)
     if paret_item == None:
@@ -4143,8 +4149,10 @@ def fill_filtr_c(self, tblf:QtWidgets.QTableWidget, tbl:QtWidgets.QTableWidget, 
     ed = {_ for _ in range(len(hat_c))}
     fill_wtabl([hat_c], tblf, set_editeble_col_nomera=ed, auto_type=False)
     ConnectFilterKeyEvents(self, tbl, tblf)
-    tblf.setStyleSheet(tbl.styleSheet())
-    _load_tbl(tbl, tblf, hidden_scroll)
+    with QSignalBlocker(tblf.horizontalHeader()):
+        tblf.setStyleSheet(tbl.styleSheet())
+        with QSignalBlocker(tbl.horizontalHeader()):
+            _load_tbl(tbl, tblf, hidden_scroll)
     # tblf.setRowHeight(0, tblf.height() - 35)
     key_shortcut_msg = (
         f'\n{"-" * 26}\n'
@@ -4339,16 +4347,24 @@ def output_gant(self, fig, obj_browser, name_f='text', dir=None, *args):
 
 @onerror
 def on_section_resized(self,tmp_dir:str,*args):
-    if (isinstance(QtWidgets.QApplication.focusWidget(), QtWidgets.QTableWidget) or
-            isinstance(QtWidgets.QApplication.focusWidget(), QtWidgets.QTreeWidget)):
-        obj_name = focus_obj_name()
+    focus = QtWidgets.QApplication.focusWidget()
+
+    if (isinstance(focus, QtWidgets.QTableWidget) or
+            isinstance(focus, QtWidgets.QTreeWidget)
+            or isinstance(focus, QtWidgets.QHeaderView)):
+        if isinstance(focus, QtWidgets.QHeaderView):
+            # Получаем родительский виджет (сам QTableWidget)
+            tbl = focus.parentWidget()
+            obj_name = tbl.objectName()
+        else:
+            tbl = focus
+            obj_name = focus_obj_name()
         try:
             if args[1] % 5 != 0:
                 return
         except:
             pass
         try:
-            tbl = QtWidgets.QApplication.focusWidget()
             if tbl == None:
                 print('Ошибка on_section_resized obj == None')
                 return 
@@ -4372,11 +4388,13 @@ def connect_to_resize(self,tmp_dir):
                     table = ui.__dict__[item]
                     table.setToolTip('Ctrl+Shift+C - Копировать таблицу\nCtrl+Shift+P - Вывод доп.табличной формы')
                     header = table.horizontalHeader()
+
                     header.sectionResized.connect(lambda: on_section_resized(self,tmp_dir))
                 if isinstance(ui.__dict__[item],QtWidgets.QTreeWidget):
                     table = ui.__dict__[item]
                     #table.setToolTip('Ctrl+Shift+C - Копировать таблицу\nCtrl+Shift+P - Вывод доп.табличной формы')
                     header = table.header()
+
                     header.sectionResized.connect(lambda: on_section_resized(self, tmp_dir))
 
 

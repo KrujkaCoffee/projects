@@ -8,8 +8,8 @@ import logging
 import requests
 
 #ip = '192.168.50.208'# AG local
-ip = 'mesinfo.powerz.ru'# server domain  ip = '192.168.50.44'# server
-# ip = '192.168.18.57'# AF local
+# ip = 'mesinfo.powerz.ru'# server domain  ip = '192.168.50.44'# server
+ip = '192.168.18.57'# AF local
 
 
 def db_path(name:str):

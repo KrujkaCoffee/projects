@@ -129,7 +129,7 @@ def gen_page(page):
             rezult_data_for_save = calc_silencer_back.generate_rezult_data_for_save(name, _input_tabe_ref.current,
                                                                                   _output_tabe_ref.current)
             rez = calc_silencer_back.save_exel(rezult_data_for_save['input'], rezult_data_for_save['output'],
-                                             rezult_data_for_save['name'], dir_save=cfg_module.sub_dir)
+                                             rezult_data_for_save['name'], cfg_module.sub_dir,cfg_module.name)
             if not rez:
                 show_msgbox_err(e)
                 return

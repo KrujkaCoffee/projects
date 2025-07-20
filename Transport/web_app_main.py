@@ -104,21 +104,18 @@ def main(page: ft.Page):
 
 
 if __name__ == "__main__":
-    PATHF_IT_PLAN = fr'.\plan_it_form_b24(gen by reiting).pickle'
 
-    ft.app(name=FLET_PATH, target=main)
-    #
-    # if socket.gethostname() == 'POW18-15':  # a.belyakov
-    #     PATHF_IT_PLAN = fr'C:\Python\Reiting_users\plan_it_form_b24(gen by reiting).pickle'
-    #     if IN_BROUSER:
-    #         print(f'http://{FLET_HOST}:{FLET_PORT}')
-    #         ft.app(name=FLET_PATH, target=main, view=None, port=FLET_PORT, host=FLET_HOST, assets_dir="assets")
-    #     else:
-    #         ft.app(name=FLET_PATH, target=main)
-    #
-    # else:
-    #     PATHF_IT_PLAN = fr'C:\srv_mes\srv_mes\plan_it_form_b24(gen by reiting).pickle'
-    #     print(f'http://{FLET_HOST}:{FLET_PORT}')
-    #     print(f'http://mesinfo.powerz.ru:{FLET_PORT}')
-    #     ft.app(name=FLET_PATH, target=main, view=ft.WEB_BROWSER, port=FLET_PORT,
-    #            host='0.0.0.0')  # SRVmes 'http://mesinfo.powerz.ru:20000/'
+    if socket.gethostname() == 'POW18-15':  # a.belyakov
+        PATHF_IT_PLAN = fr'C:\Python\Reiting_users\plan_it_form_b24(gen by reiting).pickle'
+        if IN_BROUSER:
+            print(f'http://{FLET_HOST}:{FLET_PORT}')
+            ft.app(name=FLET_PATH, target=main, view=None, port=FLET_PORT, host=FLET_HOST, assets_dir="assets")
+        else:
+            ft.app(name=FLET_PATH, target=main)
+
+    else:
+        PATHF_IT_PLAN = fr'C:\srv_mes\srv_mes\plan_it_form_b24(gen by reiting).pickle'
+        print(f'http://{FLET_HOST}:{FLET_PORT}')
+        print(f'http://mesinfo.powerz.ru:{FLET_PORT}')
+        ft.app(name=FLET_PATH, target=main, view=ft.WEB_BROWSER, port=FLET_PORT,
+               host='0.0.0.0')  # SRVmes 'http://mesinfo.powerz.ru:20000/'

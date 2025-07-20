@@ -65,7 +65,8 @@ class Data:
 
     DICT_KAT_VNEPL = F.deploy_dict_c(KAT_VNEPL, 'kod')
     DICT_KAT_VNEPL_NAME = F.deploy_dict_c(KAT_VNEPL, 'value')
-    VID_PO_NAPR = CSQ.custom_request_c(db_kplan, f"""SELECT * FROM виды_по_напр""", rez_dict=True)
+    # VID_PO_NAPR = CSQ.custom_request_c(db_kplan, f"""SELECT * FROM виды_по_напр""", rez_dict=True)
+    VID_PO_NAPR = CMS.TypesWorkingByDirections().get_old_view_response() # виды_по_направлениям 18.07.25
     DICT_VID_PO_NAPR = F.deploy_dict_c(VID_PO_NAPR, 'Пномер')
     DICT_VID_PO_NAPR_NAME = F.deploy_dict_c(VID_PO_NAPR, 'Имя')
 

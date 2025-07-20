@@ -8,108 +8,70 @@ import components.calc_airslide as MCA
 import components.calc_pneumatic_jet as MCPj
 import data_class as DTCLS
 
-DICT_MODULES = {'Модули':
-                    {'icon': ft.Icons.WIDGETS,
-                     'tooltip': 'Выбор инструмента',
-                     '_subModules': {
 
-                         "ПО для расчета пневмотранспорта":
-                             {
-                                 'icon': ft.Icons.AIR,
-                                 'tooltip': 'Задача № 100050625',
-                                 'data': DTCLS.Module_cfg("pneumatic_transport", "/modules/pneumatic_transport_dev")
-                                 # {"alias": "pneumatic_transport", "route": "/modules/pneumatic_transport_dev"},
 
-                             },
-                         "ПО для расчета аэрожелоба":
-                             {
-                                 'icon': ft.Icons.AIRLINE_STOPS,
-                                 'tooltip': '',
-                                 'data': DTCLS.Module_cfg("airslide", "/modules/airslide")
-                                 # {"alias": "pneumatic_transport", "route": "/modules/pneumatic_transport_dev"},
 
-                             },
-                         "ПО для расчета пневмотранспорта на базе струйного насоса":
-                             {
-                                 'icon': ft.Icons.TORNADO,
-                                 'tooltip': '',
-                                 'data': DTCLS.Module_cfg("pneumatic_jet", "/modules/pneumatic_jet")
-                                 # {"alias": "pneumatic_transport", "route": "/modules/pneumatic_transport_dev"},
+modules = DTCLS.Module_cfg()
 
-                             },
-                        #F.existence_file_c("./assets/air_purifier_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg")
-                         "ПО для расчета шумоглушителей":
-                             {
-                                 'icon': ft.Icons.VIBRATION,
-                                 'tooltip': '',
-                                 'data': DTCLS.Module_cfg("silencer", "/modules/silencer")
-                                 # {"alias": "pneumatic_transport", "route": "/modules/pneumatic_transport_dev"},
+modules.add_submodule(DTCLS.Module_cfg("modules",
+                              "/modules/modules",
+                              'Модули',
+                              ft.Icons.WIDGETS,
+                              'Выбор инструмента'))
 
-                             },
-                         "Выполнение нарядов (планшетный вариант)":
-                             {
-                                 'icon': ft.Icons.WORK_OUTLINE,
-                                 'tooltip': 'Модуль "Выполнение" для планшета',
-                                 'data': DTCLS.Module_cfg("vipoln", "/modules/vipoln")
-                                 # {"alias": "pneumatic_transport", "route": "/modules/pneumatic_transport_dev"},
+modules.sub_modules["modules"].add_submodule(DTCLS.Module_cfg("pneumatic_transport",
+                              "/modules/pneumatic_transport_dev",
+                              "ПО для расчета пневмотранспорта",
+                              ft.Icons.AIR,
+                              'Задача № 100050625'))
 
-                             },
-                         "Отчеты":
-                             {
-                                 'icon': ft.Icons.INSERT_CHART,
-                                 'tooltip': 'Производственные отчеты',
-                                 'data': DTCLS.Module_cfg("reports", "/modules/reports")
-                                 # {"alias": "pneumatic_transport", "route": "/modules/pneumatic_transport_dev"},
 
-                             },
-                        "Руководства":
-                             {
-                                 'icon': ft.Icons.MENU_BOOK,
-                                 'tooltip': 'Инструкции по работе с МЕС',
-                                 'data': DTCLS.Module_cfg("guides", "/modules/guides")
-                                 # {"alias": "pneumatic_transport", "route": "/modules/pneumatic_transport_dev"},
+modules.sub_modules["modules"].add_submodule(DTCLS.Module_cfg("airslide",
+                              "/modules/airslide",
+                              "ПО для расчета аэрожелоба",
+                              ft.Icons.AIRLINE_STOPS,
+                              ''))
+modules.sub_modules["modules"].add_submodule(DTCLS.Module_cfg("pneumatic_jet",
+                              "/modules/pneumatic_jet",
+                              "ПО для расчета пневмотранспорта на базе струйного насоса",
+                              ft.Icons.TORNADO,
+                              ''))
+modules.sub_modules["modules"].add_submodule(DTCLS.Module_cfg("silencer",
+                              "/modules/silencer",
+                              "ПО для расчета шумоглушителей",
+                              ft.Icons.VIBRATION,
+                              ''))
+modules.sub_modules["modules"].add_submodule(DTCLS.Module_cfg("vipoln",
+                              "/modules/vipoln",
+                              "Выполнение нарядов (планшетный вариант)",
+                              ft.Icons.WORK_OUTLINE,
+                              'Модуль "Выполнение" для планшета'))
+modules.sub_modules["modules"].add_submodule(DTCLS.Module_cfg("reports",
+                              "/modules/reports",
+                              "Отчеты",
+                              ft.Icons.INSERT_CHART,
+                              'Производственные отчеты'))
+modules.sub_modules["modules"].add_submodule(DTCLS.Module_cfg("guides",
+                              "/modules/guides",
+                              "Руководства",
+                              ft.Icons.MENU_BOOK,
+                              'Инструкции по работе с МЕС'))
 
-                             },
+modules.add_submodule(DTCLS.Module_cfg("settings",
+                              "/modules/settings",
+                              'Настройки',
+                              ft.Icons.SETTINGS,
+                              'Настройки'))
 
-                     },
 
-                     },
-
-                "Настройки":
-                    {'icon': ft.Icons.SETTINGS,
-                     'tooltip': 'Настройки',
-                     '_subModules': {"Оформление": {
-                            'icon': ft.Icons.STYLE              ,
-                         'tooltip': 'Оформление',
-
-                     }
-
-                     }
-
-                     },
-
-                }
+modules.sub_modules["settings"].add_submodule(DTCLS.Module_cfg("decoration",
+                              "/modules/decoration",
+                              "",
+                              ft.Icons.STYLE,
+                              'Оформление'))
 
 _ref_main = ft.Ref[ft.Row]()
 _ref_settings = ft.Ref[ft.Column]()
-
-DICT_MODULES_ROUTES = dict()
-
-
-def add_ROUTES(struct: dict):
-    if not isinstance(struct, dict):
-        return [struct]
-    for name, data_iter in struct.items():
-
-        data = data_iter['data'] if 'data' in data_iter else None
-        if data:
-            DICT_MODULES_ROUTES[data.route] = data
-
-        if '_subModules' in data_iter:
-            add_ROUTES(data_iter['_subModules'])
-
-
-add_ROUTES(DICT_MODULES)
 
 
 def main_page(page, PATHF_IT_PLAN):
@@ -160,42 +122,39 @@ def menubar():
             pg.data.Data_module = module_data
             pg.go(module_data.route)
 
-    def add_module(struct: dict):
+    def add_module(modules:dict):
         list_bars = []
-        if not isinstance(struct, dict):
-            return [struct]
-        for name, data_iter in struct.items():
-            icon = data_iter['icon'] if 'icon' in data_iter else None
-            data = data_iter['data'] if 'data' in data_iter else None
-            if data:
-                DICT_MODULES_ROUTES[data.route] = data
+        if not isinstance(modules, dict):
+            return
+        for module in modules.values():
+            if not isinstance(module, DTCLS.Module_cfg):
+                return [module]
 
-            if '_subModules' in data_iter:
-
+            if module.sub_modules:
                 item = ft.SubmenuButton(
-                    content=ft.Text(name),
+                    content=ft.Text(module.name),
                     # on_open=handle_on_open,
                     # on_close=handle_on_close,
                     # on_hover=handle_on_hover,
-                    controls=add_module(data_iter['_subModules']),
-                    tooltip=data_iter['tooltip'],
-                    data=data,
-                    leading=ft.Icon(icon),
+                    controls=add_module(module.sub_modules),
+                    tooltip=module.tooltip,
+                    data=module,
+                    leading=ft.Icon(module.icon),
                 )
             else:
 
                 item = ft.MenuItemButton(
-                    content=ft.Text(name),
-                    leading=ft.Icon(icon),
-                    data=data,
-                    tooltip=data_iter['tooltip'],
+                    content=ft.Text(module.name),
+                    leading=ft.Icon(module.icon),
+                    data=module,
+                    tooltip=module.tooltip,
                     on_click=handle_menu_item_click,
                 )
 
             list_bars.append(item)
         return list_bars
 
-    list_bars = add_module(DICT_MODULES)
+    list_bars = add_module(modules.sub_modules)
 
     menubar = ft.MenuBar(
         expand=True,
@@ -212,18 +171,15 @@ def menubar():
     return ft.Row([menubar])
 
 
-
-
-
 def load_module(page: ft.Page):
     if page.route == ("/modules/pneumatic_transport_dev"):
-        MCP.apply_page_settings(page,DICT_MODULES_ROUTES)
+        MCP.apply_page_settings(page,modules.get_module_by_route(page.route))
         return MCP.gen_page(page)
     if page.route == ("/modules/airslide"):
-        MCA.apply_page_settings(page,DICT_MODULES_ROUTES)
+        MCA.apply_page_settings(page,modules.get_module_by_route(page.route))
         return MCA.gen_page(page)
     if page.route == ("/modules/pneumatic_jet"):
-        MCPj.apply_page_settings(page,DICT_MODULES_ROUTES)
+        MCPj.apply_page_settings(page,modules.get_module_by_route(page.route))
         return MCPj.gen_page(page)
     #if page.route == ("/modules/silencer"):
     #    MCS.apply_page_settings(page)

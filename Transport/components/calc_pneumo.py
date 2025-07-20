@@ -67,10 +67,10 @@ def show_msgbox_err(e):
         time_life=3  # Автозакрытие через 5 секунд
     )
 
-def apply_page_settings(page: ft.Page,DICT_MODULES_ROUTES:dict):
+def apply_page_settings(page: ft.Page,MODULE:DTCLS.Module_cfg):
     Data: DTCLS.Data_page = page.data
     route = page.route
-    Data.Data_module = DICT_MODULES_ROUTES[route]
+    Data.Data_module = MODULE
     Data.Data_module.cust_data: calc_pneumo_back.Cust_module_params = calc_pneumo_back.Cust_module_params()
 def gen_page(page):
     Data: DTCLS.Data_page = page.data
@@ -130,7 +130,7 @@ def gen_page(page):
             rezult_data_for_save = calc_pneumo_back.generate_rezult_data_for_save(name, _input_tabe_ref.current,
                                                                                   _output_tabe_ref.current)
             rez = calc_pneumo_back.save_exel(rezult_data_for_save['input'], rezult_data_for_save['output'],
-                                             rezult_data_for_save['name'], dir_save=cfg_module.sub_dir)
+                                             rezult_data_for_save['name'], cfg_module.sub_dir,cfg_module.name)
             if not rez:
                 show_msgbox_err(e)
                 return

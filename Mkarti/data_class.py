@@ -74,9 +74,8 @@ class Data_plan:
     DICT_NAPR_DEYAT = F.deploy_dict_c(NAPR_DEYAT, 'Пномер')
     DICT_NAPR_DEYAT_NAME = F.deploy_dict_c(NAPR_DEYAT, 'Имя')
     DICT_NAPR_DEYAT_PSDNAME = F.deploy_dict_c(NAPR_DEYAT, 'Псевдоним')
-    from Setup import result
     # VID_PO_NAPR = CSQ.custom_request_c(db_kplan, f"""SELECT * FROM виды_по_напр""", rez_dict=True)
-    VID_PO_NAPR = result
+    VID_PO_NAPR = CMS.TypesWorkingByDirections().get_old_view_response() # DB_kplan.виды_по_направлению 18.07.25
     DICT_VID_PO_NAPR = F.deploy_dict_c(VID_PO_NAPR, 'Пномер')
     DICT_VID_PO_NAPR_NAME = F.deploy_dict_c(VID_PO_NAPR, 'Имя')
     STATUS_POZ =        CSQ.custom_request_c(db_kplan, f"""SELECT * FROM status_poz""", rez_dict=True)
