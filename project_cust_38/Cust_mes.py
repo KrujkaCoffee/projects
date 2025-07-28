@@ -28,6 +28,7 @@ from datetime import timedelta
 from dateutil.relativedelta import relativedelta
 import subprocess
 import winreg
+import project_cust_38.api_erp_commands as APIERP
 try:
     from project_cust_38.isdayoff_cust import ProdCalendar
 except:
@@ -2481,7 +2482,7 @@ class Naryads():
             if self.ФИО != '':
                 self.Этап_фио_1 = etap_by_employee(date_str=self.ДатаМК, key_employee=self.ФИО) # 07.07.25
             if self.ФИО2 != '':
-                self.Этап_фио_2 = etap_by_employee(date_str=self.ДатаМК, key_employee=self.ФИО) # 07.07.25
+                self.Этап_фио_2 = etap_by_employee(date_str=self.ДатаМК, key_employee=self.ФИО2) # 07.07.25
         self.dict_dolgn_etap = dict_dolgn_etap
         self.dict_empl = dict_empl
 
@@ -5240,7 +5241,7 @@ def create_nar_prosoy(self,fio:str,type_prost:int,db_nar,primech,koef,db_naryd,d
     stroka = [date_nar,
               name_by_empl_c(fio),
               0,
-              3,
+              CFG.Config.place.КодыНарядов.Простой,
               'ПРОСТОЙ',
               name_by_empl_c(fio),
               date_nar,
@@ -7458,6 +7459,27 @@ def send_info_mk_b24(self, msg, id):
     if not conn.send_msg_by_chat_id(id, msg):
         CQT.msgbox(f'Ошибка отправки запроса в Б24')
 
+
+def b24_notation_user_fio(str_fio: str = F.user_full_namre()):
+    str_fio_rez = str_fio
+    wet_req_text = f"""ВЫБРАТЬ ПЕРВЫЕ 1  Пользователи.ПБ24_id_bitrix КАК ПБ24_id_bitrix
+                                    ИЗ
+                                        Справочник.Пользователи КАК Пользователи
+                                    ГДЕ
+                                        (Пользователи.Наименование = "{str_fio}"
+                                        ИЛИ Пользователи.ФизическоеЛицо.ФИО = "{str_fio}")
+                                    УПОРЯДОЧИТЬ ПО
+                                        ПБ24_id_bitrix УБЫВ
+                                        ;"""
+    key, data_rez = APIERP.get_wet_request(wet_req_text)
+    if key != 200:
+        print(f'b24_notation_user_fio Ошибка получения данных код ({key}) из ERP')
+    else:
+        if data_rez['data']:
+            id_user = data_rez['data'][0]['ПБ24_id_bitrix']
+            str_fio_rez = f"[USER={id_user}]{str_fio}[/USER]"
+    return str_fio_rez
+
 @CQT.onerror
 def send_info_mk_b24_by_action(msg, action: str):
     sender = CB24.B24Sender()
@@ -8340,7 +8362,8 @@ def add_menu(self,*args):
 
 
 def load_dict_dse(db_dse,conn=''):
-    custom_request_c = f'''SELECT Номенклатурный_номер,Наименование, Номер_техкарты, Код_ЕРП FROM dse'''
+    poki = CFG.Config.place.poki
+    custom_request_c = f'''SELECT Номенклатурный_номер,Наименование, Номер_техкарты, Код_ЕРП FROM dse WHERE poki = {poki}'''
     if conn == '':
         conn_dse, cur_dse = CSQ.connect_bd(db_dse)
     rez = CSQ.custom_request_c(db_dse, custom_request_c, conn=conn_dse, hat_c=True, rez_dict=True, cur = cur_dse)
@@ -10464,10 +10487,120 @@ class TypesWorkingByDirections:
     """
     PK_KEY_FOR_GROUP = 'Пномер'
 
+    # Объемно-календарное-планирование->редактирование позиции->пл_топ.Вид
+    # ключ для вызова таблицы подбора наименования по характеристикам
+    COMBOBOX_KEY_FOR_NAME_COMPOSE = '...Подобрать наименование...'
+
     # Настройки редуцирования группы
     COLUMN_KEY_FOR_GROUP_UNPACK = 'etaps.имя_в_виды_по_напр' # Ключ, значение которого будет введено как имя колонки
-    COLUMN_VAL_FOR_GROUP_UNPACK = 'коэфф.ratio'            # Ключ, значение которого будет введено как значение колонки
+    COLUMN_VAL_FOR_GROUP_UNPACK = 'коэфф.ratio' # Ключ, значение которого будет введено как значение колонки
 
+    data_for_name_composite = { # ++ 25.07.25
+        'КТ': {
+            'Тип оборуд.': ['К', 'КВ', 'КИ', 'КВИ', 'КИБ', 'КВБ', 'КВИБ'],
+            'Тип поставки': ['ТТ', 'Ч', 'М', 'МЧ'],
+            'Исполнение': ['000', '010', '020', '001', '011', '021', '101', '111', '121', '202', '212', '222', '203', '213', '223', '303', '313', '323', '404', '414', 'Прокл', 'Полотно', 'Шнур', 'Уник'],
+            'Геометрия': ['Кр', 'Пр', 'КП', 'Бг']
+        },
+        'БСИ': {
+            'Тип оборуд.': ['Трмчх', 'Трмчх нф', 'Трмчх сост', 'Гофра', 'Паллет', 'КЗХ', 'Односл', 'Вышивка'],
+            'Тип поставки': ['М','бМ'],
+            'Исполнение': ['О', 'бО'],
+            'Геометрия': []
+        },
+        'ПДШ': {
+            'Тип оборуд.': ['Подушка'],
+            'Тип поставки': [],
+            'Исполнение': [],
+            'Геометрия': []
+        },
+        'ВГ': {
+            'Тип оборуд.': ['Вставка', 'Лента'],
+            'Тип поставки': [],
+            'Исполнение': [],
+            'Геометрия': []
+        },
+        'ДО': {
+            'Тип оборуд.': ['Поддон', 'Ящик', 'Оснастка', 'Модельная оснастка'],
+            'Тип поставки': ['М', 'бМ'],
+            'Исполнение': ['Обычный', 'Усиленный', 'Простая', 'Сложная'],
+            'Геометрия': ['Кр', 'Пр', 'КП']
+        },
+        'РФ': {
+            'Тип оборуд.': ['Сшивной', 'Сварной'],
+            'Тип поставки': ['М', 'бМ'],
+            'Исполнение': [],
+            'Геометрия': ['Плоский', 'Круглый']
+        },
+        'ПР': {
+            'Тип оборуд.': ['Прочие'],
+            'Тип поставки': [],
+            'Исполнение': [],
+            'Геометрия': []
+        },
+    }
+    def oform_table_for_name_composite(self, tbl: QtWidgets.QTableWidget):
+        tbl.insertRow(0)
+        tbl.setColumnCount(5)
+        self.combo_root = QtWidgets.QComboBox()
+        self.combo_root.addItem("")
+        self.combo_root.addItems(self.data_for_name_composite.keys())
+        self.combo_root.currentTextChanged.connect(self.update_other_combos)
+
+        headers = ["Направление"]
+        for key, val in self.data_for_name_composite.items():
+            headers.extend(val.keys())
+            break
+        tbl.setHorizontalHeaderLabels(headers)
+        tbl.setCellWidget(0, 0, self.combo_root)
+
+        self.combo_others = [QtWidgets.QComboBox() for _ in range(4)]
+        for i, combo in enumerate(self.combo_others, start=1):
+            combo.setEnabled(False)
+            combo.addItem("")
+            tbl.setCellWidget(0, i, combo)
+
+    @CQT.onerror
+    def get_table_for_name_composite(self, window) -> str | None:
+        value = CQT.msgboxg_get_table(window, 'Составление имени', [],
+                                      btn0_name='Подтвердить',
+                                      func_oform_tbl=self.oform_table_for_name_composite,
+                                      yesNoMode=True,
+                                      show_filtr=False)
+        if not value:
+            return None
+        napr = self.combo_root.currentText()
+        if napr not in window.Data_plan.DICT_NAPR_DEYAT_PSDNAME:
+            return CQT.msgbox(f'Не найдено направление {napr!r}')
+        napr_pk = window.Data_plan.DICT_NAPR_DEYAT_PSDNAME[napr]['Пномер']
+        val = '-'.join(combo.currentText() for combo in self.combo_others if combo.currentText())
+        if not CQT.msgboxgYN(f'Составлено наименование: {val!r}. Применить к позиции?'):
+            return None
+        if val not in window.Data_plan.DICT_VID_PO_NAPR_NAME:
+            result = CSQ.custom_request_c(CFG.Config.project.db_kplan,
+                                          'INSERT INTO виды_по_направлению(Направл, Имя, Выборка) VALUES(?, ?, ?)',
+                                          list_of_lists_c=[[napr_pk, val, 0]])
+            if not result:
+                return CQT.msgbox(f'Не удалось сохранить вид: {val!r} По направлению: {napr}')
+            window.Data_plan.VID_PO_NAPR = self.get_old_view_response()
+            window.Data_plan.DICT_VID_PO_NAPR = F.deploy_dict_c(window.Data_plan.VID_PO_NAPR, 'Пномер')
+            window.Data_plan.DICT_VID_PO_NAPR_NAME = F.deploy_dict_c(window.Data_plan.VID_PO_NAPR, 'Имя')
+        return val
+
+    def update_other_combos(self, root_key):
+        if root_key in self.data_for_name_composite:
+            for i, key in enumerate(self.data_for_name_composite[root_key].keys()):
+                combo = self.combo_others[i]
+                combo.setEnabled(True)
+                combo.clear()
+                combo.addItem("")
+                combo.addItems(self.data_for_name_composite[root_key][key])
+        else:
+            for combo in self.combo_others:
+                combo.clear()
+                combo.addItem("")
+                combo.setEnabled(False)
+    # -- 25.07.25
     def get_table_for_select_type(self, poz: Pozition, window, *args, **kwargs): #++ 21.07.25
         types = self.get_old_view_response()
         result = []
@@ -10511,10 +10644,10 @@ class TypesWorkingByDirections:
         if confirm_change_type == 1:
             return
         msg_b24_by_poz_action = Msg_b24(CFG.Config.project.db_kplan,
-                                            CFG.Config.project.db_naryad,
-                                            db_resxml=CFG.Config.project.db_resxml,
-                                            db_users=CFG.Config.project.db_users,
-                                            nom_kpl=poz.Пномер)
+                                        CFG.Config.project.db_naryad,
+                                        db_resxml=CFG.Config.project.db_resxml,
+                                        db_users=CFG.Config.project.db_users,
+                                        nom_kpl=poz.Пномер)
         msg_b24_by_poz_action.send_msg(type_msg='recalc_time_technolog')
         return True #-- 21.07.25
 

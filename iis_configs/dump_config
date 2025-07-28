@@ -1,0 +1,24 @@
+<configuration>
+  <system.webServer>
+    <handlers>
+      <add name="httpPlatformHandler" path="*" verb="*" modules="httpPlatformHandler" resourceType="Unspecified" requireAccess="Script" />
+    </handlers>
+
+    <httpPlatform stdoutLogEnabled="true" stdoutLogFile=".\python.log" startupTimeLimit="20"
+                  processPath="C:\Users\A.A.Fedorov\MES\py\python.exe"
+                  arguments="-m uvicorn --port %HTTP_PLATFORM_PORT% app:app" />
+
+    <rewrite>
+      <outboundRules>
+        <rule name="Inject REMOTE_USER">
+          <match serverVariable="HTTP_X_REMOTE_USER" pattern=".*" />
+          <action type="Rewrite" value="{REMOTE_USER}" />
+        </rule>
+      </outboundRules>
+    </rewrite>
+  </system.webServer>
+
+  <system.web>
+    <authentication mode="Windows" />
+  </system.web>
+</configuration>

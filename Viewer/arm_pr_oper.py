@@ -549,6 +549,21 @@ def show_structure_nar(self:mywindow,*args):
         CQT.msgbox(f'Не выбрана строка')
         return
     obj_nar = CMS.Naryads(int(row['Наряд№']),self.bd_naryad,self.Data.DICT_DOLGN_ETAP,self.bd_users,self.Data.DICT_EMPL_FULL)
+    obj_nar.get_mk(self.db_resxml,True)
+    for row in obj_nar.params:
+        row['Код проф'] = 'Не найден в БД'
+        row['Прим. проф'] = 'Не найден в БД'
+        row['Прямые затраты'] = 'Не найден в БД'
+        for dse in obj_nar.mk.res:
+            if dse['Номерпп'] == row['ДСЕ_ID']:
+                for oper in dse['Операции']:
+                    if oper['Опер_номер'] == row['Операции_номер']:
+                        row['Код проф'] = oper['Опер_профессия_код']
+                        if row['Код проф'] in self.DICT_PROFESSIONS:
+                            row['Прим. проф'] = self.DICT_PROFESSIONS[row['Код проф']]['примечание']
+                            row['Прямые затраты'] = self.DICT_PROFESSIONS[row['Код проф']]['Прямые']
+                        break
+                break
     rez = CQT.msgboxg_get_table(self,"Структура наряда",obj_nar.params,disable_btn0=True,btn1_name='ОК')
     return
 

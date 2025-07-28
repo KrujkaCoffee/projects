@@ -45,7 +45,11 @@ app.add_middleware(
 if fl_route_cust_files:
     app.include_router(API_files_route.router) # Маршрутизатор раздачи файлов(для пользовательского обновления)
 
-
+try:
+    from sync_b24_router import router as b24_router
+    app.include_router(b24_router)
+except Exception as e:
+    print(e)
 
 class budget(BaseModel):
     direction_key: Union[str, None] = None

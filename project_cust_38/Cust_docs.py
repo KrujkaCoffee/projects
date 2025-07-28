@@ -1,7 +1,7 @@
 import os
 from urllib.parse import urlparse, parse_qs, quote, unquote
 
-from requests import Session, Response
+from requests import Session, Response, get
 
 from project_cust_38 import Cust_Functions as F
 from project_cust_38 import Cust_SQLite as CSQ
@@ -74,7 +74,7 @@ class HTTPClient:
     def __exit__(self, exc_type, exc_val, exc_tb):
         try:
             self.__session.close()
-            print('[project_cust_38.Cust_docs]', exc_type, exc_val, exc_tb)
+            #print('[project_cust_38.Cust_docs]', exc_type, exc_val, exc_tb)
         except Exception as e:
             print(e)
 
@@ -196,3 +196,16 @@ class TFlexTkpProcessClient(TFlexHttpClient):
             return response.status_code, response.json()
         return response.status_code, response
 
+#================== DOCS fncs==============================
+
+def get_orders_tatkuz():#TEST
+
+    headers = dict(Accept='application/json')
+    params = dict()
+    try:
+        url = f'http://srv-docs:30100/api/tatkuz/proccess_tkp/all'
+        response = get(url, json= dict(), headers=headers, params=params)
+        #print(F.convert_binary_to_data(response.content))
+        return response.status_code, JS.loads(F.convert_binary_to_data(response.content))
+    except:
+        return 0, None

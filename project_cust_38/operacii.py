@@ -1766,9 +1766,6 @@ def vremya_tsht(ima_operacii, arr_tmp):
         if not arr_tmp[1]: return 0
         params = op_obj.convert_params()
         result = 0
-        #TODO 2 Расчет тшт
-
-        rez = []
         obj = CXLF.XlFormula()
         is_xl = obj.check_op(ima_operacii, True)
         is_approved = obj.check_approved(operation=ima_operacii)
@@ -1787,15 +1784,14 @@ def vremya_tsht(ima_operacii, arr_tmp):
                 else:
                     result += vrema
                 continue
-                # TODO 2 end
             if CFG.Config.place.poki == 1:
                 return
             if ima_operacii == 'Упаковывание':
                 vrema = upacovivanie(ima_operacii, arr_tmp)
             if ima_operacii == 'Электроэрозионная':
                 vrema = el_erozion(ima_operacii, arr_tmp)
-            if ima_operacii == 'Вальцовка':
-                vrema = valcovka(ima_operacii, arr_tmp)
+            # if ima_operacii == 'Вальцовка':               # 24.07.25 Переход на excel
+            #     vrema = valcovka(ima_operacii, arr_tmp)
             if ima_operacii == 'Гибка':
                 vrema = gibka(ima_operacii, arr_tmp)
             # if ima_operacii == 'Сборка общая':
@@ -1804,8 +1800,8 @@ def vremya_tsht(ima_operacii, arr_tmp):
                 vrema = sles_zach_shvov(ima_operacii, arr_tmp)
             if ima_operacii == 'Сборка под сварку':
                 vrema = sb_pod_sv(ima_operacii, arr_tmp)
-            if ima_operacii == 'Гравировальная':
-                vrema = gravir(ima_operacii, arr_tmp)
+            # if ima_operacii == 'Гравировальная':          # 24.07.25 Переход на excel
+            #     vrema = gravir(ima_operacii, arr_tmp)
             # if ima_operacii == 'Слесарная(снять заусенцы)':
             #     vrema = sles_zausenci(ima_operacii, arr_tmp)
             if ima_operacii == 'Отрезка(гильотина)':

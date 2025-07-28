@@ -123,8 +123,11 @@ class mywindow(QtWidgets.QMainWindow):
         self.SPIS_OP = CSQ.custom_request_c(self.bd_naryad,
                                             f"""SELECT * FROM operacii WHERE poki == {self.place.poki}""")
         # self.DICT_FILTR = F.deploy_dict_c(CSQ.custom_request_c(self.db_mater, f"""SELECT * FROM complex_filtr""", rez_dict=True), 'kod')
-        self.DICT_MAT = F.deploy_dict_c(CSQ.custom_request_c(self.db_mater, f"""SELECT * FROM nomen""", rez_dict=True),
+        LIST_MAT = CSQ.custom_request_c(self.db_mater, f"""SELECT * FROM nomen""", rez_dict=True)
+        self.DICT_MAT = F.deploy_dict_c(LIST_MAT,
                                         'Код')
+        self.DICT_NOMEN_BY_SNUM = F.deploy_dict_c(LIST_MAT,
+                                        'Пномер')
         if self.SPIS_OP == False:
             CQT.msgbox(f'БД занята, пробуй позже')
             quit()
@@ -172,10 +175,15 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.tabWidget_4.currentChanged[int].connect(self.tab_zagruzka_rc)
         self.ui.tab_addit_info_poz_gant.currentChanged[int].connect(self.tab_addit_info_poz_gant_click)
         self.ui.tabW_rab_places.currentChanged[int].connect(self.tabW_rab_places_click)
+        self.ui.tab_rs_tch.currentChanged[int].connect(lambda : TTKZ.tab_rs_tch_currentChanged(self))
+
         # ============================================================
         # ==================TABLE=====================================
         self.ui.tbl_data_mold.cellChanged.connect(lambda row, col: TTKZ.data_mold_cellchanged(self, row, col))
         self.ui.tbl_data_mold_tch.cellChanged.connect(lambda row, col: TTKZ.mold_tch_cellchanged(self, row, col))
+        self.ui.tbl_data_mold_tch_res_product.cellChanged.connect(lambda row, col: TTKZ.mold_tch_res_product_cellchanged(self, row, col))
+        self.ui.tbl_data_mold_tch.itemSelectionChanged.connect(lambda : TTKZ.mold_tch_itemSelectionChanged(self))
+        self.ui.tbl_data_mold_tch_res_product.itemSelectionChanged.connect(lambda : TTKZ.mold_tch_res_product_itemSelectionChanged(self))
         self.ui.tbl_list_orders_mold.itemSelectionChanged.connect(lambda: TTKZ.select_order(self))
         self.ui.tbl_state.clicked.connect(lambda: STATE.select_field_tbl_state(self))
         self.ui.tbL_tkp_list.cellDoubleClicked[int, int].connect(self.CVO_path_kd_dbl_clk)
@@ -442,7 +450,11 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.btn_cancel_data_mold.clicked.connect(lambda: TTKZ.cancel_new_or_edit_order(self))
         self.ui.btn_sand_data.clicked.connect(lambda: TTKZ.add_sand_data(self))
         self.ui.btn_add_row_mold_tch.clicked.connect(lambda: TTKZ.add_row_mold_tch(self))
+        self.ui.btn_del_row_mold_tch.clicked.connect(lambda: TTKZ.del_row_mold_tch(self))
+        self.ui.btn_upload_1c_mold_tch.clicked.connect(lambda: TTKZ.upload_1c_mold(self))
         self.ui.btn_mat_mold_calc.clicked.connect(lambda: TTKZ.mat_mold_calc(self))
+        self.ui.btn_res_product.clicked.connect(lambda: TTKZ.create_res_product(self))
+        self.ui.btn_apply_next_stage.clicked.connect(lambda: TTKZ.apply_next_stage(self))
         # =================================================================
         # ===========COMBOBOX===========================================
         self.ui.cmb_pl_tabel_place.activated[int].connect(self.cmb_pl_tabel_place)
@@ -558,6 +570,7 @@ class mywindow(QtWidgets.QMainWindow):
         # ======================== nomen
 
         self.DICT_NOMEN = self.DICT_MAT
+
 
         if self.DICT_NOMEN == False:
             CQT.msgbox(f'база номенклатуры занята')
@@ -681,7 +694,8 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.lbl_shema.mousePressEvent = self.getPos
 
         self._tkp_current_schema = CMS.TkpSchema()
-        self._ttkz_tmp_settings = TTKZ.Ttkz_tmp_settings()
+
+        self._ttkz_tmp_settings = TTKZ.Ttkz_tmp_settings(self.ui.lbl_data_mold)
         IND.load_control_schema_output(self)
         self.apply_visible_by_places()
 
@@ -723,7 +737,7 @@ class mywindow(QtWidgets.QMainWindow):
         if place == 'Келаст':
             invisible_tab_texts = { "РС для литья"}
         if place == 'ТатКуз':
-            hide_elems_names = {'fr_cr_mk_btns', 'fr_weight'}
+            hide_elems_names = {'fr_cr_mk_btns', 'fr_weight', 'gr_select_proj','pushButton_create_mk_clear'}
             show_elems_names = {}
 
             invisible_tab_texts = {'*'}
@@ -1303,6 +1317,18 @@ class mywindow(QtWidgets.QMainWindow):
         if self.ui.tbl_list_orders_mold.hasFocus():
             if key_val == 16777268:
                 TTKZ.load_form_rs_for_molding(self)
+        if self.ui.tbl_list_orders_mold_filtr.hasFocus():
+            if key_val == 16777220:
+                CMS.apply_filtr_c(self, self.ui.tbl_list_orders_mold_filtr, self.ui.tbl_list_orders_mold)
+        if self.ui.tbl_data_mold_filtr.hasFocus():
+            if key_val == 16777220:
+                CMS.apply_filtr_c(self, self.ui.tbl_data_mold_filtr, self.ui.tbl_data_mold)
+        if self.ui.tbl_data_mold_tch_filtr.hasFocus():
+            if key_val == 16777220:
+                CMS.apply_filtr_c(self, self.ui.tbl_data_mold_tch_filtr, self.ui.tbl_data_mold_tch)
+        if self.ui.tbl_data_mold_tch_res_product_filtr.hasFocus():
+            if key_val == 16777220:
+                CMS.apply_filtr_c(self, self.ui.tbl_data_mold_tch_res_product_filtr, self.ui.tbl_data_mold_tch_res_product)
         if key_val == 80 and set_modifiers == (QtCore.Qt.ControlModifier | QtCore.Qt.ShiftModifier):
             if CQT.focus_is_QTableWidget():
                 CQT.refill_tbl_into_msgbox_get_table(self, QtWidgets.QApplication.focusWidget())
@@ -2588,6 +2614,8 @@ class mywindow(QtWidgets.QMainWindow):
 
     @CQT.onerror
     def export_json_kotl(self, *args, **kwargs):
+        if USRCNF.Config.place.poki == 1:
+            return CQT.msgbox(f'Данный функционал не адаптирован для {USRCNF.Config.place.Имя!r}') #25.07.25
         self.export_json(exel=False, kotel=True)
 
     @CQT.onerror

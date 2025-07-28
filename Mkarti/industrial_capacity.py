@@ -539,7 +539,7 @@ def select_schema_dbl_clk(self, *args):
             x = F.valm(x) * self.ui.lbl_shema.width()
             y = F.valm(y) * self.ui.lbl_shema.height()
         load_schema_jpg(self, path + img,x,y,add_prim=add_prim)
-        self.ui.tabWidget_6.setCurrentIndex(CQT.number_table_by_name_c(self.ui.tabWidget_6,'Схема'))
+        self.ui.tabW_rab_places.setCurrentIndex(CQT.number_table_by_name_c(self.ui.tabW_rab_places,'Схема')) # 25.07.25
 @CQT.onerror
 def get_ccords_text_rc(self:mywindow,cex:int,*args):
     add_prim = []

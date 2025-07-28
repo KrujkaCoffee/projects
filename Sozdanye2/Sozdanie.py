@@ -2295,7 +2295,7 @@ class mywindow(QtWidgets.QMainWindow):
             return
         list_users = [{'ФИО': k, 'Должность': _['Должность']} for k, _ in self.DICT_EMPLOEE_FULL.items() if
                       _['Подразделение'] == podr and k != '']
-        user_data = CQT.msgboxg_get_table(self, 'Выбор работника', F.sort_by_column_c(list_users, 'ФИО'))
+        user_data = CQT.msgboxg_get_table(self, 'Выбор работника', F.sort_by_column_c(list_users, 'ФИО'),ExtendedSelection=False)
         if user_data == False:
             return
         fio_add = user_data['ФИО']
@@ -4294,18 +4294,13 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
         set_opers = {item['Операция'] for item in CQT.list_from_wtabl_c(tbl, rez_dict=True)}
         # counter_prof = {tuple(dopust_prof): 0 for oper, dopust_prof in self.DICT_ETAPI.items() if oper in set_opers}
         counter_prof = {}
-        checked_profs = set()
-        oper_profs = {}
         for item in CQT.list_from_wtabl_c(tbl, rez_dict=True):
             cur_oper = item['Операция']
             cur_prof = item['Профессия']
             dopust_prof = set(self.DICT_ETAPI[cur_oper])
             dopust_prof.add(cur_prof)
-            # counter_prof[tuple(dopust_prof)] = 0
-            oper_profs.setdefault(cur_oper, set()).update(dopust_prof)
+            counter_prof[tuple(dopust_prof)] = 0
 
-        for oper, profs in oper_profs.items():
-            counter_prof[tuple(profs)] = 0
         if nk_check == None:
             return
         time = 0
@@ -4314,6 +4309,11 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
         tsht_potenc = 0
         work_count_potenc = 0
         kolvo_check_dse = 0
+
+        # selected_row = state_prof.property('selected_row')
+
+        # if selected_row is not None and col_prof_tbl_check is not None:
+        #     self.glob_etap = set(self.ui.tbl_dse_check_prof.item(selected_row, col_prof_tbl_check).text().split(';'))
 
         if clear_prof_state:
             self.glob_etap = set()
@@ -4350,9 +4350,12 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
 
                 self.set_rc_check_dse.add(row['РЦ'][:5])
                 kolvo_check_dse += int(row['Количество,шт.'])
-                checked_profs.add(row['Профессия'])
                 if not self.ui.chkb_autcourse.isChecked():
                     if self.DICT_ETAPI != dict():
+                        # set_dopust_prof = set()
+                        # if row['Операция'] in self.DICT_ETAPI:
+                        #     set_dopust_prof = copy.deepcopy(set(self.DICT_ETAPI[row['Операция']]))
+                        # set_dopust_prof.add(row['Профессия'])
                         for lst_prof in counter_prof.keys():
                             if row['Профессия'] in lst_prof:
                                 counter_prof[lst_prof] += 1
@@ -4365,8 +4368,6 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
                     return CQT.msgbox(f'Не выбрано ДСЕ')
         self.ui.lbl_tmp_time.setText(f'{str(round(time, 2))} мин.')
         # ++25.06.25
-        # counter_prof = {profs: count for profs, count in counter_prof.items() if count > 0}
-
         time_is_valid = (
             time_potenc > 0 and
             (self.ui.chkb_autcourse.isChecked() or time_potenc <= self.MAX_TIME_NARUAD)

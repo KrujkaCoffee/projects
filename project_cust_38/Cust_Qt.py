@@ -9,7 +9,7 @@ from functools import partial
 from itertools import count
 import inspect
 from PyQt5 import QtWidgets, QtCore, QtGui, uic
-from PyQt5.QtWidgets import QStyledItemDelegate, QMainWindow, QTableWidget, QHeaderView, QApplication
+from PyQt5.QtWidgets import QStyledItemDelegate, QMainWindow, QTableWidget, QHeaderView, QApplication, QTabWidget
 from PyQt5.QtGui import QPixmap, QPen, QColor
 from PyQt5.QtCore import Qt ,QObject, QEvent, QSignalBlocker
 import project_cust_38.border_painter as CBPAINT
@@ -789,7 +789,7 @@ def valt(obj:object,name_col:str,row:int):
     
 
 
-def number_table_by_name_c(obj,ima):
+def number_table_by_name_c(obj:QTabWidget,ima:str):
     for i in range(obj.count()):
         if obj.tabText(i) == ima:
             return i
@@ -1897,7 +1897,9 @@ def fill_wtabl(dict_or_list, object, set_editeble_col_nomera={}, ogr_maxshir_kol
     object_tbl.reset()
     if isinstance(object_tbl, QtWidgets.QTableWidget):
         object_tbl.blockSignals(True)
+        object_tbl.setUpdatesEnabled(False)
     object_tbl.horizontalHeader().blockSignals(True)
+    object_tbl.horizontalHeader().setUpdatesEnabled(False)
     object_tbl.clear()
     object_tbl.setSelectionBehavior(eval(f'QtWidgets.QTableWidget.SelectionBehavior.{selectionBehavior}'))
     object_tbl.setSelectionMode(eval(f'QtWidgets.QTableWidget.SelectionMode.{selectionMode}'))
@@ -2083,8 +2085,10 @@ def fill_wtabl(dict_or_list, object, set_editeble_col_nomera={}, ogr_maxshir_kol
         
     if isinstance(object_tbl,QtWidgets.QTableWidget):
         object_tbl.blockSignals(False)
-        
+        object_tbl.setUpdatesEnabled(True)
+
     object_tbl.horizontalHeader().blockSignals(False)
+    object_tbl.horizontalHeader().setUpdatesEnabled(True)
     if select_last_row:
         lastIndex = object_tbl.rowCount() - 1
         item = object_tbl.item(lastIndex, 0)
@@ -4613,7 +4617,6 @@ class FillHorizontalHeaderSort(QtCore.QObject):
             return
         tables_for_replace = []
         if set(current_sections) == set(data) and len(data) == len(current_sections):
-            print('[fill_horizontal_header_sort] Количество колонок изменилось, значение порядка из кэша не будет применено')
             tables_for_replace.append(self.table)
         if isinstance(filter_sections, list) and set(filter_sections) == set(data) and len(data) == len(filter_sections):
             tables_for_replace.append(self.filter_tbl)

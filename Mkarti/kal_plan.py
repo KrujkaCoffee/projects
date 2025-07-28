@@ -1567,23 +1567,9 @@ def add_zp_kpl(self: mywindow):
         poz.load_kpl_table('пл_оуп')
         proj = poz.dict_tables['пл_оуп']['№проекта']
         py = poz.dict_tables['пл_оуп']['№ERP']
-        poz_num = poz.dict_tables['пл_оуп']['№ERP']
-        fio_technolog = poz.Позиция
-        str_fio_technolog = fio_technolog
-        wet_req_text = f"""ВЫБРАТЬ
-                                    Пользователи.ПБ24_id_bitrix КАК ПБ24_id_bitrix
-                                ИЗ
-                                    Справочник.Пользователи КАК Пользователи
-                                ГДЕ
-                                    Пользователи.Наименование = "{fio_technolog}"
-                                    ИЛИ Пользователи.ФизическоеЛицо.ФИО = "{fio_technolog}";"""
-        key, data_rez = APIERP.get_wet_request(wet_req_text)
-        if key != 200:
-            CQT.msgbox(f'Ошибка получения данных код ({key}) из ERP')
-        else:
-            if data_rez['data']:
-                id_technolog = data_rez['data'][0]['ПБ24_id_bitrix']
-                str_fio_technolog = f"[USER={id_technolog}]{fio_technolog}[/USER]"
+        poz_num = poz.Позиция
+        fio_technolog = poz.dict_tables['пл_топ']['Отв_технолог']
+        str_fio_technolog = CMS.b24_notation_user_fio(fio_technolog)
         msg = f'{str_fio_technolog}!\nДля закупа материалов по\n{proj} {py} поз. {poz_num} (КПЛ№ {num_kpl})\nнеобходимо указать пл_топ.Предв_спецификация_ЕРП\nв Объемно-календарном планировании'
         return msg
     tbl = self.ui.tbl_kal_pl
@@ -2942,6 +2928,8 @@ def select_etap_edit(self: mywindow):
                 pass
         if podr == 'пл_топ':
             list_sort_c = []
+            if CFG.Config.place.poki == 1: #25.07.25
+                list_sort_c.append(CMS.TypesWorkingByDirections.COMBOBOX_KEY_FOR_NAME_COMPOSE)
             for key in self.Data_plan.DICT_VID_PO_NAPR.keys():
                 list_sort_c.append(self.Data_plan.DICT_VID_PO_NAPR[key]['Имя'])
             nk_sort_c = CQT.num_col_by_name_c(self.ui.tbl_pl_add_poz, 'Вид')
@@ -3032,7 +3020,22 @@ def clck_cld(self):
         tbl.item(0, col).setText(new_str)
 
 
+@CQT.onerror
 def select_sort_c(self, text, row, col, *args):
+    obj = CMS.TypesWorkingByDirections() #25.07.25
+    if obj.COMBOBOX_KEY_FOR_NAME_COMPOSE == text:
+        text = obj.get_table_for_name_composite(window=self)
+        if not text:
+            return
+
+        nk_sort_c = CQT.num_col_by_name_c(self.ui.tbl_pl_add_poz, 'Вид')
+        cell = self.ui.tbl_pl_add_poz.cellWidget(0, nk_sort_c)
+        cmb_vals_generator = (cell.itemText(cr_cmb_idx) for cr_cmb_idx in range(cell.count()))
+        if text not in cmb_vals_generator:
+            cell.addItem(text)
+        cell.setCurrentText(text)
+        self.ui.tbl_pl_add_poz.resizeColumnToContents(nk_sort_c)
+
     nk_sort_c = col
     val = 0
     for key in self.Data_plan.DICT_VID_PO_NAPR.keys():

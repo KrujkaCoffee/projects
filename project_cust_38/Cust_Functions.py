@@ -1823,6 +1823,12 @@ def trim_collection(collection: dict | list | set):
 def round_up(num):
     return int(-1 * valm(num) // 1 * -1)
 
+def round_down(num):
+    try:
+        return int(num // 1)
+    except (TypeError, ValueError):
+        return 0  # или raise исключение
+
 class dotdict(dict):
     """dot.notation access to dictionary attributes"""#TODO
     __getattr__ = dict.get

@@ -6,6 +6,7 @@ import inspect
 import time
 from functools import reduce
 from datetime import datetime, timedelta, timezone
+from typing import Any, Optional
 
 import requests
 
@@ -526,13 +527,6 @@ class Bucket1C:
         return data_b24
 
 
-def prepare_keys(data, *keys) -> dict:
-    result = {}
-    for item in data:
-        exchange_key = '|'.join(value for key, value in item.items() if key in keys)
-        result[exchange_key] = item
-    return result
-
 def last_update_time_from_env(update: bool = False):
     var = os.environ.get(ENV_LAST_UPDATE_TIME)
     if var is None:
@@ -672,12 +666,6 @@ class Client1c:
 client = Client1c()
 
 
-def current_iso_date():
-    tz = timezone(timedelta(hours=3))
-    current_time = datetime.now(tz)
-    return current_time.isoformat()
-
-
 def get_val_for_update_organization_and_type_tkp(set_parsed_refs: set[str], bucket: B24Bucket):
     logging.info(f'[get_val_for_update_organization_and_type_tkp] Получение значений конец найдено: {len(bucket.set_id_modified)}')
     data = {}
@@ -722,7 +710,6 @@ def accumulate_response(deals: list[dict]): # STAGE 1.2 Фильтрация д�
         unique_keys[ref_key_deal] = cur_row_idx
     unique_last_values = tuple(unique_keys.values())
     return (deal for idx, deal in enumerate(deals) if idx in unique_last_values)
-import logging
 
 def get_deal_values_by_data_version_mark(queue: str, bucket: B24Bucket):
     data_version = get_last_data_version(queue)
@@ -870,8 +857,8 @@ def update_organization_and_type_tkp(task: dict):
         organization_1c=organization_1c,
         description=description
     )
-    resp_1c = update_inconsistencies_1c(b24_id=b24_id, ref_stage_1c=ref_stage_1c, stage_id_b24=stage_id_b24)
-    return resp_b24 and resp_1c
+    # resp_1c = update_inconsistencies_1c(b24_id=b24_id, ref_stage_1c=ref_stage_1c, stage_id_b24=stage_id_b24)
+    return resp_b24 # and resp_1c
 
 from project_cust_38 import api_erp_commands as AEC
 
@@ -1160,7 +1147,7 @@ def update_date_and_sum_ZK_TKP(task: dict):
                 else:
                     date_obj_b24 = datetime.strptime(b24_shipment_date, '%Y-%m-%dT%H:%M:%S%z')
                     date_obj_1c = datetime.strptime(zk_shipment_date, '%d.%m.%Y %H:%M:%S')
-                    if date_obj_b24 != date_obj_1c:
+                    if date_obj_b24.date() != date_obj_1c.date():
                         date_for_update_b24 = date_obj_1c.isoformat()
                         update_date_b24_on_date_1c(b24_id=b24_id, new_val=date_for_update_b24,
                                                    old_val=b24_shipment_date, source=zk_source, object_name=description)
@@ -1170,7 +1157,7 @@ def update_date_and_sum_ZK_TKP(task: dict):
                 if not b24_shipment_date and kp_date:
                     date_obj_1c = datetime.strptime(kp_date, '%d.%m.%Y %H:%M:%S')
                     date_obj_b24 = datetime.strptime(b24_shipment_date, '%Y-%m-%dT%H:%M:%S%z')
-                    if date_obj_b24 != date_obj_1c:
+                    if date_obj_b24.date() != date_obj_1c.date():
                         date_for_update_b24 = date_obj_1c.isoformat()
                         update_date_b24_on_date_1c(b24_id=b24_id, new_val=date_for_update_b24,
                                                    old_val=b24_shipment_date, source=kp_source, object_name=description)
@@ -1193,6 +1180,187 @@ def update_stage_b24_on_date_1c(*, b24_id: int | str, old_val: str, new_val: str
     credentials = {'FIELDS': {'STAGE_ID': new_val}}
     return crm.deal_update(b24_id, credentials)
 
+from enum import Enum
+
+class EntityType(Enum):
+    ENTITY_TYPE_ID_ORDER_SUPPLIER = 1072 # 1104
+    ENTITY_TYPE_ID_DELIVERY_ORDER = 1076 # 1108
+
+    OWNER_TYPE = 'T430' # 'T450'
+
+class CRMOrders:
+    # BASE_URL = 'https://dev.bitrix24.kelast.ru/rest/2585/6tq57vcv71ou03r9/'
+    BASE_URL = 'https://bitrix24.kelast.ru/rest/3342/zmoegng9gl0gp5gm/'
+
+    def create_order(self, body, entity_type: EntityType) -> Optional[dict]:
+        credentials = {
+            'entityTypeId': entity_type.value,
+            'fields': body
+        }
+        response = requests.post(f'{self.BASE_URL}crm.item.add', json=credentials)
+        new_elem = response.json()
+        match new_elem:
+            case {'result': {'item': item}}:
+                return item
+        return None
+
+    def get_product_rows_by_order_id(self, order_id: int):
+        credentials = {
+            'filter': {'=ownerType' : EntityType.OWNER_TYPE.value, '=ownerId': order_id}
+        }
+        response = requests.post(f'{self.BASE_URL}crm.item.productrow.list', json=credentials)
+        return response.json()
+
+
+    def get_order_by_xml_id(self, ref_key: str, entity_type: EntityType):
+        credentials = {
+            'entityTypeId': entity_type.value,
+            'filter': {'xmlId': ref_key},
+        }
+        response = requests.post(f'{self.BASE_URL}crm.item.list', json=credentials)
+        data = response.json()
+        match data:
+            case {'result': {'items': [first_item, *any_items]}}:
+                return first_item
+        return None
+
+    def is_int(self, val):
+        try:
+            val = float(val)
+            return True
+        except Exception:
+            ...
+        return False
+
+    def get_changed_values(self, original_item: dict, target_item: dict):
+        update_fields = {}
+        for key, val in original_item.items():
+            prev_val = target_item[key]
+            if self.is_int(prev_val) and self.is_int(val):
+                if float(prev_val) != float(val):
+                    update_fields[key] = val
+            else:
+                if str(prev_val) != str(val):
+                    update_fields[key] = val
+        return update_fields
+
+    def check_apply_update(self, fields_for_update, response_data: dict) -> bool:
+        not_updated_fields = set()
+        match response_data:
+            case {'result': {'item': new_item}}:
+                for key, new_val in fields_for_update.items():
+                    target_val = new_item[key]
+                    if self.is_int(target_val) and self.is_int(new_val):
+                        if float(target_val) != float(new_val):
+                            not_updated_fields.add(key)
+                    else:
+                        if str(target_val) != str(new_val):
+                            not_updated_fields.add(key)
+
+                    if target_val != new_val:
+                        not_updated_fields.add(key)
+            case _:
+                return False
+        return not bool(not_updated_fields)
+
+    def update_order_fields(self, order_id: int, fields: dict[str, Any], entity_type: EntityType):
+        response = requests.post(f'{self.BASE_URL}crm.item.update', json={
+            'entityTypeId': entity_type.value,
+            'id': order_id,
+            'fields': fields
+        })
+        updated_data = response.json()
+        return self.check_apply_update(fields, updated_data)
+
+    def get_product_pos(self, ref_key: str, block: int = 27):
+        url = f'{self.BASE_URL}catalog.product.list?iblockId={block}'
+        response = requests.post(url, json={
+            'select': ['iblockId', 'id', 'name', 'iblockSectionId', 'xmlId', 'property458'],
+            'filter': {
+                'xmlId': ref_key,
+                'iblockId': block,
+            }
+        })
+        data = response.json()
+        match data:
+            case {'result': {'products': [first_product, *_]}}:
+                return first_product
+        return False
+
+    def create_product_pos(self, ref_key: str, description: str, ratio: float | str):
+        url = f'{self.BASE_URL}catalog.product.add?iblockId=27'
+        response = requests.post(url, json={
+            'fields': {
+                'name': description,
+                'iblockId': 27,
+                'xmlId': ref_key,
+                'property458': {'value': ratio}
+            }
+        })
+        data = response.json()
+        match data:
+            case {'result': {'element': item}}:
+                return item
+        return False
+
+    def update_table_product_rows(self, order_id: int, rows: list[dict[str, Any]], source_products: list):
+        url = f'{self.BASE_URL}crm.item.productrow.set?iblockId=27'
+        response = requests.post(url, json={
+            'ownerType' : EntityType.OWNER_TYPE.value,
+            'ownerId': order_id,
+            'productRows': rows
+        })
+        response_data = response.json()
+        match response_data:
+            case {'result': {'productRows': products}} if len(products) == len(source_products):
+                return True
+        return False
+
+    def sync_order_products(self, order_id, source_products):
+        data_for_post = []
+        for row in source_products:
+            ref_key = row['Ref_Key']
+            product = self.get_product_pos(ref_key)
+            if not product:
+                product = self.create_product_pos(
+                    description=row['description'],
+                    ref_key=row['Ref_Key'],
+                    ratio=row['ratio_for_report'],
+                )
+                if not product:
+                    return False
+            data_for_post.append({
+                'productId': product['id'],
+                'quantity': row['count'],
+                'price': row['price'],
+                'measureCode': row['measure_code']
+            })
+        return self.update_table_product_rows(order_id, data_for_post, source_products)
+
+def update_delivery_order_attributes(task):
+    crm_client = CRMOrders()
+    if 'xmlId' not in task:
+        return
+    order = crm_client.get_order_by_xml_id(task['xmlId'], entity_type=EntityType.ENTITY_TYPE_ID_DELIVERY_ORDER)
+    if order is None:
+        return crm_client.create_order(task, EntityType.ENTITY_TYPE_ID_DELIVERY_ORDER)
+    changes = crm_client.get_changed_values(task, order)
+    if not changes:
+        return True
+    new_order = crm_client.update_order_fields(order['id'], changes, entity_type=EntityType.ENTITY_TYPE_ID_DELIVERY_ORDER)
+    return crm_client.check_apply_update(changes, new_order)
+
+
+def update_order_supplier_attributes(task):
+    crm_client = CRMOrders()
+    description = task['description']
+    ref_key = task['Ref_Key']
+    order = crm_client.get_order_by_xml_id(task['Ref_Key'], entity_type=EntityType.ENTITY_TYPE_ID_ORDER_SUPPLIER)
+    if not order:
+        order = crm_client.create_order(body={'title': description, 'xmlId': ref_key}, entity_type=EntityType.ENTITY_TYPE_ID_ORDER_SUPPLIER)
+    products_1c = task['products']
+    order_id = order['id']
+    return crm_client.sync_order_products(order_id, products_1c)
 
 commands = {
     'bitrix24.Сделка.Завершение': {
@@ -1213,6 +1381,18 @@ commands = {
         'consumer': update_date_and_sum_ZK_TKP,
         'check': True,
         'interval': 60 * 5
+    },
+    'bitrix24.ЗаказПоставщику.СинхронизацияЗаказа/ТабличнойЧасти': { # https://bitrix24.kelast.ru/company/personal/user/3076/tasks/task/view/100056637/?MID=888366#com888366
+        'producer': None,
+        'consumer': update_order_supplier_attributes,
+        'check': True,
+        'interval': 60 * 3 - 1
+    },
+    'bitrix24.РаспоряжениеНаДоставку.СинхронизацияПолейДокумента': { # https://bitrix24.kelast.ru/company/personal/user/3076/tasks/task/view/100056997/
+        'producer': None,
+        'consumer': update_delivery_order_attributes,
+        'check': True,
+        'interval': 60 * 3 - 1
     },
     # 'bitrix24.Неудача.ОбновлениеСтатуса': {
     #     'producer': None,
@@ -1248,6 +1428,8 @@ def check_new_actions(new: dict, old: dict):
 def check_values():
     logging.info('Поиск новых событий...')
     for queue, (fn_info, fn_handle, check, interval) in commands.items():
+        if commands[queue][fn_info] is None:
+            continue
         interval_value = commands[queue][interval]
         previous_time = os.environ.get(queue)
         now = int(time.time())

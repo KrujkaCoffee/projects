@@ -448,6 +448,260 @@ def save_table_colour(tbl,putf:str,wb_name_wout_exe:str,ws_name:str,row:int=1,co
     #    return rez
     return rez
 
+
+def save_table_colour_openpyxl(tbl, putf: str, wb_name_wout_exe: str, ws_name: str, row: int = 1, column: int = 1,
+                               hat: list = None, wo_hide_rows_cols=False, print_hat_tbl=True, hook_prog_bar=None):
+    import openpyxl
+    from openpyxl.styles import Alignment, Font, PatternFill, Border, Side
+    wb_name = wb_name_wout_exe + ".xlsx"
+    file_path = putf + F.sep() + F.clear_row_for_file_name_c(wb_name)
+    print(file_path)
+    if F.existence_file_c(file_path):
+        try:
+            F.delete_file_c(file_path)
+        except:
+            print('Файл занят')
+            return False
+    # app = XL.App(visible=False, add_book=False)
+
+    # wb = app.books.add()
+    wbb = workbook = openpyxl.Workbook()
+    # if ws_name not in spis_listov(wb):
+    #     wb.sheets.add(name=ws_name)
+    # sheet = wb.sheets[ws_name]
+    sheet = workbook.active
+
+    if isinstance(hat, list):
+        row_tmp = copy.deepcopy(row)
+        column_tmp = copy.deepcopy(column)
+        for j in range(len(hat[0])):
+            for i in range(len(hat)):
+                font = sheet.range((row_tmp + i, column_tmp + j)).font
+                val = hat[i][j]
+
+                cell = sheet.cell(row=row_tmp + i, column=column_tmp + j)
+                cell.font = Font(
+                    size=10,
+                    bold=True
+                )
+                cell.value = val
+                cell.alignment = Alignment(wrap_text=True)
+                # font.size = 10
+                # font.bold = True
+                # sheet.range((row_tmp + i, column_tmp + j)).value = val
+                # sheet.range((row_tmp + i, column_tmp + j)).api.WrapText = True
+        row += len(hat) + 2
+
+    row_tmp = copy.deepcopy(row) + 1
+    column_tmp = copy.deepcopy(column)
+    if print_hat_tbl == False:
+        row_tmp -= 1
+    koef_hide = 0
+    for i in range(tbl.rowCount()):
+        rowHeight = int(tbl.rowHeight(i) * 0.768)
+        if rowHeight > 255:
+            rowHeight = 255
+        if wo_hide_rows_cols:
+            if tbl.isRowHidden(i) or tbl.rowHeight(i) <= 1:
+                # sheet.range((row_tmp, column_tmp + j)).column_width = 0
+                koef_hide += 1
+                continue
+        row_index = row_tmp + i - koef_hide
+        sheet.row_dimensions[row_index].height = rowHeight
+        # sheet.range((row_tmp + i - koef_hide, column_tmp)).row_height = rowHeight
+        if tbl.verticalHeaderItem(i) == None:
+            row_index = row_tmp + i - koef_hide
+            sheet.cell(row=row_index, column=column_tmp, value='')
+        else:
+            name_head_row = tbl.verticalHeaderItem(i).text()
+            item = tbl.verticalHeaderItem(i)
+            font = item.font()
+            col_obj = item.foreground()
+            r, g, b, a = col_obj.color().getRgb()
+            size = font.pointSize()
+            bold = font.bold()
+            cell = sheet.cell(row=row_tmp + i - koef_hide, column=column_tmp)
+            cell.value = name_head_row
+            cell.alignment = Alignment(wrap_text=True)
+            font_color = f"{r:02X}{g:02X}{b:02X}"
+            cell.font = Font(size=size, bold=bold, color=font_color)
+
+    row_tmp = copy.deepcopy(row)
+    column_tmp = copy.deepcopy(column) + 1
+    if tbl.verticalHeaderItem(0) == None:
+        column_tmp -= 1
+    koef_hide = 0
+    for j in range(tbl.columnCount()):
+        if wo_hide_rows_cols:
+            if tbl.isColumnHidden(j) or tbl.columnWidth(j) <= 1:
+                # sheet.range((row_tmp, column_tmp + j)).column_width = 0
+                koef_hide += 1
+                continue
+
+        column_width = px2ch(tbl.columnWidth(j))
+        if column_width > 255:
+            column_width = 255
+        if column_width < 2:
+            column_width = 2
+        # sheet.range((row_tmp, column_tmp + j - koef_hide)).column_width = column_width
+
+        column_index = column_tmp + j - koef_hide
+        sheet.column_dimensions[sheet.cell(row=1, column=column_index).column_letter].width = column_width
+        if tbl.horizontalHeaderItem(j) == None or print_hat_tbl == False:
+            sheet.cell(row=row_tmp, column=column_tmp + j - koef_hide, value='')
+        else:
+            name_head_col = tbl.horizontalHeaderItem(j).text()
+            item = tbl.horizontalHeaderItem(j)
+            font = item.font()
+            col_obj = item.foreground()
+            r, g, b, a = col_obj.color().getRgb()
+            size = font.pointSize()
+            bold = font.bold()
+            row_index = row_tmp
+            column_index = column_tmp + j - koef_hide
+            cell = sheet.cell(row=row_index, column=column_index)
+            cell.value = name_head_col
+            cell.alignment = Alignment(wrap_text=True)
+            font_color = f"{r:02X}{g:02X}{b:02X}"
+            cell.font = Font(color=font_color, size=size, bold=bold)
+
+    row_tmp = copy.deepcopy(row) + 1
+    column_tmp = copy.deepcopy(column) + 1
+
+    if print_hat_tbl == False:
+        row_tmp -= 1
+    if tbl.verticalHeaderItem(0) == None:
+        column_tmp -= 1
+    column_counter = 0
+    koef_hide_c = 0
+    for j in range(tbl.columnCount()):
+
+        if wo_hide_rows_cols:
+            if tbl.isColumnHidden(j) or tbl.columnWidth(j) <= 1:
+                koef_hide_c += 1
+                continue
+        column_counter += 1
+        row_counter = 0
+        koef_hide = 0
+        for i in range(tbl.rowCount()):
+            if wo_hide_rows_cols:
+                if tbl.isRowHidden(i) or tbl.rowHeight(i) <= 1:
+                    koef_hide += 1
+                    continue
+            row_counter += 1
+            if tbl.item(i, j) == None:
+                # sheet.range((row_tmp+i-koef_hide, column_tmp + j)).value = ''
+                pass
+            else:
+                item = tbl.item(i, j)
+                font = item.font()
+                col_obj = item.foreground()
+                r, g, b, a = col_obj.color().getRgb()
+                size = font.pointSize()
+                bold = font.bold()
+                row_index = row_tmp + i - koef_hide
+                column_index = column_tmp + j - koef_hide_c
+                cell = sheet.cell(row=row_index, column=column_index)
+                font_color = f"{r:02X}{g:02X}{b:02X}"
+                cell.font = Font(color=font_color, size=size, bold=bold)
+                val = tbl.item(i, j).text()
+                r, g, b, a = item.background().color().getRgb()
+                if F.is_numeric(val):
+                    if isinstance(F.valm(val), int):
+                        try:
+                            sheet.cell(row=row_index, column=column_index).number_format = '0'
+                        except:
+                            pass
+                    else:
+                        try:
+                            sheet.cell(row=row_index, column=column_index).number_format = '0.00'
+                        except:
+                            pass
+                else:
+                    sheet.cell(row=row_index, column=column_index).number_format = '@'
+                cell.value = val
+                cell.font = Font(color=font_color, size=size, bold=bold)
+                cell.alignment = Alignment(wrap_text=True)
+                if r == g == b == 0:
+                    pass
+                else:
+                    fill_color = f"{r:02X}{g:02X}{b:02X}"
+                    sheet.cell(row=row_index, column=column_index).fill = PatternFill(start_color=fill_color, end_color=fill_color, fill_type="solid")
+    row_tmp = copy.deepcopy(row) + 1
+    column_tmp = copy.deepcopy(column) + 1
+    if print_hat_tbl == False:
+        row_tmp -= 1
+    if tbl.verticalHeaderItem(0) == None:
+        column_tmp -= 1
+
+    def set_border(rng, type, weigth, color):
+        rng.api.Borders(type).Weight = weigth + 1
+        rng.api.Borders(type).Color = color
+
+    # rng = sheet.range((row_tmp, column_tmp), (row_tmp + row_counter - 1, column_tmp + column_counter - 1))
+
+    if 'custBorderInfo' in tbl.__dict__:
+        custBorderInfo = tbl.custBorderInfo
+        for i in range(row_tmp - 1, row_tmp + row_counter - 1):
+            for j in range(column_tmp - 1, column_tmp + column_counter - 1):
+                cell = sheet.cell(row=i + 1, column=j + 1)
+                border = Border()
+
+                if custBorderInfo.thick_out > 0:
+                    if (i, j) in custBorderInfo.filled_bottom:
+                        border.bottom = Side(style='thick', color=custBorderInfo.color_out)
+                    if (i, j) in custBorderInfo.filled_left:
+                        border.left = Side(style='thick', color=custBorderInfo.color_out)
+                    if (i, j) in custBorderInfo.filled_right:
+                        border.right = Side(style='thick', color=custBorderInfo.color_out)
+                    if (i, j) in custBorderInfo.filled_top:
+                        border.top = Side(style='thick', color=custBorderInfo.color_out)
+
+                if custBorderInfo.thick_in > 0:
+                    if (i, j) in custBorderInfo.inside_right:
+                        border.right = Side(style='thin', color=custBorderInfo.color_in)
+                    if (i, j) in custBorderInfo.inside_top:
+                        border.top = Side(style='thin', color=custBorderInfo.color_in)
+
+    else:
+        rng = sheet.iter_rows(min_row=row_tmp, max_row=row_tmp + row_counter - 1,
+                              min_col=column_tmp, max_col=column_tmp + column_counter - 1)
+
+        def format_borders(rng, weight, XlBordersIndex='All', color_str: str = '0,0,0'):
+            r, g, b = [int(_) for _ in color_str.split(',')]
+            color = f"{r:02X}{g:02X}{b:02X}"  # Преобразуем RGB в HEX
+
+            border_style = Side(style='thin' if weight == 1 else 'thick', color=color)
+
+            try:
+                for row in rng:
+                    for cell in row:
+                        if XlBordersIndex == 'xlCrossoutAll':
+                            # Применяем границы ко всем сторонам
+                            cell.border = Border(left=border_style, right=border_style, top=border_style,
+                                                 bottom=border_style)
+                        elif XlBordersIndex == 'xlBottomRightAll':
+                            # Применяем границы только к нижней и правой сторонам
+                            cell.border = Border(right=border_style, bottom=border_style)
+                        else:
+                            # Применяем границы в зависимости от XlBordersIndex
+                            if XlBordersIndex == 'All':
+                                cell.border = Border(left=border_style, right=border_style, top=border_style,
+                                                     bottom=border_style)
+                            else:
+                                # Здесь можно добавить обработку других границ, если нужно
+                                return f'XlBordersIndex = "{XlBordersIndex}" not found. Formatted all edges.'
+            except Exception as e:
+                return f'Exception = {e}'
+
+        format_borders(rng, 1, color_str='133,133,133')
+    workbook.save(file_path)
+
+    rez = file_path
+    return rez
+
+
+
 def format_borders(xl_range_obj, weight, XlBordersIndex='All', color_str:str = '0,0,0'):
     color = XL.utils.rgb_to_int([int(_) for _ in color_str.split(',')])
     # documentation for borders object:
