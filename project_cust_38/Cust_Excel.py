@@ -462,13 +462,7 @@ def save_table_colour_openpyxl(tbl, putf: str, wb_name_wout_exe: str, ws_name: s
         except:
             print('Файл занят')
             return False
-    # app = XL.App(visible=False, add_book=False)
-
-    # wb = app.books.add()
-    wbb = workbook = openpyxl.Workbook()
-    # if ws_name not in spis_listov(wb):
-    #     wb.sheets.add(name=ws_name)
-    # sheet = wb.sheets[ws_name]
+    workbook = openpyxl.Workbook()
     sheet = workbook.active
 
     if isinstance(hat, list):
@@ -482,10 +476,11 @@ def save_table_colour_openpyxl(tbl, putf: str, wb_name_wout_exe: str, ws_name: s
                 cell = sheet.cell(row=row_tmp + i, column=column_tmp + j)
                 cell.font = Font(
                     size=10,
-                    bold=True
+                    bold=True,
+                    name='Arial'
                 )
                 cell.value = val
-                cell.alignment = Alignment(wrap_text=True)
+                cell.alignment = Alignment(wrap_text=True, horizontal='center')
                 # font.size = 10
                 # font.bold = True
                 # sheet.range((row_tmp + i, column_tmp + j)).value = val
@@ -524,7 +519,7 @@ def save_table_colour_openpyxl(tbl, putf: str, wb_name_wout_exe: str, ws_name: s
             cell.value = name_head_row
             cell.alignment = Alignment(wrap_text=True)
             font_color = f"{r:02X}{g:02X}{b:02X}"
-            cell.font = Font(size=size, bold=bold, color=font_color)
+            cell.font = Font(size=size, bold=bold, color=font_color, name='Arial')
 
     row_tmp = copy.deepcopy(row)
     column_tmp = copy.deepcopy(column) + 1
@@ -563,7 +558,7 @@ def save_table_colour_openpyxl(tbl, putf: str, wb_name_wout_exe: str, ws_name: s
             cell.value = name_head_col
             cell.alignment = Alignment(wrap_text=True)
             font_color = f"{r:02X}{g:02X}{b:02X}"
-            cell.font = Font(color=font_color, size=size, bold=bold)
+            cell.font = Font(color=font_color, size=size, bold=bold, name='Arial')
 
     row_tmp = copy.deepcopy(row) + 1
     column_tmp = copy.deepcopy(column) + 1
@@ -603,7 +598,7 @@ def save_table_colour_openpyxl(tbl, putf: str, wb_name_wout_exe: str, ws_name: s
                 column_index = column_tmp + j - koef_hide_c
                 cell = sheet.cell(row=row_index, column=column_index)
                 font_color = f"{r:02X}{g:02X}{b:02X}"
-                cell.font = Font(color=font_color, size=size, bold=bold)
+                cell.font = Font(color=font_color, size=size, bold=bold, name='Arial')
                 val = tbl.item(i, j).text()
                 r, g, b, a = item.background().color().getRgb()
                 if F.is_numeric(val):
@@ -620,7 +615,7 @@ def save_table_colour_openpyxl(tbl, putf: str, wb_name_wout_exe: str, ws_name: s
                 else:
                     sheet.cell(row=row_index, column=column_index).number_format = '@'
                 cell.value = val
-                cell.font = Font(color=font_color, size=size, bold=bold)
+                cell.font = Font(color=font_color, size=size, bold=bold, name='Arial')
                 cell.alignment = Alignment(wrap_text=True)
                 if r == g == b == 0:
                     pass
@@ -634,11 +629,6 @@ def save_table_colour_openpyxl(tbl, putf: str, wb_name_wout_exe: str, ws_name: s
     if tbl.verticalHeaderItem(0) == None:
         column_tmp -= 1
 
-    def set_border(rng, type, weigth, color):
-        rng.api.Borders(type).Weight = weigth + 1
-        rng.api.Borders(type).Color = color
-
-    # rng = sheet.range((row_tmp, column_tmp), (row_tmp + row_counter - 1, column_tmp + column_counter - 1))
 
     if 'custBorderInfo' in tbl.__dict__:
         custBorderInfo = tbl.custBorderInfo
@@ -646,22 +636,29 @@ def save_table_colour_openpyxl(tbl, putf: str, wb_name_wout_exe: str, ws_name: s
             for j in range(column_tmp - 1, column_tmp + column_counter - 1):
                 cell = sheet.cell(row=i + 1, column=j + 1)
                 border = Border()
+                out_ = "{:02X}{:02X}{:02X}{:02X}".format(
+                    custBorderInfo.color_out.alpha(), custBorderInfo.color_out.red(), custBorderInfo.color_out.green(), custBorderInfo.color_out.blue()
+                )
+                in_ = "{:02X}{:02X}{:02X}{:02X}".format(
+                    custBorderInfo.color_in.alpha(), custBorderInfo.color_in.red(), custBorderInfo.color_in.green(), custBorderInfo.color_in.blue()
+                )
 
                 if custBorderInfo.thick_out > 0:
                     if (i, j) in custBorderInfo.filled_bottom:
-                        border.bottom = Side(style='thick', color=custBorderInfo.color_out)
+                        border.bottom = Side(style='thick', color=out_)
                     if (i, j) in custBorderInfo.filled_left:
-                        border.left = Side(style='thick', color=custBorderInfo.color_out)
+                        border.left = Side(style='thick', color=out_)
                     if (i, j) in custBorderInfo.filled_right:
-                        border.right = Side(style='thick', color=custBorderInfo.color_out)
+                        border.right = Side(style='thick', color=out_)
                     if (i, j) in custBorderInfo.filled_top:
-                        border.top = Side(style='thick', color=custBorderInfo.color_out)
+                        border.top = Side(style='thick', color=out_)
 
                 if custBorderInfo.thick_in > 0:
                     if (i, j) in custBorderInfo.inside_right:
-                        border.right = Side(style='thin', color=custBorderInfo.color_in)
+                        border.right = Side(style='thin', color=in_)
                     if (i, j) in custBorderInfo.inside_top:
-                        border.top = Side(style='thin', color=custBorderInfo.color_in)
+                        border.top = Side(style='thin', color=in_)
+                cell.border = border
 
     else:
         rng = sheet.iter_rows(min_row=row_tmp, max_row=row_tmp + row_counter - 1,

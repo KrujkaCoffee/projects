@@ -22,7 +22,6 @@ def db_path(name:str):
                  'DB_invest.db': 'C://DB_srv//DB_invest.db',
                  'DB_nomenklatura_erp.db': 'C://DB_srv//DB_nomenklatura_erp.db',
                  'DB_xl_formulas.db': 'C://DB_srv//DB_xl_formulas.db',
-                 'DB_xl_formulas.db': 'C://DB_srv//DB_xl_formulas.db',
                     'db_flet.db': 'C://DB_srv//db_flet.db',
                  }
     dict_port = {'Naryad.db': 20002, 'BD_dse.db': 20003, 'BD_zayav_out.db': 20004, 'BD_resxml.db': 20005,

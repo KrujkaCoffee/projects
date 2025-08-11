@@ -195,6 +195,8 @@ class ProjectConfig(VerticalConfig['ProjectConfig']):
     db_dse: str = Desc()
     db_flet: str = Desc()
     ERB_BASE_URL: str = Desc()
+    tk_temp_folder: str = Desc()
+    mk_temp_folder: str = Desc()
 
 
 class AppConfig(HorizontalConfig):

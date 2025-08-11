@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import datetime
+import pathlib
 import pprint
 import re
 
@@ -1687,12 +1688,20 @@ class Pozition():
 class Techkards():
     UNRECALC_MARK = '='
     db_dse = None
-    def __init__(self,nn_or_snum:str|int,db_dse:str, nom_mk:int = '',path_docs='',db_nomen='',fix_mat=False,DICT_OP_NAME:dict=None):
+    def __init__(self,nn_or_snum:str|int,db_dse:str, nom_mk:int = '',path_docs='',db_nomen='',fix_mat=False,
+            DICT_OP_NAME: dict = None,
+            DICT_PROFESSIONS: dict = None #31.07.25
+        ):
         poki = CFG.Config.place.poki
         if DICT_OP_NAME==None:
             print(f'class Techkards: DICT_OP_NAME = None')
             config = CFG.Config.project #10.04.25
             DICT_OP_NAME  = F.deploy_dict_c(CSQ.custom_request_c(config.db_naryad, f"""SELECT * FROM operacii WHERE poki == {poki}""",rez_dict=True),'name')
+
+        self.DICT_PROFESSIONS = DICT_PROFESSIONS
+        if DICT_PROFESSIONS is None:
+            print(f'class Techkards: DICT_PROFESSIONS = None')
+            dict_professions(self, db_users=CFG.Config.project.db_users)
 
         Techkards.db_dse = db_dse
         fl_fix = False
@@ -1716,7 +1725,7 @@ class Techkards():
             putf = path_docs + os.sep + self.dse['Номер_техкарты'] + "_" + nn + '.pickle'
         else:
             if path_docs == "":
-                path_docs = F.scfg('mk_data')
+                path_docs = CFG.Config.project.mk_temp_folder #31.07.25
             putf = path_docs + os.sep + nom_mk + os.sep + self.dse['Номер_техкарты'] + '_' + nn + '.pickle'
         self.putf = putf
         self.nom_mk = nom_mk
@@ -1803,7 +1812,7 @@ class Techkards():
                         else:
                             t_pz = F.valm(sp_tk[j][6])
 
-                        if not self.check_code_profession(sp_tk[j][8]):
+                        if sp_tk[j][8] not in self.DICT_PROFESSIONS:
                             CQT.msgbox(f'Некорректный код профессии необходимо править техкарту: {nn}')
                             return
                         oper = {"cod": DICT_OP_NAME[sp_tk[j][0]]['kod'],
@@ -1860,17 +1869,6 @@ class Techkards():
         self.sp_tk = sp_tk
         if fix_mat and fl_fix:
             self.save_tk()
-
-    def check_code_profession(self, code: str): #10.04.25
-        config = CFG.Config
-        query = f"SELECT COUNT(*) as Количество FROM professions WHERE код = {code!r} AND poki = {config.place.poki}"
-        response = CSQ.custom_request_c(
-            config.project.db_users,
-            query,
-            rez_dict=True,
-            one=True
-        )
-        return isinstance(response, dict) and response.get('Количество') >= 1
 
     def _spis_parametrov_na_perehod(self, oper: str, spis_op: list):
         rez = []
@@ -1965,11 +1963,32 @@ class Techkards():
         return float(str(val).lstrip(self.UNRECALC_MARK))
 
     def get_oper(self,nom_oper:str):
+        if not self.tk['bodys'] or not self.tk['bodys'][0]: #30.07.25
+            return None
         for oper in self.tk['bodys'][0]['opers']:
             if oper['s_name'] == nom_oper:
                 return oper
-        
-                            
+
+    def get_attached_operation_files(self, num_oper: str, allowed_ext: list[str] = None):
+        oper = self.get_oper(num_oper)
+        tk_name = self.dse['Номер_техкарты']
+        if not isinstance(oper['doc'], str) or not oper['doc'].strip():
+            return []
+        reestr_files = CSQ.custom_request_c(CFG.Config.project.db_files, f"""
+            SELECT t_kards.file_name
+            FROM t_kards
+            LEFT JOIN names ON t_kards.file_name = names.name
+            WHERE t_kards.t_kard_name = {tk_name!r}""", one_column=True, hat_c=False)
+        filenames = []
+        for filename in oper['doc'].split('%20'):
+            if not filename.strip() or filename not in reestr_files:
+                continue
+            name, ext = os.path.splitext(filename)
+            if allowed_ext and ext not in allowed_ext:
+                continue
+            filenames.append(filename)
+        return filenames
+
     def _update_params_oper(self,DICT_OPERS):
         def fix_sv(params,params_db):
             if len(params_db) == len(params) +1:
@@ -2677,11 +2696,12 @@ class Naryads():
                         'Норма_времени_пооперационно':list_time_norm[i]})
         return rez
     
-    def recalc_by_mk(self,DICT_OPERS):
+    def recalc_by_mk(self,DICT_OPERS, DICT_PROFESSIONS):
         summ_time = 0
         zadanie = ''
         for i, item_nar in enumerate(self.params):
             naim, nn = item_nar['ДСЕ'].split('$')
+
             id = item_nar['ДСЕ_ID']
             nom_oper = item_nar['Операции_номер']
             count_nar = item_nar['Опер_колво']
@@ -8799,8 +8819,8 @@ def get_path_to_proj_NPPY_c(NP, PU,year_py:int=None,projects_localnet_path=None)
                          projects_localnet_path + Proekt[:2],
                          Proekt, PU, str(year_py)
                          ))
-    
-    
+
+
 def path_to_proj_NPPY_c(NP, PU,msg_gui=False,year_py:int=None,projects_localnet_path=None):
     if projects_localnet_path == None or projects_localnet_path == '':
         projects_localnet_path = CFG.Config.place.projects_localnet_path
@@ -9386,128 +9406,118 @@ def calc_productivity_c(data,db_users,db_naryad,db_act,db_kplan,DICT_EMPLOEE,DIC
         return DICT_MASTERS
 
     double_pay_holydays = True
-    try:
-        pass
-    except:
-        pass
-    if True:
-        metka = ''
-        metka = 'расчет дат'
-        #print(F.now())
-        nach = VIR.start_of_period_c(data)
-        if konec == None:
-            konec = VIR.end_of_period_c(data)
-        metka = 'загрузка табеля'
-        table_name = nach.split()[0].replace('-', '_')
-        custom_request_c = F'''SELECT * FROM mtdz_{table_name}'''
-        tabel = CSQ.custom_request_c(db_users, custom_request_c)
-        if not tabel:
-            print('Не найден табель ')
-            raise ValueError('Err')
-        metka = 'список работ за месяц'
-        conn, cur = CSQ.connect_bd(db_naryad)
-        #check_and_fix_confirm_execute_dates_c(db_naryad,conn,cur)
-        if additional_fix:
-            check_and_fix_double_narayds(db_naryad,conn,cur)
-            check_and_fix_broken_narayds(db_naryad,conn,cur)
-            
-        
 
-        spis_jur_full,dict_per_month_all_state_from_jur = VIR.list_per_month_new_c(db_naryad, nach, konec,db_kplan,db_users,podrazdelenie,organization,tabel_m=tabel)
-        
-        CSQ.close_bd(conn, cur)#[_ for _ in spis_jur_full if 'Гримбер' in _[1]]
-        #print('=====')
-        metka = 'список работников за месяц'
-        spis_rab_za_mes = list({_['ФИО'] for _ in spis_jur_full})
-        spis_rab_za_mes = sorted(spis_rab_za_mes)
-
-        list_of_defects_per_months_c = report_ci.get_jur_brak(db_naryad, nach, konec)
-
-                        
-        spis_rc = DICT_RC_TBL(db_users)
-        DICT_MASTERS = get_dict_masters(spis_rc,podrazdelenie)
+    metka = 'расчет дат'
+    nach = VIR.start_of_period_c(data)
+    if konec == None:
+        konec = VIR.end_of_period_c(data)
+    metka = 'загрузка табеля'
+    table_name = nach.split()[0].replace('-', '_')
+    custom_request_c = F'''SELECT * FROM mtdz_{table_name}'''
+    tabel = CSQ.custom_request_c(db_users, custom_request_c)
+    if not tabel:
+        print('Не найден табель ')
+        raise ValueError('Err')
+    metka = 'список работ за месяц'
+    conn, cur = CSQ.connect_bd(db_naryad)
+    #check_and_fix_confirm_execute_dates_c(db_naryad,conn,cur)
+    if additional_fix:
+        check_and_fix_double_narayds(db_naryad,conn,cur)
+        check_and_fix_broken_narayds(db_naryad,conn,cur)
 
 
-        metka = 'расчет часов'
-        itog = []
-        for i in range(len(spis_rab_za_mes)):
-            if spis_rab_za_mes[i] in DICT_MASTERS:
-                continue
-            itog = VIR.add_emploee_into_list_new_c(spis_rab_za_mes[i], itog, tabel, DICT_EMPLOEE,
-                                                   spis_jur_full,double_pay_holydays,DICT_MASTERS,CALC_BASE_ONLY_PREM,dict_per_month_all_state_from_jur)
-            if itog == None:
-                raise ValueError('')
-        metka = 'учет брака'
-           # VIR.list_of_defects_per_months_new_c(db_act, nach, konec)
 
-        metka = 'вычет табеля'
+    spis_jur_full,dict_per_month_all_state_from_jur = VIR.list_per_month_new_c(db_naryad, nach, konec,db_kplan,db_users,podrazdelenie,organization,tabel_m=tabel)
+
+    CSQ.close_bd(conn, cur)#[_ for _ in spis_jur_full if 'Гримбер' in _[1]]
+    #print('=====')
+    metka = 'список работников за месяц'
+    spis_rab_za_mes = list({_['ФИО'] for _ in spis_jur_full})
+    spis_rab_za_mes = sorted(spis_rab_za_mes)
+
+    list_of_defects_per_months_c = report_ci.get_jur_brak(db_naryad, nach, konec)
 
 
-        for i, item in enumerate(itog):#[_ for _ in itog if 'Гримбер' in _['ФИО']]
-            #print(itog[i])
-            fio = item["ФИО"]
-            smena = DICT_EMPLOEE[fio]['Режим']
-            podrazd = DICT_EMPLOEE[fio]['Подразделение']
+    spis_rc = DICT_RC_TBL(db_users)
+    DICT_MASTERS = get_dict_masters(spis_rc,podrazdelenie)
 
-            dict_vichet = report_ci.get_summ_brak_fio(DICT_PRICE_BRAK,fio,list_of_defects_per_months_c)
-            if dict_vichet['Сумма'] > 0:
-                #print(fio + " " + smena + ' ' + podrazd)
-                #print(fio)
-                #print(pprint.pformat(dict_vichet))
-                for master in DICT_MASTERS.keys():
-                    if DICT_MASTERS[master]['Подразделение'] == podrazd:
-                        if smena in DICT_MASTERS[master]['Смены']:
-                            #vichet =( dict_vichet['Неиспр_число'] * 2 + dict_vichet['Испр_число'] * 0.1 )
-                            vichet = dict_vichet['Сумма']
-                            DICT_MASTERS[master]['Вычет'] += vichet
-                            DICT_MASTERS[master]['Число_браков'] += 1
-                            if DICT_MASTERS[master]['Вычет'] >100:
-                                DICT_MASTERS[master]['Вычет'] = 100
 
-            itog[i]['Брак'] = str(0-round(dict_vichet['Сумма'],1))
-            proc_prem_with_brak = itog[i]["Итог"] - dict_vichet['Сумма']
-            #print(f'Премия {fio} с вычетом {proc_prem_with_brak} (было {itog[i][nk_itog_itog]}) ')
-            #if proc_prem_with_brak < 100:
-            #    itog[i]["Итог"] = 100
-            #else:
-            #    itog[i]["Итог"] = round(proc_prem_with_brak,1)
-            itog[i]["Итог"] = round(proc_prem_with_brak, 1)
-        for master in DICT_MASTERS.keys():
-            DICT_MASTERS[master]['Вычет']=DICT_MASTERS[master]['Вычет']/(DICT_MASTERS[master]['Число_браков'] +1)
-        #pprint.pprint(DICT_MASTERS)
-        
-        metka = 'сортировка'
+    metka = 'расчет часов'
+    itog = []
+    for i in range(len(spis_rab_za_mes)):
+        if spis_rab_za_mes[i] in DICT_MASTERS:
+            continue
+        itog = VIR.add_emploee_into_list_new_c(spis_rab_za_mes[i], itog, tabel, DICT_EMPLOEE,
+                                               spis_jur_full,double_pay_holydays,DICT_MASTERS,CALC_BASE_ONLY_PREM,dict_per_month_all_state_from_jur)
+        if itog == None:
+            raise ValueError('')
+    metka = 'учет брака'
+       # VIR.list_of_defects_per_months_new_c(db_act, nach, konec)
 
-        itog.sort(key=lambda x: x["Итог"], reverse=True)
-        #itog.insert(0, ['fio', 'dol', 'prc', 'e_prc', 'sp_nar', 'summ_chas','summ_chas_wo_koef', 'sp_act', 'stavka_tab_chas','ves','tek_prc'])
-        for master in DICT_MASTERS.keys():
-            prc = 0
-            if DICT_MASTERS[master]['Число_сотрудников'] > 0:
-                prc = round(DICT_MASTERS[master]['Выработка_смены']/DICT_MASTERS[master]['Число_сотрудников'])
-                tab = round(DICT_MASTERS[master]['Ставка_таб']/DICT_MASTERS[master]['Число_сотрудников'])
-            itog.insert(1, {
-                "ФИО": master,
-                "Должность": 'Мастер',
-                "Итог": prc - DICT_MASTERS[master]['Вычет'],
-                'Брак': -DICT_MASTERS[master]['Вычет'],
-                'Наряды': '',
-                "Сумма_теор_часов_с_коэфф": 0,
-                "Сумма_теор_часов_без_коэфф": 0,
-                'Режим': ';'.join(DICT_MASTERS[master]['Смены']),
-                'Норма времени(Астр)':0,
-                "сумма_часов_по_табелю": 0,
-                "кг.": DICT_MASTERS[master]['Вес'],
-                "текущий_процент": prc - DICT_MASTERS[master]['Вычет'],
-                'Подытог_по_нормам':0,
-                'Сет_нарядов': {}
-            })
-        metka = 'формировка сообщения'
-        return itog, metka, DICT_MASTERS
-    try:
-        pass
-    except:
-        return '', metka, dict()
-    
+    metka = 'вычет табеля'
+
+
+    for i, item in enumerate(itog):#[_ for _ in itog if 'Гримбер' in _['ФИО']]
+        #print(itog[i])
+        fio = item["ФИО"]
+        smena = DICT_EMPLOEE[fio]['Режим']
+        podrazd = DICT_EMPLOEE[fio]['Подразделение']
+
+        dict_vichet = report_ci.get_summ_brak_fio(DICT_PRICE_BRAK,fio,list_of_defects_per_months_c)
+        if dict_vichet['Сумма'] > 0:
+            #print(fio + " " + smena + ' ' + podrazd)
+            #print(fio)
+            #print(pprint.pformat(dict_vichet))
+            for master in DICT_MASTERS.keys():
+                if DICT_MASTERS[master]['Подразделение'] == podrazd:
+                    if smena in DICT_MASTERS[master]['Смены']:
+                        #vichet =( dict_vichet['Неиспр_число'] * 2 + dict_vichet['Испр_число'] * 0.1 )
+                        vichet = dict_vichet['Сумма']
+                        DICT_MASTERS[master]['Вычет'] += vichet
+                        DICT_MASTERS[master]['Число_браков'] += 1
+                        if DICT_MASTERS[master]['Вычет'] >100:
+                            DICT_MASTERS[master]['Вычет'] = 100
+
+        itog[i]['Брак'] = str(0-round(dict_vichet['Сумма'],1))
+        proc_prem_with_brak = itog[i]["Итог"] - dict_vichet['Сумма']
+        #print(f'Премия {fio} с вычетом {proc_prem_with_brak} (было {itog[i][nk_itog_itog]}) ')
+        #if proc_prem_with_brak < 100:
+        #    itog[i]["Итог"] = 100
+        #else:
+        #    itog[i]["Итог"] = round(proc_prem_with_brak,1)
+        itog[i]["Итог"] = round(proc_prem_with_brak, 1)
+    for master in DICT_MASTERS.keys():
+        DICT_MASTERS[master]['Вычет']=DICT_MASTERS[master]['Вычет']/(DICT_MASTERS[master]['Число_браков'] +1)
+    #pprint.pprint(DICT_MASTERS)
+
+    metka = 'сортировка'
+
+    itog.sort(key=lambda x: x["Итог"], reverse=True)
+    #itog.insert(0, ['fio', 'dol', 'prc', 'e_prc', 'sp_nar', 'summ_chas','summ_chas_wo_koef', 'sp_act', 'stavka_tab_chas','ves','tek_prc'])
+    for master in DICT_MASTERS.keys():
+        prc = 0
+        if DICT_MASTERS[master]['Число_сотрудников'] > 0:
+            prc = round(DICT_MASTERS[master]['Выработка_смены']/DICT_MASTERS[master]['Число_сотрудников'])
+            tab = round(DICT_MASTERS[master]['Ставка_таб']/DICT_MASTERS[master]['Число_сотрудников'])
+        itog.insert(1, {
+            "ФИО": master,
+            "Должность": 'Мастер',
+            "Итог": prc - DICT_MASTERS[master]['Вычет'],
+            'Брак': -DICT_MASTERS[master]['Вычет'],
+            'Наряды': '',
+            "Сумма_теор_часов_с_коэфф": 0,
+            "Сумма_теор_часов_без_коэфф": 0,
+            'Режим': ';'.join(DICT_MASTERS[master]['Смены']),
+            'Норма времени(Астр)':0,
+            "сумма_часов_по_табелю": 0,
+            "кг.": DICT_MASTERS[master]['Вес'],
+            "текущий_процент": prc - DICT_MASTERS[master]['Вычет'],
+            'Подытог_по_нормам':0,
+            'Сет_нарядов': {}
+        })
+    metka = 'формировка сообщения'
+    return itog, metka, DICT_MASTERS
+
 
 def btn_oyp_add_project(self, stroka=''):
         if stroka =='':

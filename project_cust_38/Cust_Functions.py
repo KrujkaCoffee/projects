@@ -16,6 +16,7 @@ import colorsys
 import re
 import base64
 import tempfile
+import pythoncom
 from time import sleep as time_sleep
 import ctypes
 try:
@@ -27,6 +28,7 @@ try:
     import calendar
     
     from win32com.client import Dispatch
+    from win32com.shell import shell, shellcon # 30.07.25
     from dateutil.relativedelta import relativedelta
     from decimal import Decimal, getcontext
 except:
@@ -34,6 +36,26 @@ except:
 
 if __name__ == 's__main__':
     exit()
+
+# ++ 11.08.25
+def check_network_drive_connection(network_drive: str = 'Z:', network_path: str = r"\\powerz\share\ProdSoft"):
+    print(f'==== Проверка подключения диска: {network_drive!r} ====')
+    if os.path.exists(network_drive):
+        print(f'Диск {network_drive!r} подключен')
+        return True
+    commands = (
+        ["net", "use", f"{network_drive}", network_path],
+        ['explorer', 'Z:\\']
+    )
+    for cmd in commands:
+        result = subprocess.run(cmd, capture_output=True, text=True, shell=True, encoding='cp866')
+        if os.path.exists(network_path):
+            print(f'Диск {network_drive!r} подключен')
+            return True
+        print(result.stderr)
+    print(f'Не удалось подключится к диску {network_drive!r}')
+    return False
+# -- 11.08.25
 
 def decode_1c_data_version_attribute(base64_string: str):
     """Декодировать атрибут DataVersion 1С в число"""
@@ -162,8 +184,27 @@ def existence_file_c(putf):
 def cfg_dict():
     return cfg.as_dict()
 
+def check_server_drive_connection():
+    cnt = 0
+    while not check_network_drive_connection():
+        cnt += 1
+        time.sleep(2.5)
+        print(f'ДИСК Z: НЕДОСТУПЕН ПОПЫТКА ПОДКЛЮЧЕНИЯ: {cnt}')
+    return True
 
 def load_cfg(log=True):
+    is_server = os.environ.get('MES_IS_SERVER')
+    if is_server:
+        check_server_drive_connection()
+    else:
+        if not check_network_drive_connection(): #11.08.25 Проверка для пользователя
+            ctypes.windll.user32.MessageBoxW(
+                0,
+                "Диск Z: в данный момент недоступен. Обратитесь к системному администратору",
+                "Ошибка",
+                0x10
+            )
+            raise Exception("Диск Z недоступен")
     try:
         print('======Загрузка настроек ' + path_to_execut_file_c() + '======') if log else None
         put_conf = path_to_execut_file_c() + 'Config' + os.sep + 'CFG.cfg'
@@ -346,7 +387,7 @@ def run_file_c(putf, proverka=True):
     if proverka == True:
         if existence_file_c(putf) == False:
             return
-    subprocess.Popen(putf, shell=True)
+    return subprocess.Popen(["start", "", f"{putf}"], shell=True) #29.07.25
 
 
 def run_file_os_c(putf,normalize=True):
@@ -1908,3 +1949,34 @@ def left_join(left_list, right_list, left_key, right_key):
             result.append(merged)
 
     return result
+
+# ++ 30.07.25
+def find_file_by_name_without_extension(directory: str, target_name: str):
+    """
+    Ищет файл в указанной директории по имени без учета расширения.
+
+    :param directory: Путь к директории для поиска
+    :param target_name: Имя файла без расширения, которое ищем (например, "ТИ 12-23")
+    :return: Полный путь к найденному файлу или None
+    """
+    for filename in os.listdir(directory):
+        name, ext = os.path.splitext(filename)
+        if name == target_name:
+            return os.path.join(directory, filename)
+    return None
+
+
+def resolve_lnk_target(lnk_path):
+    """
+    Возвращает путь к файлу, на который указывает .lnk-ярлык.
+    """
+    pythoncom.CoInitialize()  # Инициализация COM
+    shell_link = pythoncom.CoCreateInstance(
+        shell.CLSID_ShellLink, None,
+        pythoncom.CLSCTX_INPROC_SERVER, shell.IID_IShellLink
+    )
+    persist_file = shell_link.QueryInterface(pythoncom.IID_IPersistFile)
+    persist_file.Load(lnk_path)
+    target_path, _ = shell_link.GetPath(shell.SLGP_UNCPRIORITY)
+    return target_path
+# -- 30.07.25

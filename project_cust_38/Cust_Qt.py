@@ -1846,7 +1846,27 @@ class FillTableDelegator(QtWidgets.QStyledItemDelegate):
 def is_link_like(text: str):
     return F.is_link_like(text)
 
+import cProfile
+import pstats
+import io
 
+
+def profile_qt_function(func):
+    """Декоратор для профилирования отдельных функций PyQt5"""
+    def wrapper(*args, **kwargs):
+        profiler = cProfile.Profile()
+        profiler.enable()
+        try:
+            result = func(*args, **kwargs)
+        finally:
+            s = io.StringIO()
+            ps = pstats.Stats(profiler, stream=s).sort_stats('cumulative')
+            ps.print_stats()
+            profile_data = s.getvalue()
+            print(profile_data)
+        return result
+    return wrapper
+@profile_qt_function
 def fill_wtabl(dict_or_list, object, set_editeble_col_nomera={}, ogr_maxshir_kol=200,
                  min_width_col=20, height_row=30, colorful_edit = True, auto_type=True,head_column:int = None,
                hide_head_column:bool=False,hide_head_rows:bool=False,StretchLastSection=True,select_last_row=False,

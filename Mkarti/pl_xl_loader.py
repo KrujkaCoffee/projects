@@ -495,7 +495,7 @@ class PushWorkPlan:
         for position_name in data.keys():
             vid_rabot = self.name_worktypes.get(position_name)
             if vid_rabot:
-                agr_vid_rabot[vid_rabot] += data[position_name]['Часы']
+                agr_vid_rabot[vid_rabot] += data[position_name].get('Часы', float())
         return agr_vid_rabot
 
     @CPROG.progress_decorator

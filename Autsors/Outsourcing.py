@@ -1247,7 +1247,7 @@ class MainWindow(QMainWindow):
 
     @CQT.onerror
     def create_order(self, *args):
-        if not CMS.user_access(self.db_naryad, 'аутсорс_создание_заявки', F.user_full_namre()):
+        if not CMS.user_access(self.db_naryad, 'аутсорс_создание_заявки', F.user_name()):
             return
         tbl_order = self.ui.tbl_new_order
         tbl_naryads = self.ui.tbl_list_chosed_naryads

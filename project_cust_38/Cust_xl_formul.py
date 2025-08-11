@@ -125,7 +125,7 @@ class XlFormula:
     default_attrs = {'approved': False, 'sum': False}
 
     def __init__(self, window=None):
-        self.base_dir = Path(F.scfg('cash'))
+        self.base_dir = Path(CFG.Config.project.tk_temp_folder)
         self.template = self.base_dir / 'Образец.xlsx'
         self.poki = self.check_poki()
         self.main_tbl = None

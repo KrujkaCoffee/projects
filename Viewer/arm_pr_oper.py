@@ -559,6 +559,9 @@ def show_structure_nar(self:mywindow,*args):
                 for oper in dse['Операции']:
                     if oper['Опер_номер'] == row['Операции_номер']:
                         row['Код проф'] = oper['Опер_профессия_код']
+                        row['Этап'] = oper['Этап']
+                        row['Опер_РЦ_код'] = oper['Опер_РЦ_код']
+                        row['Опер_РЦ_наименование'] = oper['Опер_РЦ_наименование']
                         if row['Код проф'] in self.DICT_PROFESSIONS:
                             row['Прим. проф'] = self.DICT_PROFESSIONS[row['Код проф']]['примечание']
                             row['Прямые затраты'] = self.DICT_PROFESSIONS[row['Код проф']]['Прямые']

@@ -2278,7 +2278,8 @@ class mywindow(QtWidgets.QMainWindow):
                 )
                 list_oper_names = [_ for _ in self.DICT_OP_NAME.keys() if self.DICT_OP_NAME[_]['auto_recalc_pred_tkp']]
                 tech_card._update_params_oper(self.DICT_OP_NAME)
-                tech_card.recalc_opers(list_oper_names, self.DICT_OP_NAME)
+                if vid == '' or vid == 'vrem': #05.07.25
+                    tech_card.recalc_opers(list_oper_names, self.DICT_OP_NAME)
                 for tk_idx, tk in enumerate(tech_card.tk['bodys']):
                     for j, oper in enumerate(tk['opers']):
                         dse = res[i]
@@ -2508,7 +2509,7 @@ class mywindow(QtWidgets.QMainWindow):
                               self.Data_plan.DICT_EMPLOEE_FULL_WITH_DEL)
             nar.mk = CMS.Marshrut_cards(nom_mk, self.bd_naryad, self.db_resxml, True, row_from_db=row_mk_from_db,
                                         byte_data_res_from_db=byre_data_res)
-            nar.recalc_by_mk(self.DICT_OP_NAME)
+            nar.recalc_by_mk(self.DICT_OP_NAME, self.DICT_PROFESSIONS) #05.07.25
         user = F.user_full_namre()
         CMS.send_info_mk_b24_by_action(
             f'{user} пересчитал(а) Опер_время, Теор_время в нарядах по МК {nom_mk}',
@@ -2810,6 +2811,12 @@ class mywindow(QtWidgets.QMainWindow):
             #generate(self, exel, rez, nom_mk, py, name=f'{nom_mk}_{py}_{F.now("%Y%m%d-%H%M%S")}.json', kotlovoy=kotel)
 
         if self.ui.tabWidget.tabText(self.ui.tabWidget.currentIndex()) == 'Маршрутные карты':
+            kpl = int(self.ui.table_spis_MK.item(self.ui.table_spis_MK.currentRow(),
+                CQT.num_col_by_name_c(self.ui.table_spis_MK, 'Номер КПЛ')).text())
+            if kpl == 3345:
+                name_nomen = self.ui.table_spis_MK.item(self.ui.table_spis_MK.currentRow(),
+                                                    CQT.num_col_by_name_c(self.ui.table_spis_MK, 'Номенклатура')).text()
+                self.tkp_current_schema['file_name'] = name_nomen #08.08.25
             from_real_mk(self, exel, kotel)
             try:
                 # del self.tkp_current_schema
@@ -3787,9 +3794,9 @@ class mywindow(QtWidgets.QMainWindow):
                 return False
             CSQ.custom_request_c(self.bd_naryad, f"""UPDATE mk SET Вес = {ves} WHERE Пномер = {int(nom_tek_mk)}""")
             user = F.user_full_namre()
-            CMS.send_info_mk_b24_by_action(
-                msg=f'{user} перегенерировал(а) ресурсную МК {nom_tek_mk}',
-                action='Ошибки МК'
+            CMS.send_info_mk_b24_by_action( #05.08.25 именованные параметры вызывают ошибку в декораторе CQT.onerror если не передан self
+                f'{user} перегенерировал(а) ресурсную МК {nom_tek_mk}',
+                'Ошибки МК'
             )
             CQT.msgbox('Ресурсная успешно добавлена')
 
@@ -4800,7 +4807,7 @@ class mywindow(QtWidgets.QMainWindow):
             return
         self.cr_mk_xml_koef_norm_mat = F.valm(sp_izd[0][3])
         self.cr_mk_xml_koef_norm_time = F.valm(sp_izd[0][4])
-        sp_xml_tmp = CMS.podgotovka_xml(self, XML.spisok_iz_xml(putt_xml))
+        sp_xml_tmp = CMS.podgotovka_xml(self, XML.spisok_iz_xml(putt_xml), correct_code_erp_tbl=True) #  05.08.25 задача 100057976
         if sp_xml_tmp == None:
             CQT.msgbox('Файл не корректный')
             return
@@ -5173,6 +5180,11 @@ class mywindow(QtWidgets.QMainWindow):
                         mat_name = dse['Мат_кд']
                         link_docs = dse['Ссылка']
                         fl_mat = False
+                    if oper['Опер_профессия_код'] not in self.DICT_PROFESSIONS: # 29.07.25 по задача 100057652
+                        nn = dse['Номенклатурный_номер']
+                        oper_num = oper['Опер_номер']
+                        CQT.msgbox(f'Некорректный код профессии ДСЕ: {nn!r}. Номер операции: {oper_num!r}')
+                        return None, None
 
                     tmp_row = {'Позиция': pozition,
                                'Пном ДСЕ': dse['Номерпп']-1,
@@ -5457,12 +5469,12 @@ class mywindow(QtWidgets.QMainWindow):
         data_sozd = F.date(2)
 
         prim = prim.text().replace('\n', ' ')
-        stroki_strok = [
-            [data_sozd, 'Закрыта', project, '', '', "",
+        stroki_strok = [ # 04.08.25 При ошибке в sql мк создается поверх последнего номерка
+            data_sozd, 'Закрыта', project, '', '', "",
              prim, osnovanie, '', '',
              "",
              ves, '', self.kol_izdeliy, '', '', '', 2, '', self.place.Код, '', tip_mk, '', F.user_full_namre(),
-             self.dict_cur_poz_cr_mk['Пномер'], tip_dorabot]]
+             self.dict_cur_poz_cr_mk['Пномер'], tip_dorabot]
         self.xml_head = 1
 
         if 'dict_cur_poz_cr_mk' not in self.__dict__:
@@ -5471,7 +5483,7 @@ class mywindow(QtWidgets.QMainWindow):
         # ---------------
         CONN, cur = CSQ.connect_bd(self.bd_naryad)
         # CSQ.add_line_into_db_sql_c(self.bd_naryad, 'mk', stroki_strok, conn=CONN, cur = cur)
-        CSQ.custom_request_c(self.bd_naryad, f"""INSERT INTO mk(Дата
+        response = CSQ.custom_request_c(self.bd_naryad, f"""INSERT INTO mk(Дата
             , Статус
             , Номенклатура
             , Номер_заказа
@@ -5496,13 +5508,16 @@ class mywindow(QtWidgets.QMainWindow):
             , Ресурсная_дата
             , ФИО
             , НомКплан 
-            , Тип_доработки) VALUES ({", ".join(['?'] * len(stroki_strok[0]))});""", list_of_lists_c=stroki_strok,
-                             conn=CONN,
-                             cur=cur)
-
-        nom = str(CSQ.last_row_db_c(self.bd_naryad, 'mk', 'Пномер', ['Пномер'], conn=CONN, cur=cur)[0])
-
-        # CSQ.add_line_into_db_sql_c(self.bd_naryad, 'zagot', stroki_strok=[[int(nom), '']], s_pervoi=False, conn=CONN, cur =cur)
+            , Тип_доработки) VALUES ({", ".join(['?'] * len(stroki_strok))}) RETURNING Пномер;""", # ++ 28.07.25 по задаче 100057537
+                            list_of_lists_c=stroki_strok,
+                            rez_dict=True,
+                            one=True,
+                            conn=CONN,
+                            cur=cur)
+        if not response:
+            return CQT.msgbox('Ошибка создания МК')
+        nom = response['Пномер'][0]
+        # -- 27.07.25 по задаче 100057537
         CSQ.custom_request_c(self.bd_naryad, """INSERT INTO  zagot(Ном_МК,Прим_резка,Вес_по_рес) VALUES (?,?,?);""",
                              conn=CONN,
                              cur=cur, list_of_lists_c=[[int(nom), '', self.ves_res_list]])

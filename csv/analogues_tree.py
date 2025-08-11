@@ -70,9 +70,9 @@ def load_nomen_wo_prices(self: mywindow, *args):
         row = CQT.get_dict_line_form_tbl(tbl)
         type = row['Тип ТКП']
         snum = int(row['Порядковый номер'])
-        if type != 'Аналог':
-            CQT.msgbox(f'Тип ТКП не корректный')
-            return
+        # if type != 'Аналог':
+        #     CQT.msgbox(f'Тип ТКП не корректный')
+        #     return
         list_err = check_poz(self, snum, list_err)
         if len(list_err) == 0:
             CSQ.custom_request_c(self.Data_mes.db_dse,
@@ -155,7 +155,7 @@ def recalc_weight(self, *args):
         current_row = list_rows[num_row]
         if not check_cell(current_row['Количество']) or not check_cell(current_row['Уровень']):
             return
-        count = int(current_row['Количество'])
+        count = F.valm(current_row['Количество'])
         ur = int(current_row['Уровень'])
         for i in range(num_row - 1, -1, -1):
             # row = CQT.get_dict_line_form_tbl(tbl, i)
@@ -444,11 +444,18 @@ def get_into_red(self: mywindow):
     self.ui.le_path_vo_2.setText(strukt['dir_rkd'])
     recalc_weight(self)
 
+def fix_struct(struct):
+    for item in struct:
+        if isinstance(item, list):
+            return
+        if 'Обозначение' not in item or 'Обозначение_аналог' not in item:
+            continue
+        if item['Обозначение'] == '':
+            item['Обозначение'] = item['Обозначение_аналог']
 
 @CQT.onerror
 def fill_tbl_strukt(self, data):
-    table = self.ui.tbl_red_tree
-    selected_items = [(item.row(), item.column())for item in table.selectedItems()]
+    fix_struct(data)
     scroll_vertical = self.ui.tbl_red_tree.verticalScrollBar().value()
     hidden_column = CQT.num_col_by_name_c(self.ui.tbl_red_tree, 'Ед.изм.')
     CQT.fill_wtabl(data, self.ui.tbl_red_tree, self.edit_cr_mk, 200, height_row=24, auto_type=False)
@@ -457,9 +464,6 @@ def fill_tbl_strukt(self, data):
     CQT.set_color_sort_cell_table_c(self.ui.tbl_red_tree)
     hide_columns_for_simple_mode(self, self.ui.tbl_red_tree)
     self.ui.tbl_red_tree.verticalScrollBar().setValue(scroll_vertical)
-    for row, column in selected_items:
-        table.item(row, column).setSelected(True)
-
 
 
 
@@ -1222,73 +1226,6 @@ def mat_apply(self: mywindow, val: str, name: str, kod: str):
     CQT.msgbox(f'Успешно')
     CQT.select_cell(tbl, selected_row, nf_mat)
 
-@CQT.onerror
-def mat_apply_2(self: mywindow, replace_weight: bool = False, replace_material: bool = False):
-    tbl_struct = self.ui.tbl_red_tree
-    tbl_mats = self.ui.tbl_anal_mat
-    # колонки материалов
-    nf_naim = CQT.num_col_by_name_c(tbl_mats, 'Наименование')
-    nf_kod = CQT.num_col_by_name_c(tbl_mats, 'Код')
-
-    # колонки структуры
-    st_nn_column = CQT.num_col_by_name_c(tbl_struct, 'Обозначение')
-    st_mat_column = CQT.num_col_by_name_c(tbl_struct, 'Масса/М1,М2,М3')
-    st_code_column = CQT.num_col_by_name_c(tbl_struct, 'Код ERP')
-
-    current_row_materials = tbl_mats.currentRow()
-
-    selected_rows = {item.row() for item in tbl_struct.selectedItems()}
-    if len(selected_rows) == 0: # Если строка в изменяемой структуре не выбрана
-        return CQT.msgbox(f'Не выбрана строка в структуре')
-    access_messages = ['Сообщение']
-    replace_all = replace_material and replace_weight
-    if replace_weight:
-        val = self.ui.le_norma.text()
-        if not F.is_numeric(val): # Если масса из lineedit не число
-            return CQT.msgbox(f'Норма не число')
-        access_messages.append(f'Применить массу {val} ко всем выделенным строкам?')
-    if replace_material:
-        name_mat = tbl_mats.item(current_row_materials, nf_naim).text()
-        kod_mat = tbl_mats.item(current_row_materials, nf_kod).text()# Если строка материала не выбрана
-        access_messages.append(f'Применить материал {name_mat} - {kod_mat} ко всем выделенным строкам?')
-        if current_row_materials == -1:
-            return CQT.msgbox(f'Не выбран материал')
-    if len(access_messages) == 2:
-        if not CQT.msgboxgYN(access_messages[1]):
-            return
-    if len(access_messages) > 2:
-        if not CQT.msgboxg_get_table(self, 'Применить изменения?', access_messages, yesNoMode=True, btn0_name='Принять'
-                                     ,show_filtr=False):
-            return
-
-    for current_row_struct in selected_rows:
-        st_nn_value = tbl_struct.item(current_row_struct, st_nn_column).text()
-        st_code_value = tbl_struct.item(current_row_struct, st_code_column).text()
-        st_mass_value = tbl_struct.item(current_row_struct, st_mat_column).text()
-
-        if replace_material:
-            name_mat = tbl_mats.item(current_row_materials, nf_naim).text()
-            kod_mat = tbl_mats.item(current_row_materials, nf_kod).text()
-        else:
-            name_mat = ''
-            if st_code_value:
-                name_mat = self.Data_mes.dict_nomenklat_by_kod[st_code_value]['Наименование']
-            kod_mat = st_code_value
-
-        if not replace_weight:
-            split_mass = st_mass_value.split('/')
-            val = '0'
-            if len(split_mass) > 0:
-                val = st_mass_value.split('/')[0]
-        if self.ui.chk_mat_for_all.isChecked():
-            sync_row_materials(self, st_nn_value, val, name_mat, kod_mat)
-        tbl_struct.item(current_row_struct, st_mat_column).setText(val + "/" + name_mat)
-        tbl_struct.item(current_row_struct, st_code_column).setText(kod_mat)
-        accumulate_tree_mass(self)
-        fill_tab_to_level(tbl_struct)
-    recalc_weight(self)
-    CQT.msgbox(f'Успешно')
-
 
 def sync_row_materials(self: mywindow, target_nn: str, val: str, name: str, kod: str):
     tbl = self.ui.tbl_red_tree
@@ -1369,15 +1306,17 @@ def mat_apply_mat(self: mywindow):
 @CQT.onerror
 def change_mat(self: mywindow):
     cur_row = self.ui.tbl_anal_mat.currentRow()
+    cur_row_anal = self.ui.tbl_red_tree.currentRow()
     if cur_row == -1:
         CQT.msgbox(f'Не выбран материал')
         return
+    if cur_row_anal == -1:
+        return
     nf_naim = CQT.num_col_by_name_c(self.ui.tbl_anal_mat, 'Наименование')
     nf_kod = CQT.num_col_by_name_c(self.ui.tbl_anal_mat, 'Код')
-
-    cur_row_anal = self.ui.tbl_red_tree.currentRow()
+    if None in (nf_naim, nf_kod):
+        return
     col_mass_anal = CQT.num_col_by_name_c(self.ui.tbl_red_tree, 'Масса/М1,М2,М3')
-
     name_mat = self.ui.tbl_anal_mat.item(cur_row, nf_naim).text()
     kod_mat = self.ui.tbl_anal_mat.item(cur_row, nf_kod).text()
     mass_mat = self.ui.tbl_red_tree.item(cur_row_anal, col_mass_anal).text()
@@ -1523,7 +1462,7 @@ def fill_tab_to_level(table: QtWidgets.QTableWidget):
 def accumulate_tree_mass(self: mywindow, previous: int = 0, row: int = None, col: int = None):
     data = CQT.list_from_wtabl_c(self.ui.tbl_red_tree, "", True, rez_dict=True)
     tree_knot_object = TreeKnotList(data)
-    data = TreeKnotList(data).calc_knot()
+    data = tree_knot_object.calc_knot()
     fill_tbl_strukt(self, data)
     CMS.load_column_widths(self, self.ui.tbl_red_tree)
     return data
@@ -1566,7 +1505,7 @@ class TreeKnotBranch:
     def count(self):
         count = self.item.get('Количество')
         if count and F.is_numeric(count):
-            return int(count)
+            return F.valm(count)
         CQT.msgbox('Количество не число')
         return 1
 
@@ -1575,7 +1514,7 @@ class TreeKnotBranch:
         text = self.item.get('Масса/М1,М2,М3', '')
         lst = text.split('/')
         if len(lst[0]) >= 1 and F.is_numeric(lst[0]):
-            return F.valm(lst[0])
+            return float(lst[0])
         return float()
 
     @property

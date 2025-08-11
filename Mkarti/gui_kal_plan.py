@@ -1071,6 +1071,8 @@ def update_local_graf(self,update=False,pnom:int = 0,fill_gant=True,*args):
     self.Data_plan.DICT_REPLACE_BY_DAYS = dict()
     if dict_poz['fact_jurnal_blolb_data']:
         self.Data_plan.DICT_REPLACE_BY_DAYS = F.from_binary_pickle(dict_poz['fact_jurnal_blolb_data'])
+    if self.Data_plan.DICT_REPLACE_BY_DAYS is None: #31.07.25
+        self.Data_plan.DICT_REPLACE_BY_DAYS = {}
     fl_upd = True
     dict_form = []
     if update == False:

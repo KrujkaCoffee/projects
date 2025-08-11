@@ -90,8 +90,8 @@ def logout(self):
     CQT.clear_tbl(self.ui.tbl_select_marsh)
     self.ui.lbl_curr_mk.clear()
     self.ui.lbl_tmp_time.clear()
-    self.ui.lbl_ima_rc.clear()
-    self.ui.lbl_tmp_time_potenc.clear()
+    # self.ui.lbl_ima_rc.clear()
+    # self.ui.lbl_tmp_time_potenc.clear()
 
     self.ui.lbl_kompl_info.clear()
     self.ui.lineEdit_cr_nar_kolvo.clear()

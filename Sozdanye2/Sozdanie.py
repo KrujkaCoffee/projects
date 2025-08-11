@@ -2059,7 +2059,7 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.chk_outsource_nar.blockSignals(True)
         self.ui.chk_outsource_nar.setChecked(bool(autsource))
         self.ui.chk_outsource_nar.blockSignals(False)
-        set_prof = set()
+        set_code_profs = set() # 06.08.25
         # spis_dop_prof = F.load_file(F.scfg('Filtr_rab') + F.sep() + 'spis_dop_prof.txt')
         # if spis_dop_prof:
         #    for prof in spis_dop_prof:
@@ -2068,11 +2068,11 @@ class mywindow(QtWidgets.QMainWindow):
         if autsource == 1:
             for prof in self.DICT_PROFESSIONS.keys():
                 if self.DICT_PROFESSIONS[prof]['Группа_в_распред'] == "Снабжение":
-                    set_prof.add(self.DICT_PROFESSIONS[prof]['имя'])
+                    set_code_profs.add(prof) # 06.08.25
         else:
             if vneplan == 1:
                 for prof in self.DICT_PROFESSIONS.keys():
-                    set_prof.add(self.DICT_PROFESSIONS[prof]['имя'])
+                    set_code_profs.add(prof) # 06.08.25
             else:
                 list_dse_id = dict_row['ДСЕ_ID'].split("|")
                 list_opers = dict_row['Операции'].split("|")
@@ -2088,27 +2088,27 @@ class mywindow(QtWidgets.QMainWindow):
                             for oper in dse['Операции']:
                                 if oper['Опер_номер'] == list_opers[i].split("$")[0]:
                                     if oper['Опер_профессия_код'] in self.DICT_PROFESSIONS:
-                                        set_prof.add(self.DICT_PROFESSIONS[oper['Опер_профессия_код']]['имя'])
+                                        set_code_profs.add(oper['Опер_профессия_код']) #06.08.25
                                     else:
                                         CQT.msgbox(f'Профессия {oper["Опер_профессия_код"]} не найдена в БД')
 
         set_group = set()
-        for _ in set_prof:
-            if _ in self.DICT_PROFESSIONS_NAME:
-                set_group.add(self.DICT_PROFESSIONS_NAME[_]['Группа_в_распред'])
+        for _ in set_code_profs:
+            if _ in self.DICT_PROFESSIONS:
+                set_group.add(self.DICT_PROFESSIONS[_]['Группа_в_распред'])
             else:
                 CQT.msgbox(f'{_} не отмечена как основная')
         if set_group == {''}:
-            CQT.msgbox(f'{set_prof} не образуют группу учета в БД ')
+            CQT.msgbox(f'{set_code_profs} не образуют группу учета в БД ')
 
         set_prof = set()
-        for prof in list(self.DICT_PROFESSIONS_NAME.keys()):
-            if self.DICT_PROFESSIONS_NAME[prof]['Группа_в_распред'] != "" and \
-                    self.DICT_PROFESSIONS_NAME[prof]['Группа_в_распред_блок'] == 0:
-                if self.DICT_PROFESSIONS_NAME[prof]['Группа_в_распред'] in set_group:
-                    set_prof.add(prof)
+        for prof_code in list(self.DICT_PROFESSIONS.keys()):  # ++ 06.08.25
+            if self.DICT_PROFESSIONS[prof_code]['Группа_в_распред'] != "" and \
+                    self.DICT_PROFESSIONS[prof_code]['Группа_в_распред_блок'] == 0:
+                if self.DICT_PROFESSIONS[prof_code]['Группа_в_распред'] in set_group:
+                    set_prof.add(self.DICT_PROFESSIONS[prof_code]['имя'])
         spis_prof = sorted(list(set_prof))
-
+        # -- 06.08.25
         for prof in spis_prof:
             self.ui.cmb_prof_rasp.addItem(prof)
         fl_open_fr_otk = self.is_nar_for_otk(dict_row['Операции'])
@@ -3998,7 +3998,7 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
                         next_rc = list_rc[i + 1]
                         rgb = self.DICT_RC_FULL[next_rc]['Цвет']
                     break
-            list_colors.append(rgb)
+            # list_colors.append(rgb)
             list_bold.append(True)
         # self.ui.cmb_list_marsh.addItems()
         CQT.fill_list_combobx(self, self.ui.cmb_list_marsh, list_rows, list_colors, list_tooltips, ',', first_void=True,

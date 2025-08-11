@@ -1,3 +1,6 @@
+import pathlib
+import re
+
 from PyQt5 import QtWidgets, QtCore, QtGui
 from PyQt5.QtWinExtras import QtWin
 import os
@@ -610,7 +613,8 @@ class mywindow(QtWidgets.QMainWindow):
         set_docs = set()
 
         res = CMS.load_res(nom_mk)
-
+        data_for_table = []
+        cache = {}
         for i in range(len(spis_kd)):
             naim , nn = spis_kd[i].split('$')
             nom_oper = spis_oper[i].split('$')[0]
@@ -618,14 +622,29 @@ class mywindow(QtWidgets.QMainWindow):
                 if dse['Номенклатурный_номер'] == nn and dse['Наименование'] == naim:
                     for oper in dse['Операции']:
                         if nom_oper == oper['Опер_номер']:
+                            if dse['Номенклатурный_номер'] not in cache:
+                                cache[dse['Номенклатурный_номер']] = CMS.Techkards(
+                                    nn_or_snum=dse['Номенклатурный_номер'],
+                                    db_dse=USRCNF.Config.project.db_dse,
+                                    nom_mk=str(nom_mk),
+                                    DICT_OP_NAME=self.DICT_OPER_NAME,
+                                    DICT_PROFESSIONS=self.DICT_PROFESSIONS
+                                )
+                            tech = cache[dse['Номенклатурный_номер']]
+                            attached_files = tech.get_attached_operation_files(nom_oper, allowed_ext=('.pdf', '.docx'))
+                            for filename in attached_files:
+                                data_for_table.append({'Документ': filename, 'Номер_техкарты': tech.dse['Номер_техкарты']})
                             for doc in oper['Опер_документы']:
                                 if doc != '':
                                     set_docs.add(doc)
                             break
                     break
-        spis_docs =[[x] for x in sorted(list(set_docs))]
-        spis_docs.insert(0,['Документы'])
-        CQT.fill_wtabl_old_c(self, spis_docs, tblp, isp_hat_c=True, separ='', ogr_maxshir_kol=300)
+        for instruction in set_docs:
+            data_for_table.insert(0, {'Документ': instruction, 'Номер_техкарты': ''})
+        CQT.fill_wtabl_old_c(self, data_for_table, tblp, isp_hat_c=True, separ='', ogr_maxshir_kol=300)
+        nk_num_tk = CQT.num_col_by_name_c(tblp, 'Номер_техкарты')
+        if nk_num_tk:
+            tblp.setColumnHidden(nk_num_tk, True)
 
     @CQT.onerror
     def prosmotr_kd_load(self):
@@ -668,14 +687,31 @@ class mywindow(QtWidgets.QMainWindow):
         tbl = self.ui.tbl_td
         if tbl.currentRow() == -1:
             return
-        name = tbl.item(tbl.currentRow(),0).text()
-        list_of_files_c = F.list_of_files_c(F.scfg('td'))
-        for file in list_of_files_c[0][2]:
-            if name == F.throw_out_extention_c(file):
-                F.run_file_c(list_of_files_c[0][0] + F.sep() + file)
-                return
-        CQT.msgbox(f'Файл {name} не найден')
+        col_doc = CQT.num_col_by_name_c(tbl, 'Документ') #30.07.25
+        col_tk = CQT.num_col_by_name_c(tbl, 'Номер_техкарты')
+        if col_doc is None or col_tk is None:
+            return
+        tk = tbl.item(tbl.currentRow(), col_tk).text()
+        name = tbl.item(tbl.currentRow(), col_doc).text()
+        if tk:
+            file = CSQ.custom_request_c(USRCNF.Config.project.db_files, f"""
+               SELECT reestr.file
+               FROM t_kards
+                        LEFT JOIN names ON t_kards.file_name = names.name
+                        LEFT JOIN reestr ON names.nom_data = reestr.Пномер
+               WHERE t_kards.t_kard_name = {tk!r} and t_kards.file_name = {name!r}
+            """, rez_dict=True, one=True)
+            _, ext = os.path.splitext(name)
+            if not file or not isinstance(file.get('file'), bytes):
+                return CQT.msgbox(f'Файл {name!r} не найден')
+            path = F.save_tmp_win_dir_file(file.get('file'), extention=ext)
+            return os.startfile(path)
 
+        else:
+            path = F.find_file_by_name_without_extension(F.scfg('td'), name)
+            if not path:
+                return CQT.msgbox(f'Файл {name} не найден')
+            F.run_file_c(path)
 
     @CQT.onerror
     def otkrit_kd(self,*args):
@@ -890,6 +926,70 @@ class mywindow(QtWidgets.QMainWindow):
         else:
             tbl.item(i, j).setText('')
 
+    def unpack_links_to_documents(
+            self,
+            task_text: str,
+            label: QtWidgets.QTextBrowser,
+            font_family: str = 'Arial',
+            font_weight: str = 'normal',
+            font_size: str = '14pt',
+            regex: str = r'Документы: (.*?)\n',
+            folder_with_pointer_href: str = F.scfg('td'),
+    ) -> str:
+        """
+        Принимает текст :task_text и по регулярному выражению :regex определяет какие элементы
+            в тексте станут ссылками <a>, ведущими на элемент из директории :folder_with_pointer_href
+        Мутирует объект QTextBrowser изменяя поведение:
+        - Объект не распаковывает бинарное содержимое путем QTextBrowser.setText, а пытается открыть файл
+        Если файл не существует ссылка не распаковывается
+
+        :task_text Текст задания
+        :label Объект QTextBrowser для распаковки текста
+        :regex Регулярное выражение для поиска строки-ссылки
+        :folder_with_pointer_href Папка в которой будет производится поиск имени файла для составления href=
+        :font_size Размер шрифта после обработки
+        :font_weight Жирность шрифта после обработки
+        :font_family Семейство шрифтов
+        """
+        ul_form = '<ul>%(text)s</ul>'
+        li_form = '<li>%(text)s</li>'
+        a_form = '<li><a href="file:///%(link)s">%(text)s</a></li>'
+        pre_form = f'<pre style="font-family: {font_family!r}; font-weight: {font_weight}; font-size: {font_size};">%(text)s</pre>'
+
+        signal_posted = label.property('anchor_posted')
+        if not signal_posted:
+            def anchorClicked(url, *args):
+                if url.scheme() == 'file':
+                    file_path = url.toLocalFile()
+                    os.startfile(file_path)
+                return False
+            label.anchorClicked.connect(anchorClicked)
+            label.setProperty('anchor_posted', True)
+
+        matches = re.findall(regex, task_text)
+        for match in matches:
+            if not match:
+                continue
+            iter_state = []
+            documents = match.split('; ')
+            for doc in documents:
+                cleaned_doc = doc.strip()
+                if not cleaned_doc:
+                    continue
+                path = F.find_file_by_name_without_extension(folder_with_pointer_href, doc)
+                if not path:
+                    iter_state.append(li_form % {'text': doc})
+                    continue
+                resolve = F.resolve_lnk_target(path)
+                if not pathlib.Path(resolve).exists():
+                    iter_state.append(li_form % {'text': doc})
+                    continue
+                iter_state.append(a_form % {'link': path, 'text': doc})
+            text = ul_form % {'text': ''.join(iter_state)}
+            task_text = task_text.replace(match, text)
+        label.setOpenLinks(False)
+        return pre_form % {'text': task_text}
+
     @CQT.onerror
     def load_naruad(self,r,c,*args):
         def fill_cmbs_type_brak(self):
@@ -951,7 +1051,8 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.lbl_nom_mk.setText(dict_row['Номер_мк'])
         self.ui.lbl_isp1.setText(dict_row['ФИО'])
         self.ui.lbl_isp2.setText(dict_row['ФИО2'])
-        self.ui.textBrowser_zadanie.setText(zadanie.replace('LF','\n'))
+        linked_text = self.unpack_links_to_documents(task_text=zadanie.replace('LF', '\n'), label=self.ui.textBrowser_zadanie)
+        self.ui.textBrowser_zadanie.setHtml(linked_text)
         self.glob_otk_kontrol = is_otk_nar(self,dict_row['Операции'])
         CQT.clear_tbl(self.ui.tbl_list_brak)
         self.list_otk_brak = copy.copy(self.glob_list_otk_brak)

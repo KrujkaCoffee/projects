@@ -216,7 +216,13 @@ class mywindow_res(QtWidgets.QDialog):  # диалоговое окно
     @CQT.onerror
     def load_list_old_res(self,*args):
         list_mk_res = CSQ.custom_request_c(self.myparent.db_resxml,f"""SELECT Номер_мк FROM res""",hat_c=False,one_column=True)
-        list_mk = CSQ.custom_request_c(self.myparent.bd_naryad, f"""SELECT 'МК' as 'Тип', Пномер, Номенклатура as Имя FROM mk WHERE Пномер in ({CSQ.prepare_list_to_tuple(list_mk_res)})""", rez_dict=True)
+        list_mk = CSQ.custom_request_c(self.myparent.bd_naryad, f"""
+            SELECT 'МК' as 'Тип', mk.Пномер, mk.Номенклатура as Имя 
+            FROM mk 
+            INNER JOIN plan ON plan.Пномер = mk.НомКплан
+            WHERE mk.Пномер in ({CSQ.prepare_list_to_tuple(list_mk_res)})
+                AND plan.poki = {USRCNF.Config.place.poki}
+""", rez_dict=True, attach_dbs=USRCNF.Config.project.db_kplan) # 05.08.25
         list_tkp =  CSQ.custom_request_c(self.myparent.db_resxml,f"""SELECT 'ТКП' as 'Тип', Пномер as Пномер,  Имя as Имя FROM predv_res;""",rez_dict=True)
 
         for row in list_mk:
@@ -242,7 +248,7 @@ class mywindow_res(QtWidgets.QDialog):  # диалоговое окно
         res_old = None
         if row['Тип'] == 'МК':
             res_old = int(row['Пномер'])
-
+            res_old = CMS.load_res(res_old,'','',self=self.myparent)
 
         if row['Тип'] == 'ТКП':
             s_num = row['Пномер']
@@ -334,8 +340,7 @@ class mywindow_res(QtWidgets.QDialog):  # диалоговое окно
         affix = ''
 
         msg_about_nomen = f''
-
-        if not self.res_obj.is_tkp:
+        if not self.res_obj.is_tkp and not self.res_obj.num_kpl == 3345:
             name_izd = self.res_obj.izd
             if name_izd:
                 affix = f' И Номенклатура.Наименование = "{name_izd}"'

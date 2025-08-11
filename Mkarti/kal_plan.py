@@ -1014,7 +1014,7 @@ def btn_pl_open_dir(self: mywindow):
     np = poz.dict_tables['пл_оуп']['№проекта']
     py = poz.dict_tables['пл_оуп']['№ERP']
     year_py = poz.dict_tables['пл_оуп']['Год']
-    path = CMS.path_to_proj_NPPY_c(np, py, True,year_py)
+    path = CMS.get_path_to_proj_NPPY_c(np, py, year_py, poz.get_napravl()['projects_localnet_path']) #08.08.25
     F.open_dir_c(path)
 
 
@@ -1672,7 +1672,7 @@ def btn_pl_load_norm(self: mywindow):
             else:
                 ind_field = 'НомПл'
             fl_fill = True
-            old_time = 0
+            old_time = 0.0
             if key in dict_form_db:
                 old_time = dict_form_db[key]
                 if norma == dict_form_db[key]:
@@ -1681,6 +1681,8 @@ def btn_pl_load_norm(self: mywindow):
                 old_time = row_time_add_etap[key]
                 if norma == row_time_add_etap[key]:
                     fl_fill = False
+            if old_time == norma and norma == 0.0: #28.07.25 по задаче 100057452
+                fl_fill = False
             if fl_fill:
                 CSQ.custom_request_c(self.db_kplan,
                                      f"""UPDATE {tbl} SET {field} = {norma} WHERE {ind_field} = {pnom} """)

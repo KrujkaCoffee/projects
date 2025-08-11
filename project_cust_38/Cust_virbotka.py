@@ -49,17 +49,16 @@ def summ_hours_repo_card_new_c(fio,tabel,number_of_day_c = ''):
         n_k_sotr = F.num_col_by_name_in_hat_c(tabel,'ФИО')
         if n_k_sotr == None:
             print(' Не найдена колонка ФИО в табеле')
-            raise 
-        for i in range(2,len(tabel)):
-            if len(tabel[i]) > n_k_sotr and fio in tabel[i][n_k_sotr]:
+            raise
+        for empl_tabel in reversed(tabel): #08.08.25 по задаче
+            if len(empl_tabel) > n_k_sotr and fio in empl_tabel[n_k_sotr]:
                 summ = 0
-                for k in range(3, len(tabel[i])):
-                    summ += F.valm(tabel[i][k])
+                for k in range(3, len(empl_tabel)):
+                    summ += F.valm(empl_tabel[k])
                 summ = 1 if summ == 0 else summ
                 return summ
         return 1
-    except:
-        print(tabel[i])
+    except Exception as e:
         return
 
 

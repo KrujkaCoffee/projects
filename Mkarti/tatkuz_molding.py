@@ -786,9 +786,11 @@ def load_order_tch(self: mywindow, order_obj: OrderMold, view_mode: bool):
             CQT.tbl_set_val_wo_signal(tbl_tch, i, nf_autocalc, '')
             # tbl_tch.item(i,nf_autocalc).setText('')
     if not CFG.Config.user_config.is_developer: #25.07.25
-        tbl_tch.setColumnHidden(CQT.num_col_by_name_c(tbl_tch,"s_num"),True)
-        tbl_tch.setColumnHidden(CQT.num_col_by_name_c(tbl_tch,"order_mold"),True)
-        tbl_tch.setColumnHidden(CQT.num_col_by_name_c(tbl_tch,"stage_order"),True)
+        columns_for_hide = ("s_num", "order_mold", "stage_order")
+        for column in columns_for_hide:
+            current_index = CQT.num_col_by_name_c(tbl_tch,column)
+            if CQT.num_col_by_name_c(tbl_tch,column) is not None:
+                tbl_tch.setColumnHidden(current_index, True)
 @CQT.onerror
 def del_row_mold_tch(self:mywindow):
     if not self._ttkz_tmp_settings.current_stage in (2, 3):
