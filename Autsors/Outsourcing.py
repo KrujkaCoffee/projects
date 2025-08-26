@@ -4,6 +4,7 @@ import pathlib
 import sys
 import re
 from collections import defaultdict
+from enum import Enum
 
 import requests
 from PyQt5 import QtWidgets, QtCore, QtGui
@@ -339,6 +340,9 @@ class TreeObjs:
     def __iter__(self):
         return iter(self.__inst)
 
+    def __enter__(self):
+        self.context = []
+
     def first_object(self) -> ObjBranch | None:
         for _, val in self.__inst.items():
             return val
@@ -441,6 +445,12 @@ def change_logger(action: str, data: str):
     fio = F.user_full_namre()
     query = "INSERT INTO out_journal(Событие, ФИО, Данные) VALUES(?, ?, ?)"
     return CSQ.custom_request_c(CFG.Config.project.db_naryad, query, list_of_lists_c=[[action, fio, data]])
+
+class BtnAddLineState(Enum):
+    CHANGE_TYPE = 'Сменить тип документа в ERP'
+    EDIT_DOC = 'Редактировать документ'
+    CREATE_DOC = 'Создать документ в ERP'
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -595,15 +605,61 @@ class MainWindow(QMainWindow):
             for param in params
         }
 
-    def get_docs(self, Номер_заявки, *args):
+    def get_attached_docs(self, current_doc):
+
+        from project_cust_38 import api_erp_commands as AEC
+        order = self.tree_objs2.first_object()
+        if not order:
+            return
+        item = order.current
+        if not item:
+            return CQT.msgbox('Не выбрана заявка')
+
+        prefix, doc_name = current_doc.split('_', 1)
+
+        query = f"""
+         ВЫБРАТЬ
+         	{doc_name}ПрисоединенныеФайлы.Наименование КАК Наименование,
+         	{doc_name}ПрисоединенныеФайлы.Размер КАК Размер,
+         	{doc_name}ПрисоединенныеФайлы.Расширение КАК Расширение
+        ИЗ
+            Справочник.{doc_name}ПрисоединенныеФайлы КАК {doc_name}ПрисоединенныеФайлы
+        ГДЕ {doc_name}ПрисоединенныеФайлы.ВладелецФайла = &ВладелецФайла И {doc_name}ПрисоединенныеФайлы.ПометкаУдаления = ЛОЖЬ
+        """
+        order_id = item.get('Номер_заявки')
+        order = CSQ.custom_request_c(
+            CFG.Config.project.db_naryad,
+            f"SELECT Ref_Key, НаименованиеДокумента FROM outsource WHERE id = {order_id}",
+            rez_dict=True,
+            one=True
+        )
+        if not order:
+            return
+        ref = order['Ref_Key']
+        if ref is None:
+            return
+        refs = AEC.Refs_wet(query)
+        ref_obj = AEC.Ref_wet('ВладелецФайла', 'Документы.ЗаказПереработчику2_5', ref)
+        refs.add_ref(ref_obj)
+        code, data = AEC.get_wet_request(text=query, refs=refs)
+        files = data['data']
+
+        if files is None:
+            return CQT.msgbox('Произошла ошибка при попытке запроса прикрепленных файлов 1С')
+        if files:
+            return [f'{file["Наименование"]}.{file["Расширение"]}' for file in files]
+        return []
+
+
+    def get_docs(self, Номер_заявки, doc_name, *args):
         oper_docs = TKDOCS.OperationDocs(self, None)
         # tbl = self.ui.tbl_list_zayv
         # cur_data = CQT.get_dict_line_form_tbl(tbl)
         nars = select_naryads(Номер_заявки=Номер_заявки)
         dse = []
-        result = [['ID', 'ДСЕ', 'Операция', 'Документ', 'Прикрепить']]
+        result = [['ID', 'ДСЕ', 'Операция', 'Документ', 'Просмотреть', 'Прикрепить']]
         poki = CFG.Config.place.poki
-
+        attached_docs = self.get_attached_docs(doc_name)
         for nar in nars:
             dse_names = nar['ДСЕ'].split('|')
             nom_mk = nar['Номер_мк']
@@ -622,7 +678,10 @@ class MainWindow(QMainWindow):
                     for doc in oper[15].split('%20'):
                         file_id, form, name, full_name = oper_docs.unpack_include_format(doc)
                         if file_id:
-                            result.append([file_id, nn, oper[0], full_name, ''])
+                            text_btn = '✅ Прикреплено'
+                            if full_name not in attached_docs:
+                                text_btn = '<attach_check>|Прикрепить'
+                            result.append([file_id, nn, oper[0], full_name, '<view_btn>|👁', text_btn])
         return result
 
     def oform_docs_table(self, tbl: QtWidgets.QTableWidget):
@@ -836,10 +895,16 @@ class MainWindow(QMainWindow):
         self.info_focus_table = 'main'
         data = defaultdict(dict)
         tbl_val = CQT.get_dict_line_form_tbl(self.ui.tbl_list_zayv)
+        new_item = self.inject_params_into_object_item(self.tree_objs2[self.current_obj_name], tbl_val)
+        self.tree_objs2[self.current_obj_name].current = new_item
+
+        self.change_create_order_btn_state()
         if tbl_val.get('НаУдаление') == '1':
             self.ui.btn_delete_line.setText('Снять с удаления')
+            self.ui.btn_add_line.setEnabled(False)
         else:
             self.ui.btn_delete_line.setText('Поставить удаление')
+            self.ui.btn_add_line.setEnabled(True)
 
         for param, value in tbl_val.items():
             param_object = self.info_params.get(param)
@@ -1120,7 +1185,7 @@ class MainWindow(QMainWindow):
         current_row = current_order.current
         order_id = current_row.get('Номер_заявки')
         delete_mark = current_row.get('НаУдаление', '0')
-        btn.setEnabled(delete_mark == '0')
+        btn.setEnabled(str(delete_mark) == '0')
         if order_id and delete_mark == '0':
             # btn.setEnabled(True)
             order_id = int(order_id)
@@ -1138,13 +1203,20 @@ class MainWindow(QMainWindow):
     def change_create_order_btn_state(self, *args):
         ref_key = self.get_order_ref_key()
         btn = self.ui.btn_add_line
-        text = 'Создать документ в ERP'
-        if ref_key:
-            text = 'Сменить тип документа в ERP'
+        current_order = self.tree_objs2.first_object()
+        if not current_order: return
+        order_data = current_order.current
+        calced_doc_type = self.get_doc_type_by_order_info()
+        current_doc_type = order_data.get('НаименованиеДокумента')
+        if current_doc_type and calced_doc_type != current_doc_type:
+            text = BtnAddLineState.CHANGE_TYPE.value
+        elif ref_key:
+            text = BtnAddLineState.EDIT_DOC.value
+        else:
+            text = BtnAddLineState.CREATE_DOC.value
         btn.setText(text)
 
     def item_zayav_selected(self, model_index: QtCore.QModelIndex, *args):
-        self.change_create_order_btn_state()
         tbl = self.ui.tree_objs
         tbl_order = self.ui.tbl_list_zayv
         row = model_index.row()
@@ -1156,14 +1228,14 @@ class MainWindow(QMainWindow):
             order_id = tbl_order.item(row, nk_order_id).text()
             response = CSQ.custom_request_c(
                 CFG.Config.project.db_naryad,
-                f'SELECT Ref_Key FROM outsource WHERE id = {order_id}',
+                f'SELECT Ref_Key, НаименованиеДокумента FROM outsource WHERE id = {order_id}',
                 rez_dict=True,
                 one=True
             )
             ref_key = type_doc = None
             if isinstance(response, dict):
                 ref_key = response.get('Ref_Key')
-                type_doc = model_index.data()
+                type_doc = response.get('НаименованиеДокумента')
 
         if col == nk_type_doc and type_doc and ref_key:
             code, data = self.erp_client.get_document(type_doc, ref_key)
@@ -1184,6 +1256,8 @@ class MainWindow(QMainWindow):
             if nk_obj := CQT.num_col_by_name_c(tbl, 'Объект'):
                 if inst := self.tree_objs2[name]:
                     inst.current = tbl_values
+                    self.change_create_order_btn_state()
+
                 nk_filtr = CQT.num_col_by_name_c(tbl, 'Фильтр')
                 item_obj = tbl.item(self.obj_current_row, nk_obj)
                 item_filtr = tbl.item(self.obj_current_row, nk_filtr)
@@ -1382,24 +1456,28 @@ class MainWindow(QMainWindow):
         self.create_an_order_in_ERP()
 
     def btn_create_or_change_order_type(self, *args):
-        # self.create_an_order_in_ERP()
-
         ref_key = self.get_order_ref_key()
-        if ref_key:
+        btn_state = self.ui.btn_add_line.text()
+        if btn_state == BtnAddLineState.CHANGE_TYPE.value:
             self.change_order_type(ref_key)
-        else:
+        if btn_state == BtnAddLineState.EDIT_DOC.value:
+            self.edit_an_order_in_ERP()
+        if btn_state == BtnAddLineState.CREATE_DOC.value:
             self.create_an_order_in_ERP()
 
+
+    def get_current_tree(self, root: ObjBranch):
+        data = root.child.get_data()
+        struct = root.current
+        for item in data:
+            child = root.child
+            mutable_item = self.inject_params_into_object_item(child, item)
+            child.current = mutable_item
+            struct.setdefault(f'_{child.name}', list()).append(self.get_current_tree(child))
+        return struct
+
     @CQT.onerror
-    def create_an_order_in_ERP(self, *args):
-        def g_data(cur_dic, obj: ObjBranch):
-            obj.current = cur_dic
-            lst_items = obj.child.get_data()
-            for i in lst_items:
-                params = self.get_object_params(obj.child.name)
-                i.update({field.get('Поле'): field.get('value') for field in params})
-                g_data(i, obj.child)
-            cur_dic['_' + obj.child.name] = lst_items
+    def edit_an_order_in_ERP(self, *args):
         tbl = self.ui.tbl_list_zayv
         current_row = tbl.currentRow()
         order_object = self.tree_objs2.first_object()
@@ -1407,18 +1485,16 @@ class MainWindow(QMainWindow):
         if not cur_order:
             CQT.msgbox('Сначала необходимо выбрать заявку')
             return
-        # cur_order = CQT.get_dict_line_form_tbl(self.ui.tbl_list_zayv)
         order_id = cur_order['Номер_заявки']
-        tree = TreeObjs()
-        order = tree.first_object()
-        order.current = cur_order
-        data = []
-        items = order.child.get_data()
-        nar = order.child
-        for item in items:
-            g_data(item, nar)
-            data.append(item)
-        nomen_dse = [dse for naryad in data for dse in naryad['_ДСЕ']]
+        order = CSQ.custom_request_c(
+            CFG.Config.project.db_naryad,
+            f'SELECT Ref_Key, НаименованиеДокумента FROM outsource WHERE id = {order_id}',
+            rez_dict=True,
+            one=True
+        )
+        ref_key = order['Ref_Key']
+        result = self.get_current_tree(self.tree_objs2.first_object())
+        nomen_dse = [dse for naryad in result['_Наряд'] for dse in naryad['_ДСЕ']]
         key_use_mats = 'Использование сырья'
         a = self.DICT_EMPLOEE_FULL.get(F.user_full_namre())
         dep_uuid = self.erp_client.department_by_individual_id(a.get('ID_ФизЛица'))
@@ -1437,13 +1513,111 @@ class MainWindow(QMainWindow):
         code = 500
         doc_name = ''
         response = None
-        docs = self.get_docs(order_id)
         match cur_order.get(key_use_mats):
             case 'Давальческое':
                 doc_name = 'Document_ЗаказПереработчику2_5'
+                docs = self.get_docs(order_id, doc_name)
+                code, response = self.erp_client.edit_order(docs=docs, doc_name=doc_name, data_for_order=data_for_order, nomen_dse=nomen_dse, ref_key=ref_key)
+            case 'Поставщика':
+                doc_name = 'Document_ЗаказПоставщику'
+                docs = self.get_docs(order_id, doc_name)
+                code, response = self.erp_client.edit_order(docs=docs, doc_name=doc_name, data_for_order=data_for_order, nomen_dse=nomen_dse, ref_key=ref_key)
+            case _:
+                CQT.msgbox(f'Поле {key_use_mats!r} не заполнено')
+        if code == 201:
+            ref_key_new_order = response['Ref_Key']
+            code_new_order = response['Number']
+            date_new_order = response['Date']
+            self.erp_client.mark_author(ref_key_new_order, doc_name, data_for_order.get('Автор'))
+            order_id = cur_order.get('Номер_заявки')
+            response = CSQ.custom_request_c(
+                CFG.Config.project.db_naryad,
+                f'UPDATE outsource SET Ref_Key = {ref_key_new_order!r}, НаименованиеДокумента = {doc_name!r} WHERE id = {order_id}'
+            )
+            if response:
+                domain = 'srv-1c:3541'
+                base_name = self.erp_client.client.srv_name
+                nomen_endpoint = '.'.join(doc_name.split('_', 1))
+                link = OERP.make_reference_on_erp_entity(
+                    domain=domain,
+                    base_name=base_name,
+                    nomen_endpoint=nomen_endpoint,
+                    ref_key_odata=ref_key_new_order
+                )
+                return CQT.msgboxg_get_table(
+                    self,
+                    'Документ успешно создан',
+                    dict_or_list=[
+                        {'Поле': 'Ссылка', 'Значение': f'{link}|Открыть документ в erp'},
+                        {'Поле': 'Код', 'Значение': code_new_order},
+                        {'Поле': 'Дата', 'Значение': date_new_order},
+                    ],
+                    load_links=True,
+                    styleSheet=CQT.ERP_CSS,
+                    show_filtr=False
+                )
+            CQT.msgbox('Ошибка. Не удалось создать заявку')
+
+    @CQT.onerror
+    def create_an_order_in_ERP(self, *args):
+        def g_data(cur_dic, obj: ObjBranch):
+            cur_dic = self.inject_params_into_object_item(obj, cur_dic)
+            obj.current = cur_dic
+            lst_items = obj.child.get_data()
+            for i in lst_items:
+                # params = self.get_object_params(obj.child.name)
+                # i.update({field.get('Поле'): field.get('value') for field in params})
+                g_data(i, obj.child)
+            cur_dic['_' + obj.child.name] = lst_items
+        tbl = self.ui.tbl_list_zayv
+        current_row = tbl.currentRow()
+        order_object = self.tree_objs2.first_object()
+        cur_order = order_object.current
+        if not cur_order:
+            CQT.msgbox('Сначала необходимо выбрать заявку')
+            return
+        # cur_order = CQT.get_dict_line_form_tbl(self.ui.tbl_list_zayv)
+        order_id = cur_order['Номер_заявки']
+        # tree = TreeObjs()
+        # order = tree.first_object()
+        # order.current = cur_order
+        # data = []
+        # items = order.child.get_data()
+        # result = {}
+        result = self.get_current_tree(self.tree_objs2.first_object())
+        # if '_Наряд' not in result:
+        #     return
+        # nar = order.child
+        # for item in items:
+        #     g_data(item, nar)
+        #     data.append(item)
+        nomen_dse = [dse for naryad in result['_Наряд'] for dse in naryad['_ДСЕ']]
+        key_use_mats = 'Использование сырья'
+        a = self.DICT_EMPLOEE_FULL.get(F.user_full_namre())
+        dep_uuid = self.erp_client.department_by_individual_id(a.get('ID_ФизЛица'))
+        if len(dep_uuid) >= 1:
+            dep_uuid = dep_uuid[0]
+        else:
+            return CQT.msgbox('Не удалось опрелить подразделение')
+        data_for_order = {
+            'Комментарий': cur_order.get('Комментарий'),
+            'Менеджер_Key': dep_uuid.get('Ref_Key'),
+            'Автор_Key': dep_uuid.get('Ref_Key'),
+            'Подразделение_Key': dep_uuid.get('Подразделение_Key'),
+            'ЖелаемаяДатаПоступления': cur_order.get('ЖелаемаяДатаПоступления'),
+            'ДополнительнаяИнформация': cur_order.get('ДополнительнаяИнформация')
+        }
+        code = 500
+        doc_name = ''
+        response = None
+        match cur_order.get(key_use_mats):
+            case 'Давальческое':
+                doc_name = 'Document_ЗаказПереработчику2_5'
+                docs = self.get_docs(order_id, doc_name)
                 code, response = self.erp_client.create_order(docs=docs, doc_name=doc_name, data_for_order=data_for_order, nomen_dse=nomen_dse)
             case 'Поставщика':
                 doc_name = 'Document_ЗаказПоставщику'
+                docs = self.get_docs(order_id, doc_name)
                 code, response = self.erp_client.create_order(docs=docs, doc_name=doc_name, data_for_order=data_for_order, nomen_dse=nomen_dse)
             case _:
                 CQT.msgbox(f'Поле {key_use_mats!r} не заполнено')
@@ -1536,13 +1710,13 @@ class MainWindow(QMainWindow):
         nk_create = CQT.num_col_by_name_c(tbl, 'Создать')
         nk_docs = CQT.num_col_by_name_c(tbl, 'Docs')
         nk_status = CQT.num_col_by_name_c(tbl, 'Статус')
-        for row in range(tbl.rowCount()):
-            # cur_status = tbl.item(row, nk_status).text()
-        #     # TODO создание документа erp
-        #     # TODO просмотр прикрепленных документов docs
-            # if cur_status and self.order_status.index(cur_status) >= 2:
-            # CQT.add_btn(tbl, row, nk_create, 'ERP', conn_func_checked_row_col=self.create_an_order_in_ERP)
-            CQT.add_btn(tbl, row, nk_docs, 'DOC', conn_func_checked_row_col=self.get_docs)
+        # for row in range(tbl.rowCount()):
+        #     # cur_status = tbl.item(row, nk_status).text()
+        # #     # TODO создание документа erp
+        # #     # TODO просмотр прикрепленных документов docs
+        #     # if cur_status and self.order_status.index(cur_status) >= 2:
+        #     # CQT.add_btn(tbl, row, nk_create, 'ERP', conn_func_checked_row_col=self.create_an_order_in_ERP)
+        #     CQT.add_btn(tbl, row, nk_docs, 'DOC', conn_func_checked_row_col=self.get_docs)
 
     def fill_new_zayav(self):
         tbl_zayav = self.ui.tbl_new_order

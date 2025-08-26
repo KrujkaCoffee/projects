@@ -9,6 +9,7 @@ import project_cust_38.Cust_docs as CDCS
 from typing import TYPE_CHECKING
 import project_cust_38.api_erp_commands as APIERP
 from PyQt5.QtWidgets import QLabel
+import project_cust_38.Cust_resource_creator as CRES
 if TYPE_CHECKING:
     from MKart import mywindow
 
@@ -539,7 +540,7 @@ def mold_tch_cellchanged(self: mywindow,row:int,col:int):
         try:
             new_val = self.DICT_NOMEN[new_val]['Пномер']
         except:
-            CQT.msgbox(f'Материал с кодом {new_val} не найден')
+            CQT.msgbox(f'Материал с кодом {new_val} не найден в MES')
             err = True
     if not err:
         try:
@@ -709,7 +710,7 @@ def load_order_tch_res_product(self: mywindow, order_obj: OrderMold, view_mode: 
     CQT.fill_wtabl(tch_data_al, tbl_tch, set_editeble_col_nomera=editeble_col_nomera,
                    list_column_widths=CMS.load_column_widths(self, tbl_tch), save_column_sort_hh=True, auto_type=False,
                    min_width_col=0)
-    CMS.fill_filtr_c(self, tbl_tchf, tbl_tch, hidden_scroll=True)
+
     nf_mat = CQT.num_col_by_name_c(tbl_tch, 'Материал код')
     nf_autocalc = CQT.num_col_by_name_c(tbl_tch, 'АвтоРасчет')
 
@@ -733,10 +734,10 @@ def load_order_tch_res_product(self: mywindow, order_obj: OrderMold, view_mode: 
             CQT.tbl_set_val_wo_signal(tbl_tch, i, nf_autocalc, '')
             # tbl_tch.item(i,nf_autocalc).setText('')
     if not CFG.Config.user_config.is_developer: # 25.07.25
-        tbl_tch.setColumnHidden(CQT.num_col_by_name_c(tbl_tch,"s_num"),True)
-        tbl_tch.setColumnHidden(CQT.num_col_by_name_c(tbl_tch,"order_mold"),True)
-        tbl_tch.setColumnHidden(CQT.num_col_by_name_c(tbl_tch,"stage_order"),True)
-
+        tbl_tch.setColumnHidden(CQT.num_col_by_name_c(tbl_tch,"s_num",-1),True)
+        tbl_tch.setColumnHidden(CQT.num_col_by_name_c(tbl_tch,"order_mold",-1),True)
+        tbl_tch.setColumnHidden(CQT.num_col_by_name_c(tbl_tch,"stage_order",-1),True)
+    CMS.fill_filtr_c(self, tbl_tchf, tbl_tch, hidden_scroll=True)
 def load_order_tch(self: mywindow, order_obj: OrderMold, view_mode: bool):
     def fnc_set_autocalc_mode(checked, row, col):
 
@@ -764,7 +765,7 @@ def load_order_tch(self: mywindow, order_obj: OrderMold, view_mode: bool):
     CQT.fill_wtabl(tch_data_al, tbl_tch, set_editeble_col_nomera=editeble_col_nomera,
                    list_column_widths=CMS.load_column_widths(self, tbl_tch), save_column_sort_hh=True, auto_type=False,
                    min_width_col=0)
-    CMS.fill_filtr_c(self, tbl_tchf, tbl_tch, hidden_scroll=True)
+
     nf_mat = CQT.num_col_by_name_c(tbl_tch, 'Материал код')
     nf_autocalc = CQT.num_col_by_name_c(tbl_tch, 'АвтоРасчет')
 
@@ -791,6 +792,8 @@ def load_order_tch(self: mywindow, order_obj: OrderMold, view_mode: bool):
             current_index = CQT.num_col_by_name_c(tbl_tch,column)
             if CQT.num_col_by_name_c(tbl_tch,column) is not None:
                 tbl_tch.setColumnHidden(current_index, True)
+    CMS.fill_filtr_c(self, tbl_tchf, tbl_tch, hidden_scroll=True)
+
 @CQT.onerror
 def del_row_mold_tch(self:mywindow):
     if not self._ttkz_tmp_settings.current_stage in (2, 3):
@@ -981,6 +984,8 @@ def calc_stage(self:mywindow):
         stage_field = PARAMS_FIELDS_MOLDING_DB.dict_vars[name].Этап+1
         if PARAMS_FIELDS_MOLDING_DB.dict_vars[name].is_numeric:
             v = F.valm(v)
+        if PARAMS_FIELDS_MOLDING_DB.dict_vars[name].РазрешенНульИПусто:
+            v = True
         if stage_field <= stage and not v:
             stage = stage_field -1
     if stage == 3 and not order_obj.load_tch().data:
@@ -1083,7 +1088,22 @@ def apply_stage(self:mywindow):
         tab_rs_tch.setTabVisible(tab_res_product_ind, True)
         tab_rs_tch.setCurrentIndex(CQT.number_table_by_name_c(tab_rs_tch, 'Итоговая РС на изделие'))
         btn_res_product.setEnabled(True)
-
+    if stage == 4:  # готово
+        btn_sand_data.setEnabled(False)
+        btn_mat_mold_calc.setEnabled(False)
+        btn_add_row_mold_tch.setEnabled(False)
+        btn_del_row_mold_tch.setEnabled(False)
+        btn_apply_data_mold.setEnabled(False)
+        btn_cancel_data_mold.setEnabled(False)
+        fr_rs_tch.setVisible(True)
+        tab_rs_tch.setTabVisible(tab_materials_for_forming_ind, True)
+        tab_rs_tch.setTabVisible(tab_res_product_ind, True)
+        tab_rs_tch.setCurrentIndex(CQT.number_table_by_name_c(tab_rs_tch, 'Итоговая РС на изделие'))
+        btn_upload_1c_mold_tch.setEnabled(False)
+        btn_res_product.setEnabled(False)
+        if CFG.Config.user_config.is_developer: #25.07.25
+            btn_upload_1c_mold_tch.setEnabled(True)
+            btn_res_product.setEnabled(True)
 
     if self._ttkz_tmp_settings.view_mode:
         btn_apply_data_mold.setEnabled(False)
@@ -1122,13 +1142,14 @@ def load_order_data(self: mywindow, edit_etap_num=9):
 
             wet_req_text = f"""ВЫБРАТЬ
     Номенклатура.Наименование КАК Наименование,
-    Номенклатура.Код КАК Код
+    Номенклатура.Код КАК Код,
+    Номенклатура.ВидНоменклатуры.Наименование КАК ВидНоменклатуры
 ИЗ
     Справочник.Номенклатура КАК Номенклатура
 ГДЕ
     Номенклатура.ПометкаУдаления = ЛОЖЬ
     И Номенклатура.ВидНоменклатуры.Родитель.Наименование = "ТАТКУЗ"
-    И Номенклатура.ВидНоменклатуры.Наименование = "Стандартные изделия";"""
+    И (Номенклатура.ВидНоменклатуры.Наименование = "Стандартные изделия" ИЛИ Номенклатура.ВидНоменклатуры.Наименование = "Сырьё для сплава");"""
             key, data_rez = APIERP.get_wet_request(wet_req_text)
             if key != 200:
                 CQT.msgbox(f'Ошибка получения данных код ({key}) из ERP')
@@ -1181,7 +1202,7 @@ def load_order_data(self: mywindow, edit_etap_num=9):
     data = F.sort_by_column_c(data,"stage",)
 
     CQT.fill_wtabl(data, tbl, set_editeble_col_nomera={"Значение"},list_column_widths=CMS.load_column_widths(self,tbl) )
-    CMS.fill_filtr_c(self, self.ui.tbl_data_mold_filtr, tbl, hidden_scroll=True)
+
     nf_val = CQT.num_col_by_name_c(tbl,"Значение")
     nf_req = CQT.num_col_by_name_c(tbl,"Реквизит")
     for i in range(tbl.rowCount()):
@@ -1208,9 +1229,9 @@ def load_order_data(self: mywindow, edit_etap_num=9):
                 CQT.add_label_link(tbl,i,nf_val,link_name,link_name,fcn_select_name_nomen_for_forming,self)
                 CQT.font_cell_size_format(tbl, i, nf_req, bold=True)
     if not CFG.Config.user_config.is_developer: #25.07.25
-        tbl.setColumnHidden(CQT.num_col_by_name_c(tbl,"stage"),True)
-        tbl.setColumnHidden(CQT.num_col_by_name_c(tbl,"Name"),True)
-
+        tbl.setColumnHidden(CQT.num_col_by_name_c(tbl,"stage",-1),True)
+        tbl.setColumnHidden(CQT.num_col_by_name_c(tbl,"Name",-1),True)
+    CMS.fill_filtr_c(self, self.ui.tbl_data_mold_filtr, tbl, hidden_scroll=True)
     print()
 
 def ___________Order_data____________():
@@ -1306,7 +1327,7 @@ def get_mat_data(DICT_NOMEN:dict, some_code:int|str, check_in_erp=False):
         try:
             code = DICT_NOMEN[some_code]['Код']
         except:
-            CQT.msgbox(f'Материал с кодом {some_code} не найден')
+            CQT.msgbox(f'Материал с кодом {some_code} не найден в MES')
             return
         Материалы_Статья_калькуляции = 'Сырье'
         if code in ('00-00167505'):
@@ -1343,7 +1364,7 @@ def get_mat_data(DICT_NOMEN:dict, some_code:int|str, check_in_erp=False):
                 CQT.msgbox(f'Ошибка получения данных код ({key}) из ERP')
                 return
             if not data_rez['data']:
-                CQT.msgbox(f'Материал с кодом {code} не найден')
+                CQT.msgbox(f'Материал с кодом {code} не найден в {CFG.Config.user_config.ERP_base_name["Значение"]}')
                 is_found = False
 
     else:
@@ -1369,7 +1390,7 @@ def get_mat_data(DICT_NOMEN:dict, some_code:int|str, check_in_erp=False):
                 РесурсныеСпецификации.Наименование КАК  Наименование,
                 РесурсныеСпецификации.ОсновноеИзделиеНоменклатура.ЕдиницаИзмерения.Наименование КАК ЕдиницаИзмерения,
                 "Полуфабрикаты производимые в процессе" КАК Материалы_Статья_калькуляции,
-                "ПроизвестиПоСпецификации" КАК Способы_получения_материала,
+                "Произвести по спецификации" КАК Способы_получения_материала,
                 РесурсныеСпецификации.ОсновноеИзделиеНоменклатура.Код КАК КодНоменклатура,
                 РесурсныеСпецификации.Код  КАК КодИсточник
             ИЗ
@@ -1382,7 +1403,7 @@ def get_mat_data(DICT_NOMEN:dict, some_code:int|str, check_in_erp=False):
             CQT.msgbox(f'Ошибка получения данных код ({key}) из ERP')
             return
         if not data_rez['data']:
-            CQT.msgbox(f'Материал с кодом {some_code} не найден')
+            CQT.msgbox(f'Материал с кодом {some_code} не найден в {CFG.Config.user_config.ERP_base_name["Значение"]}')
             return
         is_found = True
         code = data_rez['data'][0]['КодНоменклатура']
@@ -1408,7 +1429,7 @@ def ___________upload_1c____________():
 def upload_1c_mold(self:mywindow):
     if self._ttkz_tmp_settings.current_stage == 2:
         upload_1c_mold_tch(self)
-    if self._ttkz_tmp_settings.current_stage == 3:
+    if self._ttkz_tmp_settings.current_stage in (3,4):
         upload_1c_res_product_tch(self)
 
 @CQT.onerror
@@ -1494,11 +1515,12 @@ def upload_1c_res_product_tch(self:mywindow):
                     f'пропущен материал \n`{self.DICT_NOMEN_BY_SNUM[mat.mat_kod]["Наименование"]}`\nт.к. кол-во = 0')
         new_trs = dict()
         new_trs[guid_vid_rab] = 73
-
+        ДлительностьЭтапа = 1440
         new_v = {'Опер_наименование_подразделения': ПодразделениеДиспетчер,
                  'Материалы': new_mats,
-                 'Трудозатраты': new_trs}
-        list_etaps.append({'Этап': 'формовка', "Данные": new_v})
+                 'Трудозатраты': new_trs,
+                 'ДлительностьЭтапа':ДлительностьЭтапа}
+        list_etaps.append({'Этап': 'литье', "Данные": new_v})
 
 
         if err:
@@ -1513,6 +1535,88 @@ def upload_1c_res_product_tch(self:mywindow):
             return
 
         return {'hat': hat, 'data': list_etaps}
+
+
+    def generate_res(tch_mold:OrderMoldTch,code_old_res=None) -> CRES.ResourceSpecification|None:
+
+        err = []
+
+        ПодразделениеДиспетчер = CRES.SubdivisionsData._hnt_сталелитейный_цех_таткуз_таткуз_00_000164
+        ОсновноеИзделиеКод = CRES.MainProduct.find_by_code(self._ttkz_tmp_settings.current_order.name_nomen_for_res_product)
+
+        РодительКод = CRES.GroupResData._hnt_литье_таткуз_00_058862
+        ВариантПодбораВДокументы = CRES.VariationsrespecificationdocumentsData._hnt_вручную_1
+        СпособРаспределенияЗатратНаВыходныеИзделия = CRES.TheMethodOfAllocatingTheCostOfTheOutputProductsData._hnt_по_долям_стоимости_0
+
+        # Шапка
+        hat = CRES.ResourceHeader(
+            ОсновноеИзделиеКод=ОсновноеИзделиеКод,
+            ТекущийПользователь=CRES.CurrentUser(F.user_full_namre()),
+            ДатаНачала=F.now("%Y-%m-%d"),
+            ДатаОкончания=F.date_add_days(F.now(""),7,format_out="%Y-%m-%d"),
+            ПодразделениеДиспетчер=ПодразделениеДиспетчер,
+            РодительКод=РодительКод,
+            ВариантПодбораВДокументы=ВариантПодбораВДокументы,
+            Описание='Создан из MES(Мкарты)',
+            СпособРаспределенияЗатратНаВыходныеИзделия=СпособРаспределенияЗатратНаВыходныеИзделия,
+            Код=code_old_res
+        )
+
+
+        # Этап
+        Подразделение = CRES.SubdivisionsData._hnt_сталелитейный_цех_таткуз_таткуз_00_000164
+        stage_data = CRES.StageData(
+            Подразделение=Подразделение,
+            ДлительностьМинут= 1440
+        )
+        # Материалы
+        for mat in tch_mold.data:
+            if mat.val:
+                dict_nomen = get_mat_data(self.DICT_NOMEN_BY_SNUM, mat.mat_kod,True)
+                if not dict_nomen:
+                    CQT.msgbox(
+                        f'Ошибка расчета \n`{mat.mat_kod}`')
+                    return
+                if not dict_nomen['is_found']:
+                    CQT.msgbox(
+                        f'пропущен материал \n`{mat.mat_kod}`\nт.к. не найден в ЕРП')
+                    continue
+
+                СпособПолучения = CRES.MethodOfObtainingMaterialspecificationsData.find_by_name(dict_nomen['Способы_получения_материала'])
+                СтатьяКалькуляции = CRES.ArticulationArticlesData.find_by_name(dict_nomen['Материалы_Статья_калькуляции'])
+                if СтатьяКалькуляции.name == 'Полуфабрикаты производимые в процессе':
+                    ИсточникПолученияПолуфабриката = CRES.SourceOfTheHalffactoryReceipt.find_by_code(dict_nomen['КодИсточник'])
+                else:
+                    ИсточникПолученияПолуфабриката = CRES.SourceOfTheHalffactoryReceipt()
+                mat = CRES.Material(dict_nomen['code'], mat.val, СтатьяКалькуляции, СпособПолучения,ИсточникПолученияПолуфабриката)
+                stage_data.add_material(mat)
+            else:
+                CQT.msgbox(
+                    f'пропущен материал \n`{mat.mat_kod}`\nт.к. кол-во = 0')
+
+        # Трудозатраты
+        ВидРабот = CRES.TypeOfWorkData.find_by_name('литье')
+        labor = CRES.LaborCost(ВидРабот, 90)
+
+        stage_data.add_labor(labor)
+
+        stage = CRES.Stage('литье', stage_data)
+
+        # Итог
+        spec = CRES.ResourceSpecification(hat)
+        spec.add_stage(stage)
+
+
+        if err:
+            err.insert(0, ['Ошибки'])
+            if not CQT.msgboxg_get_table(self, 'Ошибки компоновки', err,
+                                         'Продолжить выгрузку', 'Прервать',
+                                         show_filtr=False, use_first_row_as_header=True, print_hat=True,
+                                         yesNoMode=True):
+                return
+
+        return spec
+
 
     @CQT.onerror
     def send(data) -> dict|bool:
@@ -1530,16 +1634,26 @@ def upload_1c_res_product_tch(self:mywindow):
     tbl = self.ui.tbl_data_mold_tch_res_product
     code_old_res = None
     fl_refilled = False
+
+
+
     if self._ttkz_tmp_settings.current_order.res_product:#'Перезаполнить'
         code_old_res = self._ttkz_tmp_settings.current_order.res_product
         if not clear_res(code_old_res):
             return
         fl_refilled = True
+
     tch_mold = self._ttkz_tmp_settings.current_order.load_tch_res_product()
-    data_to_ERP = generate(tch_mold,code_old_res)
-    if not data_to_ERP:
+    spec_to_ERP = generate_res(tch_mold, code_old_res)
+
+    if not spec_to_ERP:
         return
-    data_answ = send(data_to_ERP)
+    data_answ = spec_to_ERP.send()
+    spec_to_ERP.to_dict()
+    #data_to_ERP = generate(tch_mold,code_old_res)
+    #if not data_to_ERP:
+    #    return
+    #data_answ = send(data_to_ERP)
     if not data_answ:
         return
     code = data_answ['Код'].strip()
@@ -1553,7 +1667,7 @@ def upload_1c_res_product_tch(self:mywindow):
             CMS.send_info_mk_b24_by_action(
             f'''[B]{pref} Итоговая РС на изделие[/B]:
             >> ФИО: {CMS.b24_notation_user_fio()}
-            >> НАИМЕНОВАНИЕ: {data_to_ERP["hat"]["Наименование ресурсной"]}
+            >> НАИМЕНОВАНИЕ:{spec_to_ERP.hat.Наименование}
             >> КОД: [URL={link}]{code}[/URL]
             ''',
             'ТКП ТатКуз')
@@ -1665,6 +1779,81 @@ def upload_1c_mold_tch(self:mywindow):
 
         return {'hat': hat, 'data': list_etaps}
 
+    def generate_res(tch_mold:OrderMoldTch,code_old_res=None) -> CRES.ResourceSpecification|None:
+
+        err = []
+
+        ПодразделениеДиспетчер = CRES.SubdivisionsData._hnt_сталелитейный_цех_таткуз_таткуз_00_000164
+        ОсновноеИзделиеКод = CRES.MainProduct.find_by_code(self._ttkz_tmp_settings.current_order.name_nomen_for_forming)
+
+        РодительКод = CRES.GroupResData._hnt_литье_таткуз_00_058862
+        ВариантПодбораВДокументы = CRES.VariationsrespecificationdocumentsData._hnt_автоматически_по_приоритету_0
+        СпособРаспределенияЗатратНаВыходныеИзделия = CRES.TheMethodOfAllocatingTheCostOfTheOutputProductsData._hnt_по_долям_стоимости_0
+
+        # Шапка
+        hat = CRES.ResourceHeader(
+            ОсновноеИзделиеКод=ОсновноеИзделиеКод,
+            КоличествоУпаковок= 600,
+            Наименование= f'{ОсновноеИзделиеКод.Наименование} (600 {ОсновноеИзделиеКод.ЕдИзм})'  ,
+            ТекущийПользователь=CRES.CurrentUser(F.user_full_namre()),
+            ДатаНачала=F.now("%Y-%m-%d"),
+            ДатаОкончания=F.date_add_days(F.now(""),7,format_out="%Y-%m-%d"),
+            ПодразделениеДиспетчер=ПодразделениеДиспетчер,
+            РодительКод=РодительКод,
+            ВариантПодбораВДокументы=ВариантПодбораВДокументы,
+            Описание='Создан из MES(Мкарты)',
+            СпособРаспределенияЗатратНаВыходныеИзделия=СпособРаспределенияЗатратНаВыходныеИзделия,
+            Код=code_old_res
+        )
+
+
+        # Этап
+        Подразделение = CRES.SubdivisionsData._hnt_сталелитейный_цех_таткуз_таткуз_00_000164
+        stage_data = CRES.StageData(
+            Подразделение=Подразделение,
+            ДлительностьМинут= 1440
+        )
+        # Материалы
+        for mat in tch_mold.data:
+            if mat.val:
+                dict_nomen = get_mat_data(self.DICT_NOMEN_BY_SNUM, mat.mat_kod,True)
+                if not dict_nomen or not dict_nomen['is_found']:
+                    CQT.msgbox(
+                        f'пропущен материал \n`{mat.mat_kod}`\nт.к. не найден в ЕРП')
+                    continue
+
+                СпособПолучения = CRES.MethodOfObtainingMaterialspecificationsData.find_by_name(dict_nomen['Способы_получения_материала'])
+                СтатьяКалькуляции = CRES.ArticulationArticlesData.find_by_name(dict_nomen['Материалы_Статья_калькуляции'])
+
+                mat = CRES.Material(dict_nomen['code'], mat.val, СтатьяКалькуляции, СпособПолучения)
+                stage_data.add_material(mat)
+            else:
+                CQT.msgbox(
+                    f'пропущен материал \n`{mat.mat_kod}`\nт.к. кол-во = 0')
+
+        # Трудозатраты
+        ВидРабот = CRES.TypeOfWorkData.find_by_name('литье')
+        labor = CRES.LaborCost(ВидРабот, 1440)
+
+        stage_data.add_labor(labor)
+
+        stage = CRES.Stage('литье', stage_data)
+
+        # Итог
+        spec = CRES.ResourceSpecification(hat)
+        spec.add_stage(stage)
+
+
+        if err:
+            err.insert(0, ['Ошибки'])
+            if not CQT.msgboxg_get_table(self, 'Ошибки компоновки', err,
+                                         'Продолжить выгрузку', 'Прервать',
+                                         show_filtr=False, use_first_row_as_header=True, print_hat=True,
+                                         yesNoMode=True):
+                return
+
+        return spec
+
     @CQT.onerror
     def send(data) -> dict|bool:
         code, answ = APIERP.post_res_json(data, self.USER_CONFIG.ERP_base_name['Значение'])
@@ -1674,23 +1863,32 @@ def upload_1c_mold_tch(self:mywindow):
             CQT.msgbox(f'Ошибка создания ресурсной. Код {code}\n{answ["Ошибки"]}')
         return False
 
-
     if not check():
         return
 
     tbl = self.ui.tbl_data_mold_tch
     code_old_res = None
     fl_refilled = False
+    tch_mold = self._ttkz_tmp_settings.current_order.load_tch()
+
+
     if self._ttkz_tmp_settings.current_order.materials_for_forming:#'Перезаполнить'
         code_old_res = self._ttkz_tmp_settings.current_order.materials_for_forming
         if not clear_res(code_old_res):
             return
         fl_refilled = True
-    tch_mold = self._ttkz_tmp_settings.current_order.load_tch()
-    data_to_ERP = generate(tch_mold,code_old_res)
-    if not data_to_ERP:
+
+    spec_to_ERP = generate_res(tch_mold,code_old_res)
+    if not spec_to_ERP:
         return
-    data_answ = send(data_to_ERP)
+
+    data_answ = spec_to_ERP.send()
+    spec_to_ERP.to_dict()
+    #data_to_ERP = generate(tch_mold,code_old_res)
+    #if not data_to_ERP:
+    #    return
+    #data_answ = send(data_to_ERP)
+
     if not data_answ:
         return
     code = data_answ['Код'].strip()
@@ -1704,7 +1902,7 @@ def upload_1c_mold_tch(self:mywindow):
             CMS.send_info_mk_b24_by_action(
             f'''[B]{pref} РС на формовку[/B]:
             >> ФИО: {CMS.b24_notation_user_fio()}
-            >> НАИМЕНОВАНИЕ: {data_to_ERP["hat"]["Наименование ресурсной"]}
+            >> НАИМЕНОВАНИЕ: {spec_to_ERP.hat.Наименование}
             >> КОД: [URL={link}]{code}[/URL]
             ''',
             'ТКП ТатКуз')

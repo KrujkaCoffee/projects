@@ -1,5 +1,6 @@
 import copy
 import pathlib
+import typing
 
 import requests
 import subprocess
@@ -860,7 +861,7 @@ def blink_obj_c(self, chislo_mig, obj, msg, koef=0.3,icon = QtWidgets.QMessageBo
         old_col = obj.background()
         font = obj.font()
 
-        msgBox.setFont(font)
+        # msgBox.setFont(font) #25.08.25
         for _ in range(0, chislo_mig):
             obj.setBackground(QtGui.QColor(255, 144, 144))
             time.sleep(koef)
@@ -1036,20 +1037,20 @@ def select_cell(tbl,i,j):
     except:
         pass
 
-def num_col_by_name_c(obj, ima):
+def num_col_by_name_c(obj, ima, not_found_val=None):
     if obj.metaObject().className() == 'QTreeWidget':
         for i in range(obj.columnCount()):
             if obj.headerItem().text(i) == ima:
                 return i
-        return
+
     if obj.metaObject().className() == 'QTableWidget':
         for i in range(obj.columnCount()):
             if obj.horizontalHeaderItem(i) != None:
                 if obj.horizontalHeaderItem(i).text() == ima:
                     return i
-        return
 
-    return
+
+    return not_found_val
 
 def set_val_tbl_by_name(tabl,row:int='',column_name:str='',val:str=''):
     if row == '':
@@ -1633,6 +1634,7 @@ def add_combobox(self = '', table = '', i=0, j=0, list=[], first_void=True,  con
         combo.setCurrentIndex(0)
     if editable:
         combo.setEditable(True)
+    return combo #22.08.25
 
 
 def add_check_box(table, i, j, trisate=False, val=False, conn_func_checked_row_col = '', self = '',enabled=True):
@@ -1846,27 +1848,7 @@ class FillTableDelegator(QtWidgets.QStyledItemDelegate):
 def is_link_like(text: str):
     return F.is_link_like(text)
 
-import cProfile
-import pstats
-import io
 
-
-def profile_qt_function(func):
-    """Декоратор для профилирования отдельных функций PyQt5"""
-    def wrapper(*args, **kwargs):
-        profiler = cProfile.Profile()
-        profiler.enable()
-        try:
-            result = func(*args, **kwargs)
-        finally:
-            s = io.StringIO()
-            ps = pstats.Stats(profiler, stream=s).sort_stats('cumulative')
-            ps.print_stats()
-            profile_data = s.getvalue()
-            print(profile_data)
-        return result
-    return wrapper
-@profile_qt_function
 def fill_wtabl(dict_or_list, object, set_editeble_col_nomera={}, ogr_maxshir_kol=200,
                  min_width_col=20, height_row=30, colorful_edit = True, auto_type=True,head_column:int = None,
                hide_head_column:bool=False,hide_head_rows:bool=False,StretchLastSection=True,select_last_row=False,
@@ -3035,6 +3017,8 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
         ft = self.ui.lbl_text.font()
         ft.setPixelSize(18)
         self.ui.lbl_text.setFont(ft)
+        self.ui.lbl_text.setWordWrap(True)
+
         colorful_edit = True
         if isinstance(dict_or_list, QtWidgets.QTableWidget):
             list_usefull_rows = [_ for _ in range(dict_or_list.rowCount()) if not dict_or_list.isRowHidden(_)]
@@ -3146,6 +3130,9 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
         self.setMinimumHeight(300 + summ_tbl_height)
         self.resize(width_dialog, 300 + summ_tbl_height)
         btn_width = int(round((self.width() / 2 - space * 2) / 2))
+        # Устанавливаем политику размера
+        size_policy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred)
+        self.ui.lbl_text.setSizePolicy(size_policy)
         self.yes_btn = None
         if not disable_btn0:
             if not_standart_close:
@@ -4735,3 +4722,277 @@ class FillHorizontalHeaderSort(QtCore.QObject):
             self.timer.stop()
             QApplication.setOverrideCursor(Qt.ArrowCursor)
         return super().eventFilter(obj, event)
+
+#21.08.25 ++
+
+class InteractiveLabelInstance(QtCore.QObject):
+    def __init__(self, table: QTableWidget, row: int,
+                 column: int,
+                 text: str,
+                 txt_cut: int = 15,
+                 min_label_px: int = 40,
+                 btn_width=20,
+                 mark_not_changed_item: bool = True,
+                 parent_self: typing.Any = None
+        ) -> None:
+        super().__init__()
+        self.mark_not_changed_item = mark_not_changed_item
+        self.parent_self = parent_self
+        self.table = table
+        self.row = row
+        self.column = column
+        item = self.table.item(row, column)
+        if item is None:
+            return
+        if not text:
+            text = item.text()
+        self.full_text = text
+        self.txt_cut = txt_cut
+        self.min_label_px = min_label_px
+        self.padding = 4
+        self.btn_width = btn_width
+
+        self.container = QtWidgets.QWidget()
+        self.container.setAutoFillBackground(True)
+
+        self.hlayout = QtWidgets.QHBoxLayout(self.container)
+        self.hlayout.setContentsMargins(0, 0, 0, 0)
+        self.hlayout.setSpacing(0)
+
+        self.label = QtWidgets.QLabel(text)
+        # self.label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.label.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+        self.label.setContentsMargins(5, 0, 5, 0)
+        self.hlayout.addWidget(self.label, 1)
+
+        self.buttons_widget = QtWidgets.QWidget()
+        self.buttons_layout = QtWidgets.QHBoxLayout(self.buttons_widget)
+        self.buttons_layout.setContentsMargins(0, 0, 0, 0)
+        self.buttons_layout.setSpacing(0)
+        self.hlayout.addWidget(self.buttons_widget, 0)
+
+        self.buttons = []
+
+        item = QtWidgets.QTableWidgetItem(item.text())
+        invisible_brush = QtGui.QBrush(QColor(0, 0, 0, 0))
+        item.setForeground(invisible_brush)
+        item.setBackground(QtGui.QBrush(QColor(0, 0, 0, 0)))
+        self.table.setItem(self.row, self.column, item)
+
+        self.table.setCellWidget(self.row, self.column, self.container)
+
+        self._update_label_text()
+        self._update_sizes()
+
+        vh = self.table.verticalHeader()
+        hh = self.table.horizontalHeader()
+        self.destroyed_tasks = []
+        try:
+            vh.sectionResized.connect(self._on_row_section_resized)
+            self.destroyed_tasks.append((vh.sectionResized, self._on_row_section_resized))
+        except Exception:
+            pass
+        try:
+            hh.sectionResized.connect(self._on_column_section_resized)
+            self.destroyed_tasks.append((hh.sectionResized, self._on_column_section_resized))
+        except Exception:
+            pass
+        palette = self.container.palette()
+        qcolor = palette.color(self.container.backgroundRole())
+        self._apply_label_bg_style(qcolor)
+        self._init_label_color_state()
+        self.label.destroyed.connect(self.on_destroyed)
+
+    def on_destroyed(self, *args):
+        while self.destroyed_tasks:
+            task, func = self.destroyed_tasks.pop(0)
+            task.disconnect(func)
+
+    def _init_label_color_state(self):
+        if self.mark_not_changed_item:
+            self.label.setStyleSheet("color: gray;")
+            prev_method = self.label.setText
+            self.label.setText = lambda text: self._on_label_text_edit(text, prev_method)
+
+    def _on_label_text_edit(self, text, prev, *args):
+        try:
+            if self.full_text != text:
+                self.label.setStyleSheet(f"color: {self.text_color}")
+            prev(text)
+        except Exception as e:
+            ...
+
+    def _apply_label_bg_style(self, qc: QColor):
+        r, g, b, _ = qc.getRgb()
+        luminance = 0.299 * r + 0.587 * g + 0.114 * b
+        text_color = '#ffffff' if luminance < 128 else '#000000'
+        self.text_color = text_color
+        bg_hex = qc.name()
+        style = f"background-color: {bg_hex}; color: {text_color};"
+        self.label.setStyleSheet(style)
+        p = self.container.palette()
+        p.setColor(self.container.backgroundRole(), qc)
+        self.container.setPalette(p)
+
+    def _approx_label_width_px_by_chars(self):
+        fm = QtGui.QFontMetrics(self.label.font())
+        if self.txt_cut <= 0:
+            return self.min_label_px
+        avg = fm.averageCharWidth()
+        return int(avg * self.txt_cut + fm.horizontalAdvance('..'))
+
+    def _sum_buttons_width(self):
+        if not self.buttons:
+            return 0
+        size = self._button_size_for_current_row()
+        total = 0
+        total += size * len(self.buttons)
+        return total
+
+    def _button_size_for_current_row(self):
+        row_h = self.table.rowHeight(self.row)
+        size = max(16, max(1, row_h))
+        return size
+
+    def _update_button_sizes(self):
+        try:
+            size = self._button_size_for_current_row()
+            for btn in self.buttons: # type: QtWidgets.QPushButton
+                btn.setFixedSize(QtCore.QSize(size, size))
+                h = self._button_size_for_current_row()
+                btn.setFixedSize(QtCore.QSize(self.btn_width, h))
+                btn.setFlat(True)
+        except Exception as e:
+            ...
+
+
+    def _update_label_text(self):
+        fm = QtGui.QFontMetrics(self.label.font())
+        buttons_px = self._sum_buttons_width()
+        col_width = self.table.columnWidth(self.column)
+        available_px = max(self.min_label_px, col_width - buttons_px - self.padding)
+        if available_px <= 0:
+            available_px = self._approx_label_width_px_by_chars()
+        elided = fm.elidedText(self.full_text, Qt.ElideRight, available_px)
+        # self.label.setText(elided)
+
+    def _update_column_width_if_needed(self):
+        fm = QtGui.QFontMetrics(self.label.font())
+        desired_label_px = max(self.min_label_px, self._approx_label_width_px_by_chars())
+        desired_total = desired_label_px + self._sum_buttons_width() + self.padding
+        current = self.table.columnWidth(self.column)
+        if current < desired_total:
+            self.table.setColumnWidth(self.column, desired_total)
+
+    def _update_sizes(self):
+        self._update_button_sizes()
+        self._update_label_text()
+        self._update_column_width_if_needed()
+
+    def _on_row_section_resized(self, logicalIndex, oldSize, newSize):
+        if logicalIndex == self.row:
+            self._update_sizes()
+
+    def _on_column_section_resized(self, logicalIndex, oldSize, newSize):
+        if logicalIndex == self.column:
+            self._update_label_text()
+
+
+    def _update_img(self, img_path: str, btn: QtWidgets.QPushButton):
+        from project_cust_38 import Cust_Functions as F
+        dir = F.sep().join([F.path_to_execut_file_c(), 'icons'])
+        path_obj = pathlib.Path(img_path)
+        if not path_obj.drive:
+            path_obj = pathlib.Path(dir) / path_obj
+        if path_obj.exists():
+            icon1 = QtGui.QIcon()
+            icon1.addPixmap(QtGui.QPixmap(str(path_obj.absolute())), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+            btn.setIcon(icon1)
+            btn.setToolTip(btn.text())
+            btn.setText('')
+            h = self._button_size_for_current_row()
+            inset_w = max(1, self.btn_width - 4)
+            inset_h = max(1, h - 4)
+            btn.setIconSize(QtCore.QSize(inset_w, inset_h))
+
+
+    def add_button(self, txt_button: str = '', tooltip: str ='' ,
+                   on_clicked=None,
+                   img_path: str = '',
+                   cell_val: typing.Any = None,
+        ):
+        """
+        on_clicked
+        * Если передано on_clicked(
+            current_object: InteractiveLabelInstance # Для взаимодействия с виджетами table,label,buttons
+            row: int,
+            column: int,
+            cell_val: Any Дополнительный объект (по совместимости с CQT.add_btn
+        )
+        """
+        btn = QtWidgets.QPushButton(txt_button)
+        btn.setFocusPolicy(Qt.NoFocus)
+        btn.setToolTip(tooltip)
+        btn.setFlat(True)
+        if on_clicked != '':
+            if not self.parent_self:
+                if cell_val:
+                    btn.clicked.connect(lambda *args: on_clicked(self, self.row, self.column, cell_val))
+                else:
+                    btn.clicked.connect(lambda *args: on_clicked(self, self.row, self.column))
+            else:
+                if cell_val:
+                    btn.clicked.connect(lambda *args: on_clicked(self, self.parent_self, self.row, self.column, cell_val))
+                else:
+                    btn.clicked.connect(lambda *args: on_clicked(self, self.parent_self, self.row, self.column))
+        self.buttons_layout.addWidget(btn)
+        self.buttons.append(btn)
+        self._update_sizes()
+        if img_path != '':
+            self._update_img(img_path, btn)
+        return btn
+
+    def set_text(self, lbl_text: str):
+        self.label.setText(lbl_text)
+        self.full_text = lbl_text
+        self._update_sizes()
+
+def add_interactive_label(
+        table: QTableWidget,
+        row: int,
+        column: int,
+        text: str = '',
+        txt_cut: int = 15,
+        min_label_px: int = 40,
+        btn_width: int = 20,
+        mark_not_changed_item: bool = True,
+        parent_self: typing.Any = None
+) -> InteractiveLabelInstance:
+    """
+    Пример использования
+    widget = CQT.add_interactive_label(
+        table=self.ui.tbl_pl_add_poz,               # Таблица для размещения label
+        row=0,                                      # Строка таблицы
+        column=nk_sort_c,                           # Колонка таблицы
+        text=current_type_text,                     # Текст для label (Если не задан берется из ячейки QTableWidgetItem)
+        txt_cut=14,                                 # До какого символа обрезать текст(Если не задан задается textWrapped)
+        btn_width=25                                # Ширина кнопок
+    )
+    widget.add_button(
+        txt_button='✏️',                            # Текст кнопки
+        on_clicked=on_clicked,                      # Обработчик клика по кнопк
+        tooltip='Редактировать',                    # tooltip кнопки
+        img_path='btn_add_zamech'                   # Ссылка на изображение (Если задано без префикса диска C://,
+                                                       то базовой папкой задается ./icons
+    )
+
+    widget.add_button(txt_button='x', on_clicked=print, tooltip='Удалить')
+    widget.add_button(txt_button='...', on_clicked=print, tooltip='...', img_path='btn_add_zamech')
+    """
+    inst = InteractiveLabelInstance(table, row, column, text,
+                                    txt_cut=txt_cut,
+                                    min_label_px=min_label_px,
+                                    btn_width=btn_width,
+                                    mark_not_changed_item=mark_not_changed_item,
+                                    parent_self=parent_self)
+    return inst

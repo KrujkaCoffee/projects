@@ -1,4 +1,5 @@
 import copy
+import os.path
 import sqlite3
 import re
 
@@ -16,6 +17,15 @@ def add_db(bd,text):
 WAIT_TIME = 2
 RE_COUNT_SRV = 4
 
+
+def get_tables_from_select(conn, sql, body): #18.08.25
+    cur = conn.execute(sql)
+    tables = set()
+    for _, _, _, detail in cur.fetchall():
+        m = re.search(r"(?:SCAN|SEARCH)\s+([^\s]+)", detail)
+        if m:
+            tables.add(m.group(1))
+    return sorted(tables)
 
 def check_existance_record_sql_c(bd, table_name, spis_novih_zap, kol_sravnenia_sp, kol_sravnenia_bd):
     spis_bd = list_from_db_sql_c(bd, table_name)
@@ -351,8 +361,7 @@ def prepare_list_to_tuple(list_nums:list|set) -> str:
         return tmp_list[0]
     return ','.join(tmp_list)
 
-
-
+@F.StatisticDecorator #18.08.25
 def custom_request_c(bd, custom_request_c, conn='', hat_c=True, list_of_lists_c=[[]], rez_dict=False, one=False, cur='',
                      one_column=False, returning=False, attach_dbs: tuple | str=()):
     '''sqlite_insert_with_param = """INSERT INTO sqlitedb_developers
@@ -360,20 +369,12 @@ def custom_request_c(bd, custom_request_c, conn='', hat_c=True, list_of_lists_c=
                               VALUES (?, ?, ?, ?, ?);"""'''
     if isinstance(list_of_lists_c[0],dict):
         list_of_lists_c = F.list_of_dicts_to_list_of_lists(list_of_lists_c)[1:]
-    if 'SRV:' in bd:
-        RE_COUNT_SRV = 4
-        n_try = 1 if 'select' in custom_request_c.lower() else RE_COUNT_SRV - 1
+    if 'SRV:' in bd: #18.08.25
         bd, port = CSQS.db_path(bd)
-        while n_try < RE_COUNT_SRV:
-            rez = CSQS.client_sql_query(bd, custom_request_c=custom_request_c, hat_c=hat_c,
-                                        list_of_lists_c=list_of_lists_c,
-                                        rez_dict=rez_dict, one=one, name_module=F.name_of_executable_file_c(),
-                                        client_name=F.user_name(), port=port, one_column=one_column, attach_dbs=attach_dbs)
-            if rez == None or rez == False:
-                F.sleep(WAIT_TIME)
-                n_try += 1
-            else:
-                return rez
+        rez = CSQS.client_sql_query(bd, custom_request_c=custom_request_c, hat_c=hat_c,
+                                    list_of_lists_c=list_of_lists_c,
+                                    rez_dict=rez_dict, one=one, name_module=F.name_of_executable_file_c(),
+                                    client_name=F.user_name(), port=port, one_column=one_column, attach_dbs=attach_dbs)
         return rez
 
     '''UPDATE users
@@ -402,6 +403,8 @@ def custom_request_c(bd, custom_request_c, conn='', hat_c=True, list_of_lists_c=
         result = False
         type_query = custom_request_c.replace('\n', '').strip().split(' ')[0].upper()
         try:
+            if 'EXPLAIN' == type_query: #15.08.25
+                result = get_tables_from_select(cur, custom_request_c.replace('?', "''"), list_of_lists_c)
             if 'PRAGMA'  == type_query:
                 cur.execute(custom_request_c)
                 result = True

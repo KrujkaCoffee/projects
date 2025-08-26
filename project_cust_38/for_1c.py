@@ -202,7 +202,8 @@ class Fcns():
                 wet_filtr=f"?$select=*", with_cod=True)
             if code != 200:
                 print(f'ERR {_resp}')
-                quit()
+                raise Exception(_resp)
+                # quit()
 
             compliance_register_states_expenditure_and_budgets = F.deploy_dict_c(_resp, 'СтатьяРасходов_Key')
 
@@ -211,13 +212,14 @@ class Fcns():
             if code != 200:
                 print(f'ERR {_resp}')
                 raise Exception(resp)
-                quit()
+                # quit()
             DICT_PVH_СТАТЬИРАСХОДОВ = F.deploy_dict_c(_resp, 'Ref_Key')
             code, _resp = m.get_response(doc_name='ChartOfCharacteristicTypes_СтатьиАктивовПассивов',
                                          wet_filtr=f"""?$select= Ref_Key, Description""", with_cod=True)
             if code != 200:
                 print(f'ERR {_resp}')
-                quit()
+                raise Exception(_resp)
+                # quit()
             dict_pvh_СтатьиАктивовПассивов = F.deploy_dict_c(_resp, 'Ref_Key')
 
             for k, v in dict_pvh_СтатьиАктивовПассивов.items():
@@ -509,7 +511,8 @@ class Data_1с:
                                              f"""?$filter=DeletionMark eq false&$select=Description, Ref_Key """,
                                              m)
     if ПОКАЗАТЕЛИБЮДЖЕТОВ == None:
-        quit()
+        raise Exception("ПОКАЗАТЕЛИБЮДЖЕТОВ is None")
+        # quit()
     DICT_ПОКАЗАТЕЛИБЮДЖЕТОВ = F.deploy_dict_c(ПОКАЗАТЕЛИБЮДЖЕТОВ, 'Ref_Key')
     DICT_СТАТЬИБЮДЖЕТОВ = Fcns.calc_middle_data_СтатьиБюджетов(DIR_BUDGETS, m)
 
@@ -520,7 +523,7 @@ class Data_1с:
     DICT_BUDGETS_PRICES = Fcns.load_budgets_prices(BUDGETS)
 
     if DICT_BUDGETS_PRICES == None:
-        quit()
+        raise Exception("DICT_BUDGETS_PRICES is None")
 
     DICT_PVH_СТАТЬИРАСХОДОВ, compliance_register_states_expenditure_and_budgets = Fcns.calc_middle_data_СтатьиРасходов(
         DIR_BUDGETS, m)

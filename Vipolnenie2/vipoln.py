@@ -1128,17 +1128,51 @@ class mywindow(QtWidgets.QMainWindow):
         postfix = '((mk.Статус != "Закрыта" AND mk.Дата_завершения == "") OR (mk.Пномер = 0)) AND'
         if 'shift' in CQT.get_key_modifiers(self):
             postfix = ''
-        custom_request_c = f'''  SELECT naryad.Пномер, naryad.Дата, naryad.Номер_мк, naryad.Задание, naryad.ФИО, naryad.ФИО2, 
-                        naryad.Твремя, naryad.Норма_времени AS "Норматив время", "" AS "Время", naryad.Компл_номер_тара,
-                         naryad.Компл_адрес, naryad.Примечание, naryad.Внеплан,
-                        mk.Номер_проекта, mk.Номер_заказа, mk.Приоритет, naryad.Коэфф_сложности, naryad.Виды_работ, 
-                        naryad.Опер_время, mk.Статус_ЧПУ, zagot.Прим_резка, naryad.ФИО_для_ОТК , naryad.Операции  , naryad.Распред_ФИО , naryad.Кол_повт_приемок AS "Кол_во повт. приёмок" 
-                                FROM naryad INNER JOIN mk ON mk.Пномер = naryad.Номер_мк 
-                                INNER JOIN zagot ON zagot.Ном_МК = naryad.Номер_мк 
-                        WHERE {postfix}  naryad.Подтвержд_вып_дата == "" AND
+        custom_request_c = f'''
+            SELECT 
+                naryad.Пномер, 
+                naryad.Дата, 
+                naryad.Номер_мк, 
+                naryad.Задание, 
+                naryad.ФИО, 
+                naryad.ФИО2, 
+                naryad.Твремя, 
+                naryad.Норма_времени AS "Норматив время", 
+                "" AS "Время", 
+                naryad.Компл_номер_тара,
+                naryad.Компл_адрес, 
+                naryad.Примечание, 
+                naryad.Внеплан,
+                mk.Приоритет, 
+                naryad.Коэфф_сложности, 
+                naryad.Виды_работ, 
+                naryad.Опер_время, 
+                mk.Статус_ЧПУ, 
+                zagot.Прим_резка, 
+                naryad.ФИО_для_ОТК , 
+                naryad.Операции  , 
+                naryad.Распред_ФИО , 
+                naryad.Кол_повт_приемок AS "Кол_во повт. приёмок",
+                plan.Позиция as "Позиция",
+                CASE 
+                    WHEN знпр.№ERP IS NOT NULL 
+                    THEN знпр.№ERP 
+                    ELSE пл_оуп.№ERP  
+                END AS "Номер_заказа", 
+                CASE WHEN знпр.№проекта IS NOT NULL 
+                   THEN знпр.№проекта 
+                   ELSE пл_оуп.№проекта 
+                END AS Номер_проекта
+            FROM naryad 
+            INNER JOIN mk ON mk.Пномер = naryad.Номер_мк 
+            LEFT JOIN plan ON mk.НомКплан = plan.Пномер
+            LEFT JOIN пл_оуп ON mk.НомКплан = пл_оуп.НомПл
+            LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП
+            INNER JOIN zagot ON zagot.Ном_МК = naryad.Номер_мк 
+            WHERE {postfix}  naryad.Подтвержд_вып_дата == "" AND
                          ((naryad.ФИО IN ({user}) AND naryad.Фвремя == "") 
                         OR (naryad.ФИО2 IN ({user}) AND naryad.Фвремя2 == ""));'''
-        rez = CSQ.custom_request_c(self.db_naryd, custom_request_c, rez_dict=True)
+        rez = CSQ.custom_request_c(self.db_naryd, custom_request_c, rez_dict=True, attach_dbs=USRCNF.Config.project.db_kplan) #14.08.25
         if rez == False or rez == None:
             CQT.msgbox(f'БД недоступна, пробуй еще')
             return
@@ -1164,6 +1198,7 @@ class mywindow(QtWidgets.QMainWindow):
                       'Примечание':'ПРОСТОЙ',
                       'Внеплан':'-',
                       'Номер_проекта':'-',
+                    'Позиция': '-',
                       'Номер_заказа':'-',
                       'Приоритет':'1',
                       'Коэфф_сложности':'0.01',
@@ -1637,6 +1672,8 @@ app.setWindowIcon(QtGui.QIcon(os.path.join("icons", "tab.png")))
 S = F.cfg['Stile'].split(",")
 app.setStyle(S[0])
 application = mywindow()
+from project_cust_38.widget_spy import install_pyqt_event_hook
+install_pyqt_event_hook(app)
 # ======================================================
 versia = application.versia
 if CMS.kontrol_ver(versia,"Выполнение2") == False:

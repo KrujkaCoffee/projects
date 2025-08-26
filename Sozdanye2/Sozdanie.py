@@ -184,7 +184,7 @@ class mywindow(QtWidgets.QMainWindow):
         self.db_files = F.bdcfg('BD_files')
         self.db_kplan = F.bdcfg('DB_kplan')
         # ==== GLOBALS
-        self.MAX_TIME_NARUAD = 1920
+        self.MAX_TIME_NARUAD = self.place.limit_time_on_naryad # 12.08.25 по задаче 100058562
         self.superuser = False
         self.SPIS_EMPLOEE = []
         self.glob_login = ''
@@ -699,6 +699,11 @@ class mywindow(QtWidgets.QMainWindow):
         hook_prog_bar.text('Обработка')
         if CMS.kontrol_ver(self.versia, self.NAME_MODULE_BASE) == False:
             sys.exit()
+        if not self.glob_login:
+            with QtCore.QSignalBlocker(self.ui.tabWidget):
+                self.ui.tabWidget.setCurrentIndex(0)
+                timer = QtCore.QTimer(self)
+                return timer.singleShot(100, lambda *args: CQT.blink_obj_c(self, 2, self.ui.le_parol, 'Сначала необходимо войти!')) #25.08.25
         if not CMS.check_actual_parol(self.glob_ima):
             CQT.msgbox(f'Нужно обновить пароль через меню "Параметры"')
             userm.logout(self)
@@ -2095,7 +2100,7 @@ class mywindow(QtWidgets.QMainWindow):
         set_group = set()
         for _ in set_code_profs:
             if _ in self.DICT_PROFESSIONS:
-                set_group.add(self.DICT_PROFESSIONS[_]['Группа_в_распред'])
+                set_group.update(self.DICT_PROFESSIONS[_]['Группа_в_распред'].split(';')) #14.08.25
             else:
                 CQT.msgbox(f'{_} не отмечена как основная')
         if set_group == {''}:
@@ -2105,7 +2110,7 @@ class mywindow(QtWidgets.QMainWindow):
         for prof_code in list(self.DICT_PROFESSIONS.keys()):  # ++ 06.08.25
             if self.DICT_PROFESSIONS[prof_code]['Группа_в_распред'] != "" and \
                     self.DICT_PROFESSIONS[prof_code]['Группа_в_распред_блок'] == 0:
-                if self.DICT_PROFESSIONS[prof_code]['Группа_в_распред'] in set_group:
+                if set(self.DICT_PROFESSIONS[prof_code]['Группа_в_распред'].split(';')).intersection(set_group): #14.08.25
                     set_prof.add(self.DICT_PROFESSIONS[prof_code]['имя'])
         spis_prof = sorted(list(set_prof))
         # -- 06.08.25
@@ -3990,15 +3995,17 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
         list_colors = []
         list_bold = []
         for marsh in list_rows:
-            rgb = '245,245,245'
+            rgb = '45,45,45'
             list_rc = marsh.split('->')
             for i, rc in enumerate(list_rc):
                 if rc[:4] == current_rc:
                     if i < len(list_rc) - 1:
                         next_rc = list_rc[i + 1]
                         rgb = self.DICT_RC_FULL[next_rc]['Цвет']
+                        rgb = F.align_colors(rgb,",",sep_out=',')
                     break
-            # list_colors.append(rgb)
+
+            list_colors.append(rgb)
             list_bold.append(True)
         # self.ui.cmb_list_marsh.addItems()
         CQT.fill_list_combobx(self, self.ui.cmb_list_marsh, list_rows, list_colors, list_tooltips, ',', first_void=True,
@@ -4870,6 +4877,8 @@ app.setWindowIcon(QtGui.QIcon(os.path.join("icons", "tab.png")))
 # S = F.scfg['Stile'].split(",")
 app.setStyle('Fusion')
 application = mywindow()
+from project_cust_38.widget_spy import install_pyqt_event_hook
+install_pyqt_event_hook(app)
 # ======================================================
 versia = application.versia
 if CMS.kontrol_ver(versia, "Создание2") == False:

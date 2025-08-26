@@ -1,15 +1,21 @@
 import socket
 import pickle
-import struct
 import project_cust_38.logistic_srv as LOG
 import os
 import time
 import logging
 import requests
+import enum
 
 #ip = '192.168.50.208'# AG local
 ip = 'mesinfo.powerz.ru'# server domain  ip = '192.168.50.44'# server
 # ip = '192.168.18.57'# AF local
+
+
+class SrvHeaders(enum.Enum):
+    """Единые константы заголовков http ответа для клиента/сервера"""
+    EXCEPTION_MESSAGE = 'X-SRV-EXCEPTION-MESSAGE'       # Сообщение из исключения во время ошибки на стороне сервера
+    SYNTAX_ERROR = 'X-SRV-SYNTAX-ERROR'                 # Флаг синтаксической ошибки
 
 
 def db_path(name:str):
@@ -22,7 +28,7 @@ def db_path(name:str):
                  'DB_invest.db': 'C://DB_srv//DB_invest.db',
                  'DB_nomenklatura_erp.db': 'C://DB_srv//DB_nomenklatura_erp.db',
                  'DB_xl_formulas.db': 'C://DB_srv//DB_xl_formulas.db',
-                    'db_flet.db': 'C://DB_srv//db_flet.db',
+                 'db_flet.db': 'C://DB_srv//db_flet.db',
                  }
     dict_port = {'Naryad.db': 20002, 'BD_dse.db': 20003, 'BD_zayav_out.db': 20004, 'BD_resxml.db': 20005,
                  'BD_files.db': 20006, 'DB_kplan.db': 20007,'DB_invest.db':20008,'BD_users.db':20009,
@@ -91,6 +97,12 @@ def client_sql_query(bd,custom_request_c,hat_c = True,list_of_lists_c = [[]],rez
             try:
                 response = requests.post(f'http://{ip}:{port}',
                                          data=pickle.dumps(msgFromClient))
+                srv_exception_message = response.headers.get(SrvHeaders.EXCEPTION_MESSAGE.value) #18.08.25
+                srv_syntax_error_flag = response.headers.get(SrvHeaders.SYNTAX_ERROR.value)
+                if not response.ok and srv_syntax_error_flag: # Если в заголовке стоит флаг синтаксической ошибки вернуть None без перезапуска
+                    print('Сообщение сервера', srv_exception_message)
+                    print(f'Ошибка синтаксиса в запросе: \n{custom_request_c}')
+                    return None
                 message_str = pickle.loads(response.content)
                 break
             except Exception as e:

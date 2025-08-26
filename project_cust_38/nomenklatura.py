@@ -708,8 +708,9 @@ def obn_mat_erp_file(db_mater, *args):
                 
         
     list_vids_nomen = list(dict_vids_nomen.keys())
+    refs_vids_nomen = [_['Ref_Key'] for _ in dict_vids_nomen.values()]
 
-    res, schemas_rez = m.get_nomen_mater(list_vids_nomen)
+    res, schemas_rez = m.get_nomen_mater(list_vids_nomen,refs_vids_nomen)
     
     if res == None or schemas_rez == None:
         print('Err obn_mat_erp_file')

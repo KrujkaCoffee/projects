@@ -4230,3 +4230,4 @@ def validate_welds(self: mywindow2, row: int) -> None:
 def table_sum_cell_changed(self: mywindow2, row, col):
     if self.ui2.combo2.currentText() == 'Сварка':
         validate_welds(self, row)
+     

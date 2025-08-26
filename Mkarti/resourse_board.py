@@ -17,11 +17,709 @@ import project_cust_38.api_erp_commands as APIERP
 import project_cust_38.Cust_odata_erp as CODAT
 import project_cust_38.Cust_config as USRCNF
 from typing import TYPE_CHECKING
-
+import project_cust_38.Cust_resource_creator as CRES
 from project_cust_38.Cust_mes import TkpSchema
 
 if TYPE_CHECKING:
     from MKart import mywindow
+
+
+class Resourse_mk():
+    def __init__(self, res: list, db_resxml: str, db_kplan: str, bd_naryad: str, db_users: str,
+                 tkp_current_schema, parent_self, name_res_for_ERP: str = '', nom_mk=None, num_kpl=None,
+                 primech: str | None = None):
+
+        self.parent_self = parent_self
+        self.db_kplan = db_kplan
+        self.bd_naryad = bd_naryad
+        self.db_resxml = db_resxml
+        self.db_users = db_users
+
+        self.tkp_current_schema: TkpSchema = tkp_current_schema
+        self.name_res_for_ERP = name_res_for_ERP
+        self.poz = None
+        self.вид_по_напр = None
+        self.res = res
+        self.res_kotel = None
+        self.num_kpl = None
+        self.s_num_tkp = None
+        self.primech = primech
+        self.izd = None
+        if nom_mk:
+            # self.res = load_res(nummk_or_reslist, db_resxml=db_resxml)
+            num_kpl = CSQ.custom_request_c(self.bd_naryad, f'''SELECT НомКплан FROM mk
+                WHERE Пномер == {int(nom_mk)}
+                            ''', one_column=True, one=True, hat_c=False)
+            if num_kpl == None or nom_mk == False:
+                CQT.msgbox(f'Ошибка получения НомКплан по МК {nom_mk}')
+                raise ValueError(f"Ошибка получения НомКплан по МК {nom_mk}")
+            num_kpl = num_kpl[0]
+            self.num_kpl = num_kpl
+            self.poz = CMS.Pozition(num_kpl, self.db_kplan, self.bd_naryad, self.db_resxml, self.db_users, self.parent_self)
+            self.poz.load_kpl_table('пл_топ')
+            self.poz.load_kpl_table('пл_оуп')
+            self.izd = self.poz.dict_tables['пл_оуп']['Номенклатура_ЕРП']
+            self.is_tkp = False
+            self.вид_по_напр = self.poz.dict_tables['пл_топ']['Вид']
+        else:
+            if self.tkp_current_schema.is_tkp and not self.tkp_current_schema.is_parametric:  # 09.04.25
+                # if 'type_tkp' in tkp_current_schema:
+                #     if tkp_current_schema['type_tkp'] in (3, 4):
+                self.is_tkp = True
+                self.s_num_tkp = tkp_current_schema['s_nom']
+            if 'вид_по_напр' in tkp_current_schema:
+                self.вид_по_напр = tkp_current_schema['вид_по_напр']
+            self.num_kpl = num_kpl
+
+        self.nn = self.res[0]['Номенклатурный_номер']
+        self.naim = self.res[0]['Наименование']
+        self.list_res_for_erp = None
+        self.obj_res_for_erp = None
+
+    @CQT.onerror
+    def __make_erp_etaps_message_tbl(self, edit_etap_data_for_dialog: list[dict], res: list[dict],
+                                     dict_etaps: list | dict):  # 11.04.25
+        """
+        Принимает: 1.edit_etap_data_for_dialog=[
+            {'Этап': ..., 'ПномерДсе': Индекс ДСЕ в структуре ресурсной, 'ПномерОперации': Индекс операции в структуре ресурсной},
+        ]
+        2. объект ресурсной list[dict]
+        3. Словарь/список этапов ERP
+        Действие: Создает таблицу для редактирования конфликтных этапов
+        Возвращает: объект ресурсной с правками или None в случае отмены
+        """
+
+        def oform(tbl):
+            nk_etap = CQT.num_col_by_name_c(tbl, 'Этап')
+            nk_dse = CQT.num_col_by_name_c(tbl, 'ПномерДсе')
+            nk_oper = CQT.num_col_by_name_c(tbl, 'ПномерОперации')
+            tbl.hideColumn(nk_dse) or tbl.hideColumn(nk_oper)
+            tbl.verticalHeader().setHidden(True)
+            for i in range(tbl.rowCount()):
+                tbl.item(i, nk_etap).setText('Сборка+сварка')
+                text_setter = lambda tbl, text, row, col: tbl.item(row, col).setText(text)
+                CQT.add_combobox(self=tbl, table=tbl, i=i, j=nk_etap, list=list(dict_etaps), first_void=False,
+                                 conn_func=text_setter)
+
+        resp = CQT.msgboxg_get_table(
+            self.parent_self.myparent,
+            'Не найден подходящий этап для 1С',
+            edit_etap_data_for_dialog,
+            'Продолжить выгрузку', 'Прервать',
+            func_oform_tbl=oform,
+            func_validate=lambda data: data,
+            show_filtr=False, use_first_row_as_header=True, print_hat=True,
+            WindowTitle="Выбор этапов для операций"
+        )
+        if not resp: return
+        for item in resp:
+            dse_pk = int(item['ПномерДсе'])
+            oper_pk = int(item['ПномерОперации'])
+            res[dse_pk]['Операции'][oper_pk]['Этап'] = item['Этап']
+        return res
+
+    @CQT.onerror
+    def add_erp_etaps_in_res(self, res: list[dict], DICT_OP: dict, DICT_RC: dict, dict_etaps: dict):  # 11.04.25
+        """
+        Принимает:
+        1. res - Объект ресурсной
+        2. Словарь операций (где ключ=код операции)
+        3. Словарь рабочих центров (где ключ код рц)
+        3. Словарь/список этапов ERP
+        Действие: Обновляет/создает ключ Этап для каждой операции
+            Если этап не найден вызывает таблицу с конфликтными строками для корректировки
+        Возвращает: объект ресурсной с правками или None в случае отмены в таблице корректировки
+        """
+        cp_rez = copy.deepcopy(res)
+        edit_etap_data_for_dialog = []
+        for dse_pk, dse in enumerate(res):
+            for oper_pk, oper in enumerate(dse['Операции']):
+                rc_cod = oper['Опер_РЦ_код']
+                oper_kod = oper['Опер_код']
+                etap = DICT_RC[rc_cod]['etaps_name']
+                if etap not in dict_etaps:
+                    etap = 'Сборка+сварка'
+                    tmp = {
+                        'ПномерДсе': dse_pk,
+                        'ПномерОперации': oper_pk,
+                        'Наименование': dse['Наименование'],
+                        'Номенклатурный_номер': dse['Номенклатурный_номер'],
+                        'Этап': etap,
+                        'ДСЕ': dse['Номенклатурный_номер'],
+                        "Операция": DICT_OP[oper_kod]['name'],
+                        'Материалы': []
+                    }
+                    if oper['Материалы']:
+                        for mat in oper['Материалы']:
+                            tmp['Материалы'].append({
+                                "Мат_код": mat['Мат_код'],
+                                "Мат_наименование": mat['Мат_наименование'],
+                            })
+                    edit_etap_data_for_dialog.append(tmp)  # 15.04.25
+                cp_rez[dse_pk]['Операции'][oper_pk]['Этап'] = etap
+        if edit_etap_data_for_dialog:
+            return self.__make_erp_etaps_message_tbl(edit_etap_data_for_dialog, cp_rez,
+                                                     dict_etaps)  # 02.06.2025 (Проект: "разработка, внедрение MES" 8386266)
+        return cp_rez
+
+    @CQT.onerror
+    def generate_list_res_for_erp(self, DICT_PROF_CODE, DICT_NOMEN, DICT_OP, DICT_RC):
+        list_err = []
+        test = []
+        mainSelf = self.parent_self.myparent
+        DICT_VID_RAB_BY_REF = F.list_of_lists_to_dict_of_dicts(
+            F.dict_of_dicts_to_list_of_lists(mainSelf.DICT_VID_RABOT), 'ref_Key_erp')
+        rez = self.res_kotel
+        rez_new = [copy.deepcopy(rez[0])]
+        count_po_mk = 1
+        rez_new[0]['Операции'] = []
+        rez_new[0]['Параметрика'] = {}
+        rez_new[0]['Документы'] = []
+        rez_new[0]['ПКИ'] = '0'
+        dict_rc_vid = dict()
+
+        dict_etaps = {name: {'Опер_наименование_подразделения': None,
+                             "Материалы": dict(),
+                             "Трудозатраты": dict(),
+
+                             } for name, val in mainSelf.Data_plan.DICT_ETAPS_NAME.items() if val['ДляЕРП']}
+
+        rez = self.add_erp_etaps_in_res(rez, DICT_OP, DICT_RC, dict_etaps)
+        if rez is None:
+            return None, None
+        for dse in rez:
+            if dse['ПКИ'] == '1':
+                if 'Способы_получения_материала' not in dse:
+                    dse['Способы_получения_материала'] = 'Обеспечивать'
+                dse['Количество_ед'] = dse['кол_во_инф']['кол_во_1_изд_по_структуре']
+                # rez_new.append(dse)
+
+            if 'Способы_получения_материала' not in dse:
+                dse['Способы_получения_материала'] = 'Произвести по основной спецификации'
+            for oper in dse['Операции']:
+                if oper['Опер_вспомогательная'] == 1:
+                    continue
+                rc_cod = oper['Опер_РЦ_код']
+                rc_name = oper['Опер_РЦ_наименование']
+                prof_cod = oper['Опер_профессия_код']
+                prof_name = oper['Опер_профессия_наименование']
+                podr_name = oper['Опер_наименование_подразделения']
+                oper_kod = oper['Опер_код']
+                if prof_cod != '' and prof_cod not in DICT_PROF_CODE:
+                    CQT.msgbox(
+                        f"профессия {oper['Опер_профессия_код']} из {oper['Опер_наименование']} {dse['Номенклатурный_номер']} не найдена в справочнике")
+                    return None, None
+                if oper_kod != '' and oper_kod not in DICT_OP:
+                    CQT.msgbox(
+                        f"операция {oper['Опер_код']} {oper['Опер_наименование']} из {dse['Номенклатурный_номер']} не найдена в справочнике")
+                    return None, None
+                etap = oper['Этап']  # 11.04.25
+                # etap = DICT_RC[rc_cod]['etaps_name'] #11.04.25
+                # if etap not in dict_etaps:
+                #     if oper['Материалы']:
+                #         for mat in oper['Материалы']:
+                #             list_err.append([f"Мат. {mat['Мат_наименование']} попал в Сборка+сварка, т.к. этап {etap} для НЕ предусмотрен в ЕРП"])
+                #     etap = 'Сборка+сварка'
+
+                if dict_etaps[etap]['Опер_наименование_подразделения'] == None:
+                    dict_etaps[etap]['Опер_наименование_подразделения'] = podr_name
+                # if dict_etaps[etap]['Опер_наименование_подразделения'] != podr_name:
+                #    CQT.msgbox(f"""При компоновке по котловому методу возникла ошибка, для этапа {etap}
+                #     `{dict_etaps[etap]['Опер_наименование_подразделения']}` указано несогласующиеся подразделения
+                #     `{podr_name}` из {oper['Опер_наименование']} {dse['Номенклатурный_номер']}""")
+                #    return None, None
+
+                vid_rab = mainSelf.DICT_PROF_CODE[prof_cod]['вид_работ']
+                guid_vid_rab = mainSelf.DICT_VID_RABOT[vid_rab]['ref_Key_erp']
+                if guid_vid_rab != None:
+                    if guid_vid_rab not in dict_etaps[etap]['Трудозатраты']:
+                        dict_etaps[etap]['Трудозатраты'][guid_vid_rab] = 0
+                    dict_etaps[etap]['Трудозатраты'][guid_vid_rab] += (
+                                oper['Опер_Тпз'] + oper['Опер_Тшт'] / count_po_mk)
+                    test.append([dse['Номенклатурный_номер'], oper['Опер_РЦ_наименование'], etap,
+                                 (oper['Опер_Тпз'] + oper['Опер_Тшт'] / count_po_mk),
+                                 dict_etaps[etap]['Трудозатраты'][guid_vid_rab]])
+                for mat in oper['Материалы']:
+                    Мат_код = mat['Мат_код']
+                    if Мат_код not in DICT_NOMEN:
+                        CQT.msgbox(f'Материал {mat["Мат_код"]} не найден в номенклатуре')
+                        return None, None
+                    if DICT_NOMEN[Мат_код]['На_удаление']:
+                        CQT.msgbox(
+                            f'Материал \n\nКод: `{Мат_код}` \nНаименование: `{DICT_NOMEN[Мат_код]["Наименование"]}`'
+                            f' \n\nотмечен в 1С `На_удаление`\n\nИспользование не возможно.')
+                        return None, None
+
+                    if 'Способы_получения_материала' not in mat:
+                        mat['Способы_получения_материала'] = 'Обеспечивать'
+
+                    if 'Материалы_Статья_калькуляции' not in mat:
+                        Материалы_Статья_калькуляции = 'Сырье'
+                        if DICT_NOMEN[Мат_код][
+                            'Вид'] == 'Упаковочные материалы для складского хоз-ва 10.09':
+                            Материалы_Статья_калькуляции = 'Упаковка'
+                        mat['Материалы_Статья_калькуляции'] = Материалы_Статья_калькуляции
+
+                    Мат_наименование = mat['Мат_наименование']
+                    Мат_ед_изм = mat['Мат_ед_изм']
+                    Мат_норма = mat['Мат_норма']
+                    Мат_норма_ед = mat['Мат_норма_ед']
+                    Мат_параметрика = mat['Мат_параметрика']
+                    Материалы_Статья_калькуляции = mat['Материалы_Статья_калькуляции']
+                    Способы_получения_материала = mat['Способы_получения_материала']
+
+                    if Мат_код not in dict_etaps[etap]["Материалы"]:
+                        dict_etaps[etap]["Материалы"][Мат_код] = {
+                            'Мат_код': Мат_код,
+                            'Мат_наименование': Мат_наименование,
+                            'Мат_ед_изм': Мат_ед_изм,
+                            'Мат_норма': 0,
+                            'Мат_параметрика': Мат_параметрика,
+                            'Материалы_Статья_калькуляции': Материалы_Статья_калькуляции,
+                            'Способы_получения_материала': Способы_получения_материала,
+                        }
+                    if Мат_норма == 0:
+                        if CQT.msgboxgYN(f"""При компоновке материалов обнаружено для {Мат_наименование} Мат_норма == 0 
+                      {oper['Опер_наименование']} {dse['Номенклатурный_номер']}""", 'Прервать            ',
+                                         'Продолжить'):
+                            return None, None
+
+                    dict_etaps[etap]["Материалы"][Мат_код]['Мат_норма'] += Мат_норма / count_po_mk
+        list_etaps = []
+        for k, v in dict_etaps.items():
+            if len(v['Материалы']) or len(v['Трудозатраты']):
+                new_mats = dict()
+                mats = v['Материалы']
+                for key, mat in mats.items():
+                    if mat['Мат_норма']:
+                        new_mats[key] = mat
+                    else:
+                        CQT.msgbox(
+                            f'В `{v["Опер_наименование_подразделения"]}` пропущен материал \n`{mat["Мат_наименование"]}`\nт.к. кол-во = 0')
+                new_trs = dict()
+                trs = v['Трудозатраты']
+                for key, tr in trs.items():
+                    if tr:
+                        new_trs[key] = tr
+                    else:
+                        CQT.msgbox(
+                            f'В `{v["Опер_наименование_подразделения"]}` пропущен вид работ \n`{DICT_VID_RAB_BY_REF[key]["Список"]}`\nт.к. кол-во = 0')
+                new_v = {'Опер_наименование_подразделения': v['Опер_наименование_подразделения'],
+                         'Материалы': new_mats,
+                         'Трудозатраты': new_trs}
+                list_etaps.append({'Этап': k, "Данные": new_v})
+
+        self.list_res_for_erp = list_etaps
+
+        return list_etaps, list_err
+        CQT.msgboxg_get_table_ok_inf(self.parent_self, 'test', [[_[0], _[1], _[2], str(_[3]), _[4]] for _ in test],
+                                     use_first_row_as_header=False)
+
+    @CQT.onerror
+    def generate_ResourceSpecification(self, hat: CRES.ResourceHeader, DICT_PROF_CODE, DICT_NOMEN, DICT_OP,
+                                       DICT_RC) -> CRES.ResourceSpecification:
+
+        # Итог
+        spec = CRES.ResourceSpecification(hat)
+
+        test = []
+        mainSelf = self.parent_self.myparent
+        DICT_VID_RAB_BY_REF = F.list_of_lists_to_dict_of_dicts(
+            F.dict_of_dicts_to_list_of_lists(mainSelf.DICT_VID_RABOT), 'ref_Key_erp')
+        rez = self.res_kotel
+
+        count_po_mk = 1
+
+        dict_rc_vid = dict()
+
+        dict_etaps = {name: {'Опер_наименование_подразделения': None,
+                             "Материалы": dict(),
+                             "Трудозатраты": dict(),
+                             } for name, val in mainSelf.Data_plan.DICT_ETAPS_NAME.items() if val['ДляЕРП']}
+
+        rez = self.add_erp_etaps_in_res(rez, DICT_OP, DICT_RC, dict_etaps)
+        if rez is None:
+            return None
+        for dse in rez:
+            if dse['ПКИ'] == '1':
+                if 'Способы_получения_материала' not in dse:
+                    dse['Способы_получения_материала'] = 'Обеспечивать'
+                dse['Количество_ед'] = dse['кол_во_инф']['кол_во_1_изд_по_структуре']
+
+            if 'Способы_получения_материала' not in dse:
+                dse['Способы_получения_материала'] = 'Произвести по основной спецификации'
+            for oper in dse['Операции']:
+                if oper['Опер_вспомогательная'] == 1:
+                    continue
+                rc_cod = oper['Опер_РЦ_код']
+                rc_name = oper['Опер_РЦ_наименование']
+                prof_cod = oper['Опер_профессия_код']
+                prof_name = oper['Опер_профессия_наименование']
+                podr_name = oper['Опер_наименование_подразделения']
+                oper_kod = oper['Опер_код']
+                if prof_cod != '' and prof_cod not in DICT_PROF_CODE:
+                    CQT.msgbox(
+                        f"профессия {oper['Опер_профессия_код']} из {oper['Опер_наименование']} {dse['Номенклатурный_номер']} не найдена в справочнике")
+                    return None, None
+                if oper_kod != '' and oper_kod not in DICT_OP:
+                    CQT.msgbox(
+                        f"операция {oper['Опер_код']} {oper['Опер_наименование']} из {dse['Номенклатурный_номер']} не найдена в справочнике")
+                    return None
+                etap = oper['Этап']  # 11.04.25
+
+                if dict_etaps[etap]['Опер_наименование_подразделения'] == None:
+                    dict_etaps[etap]['Опер_наименование_подразделения'] = podr_name
+                if dict_etaps[etap]['Опер_наименование_подразделения'] == None:
+                    dict_etaps[etap]['Опер_наименование_подразделения'] = DICT_RC[rc_cod]['Наим_ЕРП']
+                if dict_etaps[etap]['Опер_наименование_подразделения'] == None:
+                    CQT.msgbox(f'В БД МЕС для РЦ {rc_cod} не указан Наим_ЕРП')
+                    return
+
+                vid_rab = mainSelf.DICT_PROF_CODE[prof_cod]['вид_работ']
+                guid_vid_rab = mainSelf.DICT_VID_RABOT[vid_rab]['ref_Key_erp']
+                if guid_vid_rab != None:
+                    if guid_vid_rab not in dict_etaps[etap]['Трудозатраты']:
+                        dict_etaps[etap]['Трудозатраты'][guid_vid_rab] = 0
+                    dict_etaps[etap]['Трудозатраты'][guid_vid_rab] += (
+                            oper['Опер_Тпз'] + oper['Опер_Тшт'] / count_po_mk)
+                    test.append([dse['Номенклатурный_номер'], oper['Опер_РЦ_наименование'], etap,
+                                 (oper['Опер_Тпз'] + oper['Опер_Тшт'] / count_po_mk),
+                                 dict_etaps[etap]['Трудозатраты'][guid_vid_rab]])
+                for mat in oper['Материалы']:
+                    Мат_код = mat['Мат_код']
+                    if Мат_код not in DICT_NOMEN:
+                        CQT.msgbox(f'Материал {mat["Мат_код"]} не найден в номенклатуре')
+                        return None
+                    if DICT_NOMEN[Мат_код]['На_удаление']:
+                        CQT.msgbox(
+                            f'Материал \n\nКод: `{Мат_код}` \nНаименование: `{DICT_NOMEN[Мат_код]["Наименование"]}`'
+                            f' \n\nотмечен в 1С `На_удаление`\n\nИспользование не возможно.')
+                        return None
+
+                    if 'Способы_получения_материала' not in mat:
+                        mat['Способы_получения_материала'] = 'Обеспечивать'
+
+                    if 'Материалы_Статья_калькуляции' not in mat:
+                        Материалы_Статья_калькуляции = 'Сырье'
+                        if DICT_NOMEN[Мат_код][
+                            'Вид'] == 'Упаковочные материалы для складского хоз-ва 10.09':
+                            Материалы_Статья_калькуляции = 'Упаковка'
+                        mat['Материалы_Статья_калькуляции'] = Материалы_Статья_калькуляции
+
+                    Мат_наименование = mat['Мат_наименование']
+                    Мат_ед_изм = mat['Мат_ед_изм']
+                    Мат_норма = mat['Мат_норма']
+                    Мат_норма_ед = mat['Мат_норма_ед']
+                    Мат_параметрика = mat['Мат_параметрика']
+                    Материалы_Статья_калькуляции = mat['Материалы_Статья_калькуляции']
+                    Способы_получения_материала = mat['Способы_получения_материала']
+
+                    if Мат_код not in dict_etaps[etap]["Материалы"]:
+                        dict_etaps[etap]["Материалы"][Мат_код] = {
+                            'Мат_код': Мат_код,
+                            'Мат_наименование': Мат_наименование,
+                            'Мат_ед_изм': Мат_ед_изм,
+                            'Мат_норма': 0,
+                            'Мат_параметрика': Мат_параметрика,
+                            'Материалы_Статья_калькуляции': Материалы_Статья_калькуляции,
+                            'Способы_получения_материала': Способы_получения_материала,
+                        }
+                    if Мат_норма == 0:
+                        if CQT.msgboxgYN(f"""При компоновке материалов обнаружено для {Мат_наименование} Мат_норма == 0 
+                      {oper['Опер_наименование']} {dse['Номенклатурный_номер']}""", 'Прервать            ',
+                                         'Продолжить'):
+                            return None
+
+                    dict_etaps[etap]["Материалы"][Мат_код]['Мат_норма'] += Мат_норма / count_po_mk
+        list_etaps = []
+        for k, v in dict_etaps.items():
+            if len(v['Материалы']) or len(v['Трудозатраты']):
+                # Этап
+                Подразделение = CRES.SubdivisionsData.find_by_name(v['Опер_наименование_подразделения'])
+                stage_data = CRES.StageData(
+                    Подразделение=Подразделение
+                )
+                for mat in v['Материалы'].values():
+                    if mat['Мат_норма']:
+                        stage_data.add_material(CRES.Material(
+                            mat['Мат_код'],
+                            mat['Мат_норма'],
+                            CRES.ArticulationArticlesData.find_by_name(mat['Материалы_Статья_калькуляции']),
+                            CRES.MethodOfObtainingMaterialspecificationsData.find_by_name(
+                                mat['Способы_получения_материала'])
+                        ))
+                    else:
+                        CQT.msgbox(
+                            f'В `{v["Опер_наименование_подразделения"]}` пропущен материал \n`{mat["Мат_наименование"]}`\nт.к. кол-во = 0')
+
+                trs = v['Трудозатраты']
+                for key, tr in trs.items():
+                    if tr:
+                        stage_data.add_labor(CRES.LaborCost(
+                            CRES.TypeOfWorkData.find_by_ref(key),
+                            tr)
+                        )
+
+                    else:
+                        CQT.msgbox(
+                            f'В `{v["Опер_наименование_подразделения"]}` пропущен вид работ \n`{DICT_VID_RAB_BY_REF[key]["Список"]}`\nт.к. кол-во = 0')
+
+                spec.add_stage(CRES.Stage(k, stage_data))
+
+        self.obj_res_for_erp = spec
+        return spec
+        CQT.msgboxg_get_table_ok_inf(self.parent_self, 'test', [[_[0], _[1], _[2], str(_[3]), _[4]] for _ in test],
+                                     use_first_row_as_header=False)
+
+    @staticmethod
+    def __clear_zero_time_opers(res):
+        list_msg = []
+        for i, dse in enumerate(res):
+            tmp_opers = []
+            for j, oper in enumerate(dse['Операции']):
+                if oper['Опер_Тшт_ед'] == 0 and len(oper['Материалы']) == 0:
+                    list_msg.append({'Операция': oper['Опер_наименование'],
+                                     'ДСЕ': f"{dse['Наименование']} {dse['Номенклатурный_номер']} ",
+                                     'val': f"не учтена т.к. норма времени = 0"
+                                     })
+                    continue
+                tmp_opers.append(oper)
+            if len(tmp_opers) != dse['Операции']:
+                res[i]['Операции'] = tmp_opers
+        return res, list_msg
+
+    @staticmethod
+    def __add_code_erp(DICT_DSE, res):
+        # dict_dse = CMS.load_dict_dse(self.db_dse)
+        for i, dse in enumerate(res):
+            if 'Код_ERP' not in dse and 'Код ERP' not in dse:
+                kod_erp = ''
+                if dse['Номенклатурный_номер'] in DICT_DSE:
+                    kod_erp = DICT_DSE[dse['Номенклатурный_номер']]['Код_ЕРП']
+                res[i]['Код_ERP'] = kod_erp
+                res[i]['Код ERP'] = kod_erp
+        return res
+
+    @staticmethod
+    def apply_kotlovoy_method(DICT_PROF_CODE, DICT_NOMEN, rez, self=None):
+        rez_new = [copy.deepcopy(rez[0])]
+        count_po_mk = rez_new[0]['Количество']
+        rez_new[0]['Операции'] = []
+        rez_new[0]['Параметрика'] = {}
+        rez_new[0]['Документы'] = []
+        rez_new[0]['ПКИ'] = '0'
+        dict_rc_vid = dict()
+        dev_analisis = []
+        for dse in rez:
+            if dse['ПКИ'] == '1':
+                if 'Способы_получения_материала' not in dse:
+                    dse['Способы_получения_материала'] = 'Обеспечивать'
+                if not len(dse['Операции']):
+                    CQT.msgbox(f'Для ДСЕ {dse["Номенклатурный_номер"]} {dse["Наименование"]} не найдены операции\n'
+                               f'Учтена в ресурсной не будет.')
+                    continue
+                fl_naid = False
+                for oper in dse['Операции']:
+                    for mat in oper['Материалы']:
+                        if dse['Код_ERP'] == mat['Мат_код']:
+                            dse['Операции'][0]['Опер_вспомогательная'] = 0
+                            mat['Способы_получения_материала'] = dse['Способы_получения_материала']
+                            fl_naid = True
+                        if fl_naid:
+                            break
+                    if fl_naid:
+                        break
+
+                SET_SHT_EDIZM = {'Штука',
+                                 'Шт',
+                                 'штУДАЛИТЬ',
+                                 'шт.штУДАЛИТЬ',
+                                 'штука',
+                                 'штштУДАЛИТЬ',
+                                 'шт',
+                                 }
+                dict_Материалы = self.myparent.DICT_NOMEN[dse['Код_ERP']]
+
+                ЕдиницаИзмерения = dict_Материалы['ЕдиницаИзмерения']
+                koef = dse['Количество'] / dse['Количество_ед']
+                if ЕдиницаИзмерения in SET_SHT_EDIZM:
+                    mat_val_ed = dse['Количество']
+                else:
+                    mat_val_ed = 0
+                    if '/' in dse['Мат_кд']:
+                        mat_val_ed = F.valm(dse['Мат_кд'].split('/')[0])
+
+                if not fl_naid and mat_val_ed:
+                    dse['Операции'][0]['Опер_вспомогательная'] = 0
+                    dse['Операции'][0]['Материалы'] = [{
+                        'Мат_код': dse['Код_ERP'],
+                        'Мат_наименование': dse['Наименование'],
+                        'Мат_ед_изм': '',
+                        'Мат_норма': mat_val_ed,
+                        'Мат_норма_ед': mat_val_ed / koef,
+                        'Мат_параметрика': '',
+
+                        'Способы_получения_материала': dse['Способы_получения_материала'],
+                    }]
+
+                # rez_new.append(dse)
+
+            if 'Способы_получения_материала' not in dse:
+                dse['Способы_получения_материала'] = 'Произвести по основной спецификации'
+
+            for oper in dse['Операции']:
+                if oper['Опер_вспомогательная'] == 1:
+                    continue
+                rc_cod = oper['Опер_РЦ_код']
+                if 'Опер_РЦ_наименовние' in oper and 'Опер_РЦ_наименование' not in oper:
+                    oper['Опер_РЦ_наименование'] = oper['Опер_РЦ_наименовние']
+                    oper['Опер_наименование'] = oper['Опер_наименовние']
+                rc_name = oper['Опер_РЦ_наименование']
+                prof_cod = oper['Опер_профессия_код']
+                prof_name = oper['Опер_профессия_наименование']
+                podr_name = oper['Опер_наименование_подразделения']
+                if prof_cod not in DICT_PROF_CODE:
+                    CQT.msgbox(
+                        f"профессия {oper['Опер_профессия_код']} из {oper['Опер_наименование']} {dse['Номенклатурный_номер']} не найдена в справочнике")
+                    return
+
+                prof_s_rc = prof_cod + "$" + rc_cod
+                if prof_s_rc not in dict_rc_vid:
+                    pnum = len(rez_new[0]['Операции'])
+                    dict_rc_vid[prof_s_rc] = pnum
+                    rez_new[0]['Операции'].append(
+                        {
+                            'Опер_РЦ_наименование': rc_name,
+                            'Опер_РЦ_код': rc_cod,
+                            'Опер_профессия_наименование': prof_name,
+                            'Опер_профессия_код': prof_cod,
+                            'Опер_наименование_подразделения': podr_name,
+                            'Опер_вспомогательная': 0,
+                            'Опер_наименование': str(pnum),
+                            'Опер_код': oper['Опер_код'],
+                            'Этап': oper['Этап'],
+                            'Опер_Тпз': 0,
+                            'Опер_Тшт_ед': 0,
+                            'Опер_Тшт': 0,
+                            'Материалы': []
+                        }
+                    )
+
+                dev_analisis.append({
+                    'Этап': oper['Этап'],
+                    'Номенклатурный_номер': dse['Номенклатурный_номер'],
+                    'Опер_номер': oper['Опер_номер'],
+                    'Опер_наименование': oper['Опер_наименование'],
+                    'Опер_профессия_код': oper['Опер_профессия_код'],
+                    'count_po_mk': count_po_mk,
+                    'Опер_Тшт': oper['Опер_Тшт'],
+                    'Опер_Тпз': oper['Опер_Тпз']
+                })
+                rez_new[0]['Операции'][dict_rc_vid[prof_s_rc]]['Опер_Тпз'] += oper['Опер_Тпз']
+                rez_new[0]['Операции'][dict_rc_vid[prof_s_rc]]['Опер_Тшт_ед'] += oper['Опер_Тшт_ед'] / count_po_mk
+                rez_new[0]['Операции'][dict_rc_vid[prof_s_rc]]['Опер_Тшт'] += oper['Опер_Тшт'] / count_po_mk
+                for mat in oper['Материалы']:
+                    mat_kod = mat['Мат_код']
+                    if mat_kod not in DICT_NOMEN:
+                        CQT.msgbox(
+                            f"материал {mat['Мат_наименование']} (код:`{mat_kod}`) из операции {oper['Опер_номер']} `{oper['Опер_наименование']}` "
+                            f"ДСЕ:`{dse['Номенклатурный_номер']}` не найдена в справочнике номенклатуры МЕС")
+                        return
+
+                    mat_nr = mat['Мат_норма']
+                    mat_nr_ed = mat['Мат_норма_ед']
+                    fl_kod = False
+                    for i, item in enumerate(rez_new[0]['Операции'][dict_rc_vid[prof_s_rc]]['Материалы']):
+                        if item['Мат_код'] == mat_kod:
+                            fl_kod = True
+                            rez_new[0]['Операции'][dict_rc_vid[prof_s_rc]]['Материалы'][i][
+                                'Мат_норма_ед'] += mat_nr_ed / count_po_mk
+                            rez_new[0]['Операции'][dict_rc_vid[prof_s_rc]]['Материалы'][i][
+                                'Мат_норма'] += mat_nr / count_po_mk
+                            break
+
+                    if fl_kod == False:
+                        mat['Мат_норма_ед'] = mat['Мат_норма_ед'] / count_po_mk
+                        mat['Мат_норма'] = mat['Мат_норма'] / count_po_mk
+
+                        if 'Способы_получения_материала' not in mat:
+                            mat['Способы_получения_материала'] = 'Обеспечивать'
+
+                        if 'Материалы_Статья_калькуляции' not in mat:
+                            Материалы_Статья_калькуляции = 'Сырье'
+                            if DICT_NOMEN[mat_kod]['Вид'] == 'Упаковочные материалы для складского хоз-ва 10.09':
+                                Материалы_Статья_калькуляции = 'Упаковка'
+                            mat['Материалы_Статья_калькуляции'] = Материалы_Статья_калькуляции
+
+                        rez_new[0]['Операции'][dict_rc_vid[prof_s_rc]]['Материалы'].append(mat)
+        return rez_new
+        CQT.msgboxg_get_table_ok_inf(self, 'Check', dev_analisis, load_summ=True)
+
+    def generate_table_form(self, DICT_DSE, DICT_PROF_CODE, DICT_NOMEN, silent_mode=False):
+        """    стадия МК(ресурсной план)
+    этап по имени операции (operacii)
+    вид работ по профессии (professions)
+
+    стадия выгрузки трудов (факт)
+    этап по должности исполнителя (dolgn_etap)
+    вид работ по должности исполнителя (professions)"""
+        res = copy.deepcopy(self.res)
+
+        res, msg = self.__clear_zero_time_opers(res)
+        res = self.__add_code_erp(DICT_DSE, res)
+        res = self.apply_kotlovoy_method(DICT_PROF_CODE, DICT_NOMEN, res, self.parent_self)
+        if res == None:
+            return
+        self.res_kotel = res
+        if msg and not silent_mode:
+            CQT.msgboxg_get_table(self.parent_self, 'Внимание', msg, 'OK', disable_btn1=True)
+        rez_list = []
+
+        def add_row(rez_list, lvl, Тип, Наименование, Номер, Вид_работ='', Количество=1, Ед_изм='', Этап='',
+                    Подразделение=''):
+            tnp_dict = {'lvl': f'{"    " * lvl}{lvl}',
+                        'Тип': f'{"    " * lvl}{Тип}',
+                        'Наименование': Наименование,
+                        'Номер': Номер,
+                        'Вид работ': Вид_работ,
+                        'Количество': Количество,
+                        'Ед изм': Ед_изм,
+                        'Этап': Этап,
+                        'Подразделение': Подразделение
+                        }
+            rez_list.append(tnp_dict)
+            return rez_list
+
+        test = []
+        for dse in res:
+            rez_list = add_row(rez_list, 1, 'ДСЕ', dse['Наименование'], dse['Номенклатурный_номер'],
+                               Количество=dse['Количество_ед'], Ед_изм='Штука')
+            for rc in dse['Операции']:
+                vid_rab = DICT_PROF_CODE[rc['Опер_профессия_код']]['вид_работ']
+
+                etap = self.parent_self.myparent.DICT_RC[rc['Опер_РЦ_код']]['etaps_name']
+                if 'Опер_РЦ_наименование' not in rc:
+                    CQT.msgbox(
+                        f"Опер_РЦ_наименование (Рабочий центр) отсутствет в ДСЕ {dse['Наименование']} {dse['Номенклатурный_номер']}")
+                    return
+                Примечание = ''
+                if rc['Опер_РЦ_код'] in self.parent_self.myparent.DICT_RC:
+                    Примечание = " (" + self.parent_self.myparent.DICT_RC[rc['Опер_РЦ_код']]['Примечание'] + ')'
+                rez_list = add_row(rez_list, 2, 'РЦ', rc['Опер_РЦ_наименование'] + Примечание, rc['Опер_РЦ_код'],
+                                   vid_rab, round(rc['Опер_Тпз'] + rc['Опер_Тшт'], 3), 'мин', etap,
+                                   rc['Опер_наименование_подразделения'])
+                test.append([dse['Номенклатурный_номер'], rc['Опер_РЦ_наименование'], etap,
+                             str(rc['Опер_Тпз'] + rc['Опер_Тшт'])])
+                for mat in rc['Материалы']:
+                    Мат_наименование = self.parent_self.myparent.DICT_NOMEN[mat['Мат_код']]['Наименование']
+                    Мат_ед_изм = self.parent_self.myparent.DICT_NOMEN[mat['Мат_код']]['ЕдиницаИзмерения']
+                    rez_list = add_row(rez_list, 3, 'Мат.', Мат_наименование, mat['Мат_код'],
+                                       vid_rab, round(mat['Мат_норма'], 3), Мат_ед_изм, etap,
+                                       rc['Опер_наименование_подразделения'])
+        return rez_list
+        CQT.msgboxg_get_table_ok_inf(self.parent_self, 'test', [[_[0], _[1], _[2], str(_[3])] for _ in test],
+                                     use_first_row_as_header=False)
+
 
 class mywindow_res(QtWidgets.QDialog):  # диалоговое окно
     def __init__(self, parent,name_res_for_ERP=None,possible_upload_ERP=False,nom_mk=None,save_as_predv_res=False,num_kpl=None,primech:str|None=None):
@@ -56,7 +754,8 @@ class mywindow_res(QtWidgets.QDialog):  # диалоговое окно
         self.ui3.fr_res2.setHidden(True)
         self.ui3.fr_options_upload.setHidden(True)
         self.fact_load_res = False
-        self.check_box_tkp()
+        if not USRCNF.User_config.is_developer:
+            self.check_box_tkp()
 
     def check_box_tkp(self):
         list_points = [
@@ -121,17 +820,27 @@ class mywindow_res(QtWidgets.QDialog):  # диалоговое окно
                 name_res_for_ERP = (f"{F.clear_row_for_file_name_c(self.myparent.tkp_current_schema['nnom_tkp'])}"
                                     f"_{F.clear_row_for_file_name_c(self.myparent.tkp_current_schema['name_tkp'])}")
 
-        res_obj = CMS.Resourse_mk(res,self.myparent.db_resxml,self.myparent.db_kplan,self.myparent.bd_naryad,
+        res_obj = Resourse_mk(res,self.myparent.db_resxml,self.myparent.db_kplan,self.myparent.bd_naryad,
                                   self.myparent.db_users,tkp_current_schema,self,name_res_for_ERP,nom_mk=nom_mk,num_kpl=num_kpl,primech=primech)
         list_data = res_obj.generate_table_form(self.myparent.DICT_DSE_save_mk,self.myparent.DICT_PROF_CODE,self.myparent.DICT_NOMEN, silent_mode=True)
         if list_data == None:
             self.close()
             self.err=True
             return
-        CQT.fill_wtabl(list_data,self.ui3.tbl_res,auto_type=False,height_row=24)
+        CQT.fill_wtabl(list_data,self.ui3.tbl_res,auto_type=False,height_row=24,ogr_maxshir_kol=600)
         CMS.fill_filtr_c(self,self.ui3.tbl_res_filtr,self.ui3.tbl_res,hidden_scroll=True)
         CMS.update_width_filtr(self.ui3.tbl_res,self.ui3.tbl_res_filtr)
         CMS.fill_summ_tbl(self,self.ui3.tbl_res_summ,self.ui3.tbl_res,{'Количество'},round_summ_digit=3)
+        for i in range(self.ui3.tbl_res.rowCount()):
+            if '1' in self.ui3.tbl_res.item(i,0).text():
+                for j in range(self.ui3.tbl_res.columnCount()):
+                    CQT.set_color_wtab_c(self.ui3.tbl_res,i,j,255, 204, 102)
+            if '2' in self.ui3.tbl_res.item(i,0).text():
+                for j in range(self.ui3.tbl_res.columnCount()):
+                    CQT.set_color_wtab_c(self.ui3.tbl_res,i,j,102, 153, 255)
+            if '3' in self.ui3.tbl_res.item(i,0).text():
+                for j in range(self.ui3.tbl_res.columnCount()):
+                    CQT.set_color_wtab_c(self.ui3.tbl_res,i,j,153, 204, 153)
         self.res_data = list_data
         self.ui3.le_res_first.setText(res_obj.nn)
         self.res_obj = res_obj
@@ -163,7 +872,7 @@ class mywindow_res(QtWidgets.QDialog):  # диалоговое окно
         # if 'tkp_current_schema' in self.myparent.__dict__:
         #     tkp_current_schema = self.myparent.tkp_current_schema
 
-        res_obj_r = CMS.Resourse_mk(res_r, self.myparent.db_resxml,self.myparent.db_kplan,self.myparent.bd_naryad,
+        res_obj_r = Resourse_mk(res_r, self.myparent.db_resxml,self.myparent.db_kplan,self.myparent.bd_naryad,
                                     self.myparent.db_users,tkp_current_schema,self)
         list_data_r = res_obj_r.generate_table_form(self.myparent.DICT_DSE_save_mk, self.myparent.DICT_PROF_CODE, self.myparent.DICT_NOMEN)
 
@@ -246,12 +955,11 @@ class mywindow_res(QtWidgets.QDialog):  # диалоговое окно
             return
 
         res_old = None
+        s_num = int(row['Пномер'])
         if row['Тип'] == 'МК':
-            res_old = int(row['Пномер'])
-            res_old = CMS.load_res(res_old,'','',self=self.myparent)
+            res_old = CMS.load_res(s_num,'','',self=self.myparent)
 
         if row['Тип'] == 'ТКП':
-            s_num = row['Пномер']
             #data = CSQ.custom_request_c(self.myparent.db_resxml, f"""SELECT * FROM predv_res WHERE Пномер = {row['Пномер']};""",
             #                                        rez_dict=True)
             res_old = CMS.load_res(s_num,'','',self=self.myparent, tkp=True)
@@ -265,12 +973,40 @@ class mywindow_res(QtWidgets.QDialog):  # диалоговое окно
 
     @CQT.onerror
     def show_options_upload(self, *args):
-
-        LIST_VIDS_NOMEN  = ("Металлическая арматура", "Фильтры рукавные", "ФР.2403088", "Аппараты обдувки",
+        LIST_VIDS_NOMEN = ()
+        if USRCNF.Config.place.poki == 0:
+            LIST_VIDS_NOMEN  = ("Металлическая арматура", "Фильтры рукавные", "ФР.2403088", "Аппараты обдувки",
                             "Газоходы", "Горелки", "Испытательный цех", "Клапаны", "Линзовые компенсаторы",
                             "Металлоизделия", "Прочая продукция Пауэрза", "Рукава фильтровальные",
                             "Системы газоочистки и компоненты", "Системы сухого золоудаления и ком-ты",
                             "Шумоглушители")
+        if USRCNF.Config.place.poki == 1:
+            LIST_VIDS_NOMEN = (
+            "Компенсатор тканевый",
+            "БСИ_Изоляция рукавов",
+            "БСИ_КЗХ",
+            "БСИ_КИП",
+            "БСИ_Оборудование",
+            "БСИ_Палеты",
+            "БСИ_Рукава",
+            "КЗХ Стандарт",
+            "Готовая набивка (Подушки)",
+            "Гибкие вставки",
+            "Лента для гибких вставок",
+            "Рукава фильтровальные",
+            "Поддоны обычные",
+            "Ящики (на обычных поддонах)",
+            "Изделия, формы деревянные",
+            "Обрешетка деревянная",
+            "Оснастка для литья",
+            "Поддоны усиленные",
+            "Упаковка КЛ",
+            "Упаковка не стандарт",
+            "Ящики не стандарт",
+            "Крышки для ящиков",
+            "Стенки боковые",
+            "Стенки торцевые",
+           "Прочая продукция Келаста",)
 
         self.ui3.fr_res2.setHidden(True)
         self.ui3.fr_options_upload.setHidden(False)
@@ -280,18 +1016,20 @@ class mywindow_res(QtWidgets.QDialog):  # диалоговое окно
             start_date = F.datetostr(F.strtodate(self.res_obj.poz.max_date,"%d.%m.%Y" ))
         date_end = F.date_add_days(start_date,28)
 
-
-
-
-
+        name_res = self.res_obj.name_res_for_ERP
+        if USRCNF.Config.user_config.is_developer:
+            name_res = self.res_obj.name_res_for_ERP + "_test"
         headers = [['Параметр',"Значение",'Действие','Создать'],
-                   ['Наименование ресурсной',self.res_obj.name_res_for_ERP,'',''],
+                   ['Наименование ресурсной',name_res,'',''],
                    ['Код ресурсной', '', '', ''],
                    ['НачалоДействия ресурсной',F.now(),'',''],
                    ['КонецДействия ресурсной', date_end,'',''],
                    ['ОсновноеИзделиеНоменклатура','','',''],
                    ['ОсновноеИзделиеАртикул', '', '', ''],
-                   ['ОсновноеИзделиеКод','','','']]
+                   ['ОсновноеИзделиеКод','','',''],
+                   ['ГруппаКод','','',''],
+                   ['Связать с КПЛ','','',''],
+                   ]
 
         def coord(row_name=None, col_name=None):
             row = None
@@ -315,6 +1053,9 @@ class mywindow_res(QtWidgets.QDialog):  # диалоговое окно
         CQT.set_cell_editable(self.ui3.tbl_options_for_erp, *coord('ОсновноеИзделиеАртикул',"Значение"), False)
         CQT.set_cell_editable(self.ui3.tbl_options_for_erp, *coord('ОсновноеИзделиеКод',"Значение"), False)
         CQT.set_cell_editable(self.ui3.tbl_options_for_erp, *coord('ОсновноеИзделиеАртикул',"Создать"), False)
+        CQT.set_cell_editable(self.ui3.tbl_options_for_erp, *coord('ГруппаКод',"Создать"), False)
+        CQT.set_cell_editable(self.ui3.tbl_options_for_erp, *coord('ГруппаКод',"Значение"), False)
+
         def edit_art():
             row = self.ui3.tbl_options_for_erp.currentRow()
             col = self.ui3.tbl_options_for_erp.currentColumn()
@@ -343,21 +1084,22 @@ class mywindow_res(QtWidgets.QDialog):  # диалоговое окно
         if not self.res_obj.is_tkp and not self.res_obj.num_kpl == 3345:
             name_izd = self.res_obj.izd
             if name_izd:
+                name_izd = name_izd.replace('"', '\""') #12.08.25
                 affix = f' И Номенклатура.Наименование = "{name_izd}"'
                 msg_about_nomen = f'- Наличие номенклатуры в ЕРП\n      `{name_izd}`\n'
 
         text = f"""ВЫБРАТЬ 
-    ВидыНоменклатуры.Наименование КАК Вид,
-    Номенклатура.Наименование КАК Наименование,
-    Номенклатура.Код КАК Код,
-    Номенклатура.Артикул КАК Артикул
-ИЗ
-    Справочник.ВидыНоменклатуры КАК ВидыНоменклатуры
-        ЛЕВОЕ СОЕДИНЕНИЕ Справочник.Номенклатура КАК Номенклатура
-        ПО (Номенклатура.ВидНоменклатуры = ВидыНоменклатуры.Ссылка)
-ГДЕ
-    ВидыНоменклатуры.Наименование В ({list_vids})
-    И Номенклатура.ПометкаУдаления = ЛОЖЬ {affix}"""
+            ВидыНоменклатуры.Наименование КАК Вид,
+            Номенклатура.Наименование КАК Наименование,
+            Номенклатура.Код КАК Код,
+            Номенклатура.Артикул КАК Артикул
+        ИЗ
+            Справочник.ВидыНоменклатуры КАК ВидыНоменклатуры
+                ЛЕВОЕ СОЕДИНЕНИЕ Справочник.Номенклатура КАК Номенклатура
+                ПО (Номенклатура.ВидНоменклатуры = ВидыНоменклатуры.Ссылка)
+        ГДЕ
+            ВидыНоменклатуры.Наименование В ({list_vids})
+            И Номенклатура.ПометкаУдаления = ЛОЖЬ {affix}"""
         code, data  = APIERP.get_wet_request(text=text)
         list_nomen = []
         if code != 200:
@@ -396,9 +1138,10 @@ class mywindow_res(QtWidgets.QDialog):  # диалоговое окно
                     list_blocked_res = []
                     for res in data['data']:
                         if res['Статус'] == 'Действует':
+                            res['Решение'] = 'Выбрать другое `Наименование ресурсной`'
                             list_blocked_res.append(res)
                     if list_blocked_res:
-                        CQT.msgboxg_get_table_ok_inf(self, 'Ресурсные с таким именем, имеют статус `Действует` и заблокированы от затирания и удаления',
+                        CQT.msgboxg_get_table_ok_inf(self, 'Ресурсные с таким именем, имеют статус `Действует`и заблокированы от затирания и удаления',
                                                      list_blocked_res, show_filtr=False)
                         return True, []
                 return False, data
@@ -423,7 +1166,7 @@ class mywindow_res(QtWidgets.QDialog):  # диалоговое окно
                     return True
                 return data['data']
 
-            new_name = self.ui3.tbl_options_for_erp.item(0 ,1).text()
+            new_name = self.ui3.tbl_options_for_erp.item(0 ,1).text().replace('"', '\""') #12.08.25
             self.ui3.tbl_options_for_erp.item(1, 1).setText('')
 
 
@@ -502,11 +1245,72 @@ class mywindow_res(QtWidgets.QDialog):  # диалоговое окно
 
             CQT.msgbox('Успешно',time_life=0.5)
 
+        @CQT.onerror
+        def clear_group(lblself:CQT.InteractiveLabelInstance,self, row, col):
+            self.ui3.tbl_options_for_erp.item(*coord('ГруппаКод', "Значение")).setText('')
+            lblself.set_text('')
+
+        @CQT.onerror
+        def select_group( lblself:CQT.InteractiveLabelInstance,self, row, col):
+            text = f"""ВЫБРАТЬ
+                РесурсныеСпецификации.Ссылка КАК Ссылка,
+                РесурсныеСпецификации.Родитель КАК Родитель,
+                РесурсныеСпецификации.Код КАК Код
+            ИЗ
+                Справочник.РесурсныеСпецификации КАК РесурсныеСпецификации
+            ГДЕ
+                РесурсныеСпецификации.ЭтоГруппа = ИСТИНА
+                И РесурсныеСпецификации.Ссылка В ИЕРАРХИИ
+                        (ВЫБРАТЬ ПЕРВЫЕ 1
+                            РесурсныеСпецификации.Ссылка КАК Ссылка
+                        ИЗ
+                            Справочник.РесурсныеСпецификации КАК РесурсныеСпецификации
+                        ГДЕ
+                            РесурсныеСпецификации.ЭтоГруппа = ИСТИНА
+                            И РесурсныеСпецификации.Код = "{USRCNF.Config.place.КодГруппыРесурсных}")
+            УПОРЯДОЧИТЬ ПО
+                Родитель"""
+            key, data_rez = APIERP.get_wet_request(text=text)
+            if key != 200:
+                raise ConnectionError(f'Ошибка получения данных РесурсныеСпецификации из ERP')
+
+            if not data_rez['data']:
+                raise ValueError(f'Не найдено РесурсныеСпецификации из ERP')
+
+            list_groups = data_rez['data']
+            rez = CQT.msgboxg_get_table(self, 'Выбор группы', list_groups, selectRows=True,
+                                        ExtendedSelection=False, selection_from_tbl=True)
+            if not rez:
+                return
+            self.ui3.tbl_options_for_erp.item(*coord('ГруппаКод', "Значение")).setText(rez['Код'])
+            lblself.set_text(rez['Код'])
+
 
         list_nomen = data['data']
         CQT.add_btn(self.ui3.tbl_options_for_erp, *coord('Наименование ресурсной','Действие'),
                     'Чек наличие', conn_func_checked_row_col=check_exist_res,
                     self=self)
+
+        widget = CQT.add_interactive_label(
+            self.ui3.tbl_options_for_erp,
+            *coord('ГруппаКод', 'Значение'),
+            text=self.ui3.tbl_options_for_erp.item(*coord('ГруппаКод', "Значение")).text(),
+            txt_cut=14,
+            btn_width=25,
+            parent_self=self,
+        )
+        widget.add_button(txt_button='...',
+                          on_clicked= select_group,
+                          tooltip='Подбор группы ресурсной')
+
+        widget.add_button(txt_button='X',
+                          on_clicked=clear_group,
+                          tooltip='Очистить')
+
+        #CQT.add_btn(self.ui3.tbl_options_for_erp, *coord('ГруппаКод', 'Действие'),
+        #            'Подбор группы ресурсной', conn_func_checked_row_col=select_group, self=self)
+        CQT.add_check_box(self.ui3.tbl_options_for_erp, *coord('Связать с КПЛ', "Значение"),val=False,enabled=not self.res_obj.is_tkp)
+
         if len(list_nomen) == 1:
             select_nomen(self,1,1,list_nomen[0])
         else:
@@ -543,6 +1347,13 @@ class mywindow_res(QtWidgets.QDialog):  # диалоговое окно
             if not F.is_date(tbl.item(3 ,1).text()):
                 CQT.migat(self,tbl,3,1 ,2,f'Не указан КонецДействия ресурсной\nформат: "%Y-%m-%d %H:%M:%S"')
                 return False
+            if F.strtodate(tbl.item(2 ,1).text()) >= F.strtodate(tbl.item(3 ,1).text()):
+                CQT.migat(self, tbl, 3, 1, 2, f'ДатаНачала >= ДатаОкончания')
+                return False
+            if tbl.item(7 ,1).text() == "" and not USRCNF.Config.place.poki==0 :
+                CQT.blink_obj_c(self,2,tbl.cellWidget(7,1),f'Не указан ГруппаКод')
+                return False
+
             return True
 
         def generate(code_old_res=None):
@@ -557,6 +1368,7 @@ class mywindow_res(QtWidgets.QDialog):  # диалоговое окно
             hat['ИмяБазы'] = USRCNF.Config.user_config.ERP_base_name['Значение']
             hat['КластерСерверов'] = self.myparent.Data_plan.DICT_BASES_ERP[hat['ИмяБазы']]['КластерСерверов']
             hat['Описание'] = ''
+            hat['ПодразделениеДиспетчер'] = "Планово-диспетчерский отдел Производства (Пауэрз)"
             if self.res_obj.primech:
                 hat['Описание'] = self.res_obj.primech
             if code_old_res:
@@ -579,6 +1391,60 @@ class mywindow_res(QtWidgets.QDialog):  # диалоговое окно
             a = [[_['Этап'], _['Данные']['Трудозатраты']] for _ in data]
             return {'hat': hat, 'data': data}
 
+        def generate_obj(code_old_res=None):
+            pref_hat = {_['Параметр']: _['Значение'] for _ in
+                   CQT.list_from_wtabl_c(self.ui3.tbl_options_for_erp, rez_dict=True)}
+            ОсновноеИзделиеКод = CRES.MainProduct.find_by_name(
+                pref_hat['ОсновноеИзделиеНоменклатура'])
+
+            СпособРаспределенияЗатратНаВыходныеИзделия = CRES.TheMethodOfAllocatingTheCostOfTheOutputProductsData._hnt_по_долям_стоимости_0
+            РодительКод = CRES.GroupResData.find_by_code(pref_hat['ГруппаКод'], CRES.GroupRes())
+            if USRCNF.Config.place.poki == 0:
+                ВариантПодбораВДокументы = CRES.VariationsrespecificationdocumentsData._hnt_автоматически_по_приоритету_0
+                ПодразделениеДиспетчер = CRES.SubdivisionsData._hnt_планово_диспетчерский_отдел_производства_пауэрз_производственные_подразделения_пауэрз_00_000049
+            if USRCNF.Config.place.poki== 1:
+                ПодразделениеДиспетчер = CRES.SubdivisionsData._hnt_планово_диспетчерский_отдел_производства_келаст_производственные_подразделения_келаст_00_000112
+                ВариантПодбораВДокументы = CRES.VariationsrespecificationdocumentsData._hnt_вручную_1
+            if USRCNF.Config.place.poki== 2:
+                ПодразделениеДиспетчер = CRES.SubdivisionsData._hnt_сталелитейный_цех_таткуз_таткуз_00_000164
+                ВариантПодбораВДокументы = CRES.VariationsrespecificationdocumentsData._hnt_вручную_1
+            # Шапка
+            hat = CRES.ResourceHeader(
+                ОсновноеИзделиеКод=ОсновноеИзделиеКод,
+                КоличествоУпаковок=1,
+                Наименование=pref_hat['Наименование ресурсной'],
+                ТекущийПользователь=CRES.CurrentUser(F.user_full_namre()),
+                ДатаНачала=F.dateStrToStr(pref_hat['НачалоДействия ресурсной']),
+                ДатаОкончания=F.dateStrToStr(pref_hat['КонецДействия ресурсной']),
+                ПодразделениеДиспетчер=ПодразделениеДиспетчер,
+                РодительКод=РодительКод,
+                ВариантПодбораВДокументы=ВариантПодбораВДокументы,
+                Описание=self.res_obj.primech,
+                СпособРаспределенияЗатратНаВыходныеИзделия=СпособРаспределенияЗатратНаВыходныеИзделия,
+                Код=code_old_res
+            )
+
+
+            #data, err = self.res_obj.generate_list_res_for_erp(DICT_PROF_CODE=self.myparent.DICT_PROF_CODE,
+            #                                              DICT_NOMEN= self.myparent.DICT_NOMEN,
+            #                                              DICT_OP=self.myparent.DICT_OP,
+            #                                              DICT_RC = self.myparent.DICT_RC)
+            err = []
+            data = self.res_obj.generate_ResourceSpecification(hat=hat, DICT_PROF_CODE=self.myparent.DICT_PROF_CODE,
+                                                               DICT_NOMEN=self.myparent.DICT_NOMEN,
+                                                               DICT_OP=self.myparent.DICT_OP,
+                                                               DICT_RC=self.myparent.DICT_RC)
+            if err:
+                err.insert(0,['Ошибки'])
+                if not CQT.msgboxg_get_table(self,'Ошибки компоновки',err,
+                                             'Продолжить выгрузку','Прервать',
+                                             show_filtr=False,use_first_row_as_header=True,print_hat=True,yesNoMode=True):
+                    return
+            if data == None:
+                return
+
+            return data #{'hat': hat, 'data': data}
+
         @CQT.onerror
         def send(data):
             code, answ = APIERP.post_res_json(data,self.myparent.ERP_base_name)
@@ -593,7 +1459,8 @@ class mywindow_res(QtWidgets.QDialog):  # диалоговое окно
             data = {"data": {'Наименование':name}}
             code, answ = APIERP.delete_res_json(data, self.myparent.ERP_base_name)
             if code == 200:
-                CMS.send_info_mk_b24_by_action(f'{F.user_full_namre()}\nУдалены, не использующиеся в ЗП, ресурсные:\n{answ["Код"]}', 'готовность РС')
+                if not USRCNF.User_config.is_developer:
+                    CMS.send_info_mk_b24_by_action(f'{F.user_full_namre()}\nУдалены, не использующиеся в ЗП, ресурсные:\n{answ["Код"]}', 'готовность РС')
                 CQT.msgbox(f'Удалены ресурсные. \n{answ["Код"]}')
                 return True
             else:
@@ -605,7 +1472,8 @@ class mywindow_res(QtWidgets.QDialog):  # диалоговое окно
             data = {"data": {'Код': code}}
             code_resp, answ = APIERP.clear_res_json(data, self.myparent.ERP_base_name)
             if code_resp == 200:
-                CMS.send_info_mk_b24_by_action(f'{F.user_full_namre()}\nОчищена и перезаполнена, не использующаяся в ЗП, ресурсная:\n{answ["Код"]}',
+                if not USRCNF.User_config.is_developer:
+                    CMS.send_info_mk_b24_by_action(f'{F.user_full_namre()}\nОчищена и перезаполнена, не использующаяся в ЗП, ресурсная:\n{answ["Код"]}',
                                                'готовность РС')
                 CQT.msgbox(f'Очищена ресурсная. \n{code}')
                 return True
@@ -639,8 +1507,9 @@ class mywindow_res(QtWidgets.QDialog):  # диалоговое окно
             if mode == 'Перезаполнить':
                 code_old_res = self.ui3.tbl_options_for_erp.item(1 ,1).text()
 
+        #data_to_ERP = generate(code_old_res)
 
-        data_to_ERP = generate(code_old_res)
+        data_to_ERP = generate_obj(code_old_res)
         if data_to_ERP == None:
             return
         code = 'None'
@@ -654,8 +1523,8 @@ class mywindow_res(QtWidgets.QDialog):  # диалоговое окно
                     code_old_res = self.ui3.tbl_options_for_erp.item(1 ,1).text()
                     if not clear_res(code_old_res):
                         return
-
-            data_answ = send(data_to_ERP)
+            data_answ = data_to_ERP.send()
+            #data_answ = send(data_to_ERP)
             if not data_answ:
                 return
             code = data_answ['Код']
@@ -671,14 +1540,18 @@ class mywindow_res(QtWidgets.QDialog):  # диалоговое окно
                 self.write_data_res_analogue(self.res_obj.res,name_res,self.res_obj.num_kpl,self.res_obj.s_num_tkp)
                 if self.res_obj.num_kpl and self.res_obj.s_num_tkp and self.res_obj.num_kpl != 3345:
                     self.write_name_analogue_into_kplan(name_res, self.res_obj.num_kpl)
-                    connection_kpl_state = f'Записана в КПЛ №{self.res_obj.num_kpl}'
+                    connection_kpl_state = f'Записана `Предв_спецификация_ЕРП` в КПЛ №{self.res_obj.num_kpl}'
+            if self.ui3.tbl_options_for_erp.cellWidget(8,1).isChecked():
+                self.write_name_main_res_into_kplan(name_res, self.res_obj.num_kpl,code)
+                connection_kpl_state = f'Записана `Спецификация_код_ЕРП` в КПЛ №{self.res_obj.num_kpl}'
             # if self.save_as_predv_res and self.res_obj.is_tkp and self.res_obj.num_kpl and self.res_obj.s_num_tkp and self.res_obj.num_kpl != 3345:
             CQT.msgboxg_get_table_ok_inf(self, 'Результат', [{'Поле': 'Ссылка', 'Значение': '|'.join([link,'Открыть в 1С'])},
                                                              {'Поле': 'Код', 'Значение': code},
                                                              {'Поле': 'ИмяРесурсной', 'Значение': name_res},
                                                              {'Поле': 'Связь с КПЛ', 'Значение': connection_kpl_state},
                                                              ],load_links=True,styleSheet=CQT.ERP_CSS)
-            self.close()
+            if not USRCNF.User_config.is_developer:
+                self.close()
 
     @CQT.onerror #08.04.25
     def write_data_res_analogue(self, rez,name_res,num_kpl,s_num_tkp,*args):
@@ -701,3 +1574,11 @@ class mywindow_res(QtWidgets.QDialog):  # диалоговое окно
     def write_name_analogue_into_kplan(self, name_res,num_kpl, *args):
         res = CSQ.custom_request_c(self.db_kplan,
                              f"""UPDATE пл_топ SET Предв_спецификация_ЕРП = "{name_res}" WHERE НомПл = {num_kpl};""")#self.dict_cur_poz_cr_mk['Пномер']
+    @CQT.onerror
+    def write_name_main_res_into_kplan(self, name_res,num_kpl,code, *args):
+        res = CSQ.custom_request_c(self.db_kplan,
+                             f"""UPDATE пл_топ SET (Спецификация_ЕРП, Спецификация_код_ЕРП) 
+                                = ("{name_res}", "{code}") WHERE НомПл = {num_kpl};""")
+
+
+

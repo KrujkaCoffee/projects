@@ -26,6 +26,7 @@ import project_cust_38.operacii as operacii
 from project_cust_38 import Cust_xl_formul as CXLF
 from project_cust_38 import Cust_docs as CDOCS
 import tk_operation_docs as TOD
+import project_cust_38.api_erp_commands as APIERP
 
 import hashlib
 import osn_materials as osn_mat
@@ -3401,16 +3402,53 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
             #CMS.fill_filtr_c(self, self.ui2.tbl_filtr, tab)
 
             self.setGeometry(application.frameGeometry().getCoords()[0], application.frameGeometry().getCoords()[1], application.width(), application.height())
+        self.ui2.lineEdit.setReadOnly(False)
 
         if item_o == "Оснастка":
+            text = f"""ВЫБРАТЬ
+                    ВидыНоменклатуры.Наименование КАК Наименование
+                ИЗ
+                    Справочник.ВидыНоменклатуры КАК ВидыНоменклатуры
+                ГДЕ
+                    ВидыНоменклатуры.Ссылка В ИЕРАРХИИ
+                            (ВЫБРАТЬ ПЕРВЫЕ 1
+                                ВидыНоменклатуры.Ссылка КАК Ссылка
+                            ИЗ
+                                Справочник.ВидыНоменклатуры КАК ВидыНоменклатуры
+                            ГДЕ
+                                ВидыНоменклатуры.Наименование = "{pself.place.Имя}"
+                                И ВидыНоменклатуры.ЭтоГруппа = ИСТИНА)
+                    И ВидыНоменклатуры.ЭтоГруппа = ЛОЖЬ
+                    И ВидыНоменклатуры.ПометкаУдаления = ЛОЖЬ
+                УПОРЯДОЧИТЬ ПО
+                    Наименование"""
+            code, data = APIERP.get_wet_request(text=text)
+            list_nomen = []
+            if code != 200:
+                CQT.msgbox(f'Запрос get_wet_request номенклатуры в 1С ошибка {code}')
+                self.close()
+                return
+            list_nomen = [ _["Наименование"] for  _ in data['data']]
+
             self.ui2.fr_vid.setHidden(False)
             combo1.setEnabled(True)
-            if F.existence_file_c(self.osnast_txt):
-                sp_sort_c_osn = F.open_file_c(self.osnast_txt, False)
-                combo1.addItems(sp_sort_c_osn)
-                self.vibor_elem1()
-                text.setEnabled(True)
-                combo1.setFocus()
+            combo1.addItems(list_nomen)
+            combo1.setEditable(False)
+            self.ui2.label_2.setVisible(False)
+            self.ui2.combo2.setVisible(False)
+            self.ui2.fr_weld.setVisible(False)
+            self.ui2.lbl_info_dxf.setVisible(False)
+            self.ui2.lineEdit.setReadOnly(True)
+            tab.setEnabled(True)
+            self.ui2.lbl_prim.setVisible(False)
+
+            #if F.existence_file_c(self.osnast_txt):
+            #    sp_sort_c_osn = F.open_file_c(self.osnast_txt, False)
+            #    combo1.addItems(sp_sort_c_osn)
+            #    self.vibor_elem1()
+            #    text.setEnabled(True)
+            #    combo1.setFocus()
+
 
         if item_o == "Инструмент":
             self.ui2.fr_vid.setHidden(False)
@@ -3506,6 +3544,13 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
 
     #+++14.07.25
     def get_prim(self,*args, **kwargs):
+
+        if self.item_o == "Оснастка":
+            row = CQT.get_dict_line_form_tbl(self.ui2.tab_vib)
+            self.ui2.lineEdit.setText(row['Код'])
+            return
+
+
         column = self.ui2.tab_vib.currentColumn()
         if column == -1:
             return
@@ -3534,6 +3579,8 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
                 if name in operacii.Data_oper_norm.DICT_OPERS_CALC[oper]:
                     comment = operacii.Data_oper_norm.DICT_OPERS_CALC[oper][name].get("comment", '')
                     self.ui2.lbl_prim.setText(comment)
+
+
     #---14.07.25
 
 
@@ -3570,14 +3617,18 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
             tab_mat.horizontalHeader().setStretchLastSection(True)
             tab_mat.resizeColumnsToContents()
 
+        if self.item_o == "Оснастка":
+            self.cust_keyReleaseEvent(16777220,QtCore.Qt.ControlModifier)
+
     @CQT.onerror
-    def keyReleaseEvent(self, e):
-        # print(str(int(e.modifiers())) + ' ' +  str(e.key()))
+    def cust_keyReleaseEvent(self, ekey:int,modifiers:int):
+        # print(str(int(modifiers)) + ' ' +  str(ekey))
+        tbl_handler = False
         if self.item_o == "Док_оп":
             tab_v = self.ui2.tab_vib
             if tab_v.hasFocus() == False:
                 return
-            if e.key() == QtCore.Qt.Key_Return:
+            if ekey == QtCore.Qt.Key_Return:
                 tab_doc = self.pself.ui.tab_op_doc
                 if tab_doc.item(tab_doc.currentRow(), 0) != None:
                     tab_doc.item(tab_doc.currentRow(), 0).setText(tab_v.item(tab_v.currentRow(), 0).text())
@@ -3589,7 +3640,7 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
             tab_v = self.ui2.tab_vib
             if tab_v.hasFocus() == False:
                 return
-            if e.key() == QtCore.Qt.Key_Return:
+            if ekey == QtCore.Qt.Key_Return:
                 tab_doc = self.pself.ui.tab_tk_doc
                 if tab_doc.item(tab_doc.currentRow(), 0) != None:
                     tab_doc.item(tab_doc.currentRow(), 0).setText(tab_v.item(tab_v.currentRow(), 0).text())
@@ -3601,7 +3652,7 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
             tab_v = self.ui2.tab_vib
             if tab_v.hasFocus() == False:
                 return
-            if e.key() == QtCore.Qt.Key_Return:
+            if ekey == QtCore.Qt.Key_Return:
                 tab_op = self.pself.ui.tab_op
                 if tab_op.item(tab_op.currentRow(), 7) != None:
                     tab_op.item(tab_op.currentRow(), 7).setText(tab_v.item(tab_v.currentRow(), 0).text())
@@ -3613,7 +3664,7 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
             tab_v = self.ui2.tab_vib
             if tab_v.hasFocus() == False:
                 return
-            if e.key() == QtCore.Qt.Key_Return:
+            if ekey == QtCore.Qt.Key_Return:
                 tab_op = self.pself.ui.tab_op
                 if tab_op.item(tab_op.currentRow(), 4) != None:
                     tab_op.item(tab_op.currentRow(), 4).setText(tab_v.item(tab_v.currentRow(), 1).text())
@@ -3625,7 +3676,7 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
             tab_v = self.ui2.tab_vib
             if tab_v.hasFocus() == False:
                 return
-            if e.key() == QtCore.Qt.Key_Return:
+            if ekey == QtCore.Qt.Key_Return:
                 tab_op = self.pself.ui.tab_op
                 if tab_op.item(tab_op.currentRow(), 3) != None:
                     tab_op.item(tab_op.currentRow(), 3).setText(tab_v.item(tab_v.currentRow(), 0).text())
@@ -3636,29 +3687,30 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
         if self.item_o == "Материал":
             tab_v = self.ui2.tab_vib
             if tab_v.hasFocus():
-                if e.key() == QtCore.Qt.Key_Return:
+                if ekey == QtCore.Qt.Key_Return:
                     self.vibor_iz_tab_vib_v_tableW_oper_mat()
             if self.ui2.tbl_filtr.hasFocus():
-                if e.key() == QtCore.Qt.Key_Return:
+                if ekey == QtCore.Qt.Key_Return:
                     CMS.apply_filtr_c(self, self.ui2.tbl_filtr, tab_v)
-
-        if e.modifiers() == QtCore.Qt.ControlModifier:
-            if e.key() == 83:
+        if self.item_o == "Оснастка":
+            tbl_handler = True
+        if modifiers == QtCore.Qt.ControlModifier: 
+            if ekey == 83:
                 if self.ui2.tab_vib.isEnabled():
                     self.ui2.tab_vib.setFocus(True)
-            if e.key() == 87:
+            if ekey == 87:
                 self.ui2.lineEdit.setFocus(True)
 
         if self.ui2.lineEdit.text().strip() == "":
             return
         if len(self.ui2.lineEdit.text().strip()) < 4:
             return
-        if self.ui2.lineEdit.hasFocus() == False:
+        if not tbl_handler and self.ui2.lineEdit.hasFocus() == False:
             return
 
         if self.item_o == "Оснастка" or self.item_o == "Инструмент":
 
-            if e.key() == QtCore.Qt.Key_Return:  # and int(e.modifiers()) == QtCore.Qt.ControlModifier:
+            if ekey == QtCore.Qt.Key_Return:  # and int(modifiers) == QtCore.Qt.ControlModifier:
                 combo1 = self.ui2.combo1
                 combo2 = self.ui2.combo2
                 if combo1.currentText() == '':
@@ -3736,7 +3788,7 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
                         F.write_file_c(ins_path, arr_ins)
 
         if self.item_o == "Древо":
-            if e.key() == QtCore.Qt.Key_Return:
+            if ekey == QtCore.Qt.Key_Return:
                 print("Нажата клавиша <Control Enter>tree")
                 strok = self.ui2.lineEdit.text().strip().replace('\n', ' ')
                 strok = F.clear_row_for_separ_c(strok)
@@ -3850,6 +3902,11 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
                 self.hide()
         return
 
+    @CQT.onerror
+    def keyReleaseEvent(self, e):
+        self.cust_keyReleaseEvent(e.key(),e.modifiers()) #QtCore.Qt.NoModifier
+
+
     def click_chbox_edit_combos(self):
         self.pself.chbox_edit_combos = self.ui2.chbox_edit_combos.isChecked()
 
@@ -3961,12 +4018,38 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
         text = self.ui2.lineEdit
         if self.item_o == "Оснастка":
             vid_osn = combo1.currentText()
-            osn_path = self.pself.get_oper_osn_path(vid_osn)
-            if F.existence_file_c(osn_path):
-                arr_tmp = F.open_file_c(osn_path)
-                combo2.clear()
-                combo2.setEnabled(True)
-                combo2.addItems(arr_tmp)
+
+            text = f"""ВЫБРАТЬ
+                    Номенклатура.Код КАК Код,
+                    Номенклатура.Наименование КАК Наименование,
+                    Номенклатура.Артикул КАК Артикул,
+                    Номенклатура.ЕдиницаИзмерения КАК ЕдиницаИзмерения,
+                    Номенклатура.Описание КАК Описание
+                ИЗ
+                    Справочник.Номенклатура КАК Номенклатура
+                ГДЕ
+                    Номенклатура.ВидНоменклатуры.Наименование = "{vid_osn}"
+                    И Номенклатура.ЭтоГруппа = ЛОЖЬ
+                    И Номенклатура.ПометкаУдаления = ЛОЖЬ
+                
+                УПОРЯДОЧИТЬ ПО
+                    Код УБЫВ"""
+            code, data = APIERP.get_wet_request(text=text)
+
+            if code != 200:
+                CQT.msgbox(f'Запрос get_wet_request номенклатуры в 1С ошибка {code}')
+                self.close()
+                return
+            list_nomen = data['data']
+
+            #osn_path = self.pself.get_oper_osn_path(vid_osn)
+            #if F.existence_file_c(osn_path):
+            #    arr_tmp = F.open_file_c(osn_path)
+            #    combo2.clear()
+            #    combo2.setEnabled(True)
+            #    combo2.addItems(arr_tmp)
+            CQT.fill_wtabl(list_nomen,self.ui2.tab_vib,auto_type=False,selectionBehavior="SelectRows",sortingEnabled=True,selectionMode="SingleSelection")
+            CMS.fill_filtr_c(self,self.ui2.tbl_filtr,self.ui2.tab_vib)
             return
         if self.item_o == "Инструмент":
             vid_ins = combo1.currentText()
@@ -4197,6 +4280,8 @@ print(QtWidgets.QStyleFactory.keys())
 S = F.scfg('Stile').split(",")
 app.setStyle(S[1])
 application = mywindow()
+from project_cust_38.widget_spy import install_pyqt_event_hook
+install_pyqt_event_hook(app)
 
 #=============================================================
 versia = application.versia

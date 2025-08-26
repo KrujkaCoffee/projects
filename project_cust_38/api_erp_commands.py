@@ -1,10 +1,15 @@
 import pprint
 import requests
 import project_cust_38.Cust_Functions as F
+import project_cust_38.Cust_SQLite as CSQ
 import project_cust_38.Cust_odata_erp as CODATA
 import json as JS
 import base64
 import project_cust_38.Cust_config as CFG
+import hashlib
+import sys
+
+
 USER_ERP = 'mes_user'
 PASS_ERP = '89Luham'
 
@@ -17,15 +22,25 @@ else:
     HOST_MES = '192.168.50.44'# server
 
 class Ref_wet():
+
     def __init__(self,name_var:str, path_conf_1c:str, ref_key:str):
         if '&' in name_var:
-            raise ValueError
+            raise ValueError(f'В name_var не должно быть `&`')
+        if not F.is_unique_identifier(ref_key):
+            raise ValueError(f'Некорректный UUID: {ref_key} для {name_var}')
         self.name_var:str = name_var
         self.path_conf_1c:str = path_conf_1c
         self.ref_key:str = ref_key
         
 
 class Refs_wet():
+    """
+    refs = APIERP.Refs_wet(text)
+            ref_obj = APIERP.Ref_wet('ВиртуальныйЗаказПоставщику', 'Документы.ЗаказПоставщику', ref)
+            ref_obj2 = APIERP.Ref_wet('Ссылка', 'Документы.ЗаказПоставщику', ref)
+            refs.add_ref(ref_obj)
+            refs.add_ref(ref_obj2)
+    """
     def __init__(self,text_req:str):
         self.refs:dict = dict()
         self.text_req:str = text_req
@@ -136,7 +151,10 @@ def post_res_json(json:dict, erp_base_name:str = 'ERP'):
     url = f'{CFG.Config.project.ERB_BASE_URL}/{erp_base_name}/ru_RU/hs/mes/resspec/v1/make_res/'
     response = requests.post(url, json=json, headers=headers, params=params, auth=(USER_ERP, PASS_ERP))
     #print(F.convert_binary_to_data(response.content))
-    answ = JS.loads(F.convert_binary_to_data(response.content))
+    try:
+        answ = JS.loads(F.convert_binary_to_data(response.content))
+    except:
+        answ = F.convert_binary_to_data(response.content)
     if not isinstance(answ,dict):
         answ = {"Ошибки":answ,
                 "ЕстьОшибки":True,
@@ -158,25 +176,104 @@ def get_enum(name_enum:str, erp_base_name: str = 'ERP'):
         return response.status_code, JS.loads(F.convert_binary_to_data(response.content))
     else:
         return response.status_code, None
-    
 
-def get_wet_request(text:str,refs:Refs_wet|None=None, **kwargs):
+
+def get_wet_request(text: str, refs: Refs_wet | None = None, lazy_method_huours=0, **kwargs):
+
+    def tmp_dir():
+        ima_module = F.name_of_executable_file_c().split('.')[0]
+        if F.existence_file_c(F.sep().join([F.put_po_umolch(), 'mes_tmp'])) == False:
+            F.create_dir_c(F.sep().join([F.put_po_umolch(), 'mes_tmp']))
+        if F.existence_file_c(F.sep().join([F.put_po_umolch(), 'mes_tmp', ima_module])) == False:
+            F.create_dir_c(F.sep().join([F.put_po_umolch(), 'mes_tmp', ima_module]))
+        return F.sep().join([F.put_po_umolch(), 'mes_tmp', ima_module])
+
+    def save_tmp_stukt(data, name):
+        puth_name = tmp_dir() + F.sep() + name + '.pickle'
+        F.save_file_pickle(puth_name, data)
+
+    def load_tmp_stukt(ima, default_val=None):
+        puth_name = tmp_dir() + F.sep() + ima + '.pickle'
+        if F.existence_file_c(puth_name) == True:
+            val = F.load_file_pickle(puth_name)
+            return val
+        return default_val
+
+    BASE_NAME_TMP_STUKT = "lazy_wet_request"
+
+    def add_data_db(db_files: str, fl_naid_lazy: int | None, url_hash: str, file, description, file_hash, time):
+        size = sys.getsizeof(file)
+        new_hash = hashlib.md5(F.to_binary_pickle(file)).hexdigest()
+        if fl_naid_lazy == None:
+            CSQ.custom_request_c(db_files, """INSERT into odata_lazy_resps (resp, resp_date, description, file, file_size, hash_file)
+                      VALUES (?, ?, ?, ? ,? ,?);""",
+                                 list_of_lists_c=[
+                                     [url_hash, time, description, F.to_binary_pickle(file), size, new_hash]])
+        else:
+            if new_hash == file_hash:
+                CSQ.custom_request_c(db_files,
+                                     f"""UPDATE odata_lazy_resps set (resp_date ) = (?) WHERE s_num == {fl_naid_lazy};""",
+                                     list_of_lists_c=[[time]])
+            else:
+                CSQ.custom_request_c(db_files,
+                                     f"""UPDATE odata_lazy_resps set (resp_date, file, file_size, hash_file ) = (?,?,?,?) WHERE s_num == {fl_naid_lazy};""",
+                                     list_of_lists_c=[[time, F.to_binary_pickle(file), size, new_hash]])
+
     headers = dict(Accept='application/json')
     params = dict()
     dict_data = dict()
-    dict_data['text']=text
+    dict_data['text'] = text
     if refs:
         dict_data['refs'] = refs.refs
-    for k,v in kwargs.items():
+    for k, v in kwargs.items():
         dict_data[k] = v
     url = f'{CFG.Config.project.ERB_BASE_URL}/{CFG.Config.user_config.ERP_base_name["Значение"]}/ru_RU/hs/mes/sysexchange/v1/wet_request/none'
+    url_hash = hashlib.md5(url.encode('utf-8')).hexdigest()
+    dict_data_hash = hashlib.md5(dict_data.__repr__().encode('utf-8')).hexdigest()
+    params_hash = hashlib.md5(params.__repr__().encode('utf-8')).hexdigest()
+    text_hash = hashlib.md5(text.encode('utf-8')).hexdigest()
+    sum_hash = hashlib.md5(''.join([url_hash, dict_data_hash, params_hash, text_hash]).encode('utf-8')).hexdigest()
+    name_tmp_stukt = f'{BASE_NAME_TMP_STUKT}_{sum_hash}'
+    fl_naid_lazy = None
+    file_hash_lazy = None
+    if lazy_method_huours > 0:
+        now_date = F.now('')
+
+        date_limit_half = F.date_add_time(now_date, hours=-(lazy_method_huours * 0.6))
+
+        data_cach = load_tmp_stukt(name_tmp_stukt, False)
+        fl_load_from_srv = True
+        if data_cach:
+            delta = (F.now('') - F.strtodate(data_cach['date'])).seconds
+            if F.strtodate(data_cach['date']) > date_limit_half:
+                return 200, data_cach['data']
+
+        date_limit = F.date_add_time(now_date, hours=-lazy_method_huours)
+        data = CSQ.custom_request_c(CFG.Config.project.db_files, f"""SELECT s_num, resp_date,
+        CASE WHEN datetime(resp_date) >= datetime("{date_limit}")  
+    THEN file 
+    ELSE null  
+    END AS file, 
+          hash_file FROM odata_lazy_resps 
+        where resp == "{sum_hash}" limit 1""", rez_dict=True)
+        if len(data):
+            fl_naid_lazy = data[0]['s_num']
+            file_hash_lazy = data[0]['hash_file']
+            if F.strtodate(data[0]['resp_date']) >= date_limit:
+                return 200, F.from_binary_pickle(data[0]['file'])
+
     try:
         response = requests.get(url, json=dict_data, headers=headers, params=params, auth=(USER_ERP, PASS_ERP))
     except:
         return 408, None
     # print(F.convert_binary_to_data(response.content))
     if response.status_code == 200:
-        return response.status_code, JS.loads(F.convert_binary_to_data(response.content))
+        rez = JS.loads(F.convert_binary_to_data(response.content))
+        if lazy_method_huours > 0:
+            time = F.now()
+            add_data_db(CFG.Config.project.db_files, fl_naid_lazy, sum_hash, rez, f"{text}", file_hash_lazy, time)
+            save_tmp_stukt({"data": rez, "date": time}, name_tmp_stukt)
+        return response.status_code, rez
     else:
         return response.status_code, None
 

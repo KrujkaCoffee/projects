@@ -629,6 +629,11 @@ def save_table_colour_openpyxl(tbl, putf: str, wb_name_wout_exe: str, ws_name: s
     if tbl.verticalHeaderItem(0) == None:
         column_tmp -= 1
 
+    def set_border(rng, type, weigth, color):
+        rng.api.Borders(type).Weight = weigth + 1
+        rng.api.Borders(type).Color = color
+
+    # rng = sheet.range((row_tmp, column_tmp), (row_tmp + row_counter - 1, column_tmp + column_counter - 1))
 
     if 'custBorderInfo' in tbl.__dict__:
         custBorderInfo = tbl.custBorderInfo

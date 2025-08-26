@@ -19,6 +19,15 @@ class SingletonMeta(type):
             cls.__instances[cls] = instance
         return cls.__instances[cls]
 
+class ConfigMeta(SingletonMeta): #18.08.25
+    def __init__(cls, name, bases, attrs, **kwargs):
+        super().__init__(name, bases, attrs)
+        cls.post_init_settings(cls)
+
+    @classmethod
+    def post_init_settings(cls, config):
+        if hasattr(CSQ.custom_request_c, 'config'):
+            setattr(CSQ.custom_request_c, 'config', config)
 
 class Desc:
     def __init__(self, *, is_dynamic: bool=False, sep: str = '|', default = None) -> None:
@@ -203,6 +212,7 @@ class AppConfig(HorizontalConfig):
     __table__ = 'app_config'
     version: str = Desc(is_dynamic=True)
     last_update: str = Desc(is_dynamic=True, default='')
+    module: str = Desc() #18,08.25
     params: list = Desc(sep='|')
     path: str = Desc()
 
@@ -449,6 +459,7 @@ class Place(metaclass=SingletonMeta):
     УИД_ЕРП_Отдел_снабжения: str = None
     evaluation_department: Evaluation_department_podrazdel_for_reports = None
     КодыНарядов: CodeNaryad = None
+    limit_time_on_naryad: int = None #15.08.25
 
     def __init__(self, organization_name: str | None = None) -> None:
         if not organization_name:
@@ -474,7 +485,7 @@ class Place(metaclass=SingletonMeta):
             exec(f'self.{str(key).replace(".", "_")} = row[key]')
 
 
-class Config(metaclass=SingletonMeta):
+class Config(metaclass=ConfigMeta): #18.08.25
     project: ProjectConfig = ProjectConfig()
     app: AppConfig = AppConfig()
     user_config: User_config = User_config(common_config=project) #18.07.25

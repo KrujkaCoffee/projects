@@ -1,4 +1,5 @@
 import copy
+import os
 from datetime import datetime
 from dataclasses import dataclass, field, asdict
 
@@ -276,6 +277,46 @@ class OrderRecycler(BaseOrder):
         })
 
 
+from project_cust_38 import Cust_docs as CDOCS
+from project_cust_38 import Cust_mes as CMS
+
+def get_file_content(file_id: int | str, nn: str):
+    with CDOCS.TFlexFileClient() as client:
+        files = client.get_filenames_by_nomen_name(nn)
+        for file in files:
+            if file['s_ObjectID'] == int(file_id):
+                return client.get_binary_file(
+                    srv_name=file['source'],
+                    object_id=file['s_ObjectID'],
+                    revision=file['s_Version']
+                )
+
+
+@CQT.onerror
+def load_docs_file(tbl: QtWidgets.QTableWidget):
+    doc_id_col = CQT.num_col_by_name_c(tbl, 'ID')
+    doc_col = CQT.num_col_by_name_c(tbl, 'Документ')
+    nn_col = CQT.num_col_by_name_c(tbl, 'ДСЕ')
+
+    if None in (doc_id_col, doc_col, nn_col):
+        return
+    filename = tbl.item(tbl.currentRow(), doc_col).text()
+    file_id = tbl.item(tbl.currentRow(), doc_id_col).text()
+    nn = tbl.item(tbl.currentRow(), nn_col).text()
+    content = get_file_content(file_id, nn)
+    if content is None:
+        CQT.msgbox(f'Файл не найден')
+        return
+    put_tmp = CMS.tmp_dir() + os.sep + 'tmp_files'
+    if F.existence_file_c(put_tmp):
+        F.ochist_papky(put_tmp)
+    else:
+        F.create_dir_c(put_tmp)
+    put_file_tmp = CMS.tmp_dir() + os.sep + 'tmp_files' + os.sep + \
+                   str(F.get_time_shtamp_c()).split('.')[-1] + "_" + \
+                   F.transliterate(filename.replace('ь', ''))
+    F.save_binary_convert_to_file(content, put_file_tmp)
+    F.run_file_c(put_file_tmp)
 
 class OrderERP:
     def __init__(self, *, erp_base_name: str, window = None):
@@ -357,12 +398,15 @@ class OrderERP:
         nk_nn = CQT.num_col_by_name_c(tbl, 'Номенклатурный номер')
         nk_code = CQT.num_col_by_name_c(tbl, 'Код')
         nk_action = CQT.num_col_by_name_c(tbl, 'Действие')
+        nk_info = CQT.num_col_by_name_c(tbl, 'Инфо')
         nn = tbl.item(row, nk_nn).text()
         code, nomen = self.create_nomen(nn)
         if code != 201:
             return CQT.msgbox(f'Произошла ошибка при добавлении номенклатуры с обозначением: {nn!r}')
         tbl.item(row, nk_code).setText(nomen['Code'])
         tbl.removeCellWidget(row, nk_action)
+        tbl.item(row, nk_action).setText('')
+        tbl.item(row, nk_info).setText('Найдено')
 
 
     def on_click_select_nomen(self, nomen_lst, row: int, col: int, tbl: QtWidgets.QTableWidget, *args, **kwargs):
@@ -374,6 +418,10 @@ class OrderERP:
         tbl.item(row, nk_code).setText(result['Code'])
         tbl.item(row, nk_nn).setText(result['Description'])
         tbl.item(row, nk_ref_key).setText(result['Ref_Key'])
+        CQT.msgbox('Успешно')
+
+    def on_check(self, tbl: QtWidgets.QTableWidget, checked: bool, row: int, col: int):
+        tbl.item(row, col).setText(str(int(checked)))
 
     def oform_sub_preview_table(self, tbl: QtWidgets.QTableWidget):
         spec_columns = {
@@ -389,6 +437,12 @@ class OrderERP:
                 value = item.text()
                 split_value = value.split('|')
                 if len(split_value) == 2:
+                    if split_value[0] == '<view_btn>':
+                        CQT.add_btn(tbl, row, col, split_value[1],
+                                    conn_func_checked_row_col=lambda *args: load_docs_file(tbl))
+                    if split_value[0] == '<attach_check>':
+                        CQT.add_check_box(tbl, row, col, self=tbl, conn_func_checked_row_col=self.on_check)
+                        tbl.item(row, col).setText('')
                     if split_value[0] == '<btn>':
                         CQT.add_btn(tbl, row, col, split_value[1], conn_func_checked_row_col=self.on_click_create_nomen, cell_val=tbl)
                     if split_value[0] == '<combo>':
@@ -439,6 +493,7 @@ class OrderERP:
         return cp_data
 
     def unpack_user_changes_in_object(self, result, order_object: OrderRecycler | OrderSupplier):
+        attached_docs = []
         for item in result:
             key = item['Поле']
             value = item['Значение']
@@ -469,7 +524,12 @@ class OrderERP:
                             Количество=nomen['Количество'],
                             Характеристика_Key=nomen['Характеристика_Key']
                         )
-        return order_object
+                case 'Прикрепленные файлы':
+                    for file in value:
+                        if file['Прикрепить'] == '1':
+                            attached_docs.append(file)
+
+        return order_object, attached_docs
 
     def prepare_data_for_send(self, main_data: dict[str, str | int], nomen_lst: list[dict], doc_name: str, docs: list[list]):
         # Этап 1 составление объекта-представления документа с основными данными
@@ -489,24 +549,57 @@ class OrderERP:
         # 3.1 Функция оформления основной таблицы А.) скрывает колонки Б.) Выравнивает размерность вложенных таблиц
         # 3.1 Функция оформления побочной таблицы А.) скрывает колонки Б.) Размещает виджеты в местах, где пользователь должен уточнить информацию
         # 3.2 Функция валидации А.) возвращает False если уточняющая информация не была заполнена
-        result = CQT.msgboxg_get_table(self.window,
-                                       'Предпросмотр данных', dict_or_list=data,
-                                       btn0_name='Принять',
-                                       func_validate=self.validate_user_preview_changes, func_oform_tbl=self.oform_preview_table, show_filtr=False)
+        result = CQT.msgboxg_get_table(
+            self.window,
+        'Предпросмотр данных',
+            dict_or_list=data,
+            btn0_name='Принять',
+            func_validate=self.validate_user_preview_changes,
+            func_oform_tbl=self.oform_preview_table,
+            show_filtr=False
+        )
         if result:
             # Этап 3 Распаковка пользовательских изменений в объект документа
-            obj = self.unpack_user_changes_in_object(result, data_order_obj)
+            obj, docs = self.unpack_user_changes_in_object(result, data_order_obj)
             # Этап 4 Распаковка тела для запроса и отправка на создание
-            return obj.as_dict()
+            return obj.as_dict(), docs
+        return None, None
+
+    def attach_documents(self, ref_key: str, author_ref: str, lst_doc: list[dict]):
+        from attach_file_in_doc import attach_file_for_1c_document
+        for doc in lst_doc:
+            file_id = doc['ID']
+            nn = doc['ДСЕ']
+            filename = doc['Документ']
+            content = get_file_content(file_id, nn)
+            code, resp = attach_file_for_1c_document(
+                document_ref=ref_key,
+                content=content,
+                author_ref=author_ref,
+                file_name=filename
+            )
+
+
 
     def create_order(self, docs: list[list], doc_name: str, data_for_order, nomen_dse):
-        prepared_data = self.prepare_data_for_send(docs=docs, doc_name=doc_name, nomen_lst=nomen_dse, main_data=data_for_order)
+        prepared_data, docs = self.prepare_data_for_send(docs=docs, doc_name=doc_name, nomen_lst=nomen_dse, main_data=data_for_order)
         if not prepared_data:
             return None, None
         self.client.params = prepared_data
         response = self.client.post_responce(doc_name=doc_name)
         self.client.params = {}
         return response
+
+    def edit_order(self, docs: list[list], doc_name: str, ref_key: str, data_for_order, nomen_dse):
+        prepared_data, docs = self.prepare_data_for_send(docs=docs, doc_name=doc_name, nomen_lst=nomen_dse, main_data=data_for_order)
+        if not prepared_data:
+            return None, None
+        self.client.params = prepared_data
+        code, resp = self.client.patch_responce(doc_name=f'{doc_name}(guid{ref_key!r})')
+        if code == 200:
+            self.attach_documents(ref_key=ref_key, author_ref=prepared_data['Автор_Key'], lst_doc=docs)
+        self.client.params = {}
+        return code, resp
 
     def get_document(self, doc_name: str, ref_key: str, fields: list[str] = None):
         select = ''

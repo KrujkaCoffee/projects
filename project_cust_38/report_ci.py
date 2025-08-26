@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import os
@@ -247,7 +246,7 @@ def vibor_sort_c_report_c(self: mywindow, *args):
     if vid == 'Усредненная удельная трудоемкость сборки по видам':
         dat = F.date_add_days(F.datetostr(DT.today()), -31)
         konec = F.start_end_dates_c(date=dat, vid='m')[1]
-        nach = '2023-01-01 00:00:00'
+        nach = F.start_end_dates_c(dat)[0]
         self.ui.le_start_of_period.setText(nach)
         self.ui.le_end_of_period.setText(konec)
         podrazdel_none(self)
@@ -2834,7 +2833,29 @@ def analysis_vneplan_by_vid_rab(self: mywindow, nach, konec, podrazd=None, *args
     res_list = []
     set_mk = set()
     nar_pnoms = ', '.join(str(item['Пномер']) for _, _, _, _, item in list_vid_rab)
-    response = CSQ.custom_request_c(self.bd_naryad, f'SELECT * FROM jurnal WHERE Номер_наряда IN ({nar_pnoms})', rez_dict=True)
+    response = CSQ.custom_request_c(self.bd_naryad, f'''SELECT 
+       jurnal.Пномер,
+       jurnal.Дата,
+       jurnal.Штамп,
+       jurnal.Номер_наряда,
+       jurnal.ФИО,
+       jurnal.Подытог,
+       jurnal.Подытог_нормы,
+       jurnal.Статус,
+       jurnal.Примечание,
+       jurnal.Ном_заверш,
+       jurnal.Дата_выгрузки_ЕРП,
+       jurnal.ФИО_выгрузки_ЕРП,
+       jurnal.Файл_выгрузки_ЕРП,
+       jurnal.Минут_выгружено_ЕРП,
+       jurnal.base_ERP
+     
+     FROM jurnal 
+                                                    INNER JOIN naryad ON naryad.Пномер = jurnal.Номер_наряда
+                                                    INNER JOIN mk ON mk.Пномер = naryad.Номер_мк
+                                                    INNER JOIN plan ON plan.Пномер = mk.НомКплан 
+                                                    WHERE jurnal.Номер_наряда IN ({nar_pnoms}) 
+                                                    and plan.poki == {self.place.poki}''' , rez_dict=True, attach_dbs=(self.db_kplan))
     journal_list = defaultdict(list)
     for item in response:
         journal_list[item['Номер_наряда']].append(item)
@@ -2928,9 +2949,12 @@ def analysis_vneplan_by_vid_rab(self: mywindow, nach, konec, podrazd=None, *args
                 delta = 0
                 if dict_vids_napr_percent[vid]['p'] > 0:
                     delta = round(dict_vids_napr_percent[vid]['v'] / dict_vids_napr_percent[vid]['p'], 2)
-                CSQ.custom_request_c(self.db_kplan,
-                                     f"""UPDATE виды_по_направлениям SET (vneplan_percent) = {delta} WHERE Пномер = {vid}""") #18.07.25
-
+                    if delta > 5:
+                        delta = 5
+                if not self.Data.DICT_VID_PO_NAPR_NAME[vid]['Утверждены_нормы']:
+                    CSQ.custom_request_c(self.db_kplan,
+                                     f"""UPDATE виды_по_направлению SET (vneplan_percent) = {delta} WHERE Пномер = {vid}""") #18.08.25
+                
 
     for mk in set_mk:
         mk = CMS.Marshrut_cards(mk, self.bd_naryad, self.db_resxml, True)
@@ -4566,7 +4590,7 @@ def udel_trud_sort_c(self: mywindow, data_nach, data_kon, *args):
     INNER JOIN napravlenie ON napravlenie.Пномер = napravl_deyat.Направление  
     WHERE naryad.Подтвержд_вып == 1 AND datetime(naryad.Дата) > datetime("{data_nach}") 
                     and datetime(naryad.Дата) < datetime("{data_kon}") and mk.Направление != 'ПТ' 
-                     and naryad.Внеплан = 0 AND пл_топ.Вид != 1"""
+                     and naryad.Внеплан = 0 AND пл_топ.Вид != 1 and plan.poki == {self.place.poki} """
     dict_rez = dict()
     responce = CSQ.custom_request_c(self.bd_naryad, query, rez_dict=True,attach_dbs=(self.db_kplan))
 
@@ -4622,7 +4646,10 @@ def udel_trud_sort_c(self: mywindow, data_nach, data_kon, *args):
     for mk in tmp_dict_mk.keys():
         ves = tmp_dict_mk[mk]['Вес'] * KOEF_RASKLADKI
         vid = tmp_dict_mk[mk]['Вид']
-        dict_shabl_napr[vid]['Вес'] += ves
+        try:
+            dict_shabl_napr[vid]['Вес'] += ves                
+        except:
+            pass
         dict_shabl_napr[vid]['Кол'] += 1
         for etap in tmp_dict_mk[mk]['Этапы'].keys():
             if etap == 'Сборка+сварка':

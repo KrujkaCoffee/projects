@@ -3,7 +3,7 @@ import datetime
 import re
 import project_cust_38.Cust_Functions as F
 import project_cust_38.Cust_config as CFG
-
+import project_cust_38.api_erp_commands as APIERP
 
 COMPARE_PRODUCT = {  # если не сработал поиск по номенглатуре то искать в второподств
     'КЛ.': ['клапан', 'задвижк', 'затвор', 'шибер'],
@@ -273,7 +273,7 @@ class OrdersComposit():
 
     
     @F.time_of_exec_cls_func_args_c
-    def get_nomen_mater(self,list_vids):
+    def get_nomen_mater(self,list_vids,refs_vids_nomen):
 
         def get_list_vids(step,list_vids):
             step = 10
@@ -310,23 +310,56 @@ class OrdersComposit():
             return list_nomen
 
         def get_list_nomen(step,list_vids):
-            step = 5
+            postfix = ""
+            dict_str_vids = {f'&ВидНоменклатуры{_}':ref for _, ref in enumerate(list_vids) if F.is_unique_identifier(ref)}
+            postfix = ", ".join(list(dict_str_vids.keys()))
+            text = f"""ВЫБРАТЬ
+                        УНИКАЛЬНЫЙИДЕНТИФИКАТОР(Номенклатура.Ссылка) КАК Ref_Key,
+                        
+                        Номенклатура.Код КАК Code,
+                        Номенклатура.Артикул КАК Артикул,
+                        Номенклатура.Наименование КАК Description,
+                        
+                        Номенклатура.ЕдиницаИзмерения.Наименование КАК edizm_Description,
+                        Номенклатура.ПометкаУдаления КАК DeletionMark,
+                        Номенклатура.ВидНоменклатуры.Наименование КАК vidsNomen_Description,
+                        УНИКАЛЬНЫЙИДЕНТИФИКАТОР(Номенклатура.СхемаОбеспечения.Ссылка) КАК СхемаОбеспечения_Key
+                    ИЗ
+                        Справочник.Номенклатура КАК Номенклатура
+                    ГДЕ
+                        Номенклатура.ВидНоменклатуры В ({postfix})
+                    """
 
-            rez = []
-            for i in range(0, len(list_vids), step):
-                tmp_list_vids = []
-                for j in range(i, i + step):
-                    if j >= len(list_vids):
-                        break
-                    tmp_list_vids.append(list_vids[j])
-                list_vids_str = [f"ВидНоменклатуры_Key eq guid'{_}'" for _ in tmp_list_vids]
-                str_vids = " or ".join(list_vids_str)
-                nomen = self.get_response(doc_name='Catalog_Номенклатура',
-                                          wet_filtr=f"?$filter=DeletionMark eq false and ({str_vids}) &$select=Ref_Key,ВидНоменклатуры_Key,Code,"
-                                            f"Артикул,Description,ЕдиницаИзмерения_Key,DeletionMark,СхемаОбеспечения_Key")
-                for item in nomen:
-                    rez.append(item)
-            return rez
+            refs = APIERP.Refs_wet(text)
+            for k,ref in dict_str_vids.items():
+                ref_obj = APIERP.Ref_wet(k[1:], 'Справочники.ВидыНоменклатуры', ref)
+                refs.add_ref(ref_obj)
+            
+            key, data_rez = APIERP.get_wet_request(text=text,refs=refs)
+            if key != 200:
+                raise ConnectionError(f'Ошибка получения данных РесурсныеСпецификации из ERP')
+
+            if not data_rez['data']:
+                raise ValueError(f'Не найдено РесурсныеСпецификации из ERP')
+
+            return data_rez['data']
+            #step = 5
+            #
+            #rez = []
+            #for i in range(0, len(list_vids), step):
+            #    tmp_list_vids = []
+            #    for j in range(i, i + step):
+            #        if j >= len(list_vids):
+            #            break
+            #        tmp_list_vids.append(list_vids[j])
+            #    list_vids_str = [f"ВидНоменклатуры_Key eq guid'{_}'" for _ in tmp_list_vids]
+            #    str_vids = " or ".join(list_vids_str)
+            #    nomen = self.get_response(doc_name='Catalog_Номенклатура',
+            #                              wet_filtr=f"?$filter=DeletionMark eq false and ({str_vids}) &$select=Ref_Key,ВидНоменклатуры_Key,Code,"
+            #                                f"Артикул,Description,ЕдиницаИзмерения_Key,DeletionMark,СхемаОбеспечения_Key")
+            #    for item in nomen:
+            #        rez.append(item)
+            #return rez
 
 
         #f_name = f'08052024_res'
@@ -369,20 +402,15 @@ class OrdersComposit():
                 'Склад': item['sclads_Description'],
                 'ГарантированныйСрокОбеспечения': period,
             })
-        
-        vids = get_list_vids(10, list_vids)
-        list_vids = [_['Ref_Key'] for _ in vids]
-        nomen = get_list_nomen(10, list_vids)
+
+
+
+        nomen = get_list_nomen(10, refs_vids_nomen)
         nomen = add_prices( nomen)
-        edizm = self.get_response(doc_name='Catalog_УпаковкиЕдиницыИзмерения',
-                                  wet_filtr=f"?$select=Ref_Key,Description")
-        if edizm == None:
-            return None, None
-        nomen = self.left_join_dicts(nomen, vids, 'ВидНоменклатуры_Key', 'Ref_Key','vidsNomen')
-        nomen = self.left_join_dicts(nomen, edizm, 'ЕдиницаИзмерения_Key', 'Ref_Key','edizm')
+       
         if schemas_rez == None or nomen == None:
             return  None, None 
-        #nomen = self.left_join_dicts(nomen,schemas,'СхемаОбеспечения_Key','СхемаОбеспечения_Key','schemasObesp')
+
         res = []
         s_num = 0
         for item in nomen:

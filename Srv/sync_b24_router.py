@@ -33,7 +33,7 @@ class DeliveryOrder(BaseModel):
     ufCrm18Customer: Optional[str] = Field(..., alias="Заказчик")
     ufCrm18Shipper: Optional[str] = Field(..., alias="Организация")
     ufCrm18ShippingAddress: Optional[str] = Field(..., alias="ЮридическийАдресСтрока2")
-    ufCrm18ShipperContact: Optional[str] = Field(..., alias="Подписант")
+    ufCrm18ShipperContact: Optional[str] = Field(..., alias="КонтактноеЛицоГрузоотправителя")
     ufCrm18Recipient: Optional[str] = Field(..., alias="Грузополучатель")
     ufCrm18RecipientAddress: Optional[str] = Field(..., alias="АдресДоставки")
     ufCrm18RecipientContact: Optional[str] = Field(..., alias="КонтактноеЛицо")

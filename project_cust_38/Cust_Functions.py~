@@ -2137,32 +2137,3 @@ def resolve_lnk_target(lnk_path):
     target_path, _ = shell_link.GetPath(shell.SLGP_UNCPRIORITY)
     return target_path
 # -- 30.07.25
-
-
-
-def is_unique_identifier(identifier: str) -> bool:
-    """
-    Проверяет, является ли строка уникальным идентификатором (UUID).
-
-    В качестве уникального идентификатора предполагается строка вида
-    "XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX", где X = [0..9,a..f].
-
-    Параметры:
-        identifier (str): проверяемая строка.
-
-    Возвращаемое значение:
-        bool: True, если переданная строка является уникальным идентификатором.
-    """
-    if not isinstance(identifier, str):
-        return False
-
-    # Регулярное выражение для проверки формата UUID
-    uuid_pattern = re.compile(
-        r'^[0-9a-fA-F]{8}-'
-        r'[0-9a-fA-F]{4}-'
-        r'[0-9a-fA-F]{4}-'
-        r'[0-9a-fA-F]{4}-'
-        r'[0-9a-fA-F]{12}$'
-    )
-
-    return bool(uuid_pattern.match(identifier))

@@ -181,8 +181,6 @@ class mywindow(QtWidgets.QMainWindow):
 
         #=============combobox============
         self.ui.cmb_select_year.currentTextChanged.connect(self.on_cmb_select_year_changed)
-        import time
-        start = time.time()
         self.put_csv = ""
         ANAL.prepare_tbl_red_stukt(self)
         ANAL.load_mats(self)
@@ -191,7 +189,6 @@ class mywindow(QtWidgets.QMainWindow):
         CQT.load_css(self)
         CQT.load_icons(self)
         ANAL.clear_add_info(self)
-        print(f'END: {time.time() - start}')
         self.Data_plan = Data_mes()
 
     def anal_dse_dbl_clk(self,r,c):
@@ -752,6 +749,8 @@ finally:
 app.setStyle('Fusion')
 
 application = mywindow()
+from project_cust_38.widget_spy import install_pyqt_event_hook
+install_pyqt_event_hook(app)
 # ======================================================
 versia = application.versia
 if CMS.kontrol_ver(versia,"csv") == False:

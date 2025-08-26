@@ -3,6 +3,7 @@ import socketserver
 import logging
 import pathlib
 import re
+from urllib.parse import quote
 
 from werkzeug import Request, Response
 
@@ -142,6 +143,9 @@ ATTACH_DBS = {
 
 
 class HTTPSrv:
+    def __init__(self):
+        self.headers = {}
+
     def dispatch_query(self, msg: dict):
         message = msg_format.format(
             user=msg.get('client'),
@@ -153,11 +157,12 @@ class HTTPSrv:
 
     def wsgi_app(self, environ, start_response):
         try:
+            self.headers = {}
             request = Request(environ)
             data = pickle.loads(request.data)
             self.dispatch_query(data)
             result = self.use_db(**data)
-            response = Response(pickle.dumps(result))
+            response = Response(pickle.dumps(result), headers=self.headers)
         except Exception as e:
             response = Response(status=500)
         return response(environ, start_response)
@@ -177,6 +182,13 @@ class HTTPSrv:
         self.attach_db(cur, lst_dbs=attach_dbs)
         res = CSQ.custom_request_c('', custom_request_c, conn=conn, cur=cur, hat_c=hat_c, list_of_lists_c=list_of_lists_c,
                                    rez_dict=rez_dict, one=one, one_column=one_column)
+        try:
+            group = re.search(r'[\s]*SELECT', custom_request_c, re.IGNORECASE) #12.08.25
+            if group:
+                lst = CSQ.get_tables_from_select(cur, custom_request_c, list_of_lists_c)
+                self.headers = {'X-SQL-Used-Tables': quote(';'.join(lst))}
+        except Exception as e:
+            print(e)
         CSQ.close_bd(conn, cur)
         return res
 

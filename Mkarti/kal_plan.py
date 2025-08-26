@@ -64,7 +64,11 @@ def recalc_fact_by_date(self: mywindow,pozition_num:int, date_calc:datetime.date
     estimated_vid_rab_names = {v['Имя'] for k, v in self.Data_plan.DICT_GROUP_PODR_VID_RAB_FOR_PLAN.items()
                                     if
                                     v['estimated'] and v['poki'] == self.place.poki}
+    composite_vid_rab_names = {v['name_fact'] for k, v in self.Data_plan.DICT_GROUP_PODR_VID_RAB_FOR_PLAN.items()
+                                    if
+                                    v['composite'] and v['poki'] == self.place.poki}
     estimated_vid_rab_names_fact = estimated_vid_rab_names_fact.union(estimated_vid_rab_names)
+    estimated_vid_rab_names_fact = estimated_vid_rab_names_fact.union(composite_vid_rab_names)
 
     def vid_rab_into_name_plan(vid_rab: str):
         if vid_rab in self.DICT_VID_RABOT:
@@ -101,7 +105,7 @@ def recalc_fact_by_date(self: mywindow,pozition_num:int, date_calc:datetime.date
             postfix= f'datetime(jurnal.Дата) > datetime("{nach}") and datetime(jurnal.Дата) < datetime("{konec}") and'
         list_nars = CSQ.custom_request_c(self.bd_naryad, f"""SELECT DISTINCT
                     {', '.join(['naryad.' + _ for _ in CSQ.list_types_table(self.bd_naryad, 'naryad').keys()])}
-                    , mk.Дата as ДатаМК
+                    , mk.Дата as ДатаМК , mk.Тип as ТипМК 
          FROM naryad 
         INNER JOIN mk ON mk.Пномер = naryad.Номер_мк 
         INNER JOIN jurnal ON jurnal.Номер_наряда = naryad.Пномер 
@@ -185,7 +189,10 @@ def recalc_fact_by_date(self: mywindow,pozition_num:int, date_calc:datetime.date
                     set_name_etaps.add(name_etap)
                     koef_vneplana_tmp = 1
                     if name_etap in estimated_vid_rab_names_fact:
-                        koef_vneplana_tmp = koef_vneplana
+                        koef_vneplana_tmp = copy.deepcopy(koef_vneplana)# 19.08.2025 Задача № 100058908
+                        if row['ТипМК'] in (2, 3, 5):
+                            if koef_vneplana_tmp > 1.27:
+                                koef_vneplana_tmp = 1.27
 
                     name_etap = 'факт_' + name_etap
                     if name_etap not in dict_jur_data:
@@ -235,7 +242,10 @@ def recalc_fact_by_date(self: mywindow,pozition_num:int, date_calc:datetime.date
                     koef_vneplana_tmp = 1
                     set_name_etaps.add(name_etap)
                     if name_plan in estimated_vid_rab_names_fact:
-                        koef_vneplana_tmp = koef_vneplana
+                        koef_vneplana_tmp = copy.deepcopy(koef_vneplana)  # 19.08.2025 Задача № 100058908
+                        if row['ТипМК'] in (2, 3, 5):
+                            if koef_vneplana_tmp > 1.27:
+                                koef_vneplana_tmp = 1.27
 
                     if name_plan not in dict_summ_time:
                         dict_summ_time[name_plan] = 0
@@ -243,6 +253,7 @@ def recalc_fact_by_date(self: mywindow,pozition_num:int, date_calc:datetime.date
                        [ _['time'] for _ in list(dict_fact_jur_by_day.values())]) * koef_vneplana_tmp * koef_posta * koef_pogr_norm
                     part_time = minutes_fact / nar.get_summ_teor_time_by_empl() * oper_param['Опер_время']
                     dict_summ_time[name_plan] += round(part_time,3)  # учитывается отдельно сумма пл_сб поэтому не надо делить на 2
+                    print(f'{name_plan} + {round(part_time,3)}')
         for k, v in dict_summ_time.items():
             if F.is_date(v):
                 dict_summ_time[k] = F.datetostr(F.strtodate(v), "%Y-%m-%d")
@@ -312,6 +323,7 @@ def recalc_and_fil_fact(self: mywindow, *args):
             return
         for pozition_num in list_pnums:
             calc_pozition(self, pozition_num, False, False,infotable=False)
+            print(f'{pozition_num} recalced success')
         CQT.msgbox(f'Звершено')
 
     else:
@@ -1452,6 +1464,7 @@ def dict_norm_from_res(self, res, dict_norm='', koef_vneplana=1, koef_pogr_norm=
                                    'Коэфф_смены((Т/480-1)*Тшт)': round(koef_smen,2),
                                    'Итог_мин': round(itog_time,2),
                                    'Не закрыто шт.':delta_count}
+
                         list_log.append(tmp_row)
                         Тпз_мин = 0
                         list_naryads = ''
@@ -1467,9 +1480,13 @@ def calc_koefs_pogr(self: mywindow, vid_po_napr, napr_deyat):
     koef_vneplana = 1
     if vid_po_napr in self.Data_plan.DICT_VID_PO_NAPR:
         koef_vneplana = 1 + self.Data_plan.DICT_VID_PO_NAPR[vid_po_napr]['vneplan_percent']
+        if koef_vneplana > 6:# 19.08.2025 Задача № 100058908
+            koef_vneplana = 6
     koef_pogr_norm = self.Data_plan.DICT_NAPRAVLENIE[self.Data_plan.DICT_NAPR_DEYAT_NAME[napr_deyat]['Направление']][
         'koef_pogr_norm']
     return koef_vneplana, koef_pogr_norm
+
+
 @CQT.onerror
 def btn_edit_zp_kpl(self: mywindow):
     if 'shift' in CQT.get_key_modifiers(self):
@@ -1826,7 +1843,7 @@ def btn_pl_load_norm(self: mywindow):
         CQT.msgbox(f'Не корректно занесен направление')
         return
 
-    list_mk = CSQ.custom_request_c(self.bd_naryad, f"""SELECT Пномер,Количество,Дата_завершения,Вес FROM mk WHERE 
+    list_mk = CSQ.custom_request_c(self.bd_naryad, f"""SELECT Пномер,Количество,Дата_завершения,Вес,Тип FROM mk WHERE 
     НомКплан == {poz.Пномер} AND На_удал == 0;""", rez_dict=True)
     name_predv_res = poz.dict_tables['пл_топ']['Предв_спецификация_ЕРП']
 
@@ -1911,6 +1928,11 @@ def btn_pl_load_norm(self: mywindow):
 
             tmp_log = tmp_log_calc(res,tmp_log)
 
+            koef_vneplana_tmp = copy.deepcopy(koef_vneplana)# 19.08.2025 Задача № 100058908
+            if mk_item['Тип'] in (2,3,5):
+                if koef_vneplana_tmp > 1.27:
+                    koef_vneplana_tmp = 1.27
+
 
             ves, ves_res_list = self.raschet_vesa_dse(res,False)
             if ves != mk_item['Вес']:
@@ -1918,8 +1940,8 @@ def btn_pl_load_norm(self: mywindow):
                 CQT.msgbox(f'В МК {mk} обновлен вес, было {mk_item["Вес"]} кг., стало {ves} кг.')
             if count_izd == None or count_izd == '' or not F.is_numeric(count_izd):
                 CQT.msgbox(f'{"пл_оуп.Количество"} не число')
-            dict_norm, list_log = dict_norm_from_res(self, res, dict_norm, koef_vneplana, koef_pogr_norm, count_izd,
-                                                     list_log, mk)#TODO
+            dict_norm, list_log = dict_norm_from_res(self, res, dict_norm, koef_vneplana_tmp, koef_pogr_norm, count_izd,
+                                                     list_log, mk)
             if dict_norm == None:
                 return
 
@@ -2929,14 +2951,18 @@ def select_etap_edit(self: mywindow):
             except:
                 pass
         if podr == 'пл_топ':
-            list_sort_c = []
-            if CFG.Config.place.poki == 1: #25.07.25
-                list_sort_c.append(CMS.TypesWorkingByDirections.COMBOBOX_KEY_FOR_NAME_COMPOSE)
-            for key in self.Data_plan.DICT_VID_PO_NAPR.keys():
-                list_sort_c.append(self.Data_plan.DICT_VID_PO_NAPR[key]['Имя'])
-            nk_sort_c = CQT.num_col_by_name_c(self.ui.tbl_pl_add_poz, 'Вид')
-            CQT.add_combobox(self, self.ui.tbl_pl_add_poz, 0, nk_sort_c, list_sort_c, first_void=False,
-                             conn_func=select_sort_c)
+            CMS.TypesWorkingByDirections().change_vid_po_napr( #25.08.25
+                self,
+                self.ui.tbl_pl_add_poz,
+                0,
+                CQT.num_col_by_name_c(self.ui.tbl_pl_add_poz, 'Вид'),
+            )
+            # list_sort_c = []
+            # for key in self.Data_plan.DICT_VID_PO_NAPR.keys():
+            #     list_sort_c.append(self.Data_plan.DICT_VID_PO_NAPR[key]['Имя'])
+            # nk_sort_c = CQT.num_col_by_name_c(self.ui.tbl_pl_add_poz, 'Вид')
+            # CQT.add_combobox(self, self.ui.tbl_pl_add_poz, 0, nk_sort_c, list_sort_c, first_void=False,
+            #                  conn_func=select_sort_c)
             list_tech = []
             for key in self.DICT_EMPLOEE_FULL.keys():
                 if self.DICT_EMPLOEE_FULL[key]['Подразделение'] == 'Технологический отдел Производства':

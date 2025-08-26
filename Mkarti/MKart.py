@@ -2615,8 +2615,8 @@ class mywindow(QtWidgets.QMainWindow):
 
     @CQT.onerror
     def export_json_kotl(self, *args, **kwargs):
-        if USRCNF.Config.place.poki == 1:
-            return CQT.msgbox(f'Данный функционал не адаптирован для {USRCNF.Config.place.Имя!r}') #25.07.25
+        #if USRCNF.Config.place.poki == 1 and not USRCNF.User_config.is_developer:
+        #   return CQT.msgbox(f'Данный функционал не адаптирован для {USRCNF.Config.place.Имя!r}') #25.07.25
         self.export_json(exel=False, kotel=True)
 
     @CQT.onerror
@@ -2769,10 +2769,11 @@ class mywindow(QtWidgets.QMainWindow):
             poz.load_kpl_table('пл_топ')
             izd = poz.dict_tables['пл_оуп']['Номенклатура_ЕРП']
             type_dse = poz.dict_tables['пл_топ']['Вид']
-            if type_dse == 1: #21.07.25
-                confirm_continue = CMS.TypesWorkingByDirections().get_table_for_select_type(window=self, poz=poz)
-                if not confirm_continue:
-                    return
+            # смена интерфейса 25.08.25
+            # if type_dse == 1: #21.07.25
+            #     confirm_continue = CMS.TypesWorkingByDirections().get_table_for_select_type(window=self, poz=poz)
+            #     if not confirm_continue:
+            #         return
             rez = CMS.resursnaya_from_mk(self, nom_mk)
             if rez == None:
                 return
@@ -2792,17 +2793,26 @@ class mywindow(QtWidgets.QMainWindow):
             max_len = max([len(k) for k in primech.keys()])
             primech_str ='\n'.join([f'{k+":"+" "*(max_len-len(k))} "{str(v)}"' for k,v in primech.items()])
 
-            self.dict_cur_poz_cr_mk = CSQ.custom_request_c(self.db_kplan, f"""SELECT    пл_оуп.№проекта as "Проект", 
+            self.dict_cur_poz_cr_mk = CSQ.custom_request_c(self.db_kplan, f"""SELECT 
+             пл_оуп.№проекта as "Проект", plan.Статус as Статус_poz, status_poz.Имя AS СтатусИмя, 
             пл_оуп.№ERP as "№ERP", пл_оуп.№Пл_Пр as "ПлПр", napravl_deyat.Псевдоним as "Вид",
-                         napravlenie.name as "Направление",  пл_оуп.Количество as "Количество", plan.Позиция, plan.Пномер as "Пномер" FROM пл_оуп  INNER JOIN plan ON пл_оуп.НомПл = plan.Пномер,
+                         napravlenie.name as "Направление",  пл_оуп.Количество as "Количество", 
+                         plan.Позиция, plan.Пномер as "Пномер" FROM пл_оуп  INNER JOIN 
+                         plan ON пл_оуп.НомПл = plan.Пномер,
+                         status_poz ON status_poz.Пномер = plan.Статус,
                 napravl_deyat ON napravl_deyat.Пномер = plan.Направление_деятельности,
-                napravlenie ON napravlenie.Пномер = napravl_deyat.Направление WHERE plan.Статус in (2,3,1,7) and plan.Пномер = {kpl} and plan.poki = {self.place.poki};""",
+                napravlenie ON napravlenie.Пномер = napravl_deyat.Направление 
+                WHERE plan.Пномер = {kpl} and plan.poki = {self.place.poki};""",
                                                            rez_dict=True)
 
             if len(self.dict_cur_poz_cr_mk) == 1:
+                if self.dict_cur_poz_cr_mk[0]['Статус_poz'] not in (2,3,1,7):
+                    if not USRCNF.User_config.is_developer:
+                        if not CQT.msgboxgYN(f'Позиция КПЛ № {kpl} находится в статусе `{self.dict_cur_poz_cr_mk[0]["СтатусИмя"]}`.\n Все равно продолжить?'):
+                            return
                 self.dict_cur_poz_cr_mk = self.dict_cur_poz_cr_mk[0]
             else:
-                CQT.msgbox(f'ОШибка загрузки БД')
+                CQT.msgbox(f'Ошибка загрузки данных КПЛ из БД')
                 return
 
 
@@ -6435,6 +6445,8 @@ S = F.scfg('Stile').split(",")
 app.setStyle(S[1])
 
 application = mywindow()
+from project_cust_38.widget_spy import install_pyqt_event_hook
+install_pyqt_event_hook(app)
 # =============================================================
 if CMS.kontrol_ver(application.versia, 'МКарты') == False:
     quit()
