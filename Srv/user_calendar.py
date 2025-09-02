@@ -462,8 +462,9 @@ def reload_tbl_empl(ima_table_empl, LIST_DICT_EMPLOYEE_FULL, res, dict_rab_vrema
                     else:
                         list_times.append('8')
 
-        CSQ.custom_request_c(put_db, f"""UPDATE {ima_table_empl} SET ({', '.join(list_fields)}) = 
+        resp = CSQ.custom_request_c(put_db, f"""UPDATE {ima_table_empl} SET ({', '.join(list_fields)}) = 
                  ({', '.join(list_times)}) WHERE Пномер = {Пномер};""")
+        print()
 
     custom_request_c = f'SELECT * FROM {ima_table_empl} WHERE Пномер > 2 and ФИО != "";'
     list_from_scedule_month = CSQ.custom_request_c(put_db, custom_request_c,rez_dict=True)
@@ -794,17 +795,17 @@ def main():
 
         calendar_dict = calendar.month(m)
 
-        check_jurnal_kplan(ima_table_jurnal_kplan, calendar_dict, spis_empl_live,DICT_PODRAZD,DICT_MNTS_PLAN,
-                           month_str,tabel_workforce,DICT_PROFESSIONS_NICKNAME)
+        # check_jurnal_kplan(ima_table_jurnal_kplan, calendar_dict, spis_empl_live,DICT_PODRAZD,DICT_MNTS_PLAN,
+        #                    month_str,tabel_workforce,DICT_PROFESSIONS_NICKNAME)
         check_empl(ima_table_empl_tdz, LIST_DICT_EMPLOYEE_FULL, calendar_dict, dict_rab_vrema)
         # check_empl(ima_table_empl,LIST_DICT_EMPLOYEE_FULL,calendar_dict,dict_rab_vrema) # #04.07.25
-        check_eq(ima_table_eq, row_equip, calendar_dict)
-        check_rm(ima_table_rm, row_rm, calendar_dict)
-        check_jurnaltdz(ima_table_jur_tdz, calendar_dict)
+        # check_eq(ima_table_eq, row_equip, calendar_dict)
+        # check_rm(ima_table_rm, row_rm, calendar_dict)
+        # check_jurnaltdz(ima_table_jur_tdz, calendar_dict)
     print('Проверка производственного календаря завершено')
     print('==================================')
     calendar.close()
     return
-
+main()
 
 print('==================================')

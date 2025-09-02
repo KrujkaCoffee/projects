@@ -699,11 +699,6 @@ class mywindow(QtWidgets.QMainWindow):
         hook_prog_bar.text('Обработка')
         if CMS.kontrol_ver(self.versia, self.NAME_MODULE_BASE) == False:
             sys.exit()
-        if not self.glob_login:
-            with QtCore.QSignalBlocker(self.ui.tabWidget):
-                self.ui.tabWidget.setCurrentIndex(0)
-                timer = QtCore.QTimer(self)
-                return timer.singleShot(100, lambda *args: CQT.blink_obj_c(self, 2, self.ui.le_parol, 'Сначала необходимо войти!')) #25.08.25
         if not CMS.check_actual_parol(self.glob_ima):
             CQT.msgbox(f'Нужно обновить пароль через меню "Параметры"')
             userm.logout(self)

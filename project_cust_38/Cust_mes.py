@@ -3831,7 +3831,7 @@ class Msg_b24():
         'add_new_poz':{'chats':['Занесение новых проектов в МЕС']},
         'recalc_time_technolog':{'chats':['Занесение новых проектов в МЕС']},
         'recalc_dates_disp': {'chats': ['Занесение новых проектов в МЕС']},
-        'obtained_kd': {'chats': ['Занесение новых проектов в МЕС']},
+        'obtained_kd': {'chats': ['Готовность РКД']}, #26.08.25 по задаче 100058958
         'obtained_kod_res': {'chats': ['Занесение новых проектов в МЕС']},
         'state_valid_kod_res_one': {'chats': ['готовность РС']},
         'state_valid_kod_res_one_wo_py': {'chats': ['готовность РС']},
@@ -3882,7 +3882,7 @@ class Msg_b24():
 ТОП необходимо разработать ТД, МК, РС \nссылка на папку: 
     {path_to_proj_NPPY_c(self.data_poz.dict_tables['пл_оуп']['№проекта'],self.data_poz.dict_tables['пл_оуп']['№ERP'])}
 ссылка на КД: 
-    {self.data_poz.dict_tables['пл_ко']['Ссылка_КД']}\n\n{self.basement_msg}"""#вывод ссылка на папку ()#вывод ссылка на КД
+    {self.data_poz.dict_tables['пл_ко']['Ссылка_КД']}\n\n{self.basement_msg}\n В статусе: {self.state_poz!r}"""#вывод ссылка на папку ()#вывод ссылка на КД
         if type_msg == 'obtained_kod_res':#trigger: kal_plan.btn_pl_ok_add_poz_click
             base_str = f"""{self.fio} указал пл_топ.Спецификация_код_ЕРП на позицию \n{self.base_name_poz}
 Специалисту ФЭО необходимо согласовать ресурсную {self.data_poz.dict_tables['пл_топ']['Спецификация_код_ЕРП']}\n\n{self.basement_msg}"""
@@ -5467,14 +5467,37 @@ def load_tkp_list(self, db_dse, dict_alias,  tbl_list_tkp, tbl_list_tkp_filtr,se
         date_res,
         name_res,
         вид_по_напр,
-         weight_wh_pki
+         weight_wh_pki,
+         predv_res.Имя as "Выгружено в 1С"
          FROM tkp 
-         INNER JOIN vid_tkp ON vid_tkp.Pnom = tkp.type_tkp,  name_prices ON name_prices.s_num = tkp.check_prices 
+            INNER JOIN vid_tkp ON vid_tkp.Pnom = tkp.type_tkp
+           INNER JOIN name_prices ON name_prices.s_num = tkp.check_prices
+           LEFT JOIN predv_res ON predv_res.Имя = tkp.name_res
         WHERE {where};
-        """,rez_dict=True)
+        """,rez_dict=True,attach_dbs=(CFG.Config.project.db_resxml))
+    dict_loaded_res_erp = dict()
+    #dict_loaded_res_erp = F.deploy_dict_c(CSQ.custom_request_c(CFG.Config.project.db_resxml, f"""SELECT Пномер,
+    #   Имя
+    #    FROM predv_res;
+    #    """,rez_dict=True), 'Имя')
+
     for i in range(len(list_tkp)):
         if int(list_tkp[i]['вид_по_напр']) in self.Data_plan.DICT_VID_PO_NAPR:
             list_tkp[i]['вид_по_напр'] = self.Data_plan.DICT_VID_PO_NAPR[int(list_tkp[i]['вид_по_напр'])]['Имя']
+        if not list_tkp[i]["Выгружено в 1С"]:
+            continue
+            compares_indirect = [_ for _ in dict_loaded_res_erp.keys() if f'ТКПА_{list_tkp[i]["s_nom"]}_' in _ ]
+            if compares_indirect:
+                list_tkp[i]["Выгружено в 1С"] = '; '.join(compares_indirect)
+                CSQ.custom_request_c(self.db_dse, f"""UPDATE tkp SET (name_res) = (?) WHERE s_nom = ?""",
+                                         list_of_lists_c=[[compares_indirect[-1], list_tkp[i]["s_nom"]]])
+                print(f'поправлено {compares_indirect[-1]} для ТКПА_{list_tkp[i]["s_nom"]}')
+                
+            else:
+                print(f'Не найден predv_res для ТКПА_{list_tkp[i]["s_nom"]}')
+
+
+
     list_tkp = F.list_of_dicts_to_list_of_lists(list_tkp)
     list_tkp = CSQ.apply_alias_list(list_tkp, dict_alias)
 
@@ -9980,6 +10003,147 @@ class TkpSchema:
         self.__init__()
 
 
+#+++29.08.25
+class DATATypesNomenclature:
+    def check_ref(self, label_info: QtWidgets.QLabel, ref_key: str):
+        _select = '?$select=Description,Parent_Key'
+        doc_name = f'Catalog_ВидыНоменклатуры(guid{ref_key!r})'
+        code, resp = ODAT.OrdersComposit().get_response(doc_name, wet_filtr=_select, with_cod=True)
+        if code != 200 or not resp:
+            return
+        desc = resp['Description']
+        parent_key = resp['Parent_Key']
+        label_info.setText(f'Найден вид: {desc!r}')
+        return {
+            'Ref_Key': ref_key,
+            'Наименование': desc,
+            'Родитель_Ref_Key': parent_key,
+        }
+
+    def insert_type_nomen(self, ref_key: str, name: str, parent_ref_key: str, returning: bool = False):
+        poki = CFG.Config.place.poki
+        resp = CSQ.custom_request_c(
+            CFG.Config.project.db_nomen,
+            "INSERT INTO ВидыНоменклатуры(Ref_Key, name, Родитель, poki) VALUES (?, ?, ?, ?) RETURNING s_num",
+            list_of_lists_c=[ref_key, name, parent_ref_key, poki],
+            rez_dict=True
+        )
+        if returning:
+            match resp:
+                case [{'s_num': s_num}]:
+                    return s_num
+                case _:
+                    return
+        return resp
+
+    def get_all_nomen_types_mes(self, attrs=('*',), error_alert: bool = False):
+        sql_select = ','.join(attrs)
+        nomen_types_MES = CSQ.custom_request_c(
+            CFG.Config.project.db_nomen,
+            f'''SELECT {sql_select} FROM ВидыНоменклатуры WHERE comment != "Не найден в 1С"''',
+            rez_dict=True
+        )
+        if not nomen_types_MES:
+            error_alert and CQT.msgbox('Не удалось запросить ВидыНоменклатуры в БД МЕС')
+            return
+        return nomen_types_MES
+
+    def get_nomen_type_from_mes_by_uuid(self, attrs: tuple[str]('*', ), ref_key: str) -> list[dict]:
+        attrs = ','.join(attrs)
+        return CSQ.custom_request_c(
+            CFG.Config.project.db_nomen,
+            f'SELECT {attrs} FROM ВидыНоменклатуры WHERE Ref_Key = {ref_key!r}',
+            rez_dict=True
+        )
+
+    def get_types_nomen_from_1c(self, alert_error_msg: bool = False):
+        text = f"""ВЫБРАТЬ 
+                ВидыНоменклатуры.Наименование КАК Наименование,
+                УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ВидыНоменклатуры.Ссылка) КАК Ref_Key,
+                ВидыНоменклатуры.Родитель.Наименование КАК Родитель,
+                УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ВидыНоменклатуры.Родитель.Ссылка) КАК Родитель_Ref_Key
+            ИЗ
+                Справочник.ВидыНоменклатуры КАК ВидыНоменклатуры
+            ГДЕ
+                ВидыНоменклатуры.Ссылка В ИЕРАРХИИ
+                        (ВЫБРАТЬ ПЕРВЫЕ 1
+                            ВидыНоменклатуры.Ссылка КАК Ссылка
+                        ИЗ
+                            Справочник.ВидыНоменклатуры КАК ВидыНоменклатуры
+                        ГДЕ
+                            ВидыНоменклатуры.Наименование = "{CFG.Config.place.Имя}"
+                            И ВидыНоменклатуры.ЭтоГруппа = ИСТИНА)
+                И ВидыНоменклатуры.ЭтоГруппа = ЛОЖЬ
+                И ВидыНоменклатуры.ПометкаУдаления = ЛОЖЬ
+            УПОРЯДОЧИТЬ ПО
+                Наименование"""
+        code, data = APIERP.get_wet_request(text=text)
+        if code != 200 or data is None:
+            alert_error_msg and CQT.msgbox('Не удалось запросить виды номенклатуры из ERP')
+            return
+        return data['data']
+
+class GUITypesNomenclature(DATATypesNomenclature):
+    def add_by_ref(self, dialog, window):
+        ref_dialog = CQT.LinkDialog(window, validate_ref_func=self.check_ref)
+        if ref_dialog.exec() == QtWidgets.QDialog.Accepted and ref_dialog.data:
+            print("Подтверждён ref:", ref_dialog.data)
+            match ref_dialog.data:
+                case {'Ref_Key': ref_key, 'Наименование': name, 'Родитель_Ref_Key': parent_ref}:
+                    if self.get_nomen_type_from_mes_by_uuid(attrs=('Ref_Key',), ref_key=ref_key):
+                        return CQT.msgbox(f'{name} Уже занесен в БД МЕС')
+                    resp = self.insert_type_nomen(ref_key, name, parent_ref)
+                    resp and CQT.msgbox('Успешно')
+            dialog.reject()
+
+    def prepare_dialog_from_select_nomen_types(self, data_for_table: list[dict], window):
+        dialog = CQT.Dialog_tbl(
+            window,
+            msg=f'Выбор вида номенклатуры по папке: {CFG.Config.place.Имя!r}.\n Чтобы прикрепить вид по ссылке из 1С нажмите "🔗"',
+            dict_or_list=data_for_table,
+            ExtendedSelection=False
+        )
+        dialog.btn3 = QtWidgets.QPushButton("🔗")
+        dialog.btn3.clicked.connect(lambda *args: self.add_by_ref(dialog, window))
+        dialog.ui.buttonBox.addButton(dialog.btn3, QtWidgets.QDialogButtonBox.ActionRole)
+        style = dialog.ui.btn_ok.style()
+        stylesheets = dialog.ui.btn_ok.styleSheet()
+        size = dialog.ui.btn_ok.size()
+        font = dialog.ui.btn_ok.font()
+        dialog.btn3.setStyle(style)
+        dialog.btn3.setStyleSheet(stylesheets)
+        dialog.btn3.setFixedSize(QtCore.QSize(size.height(), size.height()))
+        dialog.btn3.setFont(font)
+        dialog.btn3.setToolTip('Добавить по ссылке из 1С')
+        return dialog
+
+    def get_table_choicer_for_insert_nomen_type(self, window, *args):
+        data = self.get_types_nomen_from_1c(alert_error_msg=True)
+        nomen_types_mes = self.get_all_nomen_types_mes(attrs=('s_num', 'name', 'Ref_Key'))
+        if not nomen_types_mes:
+            return
+        nomen_by_ref = F.deploy_dict_c(nomen_types_mes, 'Ref_Key')
+        data_for_table = []
+        for nomen in data:
+            ref_key = nomen['Ref_Key']
+            if ref_key in nomen_by_ref:
+                continue
+            data_for_table.append({
+                'Наименование': nomen['Наименование'],
+                'Родитель': nomen['Родитель'],
+                'Родитель_Ref_Key': nomen['Родитель_Ref_Key'],
+                'Ref_Key': nomen['Ref_Key'],
+            })
+        dialog = self.prepare_dialog_from_select_nomen_types(data_for_table, window)
+        if dialog.exec():
+            result = CQT.get_dict_line_form_tbl(dialog.ui.tbl)
+            match result:
+                case {'Ref_Key': ref_key, 'Наименование': name, 'Родитель_Ref_Key': parent_ref}:
+                    resp = self.insert_type_nomen(ref_key, name, parent_ref)
+                    resp and CQT.msgbox('Успешно')
+#---29.08.25
+
+
 #18.07.25++
 class TypesWorkingByDirections:
     """
@@ -10056,7 +10220,9 @@ class TypesWorkingByDirections:
     def oform_table_attach(self, nomen_types, tbl, *args):
         column_select = CQT.num_col_by_name_c(tbl, 'Выбрать')
         column_pk = CQT.num_col_by_name_c(tbl, 's_num')
-        nomen_types_split = nomen_types.split(';')
+        column_ref = CQT.num_col_by_name_c(tbl, 'Ref_Key') #26.08.25
+        column_parent_ref = CQT.num_col_by_name_c(tbl, 'Родитель_Ref_Key')
+        nomen_types_split = {nom_type for nom_type in nomen_types.split(';') if nom_type}
         for row_idx in range(tbl.rowCount()):
             s_num = tbl.item(row_idx, column_pk).text()
             checked = s_num in nomen_types_split
@@ -10065,41 +10231,74 @@ class TypesWorkingByDirections:
                               self=tbl,
                               val=checked)
             tbl.item(row_idx, column_select).setText(str(int(checked)))
-        if column_pk is not None:
+        if None not in (column_pk, column_ref, column_parent_ref):
             tbl.hideColumn(column_pk)
+            tbl.hideColumn(column_ref)
+            tbl.hideColumn(column_parent_ref)
 
     @CQT.onerror
     def get_marked_nomen_types(self, values):
         pks = []
+        nomen_types_instance = DATATypesNomenclature()
         for item in values:
             if item['Выбрать'] == '1':
-                pks.append(item['s_num'])
+                if not item['s_num']: #26.08.25
+                    name = item['Наименование']
+                    ref_key = item['Ref_Key']
+                    parent_ref = item['Родитель_Ref_Key']
+                    s_num = nomen_types_instance.insert_type_nomen(ref_key, name, parent_ref, returning=True)
+                    if s_num is None or s_num == False:
+                        return CQT.msgbox(f'Не удалось создать ВидНоменклатуры {name!r} в МЕС')
+                    pks.append(str(s_num))
+                else:
+                    pks.append(str(item['s_num']))
         return ';'.join(pks)
 
     @CQT.onerror
-    def on_attach(self, window, row, col, tbl, *args):
-        nomen_types = CSQ.custom_request_c(
-            CFG.Config.project.db_nomen,
-            '''SELECT "" as "Выбрать", s_num, name FROM ВидыНоменклатуры WHERE comment != "Не найден в 1С"''',
-            rez_dict=True
-        )
-        if not nomen_types:
-            return CQT.msgbox('Не удалось запросить ВидыНоменклатуры в БД МЕС')
+    def on_attach(self, window, row, col, tbl, *args): #26.08.25
+        data_nomen_instance = DATATypesNomenclature()
+        data_1c = data_nomen_instance.get_types_nomen_from_1c(alert_error_msg=True)
+        if not data_1c:
+            return
+        nomen_types_mes = data_nomen_instance.get_all_nomen_types_mes(attrs=('s_num', 'name', 'Ref_Key'), error_alert=True)
+        if not nomen_types_mes:
+            return
+        nomen_by_ref = F.deploy_dict_c(nomen_types_mes, 'Ref_Key') #29.08.25
         selected_nomen_types = ''
-        column_types = CQT.num_col_by_name_c(tbl, 'Виды')
+        column_types = CQT.num_col_by_name_c(tbl, 'ВидыНоменклатуры')
         if column_types is not None:
-            item = tbl.item(0, column_types)
+            item = tbl.item(row, column_types)
+            if item is not None:
+                selected_nomen_types = item.text()
+        data_for_table = []
+        for nomen in data_1c:
+            ref_key = nomen['Ref_Key']
+            s_num = ''
+            if ref_key in nomen_by_ref:
+                s_num = nomen_by_ref[ref_key]['s_num']
+            data_for_table.append({
+                'Выбрать': '',
+                's_num': s_num,
+                'Наименование': nomen['Наименование'],
+                'Родитель': nomen['Родитель'],
+                'Ref_Key': nomen['Ref_Key'],
+                'Родитель_Ref_Key': nomen['Родитель_Ref_Key'],
+            })
+        selected_nomen_types = ''
+        column_types = CQT.num_col_by_name_c(tbl, 'ВидыНоменклатуры')
+        if column_types is not None:
+            item = tbl.item(row, column_types)
             if item is not None:
                 selected_nomen_types = item.text()
         result = CQT.msgboxg_get_table(
             self=window,
             msg='Выбор видов номенклатуры',
-            dict_or_list=nomen_types,
+            dict_or_list=data_for_table,
             func_oform_tbl=lambda table: self.oform_table_attach(selected_nomen_types, table),
             func_validate=self.get_marked_nomen_types
         )
         if isinstance(result, str) and len(result.split(';')) > 0:
-            column_types = CQT.num_col_by_name_c(tbl, 'Виды')
+            column_types = CQT.num_col_by_name_c(tbl, 'ВидыНоменклатуры')
             if column_types is not None:
                 item = tbl.item(row, column_types)
                 if item is not None:
@@ -10142,7 +10341,7 @@ class TypesWorkingByDirections:
             self=window,
             cell_val=tbl
         )
-        column_types = CQT.num_col_by_name_c(tbl, 'Виды')
+        column_types = CQT.num_col_by_name_c(tbl, 'ВидыНоменклатуры') #26.08.25
         column_compose = CQT.num_col_by_name_c(tbl, 'compose')
         if column_types is not None:
             tbl.setColumnHidden(column_types, True)
@@ -10163,20 +10362,41 @@ class TypesWorkingByDirections:
         if dialog.ui.buttonBox.buttonRole(btn) == QtWidgets.QDialogButtonBox.NoRole:
             return dialog.reject()
         column_nomen_types_btn = CQT.num_col_by_name_c(tbl, 'Подобрать виды номенклатур')
-        column_nomen_types = CQT.num_col_by_name_c(tbl, 'Виды')
+        column_nomen_types = CQT.num_col_by_name_c(tbl, 'ВидыНоменклатуры') #26.08.25
         text = tbl.item(0, column_nomen_types).text()
         nomen_types = [nomen_type for nomen_type in text.split(';') if nomen_type != '']
         row = CQT.get_dict_line_form_tbl(tbl, 0)
         if row['compose'] in self.dict_vid_po_napr_by_name:
-            # column_name = CQT.num_col_by_name_c(parent_tbl, 'Имя')
             return dialog.accept()
-
-            # return self.blink_existing_type(row['compose'], parent_tbl, column_name)
         if len(nomen_types) < 1:
             btn_cell = tbl.cellWidget(0, column_nomen_types_btn)
             return CQT.blink_obj_c(dialog, 2, btn_cell, msg='Для создания необходимо привязать вид номенклкатуры')
         return dialog.accept()
 
+    def insert_technological_type(self, type_name: str, napr_pk = '', nomen_types: str = ''):
+        result = CSQ.custom_request_c(
+            CFG.Config.project.db_kplan,
+            'INSERT INTO виды_по_направлению(Направл, Имя, Выборка) VALUES(?, ?, ?) RETURNING Пномер',
+            list_of_lists_c=[napr_pk, type_name, 0],
+            rez_dict=True,
+        )
+        new_pk = None
+        match result:
+            case [{'Пномер': result}]:
+                new_pk = result
+        if new_pk is None:
+            return CQT.msgbox(f'Не удалось сохранить вид: {nomen_types!r}')
+        result_nomen = CSQ.custom_request_c(
+            CFG.Config.project.db_nomen,
+            'INSERT INTO ТехнологическиеВиды(Пномер, ВидыНоменклатуры) VALUES(?, ?)',
+            list_of_lists_c=[[new_pk, nomen_types]])
+        if not result_nomen:
+            CSQ.custom_request_c(CFG.Config.project.db_kplan,
+                                 f'DELETE FROM виды_по_направлению WHERE Пномер = {new_pk}')
+            CSQ.custom_request_c(CFG.Config.project.db_nomen,
+                                 f'DELETE FROM ТехнологическиеВиды WHERE Пномер = {new_pk}')
+            return False
+        return True
 
     @CQT.onerror
     def get_table_for_name_composite(self, window, parent_tbl) -> tuple[str | None, bool]:
@@ -10184,7 +10404,7 @@ class TypesWorkingByDirections:
         for key, val in self.data_for_name_composite.items():
             dynamic_fields.extend(val.keys())
             break
-        headers = ["Направление", *dynamic_fields, 'Подобрать виды номенклатур', 'Виды', 'compose']
+        headers = ["Направление", *dynamic_fields, 'Подобрать виды номенклатур', 'ВидыНоменклатуры', 'compose'] #26.08.25
         row = [''] * len(headers)
         value = CQT.msgboxg_get_table(
             self=window,
@@ -10204,13 +10424,31 @@ class TypesWorkingByDirections:
             return CQT.msgbox(f'Не найдено направление {napr!r}')
         napr_pk = self.DICT_NAPR_DEYAT_PSDNAME[napr]
         val = value['compose']
-        nomen_types = value['Виды']
+        nomen_types = value['ВидыНоменклатуры'] #26.08.25
         exists = True
         if val not in window.Data_plan.DICT_VID_PO_NAPR_NAME:
             result = CSQ.custom_request_c(
                 CFG.Config.project.db_kplan,
-'INSERT INTO виды_по_направлению(Направл, Имя, Выборка, НомерВидаНоменДляСозданияРесЕРП) VALUES(?, ?, ?, ?)',
-                list_of_lists_c=[[napr_pk, val, 0, nomen_types]])
+'INSERT INTO виды_по_направлению(Направл, Имя, Выборка) VALUES(?, ?, ?) RETURNING Пномер',
+                list_of_lists_c=[napr_pk, val, 0],
+                rez_dict=True,
+            )
+            new_pk = None
+            match result:
+                case [{'Пномер': result}]:
+                    new_pk = result
+            if new_pk is None:
+                return CQT.msgbox(f'Не удалось сохранить вид: {val!r} По направлению: {napr}')
+            result_nomen = CSQ.custom_request_c(
+                CFG.Config.project.db_nomen,
+                'INSERT INTO ТехнологическиеВиды(Пномер, ВидыНоменклатуры) VALUES(?, ?)',
+                list_of_lists_c=[[new_pk, nomen_types]])
+            if not result_nomen:
+                CSQ.custom_request_c(CFG.Config.project.db_kplan,
+                f'DELETE FROM виды_по_направлению WHERE Пномер = {new_pk}')
+                CSQ.custom_request_c(CFG.Config.project.db_nomen,
+                f'DELETE FROM ТехнологическиеВиды WHERE Пномер = {new_pk}')
+                result = None
             if not result:
                 return CQT.msgbox(f'Не удалось сохранить вид: {val!r} По направлению: {napr}')
             exists = False
@@ -10296,12 +10534,12 @@ class TypesWorkingByDirections:
 
     def decor_change_working_type_table(self, parent, tbl: QtWidgets.QTableWidget, *args):
         add_new_type_column = CQT.num_col_by_name_c(tbl, 'Имя')
-        nomen_types_column = CQT.num_col_by_name_c(tbl, 'Виды')
+        nomen_types_column = CQT.num_col_by_name_c(tbl, 'ВидыНоменклатуры')
         if tbl.item(0, add_new_type_column).text() == '<add_new>':
             CQT.add_btn(tbl, 0, add_new_type_column, text='Создать вид',
                         conn_func_checked_row_col=lambda *args: self.on_click_create_type(parent, tbl, *args))
-        if nomen_types_column is not None:
-            tbl.hideColumn(nomen_types_column)
+        # if nomen_types_column is not None: #26.08.25
+        #     tbl.hideColumn(nomen_types_column)
         tbl.setSelectionBehavior(QtWidgets.QTableWidget.SelectionBehavior.SelectRows)
         tbl.setSelectionMode(QtWidgets.QTableWidget.SelectionMode.SingleSelection)
 
@@ -10309,14 +10547,14 @@ class TypesWorkingByDirections:
         list_types = []
 
         if CFG.Config.place.poki == 1:
-            list_types.append({'Пномер': '-', 'Имя': '<add_new>', 'Виды': ''})
+            list_types.append({'Пномер': '-', 'Имя': '<add_new>', 'ВидыНоменклатуры': ''})
         dict_vid_po_napr = self.get_dict_working_types_by_pk()
         for key in dict_vid_po_napr.keys():
             if key != 1:
                 list_types.append({
                     'Пномер': key,
                     'Имя': dict_vid_po_napr[key]['Имя'],
-                    'Виды': dict_vid_po_napr[key]['НомерВидаНоменДляСозданияРесЕРП'],
+                    'ВидыНоменклатуры': dict_vid_po_napr[key]['НомерВидаНоменДляСозданияРесЕРП'],
                 })
         return list_types
 
@@ -10327,11 +10565,11 @@ class TypesWorkingByDirections:
         row = CQT.get_dict_line_form_tbl(tbl, tbl.currentRow())
         if not isinstance(row, dict):
             return dialog.accept()
-        if row['Виды']:
+        if row['ВидыНоменклатуры']:
             return dialog.accept()
         if not CQT.msgboxgYN('У данного вида по направлению не заполнены виды номенклатур. Заполнить?'):
             return dialog.reject()
-        column_types = CQT.num_col_by_name_c(tbl, 'Виды')
+        column_types = CQT.num_col_by_name_c(tbl, 'ВидыНоменклатуры')
         column_pk = CQT.num_col_by_name_c(tbl, 'Пномер')
         if None in (column_types, column_pk):
             return dialog.reject()
@@ -10343,8 +10581,8 @@ class TypesWorkingByDirections:
             return dialog.reject()
         if isinstance(nomen_types, str) and nomen_types.strip() != '':
             resp = CSQ.custom_request_c(
-                CFG.Config.project.db_kplan,
-                'UPDATE виды_по_направлению SET НомерВидаНоменДляСозданияРесЕРП = ? WHERE Пномер = ?',
+                CFG.Config.project.db_nomen,
+                'UPDATE ТехнологическиеВиды SET ВидыНоменклатуры = ? WHERE Пномер = ?',
                 list_of_lists_c=[[nomen_types, pk_types]]
             )
             if resp:
@@ -10383,6 +10621,7 @@ class TypesWorkingByDirections:
                 combo.clear()
                 combo.addItem("")
                 combo.setEnabled(False)
+
     # -- 25.07.25
     def get_table_for_select_type(self, poz: Pozition, window, *args, **kwargs): #++ 21.07.25
         types = self.get_old_view_response()
@@ -10440,14 +10679,14 @@ class TypesWorkingByDirections:
                     SELECT
                         виды_по_направлению.Пномер as "{self.PK_KEY_FOR_GROUP}",
                         виды_по_направлению.Имя as "Имя",
-                        виды_по_направлению.Примечание as "Примечание",
                         виды_по_направлению.Выборка as "Выборка",
                         виды_по_направлению.кг_на_пост_см as "кг_на_пост_см",
                         виды_по_направлению.vneplan_percent as "vneplan_percent",
                         виды_по_направлению.Утверждены_нормы as "Утверждены_нормы",
                         виды_по_направлению.Направл as "Направл",
                         виды_по_направлению.ВозможностьСозданияНоменМеталоармДляСозданияРесЕРП as "ВозможностьСозданияНоменМеталоармДляСозданияРесЕРП",
-                        виды_по_направлению.НомерВидаНоменДляСозданияРесЕРП as "НомерВидаНоменДляСозданияРесЕРП",
+                        ТехнологическиеВиды.Примечание as "Примечание",
+                        ТехнологическиеВиды.ВидыНоменклатуры as "НомерВидаНоменДляСозданияРесЕРП",
                         коэфф.ratio as "коэфф.ratio",
                         etaps.имя_в_виды_по_напр as "etaps.имя_в_виды_по_напр",
                         napravl_deyat.Имя as 'napravl_deyat.Имя',
@@ -10456,10 +10695,15 @@ class TypesWorkingByDirections:
                      LEFT JOIN коэфф_норм_этапов_по_видам_направлений коэфф ON коэфф.виды_по_напр_id = виды_по_направлению.Пномер
                      LEFT JOIN etaps ON etaps.s_num = коэфф.etaps_id
                     INNER JOIN napravl_deyat ON виды_по_направлению.Направл = napravl_deyat.Пномер
+                    LEFT JOIN ТехнологическиеВиды ON ТехнологическиеВиды.Пномер = виды_по_направлению.Пномер
                     WHERE napravl_deyat.poki = {poki} OR napravl_deyat.poki IS NULL
             """
-        db_result = CSQ.custom_request_c(CFG.Config.project.db_kplan,
-                                         query, rez_dict=True, attach_dbs=CFG.Config.project.db_naryad)
+        db_result = CSQ.custom_request_c(
+            CFG.Config.project.db_kplan,
+            query,
+            rez_dict=True,
+            attach_dbs=(CFG.Config.project.db_naryad, CFG.Config.project.db_nomen)
+        )
         if not db_result:
             return
         grouped_data = self.__group_by(db_result, 'Пномер')

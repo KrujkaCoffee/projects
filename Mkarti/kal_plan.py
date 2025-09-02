@@ -1026,8 +1026,11 @@ def btn_pl_open_dir(self: mywindow):
     np = poz.dict_tables['пл_оуп']['№проекта']
     py = poz.dict_tables['пл_оуп']['№ERP']
     year_py = poz.dict_tables['пл_оуп']['Год']
-    path = CMS.get_path_to_proj_NPPY_c(np, py, year_py, poz.get_napravl()['projects_localnet_path']) #08.08.25
-    F.open_dir_c(path)
+    f_path = CMS.get_path_to_proj_NPPY_c(np, py, year_py, poz.get_napravl()['projects_localnet_path']) #08.08.25
+    if os.path.exists(f_path):
+        return F.open_dir_c(f_path)
+    n_path = CMS.path_to_proj_NPPY_c(np, py, year_py=year_py, projects_localnet_path=poz.get_napravl()['projects_localnet_path'])
+    F.open_dir_c(n_path)
 
 
 def btn_pl_add_trbl(self: mywindow):

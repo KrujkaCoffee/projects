@@ -337,6 +337,14 @@ def apply_alias_list(list_resp, dict_alias):
                     print(f'CSQ.apply_alias_list err not found alias for {k}')
                     new_dict[k] = v
             result[i] = new_dict
+    elif isinstance(result[0], list):
+        for j in range(len(result[0])):
+            fl_found = False
+            if result[0][j] in dict_alias:
+                result[0][j] = dict_alias[result[0][j]]
+                fl_found = True
+            if not fl_found:
+                print(f'CMS.apply_alias_list err not found alias for {result[0][j]}')
     else:
         for i in range(len(result)):
             for j in range(len(result[i])):

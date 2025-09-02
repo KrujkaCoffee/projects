@@ -8,7 +8,8 @@ import components.calc_airslide as MCA
 import components.calc_pneumatic_jet as MCPj
 import data_class as DTCLS
 
-
+if __name__ == '__main__':
+    quit()
 
 
 modules = DTCLS.Module_cfg()
@@ -66,7 +67,7 @@ modules.add_submodule(DTCLS.Module_cfg("settings",
 
 modules.sub_modules["settings"].add_submodule(DTCLS.Module_cfg("decoration",
                               "/modules/decoration",
-                              "",
+                              "Оформление",
                               ft.Icons.STYLE,
                               'Оформление'))
 
@@ -105,7 +106,10 @@ def menubar():
     def handle_menu_item_click(e):
         def clc_settings():
             if _ref_settings.current and _ref_settings.current.parent in _ref_main.current.controls:
-                _ref_main.current.controls.remove(_ref_settings.current.parent)
+                while True:
+                    if _ref_settings.current.parent not in _ref_main.current.controls:
+                        break
+                    _ref_main.current.controls.remove(_ref_settings.current.parent)
             else:
                 _ref_main.current.controls.append(SETGS.LeftNavigationMenu(visible=True, ref=_ref_settings))
 
@@ -117,7 +121,12 @@ def menubar():
         if select_name == 'Оформление':
             clc_settings()
             pg.update()
-        module_data: DTCLS.Module_cfg = select.data
+        try:
+            module_data
+            if not module_data is select.data:
+                module_data: DTCLS.Module_cfg = select.data
+        except:
+            module_data: DTCLS.Module_cfg = select.data
         if e.control.parent.content.value == 'Модули':
             pg.data.Data_module = module_data
             pg.go(module_data.route)

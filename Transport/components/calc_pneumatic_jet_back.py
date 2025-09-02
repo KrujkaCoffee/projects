@@ -384,13 +384,13 @@ list_dicts_data_input = [
     {'name': 'p_t_pneumo', 'header': 'Плотность твёрдой фазы', 'min_max_list': (500, 5000),
      'default_val': 2650, 'dimension': 'кг/м3', 'data_type': float, 'comment': None},
 
-    {'name': 'L_t', 'header': 'Длина траспортного тракта', 'min_max_list': (1, 500),
+    {'name': 'L_t', 'header': 'Приведенная длина транспортного тракта', 'min_max_list': (1, 500),
      'default_val': 50, 'dimension': 'м', 'data_type': float, 'comment': None},
 
     {'name': 'D_4', 'header': 'Диаметр транспортной трубы', 'min_max_list': (10, 200),
      'default_val': 47, 'dimension': 'мм', 'data_type': float, 'comment': None},
 
-    {'name': 'D_3', 'header': 'Диаметр камеры смещения', 'min_max_list': (10, 100),
+    {'name': 'D_3', 'header': 'Диаметр камеры смешения', 'min_max_list': (10, 100),
      'default_val': 30, 'dimension': 'мм', 'data_type': float, 'comment': None},
 
     {'name': 'd_1', 'header': 'Диаметр патрубка подвода воздуха', 'min_max_list': (5, 50),
@@ -399,7 +399,7 @@ list_dicts_data_input = [
     {'name': 'd_k', 'header': 'Диаметр критического сечения сопла', 'min_max_list': (1, 20),
      'default_val': 8, 'dimension': 'мм', 'data_type': float, 'comment': None},
 
-    {'name': 'L_1', 'header': 'Расстояние от сопла до камеры смещения', 'min_max_list': (1, 20),
+    {'name': 'L_1', 'header': 'Расстояние от сопла до камеры смешения', 'min_max_list': (1, 20),
      'default_val': 8, 'dimension': 'мм', 'data_type': float, 'comment': None},
 
     {'name': 'p_8', 'header': 'Давление торможения', 'min_max_list': (1, 10),

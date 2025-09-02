@@ -1649,8 +1649,10 @@ def curr_user_c():
     return os.environ.get("USERNAME")
 
 
-def hex_to_rgb(hex):
+def hex_to_rgb(hex:str):
     rgb = []
+    if hex.startswith('#'):
+        hex = hex[1:]
     for i in (0, 2, 4):
         decimal = int(hex[i:i + 2], 16)
         rgb.append(decimal)
@@ -2166,3 +2168,33 @@ def is_unique_identifier(identifier: str) -> bool:
     )
 
     return bool(uuid_pattern.match(identifier))
+
+
+def replace_forbidden_symbols_for_1c_sql(string: str) -> str: #27.08.25
+    symbols = (
+        ('"', '\""'),
+        ("'", "\''")
+    )
+    for _from, _to in symbols:
+        string = string.replace(_from, _to)
+    return string
+
+# 29.08.25
+def restore_uuid_from_client_1C_reference(client_ref: str) -> str | None:
+    """
+    Преобразует hash аргумент из ссылки 1С вида '80c04ccc6a67082d11e70f040f1fee33' в формат UUID
+
+    #e1cib/data/Справочник.ВидыНоменклатуры?ref=80c04ccc6a67082d11e70f040f1fee33
+    """
+    if client_ref is None:
+        return
+    s = re.sub(r'[^0-9a-fA-F]', '', client_ref)
+    if len(s) != 32:
+        return
+    s = s.lower()
+    p3 = s[0:4]
+    p4 = s[4:16]
+    p2 = s[16:20]
+    p1 = s[20:24]
+    p0 = s[24:32]
+    return f"{p0}-{p1}-{p2}-{p3}-{p4}"

@@ -19,7 +19,7 @@ import project_cust_38.Cust_config as USRCNF
 from typing import TYPE_CHECKING
 import project_cust_38.Cust_resource_creator as CRES
 from project_cust_38.Cust_mes import TkpSchema
-
+from project_cust_38.Cust_emoji import EmojiMain as CEmoji
 if TYPE_CHECKING:
     from MKart import mywindow
 
@@ -285,6 +285,27 @@ class Resourse_mk():
                             return None, None
 
                     dict_etaps[etap]["Материалы"][Мат_код]['Мат_норма'] += Мат_норма / count_po_mk
+                for osn in oper['Оснастка']:
+                    if not osn['load_to_erp']:
+                        continue
+                    Мат_код = osn['Код']
+                    Мат_наименование = osn['Наименование']
+                    Мат_ед_изм = osn['mesure']
+                    Мат_норма = 1
+
+                    if Мат_код not in dict_etaps[etap]["Материалы"]:
+                        dict_etaps[etap]["Материалы"][Мат_код] = {
+                            'Мат_код': Мат_код,
+                            'Мат_наименование': Мат_наименование,
+                            'Мат_ед_изм': Мат_ед_изм,
+                            'Мат_норма': 0,
+                            'Мат_параметрика': {},
+                            'Материалы_Статья_калькуляции':  'Материалы основные',
+                            'Способы_получения_материала': 'Обеспечивать',
+                        }
+
+                    dict_etaps[etap]["Материалы"][Мат_код]['Мат_норма'] += Мат_норма / count_po_mk
+
         list_etaps = []
         for k, v in dict_etaps.items():
             if len(v['Материалы']) or len(v['Трудозатраты']):
@@ -429,7 +450,26 @@ class Resourse_mk():
                       {oper['Опер_наименование']} {dse['Номенклатурный_номер']}""", 'Прервать            ',
                                          'Продолжить'):
                             return None
+                    dict_etaps[etap]["Материалы"][Мат_код]['Мат_норма'] += Мат_норма / count_po_mk
 
+                for osn in oper['Оснастка']:
+                    if not osn['load_to_erp']:
+                        continue
+                    Мат_код = osn['Код']
+                    Мат_наименование = osn['Наименование']
+                    Мат_ед_изм = osn['mesure']
+                    Мат_норма = 1
+
+                    if Мат_код not in dict_etaps[etap]["Материалы"]:
+                        dict_etaps[etap]["Материалы"][Мат_код] = {
+                            'Мат_код': Мат_код,
+                            'Мат_наименование': Мат_наименование,
+                            'Мат_ед_изм': Мат_ед_изм,
+                            'Мат_норма': 0,
+                            'Мат_параметрика': {},
+                            'Материалы_Статья_калькуляции':  'Материалы основные',
+                            'Способы_получения_материала': 'Обеспечивать',
+                        }
                     dict_etaps[etap]["Материалы"][Мат_код]['Мат_норма'] += Мат_норма / count_po_mk
         list_etaps = []
         for k, v in dict_etaps.items():
@@ -538,9 +578,10 @@ class Resourse_mk():
                                  'штштУДАЛИТЬ',
                                  'шт',
                                  }
-                dict_Материалы = self.myparent.DICT_NOMEN[dse['Код_ERP']]
-
-                ЕдиницаИзмерения = dict_Материалы['ЕдиницаИзмерения']
+                ЕдиницаИзмерения = ""
+                if dse['Код_ERP'] in self.myparent.DICT_NOMEN:
+                    dict_Материалы = self.myparent.DICT_NOMEN[dse['Код_ERP']]
+                    ЕдиницаИзмерения = dict_Материалы['ЕдиницаИзмерения']
                 koef = dse['Количество'] / dse['Количество_ед']
                 if ЕдиницаИзмерения in SET_SHT_EDIZM:
                     mat_val_ed = dse['Количество']
@@ -601,7 +642,8 @@ class Resourse_mk():
                             'Опер_Тпз': 0,
                             'Опер_Тшт_ед': 0,
                             'Опер_Тшт': 0,
-                            'Материалы': []
+                            'Материалы': [],
+                            'Оснастка': [],
                         }
                     )
 
@@ -622,7 +664,7 @@ class Resourse_mk():
                     mat_kod = mat['Мат_код']
                     if mat_kod not in DICT_NOMEN:
                         CQT.msgbox(
-                            f"материал {mat['Мат_наименование']} (код:`{mat_kod}`) из операции {oper['Опер_номер']} `{oper['Опер_наименование']}` "
+                            f"Номенклатура `{mat['Мат_наименование']}` (код:`{mat_kod}`, ПКИ:`{dse['ПКИ']}`) из операции `{oper['Опер_номер']}` `{oper['Опер_наименование']}` "
                             f"ДСЕ:`{dse['Номенклатурный_номер']}` не найдена в справочнике номенклатуры МЕС")
                         return
 
@@ -652,6 +694,44 @@ class Resourse_mk():
                             mat['Материалы_Статья_калькуляции'] = Материалы_Статья_калькуляции
 
                         rez_new[0]['Операции'][dict_rc_vid[prof_s_rc]]['Материалы'].append(mat)
+
+                list_codes_erp = [_ for _ in oper['Опер_оснастка'] if _.startswith('00-')]
+                list_codes = [f'"{_}"' for _ in list_codes_erp]
+                if list_codes:
+                    text = f"""
+                                        ВЫБРАТЬ
+                                            Номенклатура.Код КАК Код,
+                                            Номенклатура.Наименование КАК Наименование,
+                                            Номенклатура.ЕдиницаИзмерения КАК ЕдиницаИзмерения,
+                                            Номенклатура.Описание КАК Описание
+                                        ИЗ
+                                            Справочник.Номенклатура КАК Номенклатура
+                                        ГДЕ
+                                            Номенклатура.Код В ({', '.join(list_codes)})
+                                            И Номенклатура.ЭтоГруппа = ЛОЖЬ
+                                            И Номенклатура.ПометкаУдаления = ЛОЖЬ
+
+                                        УПОРЯДОЧИТЬ ПО
+                                            Код УБЫВ
+                                    """
+                    code, data = APIERP.get_wet_request(text=text)
+                    not_founded_cods = []
+                    if code != 200:
+                        CQT.msgbox(f'Запрос get_wet_request номенклатуры в 1С ошибка {code}')
+                        return
+                    if data['data']:
+                        founded_cods = F.deploy_dict_c(data['data'], 'Код')
+                        for osn in list_codes_erp:
+                            cod = osn
+                            name = f'{CEmoji.СтатусыПроизводства.error}Не найден в {USRCNF.Config.user_config.ERP_base_name["Значение"]}, не будет выгружен'
+                            mesure = 'Шт.'
+                            load = False
+                            if osn in founded_cods:
+                                cod = osn
+                                name = founded_cods[osn]['Наименование']
+                                mesure = founded_cods[osn]['ЕдиницаИзмерения']
+                                load = True
+                            rez_new[0]['Операции'][dict_rc_vid[prof_s_rc]]['Оснастка'].append({'Код':cod, 'Наименование':name, 'mesure':mesure, 'load_to_erp':load})
         return rez_new
         CQT.msgboxg_get_table_ok_inf(self, 'Check', dev_analisis, load_summ=True)
 
@@ -716,6 +796,13 @@ class Resourse_mk():
                     rez_list = add_row(rez_list, 3, 'Мат.', Мат_наименование, mat['Мат_код'],
                                        vid_rab, round(mat['Мат_норма'], 3), Мат_ед_изм, etap,
                                        rc['Опер_наименование_подразделения'])
+
+
+
+                for osn in rc['Оснастка']:
+                    rez_list = add_row(rez_list, 3, 'Осн.', osn['Наименование'], osn['Код'],
+                                       vid_rab, 1,  osn['mesure'], etap,
+                                       rc['Опер_наименование_подразделения'])
         return rez_list
         CQT.msgboxg_get_table_ok_inf(self.parent_self, 'test', [[_[0], _[1], _[2], str(_[3])] for _ in test],
                                      use_first_row_as_header=False)
@@ -754,7 +841,7 @@ class mywindow_res(QtWidgets.QDialog):  # диалоговое окно
         self.ui3.fr_res2.setHidden(True)
         self.ui3.fr_options_upload.setHidden(True)
         self.fact_load_res = False
-        if not USRCNF.User_config.is_developer:
+        if not USRCNF.Config.user_config.is_developer:
             self.check_box_tkp()
 
     def check_box_tkp(self):
@@ -822,6 +909,7 @@ class mywindow_res(QtWidgets.QDialog):  # диалоговое окно
 
         res_obj = Resourse_mk(res,self.myparent.db_resxml,self.myparent.db_kplan,self.myparent.bd_naryad,
                                   self.myparent.db_users,tkp_current_schema,self,name_res_for_ERP,nom_mk=nom_mk,num_kpl=num_kpl,primech=primech)
+
         list_data = res_obj.generate_table_form(self.myparent.DICT_DSE_save_mk,self.myparent.DICT_PROF_CODE,self.myparent.DICT_NOMEN, silent_mode=True)
         if list_data == None:
             self.close()
@@ -839,8 +927,13 @@ class mywindow_res(QtWidgets.QDialog):  # диалоговое окно
                 for j in range(self.ui3.tbl_res.columnCount()):
                     CQT.set_color_wtab_c(self.ui3.tbl_res,i,j,102, 153, 255)
             if '3' in self.ui3.tbl_res.item(i,0).text():
-                for j in range(self.ui3.tbl_res.columnCount()):
-                    CQT.set_color_wtab_c(self.ui3.tbl_res,i,j,153, 204, 153)
+                if 'Мат.' in self.ui3.tbl_res.item(i,1).text():
+                    for j in range(self.ui3.tbl_res.columnCount()):
+                        CQT.set_color_wtab_c(self.ui3.tbl_res,i,j,153, 204, 153)
+                if 'Осн.' in self.ui3.tbl_res.item(i,1).text():
+                    for j in range(self.ui3.tbl_res.columnCount()):
+                        CQT.set_color_wtab_c(self.ui3.tbl_res,i,j,*F.hex_to_rgb('#CC99CC'))
+                        pass
         self.res_data = list_data
         self.ui3.le_res_first.setText(res_obj.nn)
         self.res_obj = res_obj
@@ -1459,7 +1552,7 @@ class mywindow_res(QtWidgets.QDialog):  # диалоговое окно
             data = {"data": {'Наименование':name}}
             code, answ = APIERP.delete_res_json(data, self.myparent.ERP_base_name)
             if code == 200:
-                if not USRCNF.User_config.is_developer:
+                if not USRCNF.Config.user_config.is_developer:
                     CMS.send_info_mk_b24_by_action(f'{F.user_full_namre()}\nУдалены, не использующиеся в ЗП, ресурсные:\n{answ["Код"]}', 'готовность РС')
                 CQT.msgbox(f'Удалены ресурсные. \n{answ["Код"]}')
                 return True
@@ -1472,7 +1565,7 @@ class mywindow_res(QtWidgets.QDialog):  # диалоговое окно
             data = {"data": {'Код': code}}
             code_resp, answ = APIERP.clear_res_json(data, self.myparent.ERP_base_name)
             if code_resp == 200:
-                if not USRCNF.User_config.is_developer:
+                if not USRCNF.Config.user_config.is_developer:
                     CMS.send_info_mk_b24_by_action(f'{F.user_full_namre()}\nОчищена и перезаполнена, не использующаяся в ЗП, ресурсная:\n{answ["Код"]}',
                                                'готовность РС')
                 CQT.msgbox(f'Очищена ресурсная. \n{code}')
@@ -1550,11 +1643,11 @@ class mywindow_res(QtWidgets.QDialog):  # диалоговое окно
                                                              {'Поле': 'ИмяРесурсной', 'Значение': name_res},
                                                              {'Поле': 'Связь с КПЛ', 'Значение': connection_kpl_state},
                                                              ],load_links=True,styleSheet=CQT.ERP_CSS)
-            if not USRCNF.User_config.is_developer:
+            if not USRCNF.Config.user_config.is_developer: #26.08.25
                 self.close()
 
     @CQT.onerror #08.04.25
-    def write_data_res_analogue(self, rez,name_res,num_kpl,s_num_tkp,*args):
+    def write_data_res_analogue(self, rez,name_res,num_kpl,s_num_tkp=None,*args):
         res_pickle = F.to_binary_pickle(rez)
         predv_sp = CSQ.custom_request_c(self.db_resxml, f"""SELECT Имя FROM predv_res WHERE Имя = ?;""",
                                         list_of_lists_c=(name_res,))

@@ -2756,18 +2756,21 @@ def onerror(funcd):
             # list_trace.reverse()
             counetr = 1
             for i in range(len(list_trace)):
+                list_trace[i] = list_trace[i].replace('<FrameSummary', '') + ":"
                 if i % 2 == 0:
                     list_trace[i] = f'Step {counetr}: ' + list_trace[i]
                     counetr += 1
                 else:
-                    list_trace[i] = list_trace[i] + '\n'
+                    sub_list_trace = list_trace[i].split()
+                    list_trace[i] = f'''   fnc {sub_list_trace[3].replace('>', '')}\n        line {sub_list_trace[1]}\n'''
             tarcer = '\n'.join(list_trace)
 
             filename, lineno, line = read_err(exc_traceback)
-            txt = (f'File:"{filename}({funcd.__name__})"\n\nline {lineno}:\n  "{line}"\n '
+            txt = (f'File:"{filename}\n    fnc {funcd.__name__}"\n        line {lineno}:\n{'\n'.join([f'            {_}' for _ in line.split('\n')])}\n '
                    f'unexpected error:\n   "{exc_instance}"\n'
-                   f'==================================================\n'
-                   f'{tarcer}\n')
+                   f'===============FRAMES START===================\n'
+                   f'{tarcer}\n'
+                   f'===============FRAMES END===================\n\n')
             print(txt)
             arguments = '({pos}, {named})'.format(
                 pos=', '.join(str(arg) for arg in (self, *args)),
@@ -4899,7 +4902,6 @@ class InteractiveLabelInstance(QtCore.QObject):
 
 
     def _update_img(self, img_path: str, btn: QtWidgets.QPushButton):
-        from project_cust_38 import Cust_Functions as F
         dir = F.sep().join([F.path_to_execut_file_c(), 'icons'])
         path_obj = pathlib.Path(img_path)
         if not path_obj.drive:
@@ -4934,7 +4936,7 @@ class InteractiveLabelInstance(QtCore.QObject):
         btn.setFocusPolicy(Qt.NoFocus)
         btn.setToolTip(tooltip)
         btn.setFlat(True)
-        if on_clicked != '':
+        if on_clicked is not None: #29.08.25
             if not self.parent_self:
                 if cell_val:
                     btn.clicked.connect(lambda *args: on_clicked(self, self.row, self.column, cell_val))
@@ -4996,3 +4998,109 @@ def add_interactive_label(
                                     mark_not_changed_item=mark_not_changed_item,
                                     parent_self=parent_self)
     return inst
+
+
+#+++29.08.25
+class LinkDialog(QtWidgets.QDialog):
+    def __init__(self, parent=None,
+                 placeholder="http://srv-1c:8088/ERP/#e1cib/data/.../?ref=846800d861dd2b4a11ed131c12a92ef4",
+                 validate_ref_func=None):
+        super().__init__(parent)
+        self.validate_ref_func = validate_ref_func
+        self.setWindowTitle("Вставьте ссылку")
+        self.setMinimumWidth(520)
+        self.ref_value = None
+        self._current_reply = None
+        self.hint_label = QtWidgets.QLabel("Введите URL вида номенклатуры.\n"
+                                 "Для этого необходимо:\n"
+                                 "1. В 1С кликнуть правой кнопкой мыши по виду номенклатуры\n"
+                                 "2. В контекстном меню выбрать пункт 'Получить ссылку'\n"
+                                 "3. Данную ссылку вставить в поле ввода МЕС")
+        self.hint_label.setWordWrap(True)
+
+        self.url_edit = QtWidgets.QLineEdit()
+        self.url_edit.setPlaceholderText(placeholder)
+        self.url_edit.setClearButtonEnabled(True)
+        self.url_edit.setMinimumHeight(28)
+        self.url_edit.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+
+        self.info_label = QtWidgets.QLabel("")
+        self.info_label.setWordWrap(True)
+        self.info_label.setStyleSheet("color: #333;")
+        self.info_label.setMinimumHeight(36)
+
+        self.cancel_btn = QtWidgets.QPushButton("Отмена")
+        self.confirm_btn = QtWidgets.QPushButton("Подтвердить")
+        self.confirm_btn.setEnabled(False)
+
+        btn_layout = QtWidgets.QHBoxLayout()
+        btn_layout.addSpacerItem(QtWidgets.QSpacerItem(10, 10, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum))
+        btn_layout.addWidget(self.cancel_btn)
+        btn_layout.addWidget(self.confirm_btn)
+
+        main_layout = QtWidgets.QVBoxLayout()
+        main_layout.addWidget(self.hint_label)
+        main_layout.addWidget(self.url_edit)
+        main_layout.addWidget(self.info_label)
+        main_layout.addLayout(btn_layout)
+        self.setLayout(main_layout)
+
+        self.url_edit.textEdited.connect(self.on_text_edited)
+        self.url_edit.returnPressed.connect(self.on_return_pressed)
+        self.cancel_btn.clicked.connect(self.reject)
+        self.confirm_btn.clicked.connect(self.on_confirm)
+
+        self.url_edit.setFocus()
+        self.data = None
+
+    def on_text_edited(self, text: str):
+        text = text.strip()
+        self.confirm_btn.setEnabled(False)
+        self.info_label.setText("")
+        self.ref_value = None
+
+        if self._current_reply is not None:
+            try:
+                self._current_reply.abort()
+            except Exception:
+                pass
+            self._current_reply = None
+
+        if not text:
+            return
+        parsed = urllib.parse.urlparse(text)
+        if parsed.scheme.lower() not in ("http", "https"):
+            text = f"http://{text}"
+            parsed = urllib.parse.urlparse(text)
+        qs = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+        ref_list = qs.get("ref")
+        if not ref_list:
+            frag = parsed.fragment or ""
+            if "?" in frag:
+                frag_query = frag.split("?", 1)[1]
+                qs2 = urllib.parse.parse_qs(frag_query, keep_blank_values=True)
+                ref_list = qs2.get("ref")
+            else:
+                qs2 = urllib.parse.parse_qs(frag, keep_blank_values=True)
+                ref_list = qs2.get("ref")
+
+        if not ref_list or not ref_list[0].strip():
+            self.info_label.setText("Вставлен некорректный url")
+            return
+        ref_value = ref_list[0].strip()
+        ref_key = F.restore_uuid_from_client_1C_reference(ref_value)
+        if not ref_key:
+            return
+        if self.validate_ref_func is not None:
+            self.data = self.validate_ref_func(self.info_label, ref_key)
+            self.confirm_btn.setEnabled(bool(self.data))
+
+    def on_return_pressed(self):
+        if self.confirm_btn.isEnabled():
+            self.on_confirm()
+
+    def on_confirm(self):
+        if self.data is None:
+            return
+        self.accept()
+#----29.08.25

@@ -1033,7 +1033,9 @@ class mywindow(QtWidgets.QMainWindow):
                 list_tbls.remove('name')
                 list_tbls.insert(0,'')
             except ValueError:
-                pass  # do nothing!
+                pass
+            CQT.clear_tbl(self.ui.tbl_mat_edit) #29.08.25
+            CQT.clear_tbl(self.ui.tbl_mat_edit_filtr)
             self.ui.cmb_mat_tbl.blockSignals(True)
             self.ui.cmb_mat_tbl.clear()
             self.ui.cmb_mat_tbl.addItems(list_tbls)
@@ -1167,6 +1169,34 @@ class mywindow(QtWidgets.QMainWindow):
         CSQ.custom_request_c(self.db_dse,f"""INSERT INTO jurnal_td(Дата, ФИО, ДСЕ, Вес, Статус)
                               VALUES (?, ?, ?, ?, ?)""",list_of_lists_c= [[data_now,fio,name_dse,ves,status]])
 
+    def mark_attributes_on_table_data(self, tbl_instance: QtWidgets.QTableWidget,
+                                      main_tbl_name: str,
+                                      data: list[list],
+                                      attaches: str | tuple[str]
+        ):
+        new_tbl_data = copy.deepcopy(data)
+        property = {}
+        new_header = []
+        if isinstance(new_tbl_data, list) and len(new_tbl_data) >= 1:
+            header = new_tbl_data.pop(0)
+            for head_name in header:
+                split_name = head_name.split('.')
+                cleaned_head = head_name
+                if len(split_name) == 2:
+                    table_name, attr_name = split_name
+                    property[attr_name] = table_name
+                    cleaned_head = attr_name
+                else:
+                    table_name = main_tbl_name
+                new_header.append(cleaned_head)
+                property[cleaned_head] = {
+                    'table_name': table_name,
+                    'attach_dbs': attaches
+                }
+            tbl_instance.setProperty(main_tbl_name.encode('utf8'), property)
+            new_tbl_data.insert(0, new_header)
+        return new_tbl_data
+
 
     def select_tbl_mat_edit(self):
         tbl_name = self.ui.cmb_mat_tbl.currentText()
@@ -1177,15 +1207,34 @@ class mywindow(QtWidgets.QMainWindow):
             return
         if not CMS.user_access(self.db_naryad,'тк_tbl_mat_view',F.user_name()):  # 11.07.25
             return
-
-        list = CSQ.custom_request_c(self.db_mater,f"""SELECT * FROM {tbl_name};""")
-        if list == None or list == False:
+        editeble_col_nomera = {} #27.08.25
+        attach_dbs = ()
+        if tbl_name == 'ТехнологическиеВиды':
+            attach_dbs = USRCNF.Config.project.db_kplan
+            table_data = CSQ.custom_request_c(
+                self.db_mater,
+                f"""
+                    SELECT 
+                        {tbl_name}.Пномер as "{tbl_name}.Пномер",
+                         виды_по_направлению.Имя as "виды_по_направлению.Имя", 
+                        {tbl_name}.ВидыНоменклатуры as "{tbl_name}.ВидыНоменклатуры", 
+                        {tbl_name}.Примечание as "{tbl_name}.Примечание"
+                    FROM {tbl_name} 
+                    INNER JOIN виды_по_направлению ON виды_по_направлению.Пномер = {tbl_name}.Пномер
+                    INNER JOIN napravl_deyat ON виды_по_направлению.Направл = napravl_deyat.Пномер
+                    WHERE napravl_deyat.poki = {USRCNF.Config.place.poki}
+                """,
+                attach_dbs=USRCNF.Config.project.db_kplan
+            )
+            editeble_col_nomera = {'Примечание', 'Имя'}
+        else:
+            table_data = CSQ.custom_request_c(self.db_mater,f"""SELECT * FROM {tbl_name};""")
+        table_data = self.mark_attributes_on_table_data(tbl, tbl_name, table_data, attach_dbs)
+        if table_data == None or table_data == False:
             CQT.msgbox(f'Ошибка загрузки')
             return
 
-        editeble_col_nomera = '*'
-        if not CMS.user_access(self.db_naryad,'тк_tbl_mat_edit_full',F.user_name(),msg=False):
-            editeble_col_nomera = {}
+        if CMS.user_access(self.db_naryad,'тк_tbl_mat_edit_full',F.user_name(),msg=False):
             if tbl_name == 'nomen':
                 editeble_col_nomera = {"П1",
                                        "П2",
@@ -1195,12 +1244,61 @@ class mywindow(QtWidgets.QMainWindow):
                                        "П6",
                                        "П7",}
 
-
-        CQT.fill_wtabl(list,tbl,height_row=20,auto_type=False,set_editeble_col_nomera=editeble_col_nomera)
+        CQT.fill_wtabl(table_data,tbl,height_row=20,auto_type=False,set_editeble_col_nomera=editeble_col_nomera)
+        self.decor_catalog_configuration_table(ui_table_object=tbl, db_table_name=tbl_name) #27.08.25
         CMS.fill_filtr_c(self,self.ui.tbl_mat_edit_filtr,tbl,hidden_scroll=True)
         CMS.update_width_filtr(tbl,self.ui.tbl_mat_edit_filtr)
         self.ui.tbl_mat_edit.horizontalScrollBar().valueChanged.connect(
             self.ui.tbl_mat_edit_filtr.horizontalScrollBar().setValue)
+
+    #++ 27.08.25
+    def on_types_attach(self, types_working_instance, window, widget: CQT.InteractiveLabelInstance, tbl, row, col):
+        if not CMS.user_access(self.db_naryad,'тк_tbl_mat_edit_full',F.user_name(),msg=False):
+            return CQT.msgbox('Нет доступа')
+        types_working_instance.on_attach(window=window, row=row, col=col, tbl=tbl)
+        nomen_types_column = CQT.num_col_by_name_c(tbl, 'ВидыНоменклатуры')
+        item = tbl.item(row, nomen_types_column)
+        if item is not None:
+            nomen_types = ','.join(n_type for n_type in item.text().split(';') if n_type.strip())
+            if not nomen_types:
+                return
+            result = CSQ.custom_request_c(
+                USRCNF.Config.project.db_nomen,
+                f'SELECT name FROM ВидыНоменклатуры WHERE s_num IN ({nomen_types})',
+                one_column=True,
+                hat_c=False
+            )
+            widget.set_text(', '.join(result))
+
+    def decor_catalog_configuration_table(self, ui_table_object: QtWidgets.QTableWidget, db_table_name: str):
+        if db_table_name == 'ТехнологическиеВиды':
+            edit_column = CQT.num_col_by_name_c(ui_table_object, 'ВидыНоменклатуры')
+            types_working = CMS.TypesWorkingByDirections()
+            if edit_column is None:
+                return
+            window = self
+            with QtCore.QSignalBlocker(ui_table_object):
+                for row in range(ui_table_object.rowCount()):
+                    interactive_widget = CQT.add_interactive_label(ui_table_object, row, edit_column,
+                                                                   parent_self=ui_table_object,
+                                                                   txt_cut=40)
+                    interactive_widget.label.setStyleSheet('border: none;')
+                    interactive_widget.add_button(
+                        txt_button='📝',
+                        tooltip='Редактировать',
+                        on_clicked=lambda widget, row, col, *args: self.on_types_attach(types_working, window, widget, row, col, ui_table_object)
+                    )
+                    item = ui_table_object.item(row, edit_column)
+                    nomen_types = ','.join(n_type for n_type in item.text().split(';') if n_type.strip())
+                    result = CSQ.custom_request_c(
+                        USRCNF.Config.project.db_nomen,
+                        f'SELECT name FROM ВидыНоменклатуры WHERE s_num IN ({nomen_types})',
+                        one_column=True,
+                        hat_c=False
+                    )
+                    interactive_widget.set_text(', '.join(result))
+
+    #-- 27.08.25
     @CQT.onerror
     def edit_tbl_mat(self,*args):
         if not CMS.user_access(self.db_naryad,'тк_tbl_mat_edit_full',F.user_name(),msg=False):
@@ -1210,17 +1308,30 @@ class mywindow(QtWidgets.QMainWindow):
         tbl = self.ui.tbl_mat_edit
         new_val = self.ui.tbl_mat_edit.item(row,col).text()
         column_name= tbl.horizontalHeaderItem(col).text()
+        table_conf = tbl.property(tbl_name.encode('utf8'))
+        table_property = table_conf.get(column_name)
+        table_name = table_property.get('table_name')
+        attach_dbs = table_property.get('attach_dbs')
         key_col = tbl.horizontalHeaderItem(0).text()
         key = self.ui.tbl_mat_edit.item(row,0).text()
-        CSQ.custom_request_c(self.db_mater,f"""UPDATE {tbl_name} SET {column_name} = ? WHERE {key_col} = ?;""",list_of_lists_c=[[new_val,int(key)]])
+        CSQ.custom_request_c(self.db_mater,
+                             f"""UPDATE {table_name} SET {column_name} = ? WHERE {key_col} = ?;""",
+                             list_of_lists_c=[[new_val,key]],
+                             attach_dbs=attach_dbs)
 
     @CQT.onerror
     def edit_mat_add_row(self,*args):
         if not CMS.user_access(self.db_naryad,'тк_tbl_mat_edit_full',F.user_name(),msg=False):
             return CQT.msgbox('Нет доступа') # 11.07.25
         tbl_name = self.ui.cmb_mat_tbl.currentText()
-        list_columns = CSQ.list_of_columns_c(self.db_mater,tbl_name)
-        CSQ.custom_request_c(self.db_mater,f"""INSERT INTO {tbl_name} ({str(list_columns[1])}) VALUES (?);""",list_of_lists_c=[['']])
+        if tbl_name == 'ТехнологическиеВиды':
+            CMS.TypesWorkingByDirections().insert_technological_type(type_name='')
+        if tbl_name == 'ВидыНоменклатуры':
+            gui_instance = CMS.GUITypesNomenclature()
+            gui_instance.get_table_choicer_for_insert_nomen_type(self)
+        else:
+            list_columns = CSQ.list_of_columns_c(self.db_mater,tbl_name)
+            CSQ.custom_request_c(self.db_mater,f"""INSERT INTO {tbl_name} ({str(list_columns[1])}) VALUES (?);""",list_of_lists_c=[['']])
         self.select_tbl_mat_edit()
 
     @CQT.onerror
@@ -3623,6 +3734,10 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
     @CQT.onerror
     def cust_keyReleaseEvent(self, ekey:int,modifiers:int):
         # print(str(int(modifiers)) + ' ' +  str(ekey))
+        if self.ui2.tbl_filtr.hasFocus():
+            if ekey == 16777220:
+                CMS.apply_filtr_c(self, self.ui2.tbl_filtr, self.ui2.tab_vib)
+                return
         tbl_handler = False
         if self.item_o == "Док_оп":
             tab_v = self.ui2.tab_vib
@@ -3693,7 +3808,8 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
                 if ekey == QtCore.Qt.Key_Return:
                     CMS.apply_filtr_c(self, self.ui2.tbl_filtr, tab_v)
         if self.item_o == "Оснастка":
-            tbl_handler = True
+            if self.ui2.tab_vib.hasFocus():
+                tbl_handler = True
         if modifiers == QtCore.Qt.ControlModifier: 
             if ekey == 83:
                 if self.ui2.tab_vib.isEnabled():
@@ -4172,27 +4288,27 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
                     spis_pereh = F.open_file_c(pereh_txt_path, False, "|")
                     rez = []
                     # TODO 2 Переходы
-                    operation = self.pself.xl_formulas.xl_srv_data
                     is_xl = self.pself.xl_formulas.check_per(ima_oper, pereh_name, True)
                     if is_xl:
                         self.pself.xl_formulas.get_actual_srv_data()
                         tmp = self.pself.xl_formulas.get_per_params(ima_oper, combo2.currentText())
                         rez.append(tmp)
                     else:
-                    # TODO 2 end
-                        header = self.spis_parametrov_na_perehod(combo2.currentText(), spis_pereh)
-                        rez.append(self.spis_parametrov_na_perehod(combo2.currentText(), spis_pereh))
+                        tmp = self.spis_parametrov_na_perehod(combo2.currentText(), spis_pereh)
+                        rez.append(tmp)
                     if rez != [['']] and not all(len(elem) == 0 for elem in rez):
                         self.ui2.tab_vib.setEnabled(True)
                         if item.text(14) != '':
                             row_pereh_params = item.text(14).split('$')
                             count_rows = min(len(row.split(';')) for row in row_pereh_params) # 02.06.2025 (По задаче 100055042 )
                             count_cols = len(row_pereh_params)
-                            result = [
-                                [row_pereh_params[column].split(';')[row] for column in range(count_cols)]
-                                for row in range(count_rows)
-                            ]
-                            rez = [*rez, *result]
+                            header_length = len(tmp) # 26.08.25
+                            template = [['' for _ in range(header_length)] for _ in range(count_rows)]
+                            for column in range(count_cols):
+                                for row in range(count_rows):
+                                    if row < len(template) and column < len(template[row]):
+                                        template[row][column] = row_pereh_params[column].split(';')[row]
+                            rez = [*rez, *template]
                         set_corr = set(range(len(rez[0])))
                         CQT.fill_wtabl(rez, tbl, set_editeble_col_nomera=set_corr, auto_type=False) #14.07.25
                         tbl.resizeColumnsToContents()

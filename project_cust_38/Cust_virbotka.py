@@ -5,6 +5,7 @@ import datetime as DT
 import calendar
 import project_cust_38.Cust_mes as CMS
 import copy
+import project_cust_38.Cust_config as USRCNF
 
 def start_of_period_c(data):
     date = F.strtodate(data)
@@ -130,18 +131,19 @@ def list_per_month_new_c(db,nach,konec,db_kplan,db_users,podrazdelenie,organizat
         postfix = f"""AND jurnal.ФИО IN ({CSQ.prepare_list_to_tuple(filtr_fio)})"""
 
     custom_request_c = f'''SELECT jurnal.Пномер, jurnal.Дата, jurnal.ФИО, jurnal.Подытог, jurnal.Номер_наряда, jurnal.Статус, naryad.Твремя, 
-    naryad.Норма_времени, jurnal.Подытог_нормы, naryad.Коэфф_сложности, naryad.Внеплан, naryad.Подтвержд_вып, 
-    CASE WHEN знпр.№проекта IS NOT NULL 
-       THEN знпр.№проекта 
-       ELSE mk.Номер_проекта 
-       END AS Номер_проекта 
-        FROM jurnal 
-INNER JOIN naryad ON naryad.Пномер = jurnal.Номер_наряда 
-INNER JOIN mk ON naryad.Номер_мк == mk.Пномер  
-   LEFT JOIN пл_оуп ON пл_оуп.НомПл = mk.НомКплан 
-   LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП 
-WHERE jurnal.Дата <= strftime("%Y-%m-%d %H:%M:00", datetime("{konec}")) AND 
-jurnal.Дата >= strftime("%Y-%m-%d %H:%M:00", datetime("{nach}")) {postfix};'''
+        naryad.Норма_времени, jurnal.Подытог_нормы, naryad.Коэфф_сложности, naryad.Внеплан, naryad.Подтвержд_вып, 
+        CASE WHEN знпр.№проекта IS NOT NULL 
+           THEN знпр.№проекта 
+           ELSE mk.Номер_проекта 
+           END AS Номер_проекта 
+            FROM jurnal 
+        INNER JOIN naryad ON naryad.Пномер = jurnal.Номер_наряда 
+        INNER JOIN mk ON naryad.Номер_мк == mk.Пномер  
+       LEFT JOIN пл_оуп ON пл_оуп.НомПл = mk.НомКплан 
+       LEFT JOIN plan ON plan.Пномер = mk.НомКплан 
+       LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП 
+        WHERE plan.poki == {USRCNF.Config.place.poki} and jurnal.Дата <= strftime("%Y-%m-%d %H:%M:00", datetime("{konec}")) AND 
+        jurnal.Дата >= strftime("%Y-%m-%d %H:%M:00", datetime("{nach}")) {postfix};'''
     spis_jur = CSQ.custom_request_c(db,custom_request_c,rez_dict=True, attach_dbs=(db_kplan))
 
     spis_jur_full = [_ for _ in spis_jur if _['Внеплан'] != 1 and  _['Подтвержд_вып'] == 1 ]

@@ -263,6 +263,7 @@ class MainProduct:
 
     @classmethod
     def find_by_name(cls, name: str):
+        name = F.replace_forbidden_symbols_for_1c_sql(name) #27.07.25
         req_text = f"""
                         ВЫБРАТЬ ПЕРВЫЕ 1
                             Номенклатура.Код КАК Код,
@@ -471,7 +472,7 @@ class ObjsData():
         for k, item in cls.__dict__.items():
             if '_hnt' in k and getattr(item, attrname) == attr:
                 return item
-        if issubclass(default, Exception):
+        if type(default) == type and issubclass(default, Exception): #26.08.25 (по задаче 100059257)
             raise ValueError(f'Не найдено {cls.NAME_ERP_OBJ} = `{attr}` из ERP')
         return default
 

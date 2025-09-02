@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 from project_cust_38 import for_1c
 
+import requests
 router = APIRouter()
 
 
@@ -49,6 +50,20 @@ class DeliveryOrder(BaseModel):
     ufCrm18GrossWeight: Optional[float] = Field(..., alias="ВесБрутто")
 
 
+class DeliveryOrderPack(BaseModel):
+    xmlId: str = Field(..., alias='Ref_Key')
+    title: str = Field(..., alias='Parent/Description')
+    ufCrm21WeightNet: Optional[float] = Field(..., alias='Упаковки/ВесНетто')
+    ufCrm21WeightGross: Optional[float] = Field(..., alias='Упаковки/ВесБрутто')
+    ufCrm21Volume: Optional[float] = Field(..., alias='Упаковки/Объем')
+    ufCrm21PackingType: Optional[str] = Field(..., alias='Упаковки/ВидУпаковки/Description')
+    ufCrm21Length: Optional[float] = Field(..., alias='Упаковки/Длина')
+    ufCrm21Height: Optional[float] = Field(..., alias='Упаковки/Высота')
+    ufCrm21Width: Optional[float] = Field(..., alias='Упаковки/Ширина')
+    ufCrm21Dimentions: Optional[str] = Field(..., alias='Упаковки/Габариты')
+    parent_ref: str = Field(..., alias='Parent/Ref_Key')
+
+
 @router.post(
     '/hs/mes/exchange/{version}/order-supplier/',
     status_code=status.HTTP_200_OK)
@@ -88,3 +103,25 @@ def sync_order_delivery(version: str, data: DeliveryOrder):
         except Exception as e:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail='err')
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Version is not found')
+
+
+@router.post(
+    '/hs/mes/exchange/{version}/order-delivery/pack/',
+    status_code=status.HTTP_200_OK)
+def sync_order_delivery(version: str, data: DeliveryOrderPack):
+    if version == 'v1':
+        queue = 'bitrix24.РаспоряжениеНаДоставку/Упаковка.СинхронизацияПолейДокумента'
+        try:
+            data_dict = data.model_dump()
+            answ, list_err = for_1c.update_drawback_journal(
+                data.xmlId,
+                data_dict,
+                queue=queue
+            )
+            import pprint
+            print(f'[{queue}] Ответ успешно принят: {pprint.pformat(data_dict)}')
+            return {"Данные": answ, "Ошибки": list_err}
+        except Exception as e:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="err")
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Version is not found')
+

@@ -3,11 +3,11 @@ import flet as ft
 class LeftNavigationMenu(ft.Column):
     def __init__(self,ref:ft.Ref|None,visible=True):
         super().__init__()
-
+        ref: ft.Ref= ref
         self.dark_light_text = ft.Text("Световая тема")
         self.dark_light_icon = ft.IconButton(
             icon=ft.Icons.BRIGHTNESS_2_OUTLINED,
-            tooltip="Выбрать тему",
+            tooltip="Выбрать световую тему",
             on_click=self.theme_changed,
         )
 
@@ -26,6 +26,7 @@ class LeftNavigationMenu(ft.Column):
                         controls=[
                             ft.PopupMenuButton(
                                 icon=ft.Icons.COLOR_LENS_OUTLINED,
+                                tooltip="Выбрать цвет",
                                 items=[
                                     PopupColorItem(color="deeppurple", name="Тёмно-фиолетовый"),
                                     PopupColorItem(color="indigo", name="Индиго"),
@@ -41,6 +42,19 @@ class LeftNavigationMenu(ft.Column):
                             ft.Text("Цветовая тема"),
                         ]
                     ),
+                    ft.Row(
+                        controls=[ft.IconButton(
+                                                icon=ft.Icons.CLOSE,
+                                                tooltip="Закрыть",
+                                                on_click=self.close_settings,
+                                                ),
+                            ft.Text("Закрыть")
+
+                        ]
+                    ),
+
+
+
                 ],ref=ref,visible=visible,
 
             ),
@@ -57,7 +71,15 @@ class LeftNavigationMenu(ft.Column):
             self.dark_light_icon.icon = ft.Icons.BRIGHTNESS_2
         self.page.data.Data_user.update_theme_mode(self.page.theme_mode)
         self.page.update()
-
+    def close_settings(self, e):
+        pg: ft.Page = e.page
+        cnter = 0
+        while True:
+            if self not in self.parent.controls or cnter>10:
+                break
+            self.parent.controls.remove(self)
+            cnter+=1
+        pg.update()
 class PopupColorItem(ft.PopupMenuItem):
     def __init__(self, color, name):
         super().__init__()

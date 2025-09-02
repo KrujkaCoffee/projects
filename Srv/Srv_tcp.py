@@ -182,13 +182,6 @@ class HTTPSrv:
         self.attach_db(cur, lst_dbs=attach_dbs)
         res = CSQ.custom_request_c('', custom_request_c, conn=conn, cur=cur, hat_c=hat_c, list_of_lists_c=list_of_lists_c,
                                    rez_dict=rez_dict, one=one, one_column=one_column)
-        try:
-            group = re.search(r'[\s]*SELECT', custom_request_c, re.IGNORECASE) #12.08.25
-            if group:
-                lst = CSQ.get_tables_from_select(cur, custom_request_c, list_of_lists_c)
-                self.headers = {'X-SQL-Used-Tables': quote(';'.join(lst))}
-        except Exception as e:
-            print(e)
         CSQ.close_bd(conn, cur)
         return res
 

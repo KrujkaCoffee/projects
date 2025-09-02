@@ -78,11 +78,11 @@ class data_get_files(BaseModel):
     path_files: List[data_get_file]
 
 class data_send_drawback_fields(BaseModel):
-    STAGE_ID: Union[str, None] = None,
+    STAGE_ID: Union[str, None] = None
     UF_CRM_1737711083528: Union[str, None] = None
     UF_CRM_1737727925: Union[str, None] = None
 class data_send_drawback_journal(BaseModel):
-    ID: Union[str, None] = None,
+    ID: str | int | None = None
     FIELDS: Union[data_send_drawback_fields, None] = None
 
 def eval_1c_test_v1(data):
@@ -279,7 +279,8 @@ def mes_methods_post(item_id, version, data:  data_send_drawback_journal):
         if version == 'v1':
             resp = None
             try:
-                data_dict = {"ID":data.ID,"FIELDS":{"STAGE_ID":data.FIELDS.STAGE_ID}}
+                # data_dict = {"ID":data.ID,"FIELDS":{"STAGE_ID":data.FIELDS.STAGE_ID}}
+                data_dict = data.model_dump()
                 answ, list_err = for_1c.update_drawback_journal(data.ID, data_dict)
                 resp = {"Данные": answ, "Ошибки": list_err}
                 status_code = 200
@@ -293,7 +294,9 @@ def mes_methods_post(item_id, version, data:  data_send_drawback_journal):
 import project_cust_38.for_1c as for_1c
 if __name__ == "__main__":
     while True:
-        uvicorn.run("API_server:app", host=HOST, port=PORT, reload=False) 
+        uvicorn.run("API_server:app", host=HOST, port=PORT, reload=False)
+                    # ssl_certfile='./ssl_cert/certificate.crt',
+                    # ssl_keyfile='./ssl_cert/private.key')
         print('OK')
         F.sleep(3)
 

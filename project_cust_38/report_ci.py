@@ -3522,7 +3522,7 @@ def jurnal_rabot(self, data_nach, data_kon, *args):
                                THEN знпр.№ERP 
                                ELSE mk.Номер_заказа 
                                END AS Номер_заказа, 
-                            jurnal.Дата, jurnal.ФИО AS "ФИО_журнал", jurnal.ФИО AS "Должность", jurnal.Статус, 
+                            jurnal.Дата as "Дата_журнал", jurnal.ФИО AS "ФИО_журнал", jurnal.ФИО AS "Должность", jurnal.Статус, 
             jurnal.Подытог, jurnal.Подытог_нормы as "Для трудозатрат",
             jurnal.Дата_выгрузки_ЕРП,
        jurnal.ФИО_выгрузки_ЕРП,

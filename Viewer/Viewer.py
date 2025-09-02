@@ -480,12 +480,6 @@ class mywindow(QtWidgets.QMainWindow):
             CQT.show_fullscreen(app,self,True)
     @CQT.onerror
     def save_txt(self,*args):
-        import importlib
-        import attach
-        importlib.reload(attach)
-        attach.save_txt(self, args)
-        return
-
         def check_save_txt_trdzt(self):
             count_err = 0
             list = CQT.list_from_wtabl_c(self.ui.tbl_report_c, sep='', hat_c=True, rez_dict=True)
@@ -552,10 +546,6 @@ class mywindow(QtWidgets.QMainWindow):
         if self.vid_report_c == 'Усредненная удельная трудоемкость сборки по видам':
             tbl = self.ui.tbl_report_c
             list = CQT.list_from_wtabl_c(tbl, hat_c=True, only_visible=True, rez_dict=True)
-            matching_stages = self.ui.tbl_report_c.property('matching_stages')
-            if matching_stages is None:
-                return CQT.msgbox('Не найдено соответствие этапов')
-            return
             for item in list:
                 list_of_lists = [[int(item['Выборка,шт.']),
                                   F.valm(item['кг_на_пост_см_средн']),
@@ -570,7 +560,7 @@ class mywindow(QtWidgets.QMainWindow):
                                   F.valm(item['Упаковка и комплектование ЗИП']),
                                   ]]
                 kod = int(item['Код из бд'])
-                rez = CSQ.custom_request_c(self.db_kplan, f'''UPDATE виды_по_направлению SET (Выборка, 
+                rez = CSQ.custom_request_c(self.db_kplan, f'''UPDATE виды_по_напр SET (Выборка, 
                 кг_на_пост_см, 
                 Лазерная_резка, 
                 Сборка_сварка, 

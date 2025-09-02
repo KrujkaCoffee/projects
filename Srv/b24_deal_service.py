@@ -1191,6 +1191,7 @@ class EntityType(Enum):
 class CRMOrders:
     # BASE_URL = 'https://dev.bitrix24.kelast.ru/rest/2585/6tq57vcv71ou03r9/'
     BASE_URL = 'https://bitrix24.kelast.ru/rest/3342/zmoegng9gl0gp5gm/'
+    cache_type_packs = {}
 
     def create_order(self, body, entity_type: EntityType) -> Optional[dict]:
         credentials = {
@@ -1232,8 +1233,140 @@ class CRMOrders:
             ...
         return False
 
+    def mutable_delivery_order(self, prepared_data):
+        import datetime
+        # is_filled = False
+        # if prepared_data["ufCrm18PackingType"] and prepared_data["ufCrm18CountSpots"]:
+        #     is_filled = True
+        ref_key = prepared_data['xmlId']
+
+        auth = ('OdataZNP', 'znp')
+        document = 'Document_Д_РаспоряжениеНаДоставку'
+        format_ = '?$format=json'
+        filter_ = f'&$filter=Ref_Key eq guid{ref_key!r}'
+        expand_ = '&$expand=КонтактноеЛицоГрузоотправителя'
+        response = requests.get(
+            url=f'http://srv-1c:8088/ERP/odata/standard.odata/{document}{format_}{filter_}{expand_}',
+            auth=auth
+        )
+        data = response.json()
+        match data:
+            case {'value': [first_value, *any_values]}:
+                if first_value['КонтактноеЛицоГрузоотправителя_Type'] == 'Edm.String':
+                    name = first_value['КонтактноеЛицоГрузоотправителя']
+                else:
+                    name = first_value['КонтактноеЛицоГрузоотправителя_Expanded']['Description']
+                tel = first_value['НомерКонтактногоЛицаГО']
+                contact = f'{name}, {tel}'
+                unique_number = first_value['Number']
+                date = datetime.datetime.fromisoformat(first_value['Date'])
+                date_str = date.strftime('%d.%m.%Y')
+                title = f'{unique_number} от {date_str}'
+                # if is_filled:
+                #     prepared_data['title'] = title
+                #     prepared_data['ufCrm18ShipperContact'] = contact
+                #     return prepared_data
+                # PART 2
+                filter_ = f'&$filter=Товары/any(x: x/Распоряжение_Key eq guid{ref_key!r})'
+                document = 'Document_Д_Упаковка'
+                response = requests.get(
+                    url=f'http://srv-1c:8088/ERP/odata/standard.odata/{document}{format_}{filter_}',
+                    auth=auth
+                )
+                data_pack = response.json()
+                nomens = []
+                gabars = []
+                pack_types = []
+                count_places = 0
+                weight_b = 0
+                weight_n = 0
+                volume = 0
+                for pack_obj in data_pack['value']:
+                    if not pack_obj['DeletionMark']:
+                        for nomen in pack_obj['Товары']:
+                            num_pack = nomen['НомерУпаковки']
+                            if nomen['Распоряжение_Key'] != ref_key:
+                                continue
+                            if num_pack == 0:
+                                continue
+                            if nomen['КоличествоУпаковок'] == '0':
+                                continue
+                            ref_nomen = nomen['Номенклатура_Key']
+                            document = 'Catalog_Номенклатура'
+                            guid = f'(guid{ref_nomen!r})'
+                            select_ = '&$select=Description'
+                            response = requests.get(
+                                url=f'http://srv-1c:8088/ERP/odata/standard.odata/{document}{guid}{format_}{select_}',
+                                auth=auth
+                            )
+                            data = response.json()
+                            nomens.append(data['Description'])
+                            for pack in pack_obj['Упаковки']:
+                                if num_pack == pack['НомерУпаковки']:
+                                    if pack['ВидУпаковки_Key'] == 'a1eca979-b83d-11ed-8478-00d861dd2b4a':
+                                        continue
+                                    if pack['Габариты'].strip():
+                                        gabars.append(pack['Габариты'])
+                                    count_places += 1
+                                    weight_b += pack['ВесБрутто']
+                                    weight_n += pack['ВесНетто']
+                                    volume += pack['Объем']
+
+                                    select_ = '&$select=Description'
+                                    guid = f'(guid{ref_nomen!r})'
+
+                                    pack_type_ref = pack['ВидУпаковки_Key']
+                                    if pack_type_ref not in self.cache_type_packs:
+                                        document = 'Catalog_Д_ВидыУпаковки'
+                                        guid = f'(guid{pack_type_ref!r})'
+                                        select_ = '&$select=Description'
+                                        response = requests.get(
+                                            url=f'http://srv-1c:8088/ERP/odata/standard.odata/{document}{guid}{format_}{select_}',
+                                            auth=auth
+                                        )
+                                        response = response.json()
+                                        self.cache_type_packs[pack_type_ref] = response['Description']
+                                    pack_types.append(self.cache_type_packs[pack_type_ref])
+                form = {
+                    'title': title,
+                    'ufCrm18CountSpots': count_places,
+                    'ufCrm18DimensionsSpots': ', '.join(gabars),
+                    'ufCrm18Volume': round(volume, 3),
+                    'ufCrm18NetWeigth': round(weight_n, 1),
+                    'ufCrm18GrossWeight': round(weight_b, 1),
+                    'ufCrm18ShipperContact': contact,
+                    'ufCrm18PackingType': ', '.join(pack_types)
+                }
+                msg = []
+                def compare(val, val2):
+                    is_numeric = False
+                    try:
+                        float(val)
+                        float(val2)
+                        is_numeric = True
+                    except Exception:
+                        is_numeric = False
+                    if is_numeric and int(val) == int(val2):
+                        return True
+                    return str(val) == str(val2)
+
+
+                for key, value in prepared_data.items():
+                    if not value:
+                        continue
+                    if key in form and not compare(value, form[key]):
+                        msg.append(f'Несоответствие ключа: {key!r} Значение из тригера: {value} Значение из постобработки {form[key]}')
+                from project_cust_38 import Cust_b24 as B24
+                message = '[B]Распоряжение на доставку тест обработки[/B]\n' + '\n'.join(msg)
+
+                B24.B24Sender().send_msg_by_chat_id('chat85751', message)
+                prepared_data.update(form)
+            case _:
+                print('НЕ НАЙДЕНО')
+        return prepared_data
     def get_changed_values(self, original_item: dict, target_item: dict):
         update_fields = {}
+        # original_item = self.mutable_delivery_order(prepared_data=original_item)
         for key, val in original_item.items():
             prev_val = target_item[key]
             if self.is_int(prev_val) and self.is_int(val):
@@ -1241,7 +1374,7 @@ class CRMOrders:
                     update_fields[key] = val
             else:
                 if str(prev_val) != str(val):
-                    update_fields[key] = val
+                    update_fields[key] = str(val)
         return update_fields
 
     def check_apply_update(self, fields_for_update, response_data: dict) -> bool:
@@ -1318,7 +1451,7 @@ class CRMOrders:
 
     def sync_order_products(self, order_id, source_products):
         data_for_post = []
-        for row in source_products:
+        for idx, row in enumerate(source_products):
             ref_key = row['Ref_Key']
             product = self.get_product_pos(ref_key)
             if not product:
@@ -1329,11 +1462,15 @@ class CRMOrders:
                 )
                 if not product:
                     return False
+            measure_code = row['measure_code']
+            if measure_code == 'NULL':
+                measure_code = ''
             data_for_post.append({
                 'productId': product['id'],
                 'quantity': row['count'],
                 'price': row['price'],
-                'measureCode': row['measure_code']
+                'measureCode': measure_code,
+                "sort": idx
             })
         return self.update_table_product_rows(order_id, data_for_post, source_products)
 
@@ -1343,23 +1480,25 @@ def update_delivery_order_attributes(task):
         return
     order = crm_client.get_order_by_xml_id(task['xmlId'], entity_type=EntityType.ENTITY_TYPE_ID_DELIVERY_ORDER)
     if order is None:
+        # task = crm_client.mutable_delivery_order(task)
         return crm_client.create_order(task, EntityType.ENTITY_TYPE_ID_DELIVERY_ORDER)
     changes = crm_client.get_changed_values(task, order)
     if not changes:
         return True
-    new_order = crm_client.update_order_fields(order['id'], changes, entity_type=EntityType.ENTITY_TYPE_ID_DELIVERY_ORDER)
-    return crm_client.check_apply_update(changes, new_order)
+    return crm_client.update_order_fields(order['id'], changes, entity_type=EntityType.ENTITY_TYPE_ID_DELIVERY_ORDER)
 
 
 def update_order_supplier_attributes(task):
     crm_client = CRMOrders()
     description = task['description']
     ref_key = task['Ref_Key']
+    deletion_mark = task['DeletionMark']
     order = crm_client.get_order_by_xml_id(task['Ref_Key'], entity_type=EntityType.ENTITY_TYPE_ID_ORDER_SUPPLIER)
     if not order:
         order = crm_client.create_order(body={'title': description, 'xmlId': ref_key}, entity_type=EntityType.ENTITY_TYPE_ID_ORDER_SUPPLIER)
     products_1c = task['products']
     order_id = order['id']
+    crm_client.update_order_fields(order_id, {'ufCrm_17_DELETED_1C': deletion_mark}, entity_type=EntityType.ENTITY_TYPE_ID_ORDER_SUPPLIER)
     return crm_client.sync_order_products(order_id, products_1c)
 
 commands = {
