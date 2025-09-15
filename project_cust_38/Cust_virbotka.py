@@ -142,11 +142,14 @@ def list_per_month_new_c(db,nach,konec,db_kplan,db_users,podrazdelenie,organizat
        LEFT JOIN пл_оуп ON пл_оуп.НомПл = mk.НомКплан 
        LEFT JOIN plan ON plan.Пномер = mk.НомКплан 
        LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП 
-        WHERE plan.poki == {USRCNF.Config.place.poki} and jurnal.Дата <= strftime("%Y-%m-%d %H:%M:00", datetime("{konec}")) AND 
+       LEFT JOIN коды_веплана_для_наряда ON коды_веплана_для_наряда.code = naryad.Внеплан
+        WHERE коды_веплана_для_наряда.poki == {USRCNF.Config.place.poki} and jurnal.Дата <= strftime("%Y-%m-%d %H:%M:00", datetime("{konec}")) AND 
         jurnal.Дата >= strftime("%Y-%m-%d %H:%M:00", datetime("{nach}")) {postfix};'''
     spis_jur = CSQ.custom_request_c(db,custom_request_c,rez_dict=True, attach_dbs=(db_kplan))
 
-    spis_jur_full = [_ for _ in spis_jur if _['Внеплан'] != 1 and  _['Подтвержд_вып'] == 1 ]
+    spis_jur_full = [_ for _ in spis_jur #04.08.25
+                     if _['Внеплан'] != USRCNF.Config.place.КодыНарядов.НеподтвержденныйВнеплан
+                     and  _['Подтвержд_вып'] == 1 ]
 
     spis_per_month_c = [_ for _ in spis_jur if _['Статус'] == "Начат"]
     dict_per_month_c = dict()

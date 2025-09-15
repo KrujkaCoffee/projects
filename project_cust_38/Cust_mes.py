@@ -9,7 +9,7 @@ import re
 import asyncio
 from builtins import ValueError
 from itertools import accumulate
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 import project_cust_38.Cust_odata_erp as ODAT
 import project_cust_38.Cust_Functions as F
 import os
@@ -1064,8 +1064,8 @@ class Pozition():
         self.Пномер = None 
         self.Дата_внесения = None 
         self.Позиция = None 
-        self.Направление_деятельности = None 
-        self.Статус = None 
+        self.Направление_деятельности = None
+        self.Статус = None
         self.Статус_норм = None 
         self.Фдата_получения_КД = None 
         self.МК = None 
@@ -1181,6 +1181,7 @@ class Pozition():
         self.row_time_add_etap = row_time_add_etap
         self.row_dates_supply = row_dates_supply
 
+
     def update_dates_supply(self,dict_dates:dict[str:datetime.datetime]):
         self.update_row_etaps(dict_dates)
 
@@ -1257,13 +1258,17 @@ class Pozition():
         for key in row.keys():
             exec(f'self.dict_tables["{name_table}"]["{key.replace(".", "_")}"] = row[key]')
         if name_table == 'пл_оуп':
-            request = f"""
-                            SELECT * FROM знпр 
-                            WHERE s_num == {self.dict_tables[name_table]['Пномер_ЗП']};"""
-            row = CSQ.custom_request_c(self.db, request, rez_dict=True)[0]
-            
-            for key in row.keys():
-                exec(f'self.dict_tables["{name_table}"]["{key.replace(".", "_")}"] = row[key]')
+            if self.dict_tables[name_table]['Пномер_ЗП']:
+                request = f"""
+                                SELECT * FROM знпр 
+                                WHERE s_num == {self.dict_tables[name_table]['Пномер_ЗП']};"""
+                row = CSQ.custom_request_c(self.db, request, rez_dict=True)[0]
+                
+                for key in row.keys():
+                    field = key.replace(".", "_")
+                    if field in self.dict_tables[name_table]:
+                        self.dict_tables[name_table][f'{field}_base'] = self.dict_tables[name_table][field]
+                    exec(f'self.dict_tables["{name_table}"]["{field}"] = row[key]')
 
     def get_list_link_mk(self):
         list_mk = CSQ.custom_request_c(self.db_naryad,f"""SELECT Пномер FROM mk 
@@ -1537,12 +1542,13 @@ class Pozition():
         return rez[0]
 
     def update_day_plan_etap_jurnal(self, data:dict):
-        old_dict = self.get_day_plan_etap_jurnal()
+        old_dict = None #self.get_day_plan_etap_jurnal() 02.09.2025 от Моренко
         if old_dict == None or old_dict == False:
             old_dict = data
         else:
             for k,v in data.items():
                 old_dict[k] = v
+
         blob= F.to_binary_pickle(old_dict)
         CSQ.custom_request_c(self.db,f"""UPDATE plan SET fact_jurnal_blolb_data = ? 
          WHERE Пномер == ?""",list_of_lists_c=[[blob,self.Пномер]])
@@ -1871,6 +1877,16 @@ class Techkards():
         self.sp_tk = sp_tk
         if fix_mat and fl_fix:
             self.save_tk()
+
+    def check_tk(self) -> str | None: #03.09.25
+        """
+        Проверка техкарты на доступность атрибутов для последующего парсинга
+        """
+        nn = self.dse["Номенклатурный_номер"]
+        if self.tk is None:
+            return f'Не найдена {nn!r}'
+        if isinstance(self.tk, dict) and not self.tk.get('bodys'):
+            return f'Техкарта {nn!r} не содержит операций'
 
     def check_code_profession(self, code: str): #10.04.25
         config = CFG.Config
@@ -2837,6 +2853,8 @@ class Naryads():
         return change
 
     def is_month_closing_block(self):
+        if not CFG.Config.place.use_month_closing_block_for_naryads:
+            return False
         if self.month_closing_block == '':
             return  False
         now = F.now('')
@@ -3840,6 +3858,7 @@ class Msg_b24():
         'state_poz_for_production': {'chats': ['Занесение новых проектов в МЕС']},
         'check_etaps': {'chats': ['Списание_отгрузки Пауэрз на Келаст и ПР продукция Пауэрз']},
         'fix_name_res': {'chats': ['Готовность Маршрутных карт']},
+        'reset_py': {'chats': ['Готовность Маршрутных карт']},
     }
 
     def __init__(self,db_kpl:str,db_naryad:str,db_resxml:str,db_users:str,nom_kpl:int=0,conn = None):
@@ -3848,71 +3867,115 @@ class Msg_b24():
         self.data_poz.load_kpl_table('пл_оуп')
         self.data_poz.load_kpl_table('пл_топ')
         self.data_poz.load_kpl_table('пл_ко')
-        self.base_name_poz = (f"№КПЛ:{self.data_poz.Пномер},({self.data_poz.dict_tables['пл_оуп']['№проекта']} "
+        self.napr_pseudo = self.data_poz.get_napravl()['Псевдоним']
+        self.base_name_poz = (f"КПЛ: {self.data_poz.Пномер} Псевдоним {self.napr_pseudo}:  {self.data_poz.dict_tables['пл_оуп']['№проекта']} "
                              f"{self.data_poz.dict_tables['пл_оуп']['№ERP']}, поз.{self.data_poz.Позиция} - "
                               f"{self.data_poz.dict_tables['пл_оуп']['Количество']} шт.)")
-        self.basement_msg = r'*схема: https://pruffme.com/landing/u4339904/786a93205c35098a128e574079cd5059'
         self.state_poz = self.data_poz.get_state_poz_name()
-        self.fio = F.user_full_namre()
-        self.additional_str = ''
+        self.base_dict = OrderedDict([('КПЛ', self.data_poz.Пномер), ('Статус', self.state_poz), ('Псевдоним', self.napr_pseudo),
+                                      ('№проекта', self.data_poz.dict_tables['пл_оуп']['№проекта']),
+                                      ('№ERP', self.data_poz.dict_tables['пл_оуп']['№ERP']), 
+                                      ('Поз.', self.data_poz.Позиция),
+                                      ('Количество', self.data_poz.dict_tables['пл_оуп']['Количество']) ])
+        
+        self.basement_msg ="\n" + r'*схема: https://miro.com/app/board/uXjVKvx6xCU=/?share_link_id=77704755673'
 
-    def send_msg(self,type_msg:str,additional_str=''):
+        self.fio = F.user_full_namre()
+        
+        self.additional_str = ''
+        
+    def send_msg(self,type_msg:str,additional_str='',tbl:list[dict]=None):
         self.additional_str = additional_str
         if type_msg not in Msg_b24.DATA_MSG_DICT:
             raise ValueError("Тип сообщения отсутствует в классе")
-        msg_str = self.generate_msg(type_msg)
-        print(msg_str)
+        msg_str, form_dict, basement_msg = self.generate_msg(type_msg)
+        print(f'{msg_str}\n{form_dict}\n{basement_msg}')
         for chat in Msg_b24.DATA_MSG_DICT[type_msg]['chats']:
-            send_info_mk_b24_by_action(msg_str, chat)
+            send_info_mk_b24_by_action(msg_str, chat,form_dict=form_dict,basement_msg=basement_msg)
+            if tbl:
+                send_tbl_b24_by_action('Изменения:',chat,tbl)
 
     def generate_msg(self,type_msg):
         base_str ='err'
+        form_dict = None
+        pre_basement = ''
+        if type_msg == 'reset_py':
+            base_str = f"""{self.fio} на """
+            form_dict = self.base_dict
+            pre_basement = f"""установил номер ЗП ЕРП [B]`{self.additional_str}`[/B] необходимо открыть МК и сделать раскладку"""
         if type_msg == 'add_new_poz':#trigger: kal_plan.btn_pl_ok_add_poz_click
-            base_str = f"""{self.fio} Добавил в план новую позицию \n{self.base_name_poz}\n в статусе "{self.state_poz}".
-Технологу ТОП необходимо указать пл_топ.Уд_вес_ВО, пл_топ.Вид, пл_топ.Предв_спецификация_ЕРП.\n\n{self.basement_msg}"""
+            base_str = f"""{self.fio} Добавил в план новую позицию в статусе "{self.state_poz}"."""
+            form_dict = self.base_dict
+            pre_basement = f"""Технологу ТОП необходимо указать пл_топ.Уд_вес_ВО, пл_топ.Вид, пл_топ.Предв_спецификация_ЕРП."""
         if type_msg == 'recalc_time_technolog':#trigger: kal_plan.btn_pl_ok_add_poz_click
-            base_str = f"""{self.fio} указал "пл_топ.Вид" на позицию \n{self.base_name_poz}
-Технологу ТОП Необходимо пересчитать нормы времени.\n\n{self.basement_msg}"""
+            base_str = f"""{self.fio} указал "пл_топ.Вид" на позицию"""
+            form_dict = self.base_dict
+            pre_basement = f"""Технологу ТОП Необходимо пересчитать нормы времени."""
         if type_msg == 'recalc_dates_disp':#trigger: kal_plan.btn_pl_load_norm
-            base_str = f"""{self.fio} пересчитал нормы времени на позицию \n{self.base_name_poz} 
-                {self.additional_str}
-специалисту ПДО необходимо обновить гант и переопределить даты исполнения позиции.\n\n{self.basement_msg}"""
+            base_str = f"""{self.fio} пересчитал нормы времени на позицию"""
+            form_dict = self.base_dict
+            pre_basement = f'''специалисту ПДО необходимо обновить гант и переопределить даты исполнения позиции.'''
         if type_msg == 'obtained_kd':#trigger: kal_plan.btn_pl_ok_add_poz_click
-            base_str = f"""{self.fio} отметил, что получено КД на позицию \n{self.base_name_poz}
-ТОП необходимо разработать ТД, МК, РС \nссылка на папку: 
-    {path_to_proj_NPPY_c(self.data_poz.dict_tables['пл_оуп']['№проекта'],self.data_poz.dict_tables['пл_оуп']['№ERP'])}
-ссылка на КД: 
-    {self.data_poz.dict_tables['пл_ко']['Ссылка_КД']}\n\n{self.basement_msg}\n В статусе: {self.state_poz!r}"""#вывод ссылка на папку ()#вывод ссылка на КД
+            base_str = f"""{self.fio} отметил, что получено КД на позицию В статусе: {self.state_poz!r}"""
+            form_dict = self.base_dict
+            pre_basement = f"""ТОП необходимо разработать ТД, МК, РС \nссылка на папку: 
+                {path_to_proj_NPPY_c(self.data_poz.dict_tables['пл_оуп']['№проекта'],self.data_poz.dict_tables['пл_оуп']['№ERP'])}
+            ссылка на КД: 
+                {self.data_poz.dict_tables['пл_ко']['Ссылка_КД']}"""#вывод ссылка на папку ()#вывод ссылка на КД
+
         if type_msg == 'obtained_kod_res':#trigger: kal_plan.btn_pl_ok_add_poz_click
-            base_str = f"""{self.fio} указал пл_топ.Спецификация_код_ЕРП на позицию \n{self.base_name_poz}
-Специалисту ФЭО необходимо согласовать ресурсную {self.data_poz.dict_tables['пл_топ']['Спецификация_код_ЕРП']}\n\n{self.basement_msg}"""
+            base_str = f"""{self.fio} указал пл_топ.Спецификация_код_ЕРП на позицию"""
+            form_dict = self.base_dict
+            pre_basement = f"""Специалисту ФЭО необходимо согласовать ресурсную {self.data_poz.dict_tables['пл_топ']['Спецификация_код_ЕРП']}"""
+
         if type_msg == 'state_valid_kod_res_one':#trigger: reiting.check_and_calc_plan_kpl
-            base_str = f"""По {self.base_name_poz}\n Ресурсная {self.data_poz.dict_tables['пл_топ']['Спецификация_код_ЕРП']} 
-{self.data_poz.dict_tables['пл_топ']['Спецификация_ЕРП']} переведена в статус "Действует"
-Нужно к номенклатуре "{self.data_poz.dict_tables['пл_оуп']['Номенклатура_ЕРП']}" установить ресурсную и
-"{self.data_poz.dict_tables['пл_топ']['Спецификация_ЕРП']}"\nпо ЗП осталось :{self.additional_str}\n\n{self.basement_msg}"""
+            base_str = f"""Ресурсная {self.data_poz.dict_tables['пл_топ']['Спецификация_код_ЕРП']} 
+                {self.data_poz.dict_tables['пл_топ']['Спецификация_ЕРП']} переведена в статус `Действует`"""
+            form_dict = self.base_dict
+            pre_basement = f"""Нужно к номенклатуре "{self.data_poz.dict_tables['пл_оуп']['Номенклатура_ЕРП']}" установить ресурсную и
+                "{self.data_poz.dict_tables['пл_топ']['Спецификация_ЕРП']}"\nпо ЗП осталось :{self.additional_str}"""
+
         if type_msg == 'state_valid_kod_res_one_wo_py':#trigger: reiting.check_and_calc_plan_kpl
-            base_str = f"""По {self.base_name_poz}\n Ресурсная {self.data_poz.dict_tables['пл_топ']['Спецификация_код_ЕРП']} 
-{self.data_poz.dict_tables['пл_топ']['Спецификация_ЕРП']} переведена в статус "Действует"
-Нужно к номенклатуре "{self.data_poz.dict_tables['пл_оуп']['Номенклатура_ЕРП']}" установить ресурсную и
-"{self.data_poz.dict_tables['пл_топ']['Спецификация_ЕРП']}"\nзаказ на производство к позиции НЕ УСТАНОВЛЕН, необходимо установить в пл_оуп.\n\n{self.basement_msg}"""
+            base_str = f"""Ресурсная {self.data_poz.dict_tables['пл_топ']['Спецификация_код_ЕРП']} 
+                {self.data_poz.dict_tables['пл_топ']['Спецификация_ЕРП']} переведена в статус `Действует`"""
+            form_dict = self.base_dict
+            pre_basement = f"""Нужно к номенклатуре "{self.data_poz.dict_tables['пл_оуп']['Номенклатура_ЕРП']}" установить ресурсную и
+                "{self.data_poz.dict_tables['пл_топ']['Спецификация_ЕРП']}"\nзаказ на производство к позиции [B]НЕ УСТАНОВЛЕН[/B], необходимо установить в пл_оуп."""
+
         if type_msg == 'state_valid_kod_res_all':#trigger: reiting.check_and_calc_plan_kpl
-            base_str = f"""По {self.base_name_poz}\n Ресурсная {self.data_poz.dict_tables['пл_топ']['Спецификация_код_ЕРП']} 
-{self.data_poz.dict_tables['пл_топ']['Спецификация_ЕРП']} переведена в статус "Действует"
-Нужно к номенклатуре "{self.data_poz.dict_tables['пл_оуп']['Номенклатура_ЕРП']}" установить ресурсную и
-"{self.data_poz.dict_tables['пл_топ']['Спецификация_ЕРП']}"\n проверить ЗП и выставить статус "К производству")\n\n{self.basement_msg}"""
+            base_str = f"""Ресурсная {self.data_poz.dict_tables['пл_топ']['Спецификация_код_ЕРП']} 
+{self.data_poz.dict_tables['пл_топ']['Спецификация_ЕРП']} переведена в статус `Действует`"""
+            form_dict = self.base_dict
+            pre_basement = f"""Нужно к номенклатуре "{self.data_poz.dict_tables['пл_оуп']['Номенклатура_ЕРП']}" установить ресурсную и
+"{self.data_poz.dict_tables['пл_топ']['Спецификация_ЕРП']}"\n проверить ЗП и выставить статус "К производству")"""
+
         if type_msg == 'state_valid_kod_res_recalc':#trigger: reiting.check_and_calc_plan_kpl
-            base_str = f"""По {self.base_name_poz}\n Ресурсная {self.data_poz.dict_tables['пл_топ']['Спецификация_код_ЕРП']} 
-{self.data_poz.dict_tables['пл_топ']['Спецификация_ЕРП']} переведена в статус "Действует"
-Технологу необходимо пересчитать нормы, специалисту ПДО сроки\n\n{self.basement_msg}"""
+            base_str = f"""Ресурсная {self.data_poz.dict_tables['пл_топ']['Спецификация_код_ЕРП']} 
+{self.data_poz.dict_tables['пл_топ']['Спецификация_ЕРП']} переведена в статус `Действует`"""
+            form_dict = self.base_dict
+            pre_basement = f"""Технологу необходимо пересчитать нормы, специалисту ПДО сроки"""
+
         if type_msg == 'state_poz_for_production':#trigger: reiting.check_and_calc_plan_kpl
-            base_str = f"""По {self.base_name_poz}\n В ЗП выставлен статус "К производству" 
-Специалисту ПДО нужно создать этапы\n\n{self.basement_msg}"""
+            base_str = f"""В ЗП выставлен статус "К производству" """
+            form_dict = self.base_dict
+            pre_basement = f"""Специалисту ПДО нужно создать этапы"""
+
         if type_msg == 'check_etaps':#trigger: 
-            base_str = f"""По {self.base_name_poz}\n Этапы созданы. Ответственным по этапам проверить наличие материалов\n\n{self.basement_msg}"""
+            base_str = f"""Этапы созданы."""
+            form_dict = self.base_dict
+            pre_basement = f"""Ответственным по этапам проверить наличие материалов"""
+
         if type_msg == 'fix_name_res':
-            base_str = f"""По {self.base_name_poz}\n{self.additional_str}\n\n{self.basement_msg}"""
-        return base_str
+            base_str = f"""{self.additional_str}"""
+            form_dict = self.base_dict
+
+
+
+        if pre_basement:
+            basement_msg = f'{pre_basement}\n{self.basement_msg}'
+        else:
+            basement_msg = self.basement_msg
+        return base_str, form_dict, basement_msg
 
 
 class Materials_erp_arm():
@@ -3943,7 +4006,7 @@ class Materials_erp_arm():
         name = res[0]['Description']
         return {"name":name,"status":status,"ident":ident}
 
-    def __init__(self,path,db_kpl=None,num_kpl=None,num_kod_res=None,num_plpr=0):
+    def __init__(self,path,db_kpl=None,num_kpl=None,num_kod_res=None):
         self.err = False
         self.tbl_data = None
         self.ident = None
@@ -3983,7 +4046,7 @@ class Materials_erp_arm():
                 self.active = 0
                 self.user = F.user_full_namre()
                 self.primech = ''
-                self.num_plpr = num_plpr
+
                 hat = Materials_erp_arm.get_hat_res(num_kod_res)
                 self.ident = hat['ident']
             else: # ================================FROM 1C
@@ -4021,7 +4084,7 @@ class Materials_erp_arm():
                 self.user = F.user_full_namre()
                 self.primech = ''
                 self.ident = ident
-                self.num_plpr = num_plpr
+
         else:  # ================================FROM DB
             
             if db_kpl == None:
@@ -4046,7 +4109,7 @@ class Materials_erp_arm():
             self.num_kpl = dict_res['num_kpl']
             self.active = dict_res['active']
             self.user = dict_res['user']
-            self.num_plpr = dict_res['num_plpr_erp']
+
             self.primech = dict_res['primech']
             self.ident = dict_res['ИдентификаторВерсииРесурсной']
         self.get_table_form_from_data()
@@ -4148,9 +4211,9 @@ class Materials_erp_arm():
     def add_db(self,db_kpl):
         bin_file = F.to_binary_pickle(self.data)
         packed = F.pack_byte_file(bin_file)
-        tmp_list = [self.num_kpl,self.num_plpr,self.date_ver,packed,self.user,self.ident]
+        tmp_list = [self.num_kpl,self.date_ver,packed,self.user,self.ident]
         CSQ.custom_request_c(db_kpl,f"""INSERT INTO versions_res_mat 
-         (num_kpl,num_plpr_erp, date_version,data,user,ИдентификаторВерсииРесурсной) 
+         (num_kpl, date_version,data,user,ИдентификаторВерсииРесурсной) 
                               VALUES ({CSQ.questions_for_mask(tmp_list)}) """,list_of_lists_c=[tmp_list])
         dict_s_num =  CSQ.custom_request_c(db_kpl,f"""SELECT s_num, num_kpl FROM 
          versions_res_mat WHERE date_version = '{self.date_ver}' AND num_kpl = {self.num_kpl};""",rez_dict=True,one=True)
@@ -4180,8 +4243,6 @@ class Zakaz_postavshiky:
         else:
             rez = CSQ.custom_request_c(cls.db,f"""INSERT INTO зп_абстракт (num_erp, year, Ref_Key) VALUES (?, ?, ?);""",list_of_lists_c=[[num_erp,year,Ref_Key]])
         return cls(num_erp, year)
-
-
 
 
 class Zp_kpl:
@@ -4454,7 +4515,7 @@ DICT_NAME_SQL = {'tkp': {'s_nom':'Порядковый номер',
          'active': "Активная",
         'user': 'Пользователь',
             'ind':'ИдентификаторВерсииРесурсной',
-                         'num_plpr_erp':'Ключ позиции ПлПр'
+
         }
                      }
 
@@ -6539,7 +6600,7 @@ def fix_mastered_count(res:list,s_num_mk:int):
         return count
     list_nars = CSQ.custom_request_c(db_nar,f"""SELECT ФИО, ФИО2, Фвремя, Фвремя2, 
        ДСЕ_ID, Операции, Опер_колво
-  FROM naryad WHERE Номер_мк == {s_num_mk} and Внеплан == 0;""",rez_dict=True)
+  FROM naryad WHERE Номер_мк == {s_num_mk} and Внеплан == {CFG.Config.place.КодыНарядов.Плановая};""",rez_dict=True) #05.09.25
     dict_cr =dict()
     dict_zav = dict()
     for item in list_nars:#создан
@@ -7014,10 +7075,17 @@ def b24_notation_user_fio(str_fio: str = F.user_full_namre()):
     return str_fio_rez
 
 @CQT.onerror
-def send_info_mk_b24_by_action(msg, action: str):
+def send_info_mk_b24_by_action(msg, action: str,form_dict:dict=None,msg_bold:bool=False,basement_msg:str=None):
     sender = CB24.B24Sender()
-    if not sender.send_msg_by_action(action, msg):
+    if not sender.send_msg_by_action(action, msg,form_dict=form_dict,msg_bold=msg_bold,basement_msg=basement_msg):
         CQT.msgbox(f'Ошибка отправки запроса в Б24')
+
+@CQT.onerror
+def send_tbl_b24_by_action(title, action: str,tbl:list[dict]):
+    sender = CB24.B24Sender()
+    if not sender.send_msg_table_by_action(action, title,tbl):
+        CQT.msgbox(f'Ошибка отправки запроса в Б24')
+
 
 def load_peresilniy(self, tbl_nar, tbl_viev):
     debug_mode = False
@@ -7036,8 +7104,6 @@ def load_peresilniy(self, tbl_nar, tbl_viev):
          ({CSQ.questions_for_mask(list_vals)})'''
         CSQ.custom_request_c(self.db_naryd,query,list_of_lists_c=[list_vals])
         try:
-            tbl_str = F.list_txt_table_c(list_for_b24_msg)
-            #tbl_str = '\n'.join(list_for_b24_msg)
             query = f"""SELECT mk.Номер_проекта, mk.Номер_заказа, mk.Номенклатура, mk.Пномер as Номер_МК,
                 naryad.Пномер as Номер_нар, 
                 log_peresiln.s_num, log_peresiln.user_name FROM naryad
@@ -7049,10 +7115,12 @@ def load_peresilniy(self, tbl_nar, tbl_viev):
                 CQT.msgbox(f'Ошибка доступа к БД')
                 return
             rez = rez[0]
-            line_tbl = '\n'.join(tbl_str)
             msg = f"{rez['user_name']} выгрузил пересыльный на {rez['Номер_проекта']} {rez['Номер_заказа']}\n" \
-                  f"(МК{rez['Номер_МК']} {rez['Номенклатура']}) наряд № {rez['Номер_нар']} \n\n{line_tbl}"
-            send_info_mk_b24_by_action(msg, 'Управление пересыльными')
+                  f"(МК{rez['Номер_МК']} {rez['Номенклатура']}) наряд № {rez['Номер_нар']}"
+            #tbl_str = F.list_txt_table_c(list_for_b24_msg)
+            #line_tbl = '\n'.join(tbl_str)
+            #send_info_mk_b24_by_action(msg, 'Управление пересыльными')
+            send_tbl_b24_by_action(msg, 'Управление пересыльными',list_for_b24_msg)
             # send_info_mk_b24(self, msg, 'chat53443')
         except:
             print('Ошибка отправки в Б24')
@@ -7097,7 +7165,7 @@ def load_peresilniy(self, tbl_nar, tbl_viev):
            [job_post_by_empl_c(self.glob_login),name_by_empl_c(self.glob_login),'','','','','',''],
            roof_tbl_part
            ]
-    list_for_b24_msg = [copy.copy(roof_tbl_part)]
+    list_for_b24_msg = [copy.deepcopy(roof_tbl_part)]
     spis = CQT.list_from_wtabl_c(tblv,hat_c=True,rez_dict=True)
     def sign_osn_rc(rc):
         sign = ''
@@ -7133,9 +7201,16 @@ def load_peresilniy(self, tbl_nar, tbl_viev):
             if len(list_kol) > 1:
                 kol_by_sb = list_kol[3]
             
-            tmp_list = [schet,spis[i]['ДСЕ'], f'{kolich}',kol_by_sb,mat_txt,"'"+poluch+sign_osn_rc(poluch),"'"+potr+sign_osn_rc(potr),"'"+otpr+sign_osn_rc(otpr)]
-            rez.append(tmp_list)
-            list_for_b24_msg.append([str(_) for _ in tmp_list])
+            tmp_list_for_exel = [schet,spis[i]['ДСЕ'], f'{kolich}',kol_by_sb, mat_txt ,"'"+poluch+sign_osn_rc(poluch),"'"+potr+sign_osn_rc(potr),"'"+otpr+sign_osn_rc(otpr)]
+            poluch_b24 = poluch + sign_osn_rc(poluch) if poluch else "-"
+            potr_b24 = potr + sign_osn_rc(potr) if potr else "-"
+            otpr_b24 = otpr + sign_osn_rc(otpr) if otpr else "-"
+            tmp_list_for_b24 = [schet,spis[i]['ДСЕ'], f'{kolich}',kol_by_sb, f"№{schet}) {mat_txt}" ,
+                                f"№{schet}) {poluch_b24}",
+                                f"№{schet}) {potr_b24}",
+                                f"№{schet}) {otpr_b24}"]
+            rez.append(tmp_list_for_exel)
+            list_for_b24_msg.append([str(_) for _ in tmp_list_for_b24])
 
     #rez.append(["-------------------", "-------------------", '-------------------',  "-----------","-"*106, "-----------", "-----------", "-----------"])
     rez.append(["ОТК", '___________', 'Принял', '_________','',  "Сдал", "___________",""])

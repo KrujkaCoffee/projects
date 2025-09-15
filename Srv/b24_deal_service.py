@@ -7,6 +7,9 @@ import time
 from functools import reduce
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
+import sys, io
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+sys.stderr = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
 import requests
 
@@ -30,7 +33,6 @@ from project_cust_38 import Cust_SQLite as CSQ
 import project_cust_38.Cust_odata_erp as ERP
 import project_cust_38.Cust_Functions as F
 import project_cust_38.Cust_b24 as CB24
-
 
 def log_prefix_decorator(event_name: str, target: str):
     def decorator(func):
@@ -346,12 +348,14 @@ class Bucket1C:
         return last_mark
 
     def get_deals_by_relation_zk_kp(self, data_version: str = ''):
-        commerc_mark = commerc_ssilc = zk_mark = ''
+        commerc_mark = commerc_ssilc = zk_mark = kp_version = zk_version = ''
         if data_version:
+            kp_version = f'И КоммерческоеПредложениеКлиенту.ВерсияДанных >= "{data_version}"'
+            zk_version = f'И ЗаказКлиента.ВерсияДанных >= "{data_version}"'
             commerc_mark = f'И КоммерческоеПредложениеКлиенту.ВерсияДанных >= "{data_version}"'
             commerc_ssilc = f'И КоммерческоеПредложениеКлиентуТовары.Ссылка.ВерсияДанных >= "{data_version}"'
             zk_mark = f'И ЗаказКлиента.ВерсияДанных >= "{data_version}"'
-        query = f"""
+        query_1 = f"""
         ВЫБРАТЬ
             МАКСИМУМ(КоммерческоеПредложениеКлиенту.Дата) КАК Дата,
             КоммерческоеПредложениеКлиенту.Сделка.ПБ24_id_bitrix КАК СделкаПБ24_id_bitrix
@@ -488,6 +492,174 @@ class Bucket1C:
 
         УПОРЯДОЧИТЬ ПО
             МаксВерсияДанных ASC
+        """
+        query = f"""
+
+        ВЫБРАТЬ
+        	КоммерческоеПредложениеКлиенту.Сделка.ПБ24_id_bitrix КАК СделкаПБ24_id_bitrix
+        ПОМЕСТИТЬ ВТ_фильтр_сделок
+        ИЗ
+        	Документ.КоммерческоеПредложениеКлиенту КАК КоммерческоеПредложениеКлиенту
+        ГДЕ
+        	КоммерческоеПредложениеКлиенту.Сделка.ПБ24_id_bitrix > 0
+        	И КоммерческоеПредложениеКлиенту.СуммаДокумента > 0
+        	И КоммерческоеПредложениеКлиенту.ПометкаУдаления = ЛОЖЬ
+        	И КоммерческоеПредложениеКлиенту.Проведен = ИСТИНА
+        	{kp_version}
+
+        СГРУППИРОВАТЬ ПО
+        	КоммерческоеПредложениеКлиенту.Сделка.ПБ24_id_bitrix
+
+        ОБЪЕДИНИТЬ ВСЕ
+
+        ВЫБРАТЬ
+        	ЗаказКлиента.Сделка.ПБ24_id_bitrix
+        ИЗ
+        	Документ.ЗаказКлиента КАК ЗаказКлиента
+        ГДЕ
+        	ЗаказКлиента.Сделка.ПБ24_id_bitrix > 0
+        	И ЗаказКлиента.ПометкаУдаления = ЛОЖЬ
+        	И ЗаказКлиента.Проведен = ИСТИНА
+        	{zk_version}
+        ;
+
+        ////////////////////////////////////////////////////////////////////////////////
+        ВЫБРАТЬ РАЗЛИЧНЫЕ
+        	ВТ_фильтр_сделок.СделкаПБ24_id_bitrix КАК СделкаПБ24_id_bitrix
+        ПОМЕСТИТЬ ВТ_фильтр_сделок_Гр
+        ИЗ
+        	ВТ_фильтр_сделок КАК ВТ_фильтр_сделок
+        ;
+
+        ////////////////////////////////////////////////////////////////////////////////
+        ВЫБРАТЬ
+        	МАКСИМУМ(КоммерческоеПредложениеКлиенту.Дата) КАК Дата,
+        	КоммерческоеПредложениеКлиенту.Сделка.ПБ24_id_bitrix КАК СделкаПБ24_id_bitrix
+        ПОМЕСТИТЬ ВТ_КППоДатеУник
+        ИЗ
+        	ВТ_фильтр_сделок_Гр КАК ВТ_фильтр_сделок_Гр
+        		ЛЕВОЕ СОЕДИНЕНИЕ Документ.КоммерческоеПредложениеКлиенту КАК КоммерческоеПредложениеКлиенту
+        		ПО ВТ_фильтр_сделок_Гр.СделкаПБ24_id_bitrix = КоммерческоеПредложениеКлиенту.Сделка.ПБ24_id_bitrix
+
+        СГРУППИРОВАТЬ ПО
+        	КоммерческоеПредложениеКлиенту.Сделка.ПБ24_id_bitrix
+        ;
+
+        ////////////////////////////////////////////////////////////////////////////////
+        ВЫБРАТЬ
+        	МАКСИМУМ(КоммерческоеПредложениеКлиентуТовары.СрокПоставки) КАК СрокПоставки,
+        	КоммерческоеПредложениеКлиентуТовары.Ссылка КАК Ссылка
+        ПОМЕСТИТЬ ВТ_ДатыИзКП
+        ИЗ
+        	ВТ_фильтр_сделок_Гр КАК ВТ_фильтр_сделок_Гр
+        		ЛЕВОЕ СОЕДИНЕНИЕ Документ.КоммерческоеПредложениеКлиенту.Товары КАК КоммерческоеПредложениеКлиентуТовары
+        		ПО (КоммерческоеПредложениеКлиентуТовары.Ссылка.Сделка.ПБ24_id_bitrix = ВТ_фильтр_сделок_Гр.СделкаПБ24_id_bitrix)
+        ГДЕ
+        	КоммерческоеПредложениеКлиентуТовары.Ссылка.ВариантУказанияСрокаПоставки = ЗНАЧЕНИЕ(Перечисление.ВариантыСроковПоставкиКоммерческихПредложений.УказываетсяНаОпределеннуюДату)
+
+        СГРУППИРОВАТЬ ПО
+        	КоммерческоеПредложениеКлиентуТовары.Ссылка
+        ;
+
+        ////////////////////////////////////////////////////////////////////////////////
+        ВЫБРАТЬ
+        	ЗаказКлиента.Ссылка КАК Ссылка,
+        	ЗаказКлиента.НеОтгружатьЧастями КАК НеОтгружатьЧастями
+        ПОМЕСТИТЬ ВТ_ЗКОтбор
+        ИЗ
+        	ВТ_фильтр_сделок_Гр КАК ВТ_фильтр_сделок_Гр
+        		ЛЕВОЕ СОЕДИНЕНИЕ Документ.ЗаказКлиента КАК ЗаказКлиента
+        		ПО (ЗаказКлиента.Сделка.ПБ24_id_bitrix = ВТ_фильтр_сделок_Гр.СделкаПБ24_id_bitrix)
+        ;
+
+        ////////////////////////////////////////////////////////////////////////////////
+        ВЫБРАТЬ
+        	ЗаказКлиента.Ссылка КАК Ссылка,
+        	ЗаказКлиента.ДатаОтгрузки КАК ДатаОтгрузки,
+        	ЗаказКлиента.НеОтгружатьЧастями КАК НеОтгружатьЧастями
+        ПОМЕСТИТЬ ВТ_ЗКСоед
+        ИЗ
+        	ВТ_ЗКОтбор КАК ВТ_ЗКОтбор
+        		ЛЕВОЕ СОЕДИНЕНИЕ Документ.ЗаказКлиента КАК ЗаказКлиента
+        		ПО ВТ_ЗКОтбор.Ссылка = ЗаказКлиента.Ссылка
+        ГДЕ
+        	ЗаказКлиента.НеОтгружатьЧастями = ИСТИНА
+
+        ОБЪЕДИНИТЬ ВСЕ
+
+        ВЫБРАТЬ
+        	ЗаказКлиентаТовары.Ссылка.Ссылка,
+        	МАКСИМУМ(ЗаказКлиентаТовары.ДатаОтгрузки),
+        	ЗаказКлиентаТовары.Ссылка.НеОтгружатьЧастями
+        ИЗ
+        	ВТ_ЗКОтбор КАК ВТ_ЗКОтбор
+        		ЛЕВОЕ СОЕДИНЕНИЕ Документ.ЗаказКлиента.Товары КАК ЗаказКлиентаТовары
+        		ПО ВТ_ЗКОтбор.Ссылка = ЗаказКлиентаТовары.Ссылка
+        ГДЕ
+        	ЗаказКлиентаТовары.Ссылка.НеОтгружатьЧастями = ЛОЖЬ
+
+        СГРУППИРОВАТЬ ПО
+        	ЗаказКлиентаТовары.Ссылка.Ссылка,
+        	ЗаказКлиентаТовары.Ссылка.НеОтгружатьЧастями
+        ;
+
+        ////////////////////////////////////////////////////////////////////////////////
+        ВЫБРАТЬ
+        	СУММА(ВТ_ЗКСоед.Ссылка.СуммаДокумента) КАК СуммаЗК,
+        	МАКСИМУМ(ВТ_ЗКСоед.ДатаОтгрузки) КАК ДатаОтгрузкиЗК,
+        	ВТ_ЗКСоед.Ссылка.Сделка.ПБ24_id_bitrix КАК СсылкаСделкаПБ24_id_bitrixЗК,
+        	МАКСИМУМ(ВТ_ЗКСоед.Ссылка.ВерсияДанных) КАК ВерсияДанныхЗК
+        ПОМЕСТИТЬ ВТ_ЗКГр
+        ИЗ
+        	ВТ_ЗКСоед КАК ВТ_ЗКСоед
+
+        СГРУППИРОВАТЬ ПО
+        	ВТ_ЗКСоед.Ссылка.Сделка.ПБ24_id_bitrix
+        ;
+
+        ////////////////////////////////////////////////////////////////////////////////
+        ВЫБРАТЬ
+        	КоммерческоеПредложениеКлиенту.Ссылка КАК Ссылка,
+        	КоммерческоеПредложениеКлиенту.Сделка.ПБ24_id_bitrix КАК ID,
+        	КоммерческоеПредложениеКлиенту.Сделка.Ссылка КАК СделкаСсылка,
+        	КоммерческоеПредложениеКлиенту.ВерсияДанных КАК ВерсияДанныхКП,
+        	КоммерческоеПредложениеКлиенту.СуммаДокумента КАК СуммаДокументаКП,
+        	КоммерческоеПредложениеКлиенту.Сделка.ПБ24_СтадияБ24.Код КАК СделкаПБ24_СтадияБ24Код,
+        	ВТ_ДатыИзКП.СрокПоставки КАК СрокПоставкиПоКП,
+            ЕСТЬNULL(ВТ_ЗКГр.СуммаЗК, 0) КАК СуммаЗК,
+        	ВТ_ЗКГр.ДатаОтгрузкиЗК КАК ДатаОтгрузкиЗК,
+        	ВТ_ЗКГр.ВерсияДанныхЗК КАК ВерсияДанныхЗК,
+        	ВЫБОР
+        		КОГДА ЕСТЬNULL(ВТ_ЗКГр.ВерсияДанныхЗК, КоммерческоеПредложениеКлиенту.ВерсияДанных) > КоммерческоеПредложениеКлиенту.ВерсияДанных
+        			ТОГДА ЕСТЬNULL(ВТ_ЗКГр.ВерсияДанныхЗК, КоммерческоеПредложениеКлиенту.ВерсияДанных)
+        		ИНАЧЕ КоммерческоеПредложениеКлиенту.ВерсияДанных
+        	КОНЕЦ КАК МаксВерсияДанных,
+        	КоммерческоеПредложениеКлиенту.Сделка.Закрыта КАК СделкаЗакрыта
+        ИЗ
+        	ВТ_КППоДатеУник КАК ВТ_КППоДатеУник
+        		ЛЕВОЕ СОЕДИНЕНИЕ Документ.КоммерческоеПредложениеКлиенту КАК КоммерческоеПредложениеКлиенту
+        			ЛЕВОЕ СОЕДИНЕНИЕ ВТ_ДатыИзКП КАК ВТ_ДатыИзКП
+        			ПО (ВТ_ДатыИзКП.Ссылка = КоммерческоеПредложениеКлиенту.Ссылка)
+        		ПО (ВТ_КППоДатеУник.Дата = КоммерческоеПредложениеКлиенту.Дата)
+        			И (ВТ_КППоДатеУник.СделкаПБ24_id_bitrix = КоммерческоеПредложениеКлиенту.Сделка.ПБ24_id_bitrix)
+        		ЛЕВОЕ СОЕДИНЕНИЕ ВТ_ЗКГр КАК ВТ_ЗКГр
+        		ПО (ВТ_ЗКГр.СсылкаСделкаПБ24_id_bitrixЗК = КоммерческоеПредложениеКлиенту.Сделка.ПБ24_id_bitrix)
+
+        СГРУППИРОВАТЬ ПО
+        	КоммерческоеПредложениеКлиенту.Ссылка,
+        	КоммерческоеПредложениеКлиенту.Сделка.ПБ24_id_bitrix,
+        	КоммерческоеПредложениеКлиенту.СуммаДокумента,
+        	КоммерческоеПредложениеКлиенту.Сделка.ПБ24_СтадияБ24.Код,
+        	ВТ_ДатыИзКП.СрокПоставки,
+        	ВТ_ЗКГр.СуммаЗК,
+        	ВТ_ЗКГр.ДатаОтгрузкиЗК,
+        	ВТ_ЗКГр.ВерсияДанныхЗК,
+        	КоммерческоеПредложениеКлиенту.ВерсияДанных,
+        	КоммерческоеПредложениеКлиенту.Сделка.Ссылка,
+        	КоммерческоеПредложениеКлиенту.Сделка.Закрыта
+
+        УПОРЯДОЧИТЬ ПО
+        	МаксВерсияДанных УБЫВ
         """
         code, response = AEC.get_wet_request(text=query)
         return response
@@ -1056,11 +1228,17 @@ def get_last_changes_date_and_sum_ZK_TKP(queue: str, bucket: B24Bucket):
 
         description = item['СделкаСсылка']
         kp_version = item['ВерсияДанныхКП']
-        kp_sum = float(F.valm(item['СуммаДокументаКП']))
+        if F.valm(item['СуммаДокументаКП']):
+            kp_sum = float(F.valm(item['СуммаДокументаКП']))
+        else:
+            kp_sum = None
         kp_date = item['СрокПоставкиПоКП']
 
         zk_version = item['ВерсияДанныхЗК']
-        zk_sum = float(F.valm(item['СуммаЗК']))
+        if F.valm(item['СуммаЗК']):
+            zk_sum = float(F.valm(item['СуммаЗК']))
+        else:
+            zk_sum = None
         zk_shipment_date = item['ДатаОтгрузкиЗК']
         deal_b24 = data_b24.get(str(b24_id))
         if not deal_b24:
@@ -1126,10 +1304,10 @@ def update_date_and_sum_ZK_TKP(task: dict):
             zk_source = '1С.Document_ЗаказКлиента'
             kp_source = '1С.Document_КоммерческоеПредложениеКлиенту'
 
-            if (zk_sum or kp_sum) and b24_stage_id == STAGE_NEW_DEAL:
-                update_stage_b24_on_date_1c(b24_id=b24_id, old_val=b24_stage_id, new_val='C1:1', source=kp_source,
-                                            object_name=description)
-            if zk_version:
+            # if (zk_sum or kp_sum) and b24_stage_id == STAGE_NEW_DEAL:
+            #     update_stage_b24_on_date_1c(b24_id=b24_id, old_val=b24_stage_id, new_val='C1:1', source=kp_source,
+            #                                 object_name=description)
+            if zk_version and zk_sum:
                 if zk_sum != b24_sum:
                     update_sum_b24_on_date_1c(b24_id=b24_id, new_val=zk_sum, old_val=b24_sum, source=zk_source,
                                               object_name=description)
@@ -1140,13 +1318,23 @@ def update_date_and_sum_ZK_TKP(task: dict):
 
             if zk_shipment_date and zk_shipment_date != null_date:
                 if not b24_shipment_date:
-                    date_obj_1c = datetime.strptime(zk_shipment_date, '%d.%m.%Y %H:%M:%S')
+                    if F.is_date(zk_shipment_date, '%d.%m.%Y %H:%M:%S'):
+                        date_obj_1c = datetime.strptime(zk_shipment_date, '%d.%m.%Y %H:%M:%S')
+                    elif F.is_date(zk_shipment_date, '%Y-%m-%dT%H:%M:%S'):
+                        date_obj_1c = datetime.strptime(zk_shipment_date, '%Y-%m-%dT%H:%M:%S')
+                    else:
+                        return False
                     date_for_update_b24 = date_obj_1c.isoformat()
                     update_date_b24_on_date_1c(b24_id=b24_id, new_val=date_for_update_b24, old_val=b24_shipment_date,
                                                source=zk_source, object_name=description)
                 else:
                     date_obj_b24 = datetime.strptime(b24_shipment_date, '%Y-%m-%dT%H:%M:%S%z')
-                    date_obj_1c = datetime.strptime(zk_shipment_date, '%d.%m.%Y %H:%M:%S')
+                    if F.is_date(zk_shipment_date, '%d.%m.%Y %H:%M:%S'):
+                        date_obj_1c = datetime.strptime(zk_shipment_date, '%d.%m.%Y %H:%M:%S')
+                    elif F.is_date(zk_shipment_date, '%Y-%m-%dT%H:%M:%S'):
+                        date_obj_1c = datetime.strptime(zk_shipment_date, '%Y-%m-%dT%H:%M:%S')
+                    else:
+                        return False
                     if date_obj_b24.date() != date_obj_1c.date():
                         date_for_update_b24 = date_obj_1c.isoformat()
                         update_date_b24_on_date_1c(b24_id=b24_id, new_val=date_for_update_b24,
@@ -1155,7 +1343,12 @@ def update_date_and_sum_ZK_TKP(task: dict):
                 if kp_date == null_date:
                     return True
                 if not b24_shipment_date and kp_date:
-                    date_obj_1c = datetime.strptime(kp_date, '%d.%m.%Y %H:%M:%S')
+                    if F.is_date(zk_shipment_date, '%d.%m.%Y %H:%M:%S'):
+                        date_obj_1c = datetime.strptime(zk_shipment_date, '%d.%m.%Y %H:%M:%S')
+                    elif F.is_date(zk_shipment_date, '%Y-%m-%dT%H:%M:%S'):
+                        date_obj_1c = datetime.strptime(zk_shipment_date, '%Y-%m-%dT%H:%M:%S')
+                    else:
+                        return False
                     date_obj_b24 = datetime.strptime(b24_shipment_date, '%Y-%m-%dT%H:%M:%S%z')
                     if date_obj_b24.date() != date_obj_1c.date():
                         date_for_update_b24 = date_obj_1c.isoformat()
@@ -1183,15 +1376,29 @@ def update_stage_b24_on_date_1c(*, b24_id: int | str, old_val: str, new_val: str
 from enum import Enum
 
 class EntityType(Enum):
-    ENTITY_TYPE_ID_ORDER_SUPPLIER = 1072 # 1104
-    ENTITY_TYPE_ID_DELIVERY_ORDER = 1076 # 1108
+    ENTITY_TYPE_ID_ORDER_SUPPLIER = 1072        # 1104
+    ENTITY_TYPE_ID_DELIVERY_ORDER = 1076        # 1108
+    ENTITY_TYPE_ID_DELIVERY_ORDER_PACK = 9999   # 1126
 
-    OWNER_TYPE = 'T430' # 'T450'
+    OWNER_TYPE = 'T430'
+
+    class Test(Enum):
+        ENTITY_TYPE_ID_ORDER_SUPPLIER = 1104        # 1104
+        ENTITY_TYPE_ID_DELIVERY_ORDER = 1108        # 1108
+        ENTITY_TYPE_ID_DELIVERY_ORDER_PACK = 1126   # 1126
+
+        OWNER_TYPE = 'T450'
 
 class CRMOrders:
-    # BASE_URL = 'https://dev.bitrix24.kelast.ru/rest/2585/6tq57vcv71ou03r9/'
-    BASE_URL = 'https://bitrix24.kelast.ru/rest/3342/zmoegng9gl0gp5gm/'
+    BASE_URL: str = None
+
     cache_type_packs = {}
+
+    def __init__(self, is_test: bool = False):
+        if is_test:
+            self.BASE_URL = 'https://dev.bitrix24.kelast.ru/rest/2585/6tq57vcv71ou03r9/'
+        else:
+            self.BASE_URL = 'https://bitrix24.kelast.ru/rest/3342/zmoegng9gl0gp5gm/'
 
     def create_order(self, body, entity_type: EntityType) -> Optional[dict]:
         credentials = {
@@ -1213,16 +1420,30 @@ class CRMOrders:
         return response.json()
 
 
-    def get_order_by_xml_id(self, ref_key: str, entity_type: EntityType):
+    def get_order_by_xml_id(self, ref_key: str, entity_type: EntityType, addition: dict = None):
+        if not isinstance(addition, dict):
+            addition = {}
         credentials = {
             'entityTypeId': entity_type.value,
-            'filter': {'xmlId': ref_key},
+            'filter': {'xmlId': ref_key, **addition},
         }
         response = requests.post(f'{self.BASE_URL}crm.item.list', json=credentials)
         data = response.json()
         match data:
             case {'result': {'items': [first_item, *any_items]}}:
                 return first_item
+        return None
+
+    def delete_item(self, item_id: int | str, entity_type: EntityType):
+        credentials = {
+            'entityTypeId': entity_type.value,
+            'id': item_id,
+        }
+        response = requests.post(f'{self.BASE_URL}crm.item.delete', json=credentials)
+        data = response.json()
+        match data:
+            case {'result': []}:
+                return True
         return None
 
     def is_int(self, val):
@@ -1383,12 +1604,18 @@ class CRMOrders:
             case {'result': {'item': new_item}}:
                 for key, new_val in fields_for_update.items():
                     target_val = new_item[key]
+                    if not new_val and not target_val:
+                        continue
                     if self.is_int(target_val) and self.is_int(new_val):
                         if float(target_val) != float(new_val):
                             not_updated_fields.add(key)
+                        else:
+                            continue
                     else:
                         if str(target_val) != str(new_val):
                             not_updated_fields.add(key)
+                        else:
+                            continue
 
                     if target_val != new_val:
                         not_updated_fields.add(key)
@@ -1501,6 +1728,31 @@ def update_order_supplier_attributes(task):
     crm_client.update_order_fields(order_id, {'ufCrm_17_DELETED_1C': deletion_mark}, entity_type=EntityType.ENTITY_TYPE_ID_ORDER_SUPPLIER)
     return crm_client.sync_order_products(order_id, products_1c)
 
+def update_delivery_order_pack_attributes(task):
+    crm_client = CRMOrders(is_test=True)
+    ref_key = task['xmlId']
+    delivery_order_ref = task.pop('parent_ref')
+    deletion_mark = task.pop('deletion_mark')
+    delivery_order = crm_client.get_order_by_xml_id(delivery_order_ref, entity_type=EntityType.Test.ENTITY_TYPE_ID_DELIVERY_ORDER)
+    if not delivery_order: # Если распоряжения на доставку с указанным ref_key не существует
+        return False
+    pack_table_row = crm_client.get_order_by_xml_id(
+        ref_key=ref_key,
+        entity_type=EntityType.Test.ENTITY_TYPE_ID_DELIVERY_ORDER_PACK,
+        addition={'ufCrm21Number': task['ufCrm21Number']}
+    )
+    task['parentId1108'] = delivery_order['id'] # Заполняем id родительского распоряжения
+    if not pack_table_row:
+        if deletion_mark:
+            return True
+        item = crm_client.create_order(body=task, entity_type=EntityType.Test.ENTITY_TYPE_ID_DELIVERY_ORDER_PACK)
+        return crm_client.get_changed_values(task, item)
+    else:
+        order_id = pack_table_row['id']
+        if deletion_mark:
+            return crm_client.delete_item(order_id, entity_type=EntityType.Test.ENTITY_TYPE_ID_DELIVERY_ORDER_PACK)
+        return crm_client.update_order_fields(order_id, task, entity_type=EntityType.Test.ENTITY_TYPE_ID_DELIVERY_ORDER_PACK)
+
 commands = {
     'bitrix24.Сделка.Завершение': {
         'producer': deal_values,
@@ -1527,9 +1779,15 @@ commands = {
         'check': True,
         'interval': 60 * 3 - 1
     },
-    'bitrix24.РаспоряжениеНаДоставку.СинхронизацияПолейДокумента': { # https://bitrix24.kelast.ru/company/personal/user/3076/tasks/task/view/100056997/
+    'bitrix24.РаспоряжениеНаДоставку.СинхронизацияТабличнойЧасти': { # https://bitrix24.kelast.ru/company/personal/user/3076/tasks/task/view/100056997/
         'producer': None,
         'consumer': update_delivery_order_attributes,
+        'check': True,
+        'interval': 60 * 3 - 1
+    },
+    "bitrix24.РаспоряжениеНаДоставку/Упаковка.СинхронизацияТабличнойЧастиУпаковки": { # https://bitrix24.kelast.ru/company/personal/user/3076/tasks/task/view/100059053/
+        'producer': None,
+        'consumer': update_delivery_order_pack_attributes,
         'check': True,
         'interval': 60 * 3 - 1
     },

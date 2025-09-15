@@ -1,4 +1,5 @@
 from typing import Optional
+import pprint
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
@@ -52,16 +53,18 @@ class DeliveryOrder(BaseModel):
 
 class DeliveryOrderPack(BaseModel):
     xmlId: str = Field(..., alias='Ref_Key')
-    title: str = Field(..., alias='Parent/Description')
-    ufCrm21WeightNet: Optional[float] = Field(..., alias='Упаковки/ВесНетто')
-    ufCrm21WeightGross: Optional[float] = Field(..., alias='Упаковки/ВесБрутто')
-    ufCrm21Volume: Optional[float] = Field(..., alias='Упаковки/Объем')
-    ufCrm21PackingType: Optional[str] = Field(..., alias='Упаковки/ВидУпаковки/Description')
-    ufCrm21Length: Optional[float] = Field(..., alias='Упаковки/Длина')
-    ufCrm21Height: Optional[float] = Field(..., alias='Упаковки/Высота')
-    ufCrm21Width: Optional[float] = Field(..., alias='Упаковки/Ширина')
-    ufCrm21Dimentions: Optional[str] = Field(..., alias='Упаковки/Габариты')
-    parent_ref: str = Field(..., alias='Parent/Ref_Key')
+    title: str = Field(..., alias='НаименованиеДокумента')
+    ufCrm21WeightNet: Optional[float] = Field(..., alias='ВесНетто')
+    ufCrm21WeightGross: Optional[float] = Field(..., alias='ВесБрутто')
+    ufCrm21Volume: Optional[float] = Field(..., alias='Объем')
+    ufCrm21PackingType: Optional[str] = Field(..., alias='ВидУпаковки')
+    ufCrm21Length: Optional[float] = Field(..., alias='Длина')
+    ufCrm21Height: Optional[float] = Field(..., alias='Высота')
+    ufCrm21Width: Optional[float] = Field(..., alias='Ширина')
+    ufCrm21Dimentions: Optional[str] = Field(..., alias='Габариты')
+    ufCrm21Number: Optional[str | int] = Field(..., alias='НомерСтроки')
+    parent_ref: str = Field(..., alias='Распоряжение_Key')
+    deletion_mark: int | bool = Field(..., alias='НаУдаление')
 
 
 @router.post(
@@ -77,7 +80,6 @@ def sync_order_supplier(version: str, data: OrderSupplierFrom1C):
                 data_dict,
                 queue=queue
             )
-            import pprint
             print(f'[{queue}] Ответ успешно принят: {pprint.pformat(data_dict)}')
             return {"Данные": answ, "Ошибки": list_err}
         except Exception as e:
@@ -89,7 +91,7 @@ def sync_order_supplier(version: str, data: OrderSupplierFrom1C):
     status_code=status.HTTP_200_OK)
 def sync_order_delivery(version: str, data: DeliveryOrder):
     if version == 'v1':
-        queue = 'bitrix24.РаспоряжениеНаДоставку.СинхронизацияПолейДокумента'
+        queue = 'bitrix24.РаспоряжениеНаДоставку.СинхронизацияТабличнойЧасти'
         try:
             data_dict = data.model_dump()
             answ, list_err = for_1c.update_drawback_journal(
@@ -97,7 +99,6 @@ def sync_order_delivery(version: str, data: DeliveryOrder):
                 data_dict,
                 queue=queue
             )
-            import pprint
             print(f'[{queue}] Ответ успешно принят: {pprint.pformat(data_dict)}')
             return {"Данные": answ, "Ошибки": list_err}
         except Exception as e:
@@ -108,20 +109,23 @@ def sync_order_delivery(version: str, data: DeliveryOrder):
 @router.post(
     '/hs/mes/exchange/{version}/order-delivery/pack/',
     status_code=status.HTTP_200_OK)
-def sync_order_delivery(version: str, data: DeliveryOrderPack):
+def sync_order_delivery(version: str, data: list[DeliveryOrderPack]):
     if version == 'v1':
-        queue = 'bitrix24.РаспоряжениеНаДоставку/Упаковка.СинхронизацияПолейДокумента'
-        try:
-            data_dict = data.model_dump()
-            answ, list_err = for_1c.update_drawback_journal(
-                data.xmlId,
-                data_dict,
-                queue=queue
-            )
-            import pprint
-            print(f'[{queue}] Ответ успешно принят: {pprint.pformat(data_dict)}')
-            return {"Данные": answ, "Ошибки": list_err}
-        except Exception as e:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="err")
+        queue = 'bitrix24.РаспоряжениеНаДоставку/Упаковка.СинхронизацияТабличнойЧастиУпаковки'
+        errors = []
+        answers = []
+        for item in data:
+            try:
+                data_dict = item.model_dump()
+                answ, list_err = for_1c.update_drawback_journal(
+                    item.xmlId,
+                    data_dict,
+                    queue=queue
+                )
+                answers.append(answ)
+                print(f'[{queue}] Ответ успешно принят: {pprint.pformat(data_dict)}')
+            except Exception as e:
+                errors.append(f'Ошибка при сохранении {item.xmlId}')
+        return {"Данные": all(answers), "Ошибки": errors}
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Version is not found')
 

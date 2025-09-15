@@ -5,14 +5,21 @@ import shutil
 import logging
 import stat
 import subprocess
+import tempfile
 from collections import defaultdict
 from pathlib import Path
 from time import sleep
+import sys, io
+from win32com.client import gencache
+
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+sys.stdin = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+sys.stderr = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
 import xlwings
 from werkzeug import Request, Response
 
-from form import LoadFormulas, FormulaXLSX
+from formul_xl_parser import LoadFormulas, FormulaXLSX
 
 logging.basicConfig(
     level=logging.INFO,
@@ -35,29 +42,47 @@ OP_DIR = 'Операции'
 PER_DIR = 'Переходы'
 
 CACHE_DIR = Path(__file__).parent / 'cache_xlsx'
+CACHE_DIR = (Path(tempfile.gettempdir()).parent / 'cache_xlsx').absolute()
 ORGANIZATIONS = {'0': 'Powerz', '1': 'Келаст'}
 
-def block(fn):
-    def wrap(*args, **kwargs):
+### ==== UTILS ====
+def hash_dict(input_dict):
+    import json
+    try:
+        dict_string = json.dumps(input_dict, sort_keys=True)
+        hash_object = hashlib.sha256(dict_string.encode())
+        return hash_object.hexdigest()
+    except Exception as e:
+        print("Ошибка хэширования параметров", e)
+
+def log_block(fn):
+    def wrapper(*args, **kwargs):
         separ = "=" * 15
         logger.info(f'\nСовершен запрос\n{kwargs}\n{separ}')
-        self = args[0]
-        if self.block:
-            return 'База данных занята, попробуйте через неск секунд'
         return fn(*args, **kwargs)
-    return wrap
+    return wrapper
 
+def kill_excel():
+    try:
+        # Выполняем команду для завершения процесса Excel
+        subprocess.run(['taskkill', '/IM', 'excel.exe', '/F'], check=True)
+        print("Процесс Excel завершен.")
+    except subprocess.CalledProcessError as e:
+        print(f"Ошибка при завершении процесса: {e}")
 
 class HTTPSrv:
     def __init__(self):
         logger.info('Инициализация сервера...')
+        from collections import defaultdict
+        self.cache = defaultdict(dict)
+        self.formulas = None
         self.source_xl_dir = FORM_PATH
         self.cache_dir = CACHE_DIR
         self.actions = ACTIONS
         self.organizations = ORGANIZATIONS
-        self.block = False
-        (Path(__file__).parent / 'cache_xlsx').mkdir(exist_ok=True)
+        CACHE_DIR.mkdir(exist_ok=True)
         if not self.source_xl_dir.exists():
+            print(str(self.source_xl_dir))
             logger.error('Папка с формулами отсутствует или к ней нету доступа')
             return
         self.template_xl = self.source_xl_dir / 'Образец.xlsx'
@@ -65,9 +90,15 @@ class HTTPSrv:
         self.files_caches = {}
 
     def prepare_form_object(self):
+        logging.info('Чистка excel com кэша...')
+        gencache.Rebuild()
+        logging.info('Чистка кэша калькуляций')
+        self.cache = defaultdict(dict)
         logging.info('Подготовка excel файлов...')
+
         self.close_any_xlsx() #todo del
-        self.formulas = LoadFormulas(self.source_xl_dir, self.actions, self.organizations)
+        if not isinstance(self.formulas, LoadFormulas):
+            self.formulas = LoadFormulas(self.source_xl_dir, self.actions, self.organizations)
 
         self.drop_undue_files()
         self.check_cache()
@@ -119,21 +150,6 @@ class HTTPSrv:
             shutil.rmtree(self.cache_dir)
             self.cache_dir.mkdir(parents=True, exist_ok=True)
 
-    def drop_undue_files2(self):
-        logging.info('Удаление файлов не участвующих в формулах...')
-        for poki in self.organizations:
-            for action in self.actions:
-                source = Path(self.source_xl_dir) / str(poki) / action
-                self.formulas.hash_name(poki, action, )
-                dest = Path(CACHE_DIR) / str(poki) / action
-                source_files = self.get_path_list_xlsx(str(source))
-                dest_files = self.get_path_list_xlsx(str(dest))
-                for file in dest_files:
-                    full_source_path = str(source / file)
-                    full_dest_path = str(dest / file)
-                    if file not in source_files or self.file_hash(full_source_path) != self.file_hash(full_dest_path):
-                        self.clean_xlsx_process(full_dest_path)
-                        os.remove(full_dest_path)
 
     def make_cache_path(self, abs_path: str, rel_path: str, poki: str) -> Path:
         is_per = rel_path == 'Переходы'
@@ -145,7 +161,12 @@ class HTTPSrv:
         hash_name = self.formulas.hash_name(poki, oper_name, pereh_name)
         key_for_object = self.formulas.prepare_filename(oper_name, pereh_name)
         cache_path = self.cache_dir / f'{hash_name}.xlsx'
-        self.formulas.operations[poki][rel_path][key_for_object] = {'hash': hash_name, 'cache_path': cache_path}
+        match self.formulas.operations[poki][rel_path].get(key_for_object):
+            case {'hash': hash_xl, 'cache_path': cache_path, 'xlsx': xlsx} if isinstance(xlsx, FormulaXLSX):
+                if hash_xl == hash_xl and cache_path == cache_path.absolute() and xlsx.params:
+                    return cache_path
+            case _:
+                self.formulas.operations[poki][rel_path][key_for_object] = {'hash': hash_name, 'cache_path': cache_path.absolute()}
         return cache_path
 
     def check_file(self, abs_file_path: str, dir_name: str, poki: str):
@@ -154,6 +175,8 @@ class HTTPSrv:
         try:
             if not cache_path.exists():
                 shutil.copyfile(abs_file_path, str(cache_path))
+            os.chmod(str(cache_path), stat.S_IWRITE | stat.S_IREAD | stat.S_IEXEC)
+
             return True
         except Exception as e:
             logger.error(e)
@@ -195,12 +218,38 @@ class HTTPSrv:
     def __call__(self, environ, start_response):
         return self.wsgi_app(environ, start_response)
 
-    @block
+    def clear_calc_cache(self, oper, pereh, poki):
+        try:
+            have_cache = self.cache.pop((oper, pereh, poki))
+        except Exception as e:
+            print(f'Кэш на комбинацию: {oper}.{pereh} не найден')
+
+    def get_calc_cache(self, oper_name, pereh_name, poki, params):
+        var_row = (oper_name, pereh_name, poki)
+        hashed_params = hash_dict(params)
+        if not hashed_params:
+            return
+        combination_cache = self.cache.get(var_row)
+        if combination_cache and isinstance(combination_cache, dict):
+            param_cache = combination_cache.get(hashed_params)
+            if param_cache:
+                return param_cache
+
+    def put_calc_cache(self, oper, pereh, poki, params, value):
+        var_row = (oper, pereh, poki)
+        hashed_params = hash_dict(params)
+        if not hashed_params:
+            return
+        try:
+            self.cache[var_row][hashed_params] = value
+        except Exception as e:
+            print(f'Ошибка записи кэша: {e}')
+    @log_block
     def dispatch(self, *, query: str, poki: str, body: dict | None = None, **kwargs):
         response = defaultdict(dict)
         oper_name = body.get('Операции')
         pereh_name = body.get('Переходы', '')
-        self.formulas.app.visible = False
+        # self.formulas.app.visible = False
         match query.split():
             case ['ALL']:
                 org_actions = self.formulas.operations.get(poki)
@@ -213,13 +262,20 @@ class HTTPSrv:
                 name = self.formulas.prepare_filename(oper_name, pereh_name)
                 dic = self.formulas.operations.get(poki)[action][name]
                 params = body.get('params')
-                return dic['xlsx'].recalculation(params)
+                have_cache = self.get_calc_cache(oper_name, pereh_name, poki, params)
+                if have_cache:
+                    return have_cache
+                result = dic['xlsx'].recalculation(params)
+                self.put_calc_cache(oper_name, pereh_name, poki, params, result)
+                return result
             case ['CREATE', action]:
+                self.clear_calc_cache(oper_name, pereh_name, poki)
                 return self.create(action, poki, oper_name, pereh_name)
             case ['RELOAD', action]:
+                self.clear_calc_cache(oper_name, pereh_name, poki)
                 return self.reload(action, poki, oper_name, pereh_name)
-
             case ['REMOVE', action]:
+                self.clear_calc_cache(oper_name, pereh_name, poki)
                 self.remove_one(action, oper_name, pereh_name, str(poki))
                 return 'Успешно'
             case _:
@@ -300,6 +356,7 @@ class HTTPSrv:
 
 def run(HOST: str, PORT: int | str):
     from werkzeug.serving import run_simple
+    kill_excel()
     srv = HTTPSrv()
     try:
         run_simple(HOST, PORT, srv)

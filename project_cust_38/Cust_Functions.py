@@ -182,6 +182,10 @@ class StatisticDecorator:
 
     def __new__(cls, function: F, *args, **kwargs) -> F: #18.08.25
         instance = super().__new__(cls)
+        import socket
+        computer_name = socket.gethostname()
+        if computer_name.lower() == 'srv-mes' or computer_name.lower() == 'srv-mes.powerz.ru':
+            return function
         instance.function = function
         wraps(function)(instance)
         return instance
@@ -2198,3 +2202,62 @@ def restore_uuid_from_client_1C_reference(client_ref: str) -> str | None:
     p1 = s[20:24]
     p0 = s[24:32]
     return f"{p0}-{p1}-{p2}-{p3}-{p4}"
+
+
+def to_pep8_name(input_string: str) -> str:
+    input_string = transliteration(input_string)
+    """
+    Преобразует любую строку в имя переменной по стандарту PEP 8.
+
+    Правила PEP 8 для имен переменных:
+    - Использовать только строчные буквы
+    - Слова разделять подчеркиваниями
+    - Использовать только буквы, цифры и подчеркивания
+    - Не начинать с цифры
+    - Избегать зарезервированных слов
+
+    Args:
+        input_string: Любая входная строка
+
+    Returns:
+        Имя переменной в стиле PEP 8
+    """
+    if not input_string or not isinstance(input_string, str):
+        return ""
+
+    # Приводим к нижнему регистру
+    normalized = input_string.lower()
+
+    # Заменяем все не-буквенно-цифровые символы на пробелы
+    normalized = re.sub(r'[^a-z0-9]', ' ', normalized)
+
+    # Разделяем на слова (убираем множественные пробелы)
+    words = re.split(r'\s+', normalized.strip())
+
+    # Убираем пустые слова
+    words = [word for word in words if word]
+
+    # Если нет слов, возвращаем пустую строку
+    if not words:
+        return ""
+
+    # Объединяем слова через подчеркивания
+    pep8_name = '_'.join(words)
+
+    # Если имя начинается с цифры, добавляем префикс
+    if pep8_name[0].isdigit():
+        pep8_name = 'var_' + pep8_name
+
+    # Проверяем на зарезервированные слова Python
+    reserved_words = {
+        'False', 'None', 'True', 'and', 'as', 'assert', 'async', 'await',
+        'break', 'class', 'continue', 'def', 'del', 'elif', 'else', 'except',
+        'finally', 'for', 'from', 'global', 'if', 'import', 'in', 'is',
+        'lambda', 'nonlocal', 'not', 'or', 'pass', 'raise', 'return', 'try',
+        'while', 'with', 'yield'
+    }
+
+    if pep8_name in reserved_words:
+        pep8_name = pep8_name + '_'
+
+    return pep8_name

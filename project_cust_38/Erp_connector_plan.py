@@ -72,75 +72,6 @@ class OrdersComposit():
             return None
         return res
 
-    def get_list_plpr(self):
-        ref_key_pdo = self.get_response(doc_name='Catalog_СтруктураПредприятия',
-                          wet_filtr=f"?$filter=Description eq 'Планово-диспетчерский отдел Производства (Пауэрз)' &$select= Ref_Key")[0]['Ref_Key']
-        #res = self.get_response(doc_name='Document_ПланПроизводства',
-        #                        wet_filtr=f"?$filter=Подразделение_Key eq guid'{ref_key_pdo}' &$top=1&$select= *")
-        res = self.get_response(doc_name='Document_ПланПроизводства',
-                                wet_filtr=f"?$filter=Подразделение_Key eq guid'{ref_key_pdo}' &$select= Date, Ref_Key, Статус, Number, Комментарий")
-        #res = self.get_response(doc_name='Document_ПланПроизводства',
-        #                        find_me=f"Статус eq 'ВПодготовке'$select= *")
-        #res = self.get_response(doc_name='AccumulationRegister_ПланыПроизводства',
-        #                        wet_filtr=f"?$filter=RecordSet/any(c:%20c/Статус eq 'Утвержден')")
-        if res == []:
-            return None
-        return res
-
-    def get_plpr(self,ref_Key):
-        res_wet = self.get_response(doc_name='Document_ПланПроизводства',
-                                wet_filtr=f"?$filter=Ref_Key eq guid'{ref_Key}'&$select= Продукция/Номенклатура_Key,Продукция/Спецификация_Key")
-        set_nomens = set()
-        set_spec = set()
-        if len(res_wet) == 0:
-            return []
-        res = []
-        for poz in res_wet[0]['Продукция']:
-            set_nomens.add(poz['Номенклатура_Key'])
-            set_spec.add(poz['Спецификация_Key'])
-            res.append({'ПлПр_Key': ref_Key, 'Номенклатура_Key': poz['Номенклатура_Key'],
-                        'Спецификация_Key': poz['Спецификация_Key']})
-        list_nomens = list(set_nomens)
-        list_spec = list(set_spec)
-
-        step = 5
-        res_nomen = []
-        for i in range(0, len(list_nomens), step):
-            tmp_list = []
-            for j in range(i, i + step):
-                if j >= len(list_nomens):
-                    break
-                tmp_list.append(list_nomens[j])
-            list_vids_str = [f"Ref_Key eq guid'{_}'" for _ in tmp_list]
-            str_vids = " or ".join(list_vids_str)
-            nomen = self.get_response(doc_name='Catalog_Номенклатура',
-                                      wet_filtr=f"?$filter=DeletionMark eq false and ({str_vids}) &$select=Ref_Key,"
-                                                f"Description,НаименованиеПолное")
-            for item in nomen:
-                res_nomen.append(item)
-
-        step = 5
-        res_spec = []
-        for i in range(0, len(list_spec), step):
-            tmp_list = []
-            for j in range(i, i + step):
-                if j >= len(list_spec):
-                    break
-                tmp_list.append(list_spec[j])
-            list_str = [f"Ref_Key eq guid'{_}'" for _ in tmp_list]
-            str_ = " or ".join(list_str)
-            spec = self.get_response(doc_name='Catalog_РесурсныеСпецификации',
-                                     wet_filtr=f"?$filter=DeletionMark eq false and ({str_}) &$select=Ref_Key,Code,Статус,Описание,"
-                                               f"Description,ИдентификаторВерсииДанных")
-            for item in spec:
-                res_spec.append(item)
-
-        res = self.left_join_dicts(res, res_nomen, 'Номенклатура_Key', 'Ref_Key', 'nomen')
-        res = self.left_join_dicts(res, res_spec, 'Спецификация_Key', 'Ref_Key', 'spec')
-
-        if res == []:
-            return None
-        return res
 
     def get_etap_ref(self,ref_Key):
         res = self.get_response(doc_name='Catalog_ЭтапыПроизводства',
@@ -315,6 +246,7 @@ class OrdersComposit():
             postfix = ", ".join(list(dict_str_vids.keys()))
             text = f"""ВЫБРАТЬ
                         УНИКАЛЬНЫЙИДЕНТИФИКАТОР(Номенклатура.Ссылка) КАК Ref_Key,
+                        УНИКАЛЬНЫЙИДЕНТИФИКАТОР(Номенклатура.ВидНоменклатуры) КАК Вид_Ref_Key,
                         
                         Номенклатура.Код КАК Code,
                         Номенклатура.Артикул КАК Артикул,
@@ -328,7 +260,7 @@ class OrdersComposit():
                         Справочник.Номенклатура КАК Номенклатура
                     ГДЕ
                         Номенклатура.ВидНоменклатуры В ({postfix})
-                    """
+                    """ #08.09.25
 
             refs = APIERP.Refs_wet(text)
             for k,ref in dict_str_vids.items():
@@ -417,6 +349,7 @@ class OrdersComposit():
             s_num+=1
             res.append({'ПНомер' : s_num,
                         'Вид' :     item['vidsNomen_Description'],
+                        'Вид_Ref_Key' :     item['Вид_Ref_Key'], #08.09.25
                         'Код' :item['Code'],
                         'Артикул' : item['Артикул'],
                         'Наименование' : item['Description'],
@@ -430,12 +363,6 @@ class OrdersComposit():
         return res, schemas_rez
 
 
-    def get_plpr_doc(self,plpr_key):
-        res = self.get_response(doc_name='Document_ПланПроизводства',
-                                find_me=f"Ref_Key eq guid'{plpr_key}'$select= *")
-        if res == []:
-            return None
-        return res
 
 
     def get_nomenglature_order(self, order_num):

@@ -91,9 +91,9 @@ class OrdersDocs:
 
         }
         self.SET_EXCLUDED_FIELDS = {
-'wish_date_proc_docs',"res_code_proc_docs"
+            'wish_date_proc_docs',"res_code_proc_docs"
         }
-        
+        self.UUID_armatura = '1b0fa0e6-ac0b-4474-9ba3-d00ddc719b6c'
         self._db = CFG.Config.project.db_dse
         LIMIT_SECS = 300
         data_cach = CMS.load_tmp_stukt("orders_tatkuz_for_molding",False)
@@ -104,7 +104,7 @@ class OrdersDocs:
                 fl_load_from_srv = False
         if fl_load_from_srv:
             with CDCS.TFlexTkpProcessClient() as client:
-                key, data  = client.get_process_tkp_from_fittings_folder()
+                key, data  = client.get_process_tkp(folder_uuid_lst= [self.UUID_armatura])
             if not key == 200:
                 CQT.msgbox(f'Ошибка получения данных из DOCs код {key}')
                 data = data_cach['data']
@@ -117,7 +117,7 @@ class OrdersDocs:
 
         for i, item in enumerate(data):
             new_item = dict()
-            for k,v in item.items():
+            for k,v in item._asdict().items():
                 if k in self.DICT_ALIASES and self.DICT_ALIASES[k] not in self.SET_EXCLUDED_FIELDS :
                     new_item[k] = v
             data[i] = new_item

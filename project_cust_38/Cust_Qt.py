@@ -724,7 +724,17 @@ def freeze_mouse_wheel(obj:QtWidgets.QComboBox):
     obj.wheelEvent = wheel_event
     obj.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
 
-        
+def add_sub_action_menu(self,ui:object,name_menu:str,name_action:str,fnc:object):
+    pep_name = F.to_pep8_name(f'auto_sub_action_{name_action}')
+    action = QtWidgets.QAction(f"{name_action}", self)
+    action.setCheckable(False)
+    action.setEnabled(True)
+    action.triggered.connect(lambda: fnc(self))
+    ui.__setattr__(pep_name, action)
+    menu = ui.__getattribute__(name_menu)
+    menu.addAction(ui.__getattribute__(pep_name))
+
+
 def fill_list_combobx(self,cmb,list_rows,list_colors=[],list_tooltip=[], sep_col = ';',first_void = False,list_bold=[]):
     cmb.clear()
     model = cmb.model()

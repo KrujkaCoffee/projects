@@ -16,10 +16,251 @@ from dataclasses import dataclass
 import pars as PRS
 import project_cust_38.api_erp_commands as APIERP
 print(f'{F.now()} == Загрузка_бюджетов===')
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable
+import logging
+import sys
+import io
 
 if TYPE_CHECKING:
     from API_server import data_parse_prices
+
+CHAT_FOR_DEBUGGER_BUDGETS = 'chat90757'
+
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+
+def pretty_dict(d, indent=0):
+    """Форматируем словарь для Б24, переносим элементы set на новые строки."""
+    lines = []
+    prefix = "—" * indent  # видимый отступ
+    if isinstance(d, dict):
+        for k, v in d.items():
+            lines.append(f"{prefix}{k}:[BR]")
+            lines.append(pretty_dict(v, indent + 1))
+    elif isinstance(d, set) or isinstance(d, list) or isinstance(d, tuple):
+        for item in d:  # сортируем для стабильного вывода
+            lines.append(pretty_dict(item, indent + 1))
+    else:
+        lines.append(f"{prefix}{d}[BR]")
+    return "".join(lines)
+
+
+def log_prefix_decorator(
+        event_name: str,
+        target: str,
+        *,
+        enable_console: bool = True,
+        enable_file: bool = True,
+        enable_b24: bool = True,
+        b24_format: str = None,
+        chat_id: str = CHAT_FOR_DEBUGGER_BUDGETS
+):
+    """
+    Декоратор для логирования.
+
+    event_name   : имя события
+    target       : цель события
+    enable_console : включить StreamHandler (консоль)
+    enable_file    : включить FileHandler (лог в файл)
+    enable_b24     : включить кастомный B24-хендлер
+    b24_format     : формат строки для B24 (по умолчанию 'B24|event|target|message')
+    chat_id        : куда слать сообщения в B24
+    Логи только в консоль:
+
+    @log_prefix_decorator("DEAL_CREATED", "clientX", enable_file=False, enable_b24=False)
+    def create_deal():
+        logger.info("Создана сделка")
+    Логи только в файл + Б24:
+
+    @log_prefix_decorator("DEAL_UPDATED", "clientY", enable_console=True)
+    def update_deal():
+        logger.info("Сделка обновлена")
+
+    Только Б24 с кастомным форматом и другим chat_id:
+
+    @log_prefix_decorator(
+        "DEAL_DELETED",
+        "clientZ",
+        enable_console=True,
+        enable_file=False,
+        enable_b24=True,
+        b24_format="[%(asctime)s] %(message)s",
+        chat_id="chat99999"
+    )
+    def delete_deal():
+        logger.warning("Сделка удалена")
+
+    """
+
+    class PostRequestHandler(logging.Handler):
+        def __init__(self, chat_id: str):
+            from project_cust_38 import Cust_b24 as CB24
+            super().__init__()
+            self.sender = CB24.B24Sender()
+            self.chat_id = chat_id
+
+        def handle(self, record):
+            return super().handle(record)
+
+        def emit(self, record):
+            try:
+                log_entry = self.format(record)
+                self.sender.send_msg_by_chat_id(self.chat_id, log_entry)
+            except Exception:
+                import traceback
+                sys.__stdout__.write(traceback.format_exc() + "\n")
+
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            # локальные импорты для изоляции
+            import logging
+            import io
+            import sys
+
+            func_name = func.__name__
+
+            # формат для консоли и файла
+            default_formatter = logging.Formatter(
+                f'{func_name} - {event_name} - {target} - %(asctime)s - %(message)s',
+                datefmt='%Y-%m-%d %H:%M:%S'
+            )
+
+            # формат для B24
+            if b24_format:
+                b24_formatter = logging.Formatter(b24_format, datefmt="%Y-%m-%d %H:%M")
+            else:
+                b24_formatter = logging.Formatter(
+                    "B24|%(asctime)s|%(message)s",
+                    datefmt="%Y-%m-%d %H:%M"
+                )
+
+            added_handlers = []
+
+            # используем отдельный логгер для этой функции (чтобы управлять только его хендлерами)
+            try:
+                base_logger = logger  # если в модуле есть глобальный logger, берем его имя
+            except NameError:
+                base_logger = logging.getLogger(__name__)
+            local_logger = logging.getLogger(f"{base_logger.name}.{func_name}")
+
+
+
+            # helper: не добавлять дубликаты по разумным критериям
+            def _has_similar_handler(new_h):
+                for h in local_logger.handlers:
+                    # PostRequestHandler: по типу и chat_id
+                    if isinstance(new_h, PostRequestHandler) and isinstance(h, PostRequestHandler):
+                        if getattr(h, "chat_id", None) == getattr(new_h, "chat_id", None):
+                            return True
+                    # FileHandler: по пути файла
+                    if isinstance(new_h, logging.FileHandler) and isinstance(h, logging.FileHandler):
+                        if getattr(h, "baseFilename", None) == getattr(new_h, "baseFilename", None):
+                            return True
+                    # StreamHandler: по потоку (stream)
+                    if isinstance(new_h, logging.StreamHandler) and isinstance(h, logging.StreamHandler):
+                        if getattr(h, "stream", None) == getattr(new_h, "stream", None):
+                            return True
+                return False
+
+            # сохраняем состояние local_logger
+            original_level = getattr(local_logger, "level", logging.NOTSET)
+            # Если уровень не задан (NOTSET) либо выше INFO (например WARNING), понизим до INFO,
+            # чтобы INFO-сообщения доходили до хендлеров.
+            if original_level == logging.NOTSET or original_level > logging.INFO:
+                local_logger.setLevel(logging.INFO)
+
+            original_propagate = getattr(local_logger, "propagate", True)
+            local_logger.propagate = False  # не поднимать к родителю (чтобы избежать дублирования)
+
+            # --- добавляем хендлеры только если их нет ---
+            if enable_console:
+                out_handler = logging.StreamHandler(stream=sys.__stdout__)
+                out_handler.setFormatter(default_formatter)
+                out_handler.setLevel(logging.INFO)
+                # проверяем только stream, чтобы не дублировать
+                if not any(
+                        isinstance(h, logging.StreamHandler) and getattr(h, "stream", None) == sys.__stdout__ for h in
+                        local_logger.handlers):
+                    local_logger.addHandler(out_handler)
+                    added_handlers.append(out_handler)
+
+            if enable_file:
+                file_handler = logging.FileHandler('b24_deal_service.log', encoding='utf8')
+                file_handler.setFormatter(default_formatter)
+                file_handler.setLevel(logging.INFO)
+                if not _has_similar_handler(file_handler):
+                    local_logger.addHandler(file_handler)
+                    added_handlers.append(file_handler)
+
+            if enable_b24:
+                b24_handler = PostRequestHandler(chat_id)
+                b24_handler.setFormatter(b24_formatter)
+                b24_handler.setLevel(logging.INFO)
+                if not _has_similar_handler(b24_handler):
+                    local_logger.addHandler(b24_handler)
+                    added_handlers.append(b24_handler)
+
+            #sys.__stdout__.write(f"DEBUG: local_logger.name={local_logger.name}\n")
+            #sys.__stdout__.write(
+            #    f"DEBUG: local_logger.level={local_logger.level} effective={local_logger.getEffectiveLevel()}\n")
+            #for i, h in enumerate(local_logger.handlers):
+            #    sys.__stdout__.write(
+            #        f"DEBUG: handler[{i}]={type(h).__name__} level={h.level} fmt={getattr(getattr(h, 'formatter', None), '_fmt', None)} stream={getattr(h, 'stream', None)}\n")
+            #sys.__stdout__.write(f"DEBUG: root.level={logging.getLogger().level}\n")
+
+            # Перехват print() в logger — теперь логируем в local_logger
+            class StreamToLogger:
+                def __init__(self, logger_obj, level):
+                    self.logger = logger_obj
+                    self.level = level
+
+                def write(self, buf):
+                    buf = buf.replace('[BR]', '\n').rstrip('\n')  # сохраняем все строки как есть
+                    if buf.strip():  # пропуск пустых сообщений
+                        record = self.logger.makeRecord(
+                            name=self.logger.name,
+                            level=self.level,
+                            fn='',
+                            lno=0,
+                            msg=buf,
+                            args=None,
+                            exc_info=None
+                        )
+                        for h in self.logger.handlers:
+                            if self.level >= h.level:
+                                h.emit(record)
+
+                def flush(self):
+                    pass
+
+            old_stdout = sys.stdout
+            sys.stdout = StreamToLogger(local_logger, logging.INFO)
+
+            try:
+                result = func(*args, **kwargs)
+            finally:
+                # восстанавливаем stdout
+                sys.stdout = old_stdout
+                # удаляем только те хендлеры, которые добавляли в этой обёртке
+                for h in added_handlers:
+                    try:
+                        local_logger.removeHandler(h)
+                    except Exception:
+                        pass
+                # восстанавливаем настройки logger'а
+                local_logger.propagate = original_propagate
+                try:
+                    local_logger.setLevel(original_level)
+                except Exception:
+                    pass
+
+            return result
+
+        return wrapper
+
+    return decorator
 
 DATA_1С_VERSION = F.now()
 TODAY = F.now("%Y-%m-%d")
@@ -114,6 +355,76 @@ LIST_MONTH_NAMES = ["Январь ",
 
 
 class Fcns():
+
+
+    @log_prefix_decorator(
+        "",
+        "",
+        enable_console=True,
+        enable_file=False,
+        enable_b24=True,
+        b24_format="[%(asctime)s] %(message)s",
+        chat_id=CHAT_FOR_DEBUGGER_BUDGETS
+    )
+    @staticmethod
+    def get_prices(DICT_NOMEN_NAMES):
+        print(f'\n==== Объединение цен по номенклатуре из трех источников ====', )
+        m = ERP.OrdersComposit()
+
+        dict_type_price = F.deploy_dict_c(m.get_response(doc_name=fr"Catalog_ВидыЦен",
+                                                         wet_filtr=f"?$filter=IsFolder eq false&$select= Ref_Key,Description",
+                                                         lazy_method_huours=24), "Description")
+
+        prices = m.get_response(doc_name=fr"InformationRegister_ЦеныНоменклатуры25_RecordType/SliceLast("
+                                         fr"  Condition=(ВидЦены_Key eq guid'{dict_type_price['Закупочная цена']}' or ВидЦены_Key eq guid'{dict_type_price['Закупочная']}') and Цена gt 0)",
+                                wet_filtr=f"?$select= Цена, Номенклатура_Key ", lazy_method_huours=0.25)
+
+        prices_2 = m.get_response(doc_name=fr"InformationRegister_ЦеныНоменклатуры_RecordType/SliceLast("
+                                           fr"  Condition= Цена gt 0)",
+                                  wet_filtr=f"?$select= Цена, Номенклатура_Key ", lazy_method_huours=0.25)
+
+        prices_3 = m.get_response(doc_name=fr"InformationRegister_ЦеныНоменклатурыПоставщиков_RecordType/SliceLast("
+                                           fr"  Condition= Цена gt 0)",
+                                  wet_filtr=f"?$select= Цена, Номенклатура_Key ", lazy_method_huours=0.25)
+
+        list_prices = [prices, prices_2, prices_3]
+
+        dict_prices = {}
+        count_add = 0
+        for_print = []
+        for i, prices in enumerate(list_prices):
+            tmp_dict_prices = F.deploy_dict_c(prices, 'Номенклатура_Key')
+            for k, v in tmp_dict_prices.items():
+                if k not in dict_prices:
+                    dict_prices[k] = v
+                    if i > 0:
+                        count_add += 1
+                        name = k
+                        if k in DICT_NOMEN_NAMES:
+                            name = DICT_NOMEN_NAMES[k]
+                        for_print.append(f'Номенклатура: {name}  Цена: {dict_prices[k]}')
+        print(pretty_dict(for_print))
+        print(f'==== END  Объединение цен по номенклатуре из трех источников ====', end='\n\n')
+        return dict_prices
+
+    @log_prefix_decorator(
+        "",
+        "",
+        enable_console=True,
+        enable_file=False,
+        enable_b24=True,
+        b24_format="[%(asctime)s] %(message)s",
+        chat_id=CHAT_FOR_DEBUGGER_BUDGETS
+    )
+    @staticmethod
+    def init_dit_budgets():
+        DIR_BUDGETS: str = api_srv_config.DIR_BUDGETS
+        if not F.existence_file_c(DIR_BUDGETS):
+            print(f'not existence_file_c {DIR_BUDGETS}')
+            raise Exception
+
+        return DIR_BUDGETS
+
     @staticmethod
     def get_data_odata(DIR_BUDGETS, name_file, doc_name, wet_filtr, m=None, name_save_file_pre=None):
         # =============LOAD_MIDDLE_DATE_DATA СтатьиРасходов================================================================
@@ -181,6 +492,15 @@ class Fcns():
             F.save_file_pickle(name_save_file_dict_middle_data, DICT_ОбъектыЭксплуатации)
         return DICT_ОбъектыЭксплуатации
 
+    @log_prefix_decorator(
+        "LOAD_MIDDLE_DATE_DATA",
+        "СтатьиРасходов",
+        enable_console=True,
+        enable_file=False,
+        enable_b24=True,
+        b24_format="[%(asctime)s] %(message)s",
+        chat_id=CHAT_FOR_DEBUGGER_BUDGETS
+    )
     @staticmethod
     def calc_middle_data_СтатьиРасходов(DIR_BUDGETS, m=None):
         # =============LOAD_MIDDLE_DATE_DATA СтатьиРасходов================================================================
@@ -202,8 +522,7 @@ class Fcns():
                 wet_filtr=f"?$select=*", with_cod=True)
             if code != 200:
                 print(f'ERR {_resp}')
-                raise Exception(_resp)
-                # quit()
+                quit()
 
             compliance_register_states_expenditure_and_budgets = F.deploy_dict_c(_resp, 'СтатьяРасходов_Key')
 
@@ -212,14 +531,13 @@ class Fcns():
             if code != 200:
                 print(f'ERR {_resp}')
                 raise Exception(resp)
-                # quit()
+                quit()
             DICT_PVH_СТАТЬИРАСХОДОВ = F.deploy_dict_c(_resp, 'Ref_Key')
             code, _resp = m.get_response(doc_name='ChartOfCharacteristicTypes_СтатьиАктивовПассивов',
                                          wet_filtr=f"""?$select= Ref_Key, Description""", with_cod=True)
             if code != 200:
                 print(f'ERR {_resp}')
-                raise Exception(_resp)
-                # quit()
+                quit()
             dict_pvh_СтатьиАктивовПассивов = F.deploy_dict_c(_resp, 'Ref_Key')
 
             for k, v in dict_pvh_СтатьиАктивовПассивов.items():
@@ -341,6 +659,15 @@ class Fcns():
             F.save_file_pickle(name_save_file_dict_middle_data, budgets)
         return budgets
 
+    @log_prefix_decorator(
+        "Загрузка_бюджетов",
+        "",
+        enable_console=True,
+        enable_file=False,
+        enable_b24=True,
+        b24_format="[%(asctime)s] %(message)s",
+        chat_id=CHAT_FOR_DEBUGGER_BUDGETS
+    )
     @staticmethod
     def load_budgets_prices(budgets):
         DICT_BUDGETS_PRICES_YEAR = dict()
@@ -363,6 +690,15 @@ class Fcns():
         print(f'{F.now()} == Загрузка_бюджетов ОК===')
         return DICT_BUDGETS_PRICES_YEAR
 
+    @log_prefix_decorator(
+        "",
+        "",
+        enable_console=True,
+        enable_file=False,
+        enable_b24=True,
+        b24_format="[%(asctime)s] %(message)s",
+        chat_id=CHAT_FOR_DEBUGGER_BUDGETS
+    )
     @staticmethod
     def load_budgets_states(DICT_СТАТЬИБЮДЖЕТОВ, budgets, DICT_PVH_СТАТЬИРАСХОДОВ,
                             compliance_register_states_expenditure_and_budgets):
@@ -426,21 +762,29 @@ class Fcns():
 
         if len(dict_missing_state_budgets_refs):
 
-            print(f'не найдены в БИТ_СоответствиеСтатейРасходовИСтатейБюджетирования статьи бюджетов:')
-            pprint.pprint(dict_missing_state_budgets_refs)
+            #pprint.pprint(dict_missing_state_budgets_refs)
+            print(f'не найдены в БИТ_СоответствиеСтатейРасходовИСтатейБюджетирования статьи бюджетов:\n' + pretty_dict(dict_missing_state_budgets_refs))
             # F.save_file('Не заполненные статьи бюджетов в СоответствиеСтатейРасходовИСтатейБюджетирования.txt', list_missing_state_budgets_refs,
             #            sep='\t')
         else:
             print('Все статьи бюджетов в СоответствиеСтатейРасходовИСтатейБюджетирования заполнены')
         return DICT_BUDGETS_STATES
 
+    @log_prefix_decorator(
+        "не заполненные статьи расходов",
+        "",
+        enable_console=True,
+        enable_file=False,
+        enable_b24=True,
+        b24_format="[%(asctime)s] %(message)s",
+        chat_id=CHAT_FOR_DEBUGGER_BUDGETS
+    )
     @staticmethod
     def calc_not_fill_states_expenditure(m, DICT_PVH_СТАТЬИРАСХОДОВ,
                                          compliance_register_states_expenditure_and_budgets, BUDGETS):
         list_years_str = list(
             {F.datetostr(F.strtodate(_['НачалоПериода'], "%Y-%m-%dT%H:%M:%S"), '%Y') for _ in BUDGETS})
         dict_expenditures = dict()
-        print(sep="\n")
 
         def calc_by_year(year, dict_expenditures):
 
@@ -481,10 +825,10 @@ class Fcns():
             calc_by_year(year, dict_expenditures)
 
         if dict_expenditures:
-            print(
-                f'При анализе ЗаказНаВнутреннееПотребление - не заполненные статьи расходов в СоответствиеСтатейРасходовИСтатейБюджетирования:')
-            pprint.pprint(dict_expenditures, width=800)
 
+            #@pprint.pprint(dict_expenditures, width=800)
+            print(
+                f'При анализе ЗаказНаВнутреннееПотребление - не заполненные статьи расходов в СоответствиеСтатейРасходовИСтатейБюджетирования:\n' + pretty_dict(dict_expenditures))
             # F.save_file('Не заполненные статьи расходов в СоответствиеСтатейРасходовИСтатейБюджетирования.txt',list_exp,sep='\t')
         else:
             print('Все статьи расходов в СоответствиеСтатейРасходовИСтатейБюджетирования заполенены')
@@ -498,10 +842,21 @@ class Fcns():
 
 @dataclass
 class Data_1с:
-    DIR_BUDGETS: str = api_srv_config.DIR_BUDGETS
-    if not F.existence_file_c(DIR_BUDGETS):
-        print(f'not existence_file_c {DIR_BUDGETS}')
-        raise Exception
+
+
+    code,  nomen_names  = APIERP.get_wet_request(f'''ВЫБРАТЬ
+        ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(Номенклатура.Ссылка)) КАК Ref,
+        Номенклатура.Код + " " + Номенклатура.Наименование КАК Descr
+    ИЗ
+        Справочник.Номенклатура КАК Номенклатура''', lazy_method_huours=2)
+    if code != 200:
+        print(f'Ошибка получения данных из 1С')
+    DICT_NOMEN_NAMES = F.deploy_dict_c(nomen_names['data'],'Ref')
+
+    print(f'\n======================= INIT Data_1с ======================\n')
+    DICT_PRICES = Fcns.get_prices(DICT_NOMEN_NAMES)
+
+    DIR_BUDGETS = Fcns.init_dit_budgets()
     SAVE_FILE_PATH_NAME: str = DIR_BUDGETS + F.sep() + 'budgets.pickle'
     SAVE_FILE_BUDGETS_NAME: str = 'budgets.pickle'
     m = ERP.OrdersComposit()
@@ -511,8 +866,7 @@ class Data_1с:
                                              f"""?$filter=DeletionMark eq false&$select=Description, Ref_Key """,
                                              m)
     if ПОКАЗАТЕЛИБЮДЖЕТОВ == None:
-        raise Exception("ПОКАЗАТЕЛИБЮДЖЕТОВ is None")
-        # quit()
+        quit()
     DICT_ПОКАЗАТЕЛИБЮДЖЕТОВ = F.deploy_dict_c(ПОКАЗАТЕЛИБЮДЖЕТОВ, 'Ref_Key')
     DICT_СТАТЬИБЮДЖЕТОВ = Fcns.calc_middle_data_СтатьиБюджетов(DIR_BUDGETS, m)
 
@@ -523,7 +877,7 @@ class Data_1с:
     DICT_BUDGETS_PRICES = Fcns.load_budgets_prices(BUDGETS)
 
     if DICT_BUDGETS_PRICES == None:
-        raise Exception("DICT_BUDGETS_PRICES is None")
+        quit()
 
     DICT_PVH_СТАТЬИРАСХОДОВ, compliance_register_states_expenditure_and_budgets = Fcns.calc_middle_data_СтатьиРасходов(
         DIR_BUDGETS, m)
@@ -536,39 +890,6 @@ class Data_1с:
                                           compliance_register_states_expenditure_and_budgets, BUDGETS)
 
 
-def get_prices(m=None):
-    if m == None:
-        m = ERP.OrdersComposit()
-
-    dict_type_price = F.deploy_dict_c(m.get_response(doc_name=fr"Catalog_ВидыЦен",
-                                                     wet_filtr=f"?$filter=IsFolder eq false&$select= Ref_Key,Description",
-                                                     lazy_method_huours=24), "Description")
-
-    prices = m.get_response(doc_name=fr"InformationRegister_ЦеныНоменклатуры25_RecordType/SliceLast("
-                                     fr"  Condition=(ВидЦены_Key eq guid'{dict_type_price['Закупочная цена']}' or ВидЦены_Key eq guid'{dict_type_price['Закупочная']}') and Цена gt 0)",
-                            wet_filtr=f"?$select= Цена, Номенклатура_Key ", lazy_method_huours=0.25)
-
-    prices_2 = m.get_response(doc_name=fr"InformationRegister_ЦеныНоменклатуры_RecordType/SliceLast("
-                                       fr"  Condition= Цена gt 0)",
-                              wet_filtr=f"?$select= Цена, Номенклатура_Key ", lazy_method_huours=0.25)
-
-    prices_3 = m.get_response(doc_name=fr"InformationRegister_ЦеныНоменклатурыПоставщиков_RecordType/SliceLast("
-                                       fr"  Condition= Цена gt 0)",
-                              wet_filtr=f"?$select= Цена, Номенклатура_Key ", lazy_method_huours=0.25)
-
-    list_prices = [prices, prices_2, prices_3]
-
-    dict_prices = {}
-    count_add = 0
-    for i, prices in enumerate(list_prices):
-        tmp_dict_prices = F.deploy_dict_c(prices, 'Номенклатура_Key')
-        for k, v in tmp_dict_prices.items():
-            if k not in dict_prices:
-                dict_prices[k] = v
-                if i > 0:
-                    count_add += 1
-                    print(f'{k}, {dict_prices[k]}')
-    return dict_prices
 
 
 def get_znvp(key_CFO: str, year: str, m=None):
@@ -584,8 +905,27 @@ def get_znvp(key_CFO: str, year: str, m=None):
                                 'Ref_Key')
     return dict_znvp
 
-
+@log_prefix_decorator(
+    "",
+    "",
+    enable_console=True,
+    enable_file=False,
+    enable_b24=True,
+    b24_format="[%(asctime)s] %(message)s",
+    chat_id=CHAT_FOR_DEBUGGER_BUDGETS
+)
 def eval_1c_budgetzvp_v1(data):
+    print(f'\n=== START eval_1c_budgetzvp_v1 ===')
+
+    @log_prefix_decorator(
+        "",
+        "",
+        enable_console=True,
+        enable_file=False,
+        enable_b24=True,
+        b24_format="[%(asctime)s] %(message)s",
+        chat_id=CHAT_FOR_DEBUGGER_BUDGETS
+    )
     def add_znvp_list_year(dict_znvp_years, year, list_err, m=None):
 
         def get_budget_and_state(name_CFO, state_zvp):
@@ -600,13 +940,16 @@ def eval_1c_budgetzvp_v1(data):
             str_num = '0' * (2 - len(str(num))) + str(num)
             return str_num
 
+        list_znvp_data =[]
         if year not in dict_znvp_years:
+            print(f'\n=== START add_znvp_list_year year: {year}===')
             if name_CFO not in Data_1с.DICT_BUDGETS_STATES:
                 return
 
             dict_znvp_tmp = dict()
             dict_znvp = get_znvp(key_CFO, year, m)
             for znvp in dict_znvp.values():
+                set_err = set()
                 for product in znvp['Товары']:
                     if product['Отменено']:
                         continue
@@ -625,12 +968,12 @@ def eval_1c_budgetzvp_v1(data):
                             if data_nomen == None or data_nomen == False or len(data_nomen) == 0:
                                 pass
                             else:
-                                name_nomen = pprint.pformat(data_nomen[0])
+                                name_nomen = data_nomen[0]
                         else:
-                            name_nomen = pprint.pformat(data_nomen[0])
+                            name_nomen = data_nomen[0]
                         list_err.append(
                             f"ЗНВП № {znvp['Number']} не обработан, т.к. не найден {name_nomen} в ПоследнихЦенах/ЦеныНоменклатуры25/ЦенахПоставщиков, стоимость принята 0")
-                        print(f"не найден {name_nomen} в посл. ценах")
+                        print(f"ЗНВП № {znvp['Number']} не обработан, т.к. не найден {name_nomen} в ПоследнихЦенах/ЦеныНоменклатуры25/ЦенахПоставщиков, стоимость принята 0")
                     summ_price = price_tch * product['Количество']
 
                     state_zvp = product['СтатьяРасходов']
@@ -650,16 +993,21 @@ def eval_1c_budgetzvp_v1(data):
                         F.strtodate(znvp['ДатаОтгрузки'], "%Y-%m-%dT%H:%M:%S"), " %Y г.")
                     budget, state_budget = get_budget_and_state(name_CFO, state_zvp)
                     if budget == None:
-                        list_err.append(
-                            f"ЗНВП № {znvp['Number']} не обработан, т.к. не найдены для `{name_CFO}` статья ЗВП `{state_zvp}` в бюджетах. Стоимость принята 0")
+                        msg = f"ЗНВП № {znvp['Number']} не обработан, т.к. не найдены для `{name_CFO}` статья ЗВП `{state_zvp}` в бюджетах. Стоимость принята 0"
+                        
+                        set_err.add(
+                            msg)
                         continue
+
                     if (budget, state_budget) not in dict_znvp_tmp:
                         dict_znvp_tmp[(budget, state_budget)] = dict()
 
                     if month not in dict_znvp_tmp[(budget, state_budget)]:
                         dict_znvp_tmp[(budget, state_budget)][month] = 0
                     dict_znvp_tmp[(budget, state_budget)][month] += summ_price
-                    print('|'.join([name_CFO, budget, state_budget, month, znvp['Number'], str(summ_price)]))
+                    znvp_data_result = {'ЦФО':name_CFO, 'Бюджет':budget, 'Статья бюджета': state_budget, 'Месяц': month, 'ЗНВП':znvp['Number'], 'Сумм.Цена':str(summ_price)}
+                    list_znvp_data.append( '|'.join([f'{k}:{v}' for k,v in znvp_data_result.items()]))
+                    #print('|'.join([name_CFO, budget, state_budget, month, znvp['Number'], str(summ_price)]))
 
                     #
                     # if year_product not in dict_znvp_years:
@@ -675,7 +1023,9 @@ def eval_1c_budgetzvp_v1(data):
                     #                                                       "limit": limit}
                     #    dict_znvp_years[year][month][state_zvp]['summ_price'] = 0
                     # dict_znvp_years[year][month][state_zvp]['summ_price'] += summ_price
-
+                for elem in set_err:
+                    list_err.append(elem)
+                    print(elem)
             def get_prices_from_dict_znvp_tmp(dict_znvp_tmp, budget, state_budget, month):
                 if (budget, state_budget) in dict_znvp_tmp:
                     if month in dict_znvp_tmp[(budget, state_budget)]:
@@ -708,13 +1058,33 @@ def eval_1c_budgetzvp_v1(data):
                                                                                    "state_budget": state_budget,
                                                                                    "limit": limit}
                                 # dict_znvp_years[year][month][state_zvp]['summ_price'] = 0
-
+            if list_znvp_data:
+                print('Учет ЗНВП:\n' + pretty_dict(list_znvp_data))
+            else:
+                print('ЗНВП Не найдены')
+            print(f'\n=== END add_znvp_list_year year: {year}===')
         return dict_znvp_years, list_err
+
+    def group_expenditures(data):
+        result = {}
+
+        for item in data:
+            # Формируем ключ как кортеж из month и state_expenditure
+            key = (item['month'], item['state_expenditure'])
+
+            # Если ключа еще нет в словаре, создаем пустой список
+            if key not in result:
+                result[key] = []
+
+            # Добавляем kod_row в список
+            result[key].append(item['kod_row'])
+
+        return result
 
     dict_znvp_years = dict()
     m = ERP.OrdersComposit()
     rez = []
-    dict_prices = get_prices(m)
+    dict_prices = Data_1с.DICT_PRICES
 
     list_CFO = Fcns.calc_middle_data_list_CFO(Data_1с.DIR_BUDGETS, data.direction_key, m)
 
@@ -724,8 +1094,9 @@ def eval_1c_budgetzvp_v1(data):
     DICT_PVH_СТАТЬИРАСХОДОВ = Data_1с.DICT_PVH_СТАТЬИРАСХОДОВ
     set_postfix = set()
     list_err = []
-    for product in data.list_month:
-        year = F.datetostr(F.strtodate(product['month'], "%m.%Y"), "%Y")
+    data_list_month_grouped = group_expenditures(data.list_month)
+    for month, product in data_list_month_grouped.keys():
+        year = F.datetostr(F.strtodate(month, "%m.%Y"), "%Y")
         if year not in Data_1с.DICT_BUDGETS_PRICES:
             set_postfix.add(f'Бюджеты на {year} год не обнаружены')
         dict_znvp_years, list_err = add_znvp_list_year(dict_znvp_years, year, list_err, m)
@@ -760,7 +1131,7 @@ def eval_1c_budgetzvp_v1(data):
             {'КодСтроки': product['kod_row'], 'Остаток': round(month_delta, 2), 'ОстатокГод': round(year_delta, 2),
              'Сообщить': '/'.join(list(set_postfix)),
              "Бюджет": budget_name})
-
+    print(f'\n=== END eval_1c_budgetzvp_v1 ===')
     return rez, list_err
 
 
@@ -784,7 +1155,15 @@ def calc_budget(state, cfo, month_str, year, add_info=''):
                             limit = Data_1с.DICT_BUDGETS_PRICES[year][budget_cfo][state_budget][month_str]
     return budget, state_budget, limit
 
-
+@log_prefix_decorator(
+    "",
+    "",
+    enable_console=True,
+    enable_file=False,
+    enable_b24=True,
+    b24_format="[%(asctime)s] %(message)s",
+    chat_id=CHAT_FOR_DEBUGGER_BUDGETS
+)
 def eval_budget(direction_key, year: str, data_month: str = None, dict_prices=None, dict_znvp=None):
     def calc_rez_data(dict_data, date=None):
         rez_data = []
@@ -888,7 +1267,7 @@ def eval_budget(direction_key, year: str, data_month: str = None, dict_prices=No
 
     list_CFO = Fcns.calc_middle_data_list_CFO(Data_1с.DIR_BUDGETS, direction_key, m)
     if dict_prices == None:
-        dict_prices = get_prices(m)
+        dict_prices = Data_1с.DICT_PRICES
 
     key_CFO = list_CFO[0]['Ref_Key']
     name_CFO = list_CFO[0]['Description']

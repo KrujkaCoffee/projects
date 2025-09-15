@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from MKart import mywindow
 
 LIST_FREEZE_FIELDS = ['plan.Пномер', 'plan.Направление_деятельности', 'plan.local_graf', 'plan.Статус', ]
-LIST_HIDE_FIELDS = ['plan.local_graf']
+LIST_HIDE_FIELDS = ['plan.local_graf','пл_оуп.№Пл_Пр']
 
 
 @CQT.onerror
@@ -911,7 +911,7 @@ def pl_cr_mk(self: mywindow, *args):
     pnom = int(tbl.item(row, nf_pnom).text())
 
     self.dict_cur_poz_cr_mk = CSQ.custom_request_c(self.db_kplan, f"""SELECT    пл_оуп.№проекта as "Проект", 
-    пл_оуп.№ERP as "№ERP", пл_оуп.№Пл_Пр as "ПлПр", napravl_deyat.Псевдоним as "Вид",
+    пл_оуп.№ERP as "№ERP",  napravl_deyat.Псевдоним as "Вид",
                  napravlenie.name as "Направление",  пл_оуп.Количество as "Количество", plan.Позиция, plan.Пномер as "Пномер" FROM пл_оуп  INNER JOIN plan ON пл_оуп.НомПл = plan.Пномер,
         napravl_deyat ON napravl_deyat.Пномер = plan.Направление_деятельности,
         napravlenie ON napravlenie.Пномер = napravl_deyat.Направление WHERE plan.Статус in (2,3,1,7) and plan.Пномер = {pnom} and plan.poki = {self.place.poki};""",
@@ -1026,11 +1026,8 @@ def btn_pl_open_dir(self: mywindow):
     np = poz.dict_tables['пл_оуп']['№проекта']
     py = poz.dict_tables['пл_оуп']['№ERP']
     year_py = poz.dict_tables['пл_оуп']['Год']
-    f_path = CMS.get_path_to_proj_NPPY_c(np, py, year_py, poz.get_napravl()['projects_localnet_path']) #08.08.25
-    if os.path.exists(f_path):
-        return F.open_dir_c(f_path)
-    n_path = CMS.path_to_proj_NPPY_c(np, py, year_py=year_py, projects_localnet_path=poz.get_napravl()['projects_localnet_path'])
-    F.open_dir_c(n_path)
+    path = CMS.get_path_to_proj_NPPY_c(np, py, year_py, poz.get_napravl()['projects_localnet_path']) #08.08.25
+    F.open_dir_c(path)
 
 
 def btn_pl_add_trbl(self: mywindow):
@@ -1438,7 +1435,11 @@ def dict_norm_from_res(self, res, dict_norm='', koef_vneplana=1, koef_pogr_norm=
                         if F.is_numeric(summ_count_fact_naryads):
                             delta_count = dse['Количество']-summ_count_fact_naryads
 
-
+                        if oper['Опер_профессия_код'] not in self.DICT_PROFESSIONS: #08.09.25
+                            nn = f"{dse['Наименование']} {dse['Номенклатурный_номер']}"
+                            oper_name = oper['Опер_профессия_наименование']
+                            CQT.msgbox(f'МК: {s_num_mk} ДСЕ: {nn}\nНе найдена профессия: {oper_name} в БД МЕС')
+                            return None, None
                         tmp_row = {'Позиция': pozition,
                                    'МК': s_num_mk,
                                    'Номерпп': dse['Номерпп'],
@@ -1447,8 +1448,7 @@ def dict_norm_from_res(self, res, dict_norm='', koef_vneplana=1, koef_pogr_norm=
                                    'Колво_всего': dse['Количество'], 'Опер_номер': oper['Опер_номер'],
                                    'Опер_имя': oper['Опер_наименование'], 'Мат_кд_знч': mat_znch, 'Мат_кд': mat_name,
                                    'Ссылка': link_docs, 'Этап': oper['Этап'],
-                                   'Вид_работ': self.DICT_PROFESSIONS_NAME[oper['Опер_профессия_наименование']][
-                                       'Вид_работ'],
+                                   'Вид_работ': self.DICT_PROFESSIONS[oper['Опер_профессия_код']]['Вид_работ'], #08.09.25
                                    'КР': kr, 'КОИД': oper['Опер_КОИД'], 'koef_posta': round(koef_posta,2),
                                    'Номер': oper['Опер_номер'], 'Подразд': podr,
                                    'РЦ': oper['Опер_РЦ_код'],
@@ -1706,9 +1706,9 @@ def btn_pl_load_norm(self: mywindow):
             if fl_fill:
                 CSQ.custom_request_c(self.db_kplan,
                                      f"""UPDATE {tbl} SET {field} = {norma} WHERE {ind_field} = {pnom} """)
-                list_change.append([
-                    f'{field} было {str(round(old_time, 2))}, '
-                    f'cтало  {str(round(norma, 2))}'])
+                list_change.append({'Этап' : field, 'Было' :str(round(old_time, 2)), 'Cтало': str(round(norma, 2))})
+                    #f'{field} было {str(round(old_time, 2))}, '
+                    #f'cтало  {str(round(norma, 2))}'])
         return list_change
 
     def load_norm_vo(self, pnom: int, dict_norm: dict):
@@ -1970,8 +1970,8 @@ def btn_pl_load_norm(self: mywindow):
     if list_change:
         GPL.update_local_graf(self, update=True, pnom=pnom)
         obj_msg = CMS.Msg_b24(self.db_kplan, self.bd_naryad, self.db_resxml, self.db_users, pnom)
-        if not self.USER_CONFIG.is_developer:
-            obj_msg.send_msg('recalc_dates_disp', pprint.pformat(list_change))
+        obj_msg.send_msg('recalc_dates_disp', tbl = list_change)
+
 
     CMS.Pozition.set_flag_recalc_dates(self.db_kplan, pnom, 1)
     if CQT.num_col_by_name_c(tbl, 'plan.Потребность_пересч_сроков') != None:
@@ -1979,15 +1979,13 @@ def btn_pl_load_norm(self: mywindow):
                                 '1')
     CQT.select_range(tbl, tbl.currentRow(), tbl.currentColumn())
     tbl.setFocus()
-    msg_change = ''
     if list_change:
-        msg_change = f'Изменения:\n{ pprint.pformat(list_change)}\n'
-    if list_log:
-        if CQT.msgboxgYN(f'Успешно!\n {msg_change} Показать таблицу норм пооперационно?'):
-            CQT.msgboxg_get_table(self, 'Расчет веса для сравнения', list_log, 'OK', disable_btn1=True, load_summ=True)
+        CQT.msgboxg_get_table_ok_inf(self, 'Успешно пересчитано', list_change, show_filtr=False,WindowTitle= f'Изменения пересчета КПЛ {pnom}')
     else:
-        CQT.msgbox(f'Успешно\n {msg_change}')
-
+        CQT.msgbox('Изменений норм нет.')
+    if list_log:
+        if CQT.msgboxgYN(f'Показать таблицу норм пооперационно?'):
+            CQT.msgboxg_get_table(self, 'Расчет веса для сравнения', list_log, 'OK', disable_btn1=True, load_summ=True)
 
 
 def get_zc_data_from_ERP(self,Ref_Key_py,nomen_name,m=None):
@@ -2001,7 +1999,7 @@ def get_zc_data_from_ERP(self,Ref_Key_py,nomen_name,m=None):
 
     if data_py[0]['ДокументОснование_Type'] not in (
     'StandardODATA.Document_ЗаказКлиента', 'StandardODATA.Document_ЗаказНаСборку'):
-        CQT.msgbox(f"Основание для {self.place.doc_prefix}:\n{data_py['ДокументОснование_Type']}.\n Нужен Заказа клиента/Заказ на сборку")
+        CQT.msgbox(f"Основание для {self.place.doc_prefix}:\n{data_py['ДокументОснование_Type']}.\n Нужен Заказ клиента/Заказ на сборку")
         return
     client_order = data_py[0]['ДокументОснование']
     nomen_ref = None
@@ -2363,16 +2361,39 @@ def update_tabels(self: mywindow):
     load_month_for_apply_diap_dates_to_sb_in_tbl(self)
 
     m = CODAT.OrdersComposit(self.USER_CONFIG.ERP_base_name['Значение'])
+    try:
+        #self.DICT_plan_erp_nomen_refs = F.deploy_dict_c(m.get_response(doc_name='Catalog_Номенклатура',
+        #                          wet_filtr=f"""?$select= Ref_Key, Description, Артикул""",lazy_method_huours = 2), 'Ref_Key')
 
-    self.DICT_plan_erp_nomen_refs = F.deploy_dict_c(m.get_response(doc_name='Catalog_Номенклатура',
-                               wet_filtr=f"""?$select= Ref_Key, Description, Артикул""",lazy_method_huours = 2), 'Ref_Key')
+        wet_req_text = f"""ВЫБРАТЬ
+                Номенклатура.Наименование КАК Description,
+                Номенклатура.Артикул КАК Артикул,
+                УНИКАЛЬНЫЙИДЕНТИФИКАТОР(Номенклатура.Ссылка) КАК Ref_Key
+            ИЗ
+                Справочник.Номенклатура КАК Номенклатура
+            ГДЕ
+                Номенклатура.ВидНоменклатуры В ИЕРАРХИИ
+            (ВЫБРАТЬ ПЕРВЫЕ 1
+                ВидыНоменклатуры.Ссылка КАК Ссылка
+            ИЗ
+                Справочник.ВидыНоменклатуры КАК ВидыНоменклатуры
+            ГДЕ
+                ВидыНоменклатуры.ЭтоГруппа = ИСТИНА
+                И ВидыНоменклатуры.Наименование = "{CFG.Config.place.Имя}");"""
+        key, data_rez = APIERP.get_wet_request(wet_req_text,lazy_method_huours=2)
+        if key != 200:
+            CQT.msgbox(f'Ошибка получения данных код ({key}) из ERP')
+            return
+        self.DICT_plan_erp_nomen_refs = F.deploy_dict_c(data_rez['data'] , 'Ref_Key')
+        
+        self.DICT_plan_erp_Пользователи = F.deploy_dict_c(m.get_response(doc_name=f"Catalog_Пользователи",
+                                   wet_filtr=f"?$select=Ref_Key, Description",lazy_method_huours = 24), 'Ref_Key')
 
-    self.DICT_plan_erp_Пользователи = F.deploy_dict_c(m.get_response(doc_name=f"Catalog_Пользователи",
-                               wet_filtr=f"?$select=Ref_Key, Description",lazy_method_huours = 24), 'Ref_Key')
-
-    self.DICT_plan_erp_ПричиныПриостановкиПроизводства = F.deploy_dict_c(m.get_response(doc_name=f"Catalog_ПричиныПриостановкиПроизводства",
-                               wet_filtr=f"?$select=*",lazy_method_huours = 24), 'Ref_Key')
-
+        self.DICT_plan_erp_ПричиныПриостановкиПроизводства = F.deploy_dict_c(m.get_response(doc_name=f"Catalog_ПричиныПриостановкиПроизводства",
+                                   wet_filtr=f"?$select=*",lazy_method_huours = 24), 'Ref_Key')
+    except:
+        CQT.msgbox(f'Ошибка получения данных из 1С (сервер не отвечает) попробуй через минуту')
+        self.ui.tabWidget.setCurrentIndex(self.START_TAB_IND)
 
     self.glob_kpl_pull_poz_dict = dict()
     self.ui.splitter_4.setSizes([400, 0])
@@ -2963,7 +2984,7 @@ def select_etap_edit(self: mywindow):
             # list_sort_c = []
             # for key in self.Data_plan.DICT_VID_PO_NAPR.keys():
             #     list_sort_c.append(self.Data_plan.DICT_VID_PO_NAPR[key]['Имя'])
-            # nk_sort_c = CQT.num_col_by_name_c(self.ui.tbl_pl_add_poz, 'Вид')
+            nk_sort_c = CQT.num_col_by_name_c(self.ui.tbl_pl_add_poz, 'Вид')
             # CQT.add_combobox(self, self.ui.tbl_pl_add_poz, 0, nk_sort_c, list_sort_c, first_void=False,
             #                  conn_func=select_sort_c)
             list_tech = []
@@ -3290,7 +3311,7 @@ def load_tbl_add_new_poz(self: mywindow, *args):
 
 plan.Направление_деятельности, 
 "" as Статус,
-пл_оуп.№Пл_Пр,
+
 знпр.№проекта, 
 знпр.№ERP, 
 пл_оуп.Номенклатура_ЕРП,  
@@ -3324,14 +3345,13 @@ INNER JOIN
     list_itog[-1][F.num_col_by_name_in_hat_c(list_itog, 'Вес_кг')] = '*резерв/пмс на сумм кол-во'
     list_itog[-1][F.num_col_by_name_in_hat_c(list_itog, 'Вес_ВО')] = '*на сумм-ное кол-во'
     list_itog[-1][F.num_col_by_name_in_hat_c(list_itog, '№ERP')] = ''
-    list_itog[-1][F.num_col_by_name_in_hat_c(list_itog, '№Пл_Пр')] = f' 00 Если по {self.place.doc_prefix}'
+
     list_itog[-1][F.num_col_by_name_in_hat_c(list_itog, 'НомПартии_ЗП')] = ''
     # ===========================
     cur_row = tbl_poz.currentRow()
     if cur_row >= 0 and CQT.get_key_modifiers(self) == ['shift']:
         nk_np = CQT.num_col_by_name_c(tbl_poz, 'знпр.№проекта')
         nk_py = CQT.num_col_by_name_c(tbl_poz, 'знпр.№ERP')
-        nk_pp = CQT.num_col_by_name_c(tbl_poz, 'пл_оуп.№Пл_Пр')
         if nk_py == None:
             CQT.msgbox(f'Поле знпр.№ERP не включено')
             return
@@ -3339,8 +3359,7 @@ INNER JOIN
             CQT.msgbox(f'Поле знпр.№проекта не включено')
             return
         nk_pkk = CQT.num_col_by_name_c(tbl_poz, 'пл_оуп.ПКК')
-        if nk_pp != None:
-            list_itog[-1][F.num_col_by_name_in_hat_c(list_itog, '№Пл_Пр')] = tbl_poz.item(cur_row, nk_pp).text()
+
         if nk_np != None:
             list_itog[-1][F.num_col_by_name_in_hat_c(list_itog, '№проекта')] = tbl_poz.item(cur_row, nk_np).text()
         if nk_py != None:
@@ -3354,7 +3373,6 @@ INNER JOIN
     self.ui.tbl_pl_add_poz.setColumnWidth(F.num_col_by_name_in_hat_c(list_itog, 'Направление_деятельности'), 300)
     self.ui.tbl_pl_add_poz.setColumnWidth(F.num_col_by_name_in_hat_c(list_itog, 'Статус'), 100)
     self.ui.tbl_pl_add_poz.setColumnWidth(F.num_col_by_name_in_hat_c(list_itog, '№ERP'), 400)
-    self.ui.tbl_pl_add_poz.setColumnWidth(F.num_col_by_name_in_hat_c(list_itog, '№Пл_Пр'), 100)
     self.ui.tbl_pl_add_poz.setColumnWidth(F.num_col_by_name_in_hat_c(list_itog, 'Позиция'), 60)
     self.ui.tbl_pl_add_poz.setColumnWidth(F.num_col_by_name_in_hat_c(list_itog, '№проекта'), 100)
     self.ui.tbl_pl_add_poz.setColumnWidth(F.num_col_by_name_in_hat_c(list_itog, 'Номенклатура_ЕРП'), 400)
@@ -3422,7 +3440,7 @@ def check_add_poz(self):
         if str(val).strip() == '':
             CQT.msgbox(f'{key} не может быть пусто')
             return False
-        if key not in ('№ERP', '№Пл_Пр'):
+        if key not in ('№ERP'):
             if str(val) == "" or '*' == str(val)[0]:
                 CQT.msgbox(f'{key} не указан')
                 return False
@@ -3455,13 +3473,6 @@ def check_add_poz(self):
                 CQT.migat(self, tbl, 0, CQT.num_col_by_name_c(tbl, key), 1)
                 return False
 
-        if key == '№Пл_Пр':
-            if val == '00':
-                return True
-            if not F.is_numeric(val):
-                CQT.msgbox(f'{key} Не корректная запись')
-                CQT.migat(self, tbl, 0, CQT.num_col_by_name_c(tbl, key), 1)
-                return False
 
 
     rez = CSQ.custom_request_c(self.db_kplan, f"""SELECT plan.Позиция, пл_оуп.№проекта, пл_оуп.№ERP FROM plan 
@@ -3537,7 +3548,7 @@ def check_edit_poz(self, old_list):
                                        self.db_users, '')
                     poz.load_kpl_table('пл_оуп')
                     if poz.dict_tables['пл_оуп']['№ERP'] in ('', 0, '-'):
-                        CQT.msgbox(f'{key} без ПлПр не может быть {val_str}')
+                        CQT.msgbox(f'{key} без №ERP не может быть {val_str}')
                         return False
 
             if key == 'Статус_норм':
@@ -3628,13 +3639,7 @@ def check_edit_poz(self, old_list):
                     CQT.msgbox(f'{key} Не корректная запись')
                     CQT.migat(self, tbl, 0, CQT.num_col_by_name_c(tbl, key), 1)
                     return False
-            if key == '№Пл_Пр':
-                if val == '00':
-                    return True
-                if not F.is_numeric(val):
-                    CQT.msgbox(f'{key} Не корректная запись')
-                    CQT.migat(self, tbl, 0, CQT.num_col_by_name_c(tbl, key), 1)
-                    return False
+
 
     if podr == 'пл_покр':
         for key in list_edit.keys():
@@ -3687,6 +3692,95 @@ def check_edit_poz(self, old_list):
                     CQT.msgbox(f'{key} Наименование должно совпадать с номенклатурой: {oyp_nomenkl[-1]}')
                     CQT.migat(self, tbl, 0, CQT.num_col_by_name_c(tbl, key), 1)
                     return False
+    return True
+
+
+@CQT.onerror
+def del_poz(self: mywindow):
+    tbl = self.ui.tbl_kal_pl
+    row= CQT.get_dict_line_form_tbl(tbl)
+    if not row:
+        CQT.msgbox(f'Строка не выбрана')
+        return
+
+    if not CQT.msgboxg_get_table(self,f'Точно удалить',[{'Ключ':k,'Значение':v} for k,v in row.items()],yesNoMode=True):
+        return
+    pnom = int(row['plan.Пномер'])
+    CSQ.custom_request_c(self.db_kplan, f"""DELETE FROM plan
+      WHERE Пномер = {pnom};
+                    """)
+    list_podr = [_ for _ in CSQ.get_list_of_tables_c(self.db_kplan) if _.startswith('пл_') ]
+    for podr in list_podr:
+        CSQ.custom_request_c(self.db_kplan, f"""DELETE FROM {podr} WHERE НомПл = {pnom};""")
+    load_table_db(self)
+    CQT.msgbox(f'Успешно')
+    return True
+
+
+
+@CQT.onerror
+def fix_crashed_poz(self: mywindow):
+    list_pozs = CSQ.custom_request_c(self.db_kplan,f'''SELECT Пномер,
+       Дата_внесения,
+       Позиция,
+       Направление_деятельности,
+       Статус,
+       Статус_норм,
+       Фдата_получения_КД,
+       МК,
+       Нчас_заявка_мат,
+       Пдата_нач_заявка_мат,
+       Пдата_зав_заявка_мат,
+       Фчас_заявка_мат,
+       Фдата_нач_заявка_мат,
+       Фдата_зав_заявка_мат,
+       Нчас_заявка_аутсорс,
+       Пдата_нач_заявка_аутсорс,
+       Пдата_зав_заявка_аутсорс,
+       Фчас_заявка_аутсорс,
+       Фдата_нач_заявка_аутсорс,
+       Фдата_зав_заявка_аутсорс,
+       Нчас_вспом,
+       Пдата_нач_вспом,
+       Пдата_зав_вспом,
+       Фчас_вспом,
+       Фдата_нач_вспом,
+       Фдата_зав_вспом,
+       Фчас_доп_раб,
+       Этапы_ЕРП,
+       Готовность_ПУ,
+       Постановка_в_план,
+       Примечание,
+       Приоритет,
+       ЗП_келаст_КЭ,
+       Заказ_клиента,
+       Потребность_пересч_сроков,
+       Статус_поз_ЕРП,
+       poki
+  FROM plan;
+''',rez_dict=True)
+
+    row = CQT.msgboxg_get_table(self,'Выбери поз',list_pozs,selectRows=True,ExtendedSelection=False,selection_from_tbl=True)
+
+    if not row:
+        CQT.msgbox(f'Строка не выбрана')
+        return
+
+    pnom = int(row['Пномер'])
+
+    list_podr = [_ for _ in CSQ.get_list_of_tables_c(self.db_kplan) if _.startswith('пл_') ]
+
+    for podr in list_podr:
+        found = CSQ.custom_request_c(self.db_kplan, f"""SELECT НомПл
+                  FROM {podr} 
+                 WHERE НомПл = {pnom};""",rez_dict=True)
+        if not found:
+            CSQ.custom_request_c(self.db_kplan, f"""INSERT INTO {podr}(
+                        НомПл
+                        )
+                        VALUES (?);""", list_of_lists_c=[[pnom]])
+    load_table_db(self)
+    CQT.msgbox(f'Успешно')
     return True
 
 
@@ -3843,7 +3937,7 @@ def btn_pl_ok_add_poz_click(self):
                                                             int(list_add['Статус']),self.place.poki]])
         pnom = CSQ.last_row_db_c(self.db_kplan, 'plan', 'Пномер', ['Пномер'])[0]
 
-        list_podr = [_ for _ in CSQ.get_list_of_tables_c(self.db_kplan) if 'пл_' in _]
+        list_podr = [_ for _ in CSQ.get_list_of_tables_c(self.db_kplan) if _.startswith('пл_')]
         for podr in list_podr:
             CSQ.custom_request_c(self.db_kplan, f"""INSERT INTO {podr}(
                         НомПл
@@ -3851,7 +3945,7 @@ def btn_pl_ok_add_poz_click(self):
                         VALUES (?);""", list_of_lists_c=[[pnom]])
 
         vals = [
-            list_add['№Пл_Пр'],
+
             list_add['№проекта'],
             s_num_py,
             list_add['Количество'],
@@ -3862,7 +3956,7 @@ def btn_pl_ok_add_poz_click(self):
 
         CSQ.custom_request_c(self.db_kplan, f"""UPDATE пл_оуп SET(
 
-               №Пл_Пр, 
+               
                №проекта,
                Пномер_ЗП,
                Количество,
@@ -3893,12 +3987,13 @@ def btn_pl_ok_add_poz_click(self):
         obj_msg = CMS.Msg_b24(self.db_kplan, self.bd_naryad, self.db_resxml, self.db_users, pnom)
         obj_msg.send_msg('add_new_poz')
         # msg = f"{F.user_full_namre()} Добавил в план {list_add['№проекта']} {list_add['№ERP']} " \
-        #      f"(Пл_Пр №{list_add['№Пл_Пр']}) поз. {list_add['Позиция']}:\n " \
+        #      f" поз. {list_add['Позиция']}:\n " \
         #      f"Необходимо указать вид {list_add['Номенклатура_ЕРП']}\n" \
         #      f"и загрузить xml-аналог либо сделать МК по КД"
         # self.send_info_mk_b24(msg,'chat48346')
         CQT.msgbox(f'Успешно')
         return True
+
 
     @CQT.onerror
     def edit_poz(self: mywindow):
@@ -3995,18 +4090,14 @@ def btn_pl_ok_add_poz_click(self):
                     fill_old_fields_from_znpr(self, pnom)
                 if '№ERP' in list_fields:
                     if old_list['№ERP'] != new_list['№ERP']:
+
                         py = new_list['№ERP']
-                        poz = CSQ.custom_request_c(self.db_kplan, f"""SELECT пл_оуп.№проекта, пл_оуп.№ERP, пл_оуп.№Пл_Пр, plan.Позиция FROM пл_оуп INNER JOIN plan 
-                                            ON пл_оуп.НомПл = plan.Пномер WHERE НомПл = {pnom}""", rez_dict=True)
+
                         CSQ.custom_request_c(self.bd_naryad,
                                              f"""UPDATE mk SET Номер_заказа = "{py}" WHERE НомКплан = {pnom};""")
 
-                        try:
-                            msg = f"{F.user_full_namre()} на {str(poz)}\n УСТАНОВИЛ {py} необходимо открыть МК и сделать раскладку"
-                            CMS.send_info_mk_b24_by_action(msg, 'Готовность Маршрутных карт')
-                            # self.send_info_mk_b24(msg, 'chat41228')
-                        except:
-                            print('Ошибка отправки в Б24')
+                        obj_msg = CMS.Msg_b24(self.db_kplan, self.bd_naryad, self.db_resxml, self.db_users, pnom)
+                        obj_msg.send_msg('reset_py', additional_str=py)
         show_fr(self)
         self.regim = ''
         CQT.msgbox(f'Успешно')
@@ -4042,9 +4133,9 @@ def btn_pl_ok_add_poz_click(self):
             rez = add_new_poz(self)
             if rez != None:
                 GPL.update_local_graf(self, True)
-            self.regim = ''
-            load_table_db(self)
-            show_fr(self)
+                self.regim = ''
+                load_table_db(self)
+                show_fr(self)
         if self.regim == 'edit':
             rez = edit_poz(self)
             if rez != None:

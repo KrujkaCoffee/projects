@@ -761,8 +761,6 @@ def load_vid_izd(self:mywindow):
         self.ui.cmb_vid_izd.addItem(vid)
     self.ui.cmb_cr_mk_pr.setCurrentText('КТ.ВО')
     self.cmb_cr_mk_select_pr()
-    self.ui.cmb_cr_mk_plpr.setCurrentIndex(0)
-    self.cmb_cr_mk_select_plpr()
     self.ui.cmb_cr_mk_py.setCurrentIndex(0)
     self.cmb_cr_mk_select_py()
     self.ui.cmb_cr_mk_poz.setCurrentIndex(0)
@@ -1093,7 +1091,7 @@ def btn_tkp_add_to_plan(self:mywindow):
          
      plan.Приоритет, 
  
-        пл_оуп.№Пл_Пр as "ПлПр",
+        
         napravl_deyat.Псевдоним as "Вид",
         
 

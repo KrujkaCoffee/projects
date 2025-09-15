@@ -1114,6 +1114,7 @@ def update_local_graf(self,update=False,pnom:int = 0,fill_gant=True,*args):
         self.Data_plan.DICT_REPLACE_BY_DAYS = {}
     fl_upd = True
     dict_form = []
+
     if update == False:
         data = dict_poz['local_graf']
         if data != '' and data != 'None':

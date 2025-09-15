@@ -193,76 +193,142 @@ def load_projects(poki=None):
             else:
                 min_date = ''
             return min_date
+        if poki == 0:
+            list_etaps_dates = [row['Резка'],
+                                row['Мех_обработка'],
+                                row['Сборка+сварка'],
+                                row['Упаковка'],]
+            poz_name = row['Позиция']
+            count = str(row['Количество'])
+            if row['Кд'] != '' or row['Статус']=='Резерв':
+                min_date = ''
+            else:
+                min_date = first_date(list_etaps_dates)
+                if min_date != '':
+                    days_delta = (F.strtodate(min_date,"%d.%m.%Y") - F.now('')).days
+                    if days_delta <0:
+                        min_date = f"'{min_date}"
+                    if 5> days_delta >0:
+                        min_date = f"`{min_date}"
+            py = clear_py(row['Номер заявки'])
+            prpy = row['Номер проекта'] + "$" + row['Номер заявки']
+            primech = row['Примечание_сб']
+            prognoz_date = row['Прогноз_дата_зав_сб']
 
-        list_etaps_dates = [row['Резка'],
-                            row['Мех_обработка'],
-                            row['Сборка+сварка'],
-                            row['Упаковка'],]
-        poz_name = row['Позиция']
-        count = str(row['Количество'])
-        if row['Кд'] != '' or row['Статус']=='Резерв':
-            min_date = ''
-        else:
-            min_date = first_date(list_etaps_dates)
-            if min_date != '':
-                days_delta = (F.strtodate(min_date,"%d.%m.%Y") - F.now('')).days
-                if days_delta <0:
-                    min_date = f"'{min_date}"
-                if 5> days_delta >0:
-                    min_date = f"`{min_date}"
-        py = clear_py(row['Номер заявки'])
-        prpy = row['Номер проекта'] + "$" + row['Номер заявки']
-        primech = row['Примечание_сб']
-        prognoz_date = row['Прогноз_дата_зав_сб']
+            date_sb = row['Сборка+сварка'].split('/')[1]
+            date_upak = row['Упаковка'].split('/')[1]
+            date_rezka_start = row['Резка'].split('/')[0]
+            if prognoz_date != '' and F.is_date(prognoz_date,"%Y-%m-%d") and F.is_date(date_upak,"%Y-%m-%d") and F.is_date(date_sb,"%Y-%m-%d"):
+                delta = F.delta_days(F.strtodate(date_sb),F.strtodate(date_upak),True)
+                date_sb = F.datetostr(F.strtodate(prognoz_date),"%d.%m.%Y")
+                date_upak = F.datetostr(F.add_days(F.strtodate(date_upak) , delta,True),"%d.%m.%Y")
 
-        date_sb = row['Сборка+сварка'].split('/')[1]
-        date_upak = row['Упаковка'].split('/')[1]
-        date_rezka_start = row['Резка'].split('/')[0]
-        if prognoz_date != '' and F.is_date(prognoz_date,"%Y-%m-%d") and F.is_date(date_upak,"%Y-%m-%d") and F.is_date(date_sb,"%Y-%m-%d"):
-            delta = F.delta_days(F.strtodate(date_sb),F.strtodate(date_upak),True)
-            date_sb = F.datetostr(F.strtodate(prognoz_date),"%d.%m.%Y")
-            date_upak = F.datetostr(F.add_days(F.strtodate(date_upak) , delta,True),"%d.%m.%Y")
+            # mk_list = []
+            mk_is = '' if row['Маршрутки'] == 0 else 'Да'
+            # for item in dict_mk:
+            #     # if item['Номер_заказа || "$" || Номер_проекта'] == row['Номер заявки'] + '$' + row['Номер проекта']:
+            #     if item['Пномер'] == row['Маршрутки']:
+            #         mk_list.append(item['Номенклатура'].replace(';','; '))
+            #         break
+            # if len(mk_list) > 0:
+            #     mk_is = 'Да'
 
-        # mk_list = []
-        mk_is = '' if row['Маршрутки'] == 0 else 'Да'
-        # for item in dict_mk:
-        #     # if item['Номер_заказа || "$" || Номер_проекта'] == row['Номер заявки'] + '$' + row['Номер проекта']:
-        #     if item['Пномер'] == row['Маршрутки']:
-        #         mk_list.append(item['Номенклатура'].replace(';','; '))
-        #         break
-        # if len(mk_list) > 0:
-        #     mk_is = 'Да'
+            date_contract = row['Дата_отгрузки_ПУ']
+            date_add_kpl = row['Дата_внесения']
 
-        date_contract = row['Дата_отгрузки_ПУ']
-        date_add_kpl = row['Дата_внесения']
+            otkl_dog = 0
+            if date_contract != '' and row['Упаковка'].split('/')[1] != '':
+                otkl_dog = (F.strtodate(row['Упаковка'].split('/')[1],) - F.strtodate(date_contract,)).days
+            otkl_dog = str(otkl_dog)
+            pdo_prim = row['Примечание_ПДО']
+            pdo_zayav = row["ПДО_Заявки_на_закуп"]
+            tbl.append({
+                'Направление': napr,  # 0
+                         'Псевдоним': row['Псевдоним'],  # 1
+                         'Номер проекта': row['Номер проекта'],  # 2
+                         'Номер заявки': py,  # 3
+                         'Поз.': poz_name,  # 4
+                         'Кол-во': count,  # 5
+                         'Нормо-час сб': str(row['Нормо-час сб']),  # 6
+                         'Статус': row['Статус'],  # 7
+                         'Дата внесения в МЕС': date_add_kpl,  # 8
+                         'Требуемая дата КД': min_date,  # 9
+                         'Ф.Дата получения КД': row['Кд'],  # 10
+                         'Тех. МК': mk_is,  # 11
+                         'Плановая дата начала загот. участка': date_rezka_start,  # 12
+                         'Текущая плановая дата зав. сборки': date_sb,  # 13
+                         'Текущая плановая дата зав. упаковки': date_upak,  # 14
+                         'Дата по договору': date_contract,  # 15
+                         'Прогноз дата зав.сб.': prognoz_date,  # 16
+                         'Откл. от дог.': otkl_dog,  # 17
+                         'Примечание сб. участок': primech,  # 18
+                         'ПДО Примечание': pdo_prim,  # 19
+                         'ПДО Заявки на закуп': pdo_zayav  # 20
+            })
+        elif poki == 1:
+            list_etaps_dates = [row['Раскрой'],
+                                row['Сборка'],
+                                row['Упаковка'],]
+            poz_name = row['Позиция']
+            count = str(row['Количество'])
+            if row['Кд'] != '' or row['Статус']=='Резерв':
+                min_date = ''
+            else:
+                min_date = first_date(list_etaps_dates)
+                if min_date != '':
+                    days_delta = (F.strtodate(min_date,"%d.%m.%Y") - F.now('')).days
+                    if days_delta <0:
+                        min_date = f"'{min_date}"
+                    if 5> days_delta >0:
+                        min_date = f"`{min_date}"
+            py = clear_py(row['Номер заявки'])
+            prpy = row['Номер проекта'] + "$" + row['Номер заявки']
+            primech = row['Примечание_сб']
+            prognoz_date = row['Прогноз_дата_зав_сб']
 
-        otkl_dog = 0
-        if date_contract != '' and row['Упаковка'].split('/')[1] != '':
-            otkl_dog = (F.strtodate(row['Упаковка'].split('/')[1],) - F.strtodate(date_contract,)).days
-        otkl_dog = str(otkl_dog)
-        pdo_prim = row['Примечание_ПДО']
-        pdo_zayav = row["ПДО_Заявки_на_закуп"]
-        tbl.append([napr,                                  #0      'Направление'
-                    row['Псевдоним'],                      #1      'Псевдоним'
-                    row['Номер проекта'],                  #2      Номер проекта
-                    py,                                    #3      Номер заявки
-                    poz_name,                             #4       Поз.
-                    count,                                #5       Кол-во
-                    str(row['Нормо-час сб']),              #6      Нормо-час сб
-                    row['Статус'],                        #7       'Статус'
-                    date_add_kpl,                             #8      Дата внесения в МЕС
-                    min_date,                               #9       Требуемая дата КД
-                    row['Кд'],                           #10      Ф.Дата получения КД
-                    mk_is,#first_date,                    #11      Тех. МК
-                    date_rezka_start,                      #12     Плановая дата начала загот. участка
-                    date_sb,                              #13      Текущая плановая дата зав. сборки
-                    date_upak,                            #14      Текущая плановая дата зав. упаковки
-                    date_contract,                        #15      Дата по договору
-                    prognoz_date,                         #16      Прогноз дата зав.сб.
-                    otkl_dog,                             #17      Откл. от дог.
-                    primech,                              #18      Примечание сб. участок
-                    pdo_prim,                             #19      ПДО Примечание
-                    pdo_zayav])                            #20     ПДО Заявки на закуп
+            date_sb = row['Сборка'].split('/')[1]
+            date_upak = row['Упаковка'].split('/')[1]
+            date_rezka_start = row['Раскрой'].split('/')[0]
+            if prognoz_date != '' and F.is_date(prognoz_date,"%Y-%m-%d") and F.is_date(date_upak,"%Y-%m-%d") and F.is_date(date_sb,"%Y-%m-%d"):
+                delta = F.delta_days(F.strtodate(date_sb),F.strtodate(date_upak),True)
+                date_sb = F.datetostr(F.strtodate(prognoz_date),"%d.%m.%Y")
+                date_upak = F.datetostr(F.add_days(F.strtodate(date_upak) , delta,True),"%d.%m.%Y")
+            mk_is = '' if row['Маршрутки'] == 0 else 'Да'
+            date_contract = row['Дата_отгрузки_ПУ']
+            date_add_kpl = row['Дата_внесения']
+
+            otkl_dog = 0
+            if date_contract != '' and row['Упаковка'].split('/')[1] != '':
+                otkl_dog = (F.strtodate(row['Упаковка'].split('/')[1],) - F.strtodate(date_contract,)).days
+            otkl_dog = str(otkl_dog)
+            pdo_prim = row['Примечание_ПДО']
+            pdo_zayav = row["ПДО_Заявки_на_закуп"]
+            tbl.append({
+                'Направление': napr,  # 0
+                 'Псевдоним': row['Псевдоним'],  # 1
+                 'Номер проекта': row['Номер проекта'],  # 2
+                 'Номер заявки': py,  # 3
+                 'Поз.': poz_name,  # 4
+                 'Кол-во': count,  # 5
+                 'Нормо-час сб': str(row['Нормо-час сб']),  # 6
+                 'Статус': row['Статус'],  # 7
+                 'Дата внесения в МЕС': date_add_kpl,  # 8
+                 'Требуемая дата КД': min_date,  # 9 ?
+                 'Ф.Дата получения КД': row['Кд'],  # 10
+                 'Тех. МК': mk_is,  # 11
+                 'Плановая дата начала раскр. участка': date_rezka_start,  # 12
+                 'Текущая плановая дата зав. сборки': date_sb,  # 13
+                 'Текущая плановая дата зав. упаковки': date_upak,  # 14
+                 'Дата по договору': date_contract,  # 15
+                 'Прогноз дата зав.сб.': prognoz_date,  # 16
+                 'Откл. от дог.': otkl_dog,  # 17
+                 'Примечание сб. участок': primech,  # 18
+                 'Примечание рскр. участок': row['Примечание_рскр'],
+                 'Примечание оснтк. участок': row['Примечание_оснтк'],
+                 'Примечание швей. участок': row['Примечание_швк'],
+                 'Примечание набив. участок': row['Примечание_нбвк'],
+                 'ПДО Примечание': pdo_prim,
+            })
 
     postfix = ''
     postfix_2 = ''
@@ -272,45 +338,91 @@ def load_projects(poki=None):
 
     #list_table = F.open_file_c(r'O:\Журналы и графики\Ведомости для передачи\Sroki_etapov.txt', False, "|")
     #list_table = F.list_to_dict(list_table)
-    custom_request_c = f"""SELECT 
-            пл_оуп.№проекта AS "Номер проекта", 
-            пл_оуп.№ERP AS "Номер заявки", 
-            plan.Позиция AS "Позиция", 
-            plan.Примечание as 'Примечание_ПДО',
-            пл_осил.Примечание as "ПДО_Заявки_на_закуп",
-            plan.Дата_внесения as "Дата_внесения",
-            пл_оуп.Количество AS "Количество", 
-            napravlenie.name AS "Направление", 
-            napravlenie.alias AS "alias", 
-            status_poz.Имя AS "Статус", 
-            plan.Фдата_получения_КД AS "Кд", 
-            пл_сб.Нчас_сб AS "Нормо-час сб", 
-            plan.МК AS "Маршрутки", 
-            пл_заг.ПДата_нач_заг || "/" || пл_заг.ПДата_зав_заг AS "Резка", 
-            пл_мех.Пдата_нач_мехобр  || "/" || пл_мех.Пдата_зав_мехобр AS "Мех_обработка", 
-            пл_сб.Пдата_нач_сб  || "/" || пл_сб.Пдата_зав_сб  AS "Сборка+сварка", 
-            "/" AS "Зачистка", 
-            пл_покр.Пдата_нач_покр    || "/" || пл_покр.Пдата_зав_покр  AS "Покрытие", 
-            пл_компл.ПДата_нач_комплект_упаковки   || "/" || пл_компл.ПДата_зав_комплект_упаковки  AS "Упаковка", 
-            plan.Пдата_нач_вспом   || "/" || plan.Пдата_зав_вспом  AS "Всп", 
-            "`" AS "Сумм_н`Сумм_к",
-             пл_оуп.Дата_отгрузки_ПУ AS "Дата_отгрузки_ПУ",
-             пл_сб.Примечание_сб,
-             пл_сб.Прогноз_дата_зав_сб,
-             napravl_deyat.Псевдоним 
-             FROM plan 
-            LEFT JOIN napravl_deyat ON napravl_deyat.Пномер = plan.Направление_деятельности  
-            LEFT JOIN napravlenie ON napravlenie.Пномер = napravl_deyat.Направление
-            LEFT JOIN status_poz ON status_poz.Пномер = plan.Статус 
-            LEFT JOIN пл_осил ON пл_осил.НомПл = plan.Пномер 
-            LEFT JOIN пл_оуп ON пл_оуп.НомПл = plan.Пномер 
-            LEFT JOIN пл_мех ON пл_мех.НомПл = plan.Пномер 
-            LEFT JOIN пл_сб ON пл_сб.НомПл = plan.Пномер 
-            LEFT JOIN пл_компл ON пл_компл.НомПл = plan.Пномер 
-            LEFT JOIN пл_заг ON пл_заг.НомПл = plan.Пномер 
-            LEFT JOIN пл_покр ON пл_покр.НомПл = plan.Пномер 
-            WHERE status_poz.Имя NOT IN ("Завершена","На удаление") {postfix}; 
-            """
+    if poki == 0:
+        custom_request_c = f"""SELECT 
+                пл_оуп.№проекта AS "Номер проекта", 
+                пл_оуп.№ERP AS "Номер заявки", 
+                plan.Позиция AS "Позиция", 
+                plan.Примечание as 'Примечание_ПДО',
+                пл_осил.Примечание as "ПДО_Заявки_на_закуп",
+                plan.Дата_внесения as "Дата_внесения",
+                пл_оуп.Количество AS "Количество", 
+                napravlenie.name AS "Направление", 
+                napravlenie.alias AS "alias", 
+                status_poz.Имя AS "Статус", 
+                plan.Фдата_получения_КД AS "Кд", 
+                пл_сб.Нчас_сб AS "Нормо-час сб", 
+                plan.МК AS "Маршрутки", 
+                пл_заг.ПДата_нач_заг || "/" || пл_заг.ПДата_зав_заг AS "Резка", 
+                пл_мех.Пдата_нач_мехобр  || "/" || пл_мех.Пдата_зав_мехобр AS "Мех_обработка", 
+                пл_сб.Пдата_нач_сб  || "/" || пл_сб.Пдата_зав_сб  AS "Сборка+сварка", 
+                "/" AS "Зачистка", 
+                пл_покр.Пдата_нач_покр    || "/" || пл_покр.Пдата_зав_покр  AS "Покрытие", 
+                пл_компл.ПДата_нач_комплект_упаковки   || "/" || пл_компл.ПДата_зав_комплект_упаковки  AS "Упаковка", 
+                plan.Пдата_нач_вспом   || "/" || plan.Пдата_зав_вспом  AS "Всп", 
+                "`" AS "Сумм_н`Сумм_к",
+                 пл_оуп.Дата_отгрузки_ПУ AS "Дата_отгрузки_ПУ",
+                 пл_сб.Примечание_сб,
+                 пл_сб.Прогноз_дата_зав_сб,
+                 napravl_deyat.Псевдоним 
+                 FROM plan 
+                LEFT JOIN napravl_deyat ON napravl_deyat.Пномер = plan.Направление_деятельности  
+                LEFT JOIN napravlenie ON napravlenie.Пномер = napravl_deyat.Направление
+                LEFT JOIN status_poz ON status_poz.Пномер = plan.Статус 
+                LEFT JOIN пл_осил ON пл_осил.НомПл = plan.Пномер 
+                LEFT JOIN пл_оуп ON пл_оуп.НомПл = plan.Пномер 
+                LEFT JOIN пл_мех ON пл_мех.НомПл = plan.Пномер 
+                LEFT JOIN пл_сб ON пл_сб.НомПл = plan.Пномер 
+                LEFT JOIN пл_компл ON пл_компл.НомПл = plan.Пномер 
+                LEFT JOIN пл_заг ON пл_заг.НомПл = plan.Пномер 
+                LEFT JOIN пл_покр ON пл_покр.НомПл = plan.Пномер 
+                WHERE status_poz.Имя NOT IN ("Завершена","На удаление") {postfix}; 
+                """
+    elif poki == 1:
+        custom_request_c = f"""SELECT 
+                пл_оуп.№проекта AS "Номер проекта", 
+                пл_оуп.№ERP AS "Номер заявки", 
+                plan.Позиция AS "Позиция", 
+                plan.Примечание as 'Примечание_ПДО',
+                пл_осил.Примечание as "ПДО_Заявки_на_закуп",
+                plan.Дата_внесения as "Дата_внесения",
+                пл_оуп.Количество AS "Количество", 
+                napravlenie.name AS "Направление", 
+                napravlenie.alias AS "alias", 
+                status_poz.Имя AS "Статус", 
+                plan.Фдата_получения_КД AS "Кд", 
+                пл_сбтк.Нчас_сбтк AS "Нормо-час сб", 
+                plan.МК AS "Маршрутки", 
+                пл_рскр.ПДата_нач_рскр || "/" || пл_рскр.ПДата_зав_рскр AS "Раскрой", 
+                пл_сбтк.ПДата_нач_сбтк  || "/" || пл_сбтк.ПДата_зав_сбтк  AS "Сборка", 
+                пл_упквк.ПДата_нач_упквк   || "/" || пл_упквк.ПДата_зав_упквк  AS "Упаковка", 
+                plan.Пдата_нач_вспом   || "/" || plan.Пдата_зав_вспом  AS "Всп", 
+                "`" AS "Сумм_н`Сумм_к",
+                 пл_оуп.Дата_отгрузки_ПУ AS "Дата_отгрузки_ПУ",
+                 пл_сбтк.Примечание_сбтк as "Примечание_сб",
+                 пл_рскр.Примечание_рскр as "Примечание_рскр",
+                 пл_оснтк.Примечание_оснтк as "Примечание_оснтк",
+                 пл_швк.Примечание_швк as "Примечание_швк",
+                 пл_нбвк.Примечание_нбвк as "Примечание_нбвк",
+                 "" as "Прогноз_дата_зав_сб",
+                 napravl_deyat.Псевдоним 
+                 FROM plan 
+                LEFT JOIN napravl_deyat ON napravl_deyat.Пномер = plan.Направление_деятельности  
+                LEFT JOIN napravlenie ON napravlenie.Пномер = napravl_deyat.Направление
+                LEFT JOIN status_poz ON status_poz.Пномер = plan.Статус 
+                LEFT JOIN пл_осил ON пл_осил.НомПл = plan.Пномер 
+                LEFT JOIN пл_оуп ON пл_оуп.НомПл = plan.Пномер 
+                LEFT JOIN пл_рскр ON пл_рскр.НомПл = plan.Пномер 
+                LEFT JOIN пл_оснтк ON пл_оснтк.НомПл = plan.Пномер 
+                LEFT JOIN пл_швк ON пл_швк.НомПл = plan.Пномер 
+                LEFT JOIN пл_нбвк ON пл_нбвк.НомПл = plan.Пномер 
+                LEFT JOIN пл_сбтк ON пл_сбтк.НомПл = plan.Пномер 
+                LEFT JOIN пл_упквк ON пл_упквк.НомПл = plan.Пномер 
+                WHERE status_poz.Имя NOT IN ("Завершена","На удаление") {postfix}; 
+                """
+    else:
+        return []
+
     list_table = CSQ.custom_request_c(r"SRV:DB_kplan.db\\DB_kplan.db",custom_request_c,rez_dict=True)
 
     #====================================changes
@@ -319,38 +431,17 @@ def load_projects(poki=None):
     dict_first_day_py = dict() #calc_changes_plans()
 
     # ================================
-
-    hat_c = ['Направление',                                  #0
-             'Псевдоним',                                    #1
-             'Номер проекта',                                #2
-             'Номер заявки',                                 #3
-             'Поз.',                                        #4
-             'Кол-во',                                      #5
-             'Нормо-час сб',                                 #6
-             'Статус',                                      #7
-             'Дата внесения в МЕС',                          #8
-             'Требуемая дата КД',                           #9
-             'Ф.Дата получения КД',                         #10
-             'Тех. МК',                                     #11
-             'Плановая дата начала загот. участка',          #12
-             'Текущая плановая дата зав. сборки',           #13
-             'Текущая плановая дата зав. упаковки',         #14
-             'Дата по договору',                            #15
-             'Прогноз дата зав.сб.',                        #16
-             'Откл. от дог.',                               #17
-             'Примечание сб. участок',                      #18
-             'ПДО Примечание',                              #19
-             'ПДО Заявки на закуп']                         #20
-
     custom_request_c = f'''SELECT * FROM napravlenie WHERE val > 0 {postfix_2}'''
     list_d_napr = CSQ.custom_request_c(r"SRV:DB_kplan.db\\DB_kplan.db", custom_request_c, rez_dict=True)
 
-    dict_napr = {_['alias']:[hat_c].copy() for _ in list_d_napr}
+    # dict_napr = {_['alias']:[hat_c].copy() for _ in list_d_napr}
+    dict_napr = {_['alias']: [] for _ in list_d_napr}
 
     for i in range(len(list_table)):
         add_line(dict_napr[list_table[i]['alias']], list_table[i])
     for name, napr in dict_napr.items():
-        tbl_ = F.sort_by_column_c(napr,'Текущая плановая дата зав. сборки', date_time=True,date_format="%d.%m.%Y")
+        lst = F.list_of_dicts_to_list_of_lists(napr)
+        tbl_ = F.sort_by_column_c(lst,'Текущая плановая дата зав. сборки', date_time=True,date_format="%d.%m.%Y")
         tbl_ = check_late_dates(tbl_)
         dict_napr[name]=tbl_
     return dict_napr
@@ -440,22 +531,31 @@ def projects():
   WHERE view_on_site = 1
 ''',rez_dict=True), 'poki')
     grafics_pad_mosh = []
-    comp_projects = []
+    comp_projects = {}
     for poki, company in dict_companies.items():
         graf_pad_mosh = GRAF.graf_html(poki)
         graf = generate_html(graf_pad_mosh)
         grafics_pad_mosh.append( {'name': company['Имя'],
+                                  'poki': poki,
             'graf': graf})
 
         projects = load_projects(poki)
-        comp_projects.append(projects)
+        comp_projects[(company['Имя'], poki)] = projects
         #changes = load_change_projects(poki)
 
     dict_colors_states =F.deploy_dict_c(CSQ.custom_request_c(r"SRV:DB_kplan.db\\DB_kplan.db",f"""SELECT Имя, color FROM status_poz""",rez_dict=True),'Имя')
     for k in dict_colors_states:
         dict_colors_states[k] = f' rgb({dict_colors_states[k].split(";")[0]}, {dict_colors_states[k].split(";")[1]}, {dict_colors_states[k].split(";")[2]})'
+    submenu = [
+        {'id': 'start', 'name': 'В начало'},
+        {'id': 'graf-0', 'name': 'Графики Пауэрз'},
+        {'id': 'proj-0', 'name': 'Проекты Пауэрз'},
+        {'id': 'graf-1', 'name': 'Графики Келаст'},
+        {'id': 'proj-1', 'name': 'Проекты Келаст'},
+    ]
     return render_template('projects.html', title=dict_info_elem['title'],
                            comp_projects=comp_projects,
+                           submenu=submenu,
                            changes=[],
                            date_now = F.now("%H:%M %d.%m.%Y"),grafics_pad_mosh = grafics_pad_mosh,dict_colors_states =dict_colors_states,dict_napr_d = dict_napr_d)
 
@@ -489,7 +589,8 @@ def report_page(page_id):
 @app.route('/download/projects/xlsx/')
 def download_list_projects():
     from project_writer import ProjectWriter
-    projects = load_projects()
+    poki = int(request.args.get('poki'))
+    projects = load_projects(poki)
     pw_obj = ProjectWriter(data=projects)
     filename = pw_obj.build()
     if not filename or not os.path.exists(filename):

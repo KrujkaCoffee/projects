@@ -1154,6 +1154,7 @@ class mywindow(QtWidgets.QMainWindow):
                 naryad.Распред_ФИО , 
                 naryad.Кол_повт_приемок AS "Кол_во повт. приёмок",
                 plan.Позиция as "Позиция",
+                пл_оуп.Номенклатура_ЕРП as "Номенклатура_ЕРП",
                 CASE 
                     WHEN знпр.№ERP IS NOT NULL 
                     THEN знпр.№ERP 
@@ -1168,11 +1169,12 @@ class mywindow(QtWidgets.QMainWindow):
             LEFT JOIN plan ON mk.НомКплан = plan.Пномер
             LEFT JOIN пл_оуп ON mk.НомКплан = пл_оуп.НомПл
             LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП
+            INNER JOIN коды_веплана_для_наряда ON коды_веплана_для_наряда.code = naryad.Внеплан
             INNER JOIN zagot ON zagot.Ном_МК = naryad.Номер_мк 
-            WHERE {postfix}  naryad.Подтвержд_вып_дата == "" AND
+            WHERE коды_веплана_для_наряда.poki = {self.place.poki} AND {postfix}  naryad.Подтвержд_вып_дата == "" AND
                          ((naryad.ФИО IN ({user}) AND naryad.Фвремя == "") 
                         OR (naryad.ФИО2 IN ({user}) AND naryad.Фвремя2 == ""));'''
-        rez = CSQ.custom_request_c(self.db_naryd, custom_request_c, rez_dict=True, attach_dbs=USRCNF.Config.project.db_kplan) #14.08.25
+        rez = CSQ.custom_request_c(self.db_naryd, custom_request_c, rez_dict=True, attach_dbs=USRCNF.Config.project.db_kplan) #04.09.25
         if rez == False or rez == None:
             CQT.msgbox(f'БД недоступна, пробуй еще')
             return
@@ -1198,8 +1200,9 @@ class mywindow(QtWidgets.QMainWindow):
                       'Примечание':'ПРОСТОЙ',
                       'Внеплан':'-',
                       'Номер_проекта':'-',
-                    'Позиция': '-',
+                      'Позиция': '-',
                       'Номер_заказа':'-',
+                      'Номенклатура_ЕРП': '-', # 04.09.25 по задаче 100059700
                       'Приоритет':'1',
                       'Коэфф_сложности':'0.01',
                       'Виды_работ':'-',

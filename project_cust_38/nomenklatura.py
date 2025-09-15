@@ -437,9 +437,9 @@ def sunc_nomen_from_erp(db_mater, file_erp,dict_nomen_mes, path_dir,dict_vids_no
                         print(f"{key_field_wrapped} не найден в {dict_nomen_mes[key_erp]}")
 
         else:
-            if line_erp['Вид'].strip() not in dict_vids_nomen:
+            if line_erp['Вид_Ref_Key'].strip() not in dict_vids_nomen: #08.09.25
                 log_change.append(
-                    f"[B]ОШИБКА[/B]\n"
+                    f"[B]ОШИБКА [/B]\n"
                     f">> Наименование: {line_erp['Наименование']}\n"
                     f">> КОД: {key_erp}\n"
                     f">> ВИД: {line_erp['Вид']}\n"
@@ -449,7 +449,7 @@ def sunc_nomen_from_erp(db_mater, file_erp,dict_nomen_mes, path_dir,dict_vids_no
                 # log_change.append(f"КОД: {key_erp}, ОШИБКА в строке{line_erp}, ВИД НОМЕНКЛАТУРЫ {line_erp['Вид']} отсутсвует в БД МЕС. Не занесено ")
             else:
                 dict_change['add'].append([key_erp, line_erp])
-                add_message = f'(Необходимо занести ПАРАМЕТРЫ)' if dict_vids_nomen[line_erp['Вид'].strip()]['ЕстьПараметры'] == 1 else ''
+                add_message = f'(Необходимо занести ПАРАМЕТРЫ)' if dict_vids_nomen[line_erp['Вид_Ref_Key']]['ЕстьПараметры'] == 1 else '' #08.09.25
                 log_change.append(
                     f"[B]ДОБАВЛЕНО{add_message}[/B]\n"
                     f">> Наименование: {line_erp['Наименование']}\n"
@@ -487,7 +487,8 @@ def sunc_nomen_from_erp(db_mater, file_erp,dict_nomen_mes, path_dir,dict_vids_no
                      '',
                      '',
                      line_erp['СхемаОбеспечения'],
-                     line_erp['Ref_Key']]
+                     line_erp['Ref_Key'],
+                     line_erp['Вид_Ref_Key']]
         strok_input.append(input_row)
     if strok_input != []:
         CSQ.custom_request_c(db_mater, f"""INSERT INTO nomen (Вид
@@ -506,7 +507,8 @@ def sunc_nomen_from_erp(db_mater, file_erp,dict_nomen_mes, path_dir,dict_vids_no
                 ,П6
                 ,П7
                 ,СхемаОбеспечения
-                ,Ref_Key) VALUES ({','.join('?' * len(strok_input[0]))})""", list_of_lists_c=strok_input)
+                ,Ref_Key
+                ,Вид_Ref_Key) VALUES ({','.join('?' * len(strok_input[0]))})""", list_of_lists_c=strok_input) #08.09.25
 
     for field in dict_change['change'].keys():
         strok_input = []
@@ -691,24 +693,27 @@ def obn_mat_erp_file(db_mater, *args):
     #        F.run_file_c(put_f)
     #    return True ####OLD
     ##==========
-    dict_vids_nomen = F.deploy_dict_c(CSQ.custom_request_c(db_mater,'SELECT * FROM ВидыНоменклатуры;',rez_dict=True),'name')
+    dict_vids_nomen = F.deploy_dict_c(CSQ.custom_request_c(db_mater,'SELECT * FROM ВидыНоменклатуры;',rez_dict=True),'Ref_Key')
     m = ERP.OrdersComposit()
-    for k, vid in dict_vids_nomen.items():
-        if vid['Ref_Key'] == None or vid['Ref_Key'] == "":
-            res = m.get_response(doc_name="Catalog_ВидыНоменклатуры",
-                                 wet_filtr=f"?$filter=Description eq '{k}'&$select=Ref_Key,Description")
-            if res:
-                Ref_Key = res[0]['Ref_Key']
+    refs_vids_nomen = [] # ++ 08.09.25
+    for ref_nomen_type, vid in dict_vids_nomen.items():
+        # if vid['Ref_Key'] == None or vid['Ref_Key'] == "":
+        res = m.get_response(doc_name=f"Catalog_ВидыНоменклатуры",
+                             wet_filtr=f"?$filter=Ref_Key eq guid{ref_nomen_type!r}&$select=Description")
+        if isinstance(res, list):
+            refs_vids_nomen.append(ref_nomen_type)
+            name = res[0]['Description']
+            if vid['name'] != name:
+                print('Было', name, 'Стало', vid['name'])
                 CSQ.custom_request_c(db_mater,
-                                     f"""UPDATE ВидыНоменклатуры SET (Ref_Key) = ('{Ref_Key}') WHERE name = "{k}"; """)
-            else:
-                Ref_Key = str(F.shtamp_from_date(F.now())).replace('.','-')
-                CSQ.custom_request_c(db_mater,
-                                     f"""UPDATE ВидыНоменклатуры SET (Ref_Key,comment) = ('{Ref_Key}','Не найден в 1С') WHERE name = "{k}"; """)
-                
-        
+                                     f"""UPDATE ВидыНоменклатуры SET (name) = ('{name}') WHERE Ref_Key = "{ref_nomen_type}"; """)
+        else:
+            # Ref_Key = str(F.shtamp_from_date(F.now())).replace('.','-')
+            CSQ.custom_request_c(db_mater,
+                                 f"""UPDATE ВидыНоменклатуры SET (comment) = ('Не найден в 1С') WHERE Ref_Key = "{ref_nomen_type}"; """)
+
+        # -- 08.09.25
     list_vids_nomen = list(dict_vids_nomen.keys())
-    refs_vids_nomen = [_['Ref_Key'] for _ in dict_vids_nomen.values()]
 
     res, schemas_rez = m.get_nomen_mater(list_vids_nomen,refs_vids_nomen)
     

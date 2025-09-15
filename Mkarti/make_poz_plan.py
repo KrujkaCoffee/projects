@@ -631,8 +631,8 @@ def apply_diap_dates_to_sb_in_tbl(self: mywindow, *args):
             data_pl = F.from_binary_pickle(item)
             set_kpls = set_kpls.union({str(_) for _ in data_pl.keys()})
         rez_snums = CSQ.custom_request_c(self.db_kplan, f"""SELECT plan.Пномер FROM plan INNER JOIN  status_poz ON 
-        status_poz.Пномер == plan.Статус WHERE plan.Пномер NOT IN ({CSQ.prepare_list_to_tuple(list(set_kpls))}) AND  plan.poki = {self.place.poki} AND status_poz.Имя IN ("К производству","Подготовка");""",
-                                         one_column=True, hat_c=False)
+        status_poz.Пномер == plan.Статус WHERE plan.Пномер NOT IN ({CSQ.prepare_list_to_tuple(list(set_kpls))}) AND  plan.poki = {self.place.poki} AND status_poz.Имя IN ("К производству","Подготовка","Изготовление");""",
+                                         one_column=True, hat_c=False) # по задаче 100059785
         str_pnums = '|'.join([str(_) for _ in rez_snums])  # '(?!3273|3332)
         sp_znch = {'plan.Пномер': str_pnums}
     else:

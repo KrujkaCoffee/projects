@@ -143,9 +143,9 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.btn_red_tree_load.clicked.connect(lambda: ANAL.red_tree_load(self))
         self.ui.btn_red_tree_up.clicked.connect(lambda: ANAL.red_tree_move(self, operator.sub))
         self.ui.btn_red_tree_down.clicked.connect(lambda: ANAL.red_tree_move(self, operator.add))
-        self.ui.btn_mat_apply_mat.clicked.connect(lambda: ANAL.mat_apply_mat(self))
-        self.ui.btn_mat_apply_only_mat.clicked.connect(lambda: ANAL.change_mat(self))
-        self.ui.btn_mat_apply_wout_mat.clicked.connect(lambda: ANAL.mat_apply_wout_mat(self))
+        self.ui.btn_mat_apply_mat.clicked.connect(lambda: ANAL.mat_apply_2(self, replace_weight=True, replace_material=True))
+        self.ui.btn_mat_apply_only_mat.clicked.connect(lambda: ANAL.mat_apply_2(self, replace_material=True))
+        self.ui.btn_mat_apply_wout_mat.clicked.connect(lambda: ANAL.mat_apply_2(self, replace_weight=True))
         self.ui.btn_dse_apply.clicked.connect(lambda: ANAL.apply_dse(self))
         self.ui.btn_save_red_tree.clicked.connect(lambda: ANAL.save_red_tree(self))
         self.ui.cmb_vid_napr.currentIndexChanged.connect(lambda: ANAL.check_tree_on_type_tkp(self))
@@ -497,7 +497,7 @@ class mywindow(QtWidgets.QMainWindow):
             F.open_dir_c(obr)
 
     @CQT.onerror
-    def vibor_pap(self):
+    def vibor_pap(self, *args):
         tabl = self.ui.tableWidget
         tabl.clearContents()
         tabl.clear()
@@ -678,7 +678,7 @@ class mywindow(QtWidgets.QMainWindow):
         return False
 
     @CQT.onerror
-    def sohr_file(self):
+    def sohr_file(self, *args):
         tabl = self.ui.tableWidget
         if tabl.rowCount() == 0:
             return

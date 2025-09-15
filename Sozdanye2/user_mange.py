@@ -111,7 +111,7 @@ def logout(self):
     return
 
 
-def load_users(self,DICT_EMPLOEE_FULL:dict,LIST_DOLGN_ETAP:list):
+def load_users(self,DICT_EMPLOEE_FULL:dict,LIST_DOLGN_ETAP:list, DICT_DOLGN_ETAP: dict[str, dict]):
     """Загрузить список сотрудников в листбокс"""
 
 
@@ -130,11 +130,12 @@ def load_users(self,DICT_EMPLOEE_FULL:dict,LIST_DOLGN_ETAP:list):
     self.ui.lbx_spis_sotr.addItem('')
 
     for fio, vals in DICT_EMPLOEE_FULL.items():
-        company = vals['Компания']
-        if company != CFG.Config.place.Имя:
-            continue
         dolg = vals['Должность']
         podr = vals['Подразделение']
+        is_multi_user = DICT_DOLGN_ETAP.get(dolg, {}).get('multi_auth')
+        company = vals['Компания']
+        if company != CFG.Config.place.Имя and not is_multi_user:
+            continue
         dpc = '$'.join([dolg,podr,company])
         if dpc in dict_dolgn_etap and dict_dolgn_etap[dpc]['login_sozdanie']:
             self.ui.lbx_spis_sotr.addItem(fio + ' ' + dolg)

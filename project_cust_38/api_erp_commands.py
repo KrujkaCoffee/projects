@@ -17,7 +17,7 @@ PASS_ERP = '89Luham'
 HOSTNAME_LOCAL_MES = False
 PORT_MES = 20011
 if HOSTNAME_LOCAL_MES: #"POW-ING22":
-    HOST_MES = '192.168.18.91'# AG local
+    HOST_MES = '192.168.14.71'# AG local
 else:
     HOST_MES = '192.168.50.44'# server
 

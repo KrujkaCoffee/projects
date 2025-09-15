@@ -9,7 +9,7 @@ import enum
 
 #ip = '192.168.50.208'# AG local
 ip = 'mesinfo.powerz.ru'# server domain  ip = '192.168.50.44'# server
-# ip = '192.168.18.57'# AF local
+# ip = '192.168.14.71'# AF local
 
 
 class SrvHeaders(enum.Enum):

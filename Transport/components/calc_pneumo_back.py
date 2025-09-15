@@ -748,7 +748,9 @@ def calc_new_data(input_data: dict) -> list | dict:
                     check_positive('mass_concentration', params.get('mass_concentration', 0),
                                    'Массовая концентрация') and
                     check_positive('air_velocity', params.get('air_velocity', 0), 'Скорость воздуха') and
-                    check_positive('settling_vel', params.get('settling_vel', 0), 'Скорость витания'))
+                    check_positive('settling_vel', params.get('settling_vel', 0), 'Скорость витания') and
+                    params['air_velocity'] > params['settling_vel']  # Критическая проверка!
+                    )
 
         if not check_vert_lift_loss():
             return None
@@ -758,9 +760,15 @@ def calc_new_data(input_data: dict) -> list | dict:
             return None
 
         # Плотность воздуха при 150°C
-        air_density = 1.293 * 273 / (273 + params['system_temp'])
+        air_density = calc_air_density_150C()
+        if air_density is None:
+            return None
+
+        # ФИЗИЧЕСКИ КОРРЕКТНАЯ ФОРМУЛА:
+        # ΔP_верт = L_верт * ρ_возд * μ * (w_возд / (w_возд - w_вит))
         vert_lift_loss = (params['pipe_vert_length'] * air_density * params['mass_concentration'] *
-            (1 - (settling_vel / params['air_velocity'])))
+                          (params['air_velocity'] / (params['air_velocity'] - settling_vel)))
+
         return vert_lift_loss
 
     def calc_mat_accel_loss():

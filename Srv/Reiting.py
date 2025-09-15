@@ -1,4 +1,20 @@
-﻿import pprint
+﻿import sys, io, logging, os
+import builtins, logging
+
+logging.basicConfig(filename=r'C:\srv_mes\srv_mes\db_logs\Reiting.log', level=logging.INFO, force=True, encoding='utf-8')
+_orig_print = builtins.print
+
+def logging_print(*args, **kwargs):
+    sep = kwargs.get('sep', ' ')
+    end = kwargs.get('end', '\n')
+    s = sep.join(map(str, args)) + ('' if end == '' else end)
+    logging.getLogger('PRINT').info(s.rstrip('\n'))
+    _orig_print(*args, **kwargs)
+
+builtins.print = logging_print
+
+import datetime
+import pprint
 
 if __name__ != '__main__':
     exit()
@@ -32,7 +48,64 @@ import user_calendar
 # tmp_list = [_ for _ in prices if _['Номенклатура_Key'] == 'a7aeaba7-6da4-11ea-8432-00d861c603dc']
 
 
-print()
+
+
+def load_ip_hostnames() -> list[dict]:
+    import ipaddress
+    import subprocess
+    import socket
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    def ping_and_resolve(ip: str):
+        """Проверяет, жив ли IP, и пытается получить hostname"""
+        try:
+            output = subprocess.run(
+                ["ping", "-n", "1", "-w", "50", ip],  # Windows: 1 пакет, таймаут 50 мс
+                capture_output=True, text=True
+            )
+            if "TTL=" not in output.stdout:
+                return None
+            try:
+                hostname = socket.gethostbyaddr(ip)[0]
+            except socket.herror:
+                hostname = None
+            return (ip, hostname)
+        except Exception:
+            return None
+
+    def scan_subnet(subnet: str, max_threads=100):
+        """Сканирует один /24 диапазон"""
+        net = ipaddress.ip_network(subnet, strict=False)
+        results = []
+        with ThreadPoolExecutor(max_threads) as executor:
+            futures = {executor.submit(ping_and_resolve, str(ip)): ip for ip in net.hosts()}
+            for future in as_completed(futures):
+                result = future.result()
+                if result:
+                    results.append(result)
+        return results
+
+
+    # список нужных диапазонов
+    subnets = [
+        "192.168.14.0/24",
+        "192.168.18.0/24",
+        "192.168.19.0/24",
+        "192.168.20.0/24",
+        "192.168.21.0/24",
+    ]
+
+    all_devices = []
+    with ThreadPoolExecutor(len(subnets)) as executor:  # параллельно сканируем все подсети
+        futures = {executor.submit(scan_subnet, subnet): subnet for subnet in subnets}
+        for future in as_completed(futures):
+            all_devices.extend(future.result())
+    rez = []
+    # сортируем по IP
+    for ip, host in sorted(all_devices, key=lambda x: list(map(int, x[0].split(".")))):
+        print(f"{ip:15} -> {host}")
+        rez.append({'ip':ip,'host':host})
+    return rez
+
 
 
 def export_data_for_excel_plan():
@@ -149,6 +222,7 @@ def update_vid_rab_from_1c():
     list_mes_vid_rab = CSQ.custom_request_c(db_users, f"SELECT * FROM vid_rab_po_dolg WHERE ref_Key_erp IS NOT NULL",
                                             rez_dict=True)
     dict_mes_vid_rab = F.deploy_dict_c(list_mes_vid_rab, 'ref_Key_erp')
+    dict_mes_vid_rab_descr = F.deploy_dict_c(list_mes_vid_rab, 'ERP_name')
     for item in list_vid_rab:
 
         if item['Ref_Key'] not in dict_mes_vid_rab:
@@ -164,6 +238,10 @@ def update_vid_rab_from_1c():
             if dict_mes_vid_rab[item['Ref_Key']]['Родитель'] != dict_catalog[item['Parent_Key']]['Code']:
                 CSQ.custom_request_c(db_users, f'UPDATE vid_rab_po_dolg SET '
                                                f' Родитель = "{dict_catalog[item["Parent_Key"]]["Code"]}" WHERE ref_Key_erp = "{item["Ref_Key"]}";')
+            if dict_mes_vid_rab_descr[item['Description']]['ref_Key_erp'] != item['Ref_Key']:
+                ERP_name =item['Description']
+                CSQ.custom_request_c(db_users, f'UPDATE vid_rab_po_dolg SET '
+                                               f' ref_Key_erp = "{item["Ref_Key"]}" WHERE ERP_name = "{ERP_name}" and Родитель = "{dict_catalog[item["Parent_Key"]]["Code"]}";')
             if dict_mes_vid_rab[item['Ref_Key']]['DeletionMark'] != item['DeletionMark']:
                 CSQ.custom_request_c(db_users, f'UPDATE vid_rab_po_dolg SET '
                                                f' DeletionMark = "{item["DeletionMark"]}" WHERE ref_Key_erp = "{item["Ref_Key"]}";')
@@ -506,7 +584,7 @@ def calc_execute_month_plan():
     F.save_file_pickle(dir_z + F.sep() + 'tbl_color_isp_month_' + month_str.replace('-', '_') + f'.pickle', tbl_color)
     wb_name = 'isp_month_' + month_str.replace('-', '_')
     ws_name = '1'
-    file_path = CEX.save_table_colour(tbl_qt, dir_z, wb_name, ws_name)
+    file_path = CEX.save_table_colour_openpyxl(tbl_qt, dir_z, wb_name, ws_name) #01.09.25
     print(f'======= СОХРАНЕНИЕ МЕСЯЧНОГО ОТЧЕТА УСПЕШНО ======')
 
 
@@ -731,8 +809,14 @@ def check_and_calc_plan_kpl():
                         obj_msg = CMS.Msg_b24(db_kplan, db_naryad, db_resxml, db_users, num_kpl_poz)
                         obj_msg.send_msg('state_poz_for_production')
 
-                CSQ.custom_request_c(db_kplan,
+                upd = True
+                if item['s_num'] == 1224: #просьба Козырькова для теста в келаст от 05.09.2025
+                    if F.now('') < F.strtodate('2025-09-12 14:00:20'):
+                        upd = False
+                if upd:
+                    CSQ.custom_request_c(db_kplan,
                                      f"""UPDATE знпр SET (Статус_поз_ЕРП) = ("{state}") WHERE s_num = {item['s_num']};""")
+
         msg1 = f'В ЗП {item["№ERP"]} от {item["Год"]}г. изменились  данные\n'
         msg2 = f'\nСпециалисту ПДО необходимо провести ревизию'
         id_chat = 'chat48346'
@@ -808,7 +892,8 @@ CALC_user_calendar = True
 metka = ''
 
 counter_timer_middle = 3600 * 24
-count_reset_middle = 3600 * 24  # каждые 24 часа обновление
+# count_reset_middle = 3600 * 24  # каждые 24 часа обновление
+count_reset_middle = 3600 * 0.5  # каждые 24 часа обновление
 
 counter_timer = 3600 * 0.5
 count_reset = 3600 * 0.5  # каждые 0.5 часа обновление
@@ -825,7 +910,8 @@ while True:
     counter_timer_middle += vrem
     print(f'{F.now()} counter_mater: {counter_timer}/{count_reset}')
     print(f'{F.now()} counter_mater: {counter_timer_middle}/{count_reset_middle}')
-    if counter_timer_middle >= count_reset_middle:
+    current_hour = datetime.datetime.now().hour
+    if counter_timer_middle >= count_reset_middle and current_hour >= 0 and current_hour <= 5: #01.09.25
         counter_timer_middle = 0
         ## обновление dolgn_etap
         try:

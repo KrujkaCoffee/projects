@@ -206,7 +206,7 @@ class mywindow(QtWidgets.QMainWindow):
         dict_tip_dorab = CSQ.custom_request_c(self.db_naryd, """SELECT * FROM тип_доработок""", rez_dict=True)
         self.DICT_TIP_DORAB = F.deploy_dict_c(dict_tip_dorab, 'Пномер')
         self.PRICES_BY_VID_RABOT = CMS.PRICES_BY_VID_RABOT(self.bd_users)
-        self.LIST_DOLGN_ETAP = CSQ.custom_request_c(self.db_naryd, f"""SELECT * FROM dolgn_etap WHERE Производство == '{self.place.Имя}';""", rez_dict=True)
+        self.LIST_DOLGN_ETAP = CSQ.custom_request_c(self.db_naryd, f"""SELECT * FROM dolgn_etap WHERE Производство == '{self.place.Имя}' or multi_auth = 1;""", rez_dict=True) #09.09.25
         self.DICT_DOLGN_ETAP = F.deploy_dict_c(
             self.LIST_DOLGN_ETAP, 'Должность')
         self.DICT_NOMEN = F.deploy_dict_c(
@@ -236,7 +236,7 @@ class mywindow(QtWidgets.QMainWindow):
         CMS.dict_emploee_full(self.bd_users, self=self)
 
 
-        userm.load_users(self, self.DICT_EMPLOEE_FULL, self.LIST_DOLGN_ETAP)
+        userm.load_users(self, self.DICT_EMPLOEE_FULL, self.LIST_DOLGN_ETAP, self.DICT_DOLGN_ETAP)
 
 
         self.ui.fr_vibor_assoc_prost.setHidden(True)
@@ -683,7 +683,7 @@ class mywindow(QtWidgets.QMainWindow):
             for poz in data_pl.keys():
                 if poz in dict_poz:
                     self.DICT_ACCESS_PROJ_MONTH[item['Дата']].add(dict_poz[poz])
-
+        #[m for m, h in self.DICT_ACCESS_PROJ_MONTH.items() if 'КЭ00-000487' in h]
         dict_access_proj_month = CSQ.custom_request_c(self.db_kplan, f"""SELECT * FROM list_py_month""",
                                                       rez_dict=True)
         for item in dict_access_proj_month:
@@ -1251,13 +1251,17 @@ class mywindow(QtWidgets.QMainWindow):
     def on_check_tbl_click_cr_nar(self, model_index: QtCore.QModelIndex, *args):
         model = model_index.model()
         tbl = model.parent()
-        field = tbl.property('field')
-        nk_field = CQT.num_col_by_name_c(tbl, field)
-        if field is None:
+        nk_field = tbl.currentColumn() #09.09.25
+        filter_field = tbl.property('filter_field')
+        if nk_field is None or filter_field is None:
             return
-
+        field = tbl.horizontalHeaderItem(nk_field).text()
         main_tbl: QtWidgets.QTableWidget = self.ui.tbl_dse
         fltr_dse = self.ui.tbl_filtr_dse
+        if field.startswith('Кол-во'): #09.09.25
+            return
+        if field == 'Операция':
+            filter_field = field
         if field == 'Строка':
             row_nk = CQT.num_col_by_name_c(tbl, field)
             row = tbl.item(tbl.currentRow(), row_nk).text()
@@ -1273,7 +1277,7 @@ class mywindow(QtWidgets.QMainWindow):
         prev_fltrs = CQT.get_dict_line_form_tbl(fltr_dse, 0)
         curr_fltr_values = {key: '' for key, val in prev_fltrs.items()}
         value = tbl.item(tbl.currentRow(), nk_field).text()
-        curr_fltr_values[field] = '|'.join(value.split(';'))
+        curr_fltr_values[filter_field] = '|'.join(value.split(';')) #09.09.25
         CQT.fill_filtr_c(self, fltr_dse, main_tbl, curr_fltr_values)
         CQT.apply_filtr_c(self, fltr_dse, main_tbl)
         tbl.setProperty('selected_row', tbl.currentRow())
@@ -1283,19 +1287,25 @@ class mywindow(QtWidgets.QMainWindow):
         sorted_time_data = list(sorted(data_time, key=lambda x: x['Сумма минут'], reverse=True))
         bad_state = '🔴'
         success_state = '🟢'
-        sourted_prof = [{'Кол-во вхождений': count, 'Профессия': ';'.join(prof)}
-                        for prof, count in sorted(data_prof.items())
-                        if count != 0]
+        sourted_prof = [{ #09.09.25
+            'Кол-во\nвхождений': credentials['Количество'],
+            'Операция': credentials['Операция'],
+            'Допустимые\nпрофессии': ';'.join(prof),
+            'Лишние\nпрофессии': ';'.join(credentials['Невошедшие'])}
+            for prof, credentials in sorted(data_prof.items())]
         counter_rc = collections.Counter(data_rc)
         sourted_rc = [{'Кол-во вхождений': count, 'РЦ': rc} for rc, count in counter_rc.most_common()]
         table_credentials = [
             {'field': 'РЦ', 'table': self.ui.tbl_dse_check_podr, 'data': sourted_rc,
              'label': self.ui.lbl_dse_check_podr,
-             'postfix': 'РЦ', 'out_validate': False},
-            {'field': 'Профессия', 'table': self.ui.tbl_dse_check_prof, 'data': sourted_prof,
-             'label': self.ui.lbl_dse_check_prof, 'postfix': 'Допустимые профессии', 'out_validate': False},
+             'filter_field': 'РЦ', #09.09.25
+             'postfix': 'РЦ', 'out_validate': False, 'validate_field': None},
+            {'field': 'Допустимые\nпрофессии', 'table': self.ui.tbl_dse_check_prof, 'data': sourted_prof,
+             'filter_field': 'Профессия',
+             'label': self.ui.lbl_dse_check_prof, 'postfix': 'Допустимые профессии', 'out_validate': False, 'validate_field': 'Лишние\nпрофессии'},
             {'field': 'Строка', 'table': self.ui.tbl_dse_check_time, 'data': sorted_time_data,
-             'label': self.ui.lbl_dse_check_time, 'postfix': 'Выделенные строки', 'out_validate': True},
+             'filter_field': 'Строка',
+             'label': self.ui.lbl_dse_check_time, 'postfix': 'Выделенные строки', 'out_validate': True, 'validate_field': None},
         ]
         bad_rgb = 255, 148, 148
         success_rgb = 204, 255, 204
@@ -1304,17 +1314,19 @@ class mywindow(QtWidgets.QMainWindow):
         for credential in table_credentials:
             match credential:
                 case {"field": str(field), "table": tbl, 'data': data, 'label': label, 'postfix': postfix,
-                      'out_validate': out_validate}:  # type: tbl: QtWidgets.QTableWidget
+                      'out_validate': out_validate, 'validate_field': validate_field,
+                      'filter_field': filter_field}:  # type: tbl: QtWidgets.QTableWidget
                     selected_row = tbl.property('selected_row') or 0
-                    mutable = tbl.property('mutable')
+                    mutable = tbl.property('mutable') #09.09.25
+                    tbl.setProperty('filter_field', filter_field)
                     bad_rows = set()
                     if mutable is None:
                         tbl.doubleClicked.connect(self.on_check_tbl_click_cr_nar)
                         tbl.setProperty('mutable', True)
                         tbl.setProperty('field', field)
                     if data:
-                        CQT.fill_wtabl(data, tbl, hide_head_rows=True, auto_type=False, ogr_maxshir_kol=106)
-                        nk_field = CQT.num_col_by_name_c(tbl, field)
+                        CQT.fill_wtabl(data, tbl, hide_head_rows=True, auto_type=False, ogr_maxshir_kol=170, height_row=45)
+                        nk_field = CQT.num_col_by_name_c(tbl, field) #09.09.25
                         tbl.setFont(base_font)
                         tbl.horizontalHeader().setFont(base_font)
                         if selected_row >= tbl.rowCount():
@@ -1322,12 +1334,21 @@ class mywindow(QtWidgets.QMainWindow):
                         main_val = set(tbl.item(selected_row, nk_field).text().split(';'))
                         for row in range(tbl.rowCount()):
                             rgb = (255, 255, 255) if out_validate else bad_rgb
-                            value = tbl.item(row, nk_field).text()
-                            split_val = set(value.split(';'))
-                            if main_val.intersection(split_val):
+                            if validate_field:
+                                column_validate = CQT.num_col_by_name_c(tbl, validate_field)
+                                if column_validate is None:
+                                    continue#09.09.25
+                                txt = tbl.item(row, column_validate).text()
                                 rgb = success_rgb
+                                if txt:
+                                    rgb = bad_rgb
                             else:
-                                bad_rows.add(row)
+                                value = tbl.item(row, nk_field).text()
+                                split_val = set(value.split(';'))#09.09.25
+                                if main_val.intersection(split_val):
+                                    rgb = success_rgb
+                                else:
+                                    bad_rows.add(row)
                             for col in range(tbl.columnCount()):
                                 tbl.item(row, col).setBackground(QtGui.QBrush(QtGui.QColor(*rgb)))
                         tbl.setCurrentCell(int(selected_row), 0)
@@ -1497,10 +1518,13 @@ class mywindow(QtWidgets.QMainWindow):
         dse_id = '|'.join(self.spis_id)
         zadanie_fix = self.ui.plainTextEdit_zadanie.toPlainText().replace("\n", "LF")
         prim_fix = self.ui.plainTextEdit_primechanie.toPlainText().replace("\n", "LF")
+        code = CFG.Config.place.КодыНарядов.Плановая #04.09.25
+        if self.ui.checkBox_vneplan_rab.isChecked():
+            code = CFG.Config.place.КодыНарядов.НеподтвержденныйВнеплан
         stroka = [date_nar,
                   CMS.name_by_empl_c(self.glob_login),
                   self.glob_nom_mk,
-                  self.ui.checkBox_vneplan_rab.isChecked(),
+                  code,
                   zadanie_fix,
                   kompl_fio,
                   kompl_data,
@@ -1629,10 +1653,13 @@ class mywindow(QtWidgets.QMainWindow):
                     return
             fio_for_otk = self.ui.lbl_nnar_for_control.text()
             users_for_otk = []
+            is_all_pass = True
             for i in range(self.ui.tbl_list_empl_for_kontr.rowCount()):
+                if not F.boolm(self.ui.tbl_list_empl_for_kontr.item(i, 3).text()):
+                    is_all_pass = False
                 if self.ui.tbl_list_empl_for_kontr.item(i, 0).text() == '1':
                     users_for_otk.append(self.ui.tbl_list_empl_for_kontr.item(i, 1).text())
-            if len(users_for_otk) == 0:
+            if len(users_for_otk) == 0 and not is_all_pass:
                 CQT.blink_obj_c(self, 2, self.ui.tbl_list_empl_for_kontr, f'Не выбраны исполнители под контроль ОТК')
                 return
             if len(users_for_otk) > 2:
@@ -1958,9 +1985,9 @@ class mywindow(QtWidgets.QMainWindow):
                             break
                         for oper in list_predv_opers:
                             if oper['prev_oper_kod'] in self.DICT_OPER:
-                                if self.DICT_OPER[oper['prev_oper_kod']]['skip_check_otk'] == 0:
-                                    list_oper_for_check.append(
-                                        {'dse_id': oper['dse_id'], 'prev_oper_nom': oper['prev_oper_nom'], })
+                                #if self.DICT_OPER[oper['prev_oper_kod']]['skip_check_otk'] == 0: # ошибка логики от 08.09.2025 Козырьков не дает распределить ОТК т.к. пустой пул.(путаницы не проверено и не нужно проверять)
+                                list_oper_for_check.append(
+                                    {'dse_id': oper['dse_id'], 'prev_oper_nom': oper['prev_oper_nom'], })
                             dse_id = oper['dse_id']
                             oper_nom = oper['prev_oper_nom']
                             list_id.append(dse_id)
@@ -1987,7 +2014,7 @@ class mywindow(QtWidgets.QMainWindow):
             return list_base_oper_nar
 
         ret_set = set()
-
+        list_errs = []
         resp = \
             CSQ.custom_request_c(self.db_naryd, f"""SELECT * FROM naryad WHERE Пномер = {int(nom_nar)};""",
                                  rez_dict=True)[
@@ -1997,6 +2024,7 @@ class mywindow(QtWidgets.QMainWindow):
                                         rez_dict=True)
 
         list_dse_id = resp['ДСЕ_ID'].split('|')
+        list_dse = resp['ДСЕ'].split('|')
         list_opers_id = resp['Операции'].split('|')
         res = CMS.load_res(resp['Номер_мк'], db_resxml=self.db_resxml)
         for i in range(len(list_dse_id)):
@@ -2004,9 +2032,16 @@ class mywindow(QtWidgets.QMainWindow):
             oper_nom, name = list_opers_id[i].split('$')
             if name in self.DICT_OPER_NAME and self.DICT_OPER_NAME[name]['kontrol_opers']:
                 nars = get_last_base_oper_nar(self, int(dse_id), oper_nom, res, list_nar)
-                if nars != None:
+                if nars:
                     for nar in nars:
                         ret_set.add(nar)
+                else:
+                    list_errs.append({
+                        'ДСЕ':list_dse[i],
+                        'Операция':list_opers_id[i].replace('$',' '),
+                                      'Ошибка': f'Наряды не созданы'})
+
+
         return list(ret_set)
 
     @CQT.onerror
@@ -2120,11 +2155,17 @@ class mywindow(QtWidgets.QMainWindow):
             for nom_nar_empl in list_nar:
                 empl_nar = CMS.Naryads(nom_nar_empl, self.db_naryd, self.DICT_DOLGN_ETAP, self.bd_users,
                                        self.DICT_EMPLOEE_FULL_WITH_DEL)
+                fl_not_chek = True
+                for oper in empl_nar.params:
+                    if oper['Операции_имя'] not in self.DICT_OPER_NAME:
+                        fl_not_chek = False
+                    if self.DICT_OPER_NAME[oper['Операции_имя']]['skip_check_otk'] == 0:
+                        fl_not_chek = False
                 if empl_nar.ФИО != '':
-                    set_users.add((empl_nar.ФИО, empl_nar.Заводской_комплект))
+                    set_users.add((empl_nar.ФИО, empl_nar.Заводской_комплект, fl_not_chek))
                 if empl_nar.ФИО2 != '':
-                    set_users.add((empl_nar.ФИО2, empl_nar.Заводской_комплект))
-            list_empl = [{'Чек': 0, 'ФИО': _[0], 'Комплект': _[1]} for _ in set_users]
+                    set_users.add((empl_nar.ФИО2, empl_nar.Заводской_комплект, fl_not_chek))
+            list_empl = [{'Чек': 0, 'ФИО': _[0], 'Комплект': _[1], 'Не проверять':_[2]} for _ in set_users]
             CQT.clear_tbl(self.ui.tbl_list_empl_for_kontr)
             CQT.fill_wtabl(list_empl, self.ui.tbl_list_empl_for_kontr, {}, 400,
                            list_column_widths=CMS.load_column_widths(self, self.ui.tbl_list_empl_for_kontr))
@@ -2397,7 +2438,7 @@ class mywindow(QtWidgets.QMainWindow):
                 list_msgs.append(msg)
                 nar.ФИО2 = ''
                 nar.Фвремя2 = ''
-        if fl:
+        if fl and len(list_msgs) > 0: #02.09.25
             if nar.ФИО == '' and nar.ФИО2 == '':
                 nar.Распред_ФИО = ''
                 nar.Распред_дата = ""
@@ -2919,7 +2960,9 @@ LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП
         tbl_rasp = self.ui.tbl_vibor_nar_rasp
         self.ui.fr_additions_raspr.setHidden(True)
         CQT.clear_tbl(tbl_rasp)
-
+        check_erp_zp_state = f''
+        if self.place.poki == 0:
+            check_erp_zp_state = f'AND знпр.Статус_поз_ЕРП != "Закрыт"'
         tbl = self.ui.tbl_projs_raspred
         custom_request_c = f'''
                 SELECT DISTINCT
@@ -2941,7 +2984,7 @@ LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП
                     LEFT JOIN пл_оуп ON plan.Пномер = пл_оуп.НомПл  
                      LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП 
                       LEFT JOIN napravl_deyat ON napravl_deyat.Пномер == plan.Направление_деятельности 
-                       WHERE plan.poki = {self.place.poki} AND знпр.Статус_поз_ЕРП != "Закрыт" and mk.Статус == "Открыта" and naryad.Компл_ФИО !="" 
+                       WHERE plan.poki = {self.place.poki} {check_erp_zp_state} and mk.Статус == "Открыта" and naryad.Компл_ФИО !="" 
                                                  and naryad.Компл_Дата !="" and naryad.ФИО == "" and naryad.ФИО2 == "" 
                     GROUP BY             
                      знпр.s_num,
@@ -4289,19 +4332,20 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
     @CQT.onerror
     def raschet_naruada_time_tmp(self, check='', i='', j='', *, clear_prof_state: bool = True):
         tbl = self.ui.tbl_dse
-        state_prof: QtWidgets.QTableWidget = self.ui.tbl_dse_check_prof
-
         nk_check = CQT.num_col_by_name_c(tbl, 'Чек')
-        col_prof_tbl_check = CQT.num_col_by_name_c(self.ui.tbl_dse_check_prof, 'Профессия')
-        set_opers = {item['Операция'] for item in CQT.list_from_wtabl_c(tbl, rez_dict=True)}
-        # counter_prof = {tuple(dopust_prof): 0 for oper, dopust_prof in self.DICT_ETAPI.items() if oper in set_opers}
         counter_prof = {}
-        for item in CQT.list_from_wtabl_c(tbl, rez_dict=True):
-            cur_oper = item['Операция']
-            cur_prof = item['Профессия']
-            dopust_prof = set(self.DICT_ETAPI[cur_oper])
-            dopust_prof.add(cur_prof)
-            counter_prof[tuple(dopust_prof)] = 0
+        operations = CQT.list_from_wtabl_c(tbl, rez_dict=True) #09.09.25
+        for item in operations:
+            if item['Чек'] == '1':
+                cur_oper = item['Операция']
+                cur_prof = item['Профессия']
+                dopust_prof = set(self.DICT_ETAPI[cur_oper])
+                dopust_prof.add(cur_prof)
+                counter_prof[tuple(dopust_prof)] = {
+                    'Операция': cur_oper,
+                    'Количество': 0,
+                    'Невошедшие': set()
+                }
 
         if nk_check == None:
             return
@@ -4311,12 +4355,6 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
         tsht_potenc = 0
         work_count_potenc = 0
         kolvo_check_dse = 0
-
-        # selected_row = state_prof.property('selected_row')
-
-        # if selected_row is not None and col_prof_tbl_check is not None:
-        #     self.glob_etap = set(self.ui.tbl_dse_check_prof.item(selected_row, col_prof_tbl_check).text().split(';'))
-
         if clear_prof_state:
             self.glob_etap = set()
             self.set_rc_check_dse = set()
@@ -4352,18 +4390,16 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
 
                 self.set_rc_check_dse.add(row['РЦ'][:5])
                 kolvo_check_dse += int(row['Количество,шт.'])
-                if not self.ui.chkb_autcourse.isChecked():
-                    if self.DICT_ETAPI != dict():
-                        # set_dopust_prof = set()
-                        # if row['Операция'] in self.DICT_ETAPI:
-                        #     set_dopust_prof = copy.deepcopy(set(self.DICT_ETAPI[row['Операция']]))
-                        # set_dopust_prof.add(row['Профессия'])
-                        for lst_prof in counter_prof.keys():
-                            if row['Профессия'] in lst_prof:
-                                counter_prof[lst_prof] += 1
                 if not F.valm(row['В работу,шт.']) > F.valm(row['Количество,шт.']) - \
                         F.valm(row['Освоено,шт.']):
                     time += time_tmp
+        for row in operations:
+            if row['Чек']: #09.09.25
+                for set_prof in counter_prof:
+                    if row['Профессия'] in set_prof:
+                        counter_prof[set_prof]['Количество'] += 1
+                    else:
+                        counter_prof[set_prof]['Невошедшие'].add(row['Профессия'])
         if tbl.currentRow() != -1:
             if kolvo_check_dse == 0:
                 if self.ui.tabWidget_2.tabText(self.ui.tabWidget_2.currentIndex()) == 'Наряд':

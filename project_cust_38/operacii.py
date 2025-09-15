@@ -1824,8 +1824,8 @@ def vremya_tsht(ima_operacii, arr_tmp):
                 vrema = drobestrui(ima_operacii, arr_tmp)
             # if ima_operacii == 'Слесарная(правка в плоскости)':
             #     vrema = sles_prav(ima_operacii, arr_tmp)
-            if ima_operacii == 'Сверлильная':
-                vrema = sverlil(ima_operacii, arr_tmp)
+            # if ima_operacii == 'Сверлильная': # 15.09.25 Переход на excel
+            #     vrema = sverlil(ima_operacii, arr_tmp)
             if ima_operacii == 'Слесарная(сверление)':
                 vrema = sles_sverl(ima_operacii, arr_tmp)
             if ima_operacii == 'Штамповочная(перфорация)':

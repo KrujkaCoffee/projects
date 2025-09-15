@@ -1,7 +1,6 @@
 import formul_xl_srv as Srv
 import socket
 
-
 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 s.connect(("8.8.8.8", 80))
 HOST = s.getsockname()[0]

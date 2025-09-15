@@ -1,4 +1,6 @@
+import dataclasses
 import os
+import typing
 from urllib.parse import urlparse, parse_qs, quote, unquote
 
 from requests import Session, Response, get
@@ -104,10 +106,50 @@ class TFlexHttpClient(HTTPClient):
     GET_BINARY_CONTENT_BY_OBJECT_ID = '/api/files/objectid'
 
     # Process TKP ENDPOINTS
-    GET_ALL_PROCESS_TKP_FROM_FITTING_FOLDER = '/api/process_tkp/armatura'
+    _GET_ALL_PROCESS_TKP_FROM_FITTING_FOLDER = '/api/process_tkp/armatura'
+    _GET_ALL_PROCESS_TKP = '/api/process_tkp/all'
+    _GET_ALL_PROCESS_TKP_FOLDERS = '/api/process_tkp/tkp-folders/all'
+    _GET_ALL_PROCESS_TKP_SCHEMAS = '/api/process_tkp/stage/all'
 
     def make_url(self, endpoint: str):
         return f'{self.BASE_URL}{endpoint}'
+
+
+class FolderTkp(typing.NamedTuple):
+    id: int                             #[Папка процесса ТКП2] id
+    uuid: str                           #[Папка процесса ТКП2] uuid
+    name: str                           #[Папка процесса ТКП2] Наименование
+
+class SchemaTkp(typing.NamedTuple):
+    id: int                             #[Схема] ID
+    uuid: str                           #[Схема] uuid
+    name: str                           #[Схема] Наименование
+
+class ProcessTkp(typing.NamedTuple):
+    iD_card: int | None                 #[Карточка проекта] Id
+    шифрИзделия_card: str | None        #[Карточка проекта] Шифр изделия
+    номерПроекта_card: str | None       #[Карточка проекта] Номер проекта
+    номерПозиции_card: str | None       #[Карточка проекта] Номер позиции
+    наименование_card: str | None       #[Карточка проекта] Наименование
+    датаСоздания_card: str | None       #[Карточка проекта] Дата создания
+
+    названиеВарианта_card: str | None   #[Карточка проекта] Название варианта
+    ссылкаДокс_card: str | None         #[Карточка проекта] Ссылка
+    iD_proc: int                        #[Процесс ТКП2] Id
+    ответственный_proc: int             #[Процесс ТКП2] Ответственный
+    комментарий_proc: int               #[Процесс ТКП2] Комментарий
+    наименование_proc: int              #[Процесс ТКП2] Наименование
+    наименование_папки_proc: int        #[Процесс ТКП2] Наименование
+    этап_proc: int                      #[Процесс ТКП2] Этап
+    папка_proc: str                     #[Процесс ТКП2] Этап
+    схема_proc: str                     #[Процесс ТКП2] Этап
+    исполнитель_proc: int               #[Процесс ТКП2] Исполнитель
+    датаЗапуска_proc: int               #[Процесс ТКП2] Дата запуска процесса
+    статус_proc: int                    #[Процесс ТКП2] Статус процесса
+    желаемаяДата_proc: int              #[Процесс ТКП2] Желаемая дата
+    кодРС_proc: int                     #[Процесс ТКП2] КОд ресурсной
+    ссылкаДокс_proc: int                #[Процесс ТКП2] Ссылка
+
 
 class TFlexMaterialFinderClient(TFlexHttpClient):
     """
@@ -190,10 +232,87 @@ class TFlexTkpProcessClient(TFlexHttpClient):
         code, data = client.get_process_tkp_from_fittings_folder()
     """
     def get_process_tkp_from_fittings_folder(self) -> tuple[int, list | Response]:
-        url = self.make_url(self.GET_ALL_PROCESS_TKP_FROM_FITTING_FOLDER)
+        url = self.make_url(self._GET_ALL_PROCESS_TKP_FROM_FITTING_FOLDER)
         response = self.session.get(url)
         if response.ok:
             return response.status_code, response.json()
+        return response.status_code, response
+
+    def get_tkp_folders(self) -> tuple[int, list[FolderTkp] | Response]:
+        """
+        Возвращает список папок процессов
+
+        Пример ответа:
+        [
+            FolderTkp(id=1, uuid='ece411b6-0d8d-41cb-9245-d11945b9daec', name='Компенсатор тканевый'),
+            FolderTkp(id=5, uuid='8bcfbed5-eeea-4654-9e8a-ec447a889ecf', name='БСИ'),
+            FolderTkp(id=48, uuid='1b0fa0e6-ac0b-4474-9ba3-d00ddc719b6c', name='Арматура литая'),
+            FolderTkp(id=794, uuid='4a2f95f0-bf36-4738-b55c-cfcd47c8d7db', name='Фильтр рукавный'),
+            FolderTkp(id=795, uuid='ff7bc7ec-280e-4117-882f-31c701471bac', name='Рукав фильтровальный'),
+            FolderTkp(id=2, uuid='ed83f528-1f48-43c2-82d6-f5a33b299661', name='Шумоглушитель'),
+            FolderTkp(id=4, uuid='b311643c-66b6-4c23-8e7f-d65756266028', name='Аппарат обдувки'),
+            FolderTkp(id=7, uuid='aaa94090-996d-4d9b-91c0-b4e917dfffb9', name='Система золоудаления')
+        ]
+        """
+        url = self.make_url(self._GET_ALL_PROCESS_TKP_FOLDERS)
+        response = self.session.get(url)
+        if response.ok:
+            return response.status_code, [FolderTkp(**item) for item in response.json()]
+        return response.status_code, response
+
+    def get_schemas_by_tkp_folder(self, tkp_folder_uuid: str) -> tuple[int, list[SchemaTkp] | Response]:
+        """
+        Возвращает схемы по uuid папки процессов ткп
+
+        Пример запроса:
+            folder_uuid = 'e5e9df01-4344-46dd-9446-1cc68bfe7f83'                        # uuid папки процесса ткп
+            code, schemas_from_folder = client.get_schemas_by_tkp_folder(folder_uuid)
+
+        Пример ответа:
+        [
+            SchemaTkp(id=3, uuid='d40cc903-e82e-4abc-8dd3-9d927fd49bc5', name='АО'),
+            SchemaTkp(id=53, uuid='2d8ccd32-fbaa-491c-a273-af80e51a5eb4', name='АО. Комплекс')
+        ]
+        """
+        url = self.make_url(self._GET_ALL_PROCESS_TKP_SCHEMAS)
+        response = self.session.get(url, params={'folderGuid': tkp_folder_uuid})
+        if response.ok:
+            return response.status_code, [SchemaTkp(**item) for item in response.json()]
+        return response.status_code, response
+
+    def get_process_tkp(
+            self,
+            folder_uuid_lst: list[str] = (),
+            schema_uuid_lst: list[str] = (),
+    ) -> tuple[int, list[ProcessTkp] | Response]:
+        """
+        Возвращает элементы из справочника "процессы ТКП 2"
+
+        Если без параметров, то вернет все существующие процессы
+
+        Принимает:
+        folder_uuid_lst: str    Список уникальных идентификаторов папок процессов
+        schema_uuid_lst: str    Список уникальных идентификаторов схем процессов
+
+        Примеры:
+            data = get_process_tkp(folder_uuid_lst=['1b0fa0e6-ac0b-4474-9ba3-d00ddc719b6c'])
+            Получить процессы из папки 'Арматура литая'
+                где: 1b0fa0e6-ac0b-4474-9ba3-d00ddc719b6c - это uuid полученный из метода get_tkp_folders()
+
+        2.
+            Получить процессы из папки 'Система золоудаления' и входящей в неё схемы "СЗУ. Комплекс"
+            with TFlexTkpProcessClient() as client:
+                folder_reference = 'aaa94090-996d-4d9b-91c0-b4e917dfffb9'   # uuid папки полученный из метода get_tkp_folders()
+                schema_reference = 'e5e9df01-4344-46dd-9446-1cc68bfe7f83'   # uuid схемы полученный из метода get_schemas_by_tkp_folder('aaa94090-996d-4d9b-91c0-b4e917dfffb9')
+                data = client.get_process_tkp(
+                    folder_uuid_lst=[folder_reference],
+                    schema_uuid_lst=[schema_reference]
+                )
+        """
+        url = self.make_url(self._GET_ALL_PROCESS_TKP)
+        response = self.session.post(url, json={'folders': list(folder_uuid_lst), 'schemas': list(schema_uuid_lst)})
+        if response.ok:
+            return response.status_code, [ProcessTkp(**item) for item in response.json()]
         return response.status_code, response
 
 #================== DOCS fncs==============================
@@ -209,3 +328,25 @@ def get_orders_tatkuz():#TEST
         return response.status_code, JS.loads(F.convert_binary_to_data(response.content))
     except:
         return 0, None
+
+def test_request_tkp_process():
+    import random
+    from pprint import pprint
+
+    with TFlexTkpProcessClient() as client:
+        code, folders = client.get_tkp_folders()        # Этап 1. получаем все папки процессов
+        random_folder = random.choice(folders)
+        pprint(f'Выбрана папка: {random_folder}')
+
+        code, schemas_from_folder = client.get_schemas_by_tkp_folder(random_folder.uuid) # Этап 2. Выбираем схему по папке
+
+        random_schema = random.choice(schemas_from_folder)
+        pprint(f'Выбрана схема: {random_folder}')
+
+        code, data_by_schema = client.get_process_tkp( # Этап 3. Выбираем процессы по схеме
+            schema_uuid_lst=[random_schema.uuid]
+        )
+        pprint(f'Результат: {data_by_schema[:1]}')
+
+if __name__ == '__main__':
+    test_request_tkp_process()

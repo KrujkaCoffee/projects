@@ -128,6 +128,9 @@ def run2(HOST: str, PORT: int, ansvwer: bool = True):
             # interrupt the program with Ctrl-C
             server.serve_forever()
 
+import sys, io
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+sys.stderr = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
 logger = logging.getLogger('werkzeug')
 msg_format = '\n{lines}\nКлиент: {user}\nВ модуле: {module}\nСделал запрос: {query}\n{lines}\n'
@@ -141,12 +144,24 @@ ATTACH_DBS = {
     'Naryad': ['DB_kplan.db']
 }
 
+def alert_b24(query, module, client):
+    try:
+        if query.lower().strip().startswith('delete'):
+            import requests
+            requests.post('https://bitrix24.kelast.ru/rest/1/ebehb6fsejx39kj2/im.message.add',
+                          json={
+                            'DIALOG_ID': 'chat78766',
+                            'MESSAGE': f"{module}\n{client}\n{query}",
+                          }, verify=False)
+    except Exception as e:
+        ...
 
 class HTTPSrv:
     def __init__(self):
         self.headers = {}
 
     def dispatch_query(self, msg: dict):
+        alert_b24(msg.get('custom_request_c', ''), msg.get('module', ''), msg.get('client', ''))
         message = msg_format.format(
             user=msg.get('client'),
             module=msg.get('module'),

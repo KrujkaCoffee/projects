@@ -145,7 +145,12 @@ class mywindow(QtWidgets.QMainWindow):
 
         self.ui.action_tmp.triggered.connect(self.action_tmp)
         # ==================BTN
-        self.ui.btn_report_c.clicked.connect(lambda: OTCH.report_c(self))
+        def fnc(self):
+            import importlib
+            from project_cust_38 import report_ci
+            importlib.reload(report_ci)
+            report_ci.report_c(self)
+        self.ui.btn_report_c.clicked.connect(lambda: fnc(self))
         self.ui.btn_grafic_load.clicked.connect(lambda _, x=self: OTCH.create_podreport_c(x))
         self.ui.btn_save_txt.clicked.connect(self.save_txt)
         self.ui.btn_udown.clicked.connect(self.up_down)

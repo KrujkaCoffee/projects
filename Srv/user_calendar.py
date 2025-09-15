@@ -244,7 +244,9 @@ def reload_tbl_empl(ima_table_empl, LIST_DICT_EMPLOYEE_FULL, res, dict_rab_vrema
         USE_SINCHRON_FACT_TIME =True
 
     week_step = F.datetostr(F.date_add_days(F.now(''),WEEK_STEP_DAYS,'',''),"mtdz_%Y_%m_01")
-
+    now_month = F.strtodate(F.now()).month
+    iter_month = F.strtodate(ima_table_empl, "mtdz_%Y_%m_01").month
+    is_previous_month = now_month > iter_month
     if USE_SINCHRON_FACT_TIME and (ima_table_empl == F.now("mtdz_%Y_%m_01") or week_step == ima_table_empl):
         ПериодРегистрации = F.datetostr(F.strtodate(ima_table_empl,"mtdz_%Y_%m_%d"),"ДАТАВРЕМЯ(%Y, %m, %d)")
         ПериодРегистрации_str = F.datetostr(F.strtodate(ima_table_empl, "mtdz_%Y_%m_%d"), "%d.%m.%Y")
@@ -462,9 +464,8 @@ def reload_tbl_empl(ima_table_empl, LIST_DICT_EMPLOYEE_FULL, res, dict_rab_vrema
                     else:
                         list_times.append('8')
 
-        resp = CSQ.custom_request_c(put_db, f"""UPDATE {ima_table_empl} SET ({', '.join(list_fields)}) = 
+        CSQ.custom_request_c(put_db, f"""UPDATE {ima_table_empl} SET ({', '.join(list_fields)}) = 
                  ({', '.join(list_times)}) WHERE Пномер = {Пномер};""")
-        print()
 
     custom_request_c = f'SELECT * FROM {ima_table_empl} WHERE Пномер > 2 and ФИО != "";'
     list_from_scedule_month = CSQ.custom_request_c(put_db, custom_request_c,rez_dict=True)
@@ -472,7 +473,7 @@ def reload_tbl_empl(ima_table_empl, LIST_DICT_EMPLOYEE_FULL, res, dict_rab_vrema
     print(f'    Обновление времени {ima_table_empl} ')
     used_indexes = set()
     for empl in LIST_DICT_EMPLOYEE_FULL:
-        if empl['Режим'] == 'Абстракт' or empl['Статус'] == 'Увольнение':
+        if empl['Режим'] == 'Абстракт': # or empl['Статус'] == 'Увольнение':
                 continue
         fio = empl['ФИО']
         Пномер = None
@@ -491,7 +492,7 @@ def reload_tbl_empl(ima_table_empl, LIST_DICT_EMPLOYEE_FULL, res, dict_rab_vrema
                                 print(f"        {fio}   {empl['Должность']}    {F.datetostr(F.strtodate(day, 'd_%Y_%m_%d'),'%d.%m.%Y')},  было {val} / стало {erp_val} час." )
 
                 break
-        if Пномер == None:# Если юзер не найден в табеле то добавляем его
+        if Пномер == None and not is_previous_month: # Если юзер не найден в табеле то добавляем его
 
             strok = [f"{fio} {empl['Должность']}", '']
             tek_dat = F.now('')  # Если он удален
@@ -522,6 +523,8 @@ def reload_tbl_empl(ima_table_empl, LIST_DICT_EMPLOYEE_FULL, res, dict_rab_vrema
     # -- 04.07.25
 
     for empl in LIST_DICT_EMPLOYEE_FULL:
+        if is_previous_month:
+            continue
         if empl['Режим'] == 'Абстракт' or empl['Статус'] != 'Увольнение':
             continue
         Пномер = None
@@ -795,17 +798,15 @@ def main():
 
         calendar_dict = calendar.month(m)
 
-        # check_jurnal_kplan(ima_table_jurnal_kplan, calendar_dict, spis_empl_live,DICT_PODRAZD,DICT_MNTS_PLAN,
-        #                    month_str,tabel_workforce,DICT_PROFESSIONS_NICKNAME)
+        check_jurnal_kplan(ima_table_jurnal_kplan, calendar_dict, spis_empl_live,DICT_PODRAZD,DICT_MNTS_PLAN,
+                           month_str,tabel_workforce,DICT_PROFESSIONS_NICKNAME)
         check_empl(ima_table_empl_tdz, LIST_DICT_EMPLOYEE_FULL, calendar_dict, dict_rab_vrema)
         # check_empl(ima_table_empl,LIST_DICT_EMPLOYEE_FULL,calendar_dict,dict_rab_vrema) # #04.07.25
-        # check_eq(ima_table_eq, row_equip, calendar_dict)
-        # check_rm(ima_table_rm, row_rm, calendar_dict)
-        # check_jurnaltdz(ima_table_jur_tdz, calendar_dict)
+        check_eq(ima_table_eq, row_equip, calendar_dict)
+        check_rm(ima_table_rm, row_rm, calendar_dict)
+        check_jurnaltdz(ima_table_jur_tdz, calendar_dict)
     print('Проверка производственного календаря завершено')
     print('==================================')
     calendar.close()
     return
-main()
-
 print('==================================')

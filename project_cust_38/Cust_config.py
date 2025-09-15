@@ -460,6 +460,8 @@ class Place(metaclass=SingletonMeta):
     evaluation_department: Evaluation_department_podrazdel_for_reports = None
     КодыНарядов: CodeNaryad = None
     limit_time_on_naryad: int = None #15.08.25
+    КодГруппыРесурсных: str = None #20.08.2025
+    use_month_closing_block_for_naryads: int = None #10.09.2025  100060031 Сергей Козырьков12:36 необходимо снять блок по периоду на время закрытия предыдущих МК в месе,Тренировка,отработка возможных ошибок сотрудников. на срок до 22.09.
 
     def __init__(self, organization_name: str | None = None) -> None:
         if not organization_name:

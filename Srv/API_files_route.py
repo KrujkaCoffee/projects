@@ -20,7 +20,7 @@ router = APIRouter(prefix='/files', tags=['files'])
 
 ZIP_SIZE_KEY = 'ZIP_SIZE_PATH'
 PATH_NAME = 'py'
-executor = pathlib.Path().parent / 'interpreter' / 'py' / 'python.exe'
+executor = pathlib.Path(r'C:\srv_mes\srv_mes') / 'interpreter' / 'py' / 'python.exe'
 
 def make_files_tree_struct() -> list[pathlib.Path]:
     exclude_folders = ('.git', '__pycache__', '.idea', 'venv')
@@ -114,7 +114,7 @@ async def get_py_lib_hash():
     """Возвращает актуальный хэш клиентских библиотек python"""
     if os.environ.get(ZIP_SIZE_KEY) and len(os.environ[ZIP_SIZE_KEY]) == 64:
         return os.environ[ZIP_SIZE_KEY]
-    path = pathlib.Path().parent / 'interpreter' / 'lib_hash.pickle'
+    path = pathlib.Path(rf'C:\srv_mes\srv_mes') / 'interpreter' / 'lib_hash.pickle'
     if path.exists():
         with open(str(path), 'rb') as desc:
             actual_hash = pickle.load(desc)
