@@ -8,6 +8,41 @@ import project_cust_38.Cust_SQLite as CSQ
 import components.common_funcs as CMF
 from typing import Any
 import project_cust_38.Cust_Functions as F
+
+"""
+Роль	Описание / Назначение
+PRIMARY	Основной фирменный цвет приложения (акценты, кнопки, индикаторы)
+ON_PRIMARY	Цвет элементов/текста поверх primary
+PRIMARY_CONTAINER	Контейнер с оттенком primary (фон для кнопок, карточек)
+ON_PRIMARY_CONTAINER	Цвет текста/элементов поверх primary_container
+SECONDARY	Вторичный акцент (менее заметный, чем primary)
+ON_SECONDARY	Цвет текста/элементов на фоне secondary
+SECONDARY_CONTAINER	Контейнер с оттенком secondary
+ON_SECONDARY_CONTAINER	Цвет текста/элементов на фоне secondary_container
+TERTIARY	Третичный акцент (доп. визуальная палитра)
+ON_TERTIARY	Цвет элементов/текста поверх tertiary
+TERTIARY_CONTAINER	Контейнер с оттенком tertiary
+ON_TERTIARY_CONTAINER	Цвет текста/элементов поверх tertiary_container
+ERROR	Цвет ошибок (сообщения, индикаторы)
+ON_ERROR	Цвет текста/элементов на фоне error
+ERROR_CONTAINER	Контейнер для ошибок (мягкий фон ошибки)
+ON_ERROR_CONTAINER	Контрастный цвет поверх error_container
+BACKGROUND	Базовый цвет фона всего приложения
+ON_BACKGROUND	Цвет текста и элементов на фоне background
+SURFACE	Поверхности (карточки, диалоги, панели)
+ON_SURFACE	Цвет текста/элементов на фоне surface
+SURFACE_VARIANT	Вариация поверхности для отделения блоков
+ON_SURFACE_VARIANT	Цвет текста/элементов на фоне surface_variant
+OUTLINE	Цвет контуров и разделителей
+OUTLINE_VARIANT	Более мягкий цвет разделителей
+SHADOW	Тени (elevation)
+SCRIM	Цвет для затемнения заднего фона (например, за модалкой)
+INVERSE_SURFACE	Инверсный цвет поверхности (исп. в статус-баре, тулбаре)
+INVERSE_ON_SURFACE	Цвет текста/элементов на inverse_surface
+INVERSE_PRIMARY	Инверсный primary для выделений в обратной палитре
+SURFACE_TINT	Оттенок поверхности для имитации elevation
+"""
+
 class SingletonMeta(type):
     __instances = {}
 
@@ -69,14 +104,23 @@ class Client_config():
 
 class Client_data():
     def __init__(self,page:ft.Page):
-        print(f'==== INIT Client_data {page.client_ip} =======')
-        self.ip =  page.client_ip
-        self.platform =  page.platform
-        self.window_size =  (page.width,   page.height)
-        self.user_agent =  page.client_user_agent or "неопределен"
-        self.route =  page.route
+        self.ip = None
+        self.platform = None
+        self.window_size = (None, None)
+        self.user_agent = None
+        self.route = None
         self.db_flet = MESCNF.Config.project.db_flet
-        self.user_config:Client_config|None = None
+        self.user_config: Client_config | None = None
+
+        if page:
+            print(f'==== INIT Client_data {page.client_ip} =======')
+            self.ip =  page.client_ip
+            self.platform =  page.platform
+            self.window_size =  (page.width,   page.height)
+            self.user_agent =  page.client_user_agent or "неопределен"
+            self.route =  page.route
+            self.db_flet = MESCNF.Config.project.db_flet
+            self.user_config:Client_config|None = None
 
     def _load_user_config_data(self):
         conf = CSQ.custom_request_c(self.db_flet, f"""SELECT * FROM user_config WHERE ip = '{self.ip}';""",
@@ -84,9 +128,12 @@ class Client_data():
         return conf
     def get_user_config(self):
         conf =  self._load_user_config_data()
+        if not self.ip:
+            return
         if not conf:
             if not self.add_new_user():
-                raise ConnectionError('Ошибка добавления нового юзера')
+                print(f'Ошибка добавления нового юзера для {self.ip}')
+                return
             conf =  self._load_user_config_data()
             print(f'====== {F.now()} REG_NEW_CLIENT=======')
             print(self.db_flet)
@@ -118,9 +165,13 @@ class Client_data():
 
 
     def add_new_user(self):
-        add_row = [self.ip,self.get_hostname().split('.')[0]]
+        hostname = self.get_hostname().split('.')[0]
+        if hostname == '192':
+            return False
+        add_row = [self.ip,hostname]
         rez = CSQ.custom_request_c(self.db_flet,"""INSERT INTO user_config (ip,hostname) VALUES (?,?);""",list_of_lists_c=[add_row])
         return rez
+
 
 
     def get_hostname(self):
@@ -128,6 +179,27 @@ class Client_data():
         if name:
             name = name.upper()# Т.К В Windows переменные окружения COMPUTERNAME и USERNAME традиционно хранятся в верхнем регистре
         return name
+
+class StatausBar():
+    def __init__(self,refConteiner=None,refStatusBarText=None):
+        self._refConteiner:ft.Ref[ft.Container] = refConteiner
+        self._refStatusBarText:ft.Ref[ft.Text] = refStatusBarText
+        self._text = ''
+    def set_visible(self,val:bool=True):
+        self._refConteiner.current.visible = val
+    def set_text(self,text:str=None):
+        if text:
+            self._text = text
+            self.set_visible()
+        else:
+            self._text = ''
+            self.set_visible(False)
+        self._refStatusBarText.current.value = self._text
+
+
+
+
+
 class Module_cfg():
     _dict_routes = dict()
     def __init__(self,alias:str|None='genesis',route:str|None=None,name:str='',icon:ft.Icons|None=None, tooltip:str='',sub_module:Optional['Module_cfg']=None):
@@ -136,15 +208,21 @@ class Module_cfg():
         self.sub_dir:str|None = None
         if self.alias:
             self.sub_dir = os.sep.join([SRVCFG.DIR_ROOT,'Modules_data',self.alias])
-        self.cust_data:Any = None
+        self.cust_data:Any|None = None
         self.name = name
         self.icon = icon
         self.tooltip = tooltip
+
+        self.status_bar:None|StatausBar = None
 
         self.sub_modules:dict[str, Module_cfg] = dict()
         if sub_module:
             self.sub_modules[sub_module.alias] = sub_module
         Module_cfg._dict_routes[route] = self
+        self.settingsRef:None|ft.Ref[ft.Column] = None
+    def set_status_bar(self,refContainer,refStatusBarText):
+        self.status_bar = StatausBar(refContainer,refStatusBarText)
+
     def add_submodule(self, module: 'Module_cfg'):
         """Добавляет подмодуль к текущему модулю"""
         self.sub_modules[module.alias] = module
@@ -161,14 +239,23 @@ class Srv_data(metaclass=SingletonMeta):
     def get_prefix_url(self):
         return f'http://{self.ip}:{self.port}'
 
-class Data_page():
-    def __init__(self,page:ft.Page):
+class Data_page(SingletonMeta):
+    #def __init__(self,page:ft.Page):
+    page:ft.Page = None
+    Data_vars:_Data_vars = _Data_vars()
+    client_data:Client_data = None
+    Data_user:Client_data = None
+    Data_srv:Srv_data = None
+    Data_module:Module_cfg = None
+    @classmethod
+    def reload(cls):
         print(f'==== INIT Data_page =======')
-        self.Data_vars:_Data_vars = _Data_vars()
-        client_data:Client_data = Client_data(page)
-        client_data.get_user_config()
-        self.Data_user:Client_data = client_data
-        self.Data_srv:Srv_data = Srv_data()
-        self.Data_module:Module_cfg = Module_cfg(None,None)
+        cls.Data_vars: _Data_vars = _Data_vars()
+        cls.client_data: Client_data = Client_data(cls.page)
+        cls.client_data.get_user_config()
+        cls.Data_user: Client_data = cls.client_data
+        cls.Data_srv: Srv_data = Srv_data()
+        cls.Data_module: Module_cfg = Module_cfg(None, None)
+
 
 

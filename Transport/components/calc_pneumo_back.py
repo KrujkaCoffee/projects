@@ -308,41 +308,42 @@ new_tbl_input = calc_new_tbl_input()
 def generate_input_data(fnc_onchange, ref, default_vals: dict | None = None) -> (ft.DataTable, Table_data):
     if default_vals:
         new_tbl_input.set_vals_into_field(default_vals, 'val')
-    return CMF.generate_param_table(new_tbl_input, ref=ref, fnc_onchange=fnc_onchange), new_tbl_input
+
+    table_view = CMF.Table_view(new_tbl_input, ref=ref, fnc_onchange=fnc_onchange)
 
 
-def prepare_calc_new_data(data: list[dict], Data: DTCLS.Data_page) -> list[dict] | dict:
+    return table_view, new_tbl_input
+
+def prepare_calc_new_data(data: list[dict], Data: DTCLS.Data_page) -> (list[dict] | dict,bool):
     data_params = {_['Имя']: F.valm(_['Значение']) for _ in data}
     #data_params = F.load_file_pickle('test_data_params.pickle')
     Data.Data_module.cust_data: Cust_module_params
-    Data.Data_module.cust_data.input_tbl_not_editbl = copy.deepcopy(Data.Data_module.cust_data.input_tbl_editbl)
-    Data.Data_module.cust_data.input_tbl_not_editbl.set_vals_into_field(data_params, 'val')
-    Data.Data_module.cust_data.input_tbl_not_editbl.set_lock_vals('val', True)
-    rez = calc_new_data(data_params)
-    return rez
-    # F.save_file_pickle('test_data_params.pickle',{_['Имя']:F.valm(_['Значение']) for _ in data})
+    if not Data.Data_module.cust_data.input_tbl_editbl.sync_ui_to_data('val'):
+        return None, False
+    Data.Data_module.cust_data.input_tbl_editbl.set_all_cells_disabled(True)
+    data_params = Data.Data_module.cust_data.input_tbl_editbl.to_dict_by_unique()
+    rez, success = calc_new_data({k: v['val'] for k,v in data_params.items()})
+    return rez, success
 
 
-def generate_rez_tbl(e: ft.ControlEvent, tbl: ft.DataTable, ref_out) -> (
-ft.DataTable | None, Table_data | None, bool | None):
+def generate_rez_tbl(e: ft.ControlEvent, tbl: ft.DataTable, ref_out,fnc_cell_click=None) -> bool | None:
     Data: DTCLS.Data_page = e.page.data
     data = CMF.datatable_to_dicts(tbl)
-    new_data = prepare_calc_new_data(data, Data)
-    if not len(new_data):
+    DTCLS.Data_page.Data_module.cust_data: Cust_module_params
+    DTCLS.Data_page.Data_module.cust_data.output_tbl = None
+    new_data, success = prepare_calc_new_data(data, Data)
+    if not new_data:
         return
-    if isinstance(new_data, list):
-        datatable, tbl_output = make_err_tbl(new_data, ref_out)
-        return datatable, new_data, False
-    elif isinstance(new_data, dict):
-        datatable, tbl_output = make_res_tbl(new_data, ref_out)
-        Data.Data_module.cust_data.output_tbl = tbl_output
-        return datatable, new_data, True
+    if success:
+        tbl_output = make_res_tbl(new_data, ref_out, fnc_cell_click)
+    else:
         # return  CMF.generate_param_table(Data.Data_module.cust_data.input_tbl_not_editbl,ref_out), new_data, True
+        tbl_output = make_err_tbl(new_data, ref_out)
+    DTCLS.Data_page.Data_module.cust_data.output_tbl: CMF.Table_data = tbl_output
+    return success
 
-    return None, None, None
 
-
-def make_res_tbl(data: dict, ref_out=None) -> (ft.DataTable, CMF.Table_data):
+def make_res_tbl(data: dict, ref_out=None,fnc_cell_click=None) -> CMF.Table_data:
     new_tbl_output: Table_data = copy.deepcopy(TBL_OUTPUT)
     for name, val in data.items():
         row = CMF.Row_data()
@@ -357,11 +358,13 @@ def make_res_tbl(data: dict, ref_out=None) -> (ft.DataTable, CMF.Table_data):
 
         new_tbl_output.add_row(row)
 
-    tbl = CMF.generate_param_table(new_tbl_output, ref=ref_out)
-    return tbl, new_tbl_output
+
+    CMF.Table_view(new_tbl_output, ref=ref_out, fnc_on_click=fnc_cell_click)
+
+    return  new_tbl_output
 
 
-def make_err_tbl(data, ref_out=None) -> (ft.DataTable, CMF.Table_data):
+def make_err_tbl(data, ref_out=None) -> CMF.Table_data:
     new_tbl_output_err = copy.deepcopy(TBL_OUTPUT_ERR)
     for i, item in enumerate(data):
         row = CMF.Row_data()
@@ -372,8 +375,8 @@ def make_err_tbl(data, ref_out=None) -> (ft.DataTable, CMF.Table_data):
 
         new_tbl_output_err.add_row(row)
 
-    tbl = CMF.generate_param_table(new_tbl_output_err, ref=ref_out)
-    return tbl, new_tbl_output_err
+    CMF.Table_view(new_tbl_output_err, ref=ref_out)
+    return  new_tbl_output_err
 
 
 def load_from_db_history_calc(Data: DTCLS.Data_page, s_num: int) -> (CMF.Table_data, CMF.Table_data):
@@ -509,7 +512,7 @@ def save_in_db(e: ft.ControlEvent, name: str):
     return rez
 
 
-def calc_new_data(input_data: dict) -> list | dict:
+def calc_new_data(input_data: dict) -> (list | dict, bool):
     list_err = []
     calculated = {}
 
@@ -1018,6 +1021,6 @@ def calc_new_data(input_data: dict) -> list | dict:
 
     # Возвращаем результат в зависимости от наличия ошибок
     if list_err:
-        return list_err
+        return list_err, False
     else:
-        return calculated
+        return calculated, True

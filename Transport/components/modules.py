@@ -72,7 +72,7 @@ modules.sub_modules["settings"].add_submodule(DTCLS.Module_cfg("decoration",
                               'Оформление'))
 
 _ref_main = ft.Ref[ft.Row]()
-_ref_settings = ft.Ref[ft.Column]()
+
 
 
 def main_page(page, PATHF_IT_PLAN):
@@ -81,38 +81,34 @@ def main_page(page, PATHF_IT_PLAN):
     list_completed = [_ for _ in list_plan if F.valm(_['ПРОЦЕНТ ВЫПОЛНЕНИЯ']) >= 1]
     list_intend = [_ for _ in list_plan if F.valm(_['ПРОЦЕНТ ВЫПОЛНЕНИЯ']) < 1]
 
-    lv_completed = ft.ListView(spacing=10, padding=20, auto_scroll=True, height=page.data.Data_vars.height - 200)
+    lv_completed = ft.ListView(spacing=10, padding=20, auto_scroll=True,expand=True)
     for item in list_completed:
         date = F.datetostr(F.strtodate(item['ДАТА ОКОНЧАНИЯ']), '%d.%m.%Y')
         lv_completed.controls.append(ft.Text(f"{date} {item['НАЗВАНИЕ ЗАДАЧИ']}"))
 
-    lv_intend = ft.ListView(spacing=10, padding=20, auto_scroll=True, height=page.data.Data_vars.height - 200)
+    lv_intend = ft.ListView(spacing=10, padding=20, auto_scroll=True,expand=True)
     for item in list_intend:
         num = item['НОМЕР']
         lv_intend.controls.append(ft.Text(f"№{num} {item['НАЗВАНИЕ ЗАДАЧИ']}"))
     column_completed = ft.Column(controls=[ft.Text(f"Обновления:"), lv_completed],
-                                 width=page.data.Data_vars.width / 2 - 20)
+                                 expand=1,)
     column_intend = ft.Column(controls=[ft.Text(f"Текущие работы:"), lv_intend],
-                              width=page.data.Data_vars.width / 2 - 20)
+                              expand=1,)
     row_plan = ft.Row([column_completed, ft.VerticalDivider(width=2), column_intend],
                       spacing=20,  # Место для разделителя
                       expand=True,  # Растягиваем Row
-                      height=page.data.Data_vars.height - 200  # Фиксированная высота (опционально))
                       )
-    return ft.Column([menubar(), row_plan], ref=_ref_main, spacing=20)
+    return ft.Column([menubar(), row_plan], ref=_ref_main, spacing=20,expand=True)
 
 
 def menubar():
     def handle_menu_item_click(e):
         def clc_settings():
-            if _ref_settings.current and _ref_settings.current.parent in _ref_main.current.controls:
-                while True:
-                    if _ref_settings.current.parent not in _ref_main.current.controls:
-                        break
-                    _ref_main.current.controls.remove(_ref_settings.current.parent)
+            if DTCLS.Data_page.Data_module.settingsRef.current.visible:
+                DTCLS.Data_page.Data_module.settingsRef.current.visible = False
             else:
-                _ref_main.current.controls.append(SETGS.LeftNavigationMenu(visible=True, ref=_ref_settings))
-
+                DTCLS.Data_page.Data_module.settingsRef.current.visible = True
+            DTCLS.Data_page.page.update()
         select = e.control
         select_name = select.content.value
         pg: ft.Page = e.page
@@ -190,7 +186,7 @@ def load_module(page: ft.Page):
     if page.route == ("/modules/pneumatic_jet"):
         MCPj.apply_page_settings(page,modules.get_module_by_route(page.route))
         return MCPj.gen_page(page)
-    #if page.route == ("/modules/silencer"):
-    #    MCS.apply_page_settings(page)
-    #    return MCS.gen_page(page)
+    if page.route == ("/modules/silencer"):
+        MCS.apply_page_settings(page,modules.get_module_by_route(page.route))
+        return MCS.gen_page(page)
     return PLUG.gen_page(page)

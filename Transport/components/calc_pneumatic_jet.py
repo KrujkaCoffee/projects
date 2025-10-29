@@ -97,7 +97,7 @@ def gen_page(page):
         Data.Data_module.cust_data.input_tbl_editbl = table_data
 
         _input_column_tabels_ref.current.controls.append(input_table_datatable)
-
+        DTCLS.Data_page.Data_module.status_bar.set_text()
         page.update()
 
     def generate_desktop_row(page: ft.Page, rail: ft.NavigationRail):
@@ -106,8 +106,10 @@ def gen_page(page):
         def add_rez_table(e: ft.ControlEvent):
             Data.Data_module.cust_data: calc_pneumatic_jet_back.Cust_module_params
             page = e.page
-            tbl_rez, table_data, btn_enabled = calc_pneumatic_jet_back.generate_rez_tbl(e, _input_tabe_ref.current,
+            btn_enabled = calc_pneumatic_jet_back.generate_rez_tbl(e, _input_tabe_ref.current,
                                                                                  _output_tabe_ref)
+            table_data: CMF.Table_data = DTCLS.Data_page.Data_module.cust_data.output_tbl
+            tbl_rez = table_data.table_view
             if tbl_rez == None:
                 return
             if _output_column_tabels_ref.current.controls:
@@ -152,9 +154,13 @@ def gen_page(page):
             ft.VerticalDivider(width=2),
             ft.Column(
                 controls=[],
-                scroll=ft.ScrollMode.ALWAYS, expand=True, ref=_output_column_tabels_ref
+                alignment=ft.MainAxisAlignment.START,  # прижать всё к верху
+                horizontal_alignment=ft.CrossAxisAlignment.START,  # прижать влево
+                scroll=ft.ScrollMode.ALWAYS, expand=True,
+                ref=_output_column_tabels_ref
             )
         ], scroll=ft.ScrollMode.ALWAYS, width=(Data.Data_vars.width - rail_width), height=Data.Data_vars.height,
+            vertical_alignment=ft.CrossAxisAlignment.START,
             expand=True, ref=_desktop_row_ref)
 
         header_input_panel = ft.Row(controls=[ft.VerticalDivider(thickness=0, width=200),
@@ -275,25 +281,44 @@ def gen_page(page):
 
     rail = paint_rail(select_destination)
 
-    _general_module_row_ref.current = None
-    _desktop_column_ref.current = None
+    _refStatusBar = ft.Ref[ft.Container]()
+    _refStatusBarText = ft.Ref[ft.Text]()
+    DTCLS.Data_page.Data_module.set_status_bar(_refStatusBar, _refStatusBarText)
+
+    statusBar = ft.Column([ft.Divider(height=1),
+                           ft.Container(
+                               ft.Text('', ref=_refStatusBarText))]
+                          )
+
+    dynamic_container = ft.Container(ft.Column(
+        controls=[
+        ],
+        scroll=ft.ScrollMode.ALWAYS, expand=True, ref=_desktop_column_ref
+    ), expand=True)
+    status_container = ft.Container(content=statusBar,
+                                    ref=_refStatusBar,
+                                    height=100
+                                    )
+    # _general_module_row_ref.current = None
+    # _desktop_column_ref.current = None
+
+    # DTCLS.Data_page.Data_module.status_bar.set_text('123')
+
     return ft.Row([
         rail,
         ft.VerticalDivider(width=1),
         ft.Column(
-            controls=[
-
-            ],
-            alignment=ft.MainAxisAlignment.START,
-            horizontal_alignment=ft.CrossAxisAlignment.START,
-            scroll=ft.ScrollMode.ALWAYS, expand=True, ref=_desktop_column_ref
+            controls=[dynamic_container,
+                      status_container
+                      ],
+            expand=True
         )
 
-    ]
-        ,
-        vertical_alignment= ft.CrossAxisAlignment.START,
-        width=(Data.Data_vars.width),
-        height=Data.Data_vars.height,
+    ],
+        # vertical_alignment= ft.CrossAxisAlignment.START,
+        # width=(Data.Data_vars.width),
+        # height=Data.Data_vars.height,
+        expand=True,
         ref=_general_module_row_ref
     )
 

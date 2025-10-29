@@ -82,7 +82,6 @@ def gen_page(page):
         ft.Column(
             controls=[ft.Icon(ft.Icons.CONSTRUCTION,size=150),
                 ft.Text(f'Модуль в разработке',size=50)
-
             ],
             alignment=ft.MainAxisAlignment.END,
             horizontal_alignment= ft.CrossAxisAlignment.CENTER,

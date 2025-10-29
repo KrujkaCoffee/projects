@@ -1,9 +1,12 @@
+
+import Config.srv_config as SRVCFG
 import flet as ft
 from flet import View
 import socket
 import data_class as DTCLS
 import components.modules as modules
-import Config.srv_config as SRVCFG
+import components.settings as SETGS
+
 from typing import cast
 
 ver = 0.01
@@ -19,8 +22,14 @@ name = "Веб приложение МЕС"
 
 
 def main(page: ft.Page):
-    page.data = cast(DTCLS.Data_page, DTCLS.Data_page(page))
+
+
+    DTCLS.Data_page.page = page
+    DTCLS.Data_page.reload()
+    page.data = cast(DTCLS.Data_page, DTCLS.Data_page)
     Data: DTCLS.Data_page = page.data
+
+
     page.title = name_title
     page.fonts = {
         "Roboto Mono": "RobotoMono-VariableFont_wght.ttf",
@@ -43,6 +52,9 @@ def main(page: ft.Page):
 
         if e.route.startswith('/modules'):
             controls = modules.load_module(page)
+            if DTCLS.Data_page.Data_module.status_bar:
+                DTCLS.Data_page.Data_module.status_bar.set_text()
+
             if controls:
                 page.views.append(
                     View(
@@ -52,7 +64,8 @@ def main(page: ft.Page):
                     )
                 )
         else:
-
+            _ref_settings = ft.Ref[ft.Column]()
+            DTCLS.Data_page.Data_module.settingsRef = _ref_settings
             app_bar = ft.AppBar(
                 # leading=ft.Container(padding=5,
                 #                     content=ft.Image(src= os.sep.join(['assets','logo.png']))),
@@ -69,8 +82,9 @@ def main(page: ft.Page):
             page.views.append(
                 View(
                     "/",
-                    [app_bar, modules.main_page(page, PATHF_IT_PLAN), ft.Divider(height=1)],
-                    spacing=100,
+                    [app_bar, modules.main_page(page, PATHF_IT_PLAN), ft.Divider(height=1),
+                     SETGS.LeftNavigationMenu(visible=False, ref=_ref_settings)]
+                    ,
 
                 )
             )
@@ -85,7 +99,7 @@ def main(page: ft.Page):
 
     # route_change(page)
 
-    page.spacing = 100
+    #page.spacing = 100
     page.expand = True
 
     #print(f"Initial route: {page.route}")
@@ -109,6 +123,7 @@ if __name__ == "__main__":
         PATHF_IT_PLAN = fr'C:\Python\Reiting_users\plan_it_form_b24(gen by reiting).pickle'
         if IN_BROUSER:
             print(f'http://{FLET_HOST}:{FLET_PORT}')
+
             ft.app(name=FLET_PATH, target=main, view=None, port=FLET_PORT, host=FLET_HOST, assets_dir="assets")
         else:
             ft.app(name=FLET_PATH, target=main)
@@ -118,4 +133,6 @@ if __name__ == "__main__":
         print(f'http://{FLET_HOST}:{FLET_PORT}')
         print(f'http://mesinfo.powerz.ru:{FLET_PORT}')
         ft.app(name=FLET_PATH, target=main, view=ft.WEB_BROWSER, port=FLET_PORT,
-               host='0.0.0.0')  # SRVmes 'http://mesinfo.powerz.ru:20000/'
+               host='0.0.0.0',
+
+               )  # SRVmes 'http://mesinfo.powerz.ru:20000/'

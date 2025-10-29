@@ -10,7 +10,7 @@ class LeftNavigationMenu(ft.Column):
             tooltip="Выбрать световую тему",
             on_click=self.theme_changed,
         )
-
+        self.refMenu:None|ft.Ref[ft.Column] = ref
         self.controls = [
 
             ft.Column(
@@ -70,6 +70,7 @@ class LeftNavigationMenu(ft.Column):
             self.dark_light_text.value = "Светлая тема"
             self.dark_light_icon.icon = ft.Icons.BRIGHTNESS_2
         self.page.data.Data_user.update_theme_mode(self.page.theme_mode)
+        self.refMenu.current.visible = False
         self.page.update()
     def close_settings(self, e):
         pg: ft.Page = e.page
