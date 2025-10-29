@@ -1,19 +1,14 @@
-﻿
-import logging
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
-logger = logging.getLogger('waitress')
-logger.setLevel(logging.INFO)
-
-import pickle
+﻿import pickle
 import socketserver
 import logging
 import pathlib
 import re
 import sqlite3
-import sys
+import time
+import os
 from urllib.parse import quote
+os.environ['MES_IS_SERVER'] = '1'
 
-sys.path.append(str(pathlib.Path().parent))
 from werkzeug import Request, Response
 from werkzeug.routing import Map, Rule
 from waitress import serve
@@ -27,20 +22,11 @@ import sys, io
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 sys.stderr = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
-import logging
 logging.basicConfig(format='%(asctime)s -  %(message)s', level=logging.INFO, encoding='utf8')
 logger = logging.getLogger('waitress')
 logger.setLevel(logging.INFO)
 msg_format = '\n{lines}\nКлиент: {user}\nВ модуле: {module}\nСделал запрос: {query}\n{lines}\n'
 DB_PATH = pathlib.Path(r'C://DB_srv//').absolute()
-ATTACH_DBS = {
-    'BD_dse': [],
-    'BD_files': [],
-    'BD_users': [],
-    'BD_resxml': [],
-    'DB_kplan': [],
-    'Naryad': ['DB_kplan.db']
-}
 
 url_map = Map()
 route_handlers = {}
@@ -55,7 +41,7 @@ def route(rule):
                 result = func(*args, **kwargs)
                 return Response(pickle.dumps(result), status=200)
             except Exception as e:
-                print(f'Ошибка: {e}')
+                logger.error(f'Ошибка: {e}')
                 return Response('Error', status=502)
         return wrapper_route
     return decorator
@@ -75,8 +61,6 @@ class HTTPSrv:
         logger.info(message)
 
     def wsgi_app(self, environ, start_response):
-        logger.info('вызов')
-
         request = Request(environ)
         adapter = url_map.bind_to_environ(environ)
         self.headers = {}
@@ -105,7 +89,7 @@ class HTTPSrv:
         conn, cur = CSQ.connect_bd(bd)
         try:
             cur.execute("PRAGMA journal_mode=WAL;")
-            cur.execute("PRAGMA synchronous=NORMAL;")
+            cur.execute("PRAGMA synchronous=FULL;")
             cur.execute("PRAGMA busy_timeout = 30000;")
             cur.execute("PRAGMA wal_autocheckpoint = 1000;")
         except Exception as e:
@@ -118,8 +102,11 @@ class HTTPSrv:
         except (sqlite3.OperationalError, sqlite3.IntegrityError, sqlite3.ProgrammingError, sqlite3.DataError) as e:
             logger.error(f'Ошибка: {e}')
             self.headers[CCS.SrvHeaders.SYNTAX_ERROR.value] = '1'
+            self.headers[CCS.SrvHeaders.EXCEPTION_MESSAGE.value] = quote(str(e))
         except Exception as e:
             logger.error(f'Ошибка: {e}')
+            self.headers[CCS.SrvHeaders.SYNTAX_ERROR.value] = '1'
+
             self.headers[CCS.SrvHeaders.EXCEPTION_MESSAGE.value] = quote(str(e))
         finally:
             CSQ.close_bd(conn, cur)
@@ -145,7 +132,10 @@ class HTTPSrv:
                 cursor.execute(f'ATTACH DATABASE "{str(DB_PATH / db_name)}" AS {learn_name}')
 
 def background_task(HOST, PORT):
-    from werkzeug.serving import run_simple
+    # from werkzeug.serving import run_simple
+    # run_simple(HOST, PORT, HTTPSrv())
+    import os
+    logger.info(f"Процесс создан с pid: {os.getpid()}")
     serve(HTTPSrv(), host=HOST, port=PORT)
 
 
@@ -153,13 +143,14 @@ def func_ping(HOST, PORT):
     import requests, time
     try:
         time.sleep(60 * 5)
+
         response = requests.get(f'http://{HOST}:{PORT}/ping')
-        print(f'SERVER: {HOST}:{PORT} проверка доступности: {response.ok!r}')
+        logger.info(f'SERVER: {HOST}:{PORT} проверка доступности: {response.ok!r}')
         return response.ok
-    except KeyboardInterrupt as e:
-        print('Перезапуск...')
+    except KeyboardInterrupt:
+        logger.info("Перезапуск...")
     except Exception as e:
-        print('Ошибка доступа к серверу', e)
+        logger.error(f'Ошибка доступа к серверу: {e}')
     return False
 
 def run(HOST: str, PORT: int | str):
@@ -199,15 +190,14 @@ def run(HOST: str, PORT: int | str):
                     try:
                         logger.info("Попытка создаия процесса")
                         process = multiprocessing.Process(target=background_task, args=(host, port))
-                        logger.info(f"Процесс создан с pid: {process.pid}")
-
+                        process.start()
                         time.sleep(2)
                     except Exception as e:
                         logger.error(f"Ошибка создания процесса: {e}")
                 cleaned_process.append((process, host, port))
             started_process = cleaned_process
-    except KeyboardInterrupt as e:
-        logger.info('Перезапуск...')
+    except KeyboardInterrupt:
+        logger.info("Перезапуск...")
     except Exception as e:
         print(f'Работа сервера завершена: {e}')
     finally:

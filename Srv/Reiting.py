@@ -32,7 +32,7 @@ import project_cust_38.report_ci as reports
 import project_cust_38.Cust_SQLite as CSQ
 import project_cust_38.Cust_Qt as CQT
 import project_cust_38.Cust_mes as CMS
-# import project_cust_38.nomenklatura as nomen_erp
+# import project_cust_38.nomenklatura as nomen_erp # организовано в отдельной службе по интеграциям 28.10.2025
 import project_cust_38.Cust_odata_erp as ERP
 import project_cust_38.Cust_config as USRCNF
 from PyQt5 import QtWidgets

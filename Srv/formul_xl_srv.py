@@ -81,13 +81,14 @@ class HTTPSrv:
         self.actions = ACTIONS
         self.organizations = ORGANIZATIONS
         CACHE_DIR.mkdir(exist_ok=True)
+        self.template_xl = self.source_xl_dir / 'Образец.xlsx'
+        self.files_caches = {}
+
         if not self.source_xl_dir.exists():
             print(str(self.source_xl_dir))
             logger.error('Папка с формулами отсутствует или к ней нету доступа')
             return
-        self.template_xl = self.source_xl_dir / 'Образец.xlsx'
         self.prepare_form_object()
-        self.files_caches = {}
 
     def prepare_form_object(self):
         logging.info('Чистка excel com кэша...')
@@ -162,8 +163,8 @@ class HTTPSrv:
         key_for_object = self.formulas.prepare_filename(oper_name, pereh_name)
         cache_path = self.cache_dir / f'{hash_name}.xlsx'
         match self.formulas.operations[poki][rel_path].get(key_for_object):
-            case {'hash': hash_xl, 'cache_path': cache_path, 'xlsx': xlsx} if isinstance(xlsx, FormulaXLSX):
-                if hash_xl == hash_xl and cache_path == cache_path.absolute() and xlsx.params:
+            case {'hash': hash_xl, 'cache_path': cache_path_, 'xlsx': xlsx} if isinstance(xlsx, FormulaXLSX):
+                if hash_xl == hash_xl and cache_path_ == cache_path.absolute() and xlsx.params:
                     return cache_path
             case _:
                 self.formulas.operations[poki][rel_path][key_for_object] = {'hash': hash_name, 'cache_path': cache_path.absolute()}
@@ -318,7 +319,10 @@ class HTTPSrv:
         if xl_params and 'xlsx' in xl_params and isinstance(xl_params['xlsx'], FormulaXLSX):
             xl_obj = xl_params['xlsx']
             xl_obj.close_if_exists()
-            # xl_obj.remove()
+            try:
+                xl_obj.remove()
+            except Exception as e:
+                print(e)
             self.check_file(full_path, action, poki)
             new_obj = self.formulas.get_xlsx(xl_params['cache_path'])
             self.formulas.operations[poki][action][key_name]['xlsx'] = new_obj

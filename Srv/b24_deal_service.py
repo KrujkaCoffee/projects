@@ -2218,11 +2218,11 @@ def sync_nomen_tflex_docs(task: Task):
     if task.is_test:
         try:
             a = requests.post('http://192.168.14.69:5226/NomenFromOneEs',
-                          json=task.credentials)
+                          json=task.credentials, timeout=1)
             return a.status_code
 
         except Exception as e:
-            print(e)
+            ...
     return 204
 
 
@@ -2363,6 +2363,10 @@ def update_deal_status(task: Task):
     deal_obj = crm.deal_one(deal_id)['result']
     previous_stage = deal_obj['STAGE_ID']
     new_stage = task.credentials['status_code']
+    #optional
+    organization = task.credentials.get('UF_CRM_1737727925')
+    type_tkp = task.credentials.get('UF_CRM_1737711083528')
+
     forced = task.credentials.get('forced', False)
     if not forced:
         statuses = crm.deal_status_all()
@@ -2390,8 +2394,13 @@ def update_deal_status(task: Task):
     #             set_client_order_close_state(erp_base, ref_key, 'ВРаботе', False, False)
     #     except Exception as e:
     #         print(e, f'Ошибка при завершении сделки 1С IS_TEST: {task.is_test}')
+    body = {'STAGE_ID': new_stage}
+    if organization:
+        body['UF_CRM_1737727925'] = str(organization)
+    if type_tkp:
+        body['UF_CRM_1737711083528'] = str(type_tkp)
     result = crm.deal_update(deal_id=deal_id, credentials={
-        'FIELDS': {'STAGE_ID': new_stage}
+        'FIELDS': body
     })
     logger.info(f'Сделка: {deal_id} | Завршено: {result} | Новый: {new_stage} | Предыдущий: {previous_stage}')
     return result
@@ -2603,9 +2612,14 @@ def main():
         check_commands()
         check_values()
         handle_tasks()
+    except KeyboardInterrupt as e:
+        logging.info('Перезагрузка...')
+        sys.exit(0)
     except Exception as e:
         logging.error('Ошибка в цикле событий', exc_info=e, stack_info=True)
+        sys.exit(1)
     time.sleep(ITER_INTERVAL)
+    sys.exit(1)
 
 
 def decode_1c_data_version_attribute(base64_string: str):
