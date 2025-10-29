@@ -44,11 +44,11 @@ def check_plan_responce_sort_c_weight(self:mywindow):
         return True
     position = self.DICT_EMPLOEE_FULL[name]['Должность']
 
-    if position in LIST_CHECK_GL_TECHN and name not in LIST_CHECK_GL_TECHN_EXCLUDE_FIO:
-        if not check_respons_techn(self):
-            return False
-    if position in LIST_CHECK_TECHN:
-        if not check_respons_sort_c_weight(self,name):
-            return False
+    # if position in LIST_CHECK_GL_TECHN and name not in LIST_CHECK_GL_TECHN_EXCLUDE_FIO:
+    #     if not check_respons_techn(self):
+    #         return False
+    # if position in LIST_CHECK_TECHN:
+    #     if not check_respons_sort_c_weight(self,name):
+    #         return False
     return True
 

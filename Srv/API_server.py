@@ -1,7 +1,7 @@
-﻿import os
+import os
 
 import project_cust_38.Cust_Functions as F
-from fastapi import FastAPI, BackgroundTasks, UploadFile, File, Request, HTTPException,Response
+from fastapi import FastAPI, BackgroundTasks, UploadFile, File, Request, HTTPException, Response, Depends
 from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
 from fastapi.responses import FileResponse
 from typing import Union, List, Dict
@@ -18,7 +18,7 @@ import api_srv_config
 
 from fastapi.middleware.cors import CORSMiddleware
 
-
+import time
 import sys, io
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 sys.stderr = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
@@ -36,7 +36,7 @@ except:
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -87,6 +87,20 @@ class data_send_drawback_journal(BaseModel):
     ID: str | int | None = None
     FIELDS: Union[data_send_drawback_fields, None] = None
 
+FOR1C_RETRY_DELAY = 60 * 60
+
+def import_for1c_depend():
+    last_update = os.environ.get('LAST_UPDATE_FOR1C_MODULE', str(time.time() + FOR1C_RETRY_DELAY))
+    try:
+        if float(last_update) >= time.time():
+            from project_cust_38 import for_1c
+            importlib.reload(for_1c)
+        yield for_1c
+    except NameError as e:
+        from project_cust_38 import for_1c
+        yield for_1c
+
+
 def eval_1c_test_v1(data):
     return 'ok'
 
@@ -128,9 +142,13 @@ def global_exception_handler(request: Request, exc):
 
 
 @app.get("/")
-def test():
-    resp =f'{F.now()} for_1c.DATA_1С_VERSION: {for_1c.DATA_1С_VERSION}'
-    return JSONResponse(resp, status_code=200)
+def ping():
+    try:
+        resp =f'{F.now()} for_1c.DATA_1С_VERSION: {for_1c.DATA_1С_VERSION}'
+        print(resp)
+    except Exception as e:
+        print("/ping ошибка: ", e)
+    return JSONResponse("pong", status_code=200)
 
 
 
@@ -202,8 +220,8 @@ async def download_temp_file(
 
 
 @app.post("/hs/1c/{item_id}/{version}")
-def create_upload_file(item_id,version,data:budget|data_parse_prices|data_get_files, background_tasks: BackgroundTasks):
-    background_tasks.add_task(relaod_modules)
+def create_upload_file(item_id,version,data:budget|data_parse_prices|data_get_files,
+                       for_1c = Depends(import_for1c_depend)):
 
     resp = "err"
     status_code = 500
@@ -249,7 +267,7 @@ def create_upload_file(item_id,version,data:budget|data_parse_prices|data_get_fi
 
 
 @app.get("/hs/mes/{item_id}/{version}")
-def mes_methods_get(item_id,version,data:data_get_files):
+def mes_methods_get(item_id,version,data:data_get_files, for_1c = Depends(import_for1c_depend)):
     resp = "err"
     status_code = 500
     if item_id == 'test':
@@ -273,7 +291,7 @@ def mes_methods_get(item_id,version,data:data_get_files):
 
 
 @app.post("/hs/mes/{item_id}/{version}")
-def mes_methods_post(item_id, version, data:  data_send_drawback_journal):
+def mes_methods_post(item_id, version, data:  data_send_drawback_journal, for_1c = Depends(import_for1c_depend)):
     resp = "err"
     status_code = 500
 
@@ -293,12 +311,10 @@ def mes_methods_post(item_id, version, data:  data_send_drawback_journal):
 
     return JSONResponse(resp, status_code=status_code)
 
-import project_cust_38.for_1c as for_1c
+
 if __name__ == "__main__":
     while True:
         uvicorn.run("API_server:app", host=HOST, port=PORT, reload=False)
-                    # ssl_certfile='./ssl_cert/certificate.crt',
-                    # ssl_keyfile='./ssl_cert/private.key')
         print('OK')
         F.sleep(3)
 

@@ -117,7 +117,7 @@ class mywindow(QtWidgets.QMainWindow):
         self.DICT_VIDS_NOMEN = F.deploy_dict_c(
             CSQ.custom_request_c(self.db_nomen, f"""SELECT * FROM ВидыНоменклатуры""", rez_dict=True), 'name')
         self.DICT_PRICE_BRAK = CMS.DICT_PRICE_BRAK(self.db_naryd)
-        self.DICT_TYPE_PROSTOI =F.deploy_dict_c( CSQ.custom_request_c(self.db_naryd,f"""SELECT * FROM kategor_vnepl WHERE use = 1""", rez_dict=True),"value")
+        self.DICT_TYPE_PROSTOI =F.deploy_dict_c( CSQ.custom_request_c(self.db_naryd,f"""SELECT * FROM kategor_vnepl WHERE poki_{self.place.poki} = 1""", rez_dict=True),"value")
         self.DICT_DOLGN_ETAP = F.deploy_dict_c(
             CSQ.custom_request_c(self.db_naryd, f"""SELECT * FROM dolgn_etap""", rez_dict=True), 'Должность')
         self.app_icons()
@@ -899,24 +899,28 @@ class mywindow(QtWidgets.QMainWindow):
     @CQT.onerror
     def fill_cmbs_type_brak_3lvl(self,*args,**kwargs):
         self.ui.cmb_brak_type3.clear()
-        text_1 =  self.ui.cmb_brak_type1.currentText()
-        text_2 = self.ui.cmb_brak_type2.currentText()
-        if text_2 not in CMS.DICT_TYPE_OTK_BRAK[text_1]:
+        id = self.ui.cmb_brak_type2.currentData()
+        if not id:
             return
-        list_3_ur = [ _ for _ in CMS.DICT_TYPE_OTK_BRAK[text_1][text_2]]
-        self.ui.cmb_brak_type3.addItem('')
-        self.ui.cmb_brak_type3.addItems(list_3_ur)
+        list_data =  CSQ.custom_request_c(USRCNF.Config.project.db_naryad,f"""SELECT * FROM brak_categories WHERE parent = {id}""",rez_dict=True)
+        self.ui.cmb_brak_type3.addItem('', None)
+        for item in list_data:
+            self.ui.cmb_brak_type3.addItem(item['name'], item['s_num'])
 
     @CQT.onerror
     def fill_cmbs_type_brak_2lvl(self,*args,**kwargs):
         self.ui.cmb_brak_type2.clear()
         self.ui.cmb_brak_type3.clear()
-        text_1 =  self.ui.cmb_brak_type1.currentText()
-        if text_1 not in CMS.DICT_TYPE_OTK_BRAK:
+
+        id = self.ui.cmb_brak_type1.currentData()
+        if not id:
             return
-        list_2_ur = [ _ for _ in CMS.DICT_TYPE_OTK_BRAK[text_1]]
-        self.ui.cmb_brak_type2.addItem('')
-        self.ui.cmb_brak_type2.addItems(list_2_ur)
+        list_data = CSQ.custom_request_c(USRCNF.Config.project.db_naryad,
+                                         f"""SELECT * FROM brak_categories WHERE parent = {id}""",rez_dict=True)
+        self.ui.cmb_brak_type2.addItem('', None)
+        for item in list_data:
+            self.ui.cmb_brak_type2.addItem(item['name'], item['s_num'])
+
 
 
     def clck_check_box_dse_empl_brak(self, check='', i='', j='', *args):
@@ -997,9 +1001,17 @@ class mywindow(QtWidgets.QMainWindow):
             self.ui.cmb_brak_type2.clear()
             self.ui.cmb_brak_type3.clear()
             self.ui.chk_neisprav.setCheckState(1)
-            list_1_ur = [ _ for _ in CMS.DICT_TYPE_OTK_BRAK.keys()]
-            self.ui.cmb_brak_type1.addItem('')
-            self.ui.cmb_brak_type1.addItems(list_1_ur)
+            id_data = CSQ.custom_request_c(USRCNF.Config.project.db_naryad,
+                                             f"""SELECT s_num FROM brak_categories WHERE name = "{USRCNF.Config.place.Имя}";""",rez_dict=True,one=True)
+            if not id_data:
+                CQT.msgbox(f'Для {USRCNF.Config.place.Имя} не определен перечень брака. Обратитесь к администратору')
+                return
+            id = id_data['s_num']
+            list_data = CSQ.custom_request_c(USRCNF.Config.project.db_naryad,
+                                             f"""SELECT * FROM brak_categories WHERE parent = {id}""",rez_dict=True)
+            self.ui.cmb_brak_type1.addItem('',None)
+            for item in list_data:
+                self.ui.cmb_brak_type1.addItem(item['name'],item['s_num'])
 
         def is_otk_nar(self,str_operations:str):
             fl_open_fr_otk = False
@@ -1464,6 +1476,18 @@ class mywindow(QtWidgets.QMainWindow):
                     print(f'Не удалось вывести в Б24 сообщение')
                     pass
 
+        def auto_podtv(nar_obj:CMS.Naryads):
+            if nar_obj.count_users() == 2:
+                if nar_obj.Фвремя != '' and nar_obj.Фвремя2 != '':
+                    custom_request_c = (f'UPDATE naryad SET Подтвержд_вып = 1, Подтвержд_вып_дата = "{F.now()}",'
+                                        f' Подтвержд_вып_фио = "{self.glob_fio}" WHERE Пномер == {nar_obj.Пномер}')
+                    CSQ.custom_request_c(self.db_naryd, custom_request_c)
+            else:
+                custom_request_c = (f'UPDATE naryad SET Подтвержд_вып = 1, Подтвержд_вып_дата = "{F.now()}",'
+                                    f' Подтвержд_вып_фио = "{self.glob_fio}" WHERE Пномер == {nar_obj.Пномер}')
+                CSQ.custom_request_c(self.db_naryd, custom_request_c)
+
+
         #===============================================================================
         if vid_stop == 'Приостановлен':
             if CQT.get_key_modifiers(self) == [] and self.glob_otk_kontrol:
@@ -1480,6 +1504,7 @@ class mywindow(QtWidgets.QMainWindow):
             CQT.msgbox(f'не выбран наряд')
             return
         nom_nar = int(self.ui.lbl_nom_nar.text())
+        nar_obj = CMS.Naryads(nom_nar,USRCNF.Config.project.db_naryad,self.DICT_DOLGN_ETAP,USRCNF.Config.project.db_users,self.DICT_EMPL_FULL)
 
         if vid_stop == 'Завершен':
             if not CMS.check_id_peresil(self, nom_nar, self.ui.le_id_peresil.text(), kod_oper=2):
@@ -1564,8 +1589,12 @@ class mywindow(QtWidgets.QMainWindow):
 
 
         if vid_stop == 'Завершен':
+            confirm = False
+            if nar_obj.АвтоПодтвержд:
+                confirm = True
+
             if self.glob_otk_kontrol:
-                nar_obj = CMS.Naryads(nom_nar,self.db_naryd)
+
                 nar_obj.get_mk()
 
                 nom_kpl = nar_obj.mk.НомКплан
@@ -1585,14 +1614,10 @@ class mywindow(QtWidgets.QMainWindow):
                             sender.send_msg_by_action('Отгрузка на склад', msg_rows)
                         except:
                             pass
+                confirm = True
 
-                if nar_obj.count_users()== 2:
-                    if nar_obj.Фвремя != '' and nar_obj.Фвремя2 != '':
-                        custom_request_c = f'UPDATE naryad SET Подтвержд_вып = 1, Подтвержд_вып_дата = "{F.now()}", Подтвержд_вып_фио = "{self.glob_fio}" WHERE Пномер == {nom_nar}'
-                        CSQ.custom_request_c(self.db_naryd, custom_request_c)
-                else:
-                    custom_request_c = f'UPDATE naryad SET Подтвержд_вып = 1, Подтвержд_вып_дата = "{F.now()}", Подтвержд_вып_фио = "{self.glob_fio}" WHERE Пномер == {nom_nar}'
-                    CSQ.custom_request_c(self.db_naryd, custom_request_c)
+            if confirm:
+                auto_podtv(nar_obj)
 
             try:
                 if "Исправление" in zadanie and 'Акт №' in zadanie:

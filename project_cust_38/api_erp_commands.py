@@ -256,7 +256,7 @@ def get_wet_request(text: str, refs: Refs_wet | None = None, lazy_method_huours=
     END AS file, 
           hash_file FROM odata_lazy_resps 
         where resp == "{sum_hash}" limit 1""", rez_dict=True)
-        if len(data):
+        if data and len(data):
             fl_naid_lazy = data[0]['s_num']
             file_hash_lazy = data[0]['hash_file']
             if F.strtodate(data[0]['resp_date']) >= date_limit:

@@ -62,33 +62,11 @@ class GetFromDataclass():
             CQT.msgbox(f'{name} не найден в БД')
             return False
 
-class ConfigMeta(type):
-    def __new__(cls, *args, **kwargs):
-        """Инициализация конфигураций"""
-        new_cls = super().__new__(cls, *args, **kwargs)
-        from project_cust_38 import Cust_config as CFG
-        org_name = CFG.Config.user_config.Organization['Значение']
-        if org_name:
-            db_naryad = CFG.Config.project.db_naryad
-            response = CSQ.custom_request_c(db_naryad, f'SELECT poki FROM places WHERE Имя = {org_name!r}', rez_dict=True, one=True)
-            if 'poki' in response:
-                return cls.init_config(new_cls, str(response.get('poki')))
-
-    @staticmethod
-    def init_config(new_cls, poki):
-        cash = Path(F.scfg('cash'))
-        new_cls.CASH = str(cash)
-        new_cls.CASH_WITH_POKI = str(cash / poki)
-        return new_cls
-
-
-class OperationConfig(metaclass=ConfigMeta):
-    CASH: str # Z:\Data\TehKart\Data\bin
-    CASH_WITH_POKI: str # Z:\Data\TehKart\Data\bin\1
-
+class OperationConfig: #28.10.25
     @classmethod
     def operation_table_path(cls, operation: str, pereh: str = ''):
-        return str(Path(cls.CASH_WITH_POKI) / 'tables' / operation / pereh)
+        cache_with_poki = Path(F.scfg('cash')) / str(CFG.Config.place.poki)
+        return str(cache_with_poki / 'tables' / operation / pereh)
 
 
 def vremya_tsht_perehodi(ima_operacii, ima_perehoda, arr_tmp, arr_tmp_parent):
@@ -1818,8 +1796,8 @@ def vremya_tsht(ima_operacii, arr_tmp):
                 vrema = ukladka_nabivki(ima_operacii, arr_tmp)
             if ima_operacii == 'Формовка линз':
                 vrema = formovka_linz(ima_operacii, arr_tmp)
-            if ima_operacii == 'Отрезка слесарная':
-                vrema = otrez_sles(ima_operacii, arr_tmp)
+            # if ima_operacii == 'Отрезка слесарная': #25.09.25  переход на excel
+            #     vrema = otrez_sles(ima_operacii, arr_tmp)
             if ima_operacii == 'Дробеструйная':
                 vrema = drobestrui(ima_operacii, arr_tmp)
             # if ima_operacii == 'Слесарная(правка в плоскости)':
@@ -1834,8 +1812,8 @@ def vremya_tsht(ima_operacii, arr_tmp):
                 vrema = sles_rezba(ima_operacii, arr_tmp)
             if ima_operacii == 'Слесарная(разделка кромок)':
                 vrema = sles_razd_krom(ima_operacii, arr_tmp)
-            if ima_operacii == 'Слесарная(разметка)':
-                vrema = sles_razmetka(ima_operacii, arr_tmp)
+            # if ima_operacii == 'Слесарная(разметка)': #24.09.25 переход на excel
+            #     vrema = sles_razmetka(ima_operacii, arr_tmp)
             if ima_operacii == 'Кантование':
                 vrema = kantovanie(ima_operacii, arr_tmp)
             if ima_operacii == 'Резка(ЧПУ)':
@@ -3508,14 +3486,17 @@ class Data_oper_norm():
                 4: {'val': 'ЛК', 'prim': ''},
                 5: {'val': 'ГГ', 'prim': ''},
                 6: {'val': 'ПН', 'prim': ''},
-                7: {'val': 'ПР', 'prim': ''}}},
+                7: {'val': 'ПР', 'prim': ''},
+                8: {'val': 'КТ(корпус)', 'prim': ''},
+                9: {'val': 'Дождевая заслонка', 'prim': ''},
+            }},
             "Коэфф сложности": {"type": "int", "comment": '', "vals": {1: {'val': 'Крупные ДСЕ',
                                                                            'prim': 'установка деталей  БОЛШЕ 15 кг и  длине сопряжения БОЛЬШЕ 1,6 метров'},
                                                                        2: {'val': 'Мелкие ДСЕ',
                                                                            'prim': 'установка мелких деталей ДО 15 кг и  длине сопряжения ДО 1,6 метров'}},
                                 'Коэфф сложности значения': {
-                                    1: {1: 2, 2: 3.7, 3: 2.5, 4: 2.7, 5: 2.7, 6: 2.7, 7: 2.7},
-                                    2: {1: 1, 2: 1, 3: 1, 4: 1, 5: 1, 6: 1, 7: 1},
+                                    1: {1: 2, 2: 3.7, 3: 2.5, 4: 2.7, 5: 2.7, 6: 2.7, 7: 2.7, 8: 5.5, 9: 5.5},
+                                    2: {1: 1, 2: 1, 3: 1, 4: 1, 5: 1, 6: 1, 7: 1, 8: 1, 9: 1},
                                     'СБОРКА ПРОДОЛЬНЫХ СТЫКОВ': {1: 1, 2: 1, 3: 3.6, 4: 1.35, 5: 1, 6: 1, 7: 1},
                                 }
                                 },
@@ -3609,7 +3590,7 @@ class Data_oper_norm():
 
 
 @CQT.onerror
-def sb_pod_sv(ima_operacii, arr_tmp):
+def sb_pod_sv(ima_operacii, arr_tmp): #28.10.25
     def acc_type(ima_operacii, name):
         if arr_tmp[1][F.num_col_by_name_in_hat_c(arr_tmp, name)] == '+':
             return 0
@@ -3659,20 +3640,20 @@ def sb_pod_sv(ima_operacii, arr_tmp):
     if vid_konstr == '1':  # СБОРКА МЕТАЛЛОКОНСТРУКЦИЙ ПОД СВАРКУ ИЗ ЛИСТОВОГО МЕТАЛЛА
         koef_slognost = \
         Data_oper_norm.DICT_OPERS_CALC[ima_operacii]['Коэфф сложности']['Коэфф сложности значения'][slogn_sobs][vid_izd]
-        Tsht = 0.0158 * mass ** 0.26 * kol_vo ** 0.71 * dl_stik ** 0.18 * koef_met * koef_sbor * koef_slognost * koef_uzl * 60
+        Tsht = 0.0158 * mass ** 0.26 * kol_vo ** 0.71 * dl_stik ** 0.18 * koef_met * koef_slognost * koef_uzl * 60
 
     elif vid_konstr == '2':  # сборка металлоконструкций под сварку из профильного и листового металла
         koef_slognost = \
             Data_oper_norm.DICT_OPERS_CALC[ima_operacii]['Коэфф сложности']['Коэфф сложности значения'][slogn_sobs][
                 vid_izd]
-        Tsht = 0.0195 * mass ** 0.26 * kol_vo ** 0.71 * dl_stik ** 0.18 * koef_met * koef_sbor * koef_slognost * koef_uzl * 60
+        Tsht = 0.0195 * mass ** 0.26 * kol_vo ** 0.71 * dl_stik ** 0.18 * koef_met * koef_slognost * koef_uzl * 60
 
 
     elif vid_konstr == '3':  # сборка металлоконструкций под сварку из профильного металла
         koef_slognost = \
             Data_oper_norm.DICT_OPERS_CALC[ima_operacii]['Коэфф сложности']['Коэфф сложности значения'][slogn_sobs][
                 vid_izd]
-        Tsht = 0.038 * mass ** 0.26 * kol_vo ** 0.71 * koef_sbor * koef_slognost * koef_uzl * 60
+        Tsht = 0.038 * mass ** 0.26 * kol_vo ** 0.71 * koef_slognost * koef_uzl * 60
 
     elif vid_konstr == '4':  # сборка плоских колец (фланцев) из сегментов (секторов)
         koef_stika = 1.2 if dl_stik > 0.2 else 1
@@ -3685,14 +3666,14 @@ def sb_pod_sv(ima_operacii, arr_tmp):
         koef_sbor = 1.8 if koef_sborki == 2 else 1
         koef_slognost = Data_oper_norm.DICT_OPERS_CALC[ima_operacii]['Коэфф сложности']['Коэфф сложности значения'][
             'СБОРКА ПРОДОЛЬНЫХ СТЫКОВ'][vid_izd]
-        Tsht = 0.166 * tolshina_met ** 0.63 * diametr ** 0.37 * dl_obech ** 0.5 * koef_sbor * koef_slognost * koef_met
+        Tsht = 0.166 * tolshina_met ** 0.63 * diametr ** 0.37 * dl_obech ** 0.5 * koef_slognost * koef_met
 
     elif vid_konstr == '6':  # сборка продольных стыков конических обечаек под сварку
         koef_sbor = 1.8 if koef_sborki == 2 else 1
 
         koef_slognost = Data_oper_norm.DICT_OPERS_CALC[ima_operacii]['Коэфф сложности']['Коэфф сложности значения'][
             'СБОРКА ПРОДОЛЬНЫХ СТЫКОВ'][vid_izd]
-        Tsht = 0.254 * tolshina_met ** 0.60 * diametr ** 0.37 * dl_obech ** 0.5 * koef_sbor * koef_slognost * koef_met
+        Tsht = 0.254 * tolshina_met ** 0.60 * diametr ** 0.37 * dl_obech ** 0.5 * koef_slognost * koef_met
 
     N_v = Tsht * Kusl * Km * (1 + Tpz / 100) * 1.3
     slogn_tpz = 0.03

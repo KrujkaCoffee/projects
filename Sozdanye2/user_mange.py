@@ -13,11 +13,11 @@ def reg_new_user(self):
         CQT.msgbox(f"Пользователь уже зарегистрирован")
         return
     spis = F.load_file_pickle(F.pcfg('Riba'))
+    tmp_parol = F.date(vid='yyyy')
     spis.append([CMS.shifr(ima), CMS.shifr(
-        F.date(vid='yyyy')),F.now('')])
+        tmp_parol),F.now('')])
     F.save_file_pickle(F.pcfg('Riba'), spis)
-    CQT.msgbox("Новый пользователь зарегистрирован: " + '\n' + ima + '\n' \
-               + CMS.shifr(ima))
+    CQT.msgbox(f"Новый пользователь {ima} зарегистрирован успешно!\nВременный пароль: {tmp_parol}\nНе забудьте его сменить." )
     return
 
 
@@ -177,7 +177,7 @@ def change_user_pass(self):
     if self.glob_login == '':
         return
     if self.ui.le_Nparol.isVisible() == False:
-        CQT.msgbox("Введи старый и новый пароль, потом еще раз через меню - сменить пароль")
+        CQT.msgbox("Введи старый и новый пароль, потом еще раз, через меню - сменить пароль")
         self.ui.le_Nparol.setVisible(True)
         self.ui.le_Nparol2.setVisible(True)
         return

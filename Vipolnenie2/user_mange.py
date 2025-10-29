@@ -161,11 +161,19 @@ def load_users(self,conn='', cur = ''):
     spis_dolgn = sorted(list(set_dolgn))
     for dolgn in spis_dolgn:
         self.ui.cmb_dolgn.addItem(dolgn)
-    spis_pauz = F.load_file(F.scfg('Riba') + F.sep() + 'Prich_pauz.txt')
+
+    spis_pauz = CSQ.custom_request_c(CFG.Config.project.db_naryad,f''' 
+            SELECT s_num,
+                   name,
+                   comment,
+                   poki
+              FROM reason_pause_nar where poki = {CFG.Config.place.poki};
+            ''',rez_dict=True)
     self.ui.cmb_zamechain.clear()
     self.ui.cmb_zamechain.addItem('')
-    for item in  spis_pauz:
-        self.ui.cmb_zamechain.addItem(item)
+    CQT.fill_list_combobx(self,self.ui.cmb_zamechain,[_['name'] for _ in spis_pauz],
+                          list_tooltip=[_['comment'] for _ in spis_pauz],first_void=True)
+    self.ui.cmb_zamechain.setCurrentIndex(0)
 
 
 def load_po_dolg(self):

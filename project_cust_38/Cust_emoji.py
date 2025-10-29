@@ -22,17 +22,21 @@ class СтатусыПроизводства:
     """Категория статусов производства"""
 
     success: ClassVar[EmojiItem] = EmojiItem('✅', 'success', 'status', 'Успешное выполнение')
+    checked: ClassVar[EmojiItem] = EmojiItem('☑️', 'checked', 'status', 'Отмечено')
     error: ClassVar[EmojiItem] = EmojiItem('❌', 'error', 'status', 'Ошибка или сбой')
     warning: ClassVar[EmojiItem] = EmojiItem('⚠️', 'warning', 'status', 'Предупреждение')
     info: ClassVar[EmojiItem] = EmojiItem('ℹ️', 'info', 'status', 'Информация')
     progress: ClassVar[EmojiItem] = EmojiItem('⏳', 'progress', 'status', 'В процессе выполнения')
     completed: ClassVar[EmojiItem] = EmojiItem('🎯', 'completed', 'status', 'Завершено')
     running: ClassVar[EmojiItem] = EmojiItem('🟢', 'running', 'status', 'Система работает')
+    selected: ClassVar[EmojiItem] = EmojiItem('🔘', 'selected', 'status', 'Выбрано')
+    uncertain: ClassVar[EmojiItem] = EmojiItem('🟠', 'uncertain', 'status', 'Неустойчивое состояние')
     stopped: ClassVar[EmojiItem] = EmojiItem('🔴', 'stopped', 'status', 'Система остановлена')
     idle: ClassVar[EmojiItem] = EmojiItem('🟡', 'idle', 'status', 'Ожидание')
     alert: ClassVar[EmojiItem] = EmojiItem('🚨', 'alert', 'status', 'Тревога')
     normal: ClassVar[EmojiItem] = EmojiItem('🟢', 'normal', 'status', 'Нормальный режим')
-
+    ellipsis: ClassVar[EmojiItem] = EmojiItem('…', 'ellipsis', 'menu', 'Ещё / Дополнительно')
+    vert_ellipsis: ClassVar[EmojiItem] = EmojiItem('⁞', 'vertEllipsis', 'menu', 'Ещё / Дополнительно')
 
 class ОперацииПроизводства:
     """Категория производственных операций"""
@@ -43,6 +47,8 @@ class ОперацииПроизводства:
     packaging: ClassVar[EmojiItem] = EmojiItem('📦', 'packaging', 'operations', 'Упаковка')
     shipping: ClassVar[EmojiItem] = EmojiItem('🚚', 'shipping', 'operations', 'Отгрузка')
     maintenance: ClassVar[EmojiItem] = EmojiItem('🛠️', 'maintenance', 'operations', 'Техобслуживание')
+    dse: ClassVar[EmojiItem] = EmojiItem('🔩', 'dse', 'item', 'Деталь или материал')
+    res: ClassVar[EmojiItem] = EmojiItem('📘', 'res', 'resource_spec', 'Ресурсная спецификация')
 
 
 class ПоказателиМетрики:
@@ -63,7 +69,7 @@ class ОборудованиеИнструменты:
     sensor: ClassVar[EmojiItem] = EmojiItem('📡', 'sensor', 'equipment', 'Датчик')
     tool: ClassVar[EmojiItem] = EmojiItem('🛠️', 'tool', 'equipment', 'Инструмент')
     conveyor: ClassVar[EmojiItem] = EmojiItem('📦', 'conveyor', 'equipment', 'Конвейер')
-
+    lock: ClassVar[EmojiItem] = EmojiItem('🔒', 'lock', 'control', 'Замок')
 
 class ПерсоналРоли:
     """Категория персонала и ролей"""
@@ -79,11 +85,21 @@ class ДокументыДанные:
     """Категория документов и данных"""
 
     document: ClassVar[EmojiItem] = EmojiItem('📄', 'document', 'documents', 'Документ')
+    folder: ClassVar[EmojiItem] = EmojiItem('📁', 'folder', 'documents', 'Папка')
+    folder_closed: ClassVar[EmojiItem] = EmojiItem('📂', 'folder_closed', 'documents', 'Закрытая папка')
     report: ClassVar[EmojiItem] = EmojiItem('📋', 'report', 'documents', 'Отчет')
     database: ClassVar[EmojiItem] = EmojiItem('🗄️', 'database', 'documents', 'База данных')
     analysis: ClassVar[EmojiItem] = EmojiItem('📊', 'analysis', 'documents', 'Анализ данных')
     archive: ClassVar[EmojiItem] = EmojiItem('🗃️', 'archive', 'documents', 'Архив')
-
+    expand: ClassVar[EmojiItem] = EmojiItem('🔽', 'expand', 'documents', 'Развернуть')
+    collapse: ClassVar[EmojiItem] = EmojiItem('▶️', 'collapse', 'documents', 'Свернуть')
+    refresh: ClassVar[EmojiItem] = EmojiItem('🔄', 'refresh', 'operations', 'Обновить / Пересчитать')
+    plus: ClassVar[EmojiItem] = EmojiItem('➕', 'plus', 'documents', 'Развернуть')
+    minus: ClassVar[EmojiItem] = EmojiItem('➖', 'minus', 'documents', 'Свернуть')
+    pencil: ClassVar[EmojiItem] = EmojiItem('✏️', 'pencil', 'documents', 'Изменяемый')
+    pencil2: ClassVar[EmojiItem] = EmojiItem('🖉', 'pencil2', 'documents', 'Изменяемый2')
+    pencil2: ClassVar[EmojiItem] = EmojiItem('🖉', 'pencil2', 'documents', 'Изменяемый2')
+    pencil_note: ClassVar[EmojiItem] = EmojiItem('📝', 'pencil_note', 'documents', 'Редактирование')
 
 class EmojiMain:
     """

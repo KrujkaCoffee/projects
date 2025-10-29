@@ -1,20 +1,27 @@
-﻿import sys, io, logging, os
-import builtins, logging
+﻿import logging
+import builtins
+import ipaddress
+import subprocess
+import socket
 
-logging.basicConfig(filename=r'C:\srv_mes\srv_mes\db_logs\Reiting.log', level=logging.INFO, force=True, encoding='utf-8')
-_orig_print = builtins.print
+if socket.gethostname() == 'SRV-MES':#"POW-ING22":
+    logging.basicConfig(filename=r'C:\srv_mes\srv_mes\db_logs\Reiting.log', level=logging.INFO, force=True, encoding='utf-8')
+    _orig_print = builtins.print
 
-def logging_print(*args, **kwargs):
-    sep = kwargs.get('sep', ' ')
-    end = kwargs.get('end', '\n')
-    s = sep.join(map(str, args)) + ('' if end == '' else end)
-    logging.getLogger('PRINT').info(s.rstrip('\n'))
-    _orig_print(*args, **kwargs)
+    def logging_print(*args, **kwargs):
+        sep = kwargs.get('sep', ' ')
+        end = kwargs.get('end', '\n')
+        s = sep.join(map(str, args)) + ('' if end == '' else end)
+        logging.getLogger('PRINT').info(s.rstrip('\n'))
+        _orig_print(*args, **kwargs)
 
-builtins.print = logging_print
+    builtins.print = logging_print
 
-import datetime
+import typing
 import pprint
+from datetime import datetime, timedelta #28.10.25
+from dateutil.relativedelta import relativedelta
+from collections import defaultdict
 
 if __name__ != '__main__':
     exit()
@@ -25,7 +32,7 @@ import project_cust_38.report_ci as reports
 import project_cust_38.Cust_SQLite as CSQ
 import project_cust_38.Cust_Qt as CQT
 import project_cust_38.Cust_mes as CMS
-import project_cust_38.nomenklatura as nomen_erp
+# import project_cust_38.nomenklatura as nomen_erp
 import project_cust_38.Cust_odata_erp as ERP
 import project_cust_38.Cust_config as USRCNF
 from PyQt5 import QtWidgets
@@ -51,9 +58,7 @@ import user_calendar
 
 
 def load_ip_hostnames() -> list[dict]:
-    import ipaddress
-    import subprocess
-    import socket
+
     from concurrent.futures import ThreadPoolExecutor, as_completed
     def ping_and_resolve(ip: str):
         """Проверяет, жив ли IP, и пытается получить hostname"""
@@ -105,6 +110,54 @@ def load_ip_hostnames() -> list[dict]:
         print(f"{ip:15} -> {host}")
         rez.append({'ip':ip,'host':host})
     return rez
+
+# ++ 28.10.25
+class CacheDbByDate(typing.NamedTuple):
+    table_name: str
+    column_name: str
+    delete_after_hours: int
+    database: str
+
+class CacheDbByEq(typing.NamedTuple):
+    table_name: str
+    column_name: str
+    value: typing.Any
+    database: str
+
+class DbCacheCleaner:
+    DB_CREDENTIALS = ( # Описательная часть таблиц, подлежащих очистке по характеристикам
+        CacheDbByDate(table_name='odata_lazy_resps', column_name='resp_date', delete_after_hours=24 * 30, database=USRCNF.Config.project.db_files),
+        CacheDbByDate(table_name='exchange', column_name='date', delete_after_hours=24 * 120, database=USRCNF.Config.project.db_files),
+        CacheDbByEq(table_name='exchange', column_name='is_test', value=1, database=USRCNF.Config.project.db_files),
+    )
+
+    @classmethod
+    def clean(cls):
+        print("[DbCacheCleaner.clean] Чистка устаревшего кэша таблиц начало...")
+        for instance in cls.DB_CREDENTIALS:
+            match instance:
+                case CacheDbByDate(db_cred):
+                    date_after = (
+                            datetime.now() -
+                            timedelta(hours=instance.delete_after_hours)
+                    ).strftime('%Y-%m-%d %H:%M:%S')
+                    query = f"""DELETE FROM {instance.table_name} 
+                        WHERE datetime({date_after!r}) > datetime({instance.column_name})
+                    """
+                case CacheDbByEq(db_cred):
+                    query = f"""DELETE FROM {instance.table_name} 
+                        WHERE {instance.column_name} = {instance.value!r}
+                    """
+                case _:
+                    print(f"Неудлось найти соответствие для: {instance}")
+                    continue
+            print("=" * 40)
+            print(f"[DbCacheCleaner.clean] Чистка таблицы: {instance.table_name!r} по колонке: {instance.column_name}")
+            result = CSQ.custom_request_c(instance.database, query)
+            print(f"[DbCacheCleaner.clean] Статус удаления: {result}")
+            print("=" * 40 + "\n")
+
+# -- 28.10.25
 
 
 
@@ -588,6 +641,44 @@ def calc_execute_month_plan():
     print(f'======= СОХРАНЕНИЕ МЕСЯЧНОГО ОТЧЕТА УСПЕШНО ======')
 
 
+def calc_fact_naruads_for_kpl():
+    print(f'======= calc_fact_naruads_for_kpl =======')
+    list_places =  CSQ.custom_request_c(USRCNF.Config.project.db_naryad, f'''SELECT poki  
+             FROM places WHERE autoload_fact_kpl_onoff = 1'''
+                                             , one_column=True,hat_c=False)
+    for poki in list_places:
+
+        DICT_VID_RABOT = CMS.calc_dict_vid_rabot(poki)
+        NAPR_DEYAT = CMS.calc_napr_deyat(poki)
+        DICT_NAPR_DEYAT = F.deploy_dict_c(NAPR_DEYAT, 'Пномер')
+        DICT_NAPR_DEYAT_NAME = F.deploy_dict_c(NAPR_DEYAT, 'Имя')
+
+        DICT_OP, DICT_OP_NAME = CMS.calc_dicts_opers(poki)
+
+        list_poz = CSQ.custom_request_c(USRCNF.Config.project.db_kplan,f"""SELECT plan.Пномер 
+         FROM plan INNER JOIN
+        status_poz ON status_poz.Пномер = plan.Статус 
+        WHERE plan.poki == {poki} and plan.МК > 0  AND status_poz.Имя IN (
+        "Изготовление");""",one_column=True,hat_c=False)
+
+        for kpl in list_poz :
+            result = CMS.calc_pozition_fact_kpl(None, kpl,
+                                   DICT_GROUP_PODR_VID_RAB_FOR_PLAN,
+                                   DICT_VID_RABOT,
+                                   DICT_NAPR_DEYAT,
+                                   DICT_VID_PO_NAPR,
+                                   DICT_NAPRAVLENIE,
+                                   DICT_NAPR_DEYAT_NAME,
+                                   DICT_DOLGN_ETAP,
+                                   DICT_EMPLOEE_FULL_WITH_DEL,
+                                   DICT_OP_NAME,
+                                   DICT_CLD,
+                                   DICT_PODR,
+                                   repaint_graf=False)
+            if result is None:
+                print(f'kpl {kpl} err CMS.calc_pozition_fact_kpl')
+            F.sleep(0.2)
+    print(f'=======  END calc_fact_naruads_for_kpl    =======')
 # ========================calc обновление статусов КПЛ ТЧ=================
 def check_and_calc_plan_kpl():
     print(f'===== {F.now()} UPDATE КПЛ МЕС И ERP========')
@@ -795,12 +886,15 @@ def check_and_calc_plan_kpl():
             state = resp[0]['Статус']
             if item['Статус_поз_ЕРП'] != state:
                 if state == 'КПроизводству':
-                    list_poz = CSQ.custom_request_c(db_kplan, f"""SELECT plan.Статус, plan.Пномер  FROM plan 
-                    INNER JOIN пл_оуп ON пл_оуп.НомПл = plan.Пномер WHERE пл_оуп.Пномер_ЗП == {item['s_num']}""",
-                                                    rez_dict=True)
+                    list_poz = CSQ.custom_request_c(db_kplan, f"""SELECT plan.Статус, plan.Пномер, places.auto_change_state_kplan  FROM plan 
+                    INNER JOIN пл_оуп ON пл_оуп.НомПл = plan.Пномер
+                    INNER JOIN places ON places.poki = plan.poki
+                    
+                     WHERE пл_оуп.Пномер_ЗП == {item['s_num']}""",
+                                                    rez_dict=True, attach_dbs=db_naryad)
                     num_kpl_poz = False
                     for poz in list_poz:
-                        if poz['Статус'] in (1, 2):
+                        if poz['auto_change_state_kplan'] and poz['Статус'] in (1, 2):
                             CSQ.custom_request_c(db_kplan,
                                                  f"""UPDATE plan SET (Статус) = (7) WHERE Пномер = {poz['Пномер']};""")
                             num_kpl_poz = poz['Пномер']
@@ -865,6 +959,498 @@ def check_and_calc_plan_kpl():
 
     # ================================================================================
 
+#++23.09.25
+
+MONTHS_TO_LOAD_PLAN = 3             #Количество месяцев загружаемых для плана (Текущий + n)
+MONTHS_TO_LOAD_FACT = 1             # Количество месяцев загружаемых для факта (Текущий - n)
+DAY_AFTER_WHICH_PLAN_LOADS = 3      # День после, которого месяц актуален для загрузки плана
+DAY_AFTER_WHICH_FACT_LOADS = 3      # День после, которого месяц актуален для загрузки факта
+
+def get_places():
+    query = "SELECT * FROM places WHERE view_on_site = 1"
+    return CSQ.custom_request_c(USRCNF.Config.project.db_naryad, query, rez_dict=True)
+
+def get_work_types_by_poki(poki: int):
+    stmt = f"""
+        SELECT имя, вид_работ 
+        FROM professions 
+        WHERE Вкл = 1 AND poki = {poki}
+    """
+    return F.deploy_dict_c(CSQ.custom_request_c(F.scfg('BD_users'), stmt, rez_dict=True), 'имя')
+
+def delete_insert_vid_to_month(table_name: str, month: str, vid_rabot: str, department: str, value: float, poki: int):
+    response = set()
+    body = {
+        'vid_rabot': vid_rabot,
+        'month': month,
+        'normo_smen': value,
+        'depatment': department,
+        'poki': poki,
+    }
+    keys = ','.join(body.keys())
+    values = ','.join(repr(val) for val in body.values())
+    instructions = (
+        f'''DELETE FROM {table_name} WHERE vid_rabot = "{vid_rabot}" AND month = "{month}" AND poki = {poki}''',
+        f'''INSERT INTO {table_name}({keys}) VALUES ({values})'''
+    )
+    for instruction in instructions:
+        response.add(CSQ.custom_request_c(USRCNF.Config.project.db_kplan, instruction))
+    return all(response)
+
+def reduce_working_types_time_by_department(
+        org_ref_key: str,
+        org_poki: int,
+        org_name: str,
+        month: str,
+        tabel_type: str
+):
+    work_types = get_work_types_by_poki(org_poki)
+    is_null = set()
+
+    considered_date = F.datetostr(F.strtodate(month, "%Y-%m-%d"), "ДАТАВРЕМЯ(%Y, %m, %d)")
+    text = f"""
+    ВЫБРАТЬ
+    ТабельУчетаРабочегоВремениДанныеОВремени.Сотрудник.Наименование КАК Сотрудник,
+    	ДанныеДляПодбора.Должность КАК ТекущаяДолжность,
+    	ДанныеДляПодбора.МестоВСтруктуреПредприятия КАК ТекущееМестоВСтруктуреПредприятия,
+    	ДанныеДляПодбора.Организация КАК ТекущаяОрганизация,
+    	ДанныеДляПодбора.Подразделение КАК ТекущееПодразделение,
+    	ДанныеДляПодбора.ВидЗанятости КАК ТекущийВидЗанятости,
+    	ДанныеДляПодбора.ФизическоеЛицо КАК ФизическоеЛицо,
+    СУММА(ВЫБОР
+        КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени1.БуквенныйКод В ("Я", "Н", "РВ", "С")
+            ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов1
+        ИНАЧЕ 0
+    КОНЕЦ) КАК Часов1,
+    СУММА(ВЫБОР
+        КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени2.БуквенныйКод В ("Я", "Н", "РВ", "С")
+            ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов2
+        ИНАЧЕ 0
+    КОНЕЦ) КАК Часов2,
+    СУММА(ВЫБОР
+        КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени3.БуквенныйКод В ("Я", "Н", "РВ", "С")
+            ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов3
+        ИНАЧЕ 0
+    КОНЕЦ) КАК Часов3,
+    СУММА(ВЫБОР
+        КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени4.БуквенныйКод В ("Я", "Н", "РВ", "С")
+            ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов4
+        ИНАЧЕ 0
+    КОНЕЦ) КАК Часов4,
+    СУММА(ВЫБОР
+        КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени5.БуквенныйКод В ("Я", "Н", "РВ", "С")
+            ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов5
+        ИНАЧЕ 0
+    КОНЕЦ) КАК Часов5,
+    СУММА(ВЫБОР
+        КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени6.БуквенныйКод В ("Я", "Н", "РВ", "С")
+            ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов6
+        ИНАЧЕ 0
+    КОНЕЦ) КАК Часов6,
+    СУММА(ВЫБОР
+        КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени7.БуквенныйКод В ("Я", "Н", "РВ", "С")
+            ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов7
+        ИНАЧЕ 0
+    КОНЕЦ) КАК Часов7,
+    СУММА(ВЫБОР
+        КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени8.БуквенныйКод В ("Я", "Н", "РВ", "С")
+            ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов8
+        ИНАЧЕ 0
+    КОНЕЦ) КАК Часов8,
+    СУММА(ВЫБОР
+        КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени9.БуквенныйКод В ("Я", "Н", "РВ", "С")
+            ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов9
+        ИНАЧЕ 0
+    КОНЕЦ) КАК Часов9,
+    СУММА(ВЫБОР
+        КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени10.БуквенныйКод В ("Я", "Н", "РВ", "С")
+            ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов10
+        ИНАЧЕ 0
+    КОНЕЦ) КАК Часов10,
+    СУММА(ВЫБОР
+        КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени11.БуквенныйКод В ("Я", "Н", "РВ", "С")
+            ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов11
+        ИНАЧЕ 0
+    КОНЕЦ) КАК Часов11,
+    СУММА(ВЫБОР
+        КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени12.БуквенныйКод В ("Я", "Н", "РВ", "С")
+            ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов12
+        ИНАЧЕ 0
+    КОНЕЦ) КАК Часов12,
+    СУММА(ВЫБОР
+        КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени13.БуквенныйКод В ("Я", "Н", "РВ", "С")
+            ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов13
+        ИНАЧЕ 0
+    КОНЕЦ) КАК Часов13,
+    СУММА(ВЫБОР
+        КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени14.БуквенныйКод В ("Я", "Н", "РВ", "С")
+            ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов14
+        ИНАЧЕ 0
+    КОНЕЦ) КАК Часов14,
+    СУММА(ВЫБОР
+        КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени15.БуквенныйКод В ("Я", "Н", "РВ", "С")
+            ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов15
+        ИНАЧЕ 0
+    КОНЕЦ) КАК Часов15,
+    СУММА(ВЫБОР
+        КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени16.БуквенныйКод В ("Я", "Н", "РВ", "С")
+            ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов16
+        ИНАЧЕ 0
+    КОНЕЦ) КАК Часов16,
+    СУММА(ВЫБОР
+        КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени17.БуквенныйКод В ("Я", "Н", "РВ", "С")
+            ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов17
+        ИНАЧЕ 0
+    КОНЕЦ) КАК Часов17,
+    СУММА(ВЫБОР
+        КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени18.БуквенныйКод В ("Я", "Н", "РВ", "С")
+            ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов18
+        ИНАЧЕ 0
+    КОНЕЦ) КАК Часов18,
+    СУММА(ВЫБОР
+        КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени19.БуквенныйКод В ("Я", "Н", "РВ", "С")
+            ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов19
+        ИНАЧЕ 0
+    КОНЕЦ) КАК Часов19,
+    СУММА(ВЫБОР
+        КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени20.БуквенныйКод В ("Я", "Н", "РВ", "С")
+            ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов20
+        ИНАЧЕ 0
+    КОНЕЦ) КАК Часов20,
+    СУММА(ВЫБОР
+        КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени21.БуквенныйКод В ("Я", "Н", "РВ", "С")
+            ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов21
+        ИНАЧЕ 0
+    КОНЕЦ) КАК Часов21,
+    СУММА(ВЫБОР
+        КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени22.БуквенныйКод В ("Я", "Н", "РВ", "С")
+            ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов22
+        ИНАЧЕ 0
+    КОНЕЦ) КАК Часов22,
+    СУММА(ВЫБОР
+        КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени23.БуквенныйКод В ("Я", "Н", "РВ", "С")
+            ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов23
+        ИНАЧЕ 0
+    КОНЕЦ) КАК Часов23,
+    СУММА(ВЫБОР
+        КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени24.БуквенныйКод В ("Я", "Н", "РВ", "С")
+            ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов24
+        ИНАЧЕ 0
+    КОНЕЦ) КАК Часов24,
+    СУММА(ВЫБОР
+        КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени25.БуквенныйКод В ("Я", "Н", "РВ", "С")
+            ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов25
+        ИНАЧЕ 0
+    КОНЕЦ) КАК Часов25,
+    СУММА(ВЫБОР
+        КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени26.БуквенныйКод В ("Я", "Н", "РВ", "С")
+            ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов26
+        ИНАЧЕ 0
+    КОНЕЦ) КАК Часов26,
+    СУММА(ВЫБОР
+        КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени27.БуквенныйКод В ("Я", "Н", "РВ", "С")
+            ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов27
+        ИНАЧЕ 0
+    КОНЕЦ) КАК Часов27,
+    СУММА(ВЫБОР
+        КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени28.БуквенныйКод В ("Я", "Н", "РВ", "С")
+            ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов28
+        ИНАЧЕ 0
+    КОНЕЦ) КАК Часов28,
+    СУММА(ВЫБОР
+        КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени29.БуквенныйКод В ("Я", "Н", "РВ", "С")
+            ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов29
+        ИНАЧЕ 0
+    КОНЕЦ) КАК Часов29,
+    СУММА(ВЫБОР
+        КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени30.БуквенныйКод В ("Я", "Н", "РВ", "С")
+            ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов30
+        ИНАЧЕ 0
+    КОНЕЦ) КАК Часов30,
+    СУММА(ВЫБОР
+        КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени31.БуквенныйКод В ("Я", "Н", "РВ", "С")
+            ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов31
+        ИНАЧЕ 0
+    КОНЕЦ) КАК Часов31
+    ИЗ
+    Документ.ТабельУчетаРабочегоВремени.ДанныеОВремени КАК ТабельУчетаРабочегоВремениДанныеОВремени
+    ЛЕВОЕ СОЕДИНЕНИЕ РегистрСведений.ДанныеДляПодбораСотрудников КАК ДанныеДляПодбора
+        ПО ДанныеДляПодбора.Сотрудник = ТабельУчетаРабочегоВремениДанныеОВремени.Сотрудник 
+    ГДЕ
+    ТабельУчетаРабочегоВремениДанныеОВремени.Ссылка.ПериодРегистрации = {considered_date}
+    	И ДанныеДляПодбора.Начало <= {considered_date}
+    	И ДанныеДляПодбора.Окончание >= {considered_date}
+    	И ДанныеДляПодбора.Организация = &Организация
+    	И (ВЫРАЗИТЬ(ТабельУчетаРабочегоВремениДанныеОВремени.Ссылка.Комментарий КАК СТРОКА(20))) = "{tabel_type}"
+
+    СГРУППИРОВАТЬ ПО
+    ТабельУчетаРабочегоВремениДанныеОВремени.Сотрудник.Наименование,
+    ДанныеДляПодбора.Должность,
+    ДанныеДляПодбора.МестоВСтруктуреПредприятия,
+    ДанныеДляПодбора.Организация,
+    ДанныеДляПодбора.Подразделение,
+    ДанныеДляПодбора.ВидЗанятости,
+    ДанныеДляПодбора.ФизическоеЛицо
+    """
+    refs = APIERP.Refs_wet(text)
+    ref = APIERP.Ref_wet('Организация', 'Справочники.Организации', org_ref_key)
+    refs.add_ref(ref)
+    key, result_req = APIERP.get_wet_request(text=text, refs=refs)
+    acc = {}
+
+    for i in result_req['data']:
+        dolgn = i['ТекущаяДолжность']
+        department = i['ТекущееПодразделение']
+        work_type = work_types.get(dolgn)
+        if work_type is None:
+            is_null.add(dolgn)
+            continue
+
+        acc.setdefault(department, defaultdict(int))
+
+        for key, val in i.items():
+            if key.startswith('Часов'):
+                acc[department][work_type] += val / 8
+    return acc
+
+def write_times_result_into_table(
+        reduced_time: dict[str, dict[str, float]],
+        tabel_type: str,
+        table_name: str,
+        month: str,
+        org_name: str,
+        org_poki: int
+):
+    print("=" * 36)
+    print(f' Обновление {tabel_type!r} Месяц: {month!r} по Организации: {org_name!r}')
+    print()
+    for dep, types in reduced_time.items():
+        for vid, val in types.items():
+            response = delete_insert_vid_to_month(
+                table_name=table_name,
+                month=month,
+                vid_rabot=vid,
+                value=val,
+                department=dep.lower(),
+                poki=org_poki,
+            )
+            status = 'Успешно' if response else 'Неудачно'
+            print(f'Подразделение: {dep!r} Вид работ: {vid} Новое значение: {val} Статус занесения: {status!r}')
+
+    print()
+    print("=" * 36)
+
+
+def recalc_month_plan_fact(tabel_type: str, table_name: str, month: str):
+    result_by_places = {}
+    for place in get_places():
+        org_name = place['Имя']
+        org_poki = place['poki']
+        reduced_time = reduce_working_types_time_by_department(
+            org_ref_key=place['Организация_Key'],
+            org_poki=place['poki'],
+            org_name=place['Имя'],
+            month=month,
+            tabel_type=tabel_type
+        )
+        result_by_places[place['Имя']] = reduced_time
+        write_times_result_into_table(reduced_time=reduced_time, tabel_type=tabel_type, table_name=table_name, month=month, org_name=org_name,
+                                      org_poki=org_poki)
+    return result_by_places
+
+def generate_plan_months():
+    now = datetime.now()
+    start = 0
+    result = []
+    if now.day > DAY_AFTER_WHICH_PLAN_LOADS:
+        start = 1
+    for num in range(start, MONTHS_TO_LOAD_PLAN + start):
+        new_date = (now + relativedelta(months=num)).replace(day=1)
+        date_to_str = new_date.strftime('%Y-%m-%d')
+        result.append(date_to_str)
+    return result
+
+def generate_fact_months():
+    now = datetime.now()
+    result = []
+    if now.day >= DAY_AFTER_WHICH_FACT_LOADS:
+        for num in range(1, 1 + MONTHS_TO_LOAD_FACT):
+            new_date = (now - relativedelta(months=num)).replace(day=1)
+            result.append(new_date.strftime('%Y-%m-%d'))
+    return result
+
+def check_plan_fact_workforce_tables():
+    print('=' * 26)
+    print()
+    print('Обновление норочасов план/факт по таблицам plan_tabel_workforce, fact_tabel_workforce')
+    try:
+        for month in generate_plan_months():
+            recalc_month_plan_fact(tabel_type="Плановый табель", table_name="plan_tabel_workforce", month=month)
+        for month in generate_fact_months():
+            recalc_month_plan_fact(tabel_type="Фактическая явка", table_name="fact_tabel_workforce", month=month)
+    except Exception as e:
+        print(f"[check_plan_fact_workforce_tables] Ошибка: {e}")
+    print()
+    print('=' * 26)
+
+
+def update_napravl_deyat():
+    print('=' * 26)
+    print()
+    print('Обновление направления деятельности по таблицам napravl_deyat')
+    try:
+        text = f"""
+                ВЫБРАТЬ
+                    НаправленияДеятельности.Ссылка КАК Ссылка
+                ПОМЕСТИТЬ ВременнаяТаблица_П
+                ИЗ
+                    Справочник.НаправленияДеятельности КАК НаправленияДеятельности
+                ГДЕ
+                    НаправленияДеятельности.Ссылка В ИЕРАРХИИ
+                            (ВЫБРАТЬ
+                                НаправленияДеятельности.Ссылка КАК Ссылка
+                            ИЗ
+                                Справочник.НаправленияДеятельности КАК НаправленияДеятельности
+                            ГДЕ
+                                НаправленияДеятельности.Наименование = "Направления деятельности Пауэрз")
+                ;
+                
+                ////////////////////////////////////////////////////////////////////////////////
+                ВЫБРАТЬ
+                    НаправленияДеятельности.Ссылка КАК Ссылка
+                ПОМЕСТИТЬ ВременнаяТаблица_К
+                ИЗ
+                    Справочник.НаправленияДеятельности КАК НаправленияДеятельности
+                ГДЕ
+                    НаправленияДеятельности.Ссылка В ИЕРАРХИИ
+                            (ВЫБРАТЬ
+                                НаправленияДеятельности.Ссылка КАК Ссылка
+                            ИЗ
+                                Справочник.НаправленияДеятельности КАК НаправленияДеятельности
+                            ГДЕ
+                                НаправленияДеятельности.Наименование = "Направления деятельности Келаст")
+                ;
+                
+                ////////////////////////////////////////////////////////////////////////////////
+                ВЫБРАТЬ
+                    ВременнаяТаблица_П.Ссылка КАК Ссылка,
+                    4 КАК Направление,
+                    0 КАК poki
+                ПОМЕСТИТЬ ВременнаяТаблица_соед
+                ИЗ
+                    ВременнаяТаблица_П КАК ВременнаяТаблица_П
+                
+                ОБЪЕДИНИТЬ ВСЕ
+                
+                ВЫБРАТЬ
+                    ВременнаяТаблица_К.Ссылка,
+                    5,
+                    1
+                ИЗ
+                    ВременнаяТаблица_К КАК ВременнаяТаблица_К
+                ;
+                
+                ////////////////////////////////////////////////////////////////////////////////
+                ВЫБРАТЬ
+                    ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ВременнаяТаблица_соед.Ссылка)) КАК Ref,
+                    ВременнаяТаблица_соед.poki КАК poki,
+                    ВременнаяТаблица_соед.Направление КАК Направление,
+                    ВременнаяТаблица_соед.Ссылка.Наименование КАК Наименование,
+                    ВременнаяТаблица_соед.Ссылка.Комментарий КАК Комментарий
+                ИЗ
+                    ВременнаяТаблица_соед КАК ВременнаяТаблица_соед
+                ГДЕ
+                    ВременнаяТаблица_соед.Ссылка.ЭтоГруппа = ЛОЖЬ
+                    И ВременнаяТаблица_соед.Ссылка.Родитель.ПометкаУдаления = ЛОЖЬ
+                    И ВременнаяТаблица_соед.Ссылка.ПометкаУдаления = ЛОЖЬ
+                    И ВременнаяТаблица_соед.Ссылка.Статус = ЗНАЧЕНИЕ(Перечисление.СтатусыНаправленияДеятельности.Используется)
+                    И ВременнаяТаблица_соед.Ссылка.ТипНаправленияДеятельности = ЗНАЧЕНИЕ(Перечисление.ТипыНаправленийДеятельности.ИнаяДеятельность)
+                """
+
+        key, result_req = APIERP.get_wet_request(text=text)
+
+
+        if not key == 200:
+            raise ConnectionError(f'Ошибка получения данных из ЕРП')
+        if not  result_req['data']:
+            raise ValueError(f'Пустые данные из ЕРП')
+        data_erp = F.deploy_dict_c(result_req['data'],'Ref')
+
+
+        result = CSQ.custom_request_c(USRCNF.Config.project.db_kplan, f"""SELECT Пномер, Имя, Псевдоним, Примечание,
+                            Направление, poki, ref_erp, delete_in_erp  FROM napravl_deyat """,rez_dict=True)
+        mes_dict_result = F.deploy_dict_c(result, 'ref_erp')
+        dict_edit = dict()
+        dict_add = dict()
+        for mes_item in result:
+            if mes_item['ref_erp'] is None:
+                continue
+            if mes_item['ref_erp'] in data_erp:
+                erp_item = data_erp[mes_item['ref_erp']]
+                if mes_item['delete_in_erp'] != 0:
+                    if mes_item['ref_erp'] not in dict_edit:
+                        dict_edit[mes_item['ref_erp']] = dict()
+                    dict_edit[mes_item['ref_erp']]['delete_in_erp'] = 0
+
+                if mes_item['Имя'] != erp_item['Наименование']:
+                    if mes_item['ref_erp'] not in dict_edit:
+                        dict_edit[mes_item['ref_erp']] = dict()
+                    dict_edit[mes_item['ref_erp']]['Имя'] = erp_item['Наименование']
+                if mes_item['Примечание'] != erp_item['Комментарий'] and erp_item['Комментарий'].strip() != '':
+                    if mes_item['ref_erp'] not in dict_edit:
+                        dict_edit[mes_item['ref_erp']] = dict()
+                    dict_edit[mes_item['ref_erp']]['Примечание'] = erp_item['Комментарий']
+            else:
+                if mes_item['ref_erp'] not in dict_edit:
+                    dict_edit[mes_item['ref_erp']] = dict()
+                dict_edit[mes_item['ref_erp']]['delete_in_erp'] = 1
+
+        for ref, data in data_erp.items():
+            if ref not in mes_dict_result:
+                dict_add[ref] = {
+                    'Имя': data['Наименование'],
+                    'Примечание':data['Комментарий'],
+                    'delete_in_erp':0,
+                    'poki':data['poki'],
+                    'ref_erp':ref,
+                    'Направление':data['Направление'],
+                    'Псевдоним':'New',
+                    'state_on_off':0,
+                                 }
+        if dict_add:
+            types_mes = CSQ.dict_types_tbl(USRCNF.Config.project.db_kplan, 'napravl_deyat')
+            for ref, data_add in dict_add.items():
+                data_add = CSQ.convert_dict_to_sqlite_types(data_add, types_mes)
+                fields = list(data_add.keys())
+                vals = list(data_add.values())
+
+                CSQ.custom_request_c(USRCNF.Config.project.db_kplan, f"""INSERT INTO napravl_deyat
+                                     ({', '.join(fields)})
+                                  VALUES ({CSQ.questions_for_mask(fields)})
+                                   ;""", list_of_lists_c=[vals])
+                print(f'Добавлен:{data_add}')
+
+        if dict_edit:
+            types_mes = CSQ.dict_types_tbl(USRCNF.Config.project.db_kplan,'napravl_deyat')
+            for ref , data_edit in dict_edit.items():
+                data_edit = CSQ.convert_dict_to_sqlite_types(data_edit,types_mes)
+                fields = list(data_edit.keys())
+                vals = list(data_edit.values())
+
+                CSQ.custom_request_c(USRCNF.Config.project.db_kplan, f"""UPDATE napravl_deyat
+                           SET  ({', '.join(fields)})
+                          = ({CSQ.questions_for_mask(fields)})
+                           WHERE ref_erp = '{ref}' ;""" ,list_of_lists_c=[vals])
+                print(f'Изменен:{data_edit}')
+
+    except Exception as e:
+        print(f"[update_napravl_deyat] Ошибка: {e}")
+
+    print()
+    print('=' * 26)
+
+
+#---23.09.25
 
 db_users = F.bdcfg('BD_users')
 db_naryad = F.bdcfg('Naryad')
@@ -884,6 +1470,21 @@ LIST_PROFESSIONS = SPIS_prof
 DICT_PROFESSIONS = F.deploy_dict_c(SPIS_prof, 'код')
 DICT_VID_RABOT = F.deploy_dict_c(SPIS_prof, 'вид_работ')
 DICT_PRICE_BRAK = CMS.DICT_PRICE_BRAK(db_naryad)
+
+DICT_GROUP_PODR_VID_RAB_FOR_PLAN = CMS.calc_dict_group_podr_vid_rab_for_plan()
+VID_PO_NAPR = CMS.TypesWorkingByDirections().get_old_view_response()  # DB_kplan.виды_по_направлению 18.07.25
+DICT_VID_PO_NAPR = F.deploy_dict_c(VID_PO_NAPR, 'Пномер')
+DICT_EMPLOEE_FULL_WITH_DEL = CMS.dict_emploee_full_with_del(USRCNF.Config.project.db_users)
+LIST_NAPRAVLENIE = CMS.calc_dict_napravlenie()
+DICT_NAPRAVLENIE = F.deploy_dict_c(LIST_NAPRAVLENIE, 'Пномер')
+DICT_DOLGN_ETAP = F.deploy_dict_c(CSQ.custom_request_c(USRCNF.Config.project.db_naryad, f"""
+    SELECT * FROM dolgn_etap""", rez_dict=True), "Должность")
+DICT_CLD = CMS.DICT_CLD_KPLAN(USRCNF.Config.project.db_kplan)
+DICT_PODR = F.deploy_dict_c(CMS.calc_dict_podr(), 'Имя')
+
+
+
+
 data = F.now()
 
 CALC_SINCHRONS = True
@@ -894,6 +1495,9 @@ metka = ''
 counter_timer_middle = 3600 * 24
 # count_reset_middle = 3600 * 24  # каждые 24 часа обновление
 count_reset_middle = 3600 * 0.5  # каждые 24 часа обновление
+
+counter_timer_2h = 3600 * 2
+count_reset_2h = 3600 * 2  # каждые 2 часа обновление
 
 counter_timer = 3600 * 0.5
 count_reset = 3600 * 0.5  # каждые 0.5 часа обновление
@@ -910,9 +1514,18 @@ while True:
     counter_timer_middle += vrem
     print(f'{F.now()} counter_mater: {counter_timer}/{count_reset}')
     print(f'{F.now()} counter_mater: {counter_timer_middle}/{count_reset_middle}')
-    current_hour = datetime.datetime.now().hour
+
+    current_hour = datetime.now().hour
     if counter_timer_middle >= count_reset_middle and current_hour >= 0 and current_hour <= 5: #01.09.25
         counter_timer_middle = 0
+
+        ## обновление update_napravl_deyat
+        try:
+            if CALC_SINCHRONS:
+                update_napravl_deyat()
+        except:
+            print(f'Не удачная попытка обновление update_napravl_deyat')
+
         ## обновление dolgn_etap
         try:
             if CALC_SINCHRONS:
@@ -932,7 +1545,6 @@ while True:
                 update_employee_registr_states_from_1c()
                 update_emploee_to_db_from_1c(True)
             if CALC_user_calendar:
-
                 user_calendar.main()
         except:
             print(f'Не удачная попытка обновления сотрудников')
@@ -945,10 +1557,25 @@ while True:
             pass
         except:
             print(f'Не удачная попытка обновления месячного отчета')
-
+        check_plan_fact_workforce_tables() #23.09.25
 
         ## скачивание плана ИТ Б24
         plan_it_form_b24()
+        try: #28.10.25
+            """Чистка кэша БД"""
+            DbCacheCleaner.clean()
+        except Exception as e:
+            print(f"Ошибка чистки кэша БД : {e}")
+
+    if counter_timer_2h >= count_reset_2h:
+        counter_timer_2h = 0
+        try:
+            print('\n')
+            calc_fact_naruads_for_kpl()
+        except:
+            print(f'Не удачная попытка обновления Факт нарядов для плана')
+
+
 
     if counter_timer >= count_reset:
         counter_timer = 0
@@ -963,14 +1590,14 @@ while True:
         except:
             print(f'Не удачная попытка обновления статусов КПЛ ТЧ')
 
-        # обновление материалов
-        try:
-            if CALC_SINCHRONS:
-                print('\n')
-                nomen_erp.obn_mat_erp_file(db_mater)
-            pass
-        except:
-            print(f'Не удачная попытка обновления материалов')
+        # # обновление материалов 23.09.25
+        # try:
+        #     if CALC_SINCHRONS:
+        #         print('\n')
+        #         nomen_erp.obn_mat_erp_file(db_mater)
+        #     pass
+        # except:
+        #     print(f'Не удачная попытка обновления материалов')
 
         # обновление выпусков db.kplan releases_from_erp
         try:

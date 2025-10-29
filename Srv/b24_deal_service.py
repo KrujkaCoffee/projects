@@ -91,6 +91,10 @@ from unittest.mock import patch
 
 patch('project_cust_38.Cust_config.AppConfig')
 patch('project_cust_38.Cust_config.User_config')
+
+
+TEST_CHAT = 'chat78766'
+
 def concat_url(*args):
     form = lambda a, b: '%s/%s' % (a.strip('/'), b.strip('/'))
     return reduce(form, args)
@@ -114,6 +118,9 @@ class CRM:
 
     def __init__(self):
         self.url = concat_url(self.BASE_URL, self.TOKEN)
+
+    def find_status(self):
+        ...
 
     def deal_status_all(self):
         response = requests.get(
@@ -153,6 +160,7 @@ class CRM:
 
 crm = CRM()
 db_files = F.scfg('files')
+nomenklatura_erp = F.scfg('nomenklatura_erp')
 ERP_SRV = 'ERP'
 
 PREFIX_LOG = '\n' + ('=' * 26)
@@ -250,7 +258,8 @@ class B24Bucket:
         'UF_CRM_1737711083528',     # ТипТКП (Компенсаторы) : str
         'UF_CRM_1737727925',        # Организация (Пауэрз) : str
         'UF_CRM_1712643377',        # Ref_Key сделки 1с () : str
-        'CLOSED'                   # Статус завершена ("0", "1") : str
+        'CLOSED' ,
+        'DATE_MODIFY'# Статус завершена ("0", "1") : str
     )                               # Поля сделки хранимые в ведре
 
     LAST_MODIFY_KEY = 'DEALS_LAST_MODIFY' # Ключ последнего изменения в ведре
@@ -338,11 +347,16 @@ class Bucket1C:
         last_mark = ''
         for item in items:
             mark = item[key_name]
+            if mark is None:
+                continue
             if not last_mark:
                 last_mark = mark
                 continue
-            num = decode_1c_data_version_attribute(mark)
-            num_prev = decode_1c_data_version_attribute(last_mark)
+            try:
+                num = decode_1c_data_version_attribute(mark)
+                num_prev = decode_1c_data_version_attribute(last_mark)
+            except Exception as e:
+                print()
             if num > num_prev:
                 last_mark = mark
         return last_mark
@@ -716,7 +730,10 @@ def deal_values(queue: str, bucket: B24Bucket):
     for deal_id in bucket.set_id_modified:
         deal = bucket.deals.get(str(deal_id))
         if deal['CLOSED'] == "Y":
-            data_for_update[make_deal_key(deal)] = deal
+            deal_id = deal.get('ID')
+            deal_stage = deal.get('STAGE_ID')
+            deal_last_modify = deal.get('DATE_MODIFY')
+            data_for_update[f'{deal_id}|{deal_stage}|{deal_last_modify}'] = deal
     return data_for_update
 
 
@@ -1378,14 +1395,14 @@ from enum import Enum
 class EntityType(Enum):
     ENTITY_TYPE_ID_ORDER_SUPPLIER = 1072        # 1104
     ENTITY_TYPE_ID_DELIVERY_ORDER = 1076        # 1108
-    ENTITY_TYPE_ID_DELIVERY_ORDER_PACK = 9999   # 1126
+    ENTITY_TYPE_ID_DELIVERY_ORDER_PACK = 1090
 
     OWNER_TYPE = 'T430'
 
     class Test(Enum):
         ENTITY_TYPE_ID_ORDER_SUPPLIER = 1104        # 1104
         ENTITY_TYPE_ID_DELIVERY_ORDER = 1108        # 1108
-        ENTITY_TYPE_ID_DELIVERY_ORDER_PACK = 1126   # 1126
+        ENTITY_TYPE_ID_DELIVERY_ORDER_PACK = 1126
 
         OWNER_TYPE = 'T450'
 
@@ -1400,7 +1417,7 @@ class CRMOrders:
         else:
             self.BASE_URL = 'https://bitrix24.kelast.ru/rest/3342/zmoegng9gl0gp5gm/'
 
-    def create_order(self, body, entity_type: EntityType) -> Optional[dict]:
+    def create_order(self, body, entity_type: EntityType | EntityType.Test) -> Optional[dict]:
         credentials = {
             'entityTypeId': entity_type.value,
             'fields': body
@@ -1420,7 +1437,7 @@ class CRMOrders:
         return response.json()
 
 
-    def get_order_by_xml_id(self, ref_key: str, entity_type: EntityType, addition: dict = None):
+    def get_order_by_xml_id(self, ref_key: str, entity_type: EntityType | EntityType.Test, addition: dict = None):
         if not isinstance(addition, dict):
             addition = {}
         credentials = {
@@ -1434,7 +1451,7 @@ class CRMOrders:
                 return first_item
         return None
 
-    def delete_item(self, item_id: int | str, entity_type: EntityType):
+    def delete_item(self, item_id: int | str, entity_type: EntityType | EntityType.Test):
         credentials = {
             'entityTypeId': entity_type.value,
             'id': item_id,
@@ -1587,6 +1604,8 @@ class CRMOrders:
         return prepared_data
     def get_changed_values(self, original_item: dict, target_item: dict):
         update_fields = {}
+        if 'is_test' in original_item:
+            original_item.pop('is_test')
         # original_item = self.mutable_delivery_order(prepared_data=original_item)
         for key, val in original_item.items():
             prev_val = target_item[key]
@@ -1602,7 +1621,12 @@ class CRMOrders:
         not_updated_fields = set()
         match response_data:
             case {'result': {'item': new_item}}:
+                if 'is_test' in new_item:
+                    new_item.pop('is_test')
+                if 'is_test' in fields_for_update:
+                    fields_for_update.pop('is_test')
                 for key, new_val in fields_for_update.items():
+
                     target_val = new_item[key]
                     if not new_val and not target_val:
                         continue
@@ -1623,7 +1647,7 @@ class CRMOrders:
                 return False
         return not bool(not_updated_fields)
 
-    def update_order_fields(self, order_id: int, fields: dict[str, Any], entity_type: EntityType):
+    def update_order_fields(self, order_id: int, fields: dict[str, Any], entity_type: EntityType.Test | EntityType):
         response = requests.post(f'{self.BASE_URL}crm.item.update', json={
             'entityTypeId': entity_type.value,
             'id': order_id,
@@ -1728,80 +1752,735 @@ def update_order_supplier_attributes(task):
     crm_client.update_order_fields(order_id, {'ufCrm_17_DELETED_1C': deletion_mark}, entity_type=EntityType.ENTITY_TYPE_ID_ORDER_SUPPLIER)
     return crm_client.sync_order_products(order_id, products_1c)
 
-def update_delivery_order_pack_attributes(task):
-    crm_client = CRMOrders(is_test=True)
-    ref_key = task['xmlId']
-    delivery_order_ref = task.pop('parent_ref')
-    deletion_mark = task.pop('deletion_mark')
-    delivery_order = crm_client.get_order_by_xml_id(delivery_order_ref, entity_type=EntityType.Test.ENTITY_TYPE_ID_DELIVERY_ORDER)
+
+
+from project_cust_38 import Cust_config as CFG
+from project_cust_38 import Cust_Functions as F
+class DependenciesNomenclature:
+    def __init__(self):
+        self.list_nomen_types = CSQ.custom_request_c(
+            CFG.Config.project.db_nomen,
+            f'SELECT name, Ref_Key, ЕстьПараметры FROM ВидыНоменклатуры',
+            rez_dict=True
+        )
+        self.dict_nomen_types_by_ref = F.deploy_dict_c(self.list_nomen_types, 'Ref_Key')
+
+
+
+
+### TODO START
+import pickle
+from datetime import timezone, timedelta, datetime
+from pathlib import Path
+from typing import Any
+
+import requests
+
+
+
+
+def current_iso_date():
+    tz = timezone(timedelta(hours=3))
+    current_time = datetime.now(tz)
+    return current_time.isoformat()
+
+def get_config_data(filename: str = './deal_config.pickle'):
+    try:
+        with open(filename, 'rb') as f:
+            import pickle
+            return pickle.load(f)
+    except FileNotFoundError:
+        return {}
+
+def put_config_data(key, data, filename: str = 'now'):
+    prev_data = get_config_data(filename=filename)
+    with open(filename, 'wb+') as f:
+        import pickle
+        try:
+            prev_data[key] = data
+            pickle.dump(prev_data, f)
+        except Exception as e:
+            print(e)
+
+import dataclasses
+
+@dataclasses.dataclass
+class RelationAttribute:
+    name_b24: Any
+    name_1c: Any
+
+
+
+class RecursiveResponse:
+
+
+    def __init__(self, is_test: bool):
+        self.B24_BASE_URL = 'https://bitrix24.kelast.ru/rest/3342/zmoegng9gl0gp5gm'
+        if is_test:
+            self.B24_BASE_URL = 'https://dev.bitrix24.kelast.ru/rest/2585/6tq57vcv71ou03r9'
+
+    def unpack_cache_b24(self):
+        with open(str(self.cache_filename), 'rb') as f:
+            return pickle.load(f)
+
+    def get_section_b24_by_id(self, section_id):
+        url = f'{self.B24_BASE_URL}/catalog.section.get?id={section_id}'
+        response = requests.post(url, json={'filter': {'active': 'Y', 'iblockId': 27, 'id': section_id}})
+        data = response.json()
+        return data['result']['section']
+
+    def get_section_b24_by_xml_id(self, xml_id):
+        url = f'{self.B24_BASE_URL}/catalog.section.list'
+        response = requests.post(url, json={'filter': {'active': 'Y', 'iblockId': 27, 'xmlId': xml_id}})
+        data = response.json()
+        match data:
+            case {'result': {'section': [section, *args]}}:
+                return section
+
+    def get_children_sections_b24_by_parent_id(self, idx: int, start: str):
+        url = f'{self.B24_BASE_URL}/catalog.section.list?start={start}'
+        response = requests.post(url, json={'filter': {'active': 'Y', 'iblockId': 27, 'iblockSectionId': idx}, 'start': start})
+        data = response.json()
+        return data
+
+    def get_full_result(self, pk, fn):
+        result_b24 = []
+        next_vals = '0'
+        while not next_vals is None:
+            page = fn(idx=pk, start=next_vals)
+            result_b24.extend(page['result']['sections'])
+            next_vals = page.get('next')
+        return result_b24
+
+    def get_product_by_section_id_b24(self, section_id: int, start: int):
+        url = f'{self.B24_BASE_URL}/catalog.product.list?iblockId=27&start={start}'
+        response = requests.post(url, json={
+            'select': ['iblockId', 'id', 'name', 'iblockSectionId', 'xmlId', 'property454', 'property453'],
+            'filter': {
+                'iblockSectionId': section_id,
+                'iblockId': 27,
+            }
+        })
+        data = response.json()
+        return data['result']['products']
+
+    def get_product_by_name_b24(self, name: int):
+        url = f'{self.B24_BASE_URL}/catalog.product.list?iblockId=27'
+        response = requests.post(url, json={
+            'select': ['iblockId', 'id', 'name', 'iblockSectionId', 'xmlId', 'property454', 'property453'],
+            'filter': {
+                'name': name,
+                'iblockId': 27,
+                'property453': False
+            }
+        })
+        data = response.json()
+        return data['result']['products']
+
+    def get_product_by_xml_id(self, xmlId: int):
+        url = f'{self.B24_BASE_URL}/catalog.product.list?iblockId=27'
+        response = requests.post(url, json={
+            'select': ['iblockId', 'id', 'name', 'iblockSectionId', 'xmlId', 'property454', 'property453'],
+            'filter': {
+                'xmlId': xmlId,
+                'iblockId': 27,
+                'property453': False
+            }
+        })
+        data = response.json()
+        match data:
+            case {'result': {'products': [product, *args]}}:
+                return product
+        # return data['result']['products']
+
+    def create_productby_b24(self, name: str, category_id: int, ref_key_1c: str, mass_per_unit: float):
+        print('создан', name, category_id, ref_key_1c)
+        url = f'{self.B24_BASE_URL}/catalog.product.add'
+        response = requests.post(url, json={
+            'fields': {
+                'name': name,
+                'iblockId': 27,
+                'property453': False,
+                'iblockSectionId': category_id,
+                'xmlId': ref_key_1c,
+                'property454': {'value': mass_per_unit}
+            }
+        })
+        data = response.json()
+        return data['result']['element']
+
+    def update_productby_b24(self, product_id: int, name: str, category_id: int, ref_key_1c: str, mass_per_unit: float):
+        print('обновлен', name, product_id, category_id, ref_key_1c)
+        url = f'{self.B24_BASE_URL}/catalog.product.update?id={product_id}'
+        response = requests.post(url, json={
+            'id': product_id,
+            'fields': {
+                'name': name,
+                'iblockId': 27,
+                'property453': {'value': False},
+                'iblockSectionId': category_id,
+                'xmlId': ref_key_1c,
+                'property454': {'value': mass_per_unit}
+            }
+        })
+        data = response.json()
+        return data['result']['element']
+
+    def delete_productby_b24(self, product_id):
+        url = f'{self.B24_BASE_URL}/catalog.product.delete?id={product_id}'
+        response = requests.post(url, json={
+            'id': product_id,
+        })
+        return response.status_code
+
+    def mark_delete_productby_b24(self, product_id):
+        url = f'{self.B24_BASE_URL}/catalog.product.update?id={product_id}'
+        response = requests.post(url, json={
+            'id': product_id,
+            'fields': {
+                'property453': {'value': True},
+            }
+        })
+        data = response.json()
+        return data['result']['element']
+
+    def get_children_by_array_id(self, array_id: set[int]):
+        new_ids = set()
+        for pk in array_id:
+            # elems = self.get_children_sections_b24_by_parent_id(pk)
+            elems = self.get_full_result(pk, self.get_children_sections_b24_by_parent_id)
+            for elem in elems:
+                # products = self.get_full_result(elem['id'], self.get_product_by_section_id_b24)
+                # self.data.extend(products)
+                self.b24_data.setdefault(elem['name'].strip(), list()).append(elem)
+                self.b24_data_by_id[elem['id']] = elem
+                new_ids.add(elem['id'])
+        if new_ids:
+            return self.get_children_by_array_id(new_ids)
+
+    def get_section_1c_by_parent_ref(self, ref_key: str):
+        additional = '$expand=Parent&$select=Description,Ref_Key,Parent/Ref_Key,Parent/Description'
+        url = self.BASE_URL_1C + f'?$filter=Parent_Key eq guid{ref_key!r} and DeletionMark eq false&$format=json&{additional}'
+        response = requests.get(url, auth=self.auth_1c)
+        data = response.json()
+        return data['value']
+
+    def get_section_1c_by_ref(self, ref_key: str):
+        additional = '$expand=Parent&$select=Description,Ref_Key,Parent/Ref_Key,Parent/Description'
+        url = self.BASE_URL_1C + f'?$filter=Ref_Key eq guid{ref_key!r} and DeletionMark eq false&$format=json&{additional}'
+        response = requests.get(url, auth=self.auth_1c)
+        data = response.json()
+        return data['value']
+
+    def get_section_1c_by_name(self, name: str):
+        additional = '$expand=Parent&$select=Description,Ref_Key,Parent/Ref_Key,Parent/Description'
+        url = self.BASE_URL_1C + f'?$filter=Description eq {name!r} and DeletionMark eq false&$format=json&{additional}'
+        response = requests.get(url, auth=self.auth_1c)
+        data = response.json()
+        return data['value']
+
+
+    def update_b24_xml(self, b24_id, new_ref, name, *, parent_id: int):
+        url = f'{self.B24_BASE_URL}/catalog.section.update?iblockId=27&id={b24_id}'
+        response = requests.post(url, json={'id': b24_id, 'iblockId': 27, 'fields': {'xmlId': new_ref, 'iblockId': 27, 'name': name, 'iblockSectionId': parent_id}})
+        data = response.json()
+        return data['result']['section']
+
+    def create_category_b24(self, description: str, ref_key: str, parent_id: int):
+        url = f'{self.B24_BASE_URL}/catalog.section.add'
+        response = requests.post(url, json={'fields': {'name': description, 'xmlId': ref_key, 'iblockId': 27, 'iblockSectionId': parent_id}})
+        data = response.json()
+        match data:
+            case {'result': {'section': section}}:
+                return section
+        # return data['result']['section']
+
+    def find_parent_by_name_b24(self, name: str):
+        url = f'{self.B24_BASE_URL}/catalog.section.list'
+        response = requests.post(url, json={'filter': {'active': 'Y', 'iblockId': 27, 'name': name}})
+        data = response.json()
+        return data['result']['sections']
+
+    def get_nomen_by_vid_ref(self, ref_key: str):
+        select = '$select=Description,Ref_Key,КоэффициентЕдиницыДляОтчетов'
+        url = f'{self.BASE_URL_1C_NOMEN}?$filter=ВидНоменклатуры_Key eq guid{ref_key!r} and DeletionMark eq false&$format=json&{select}'
+        response = requests.get(url, auth=self.auth_1c)
+        data = response.json()['value']
+        return data
+
+import typing
+ServiceName = typing.TypeVar('ServiceName', bound=str)
+
+class Emoji:
+    error = '❗'
+    success = '🟢'
+    pending = '⏳'
+    unnecessary = '🟡'
+
+    def is_success(self, status):
+        return status in (ServiceStatus.success, ServiceStatus.unnecessary)
+
+class ServiceStatus(typing.NamedTuple):
+    emoji: str
+    status_code: int
+    is_success: bool
+    description: str
+class MessageStatus(typing.NamedTuple):
+    services: dict[ServiceName, ServiceStatus]
+    message_id: Optional[int]
+@dataclasses.dataclass
+class Task:
+    pk: int  # Идентификатор задачи
+    credentials: dict  # Данные с которыми работают хэндлеры
+    services: dict[str, typing.Callable]  # Сервисы, для которых доставляются данные
+
+    chat_id: str  # Чат оповещения о состоянии задачи
+    message_status: MessageStatus  # Данные о доставке оповещения
+    chat_accepted: bool  # Флаг отправлено ли сообщение в чат
+
+    is_test: bool = False
+
+def update_delivery_order_pack_attributes(task: Task):
+    entity_type = EntityType
+    if task.is_test:
+        entity_type = EntityType.Test
+    crm_client = CRMOrders(is_test=task.is_test)
+    credentials = task.credentials
+    ref_key = credentials['xmlId']
+    title = credentials['title']
+    delivery_order_ref = credentials.pop('parent_ref')
+    deletion_mark = credentials.pop('deletion_mark')
+
+    delivery_order = crm_client.get_order_by_xml_id(delivery_order_ref, entity_type=entity_type.ENTITY_TYPE_ID_DELIVERY_ORDER)
     if not delivery_order: # Если распоряжения на доставку с указанным ref_key не существует
+        logger.info(f'Упаковка: {title!r} Не создана по причине отсутствия распоряжения')
         return False
     pack_table_row = crm_client.get_order_by_xml_id(
         ref_key=ref_key,
-        entity_type=EntityType.Test.ENTITY_TYPE_ID_DELIVERY_ORDER_PACK,
-        addition={'ufCrm21Number': task['ufCrm21Number']}
+        entity_type=entity_type.ENTITY_TYPE_ID_DELIVERY_ORDER_PACK,
+        addition={'ufCrm21Number': credentials['ufCrm21Number']}
     )
-    task['parentId1108'] = delivery_order['id'] # Заполняем id родительского распоряжения
+    if task.is_test:
+        credentials['parentId1108'] = delivery_order['id']
+    else:
+        credentials['parentId1076'] = delivery_order['id'] # Заполняем id родительского распоряжения
     if not pack_table_row:
         if deletion_mark:
             return True
-        item = crm_client.create_order(body=task, entity_type=EntityType.Test.ENTITY_TYPE_ID_DELIVERY_ORDER_PACK)
-        return crm_client.get_changed_values(task, item)
+        item = crm_client.create_order(body=credentials, entity_type=entity_type.ENTITY_TYPE_ID_DELIVERY_ORDER_PACK)
+        return not bool(crm_client.get_changed_values(credentials, item))
     else:
         order_id = pack_table_row['id']
         if deletion_mark:
-            return crm_client.delete_item(order_id, entity_type=EntityType.Test.ENTITY_TYPE_ID_DELIVERY_ORDER_PACK)
-        return crm_client.update_order_fields(order_id, task, entity_type=EntityType.Test.ENTITY_TYPE_ID_DELIVERY_ORDER_PACK)
+            return crm_client.delete_item(order_id, entity_type=entity_type.ENTITY_TYPE_ID_DELIVERY_ORDER_PACK)
+        return crm_client.update_order_fields(order_id, credentials, entity_type=entity_type.ENTITY_TYPE_ID_DELIVERY_ORDER_PACK)
+
+def sync_nomen_b24(task: Task):
+    b24_nomen_client = RecursiveResponse(is_test=task.is_test)
+    match task.credentials:
+        case {
+            'Код': code,
+            'Артикул': article_number,
+            'Наименование': nomen_name,
+            'ЕдиницаИзмерения': unit_of_measurement,
+            'На_удаление': is_delete,
+            'СхемаОбеспечения': provision_schema,
+            'Ref_Key': ref_key,
+            'Вид_Ref_Key': type_ref_key,
+            'Вид': type_name,
+            'Закупочная_цена': price,
+            'types_tree': hierarchy_nomen_types
+        }:
+            if hierarchy_nomen_types is None:
+                hierarchy_nomen_types = ''
+            nomen_b24 = b24_nomen_client.get_product_by_xml_id(ref_key)
+            set_types = set(hierarchy_nomen_types.split(';'))
+            set_types.add(type_ref_key)
+            need_types = {
+                'cecbbe44-9f30-11ea-8440-00d861129db6',
+                '12ce209b-a327-11e9-80e4-4ccc6a67082d',
+                'c6784f84-c9e8-11e7-80cb-4ccc6a67082d',
+                '0501665b-c9f6-11e7-80cb-4ccc6a67082d',
+            }
+            if not set_types.intersection(need_types):
+                return 204
+            section_b24 = b24_nomen_client.get_section_b24_by_xml_id(type_ref_key)
+            if section_b24 is None:
+                section_b24 = b24_nomen_client.create_category_b24(type_name, type_ref_key, None)
+                if not section_b24:
+                    return 500
+            if is_delete and not nomen_b24:
+                return 204
+            if nomen_b24 is None:
+                nomen_b24 = b24_nomen_client.create_productby_b24(
+                    nomen_name,
+                    section_b24['id'],
+                    ref_key,
+                    1
+                )
+                if nomen_b24:
+                    return 201
+            elif is_delete:
+                return b24_nomen_client.delete_productby_b24(nomen_b24['id'])
+            else:
+                product = b24_nomen_client.update_productby_b24(
+                    product_id=nomen_b24['id'],
+                    name=nomen_name,
+                    category_id=section_b24['id'],
+                    ref_key_1c=ref_key,
+                    mass_per_unit=1
+                )
+                return 200 if product else 500
+            return 500
+
+
+def sync_nomen_mes(task):
+    if task.is_test:
+        return 200
+    match task.credentials:
+        case {
+            'Код': code,
+            'Артикул': article_number,
+            'Наименование': nomen_name,
+            'ЕдиницаИзмерения': unit_of_measurement,
+            'На_удаление': is_delete,
+            'СхемаОбеспечения': provision_schema,
+            'Ref_Key': ref_key,
+            'Вид_Ref_Key': type_ref_key,
+            'Вид': type_name,
+            'Закупочная_цена': price
+        }:
+            depends = DependenciesNomenclature()
+
+            if type_ref_key not in depends.dict_nomen_types_by_ref:
+                return 204
+
+            resp = CSQ.custom_request_c(
+                CFG.Config.project.db_nomen,
+                f'SELECT Ref_Key FROM nomen WHERE Ref_Key = {ref_key!r}',
+                one=True,
+                rez_dict=True
+            )
+            if not resp: # Создать
+                body = [code,
+                        article_number,
+                        nomen_name,
+                        unit_of_measurement,
+                        is_delete,
+                        F.now(),
+                        provision_schema,
+                        price,
+                        type_ref_key,
+                        type_name,
+                        ref_key
+                        ]
+                result = CSQ.custom_request_c(nomenklatura_erp, f"""INSERT INTO nomen (
+                        Код
+                        ,Артикул
+                        ,Наименование
+                        ,ЕдиницаИзмерения
+                        ,На_удаление
+                        ,Дата_изменения
+                        ,СхемаОбеспечения
+                        ,Закупочная_цена
+                        ,Вид_Ref_Key
+                        ,Вид,
+                        Ref_Key) VALUES ({','.join('?' * len(body))})""", list_of_lists_c=[body])
+                return 201 if result else 500
+            else:
+                body = [ # Редактировать
+                    code,
+                    article_number,
+                    nomen_name,
+                    unit_of_measurement,
+                    is_delete,
+                    F.now(),
+                    provision_schema,
+                    type_ref_key,
+                    price,
+                    type_name
+                ]
+                result = CSQ.custom_request_c(nomenklatura_erp, f"""UPDATE nomen 
+                    SET Код = ?,
+                        Артикул = ?,
+                        Наименование = ?,
+                        ЕдиницаИзмерения = ?,
+                        На_удаление = ?,
+                        Дата_изменения = ?,
+                        СхемаОбеспечения = ?,
+                        Вид_Ref_Key = ?,
+                        Закупочная_цена = ?,
+                        Вид = ? WHERE Ref_Key = {ref_key!r}""", list_of_lists_c=body)
+                return 200 if result else 500
+    return 500
+
+def sync_nomen_tflex_docs(task: Task):
+    if task.is_test:
+        try:
+            a = requests.post('http://192.168.14.69:5226/NomenFromOneEs',
+                          json=task.credentials)
+            return a.status_code
+
+        except Exception as e:
+            print(e)
+    return 204
+
+
+
+def send_message(pk: int, service_status: bytes | None, is_accepted: bool):
+    try:
+        if is_accepted:
+            data: MessageStatus = pickle.loads(service_status)
+
+
+    except Exception as e:
+        print(f'Ошибка в функции: {send_message!r}; {e}')
+    ...
+
+def unpack_message_status(message_status: bytes) -> Optional[MessageStatus]:
+    try:
+        data = pickle.loads(message_status)
+        if isinstance(data, MessageStatus):
+            return data
+    except Exception as e: ...
+    return None
+
+
+
+def create_status_by_code(status_code: int):
+    match status_code:
+        case 204:
+            emoji = Emoji.unnecessary
+            description = 'Отклонено'
+            is_success = True
+        case 201:
+            emoji = Emoji.success
+            description = 'Создано'
+            is_success = True
+        case 200:
+            emoji = Emoji.success
+            description = 'Обновлено'
+            is_success = True
+        case _:
+            emoji = Emoji.error
+            description = 'Ошибка'
+            is_success = False
+    return ServiceStatus(emoji, status_code, is_success, description=description)
+
+def send_nomen_message(
+        nomen_name: str,
+        code: str,
+        type_name: str,
+        mark: str,
+        mark_delete: bool,
+        ref_key: str,
+        current_status: dict[str, ServiceStatus], chat_id: str, exchange_id: int, message_id: int = None):
+    title = f"ДОБАВЛЕНО" if not mark_delete else 'На удаление'
+    message_template = f"""
+[B]{title}[/B]
+>> Наименование: {nomen_name}
+>> КОД: {code}
+>> ВИД: {type_name}
+>> АРТИКУЛ: {mark}
+>> Ref_Key: {ref_key}
+    """
+    # msg = message_template.format(title=title, nomen_name=nomen_name, type_name=type_name, mark=mark, ref_key=ref_key)
+    table = []
+    statuses = []
+    for service, status in current_status.items():
+        table.append({'Сервис': service,
+                      'Статус': status.emoji,
+                      'Код состояния': status.status_code,
+                      'Описание': status.description})
+        statuses.append(status.status_code)
+    sender = CB24.B24Sender()
+    result = sender.send_msg_table(table,
+                                    title=message_template,
+                                    horizontal=True,
+                                    chat_id=chat_id,
+                                    message_id=message_id)
+    if message_id is None and isinstance(result, int):
+        message_id = result
+        if all(status == 204 for status in statuses):
+            return sender.send_msg_by_chat_id(chat_id=chat_id, msg='', message_id=message_id)
+    if result:
+        if all(status == 204 for status in statuses):
+            return True
+        is_written = CSQ.custom_request_c(
+            CFG.Config.project.db_files,
+            'UPDATE exchange SET chat_accepted = 1, message_status = ?  WHERE id = ?',
+                             list_of_lists_c=[
+                                 pickle.dumps(MessageStatus(message_id=message_id, services=current_status)),
+                                 exchange_id
+                             ])
+        if not is_written:
+            return sender.send_msg_by_chat_id(chat_id=chat_id, message_id=message_id, msg='')
+
+
+def update_nomenclature(task: Task):
+    # credentials: Nomenclature
+    default_status = ServiceStatus(Emoji.pending, 205, is_success=False, description='Не обработан')
+    current_status = dict.fromkeys(
+        task.services.keys(),
+        default_status
+    )
+    if task.message_status and task.message_status.services:
+        current_status = task.message_status.services
+
+    for service, func in task.services.items():
+        status = current_status.get(service, default_status)
+        if not status.is_success:
+            try:
+                code = func(task)
+                current_status[service] = create_status_by_code(code)
+            except Exception as e:
+                print(e) # todo error log
+    data = task.credentials
+    message_id = None
+    if isinstance(task.message_status, MessageStatus) and task.message_status.message_id:
+        message_id = task.message_status.message_id
+
+    chat_id = task.chat_id
+    if task.is_test:
+        chat_id = TEST_CHAT
+    send_nomen_message(
+        nomen_name=data['Наименование'],
+        code=data['Код'],
+        type_name=data['Вид'],
+        mark=data['Артикул'],
+        ref_key=data['Ref_Key'],
+        mark_delete=data['На_удаление'],
+        current_status=current_status,
+        chat_id=chat_id,
+        exchange_id=task.pk,
+        message_id=message_id
+    )
+    return all(status.is_success for status in current_status.values())
+
+def update_deal_status(task: Task):
+    deal_id = task.credentials['id']
+    crm = CRM()
+    deal_obj = crm.deal_one(deal_id)['result']
+    previous_stage = deal_obj['STAGE_ID']
+    new_stage = task.credentials['status_code']
+    forced = task.credentials.get('forced', False)
+    if not forced:
+        statuses = crm.deal_status_all()
+        previous_rank = new_rank = None
+        for status in statuses['result']:
+            split_code = status['STATUS_ID'].rsplit(':')[-1]
+            prev_stage_code = previous_stage.rsplit(':')[-1]
+            new_stage_code = new_stage.rsplit(':')[-1]
+            if split_code == prev_stage_code:
+                previous_rank = status['SORT']
+            if split_code == new_stage_code:
+                new_rank = status['SORT']
+        if new_rank <= previous_rank:
+            logger.info(f'Сделка: {deal_id} | Завршено: True | Причина: Текущий статус выше или равен')
+            return True
+        if task.is_test:
+            return crm.deal_update(deal_id=13361, credentials={
+                'FIELDS': {'STAGE_ID': new_stage}
+            })
+    # else:
+    #     try:
+    #         erp_base = 'ERP_MES1' if task.is_test else 'ERP'
+    #         if deal_obj[closed_key] == 'Y':
+    #             ref_key = deal_obj['UF_CRM_1712643377']
+    #             set_client_order_close_state(erp_base, ref_key, 'ВРаботе', False, False)
+    #     except Exception as e:
+    #         print(e, f'Ошибка при завершении сделки 1С IS_TEST: {task.is_test}')
+    result = crm.deal_update(deal_id=deal_id, credentials={
+        'FIELDS': {'STAGE_ID': new_stage}
+    })
+    logger.info(f'Сделка: {deal_id} | Завршено: {result} | Новый: {new_stage} | Предыдущий: {previous_stage}')
+    return result
 
 commands = {
     'bitrix24.Сделка.Завершение': {
         'producer': deal_values,
         'consumer': action_end_deal_status,
         'check': True,
-        'interval': 60 * 3 - 1
+        'chat_id': None,
+        'interval': 60 * 3 - 1,
+        'new_task_format': False,
+        'services': None
 
     },
     'bitrix24.Сделка.ОбновлениеТипТКП/Организация': {
         'producer': get_deal_values_by_data_version_mark,
         'consumer': update_organization_and_type_tkp,
         'check': True,
-        'interval': 60 * 60 * 2
+        'chat_id': None,
+        'interval': 60 * 60 * 2,
+        'new_task_format': False,
+        'services': None
     },
     'bitrix24.Сделка.ОбновлениеПлановойДаты/Суммы': {
         'producer': get_last_changes_date_and_sum_ZK_TKP,
         'consumer': update_date_and_sum_ZK_TKP,
         'check': True,
-        'interval': 60 * 5
+        'chat_id': None,
+        'interval': 60 * 5,
+        'new_task_format': False,
+        'services': None
     },
     'bitrix24.ЗаказПоставщику.СинхронизацияЗаказа/ТабличнойЧасти': { # https://bitrix24.kelast.ru/company/personal/user/3076/tasks/task/view/100056637/?MID=888366#com888366
         'producer': None,
         'consumer': update_order_supplier_attributes,
         'check': True,
-        'interval': 60 * 3 - 1
+        'chat_id': None,
+        'interval': 60 * 3 - 1,
+        'new_task_format': False,
+        'services': None
     },
     'bitrix24.РаспоряжениеНаДоставку.СинхронизацияТабличнойЧасти': { # https://bitrix24.kelast.ru/company/personal/user/3076/tasks/task/view/100056997/
         'producer': None,
         'consumer': update_delivery_order_attributes,
         'check': True,
-        'interval': 60 * 3 - 1
+        'chat_id': None,
+        'interval': 60 * 3 - 1,
+        'new_task_format': False,
+        'services': None
     },
     "bitrix24.РаспоряжениеНаДоставку/Упаковка.СинхронизацияТабличнойЧастиУпаковки": { # https://bitrix24.kelast.ru/company/personal/user/3076/tasks/task/view/100059053/
         'producer': None,
         'consumer': update_delivery_order_pack_attributes,
         'check': True,
-        'interval': 60 * 3 - 1
+        'chat_id': None,
+        'interval': 60 * 3 - 1,
+        'new_task_format': True,
+        'services': None
     },
-    # 'bitrix24.Неудача.ОбновлениеСтатуса': {
-    #     'producer': None,
-    #     'consumer': action_for_bad_attempt_upgrade,
-    #     'check': False,
-    #     'interval': 60 * 3 - 1
-    #
-    # },
+    "bitrix24.Сделка/ОбновлениеСтатуса": {
+        # https://bitrix24.kelast.ru/company/personal/user/3076/tasks/task/view/100059053/
+        'producer': None,
+        'consumer': update_deal_status,
+        'check': True,
+        'chat_id': None,
+        'interval': 60 * 3 - 1,
+        'new_task_format': True,
+        'services': None
+    },
+    'MES.Номенклатура/СинхронизацияПолей': {
+        'producer': None,
+        'consumer': update_nomenclature,
+        'check': True,
+        'chat_id': 'chat59299',
+        'interval': 60 * 3 - 1,
+        'new_task_format': True,
+        'services': {
+            'MES': sync_nomen_mes,
+            'Bitrix24': sync_nomen_b24,
+            'TFLEX.Docs': sync_nomen_tflex_docs
+        }
+    },
 }
 
+
 def check_commands():
-    for queue, (producer, consumer, check, interval) in commands.items():
+    return
+    for queue,  (producer, consumer, check, chat_id, interval, new_task_format, services) in commands.items():
         fn1, fn2 = commands[queue][producer], commands[queue][consumer]
         sing2 = inspect.signature(fn2)
         if fn1 is not None and not callable(fn1):
@@ -1824,7 +2503,7 @@ def check_new_actions(new: dict, old: dict):
 
 def check_values():
     logging.info('Поиск новых событий...')
-    for queue, (fn_info, fn_handle, check, interval) in commands.items():
+    for queue, (fn_info, fn_handle, check, chat_id, interval, new_task_format, services) in commands.items():
         if commands[queue][fn_info] is None:
             continue
         interval_value = commands[queue][interval]
@@ -1865,19 +2544,42 @@ def check_values():
 
 def handle_tasks():
     logging.info('Выполнение накопленных событий...')
-    for queue, (fn_info, fn_handle, check, interval) in commands.items():
+    for queue, (fn_info, fn_handle, check, chat_key, interval, new_task_format, services_key) in commands.items():
         logging.info(f'[{queue}]Старт обработки')
         query = f'SELECT * FROM exchange WHERE queue = {queue!r} AND finished IN ("", 0) OR finished IS NULL'
         last_tasks = CSQ.custom_request_c(db_files, query, rez_dict=True)
         stat = {'y': 0, 'n': 0}
+        is_new_task_format = commands[queue][new_task_format]
+        chat_id = commands[queue][chat_key]
         if isinstance(last_tasks, list):
             if last_tasks:
                 result = {}
                 for task in last_tasks:
                     pk = task.get('id')
+                    service_status = task.get('message_status')
+                    is_test = task.get('is_test')
+                    chat_accepted = bool(task.get('chat_accepted'))
+                    services = commands[queue][services_key]
                     try:
                         data = pickle.loads(task['data'])
-                        finished = commands[queue][fn_handle](data)
+                        if is_new_task_format:
+                            data = Task(
+                                pk=pk,
+                                credentials=data,
+                                services=services,
+                                chat_id=chat_id,
+                                message_status=unpack_message_status(service_status),
+                                chat_accepted=chat_accepted,
+                                is_test=is_test
+                            )
+                        import copy
+                        cp_data = copy.deepcopy(data)
+                        cp_data2 = copy.deepcopy(data)
+                        finished = commands[queue][fn_handle](cp_data)
+                        if not finished:
+                            print()
+                            finished = commands[queue][fn_handle](cp_data2)
+
                     except Exception as e:
                         logging.error('Ошибка выполнения задачи', exc_info=e, stack_info=True)
                         finished = False
@@ -1915,9 +2617,10 @@ def decode_1c_data_version_attribute(base64_string: str):
 
 
 
+### TODO END
+
 
 if __name__ == '__main__':
     while True:
         main()
-
 

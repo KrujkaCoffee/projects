@@ -1,4 +1,4 @@
-import socket
+﻿import socket
 import pickle
 import project_cust_38.logistic_srv as LOG
 import os
@@ -6,16 +6,46 @@ import time
 import logging
 import requests
 import enum
+from urllib3.util.retry import Retry
+from requests.adapters import HTTPAdapter
 
 #ip = '192.168.50.208'# AG local
 ip = 'mesinfo.powerz.ru'# server domain  ip = '192.168.50.44'# server
 # ip = '192.168.14.71'# AF local
 
+CONNECTION_ATTEMPTS = 3
 
 class SrvHeaders(enum.Enum):
     """Единые константы заголовков http ответа для клиента/сервера"""
     EXCEPTION_MESSAGE = 'X-SRV-EXCEPTION-MESSAGE'       # Сообщение из исключения во время ошибки на стороне сервера
     SYNTAX_ERROR = 'X-SRV-SYNTAX-ERROR'                 # Флаг синтаксической ошибки
+
+
+class SessionManager:
+    session = None
+
+    def __enter__(self):
+        if SessionManager.session is None:
+            SessionManager.session = requests.Session()
+            retries = Retry(
+                total=CONNECTION_ATTEMPTS,
+                backoff_factor=0.3,
+                status_forcelist=(429, 500, 502, 503, 504),
+                allowed_methods=frozenset(['POST'])
+            )
+            SessionManager.session.mount(
+                'http://',
+                HTTPAdapter(
+                    max_retries=retries,
+                    pool_connections=50,
+                    pool_maxsize=50,
+                    pool_block=True
+                )
+            )
+            SessionManager.session.headers.update({"Connection": "keep-alive"})
+        return SessionManager.session
+
+    def __exit__(self, exc_type, exc_val, exc_tb): ...
 
 
 def db_path(name:str):
@@ -87,15 +117,16 @@ def client_sql_query(bd,custom_request_c,hat_c = True,list_of_lists_c = [[]],rez
     count_tryes = 3
     message_str = None
     ## TODO HTTP START
-    current_protocol = os.getenv('PROTOCOL')
+    current_protocol = 'HTTP'
+    #current_protocol = os.getenv('PROTOCOL')
     if not current_protocol:
         http = check_protocol(serverAddressPort, msgFromClient)
         current_protocol = 'HTTP' if http else 'UDP'
         os.environ['PROTOCOL'] = current_protocol
     if current_protocol == 'HTTP':
-        for i in range(count_tryes):
-            try:
-                response = requests.post(f'http://{ip}:{port}',
+        try:
+            with SessionManager() as session:
+                response = session.post(f'http://{ip}:{port}',
                                          data=pickle.dumps(msgFromClient))
                 srv_exception_message = response.headers.get(SrvHeaders.EXCEPTION_MESSAGE.value) #18.08.25
                 srv_syntax_error_flag = response.headers.get(SrvHeaders.SYNTAX_ERROR.value)
@@ -104,11 +135,9 @@ def client_sql_query(bd,custom_request_c,hat_c = True,list_of_lists_c = [[]],rez
                     print(f'Ошибка синтаксиса в запросе: \n{custom_request_c}')
                     return None
                 message_str = pickle.loads(response.content)
-                break
-            except Exception as e:
-                time.sleep(0.5)
-                print(f'От сервера получен None на запрос {msgFromClient}')
-                return
+        except Exception as e:
+            print(f'От сервера получен None на запрос {msgFromClient} Ошибка: {e}')
+            return
         return message_str
     else:
         ## TODO HTTP END

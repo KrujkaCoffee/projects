@@ -303,7 +303,7 @@ class PushWorkPlan:
         stmt = f"""
             SELECT имя, вид_работ 
             FROM professions 
-            WHERE примечание != "не исп" AND примечание != "не исп, старый" AND poki = {self.selected_poki}
+            WHERE Вкл = 1 AND poki = {self.selected_poki}
         """
         work_types = F.deploy_dict_c(CSQ.custom_request_c(F.scfg('BD_users'), stmt, rez_dict=True), 'имя')
         if not work_types:

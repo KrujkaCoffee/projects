@@ -719,9 +719,7 @@ def update_parametrs(self,spis_tk:list,j:int,nn:str):
 
 def DICT_VAR_OPER(self):
     self.DICT_VAR_OPER = dict()
-    if self.SPIS_OP == None:
-        quit()
-    dict_var_oper = F.list_to_dict(self.SPIS_OP,'name')
+    dict_var_oper = self.DICT_OP_NAME
     #dict_var_oper = list_var_from_txt(F.open_file_c(F.tcfg('oper'), separ='|'))
     DICT_OPERS_CALC = operacii.Data_oper_norm.DICT_OPERS_CALC
     for oper in dict_var_oper.keys():
@@ -1115,7 +1113,8 @@ def btn_tkp_add_to_plan(self:mywindow):
     rez = CQT.msgboxg_get_table(self,"Выбор позиции",list_poz,'Выбор',selection_from_tbl=True,ExtendedSelection=False,selectRows=True)
     if rez:
         self.dict_cur_poz_cr_mk = rez
-        self.ui.lbl_cr_mk.setText(str(self.dict_cur_poz_cr_mk))
+
+        CQT.fill_wtabl(F.dict_to_param_val(self.dict_cur_poz_cr_mk, 'Параметр', 'Значение'), self.ui.tbl_info_cr_mk)
 
 def edit_le_tkp_name_res(self:mywindow):
     row = self.ui.tbL_tkp_list.currentRow()

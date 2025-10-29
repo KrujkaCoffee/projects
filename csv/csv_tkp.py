@@ -47,7 +47,7 @@ class mywindow(QtWidgets.QMainWindow):
         self.setWindowTitle(f"Создание CSV/ВО v{self.versia}")
         #pyinstaller.exe --onefile --icon=1.ico --noconsole csv_tkp.py
 
-
+        CQT.connect_to_resize(self, CMS.tmp_dir())
         #h = ctypes.windll.user32.GetSystemMetrics(1)-75
         #w = round(ctypes.windll.user32.GetSystemMetrics(0)/2)
         #self.setGeometry(0,0,w,h)
@@ -258,6 +258,12 @@ class mywindow(QtWidgets.QMainWindow):
         if e.key() == 80 and e.modifiers() == (QtCore.Qt.ControlModifier | QtCore.Qt.ShiftModifier):
             if CQT.focus_is_QTableWidget():
                 CQT.refill_tbl_into_msgbox_get_table(self, QtWidgets.QApplication.focusWidget())
+
+        if self.ui.tbl_anal_mat.hasFocus():
+            if e.key() == QtCore.Qt.Key_F5:
+                from project_cust_38 import Cust_config as CFG
+                self.Data_mes.reload_nomen(CFG.Config.project.db_nomen)
+                ANAL.load_mats(self)
 
     @CQT.onerror
     def show_fr_erp_dse_view(self,*args):

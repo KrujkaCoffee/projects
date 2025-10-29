@@ -17,6 +17,8 @@ logging.basicConfig(level=logging.INFO)
 class B24Sender:
     _URL = 'https://bitrix24.kelast.ru/rest/1/ebehb6fsejx39kj2/'
     _NOTIFY_ENDPOINT = 'im.notify.personal.add'
+    _SEND_MESSAGE_ENDPOINT = 'im.message.add'
+    _EDIT_MESSAGE_ENDPOINT = 'im.message.update'
 
     def get_chat_id_by_action(self, action: str):
         if CFG.Config.user_config.is_developer:
@@ -46,7 +48,8 @@ class B24Sender:
             return self.send_msg_table(tbl, chat_id, title, bold_title = False  )
         logging.error('[b24-chat]Ошибка отправки сообщения')
 
-    def send_msg_by_chat_id(self, chat_id: str, msg: str, attach = None,form_dict:dict=None,msg_bold:bool=False,basement_msg:str=None) -> bool:
+    def send_msg_by_chat_id(self, chat_id: str, msg: str, attach = None,form_dict:dict=None,msg_bold:bool=False,basement_msg:str=None,
+                            message_id: int = None) -> bool:
         if msg_bold:
             msg = f'[B]{msg}[/B]'
         if form_dict:
@@ -59,8 +62,17 @@ class B24Sender:
         }
         if attach is not None:
             body['ATTACH'] = attach
-        response = requests.post(f'{self._URL}im.message.add', json=body, verify=False)
-        return response.ok
+        endpoint = self._SEND_MESSAGE_ENDPOINT
+        if message_id is not None:
+            endpoint = self._EDIT_MESSAGE_ENDPOINT
+            body['MESSAGE_ID'] = message_id
+        response = requests.post(f'{self._URL}{endpoint}', json=body, verify=False)
+        data = response.json()
+        match data:
+            case {'result': chat_id}:
+                return chat_id
+            case _:
+                return False
 
     def send_msg_table( #03.09.25
             self,
@@ -70,6 +82,7 @@ class B24Sender:
             bold_title: bool = True,
             have_header: bool = True,
             horizontal: bool = True,
+            message_id: int = None
     ) -> bool:
         """
             Отправка табличной части как сообщение в чат Б24
@@ -100,7 +113,7 @@ class B24Sender:
             for row_data in lst_of_lists[_slice]:
                 column_data.append(str(row_data[column_idx]))
             msg.append({'NAME': header[column_idx], 'VALUE': '\n'.join(column_data), 'DISPLAY': display_view})
-        return self.send_msg_by_chat_id(chat_id, title, [{'GRID': msg}])
+        return self.send_msg_by_chat_id(chat_id, title, [{'GRID': msg}], message_id=message_id)
 
     def send_notify(self, user_id: int, message: str, message_for_mail: str = '', tag: str = 'MES'): #04.08.25
         """

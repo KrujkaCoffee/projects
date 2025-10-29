@@ -10,7 +10,7 @@ from functools import partial
 from itertools import count
 import inspect
 from PyQt5 import QtWidgets, QtCore, QtGui, uic
-from PyQt5.QtWidgets import QStyledItemDelegate, QMainWindow, QTableWidget, QHeaderView, QApplication, QTabWidget
+from PyQt5.QtWidgets import QStyledItemDelegate, QMainWindow, QTableWidget, QHeaderView, QApplication, QTabWidget, QTableWidgetItem
 from PyQt5.QtGui import QPixmap, QPen, QColor
 from PyQt5.QtCore import Qt ,QObject, QEvent, QSignalBlocker
 import project_cust_38.border_painter as CBPAINT
@@ -735,7 +735,7 @@ def add_sub_action_menu(self,ui:object,name_menu:str,name_action:str,fnc:object)
     menu.addAction(ui.__getattribute__(pep_name))
 
 
-def fill_list_combobx(self,cmb,list_rows,list_colors=[],list_tooltip=[], sep_col = ';',first_void = False,list_bold=[]):
+def fill_list_combobx(self,cmb,list_rows,list_colors=[],list_tooltip=[], sep_col = ';',first_void = False,list_bold=[],list_data=[]):
     cmb.clear()
     model = cmb.model()
 
@@ -744,8 +744,9 @@ def fill_list_combobx(self,cmb,list_rows,list_colors=[],list_tooltip=[], sep_col
         if list_colors:
             if i < len(list_colors):
                 r = g= b = "254"
-                if sep_col in list_colors[i]: 
-                    r, g, b = list_colors[i].split(sep_col)
+                if list_colors[i]:
+                    if sep_col in list_colors[i]: 
+                        r, g, b = list_colors[i].split(sep_col)
                 color = QtGui.QColor.fromRgb(int(r), int(g), int(b))
                 entry.setForeground(color)
         if i < len(list_bold):
@@ -758,7 +759,8 @@ def fill_list_combobx(self,cmb,list_rows,list_colors=[],list_tooltip=[], sep_col
     for i in range(cmb.count()):
         if len(list_tooltip) == len(list_rows):
             cmb.setItemData(i, list_tooltip[i], QtCore.Qt.ToolTipRole)
-
+        if list_data and len(list_data) == len(list_rows):
+            cmb.setItemData(i, list_data[i], QtCore.Qt.UserRole)
     if first_void:
         model.insertRow(0,QtGui.QStandardItem(""))
 
@@ -1059,6 +1061,14 @@ def num_col_by_name_c(obj, ima, not_found_val=None):
                 if obj.horizontalHeaderItem(i).text() == ima:
                     return i
 
+        # QTreeView: доступ через модель и headerData()
+    if obj.metaObject().className() == 'QTreeView' or obj.metaObject().className() == 'ExtTreeWidget':
+        model = obj.model()
+        if model is not None:
+            for i in range(model.columnCount()):
+                header_text = model.headerData(i, Qt.Horizontal)
+                if header_text == ima:
+                    return i
 
     return not_found_val
 
@@ -1316,6 +1326,58 @@ def add_color_wtab_c(obj, i, j, r, g, b):
     if nb > 255:
         nb = 255
     obj.item(i, j).setBackground(QtGui.QColor(nr, ng, nb))
+
+def getCustData(obj, row: int = None, column: int = None):
+    """
+    Возвращает данные из Qt.UserRole.
+    - Если obj — QTableWidgetItem, читает из него.
+    - Если obj — QTableWidget, читает из item(row, column).
+    """
+    # если это сам item
+    if isinstance(obj, QTableWidgetItem):
+        return obj.data(Qt.UserRole)
+
+    # если это таблица
+    if isinstance(obj, QTableWidget):
+        if row is None or column is None:
+            if obj.property('_custData') is not None:
+                return obj.property('_custData')
+            else:
+                return None
+        item = obj.item(row, column)
+        if item is None:
+            return None
+        return item.data(Qt.UserRole)
+    raise TypeError(f"Недопустимый тип: {type(obj).__name__}")
+
+def setCustData(item:QTableWidgetItem|QTableWidget,data):
+    if isinstance(item, QTableWidget):
+        item.setProperty('_custData', data)
+
+    if isinstance(item, QTableWidgetItem):
+        item.setData(Qt.UserRole, data)
+        basic_types = (int, float, str, bool, bytes, tuple, list, dict, set)
+        if isinstance(data, basic_types):
+            item.setText(data)
+        else:
+            candidates = ["tooltip", "toolTip", "hint", "description", "help",'comment']
+
+            tooltip_attr = next((name for name in candidates if hasattr(data, name)), None)
+
+            if tooltip_attr:
+                value = getattr(data, tooltip_attr)
+                item.setToolTip(value)
+
+            candidates = ["name"]
+
+            name_attr = next((name for name in candidates if hasattr(data, name)), None)
+
+            if name_attr:
+                value = getattr(data, name_attr)
+                item.setText(value)
+            else:
+                item.setText(str(data))
+
 
 
 def set_color_wtab_c(obj, i, j, r, g, b,a=255):
@@ -1602,7 +1664,7 @@ def add_table(item, i, j, spis_spiskov, set_editeble_col_nomera={}, visota = 10,
     item.setCellWidget(i, j, table)
     return
 
-def add_combobox(self = '', table = '', i=0, j=0, list=[], first_void=True,  conn_func = '', editable = False, name_flag = None):
+def add_combobox(self = '', table = '', i=0, j=0, list=[], first_void=True,  conn_func = '', editable = False, name_flag = None,list_tooltips=[]):
     current_text = table.item(i,j).text()
     combo = QtWidgets.QComboBox()
     combo.wheelEvent = lambda event: None
@@ -1626,15 +1688,21 @@ def add_combobox(self = '', table = '', i=0, j=0, list=[], first_void=True,  con
         koef = 0
         if first_void:
             koef = 1
-        for key in list:
+        for iter_combo, key in enumerate(list):
             combo.addItem(key)
             combo.setItemData(_+koef, list[key], QtCore.Qt.ToolTipRole)
+            if len(list_tooltips) == len(list):
+                index = combo.count() - 1
+                combo.setItemData(index, list_tooltips[iter_combo], QtCore.Qt.ToolTipRole)
             if key == current_text:
                 fl = True
             _+=1
     else:
-        for item in list:
+        for iter_combo,  item in enumerate(list):
             combo.addItem(item)
+            if len(list_tooltips) == len(list):
+                index = combo.count() - 1
+                combo.setItemData(index, list_tooltips[iter_combo], QtCore.Qt.ToolTipRole)
             if item == current_text:
                 fl = True
     table.setCellWidget(i, j, combo)
@@ -2751,17 +2819,24 @@ def summ_selct_tbl(self,tbl):
 
 
 def onerror(funcd):
-    def wrapper(self, *args, **kwargs):
+    def wrapper( *args, **kwargs):
+        ver = '-'
         try:
-            rez = funcd(self, *args, **kwargs)
+            sig = inspect.signature(funcd)
+            params = list(sig.parameters.keys())
+            if params and params[0] == "self":
+                if args and hasattr(args[0], "__dict__"):
+                    try:
+                        ver = args[0].versia
+                    except:
+                        pass
+
+            rez = funcd( *args, **kwargs)
             return rez
         except Exception as ex:
             exc_type, exc_instance, exc_traceback = sys.exc_info()
-            ver = '-'
-            try:
-                ver = self.versia
-            except:
-                pass
+            
+
             list_trace = repr(traceback.extract_tb(exc_traceback)).split(',')
             # list_trace.reverse()
             counetr = 1
@@ -2783,7 +2858,7 @@ def onerror(funcd):
                    f'===============FRAMES END===================\n\n')
             print(txt)
             arguments = '({pos}, {named})'.format(
-                pos=', '.join(str(arg) for arg in (self, *args)),
+                pos=', '.join(str(arg) for arg in args),
                 named=', '.join(f'{key}={val}' for key, val in kwargs.items())
             )
             line = [
@@ -3007,7 +3082,6 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
         self.ui.cmb_action.addItems(['Файл',
                                      'Сохранить Exel как...',
                                      'Сохранить выдел. область Exel как...',
-                                     'Сохранить выдел. область Exel как... TEST',
                                      'Компоновка',
                                      'Анализ таблицы'])
         self.ui.cmb_action.activated[int].connect(self.select_action)
@@ -3395,29 +3469,25 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
 
 
     @onerror
-    def select_action(self, i, *args):
+    def select_action(self, i, *args): #03.09.25
         text = self.ui.cmb_action.itemText(i)
         self.ui.cmb_action.blockSignals(True)
         self.ui.cmb_action.setCurrentIndex(0)
         self.ui.cmb_action.blockSignals(False)
         if text == 'Сохранить Exel как...':
-            rez = self.save_as_excel(self.ui.tbl)
+            # rez = self.save_as_excel(self.ui.tbl)
+            rez = self.save_as_excel_test(self.ui.tbl)
         if text == 'Сохранить выдел. область Exel как...':
             list_rows = [_.row() for _ in self.ui.tbl.selectionModel().selectedIndexes()]
             list_columns = [_.column() for _ in self.ui.tbl.selectionModel().selectedIndexes()]
             if not len(list_rows) or not len(list_columns):
                 msgbox(f'Диапазон не выбран')
                 return
-            rez = self.save_as_excel(self.ui.tbl, r1=min(list_rows), c1=min(list_columns), r2=max(list_rows),
-                                     c2=max(list_columns))
-        if text == 'Сохранить выдел. область Exel как... TEST':
-            list_rows = [_.row() for _ in self.ui.tbl.selectionModel().selectedIndexes()]
-            list_columns = [_.column() for _ in self.ui.tbl.selectionModel().selectedIndexes()]
-            if not len(list_rows) or not len(list_columns):
-                msgbox(f'Диапазон не выбран')
-                return
+            # rez = self.save_as_excel(self.ui.tbl, r1=min(list_rows), c1=min(list_columns), r2=max(list_rows),
+            #                          c2=max(list_columns))
             rez = self.save_as_excel_test(self.ui.tbl, r1=min(list_rows), c1=min(list_columns), r2=max(list_rows),
                                      c2=max(list_columns))
+
         if text == 'Компоновка':
             tbl = self.ui.tbl
             data = list_from_wtabl_c(tbl, rez_dict=True)
@@ -3497,7 +3567,7 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
 
     def fill_tbl_fields(self, fields: list[dict], visible: list[str]):
         tbl_fields = self.ui.tbl_fields
-        fill_wtabl(fields, tbl_fields, min_width_col=120)
+        fill_wtabl(fields, tbl_fields, min_width_col=120, sortingEnabled=True) # 17.09.25
         col_type, col_visible = num_col_by_name_c(tbl_fields, 'Тип'), num_col_by_name_c(tbl_fields, 'Видимость')
         col_field = num_col_by_name_c(tbl_fields, 'Поля')
         if col_type is not None and col_visible is not None and col_field is not None:
@@ -4370,39 +4440,71 @@ def output_gant(self, fig, obj_browser, name_f='text', dir=None, *args):
     # print(rez)
 
 @onerror
-def on_section_resized(self,tmp_dir:str,*args):
-    focus = QtWidgets.QApplication.focusWidget()
+def on_section_resized_tree(header, idx, old, new):
+    #print(f"resize: {header.objectName()}  col={idx} {old}->{new}")
+    on_section_resized('', qt_tmp_dir(), header)
+@onerror
+def on_section_resized(self, tmp_dir:str, widget_obj=None, *args):
+    def allowed_to_post(obj):
+        for tt in (QtWidgets.QTableWidget, QtWidgets.QTreeWidget,QtWidgets.QHeaderView,QtWidgets.QSplitter):
+            if isinstance(obj, tt):
+                return True
+        return False
 
-    if (isinstance(focus, QtWidgets.QTableWidget) or
-            isinstance(focus, QtWidgets.QTreeWidget)
-            or isinstance(focus, QtWidgets.QHeaderView)):
-        if isinstance(focus, QtWidgets.QHeaderView):
+    if widget_obj is None:
+        # widget_obj = QtWidgets.QApplication.focusWidget()
+        widget_obj = self.sender()
+    
+    if widget_obj is None:
+        return
+
+    if allowed_to_post(widget_obj):
+        if isinstance(widget_obj, QtWidgets.QHeaderView):
             # Получаем родительский виджет (сам QTableWidget)
-            tbl = focus.parentWidget()
+            tbl = widget_obj.parentWidget()
             obj_name = tbl.objectName()
         else:
-            tbl = focus
+            tbl = widget_obj
             obj_name = focus_obj_name()
+
         try:
-            if args[1] % 5 != 0:
+            ms = QtCore.QTime.currentTime().msec()
+            # разрешаем срабатывать только если миллисекунды в первой трети секунды
+            if ms > 900:
                 return
         except:
             pass
+
         try:
             if tbl == None:
                 print('Ошибка on_section_resized obj == None')
-                return 
+                return
+
             spis_width = []
-            for i in range(tbl.columnCount()):
-                spis_width.append(tbl.columnWidth(i))
+            if isinstance(widget_obj, QtWidgets.QSplitter):
+                spis_width = tbl.sizes()
+                obj_name = tbl.objectName()
+
+            else:
+                for i in range(tbl.columnCount()):
+                    spis_width.append(tbl.columnWidth(i))
+
             if isinstance(obj_name, str):
                 putf = tmp_dir + F.sep() + obj_name + "_column_widths.txt"
                 F.save_file(putf, spis_width)
+                #print(f'{obj_name} save {spis_width}')
             else:
                 print('Ошибка on_section_resized типа фокуса')
         except:
             print('on_section_resized Не сохранить параметры столбцов')
-
+@onerror
+def load_resize_splitters(self,tmp_dir):
+    for ui_name, ui in self.__dict__.items():
+        if len(ui_name) < 4 and 'ui' in ui_name:
+            for item in ui.__dict__:
+                if isinstance(ui.__dict__[item],QtWidgets.QSplitter):
+                    splitter = ui.__dict__[item]
+                    load_column_widths(self,splitter, tmp_dir)
 @onerror
 def connect_to_resize(self,tmp_dir):
     for ui_name, ui in self.__dict__.items():
@@ -4412,26 +4514,40 @@ def connect_to_resize(self,tmp_dir):
                     table = ui.__dict__[item]
                     table.setToolTip('Ctrl+Shift+C - Копировать таблицу\nCtrl+Shift+P - Вывод доп.табличной формы')
                     header = table.horizontalHeader()
-
-                    header.sectionResized.connect(lambda: on_section_resized(self,tmp_dir))
+                    header.sectionResized[int, int, int].connect(lambda *args: on_section_resized(self, tmp_dir))
                 if isinstance(ui.__dict__[item],QtWidgets.QTreeWidget):
-                    table = ui.__dict__[item]
-                    #table.setToolTip('Ctrl+Shift+C - Копировать таблицу\nCtrl+Shift+P - Вывод доп.табличной формы')
-                    header = table.header()
+                    tree = ui.__dict__[item]
+                    header = tree.header()
 
-                    header.sectionResized.connect(lambda: on_section_resized(self, tmp_dir))
+                    def make_handler(header):
+                        return lambda idx, old, new, h=header: on_section_resized_tree(self, tmp_dir,  h, idx, old, new)
+                    #print("connect header:", header, header.objectName(), tree.objectName())
+                    header.sectionResized.connect(make_handler(header))
 
+                if isinstance(ui.__dict__[item],QtWidgets.QSplitter):
+                    splitter = ui.__dict__[item]
+
+                    splitter.splitterMoved.connect(lambda pos, idx, sp=splitter: on_section_resized(self, tmp_dir, sp))
 
 @onerror
-def load_column_widths(self='',tbl:QtWidgets.QTableWidget|QtWidgets.QTreeWidget=None,tmp_dir:str=''):
+def load_column_widths(self='',tbl:QtWidgets.QTableWidget|QtWidgets.QTreeWidget|QtWidgets.QSplitter=None,tmp_dir:str=''):
     tbl.blockSignals(True)
-    spis_width = []
-    putf = tmp_dir + F.sep() + tbl.objectName() + "_column_widths.txt"
-    if F.existence_file_c(putf):
-        spis_width = F.load_file(putf)
-        if tbl.columnCount() == len(spis_width):
-            for i in range(tbl.columnCount()):
-                tbl.setColumnWidth(i, int(spis_width[i]))
+    try:
+        spis_width = []
+        putf = tmp_dir + F.sep() + tbl.objectName() + "_column_widths.txt"
+        if F.existence_file_c(putf):
+            spis_width = F.load_file(putf)
+            if isinstance(tbl, QtWidgets.QSplitter): 
+                tbl.setSizes([int(_) for _ in spis_width])
+                #print(f'{tbl.objectName()} load {spis_width}')
+            else:
+                if tbl.columnCount() == len(spis_width):
+                    #print(f'{tbl.objectName()} load {spis_width}')
+                    for i in range(tbl.columnCount()):
+                        tbl.setColumnWidth(i, int(spis_width[i]))
+    except:
+        tbl.blockSignals(False)
+        return
     tbl.blockSignals(False)
     return spis_width
 
@@ -4459,6 +4575,12 @@ def tbl_encircle(tbl:QtWidgets.QTableWidget,r1=0,c1=0,r2=None,c2=None, thick_out
 def is_tbl_cell_encircle(tbl):
     pass
 
+def delete_obj(obj):
+    try:
+        obj.deleteLater()
+        obj = None
+    except:
+        print(f'delete_obj err')
 
 class TableValidator(QStyledItemDelegate):
     """
@@ -4598,8 +4720,8 @@ class FillHorizontalHeaderSort(QtCore.QObject):
     press_cursor: int = Qt.ClosedHandCursor                       # Курсор при клике
 
     def __init__(self,
-                 table: QTableWidget,
-                 filter_tbl: QTableWidget = None,
+                 table: QtWidgets.QTableWidget | QtWidgets.QTreeWidget,
+                 filter_tbl: QtWidgets.QTableWidget = None,
                  tmp_dir: str = None) -> None:
         super().__init__()
         self.table = table
@@ -4643,17 +4765,38 @@ class FillHorizontalHeaderSort(QtCore.QObject):
         for table in tables_for_replace:
             for target_index, column in enumerate(data):
                 current_index = self.__current_logical_position(table, column)
-                table.horizontalHeader().blockSignals(True)
-                table.horizontalHeader().moveSection(current_index, target_index)
-                table.horizontalHeader().repaint()
-                table.horizontalHeader().blockSignals(False)
+                header_instance = self.__get_header_instance(table)
+                header_instance.blockSignals(True)
+                header_instance.moveSection(current_index, target_index)
+                header_instance.repaint()
+                header_instance.blockSignals(False)
 
     def __current_logical_position(self, tbl: QtWidgets.QTableWidget, column_text: str) -> int:
         return next(
             col
             for col in range(tbl.columnCount())
-            if tbl.horizontalHeaderItem(tbl.horizontalHeader().logicalIndex(col)).text() == column_text
+            if self.text_by_ui_index(tbl, col) == column_text
         )
+    @property #28.10.25
+    def header_instance(self):
+        return self.__get_header_instance(self.table)
+
+    def __get_header_instance(self, tbl: QtWidgets.QTableWidget | QtWidgets.QTreeWidget):
+        if isinstance(tbl, QtWidgets.QTableWidget):
+            return tbl.horizontalHeader()
+        if isinstance(tbl, QtWidgets.QTreeWidget):
+            return tbl.header()
+        return None
+
+    def text_by_ui_index(self, tbl: QtWidgets.QTableWidget | QtWidgets.QTreeWidget, ui_index: int):
+        logical_index = self.__get_header_instance(tbl).logicalIndex(ui_index)
+        return self.text_by_logical_index(tbl, logical_index)
+
+    def text_by_logical_index(self, tbl: QtWidgets.QTableWidget | QtWidgets.QTreeWidget, logical_index: int):
+        if isinstance(tbl, QtWidgets.QTableWidget):
+            return tbl.horizontalHeaderItem(logical_index).text()
+        if isinstance(tbl, QtWidgets.QTreeWidget):
+            return tbl.headerItem().text(logical_index)
 
     def __mutable_table(self):
         is_mutable = self.table.property(self.SIGNAL_PROPERTY)
@@ -4663,21 +4806,22 @@ class FillHorizontalHeaderSort(QtCore.QObject):
             self.table.setDropIndicatorShown(True)
             self.table.setMouseTracking(True)
             self.table.setFocusPolicy(Qt.StrongFocus)
-            self.table.horizontalHeader().setSectionsMovable(True)
-            self.table.horizontalHeader().setFocusPolicy(Qt.StrongFocus)
-            self.table.horizontalHeader().setSectionsClickable(True)
-            self.table.horizontalHeader().setMouseTracking(True)
-            self.table.horizontalHeader().installEventFilter(self)
+            self.header_instance.setSectionsMovable(True)
+            self.header_instance.setFocusPolicy(Qt.StrongFocus)
+            self.header_instance.setSectionsClickable(True)
+            self.header_instance.setMouseTracking(True)
+            self.header_instance.installEventFilter(self)
 
-            self.table.horizontalHeader().sectionMoved.connect(
+            self.header_instance.sectionMoved.connect(
                 lambda struct_ind, old_ind, new_ind: self.__save_column_order(struct_ind, old_ind, new_ind)
             )
-            self.table.horizontalHeader().sectionPressed.connect(self.__pressed_header)
+            self.header_instance.sectionPressed.connect(self.__pressed_header)
             self.table.setProperty(self.SIGNAL_PROPERTY, True)
 
     def __save_column_order(self, logic_ind, old_ind, new_ind):
         headers = [
-            self.table.horizontalHeaderItem(self.table.horizontalHeader().logicalIndex(i)).text()
+            self.text_by_ui_index(self.table, i)
+            # self.table.horizontalHeaderItem(self.table.horizontalHeader().logicalIndex(i)).text()
             for i in range(self.table.columnCount())
         ]
         self.tmp_path.write_bytes(F.to_binary_pickle(headers))
@@ -4720,18 +4864,21 @@ class FillHorizontalHeaderSort(QtCore.QObject):
             return
         places = [None] * table.columnCount()
         for col in range(table.columnCount()):
-            places[table.horizontalHeader().logicalIndex(col)] = table.horizontalHeaderItem(col).text()
+            places[self.header_instance.logicalIndex(col)] = self.text_by_logical_index(table, col)
         return places
 
     def eventFilter(self, obj, event: QEvent):
+        available_events = (QEvent.Enter, QEvent.HoverEnter, QEvent.HoverMove, QEvent.CursorChange, QEvent.HoverLeave, QEvent.Leave)
         event_type = event.type()
+        if event_type not in available_events:
+            return False
         obj_cursor = obj.cursor().shape()
         if event_type == QEvent.CursorChange:
             QApplication.setOverrideCursor(obj_cursor)
         if event_type in (QEvent.Enter, QEvent.HoverEnter, QEvent.HoverMove) and obj_cursor == 0:
             if not QApplication.mouseButtons() & Qt.LeftButton:
                 QApplication.setOverrideCursor(self.hover_cursor)
-        if event.type() in (QEvent.HoverLeave, QEvent.Leave):
+        if event_type in (QEvent.HoverLeave, QEvent.Leave):
             self.timer.stop()
             QApplication.setOverrideCursor(Qt.ArrowCursor)
         return super().eventFilter(obj, event)
@@ -4739,7 +4886,7 @@ class FillHorizontalHeaderSort(QtCore.QObject):
 #21.08.25 ++
 
 class InteractiveLabelInstance(QtCore.QObject):
-    def __init__(self, table: QTableWidget, row: int,
+    def __init__(self, table: QtWidgets.QTableWidget, row: int,
                  column: int,
                  text: str,
                  txt_cut: int = 15,
@@ -4754,11 +4901,8 @@ class InteractiveLabelInstance(QtCore.QObject):
         self.table = table
         self.row = row
         self.column = column
-        item = self.table.item(row, column)
-        if item is None:
-            return
         if not text:
-            text = item.text()
+            text = self.item_text # 01.10.25
         self.full_text = text
         self.txt_cut = txt_cut
         self.min_label_px = min_label_px
@@ -4774,7 +4918,7 @@ class InteractiveLabelInstance(QtCore.QObject):
 
         self.label = QtWidgets.QLabel(text)
         # self.label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.label.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+        self.label.setAlignment(QtCore.Qt.AlignVCenter | QtCore.Qt.AlignLeft) # 01.10.25
         self.label.setContentsMargins(5, 0, 5, 0)
         self.hlayout.addWidget(self.label, 1)
 
@@ -4785,36 +4929,57 @@ class InteractiveLabelInstance(QtCore.QObject):
         self.hlayout.addWidget(self.buttons_widget, 0)
 
         self.buttons = []
-
-        item = QtWidgets.QTableWidgetItem(item.text())
-        invisible_brush = QtGui.QBrush(QColor(0, 0, 0, 0))
-        item.setForeground(invisible_brush)
-        item.setBackground(QtGui.QBrush(QColor(0, 0, 0, 0)))
-        self.table.setItem(self.row, self.column, item)
-
-        self.table.setCellWidget(self.row, self.column, self.container)
-
+        item = self.cell_item # 01.10.25
+        self.set_cell_widget(item)
         self._update_label_text()
         self._update_sizes()
-
-        vh = self.table.verticalHeader()
-        hh = self.table.horizontalHeader()
         self.destroyed_tasks = []
-        try:
-            vh.sectionResized.connect(self._on_row_section_resized)
-            self.destroyed_tasks.append((vh.sectionResized, self._on_row_section_resized))
-        except Exception:
-            pass
-        try:
-            hh.sectionResized.connect(self._on_column_section_resized)
-            self.destroyed_tasks.append((hh.sectionResized, self._on_column_section_resized))
-        except Exception:
-            pass
+        if isinstance(table, QtWidgets.QTableWidget): # 01.10.25
+            vh = self.table.verticalHeader()
+            hh = self.table.horizontalHeader()
+            try:
+                vh.sectionResized.connect(self._on_row_section_resized)
+                self.destroyed_tasks.append((vh.sectionResized, self._on_row_section_resized))
+            except Exception:
+                pass
+            try:
+                hh.sectionResized.connect(self._on_column_section_resized)
+                self.destroyed_tasks.append((hh.sectionResized, self._on_column_section_resized))
+            except Exception:
+                pass
         palette = self.container.palette()
         qcolor = palette.color(self.container.backgroundRole())
         self._apply_label_bg_style(qcolor)
         self._init_label_color_state()
         self.label.destroyed.connect(self.on_destroyed)
+  #++01.10.25
+    @property
+    def cell_item(self):
+        if isinstance(self.table, QtWidgets.QTreeWidget):
+            return self.table.iter_rows()[self.row]
+        else:
+            return self.table.item(self.row, self.column)
+
+    def set_cell_widget(self, item):
+        invisible_brush = QtGui.QBrush(QtGui.QColor(0, 0, 0, 0))
+
+        if isinstance(self.table, QtWidgets.QTreeWidget):
+            invisible_brush = QtGui.QBrush(QtGui.QColor(0, 0, 0, 0))
+            item.setForeground(self.column, invisible_brush)
+            item.setBackground(self.column, invisible_brush)
+            self.table.setItemWidget(item, self.column, self.container)
+        if isinstance(self.table, QtWidgets.QTableWidget):
+            item.setForeground(invisible_brush)
+            item.setBackground(invisible_brush)
+            self.table.setCellWidget(self.row, self.column, self.container)
+
+    @property
+    def item_text(self) -> str:
+        current_item = self.cell_item
+        if current_item:
+            return current_item.text()
+        return ''
+    # --01.10.25
 
     def on_destroyed(self, *args):
         while self.destroyed_tasks:
@@ -4835,7 +5000,7 @@ class InteractiveLabelInstance(QtCore.QObject):
         except Exception as e:
             ...
 
-    def _apply_label_bg_style(self, qc: QColor):
+    def _apply_label_bg_style(self, qc: QtGui.QColor):
         r, g, b, _ = qc.getRgb()
         luminance = 0.299 * r + 0.587 * g + 0.114 * b
         text_color = '#ffffff' if luminance < 128 else '#000000'
@@ -4886,7 +5051,7 @@ class InteractiveLabelInstance(QtCore.QObject):
         available_px = max(self.min_label_px, col_width - buttons_px - self.padding)
         if available_px <= 0:
             available_px = self._approx_label_width_px_by_chars()
-        elided = fm.elidedText(self.full_text, Qt.ElideRight, available_px)
+        elided = fm.elidedText(self.full_text, QtCore.Qt.ElideRight, available_px)
         # self.label.setText(elided)
 
     def _update_column_width_if_needed(self):
@@ -4920,7 +5085,8 @@ class InteractiveLabelInstance(QtCore.QObject):
             icon1 = QtGui.QIcon()
             icon1.addPixmap(QtGui.QPixmap(str(path_obj.absolute())), QtGui.QIcon.Normal, QtGui.QIcon.Off)
             btn.setIcon(icon1)
-            btn.setToolTip(btn.text())
+            tooltip = btn.toolTip() or btn.text()
+            btn.setToolTip(tooltip)
             btn.setText('')
             h = self._button_size_for_current_row()
             inset_w = max(1, self.btn_width - 4)
@@ -4934,7 +5100,7 @@ class InteractiveLabelInstance(QtCore.QObject):
                    cell_val: typing.Any = None,
         ):
         """
-        on_clicked
+        on_clicked (lblself:CQT.InteractiveLabelInstance,self, row, col)
         * Если передано on_clicked(
             current_object: InteractiveLabelInstance # Для взаимодействия с виджетами table,label,buttons
             row: int,
@@ -4943,7 +5109,7 @@ class InteractiveLabelInstance(QtCore.QObject):
         )
         """
         btn = QtWidgets.QPushButton(txt_button)
-        btn.setFocusPolicy(Qt.NoFocus)
+        btn.setFocusPolicy(QtCore.Qt.NoFocus) #01.10.25
         btn.setToolTip(tooltip)
         btn.setFlat(True)
         if on_clicked is not None: #29.08.25
@@ -4959,7 +5125,8 @@ class InteractiveLabelInstance(QtCore.QObject):
                     btn.clicked.connect(lambda *args: on_clicked(self, self.parent_self, self.row, self.column))
         self.buttons_layout.addWidget(btn)
         self.buttons.append(btn)
-        self._update_sizes()
+        if isinstance(self.table, QtWidgets.QTableWidget): #01.10.25
+            self._update_sizes()
         if img_path != '':
             self._update_img(img_path, btn)
         return btn
@@ -4968,9 +5135,10 @@ class InteractiveLabelInstance(QtCore.QObject):
         self.label.setText(lbl_text)
         self.full_text = lbl_text
         self._update_sizes()
+# 16.07.25 ++
 
 def add_interactive_label(
-        table: QTableWidget,
+        table: QtWidgets.QTableWidget,
         row: int,
         column: int,
         text: str = '',
@@ -5008,6 +5176,7 @@ def add_interactive_label(
                                     mark_not_changed_item=mark_not_changed_item,
                                     parent_self=parent_self)
     return inst
+
 
 
 #+++29.08.25

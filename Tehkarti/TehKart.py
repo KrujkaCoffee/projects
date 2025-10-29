@@ -627,6 +627,50 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.btn_mag_sbros.setIconSize(QtCore.QSize(32, 32))
 
     @CQT.onerror
+    def is_edge_operation(self): #30.09.25
+        current_row = self.ui.tab_op.currentRow()
+        row_count = self.ui.tab_op.rowCount() - 1
+        if not self.ogr_rezim():
+            return False
+        QtWidgets.QTableWidget().rowCount()
+        if current_row == 0 or current_row == row_count:
+            return True
+        return False
+
+    @CQT.onerror
+    def is_naryad_operation(self): #01.10.25
+        if not self.ogr_rezim():
+            return False
+        num_mk = self.ui.tbl_isp_mk.property('current_mk')
+        tbl_operation = self.ui.tab_op
+        current_row = tbl_operation.currentRow()
+        oper_name = CQT.valt(tbl_operation, 'Операция', current_row)
+        oper_num = CQT.valt(tbl_operation, '№', current_row)
+        full_oper_name = f"{oper_num}${oper_name}"
+        full_name_dse = f'{self.dse_naim}${self.dse_nn}'
+        response = CSQ.custom_request_c(
+            USRCNF.Config.project.db_naryad,
+            f'''
+                SELECT * 
+                FROM naryad 
+                WHERE Операции LIKE "%{full_oper_name}%" 
+                    AND ДСЕ LIKE "%{full_name_dse}%"
+                    AND Номер_мк = {num_mk}
+            ''',
+            rez_dict=True
+        )
+        if response in (False, None):
+            return False
+        for naryad in response:
+            nar_obj = CMS.Naryads(naryad)
+            for param in nar_obj.params:
+                full_oper_name_naryad = '$'.join((param['Операции_номер'], param['Операции_имя']))
+                if param['ДСЕ'] == full_name_dse and full_oper_name_naryad == full_oper_name:
+                    return True
+        return False
+
+
+    @CQT.onerror
     def keyReleaseEvent(self, e):
         if e.key() == 80 and e.modifiers() == (QtCore.Qt.ControlModifier | QtCore.Qt.ShiftModifier):
             if CQT.focus_is_QTableWidget():
@@ -753,6 +797,10 @@ class mywindow(QtWidgets.QMainWindow):
                 if self.ui.tab_op.currentRow() == None:
                     return
                 if self.ui.tab_op.currentColumn() == 3:
+                    if self.is_edge_operation(): #30.09.25
+                        return CQT.msgbox('Нельзя менять РЦ в первой или последней операции в подмаршрутной техкарте')
+                    if self.is_naryad_operation(): #01.10.25
+                        return CQT.msgbox('Нельзя менять РЦ в операции, которая уже участвует в наряде')
                     self.w2 = mywindow2(self, self.ui.tree, "Раб_ц")
                     self.w2.showNormal()
                     self.w2.ui2.lineEdit.setFocus()
@@ -1210,6 +1258,7 @@ class mywindow(QtWidgets.QMainWindow):
         editeble_col_nomera = {} #27.08.25
         attach_dbs = ()
         if tbl_name == 'ТехнологическиеВиды':
+
             attach_dbs = USRCNF.Config.project.db_kplan
             table_data = CSQ.custom_request_c(
                 self.db_mater,
@@ -1222,7 +1271,7 @@ class mywindow(QtWidgets.QMainWindow):
                     FROM {tbl_name} 
                     INNER JOIN виды_по_направлению ON виды_по_направлению.Пномер = {tbl_name}.Пномер
                     INNER JOIN napravl_deyat ON виды_по_направлению.Направл = napravl_deyat.Пномер
-                    WHERE napravl_deyat.poki = {USRCNF.Config.place.poki}
+                    WHERE napravl_deyat.poki = {USRCNF.Config.place.poki} ORDER BY {tbl_name}.Пномер
                 """,
                 attach_dbs=USRCNF.Config.project.db_kplan
             )
@@ -1336,6 +1385,8 @@ class mywindow(QtWidgets.QMainWindow):
 
     @CQT.onerror
     def edit_mat_del_row(self,*args):
+        CQT.msgbox(f'Отключено')
+        return
         if not CMS.user_access(self.db_naryad,'тк_tbl_mat_edit_full',F.user_name(),msg=False):
             return CQT.msgbox('Нет доступа') # 11.07.25
         tbl_name = self.ui.cmb_mat_tbl.currentText()
@@ -1345,7 +1396,14 @@ class mywindow(QtWidgets.QMainWindow):
             return
         s_key = next(iter(row))
         s_num =   row[s_key]
-        CSQ.custom_request_c(self.db_mater,f"""DELETE FROM {tbl_name} WHERE {s_key} = {int(s_num)}""")
+        response = CSQ.custom_request_c(self.db_mater,f"""DELETE FROM {tbl_name} WHERE {s_key} = {int(s_num)}""")
+        if response and tbl_name == 'ВидыНоменклатуры': #22.09.25
+            if CQT.msgboxgYN('Пометить всю привязанную номенклатуру меткой "На удаление"'):
+                ref_key = row.get('Ref_Key')
+                if not F.is_unique_identifier(ref_key):
+                    return
+                data_nomen_types = CMS.DATATypesNomenclature()
+                data_nomen_types.mark_delete_nomens_by_ref(ref_key) and CQT.msgbox('Успешно')
         self.select_tbl_mat_edit()
 
 
@@ -1499,6 +1557,10 @@ class mywindow(QtWidgets.QMainWindow):
         if not self.vibor_dse(nom_mk):
             return
         self.load_redaktor_tk(nom_mk)
+        resource = CMS.load_res(nom_mk) #01.01.25
+        self.ui.tbl_isp_mk.setProperty('current_mk', nom_mk)
+        self.ui.tbl_isp_mk.setProperty('resource', resource)
+
         #self.sozd_file(nom_mk)
         self.ui.pushButton_Vverh.setEnabled(False)
         self.ui.pushButton_Vniz.setEnabled(False)
@@ -3471,7 +3533,7 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
         if self.item_o == "Раб_ц":
             tab.setEnabled(True)
             list_rc = CSQ.custom_request_c(self.db_users, f"""SELECT Код, Имя, Примечание FROM 
-             rab_c WHERE Примечание != 'не использовать' and poki == {pself.place.poki} order by Код""")
+             rab_c WHERE Примечание != 'не использовать' and enabled = 1 and poki == {pself.place.poki} order by Код""") # 07.10.25
             CQT.fill_wtabl_old_c(self, list_rc, tab, isp_hat_c=True, separ='', ogr_maxshir_kol=800)
             self.setGeometry(self.frameGeometry().getCoords()[0], 33, self.width(), 1000)
             tab.setFocus()
@@ -3632,7 +3694,7 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
                 completer = QtWidgets.QCompleter(list_tmp, parent=None)
                 text.setCompleter(completer)
                 combo2.setEnabled(True)
-                combo2.addItems(list_tmp)
+                combo2.addItems(sorted(list_tmp)) #16.09.25
                 combo2.setFocus()
                 combo2.setCurrentText('')
                 self.ui2.lbl_prim.setText(pself.ui.lbl_primech_dse.text())

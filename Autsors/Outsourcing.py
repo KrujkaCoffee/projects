@@ -477,7 +477,7 @@ class MainWindow(QMainWindow):
             bd_users=CFG.Config.project.db_users,
             self=self
         )
-        self.erp_client = OERP.OrderERP(erp_base_name='ERP_MES2', window=self)
+        self.erp_client = OERP.OrderERP(erp_base_name='ERP_MES1', window=self)
         order_services = self.erp_client.get_order_services()
         self.ERP_ORDER_SERVICES = F.deploy_dict_c(order_services, 'Description')
 

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 import project_cust_38.Cust_Functions as F
 import project_cust_38.Cust_SQLite as CSQ
 import project_cust_38.Cust_Qt as CQT
@@ -9,7 +9,10 @@ import project_cust_38.Cust_docs as CDCS
 from typing import TYPE_CHECKING
 import project_cust_38.api_erp_commands as APIERP
 from PyQt5.QtWidgets import QLabel
-import project_cust_38.Cust_resource_creator as CRES
+try:
+    import project_cust_38.Cust_resource_creator as CRES
+except Exception as e:
+    print(e)
 if TYPE_CHECKING:
     from MKart import mywindow
 

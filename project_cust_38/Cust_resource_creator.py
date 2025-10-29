@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 import project_cust_38.Cust_odata_erp as ODAT
 import project_cust_38.Cust_Functions as F
 import os
@@ -492,7 +492,7 @@ class ObjsData():
     def _get_data_erp(cls, req_text: str):
         key, data_rez = APIERP.get_wet_request(req_text, lazy_method_huours=LAZY_METHOD_HUOURS)
         if key != 200:
-            raise ConnectionError(f'Ошибка получения данных {NAME_ERP_OBJ} из ERP')
+            raise ConnectionError(f'Ошибка получения данных  из ERP')
         if not data_rez['data']:
             raise ValueError(f'Не найдено {NAME_ERP_OBJ} из ERP')
         return data_rez['data']

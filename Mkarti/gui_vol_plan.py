@@ -47,12 +47,12 @@ def load_tbl_gant(self:mywindow):
         пл_оуп ON пл_оуп.НомПл = plan.Пномер,
         napravl_deyat ON napravl_deyat.Пномер = plan.Направление_деятельности, 
             napravlenie ON napravlenie.Пномер = napravl_deyat.Направление 
-         WHERE plan.Пномер in ({','.join(tbls)}) ORDER BY plan.Приоритет DESC""",rez_dict=True)
+         WHERE plan.Пномер in ({','.join(tbls)}) and plan.poki = {self.place.poki} ORDER BY plan.Приоритет DESC""",rez_dict=True)
         if query == False or len(query) == 0:
             return False
         for item in query:
             if item['local_graf'] == '':
-                datat_bin = GKPL.update_local_graf(self, True, int(item['Пномер']), False )
+                datat_bin = CMS.update_local_graf(self, True, int(item['Пномер']), False )
                 print(f"Создан локальный график на {item['Пномер']}")
                 #tbl.item(i, nk_local_graf).setText(str(datat_bin))
         return query
@@ -64,7 +64,7 @@ def load_tbl_gant(self:mywindow):
             if item['local_graf'] == None or F.from_binary_pickle(item['local_graf']) == None:
                 print()
                 print(f'Пномер {item["Пномер"]}, №проекта {item["№проекта"]} - Не сформирован локальный график')
-                datat_bin = GKPL.update_local_graf(self, True, int(item['Пномер']), False)
+                datat_bin = CMS.update_local_graf(self, True, int(item['Пномер']), False)
                 if datat_bin == None:
                     print(f"Ошибка генерации графика {str(item['Пномер'])}")
                     continue
@@ -114,7 +114,7 @@ def load_tbl_gant(self:mywindow):
         return
     dict_form = generate_full_table(self,list_of_tbls)
     self.current_kpl_table = 'tbl_pl_gaf'
-    GKPL.fill_gant_table(self, self.ui.tbl_pl_gaf, self.ui.tbl_pl_gaf_filtr, dict_form)
+    CMS.fill_gant_table(self, self.ui.tbl_pl_gaf, self.ui.tbl_pl_gaf_filtr, dict_form)
 
 
 def show_svod(self):
@@ -294,6 +294,7 @@ def dbl_clk_svod_select_etap(self):
     new_hat_c[nk_etap] = etap
     CMS.fill_filtr_c(self,tbl_filtr,self.ui.tbl_pl_gaf,[new_hat_c])
     GKPL.apply_field_filter_hat_name(tbl_filtr)
+
     for j in range(1, len(self.dict_tbls_kpl_info[KPL.calc_current_ifo_tbl_name(self)][0])):
         if self.dict_tbls_kpl_info[KPL.calc_current_ifo_tbl_name(self)][1][j] == 1:
             CQT.set_color_text_header_wtab_horisontal_c(tbl_filtr, j, 200, 11, 11, self.val_masht * 0.5, False)

@@ -70,7 +70,7 @@ class Data_plan:
 
     PLACE = USRCNF.Config.place
     # ======= KAL PLAN======================
-    NAPR_DEYAT = CSQ.custom_request_c(db_kplan, f"""SELECT * FROM napravl_deyat WHERE state_on_off = 1 and poki == {PLACE.poki} OR poki is NULL""", rez_dict=True)
+    NAPR_DEYAT = CMS.calc_napr_deyat(PLACE.poki)
     DICT_NAPR_DEYAT = F.deploy_dict_c(NAPR_DEYAT, 'Пномер')
     DICT_NAPR_DEYAT_NAME = F.deploy_dict_c(NAPR_DEYAT, 'Имя')
     DICT_NAPR_DEYAT_PSDNAME = F.deploy_dict_c(NAPR_DEYAT, 'Псевдоним')
@@ -91,13 +91,12 @@ class Data_plan:
                                       'name')
 
 
-    LIST_NAPRAVLENIE = CSQ.custom_request_c(db_kplan, f"""SELECT * FROM napravlenie""", rez_dict=True)
-
+    LIST_NAPRAVLENIE = CMS.calc_dict_napravlenie()
     DICT_NAPRAVLENIE = F.deploy_dict_c(LIST_NAPRAVLENIE, 'Пномер')
     DICT_NAPRAVLENIE_BY_NAME = F.deploy_dict_c(LIST_NAPRAVLENIE, 'name')
 
     DICT_CLD = CMS.DICT_CLD_KPLAN(db_kplan)
-    DICT_PODR = F.deploy_dict_c(CSQ.custom_request_c(db_kplan, """SELECT * FROM podrazdel""", rez_dict=True), 'Имя')
+    DICT_PODR = F.deploy_dict_c(CMS.calc_dict_podr(), 'Имя')
     DICT_PODR_POKI = {k:v for k,v in  DICT_PODR.items() if (v['poki'] is None or v['poki'] == USRCNF.Config.place.poki)}
     STATUS_NORM = CSQ.custom_request_c(db_kplan, f"""SELECT * FROM status_norm""", rez_dict=True)
     DICT_STATUS_NORM = F.deploy_dict_c(STATUS_NORM, 'Код')
@@ -119,39 +118,4 @@ class Data_plan:
     DICT_VID_NOMEN = F.deploy_dict_c(LIST_VID_NOMEN,'name')
     DICT_VID_NOMEN_NUM = F.deploy_dict_c(LIST_VID_NOMEN, 's_num')
     DICT_COMPOSITE_PODRAZD =  calc_composite_plan_group(db_kplan,db_users,PLACE,DICT_GROUP_VID_RAB_FOR_PLAN)
-    DICT_GROUP_PODR_VID_RAB_FOR_PLAN = F.deploy_dict_c(CSQ.custom_request_c(db_kplan, """SELECT 
-       podrazdel.Пномер,
-       podrazdel.Имя,
-       podrazdel.Имя_поля,
-       podrazdel.Имя_первичного_поля,
-       podrazdel.Имя_начала_этапа,
-       podrazdel.Имя_конца_этапа,
-       podrazdel.Порядок,
-       podrazdel.Группа_для_расч_норм_и_ганта,
-       podrazdel.Это_группа_сборки,
-       podrazdel.Цвет,
-       podrazdel.Наименование,
-       podrazdel.mnts_plan_names as "podrazdel_mnts_plan_names",
-       podrazdel.icon_flet,
-       podrazdel.Наименование_СТО,
-       podrazdel.Сокращ_наименование,
-       podrazdel.Наименование_ЕРП,
-       podrazdel.Наименование_rab_c,
-       podrazdel.Имя_начала_этапа_факт,
-       podrazdel.Имя_конца_этапа_факт,
-       podrazdel.poki,
-       podrazdel.statistic_deficit_emploers_time_percent,
-       group_vid_rab_for_plan.name,
-       REPLACE(group_vid_rab_for_plan.name, 'Нчас_', 'Фчас_') as name_fact,
-       group_vid_rab_for_plan.nick_name,
-       group_vid_rab_for_plan.color,
-       group_vid_rab_for_plan.sort,
-       group_vid_rab_for_plan.mnts_plan_names,
-       group_vid_rab_for_plan.name_field_obespech,
-       group_vid_rab_for_plan.composite,
-       group_vid_rab_for_plan.estimated,
-       group_vid_rab_for_plan.koef_estimate,
-       group_vid_rab_for_plan.num_podr
-     FROM 
-    group_vid_rab_for_plan INNER JOIN 
-    podrazdel ON group_vid_rab_for_plan.num_podr == podrazdel.Пномер""", rez_dict=True, attach_dbs=db_users), 'name')
+    DICT_GROUP_PODR_VID_RAB_FOR_PLAN = CMS.calc_dict_group_podr_vid_rab_for_plan()

@@ -18,7 +18,7 @@ from jinja2 import Environment, BaseLoader
 from threading import Thread
 from flask import Response, json, jsonify, send_file
 import datetime
-
+import project_cust_38.api_erp_commands as APIERP
 import project_cust_38.Cust_Functions as F
 from report_parser import start_daemon_thread, get_pictures_type, check_report, DEPATMENTS, excel_maker
 import settings
@@ -122,6 +122,53 @@ r"""Sub ads()
           Call FF.vigruzit_v_txt("C:\Python\Flusk_test2\templates\", "table.txt", "Çàäà÷è (4).xlsx", "Ëèñò1", 1, 10, "|")
 End Sub
 """
+db_users = r'SRV:BD_users.db\\BD_users.db'
+db_kplan = r"SRV:DB_kplan.db\\DB_kplan.db"
+
+
+
+def calc_dict_group_podr_vid_rab_for_plan(*args):
+    return  F.deploy_dict_c(CSQ.custom_request_c(db_kplan, """SELECT 
+       podrazdel.Пномер,
+       podrazdel.Имя,
+       podrazdel.Имя_поля,
+       podrazdel.Имя_первичного_поля,
+       podrazdel.Имя_начала_этапа,
+       podrazdel.Имя_конца_этапа,
+       podrazdel.Порядок,
+       podrazdel.Группа_для_расч_норм_и_ганта,
+       podrazdel.Это_группа_сборки,
+       podrazdel.Цвет,
+       podrazdel.Наименование,
+       podrazdel.mnts_plan_names as "podrazdel_mnts_plan_names",
+       podrazdel.icon_flet,
+       podrazdel.Наименование_СТО,
+       podrazdel.Сокращ_наименование,
+       podrazdel.Наименование_ЕРП,
+       podrazdel.Наименование_rab_c,
+       podrazdel.Имя_начала_этапа_факт,
+       podrazdel.Имя_конца_этапа_факт,
+       podrazdel.poki,
+       podrazdel.statistic_deficit_emploers_time_percent,
+       group_vid_rab_for_plan.name,
+       REPLACE(group_vid_rab_for_plan.name, 'Нчас_', 'Фчас_') as name_fact,
+       group_vid_rab_for_plan.nick_name,
+       group_vid_rab_for_plan.color,
+       group_vid_rab_for_plan.sort,
+       group_vid_rab_for_plan.mnts_plan_names,
+       group_vid_rab_for_plan.name_field_obespech,
+       group_vid_rab_for_plan.composite,
+       group_vid_rab_for_plan.estimated,
+       group_vid_rab_for_plan.koef_estimate,
+       group_vid_rab_for_plan.num_podr
+     FROM 
+    group_vid_rab_for_plan INNER JOIN 
+    podrazdel ON group_vid_rab_for_plan.num_podr == podrazdel.Пномер""", rez_dict=True, attach_dbs=db_users), 'name')
+
+
+DICT_GROUP_PODR_VID_RAB_FOR_PLAN = calc_dict_group_podr_vid_rab_for_plan()
+
+
 def load_pr_proj():
     return  F.open_file_c(r'O:\Журналы и графики\Ведомости для передачи\table_pr_proj.txt',False,"|")
 
@@ -242,6 +289,26 @@ def load_projects(poki=None):
             otkl_dog = str(otkl_dog)
             pdo_prim = row['Примечание_ПДО']
             pdo_zayav = row["ПДО_Заявки_на_закуп"]
+            list_dates_obesp = []
+            for key, item in DICT_GROUP_PODR_VID_RAB_FOR_PLAN.items():
+                if not poki == item['poki']:
+                    continue
+                name_field_obespech = item['name_field_obespech']
+                if name_field_obespech in row:
+                    dates_obesp = row[name_field_obespech]
+                    if dates_obesp and F.is_date(dates_obesp,"%Y-%m-%d"):
+                        list_dates_obesp.append(f"{name_field_obespech}: {row[name_field_obespech]}")
+            str_dates_obesp = '\n'.join(list_dates_obesp)
+
+            date_zk = ''
+            if (row['Ref_Key_py'],row['Номенклатура_ЕРП']) in DICT_ZK_DATES:
+                date_zk = DICT_ZK_DATES[(row['Ref_Key_py'],row['Номенклатура_ЕРП'])]
+                if date_zk == None:
+                    date_zk = ''
+                else:
+                    if F.is_date(date_zk,"%Y-%m-%dT%H:%M:%S"):
+                        date_zk = F.datetostr(F.strtodate(date_zk,"%Y-%m-%dT%H:%M:%S"),"%d.%m.%Y")
+
             tbl.append({
                 'Направление': napr,  # 0
                          'Псевдоним': row['Псевдоним'],  # 1
@@ -255,10 +322,12 @@ def load_projects(poki=None):
                          'Требуемая дата КД': min_date,  # 9
                          'Ф.Дата получения КД': row['Кд'],  # 10
                          'Тех. МК': mk_is,  # 11
+                         'Даты обеспечения по этапам': str_dates_obesp,  # 11а
                          'Плановая дата начала загот. участка': date_rezka_start,  # 12
                          'Текущая плановая дата зав. сборки': date_sb,  # 13
                          'Текущая плановая дата зав. упаковки': date_upak,  # 14
                          'Дата по договору': date_contract,  # 15
+                         'Дата по ЗК': date_zk,  # 15a
                          'Прогноз дата зав.сб.': prognoz_date,  # 16
                          'Откл. от дог.': otkl_dog,  # 17
                          'Примечание сб. участок': primech,  # 18
@@ -284,6 +353,8 @@ def load_projects(poki=None):
             py = clear_py(row['Номер заявки'])
             prpy = row['Номер проекта'] + "$" + row['Номер заявки']
             primech = row['Примечание_сб']
+            pack_prim = row['Примечание_упаковка']
+
             prognoz_date = row['Прогноз_дата_зав_сб']
 
             date_sb = row['Сборка'].split('/')[1]
@@ -327,7 +398,8 @@ def load_projects(poki=None):
                  'Примечание оснтк. участок': row['Примечание_оснтк'],
                  'Примечание швей. участок': row['Примечание_швк'],
                  'Примечание набив. участок': row['Примечание_нбвк'],
-                 'ПДО Примечание': pdo_prim,
+                'Примечание упаковка': pack_prim,
+                'ПДО Примечание': pdo_prim,
             })
 
     postfix = ''
@@ -339,9 +411,41 @@ def load_projects(poki=None):
     #list_table = F.open_file_c(r'O:\Журналы и графики\Ведомости для передачи\Sroki_etapov.txt', False, "|")
     #list_table = F.list_to_dict(list_table)
     if poki == 0:
-        custom_request_c = f"""SELECT 
+        DICT_ZK_DATES = dict()
+        wet_req_text = f"""ВЫБРАТЬ
+
+    ВЫБОР
+        КОГДА ЗаказКлиентаТовары.Ссылка.НеОтгружатьЧастями = ИСТИНА
+            ТОГДА ЗаказКлиентаТовары.Ссылка.ДатаОтгрузки
+        ИНАЧЕ ЗаказКлиентаТовары.ДатаОтгрузки
+    КОНЕЦ КАК ДатаОтгрузки,
+    ЗаказКлиентаТовары.Номенклатура.Наименование КАК НоменклатураНаименование,
+    ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЗаказНаПроизводство2_2Продукция.Ссылка)) КАК RefKey
+ИЗ
+    Документ.ЗаказНаПроизводство2_2.Продукция КАК ЗаказНаПроизводство2_2Продукция
+        ЛЕВОЕ СОЕДИНЕНИЕ Документ.ЗаказКлиента.Товары КАК ЗаказКлиентаТовары
+        ПО (ЗаказКлиентаТовары.Ссылка.Ссылка = ЗаказНаПроизводство2_2Продукция.Ссылка.ДокументОснование.Ссылка)
+            И (ЗаказКлиентаТовары.Номенклатура = ЗаказНаПроизводство2_2Продукция.Номенклатура)
+            И (ЗаказКлиентаТовары.Количество = ЗаказНаПроизводство2_2Продукция.Количество)
+ГДЕ
+    ЗаказНаПроизводство2_2Продукция.Ссылка.ПометкаУдаления = ЛОЖЬ
+    И ЗаказНаПроизводство2_2Продукция.Ссылка.Проведен = ИСТИНА
+    И ЗаказНаПроизводство2_2Продукция.Ссылка.Статус = ЗНАЧЕНИЕ(Перечисление.СтатусыЗаказовНаПроизводство2_2.КПроизводству)"""
+
+        key, data_rez = APIERP.get_wet_request(wet_req_text)
+        if key != 200:
+            print(f' Ошибка получения данных код ({key}) из ERP')
+        else:
+            if data_rez['data']:
+                DICT_ZK_DATES = {(i['RefKey'],i['НоменклатураНаименование']):i['ДатаОтгрузки'] for i in data_rez['data']}
+
+
+
+        select = f"""
                 пл_оуп.№проекта AS "Номер проекта", 
                 пл_оуп.№ERP AS "Номер заявки", 
+                знпр.Ref_Key_py AS "Ref_Key_py", 
+                пл_оуп.Номенклатура_ЕРП AS "Номенклатура_ЕРП", 
                 plan.Позиция AS "Позиция", 
                 plan.Примечание as 'Примечание_ПДО',
                 пл_осил.Примечание as "ПДО_Заявки_на_закуп",
@@ -364,8 +468,8 @@ def load_projects(poki=None):
                  пл_оуп.Дата_отгрузки_ПУ AS "Дата_отгрузки_ПУ",
                  пл_сб.Примечание_сб,
                  пл_сб.Прогноз_дата_зав_сб,
-                 napravl_deyat.Псевдоним 
-                 FROM plan 
+                 napravl_deyat.Псевдоним """
+        join = f"""
                 LEFT JOIN napravl_deyat ON napravl_deyat.Пномер = plan.Направление_деятельности  
                 LEFT JOIN napravlenie ON napravlenie.Пномер = napravl_deyat.Направление
                 LEFT JOIN status_poz ON status_poz.Пномер = plan.Статус 
@@ -376,6 +480,24 @@ def load_projects(poki=None):
                 LEFT JOIN пл_компл ON пл_компл.НомПл = plan.Пномер 
                 LEFT JOIN пл_заг ON пл_заг.НомПл = plan.Пномер 
                 LEFT JOIN пл_покр ON пл_покр.НомПл = plan.Пномер 
+                LEFT JOIN знпр ON пл_оуп.Пномер_ЗП = знпр.s_num
+"""
+        for key, item in DICT_GROUP_PODR_VID_RAB_FOR_PLAN.items():
+            if not poki == item['poki']:
+                continue
+            if item['estimated']:
+                continue
+            tbl, field = key.split('.')
+            name_field_obespech = item['name_field_obespech']
+            if f'LEFT JOIN {tbl}' not in join:
+                join += f'\nLEFT JOIN {tbl} ON {tbl}.НомПл = plan.Пномер '
+            select = f'{tbl}.{name_field_obespech}, \n' + select
+
+
+        custom_request_c = f"""SELECT 
+        {select}
+                 FROM plan 
+               {join} 
                 WHERE status_poz.Имя NOT IN ("Завершена","На удаление") {postfix}; 
                 """
     elif poki == 1:
@@ -404,6 +526,7 @@ def load_projects(poki=None):
                  пл_оснтк.Примечание_оснтк as "Примечание_оснтк",
                  пл_швк.Примечание_швк as "Примечание_швк",
                  пл_нбвк.Примечание_нбвк as "Примечание_нбвк",
+                 пл_упквк.Примечание_упквк as "Примечание_упаковка",
                  "" as "Прогноз_дата_зав_сб",
                  napravl_deyat.Псевдоним 
                  FROM plan 
@@ -423,7 +546,7 @@ def load_projects(poki=None):
     else:
         return []
 
-    list_table = CSQ.custom_request_c(r"SRV:DB_kplan.db\\DB_kplan.db",custom_request_c,rez_dict=True)
+    list_table = CSQ.custom_request_c(db_kplan,custom_request_c,rez_dict=True)
 
     #====================================changes
 
@@ -432,7 +555,7 @@ def load_projects(poki=None):
 
     # ================================
     custom_request_c = f'''SELECT * FROM napravlenie WHERE val > 0 {postfix_2}'''
-    list_d_napr = CSQ.custom_request_c(r"SRV:DB_kplan.db\\DB_kplan.db", custom_request_c, rez_dict=True)
+    list_d_napr = CSQ.custom_request_c(db_kplan, custom_request_c, rez_dict=True)
 
     # dict_napr = {_['alias']:[hat_c].copy() for _ in list_d_napr}
     dict_napr = {_['alias']: [] for _ in list_d_napr}
@@ -504,7 +627,7 @@ def projects():
 
 
     custom_request_c = f'''SELECT * FROM napravl_deyat'''
-    list_d_napr = CSQ.custom_request_c(r"SRV:DB_kplan.db\\DB_kplan.db", custom_request_c, rez_dict=True)
+    list_d_napr = CSQ.custom_request_c(db_kplan, custom_request_c, rez_dict=True)
     dict_napr_d = dict()
     for item in list_d_napr:
         clr = f"rgb({item['Цвет'].replace(';',', ')})"
@@ -543,7 +666,7 @@ def projects():
         comp_projects[(company['Имя'], poki)] = projects
         #changes = load_change_projects(poki)
 
-    dict_colors_states =F.deploy_dict_c(CSQ.custom_request_c(r"SRV:DB_kplan.db\\DB_kplan.db",f"""SELECT Имя, color FROM status_poz""",rez_dict=True),'Имя')
+    dict_colors_states =F.deploy_dict_c(CSQ.custom_request_c(db_kplan,f"""SELECT Имя, color FROM status_poz""",rez_dict=True),'Имя')
     for k in dict_colors_states:
         dict_colors_states[k] = f' rgb({dict_colors_states[k].split(";")[0]}, {dict_colors_states[k].split(";")[1]}, {dict_colors_states[k].split(";")[2]})'
     submenu = [
@@ -672,7 +795,7 @@ if __name__ == "__main__":
         app.run(debug=True, host='192.168.47.61', port=20000)  # g.sviridov
     else:
         if socket.gethostname() == "POW18-15":
-            app.run(debug=False, host='192.168.18.91', port=20001)#a.belyakov
+            app.run(debug=False, host='192.168.14.71', port=20001)#a.belyakov
         else:
             # app.run(debug=False, host='192.168.47.123', port=20000)
             # app.run(debug=False,host='192.168.50.230',port=20000)

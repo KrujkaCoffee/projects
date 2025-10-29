@@ -20,16 +20,28 @@ from typing import TYPE_CHECKING, Any, Callable
 import logging
 import sys
 import io
+import os
+import time
+
 
 if TYPE_CHECKING:
     from API_server import data_parse_prices
 
 CHAT_FOR_DEBUGGER_BUDGETS = 'chat90757'
 
+os.environ['LAST_UPDATE_FOR1C_MODULE'] = str(time.time())
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+file_db = F.scfg('files')
+db_kplan = F.scfg('DB_kplan')
+db_resxml = F.scfg('db_resxml')
+db_naryad = F.scfg('Naryad')
+db_users = F.scfg('BD_users')
+
+DICT_ORGANIZTIONS = F.deploy_dict_c(CSQ.custom_request_c(db_naryad, f"""SELECT * FROM places""", rez_dict=True),
+                                    "doc_prefix")
 
 def pretty_dict(d, indent=0):
     """Форматируем словарь для Б24, переносим элементы set на новые строки."""
@@ -842,52 +854,52 @@ class Fcns():
 
 @dataclass
 class Data_1с:
+    DEBUG = '22.10.2025'
+    if True:#if F.now("%d.%m.%Y") != DEBUG:
+        code,  nomen_names  = APIERP.get_wet_request(f'''ВЫБРАТЬ
+            ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(Номенклатура.Ссылка)) КАК Ref,
+            Номенклатура.Код + " " + Номенклатура.Наименование КАК Descr
+        ИЗ
+            Справочник.Номенклатура КАК Номенклатура''', lazy_method_huours=2)
+        if code != 200:
+            print(f'Ошибка получения данных из 1С')
+        DICT_NOMEN_NAMES = F.deploy_dict_c(nomen_names['data'],'Ref')
 
+        print(f'\n======================= INIT Data_1с ======================\n')
+        DICT_PRICES = Fcns.get_prices(DICT_NOMEN_NAMES)
 
-    code,  nomen_names  = APIERP.get_wet_request(f'''ВЫБРАТЬ
-        ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(Номенклатура.Ссылка)) КАК Ref,
-        Номенклатура.Код + " " + Номенклатура.Наименование КАК Descr
-    ИЗ
-        Справочник.Номенклатура КАК Номенклатура''', lazy_method_huours=2)
-    if code != 200:
-        print(f'Ошибка получения данных из 1С')
-    DICT_NOMEN_NAMES = F.deploy_dict_c(nomen_names['data'],'Ref')
+        DIR_BUDGETS = Fcns.init_dit_budgets()
+        SAVE_FILE_PATH_NAME: str = DIR_BUDGETS + F.sep() + 'budgets.pickle'
+        SAVE_FILE_BUDGETS_NAME: str = 'budgets.pickle'
+        m = ERP.OrdersComposit()
+        ПОКАЗАТЕЛИБЮДЖЕТОВ = Fcns.get_data_odata(DIR_BUDGETS,
+                                                 'middle_data_ПоказателиБюджетов',
+                                                 'Catalog_ПоказателиБюджетов',
+                                                 f"""?$filter=DeletionMark eq false&$select=Description, Ref_Key """,
+                                                 m)
+        if ПОКАЗАТЕЛИБЮДЖЕТОВ == None:
+            quit()
+        DICT_ПОКАЗАТЕЛИБЮДЖЕТОВ = F.deploy_dict_c(ПОКАЗАТЕЛИБЮДЖЕТОВ, 'Ref_Key')
+        DICT_СТАТЬИБЮДЖЕТОВ = Fcns.calc_middle_data_СтатьиБюджетов(DIR_BUDGETS, m)
 
-    print(f'\n======================= INIT Data_1с ======================\n')
-    DICT_PRICES = Fcns.get_prices(DICT_NOMEN_NAMES)
+        Catalog_ОбъектыЭксплуатации = Fcns.calc_middle_data_ОбъектыЭксплуатации(DIR_BUDGETS, m)
+        dict_CFO = Fcns.calc_middle_data_full_dict_CFO(DIR_BUDGETS, m)
+        BUDGETS = Fcns.calc_middle_data_list_budgets(DIR_BUDGETS, DICT_СТАТЬИБЮДЖЕТОВ, DICT_ПОКАЗАТЕЛИБЮДЖЕТОВ, dict_CFO,
+                                                     Catalog_ОбъектыЭксплуатации, m)
+        DICT_BUDGETS_PRICES = Fcns.load_budgets_prices(BUDGETS)
 
-    DIR_BUDGETS = Fcns.init_dit_budgets()
-    SAVE_FILE_PATH_NAME: str = DIR_BUDGETS + F.sep() + 'budgets.pickle'
-    SAVE_FILE_BUDGETS_NAME: str = 'budgets.pickle'
-    m = ERP.OrdersComposit()
-    ПОКАЗАТЕЛИБЮДЖЕТОВ = Fcns.get_data_odata(DIR_BUDGETS,
-                                             'middle_data_ПоказателиБюджетов',
-                                             'Catalog_ПоказателиБюджетов',
-                                             f"""?$filter=DeletionMark eq false&$select=Description, Ref_Key """,
-                                             m)
-    if ПОКАЗАТЕЛИБЮДЖЕТОВ == None:
-        quit()
-    DICT_ПОКАЗАТЕЛИБЮДЖЕТОВ = F.deploy_dict_c(ПОКАЗАТЕЛИБЮДЖЕТОВ, 'Ref_Key')
-    DICT_СТАТЬИБЮДЖЕТОВ = Fcns.calc_middle_data_СтатьиБюджетов(DIR_BUDGETS, m)
+        if DICT_BUDGETS_PRICES == None:
+            quit()
 
-    Catalog_ОбъектыЭксплуатации = Fcns.calc_middle_data_ОбъектыЭксплуатации(DIR_BUDGETS, m)
-    dict_CFO = Fcns.calc_middle_data_full_dict_CFO(DIR_BUDGETS, m)
-    BUDGETS = Fcns.calc_middle_data_list_budgets(DIR_BUDGETS, DICT_СТАТЬИБЮДЖЕТОВ, DICT_ПОКАЗАТЕЛИБЮДЖЕТОВ, dict_CFO,
-                                                 Catalog_ОбъектыЭксплуатации, m)
-    DICT_BUDGETS_PRICES = Fcns.load_budgets_prices(BUDGETS)
+        DICT_PVH_СТАТЬИРАСХОДОВ, compliance_register_states_expenditure_and_budgets = Fcns.calc_middle_data_СтатьиРасходов(
+            DIR_BUDGETS, m)
+        # DICT_LIST_KAT_EXPL = Fcns.calc_middle_data_kat_expl(DIR_BUDGETS, m)
 
-    if DICT_BUDGETS_PRICES == None:
-        quit()
+        DICT_BUDGETS_STATES = Fcns.load_budgets_states(DICT_СТАТЬИБЮДЖЕТОВ, BUDGETS, DICT_PVH_СТАТЬИРАСХОДОВ,
+                                                       compliance_register_states_expenditure_and_budgets)
 
-    DICT_PVH_СТАТЬИРАСХОДОВ, compliance_register_states_expenditure_and_budgets = Fcns.calc_middle_data_СтатьиРасходов(
-        DIR_BUDGETS, m)
-    # DICT_LIST_KAT_EXPL = Fcns.calc_middle_data_kat_expl(DIR_BUDGETS, m)
-
-    DICT_BUDGETS_STATES = Fcns.load_budgets_states(DICT_СТАТЬИБЮДЖЕТОВ, BUDGETS, DICT_PVH_СТАТЬИРАСХОДОВ,
-                                                   compliance_register_states_expenditure_and_budgets)
-
-    Fcns.calc_not_fill_states_expenditure(m, DICT_PVH_СТАТЬИРАСХОДОВ,
-                                          compliance_register_states_expenditure_and_budgets, BUDGETS)
+        Fcns.calc_not_fill_states_expenditure(m, DICT_PVH_СТАТЬИРАСХОДОВ,
+                                              compliance_register_states_expenditure_and_budgets, BUDGETS)
 
 
 
@@ -905,27 +917,11 @@ def get_znvp(key_CFO: str, year: str, m=None):
                                 'Ref_Key')
     return dict_znvp
 
-@log_prefix_decorator(
-    "",
-    "",
-    enable_console=True,
-    enable_file=False,
-    enable_b24=True,
-    b24_format="[%(asctime)s] %(message)s",
-    chat_id=CHAT_FOR_DEBUGGER_BUDGETS
-)
+
 def eval_1c_budgetzvp_v1(data):
     print(f'\n=== START eval_1c_budgetzvp_v1 ===')
 
-    @log_prefix_decorator(
-        "",
-        "",
-        enable_console=True,
-        enable_file=False,
-        enable_b24=True,
-        b24_format="[%(asctime)s] %(message)s",
-        chat_id=CHAT_FOR_DEBUGGER_BUDGETS
-    )
+
     def add_znvp_list_year(dict_znvp_years, year, list_err, m=None):
 
         def get_budget_and_state(name_CFO, state_zvp):
@@ -1155,15 +1151,7 @@ def calc_budget(state, cfo, month_str, year, add_info=''):
                             limit = Data_1с.DICT_BUDGETS_PRICES[year][budget_cfo][state_budget][month_str]
     return budget, state_budget, limit
 
-@log_prefix_decorator(
-    "",
-    "",
-    enable_console=True,
-    enable_file=False,
-    enable_b24=True,
-    b24_format="[%(asctime)s] %(message)s",
-    chat_id=CHAT_FOR_DEBUGGER_BUDGETS
-)
+
 def eval_budget(direction_key, year: str, data_month: str = None, dict_prices=None, dict_znvp=None):
     def calc_rez_data(dict_data, date=None):
         rez_data = []
@@ -1305,6 +1293,259 @@ def eval_budget(direction_key, year: str, data_month: str = None, dict_prices=No
             rez_data.append(tmp_item)
     return rez_data
 
+def calc_table_width(table:list[dict]):
+    max_width = 0
+    if table:
+        max_width = (max([len(str(k)) for k in table[0].keys()]) + 7) * len(table[0]) + 1
+    for row in table:
+        width = (max([len(str(v)) for v in row.values()]) + 7) * len(row) + 1
+        if width > max_width:
+            max_width = width
+    return  max_width
+
+def compare_res_1c_v1(refKey_zp:str):
+
+
+    CFG = CMS.CFG
+
+    def get_list_res(refKey_zp:str):
+        text = f"""  ВЫБРАТЬ
+    ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЗаказНаПроизводство2_2Продукция.Спецификация.Ссылка)) КАК refKey_res,
+    ЗаказНаПроизводство2_2Продукция.Номенклатура.Наименование КАК НоменклатураНаименование,
+    ЗаказНаПроизводство2_2Продукция.Количество КАК Количество,
+    ЗаказНаПроизводство2_2Продукция.НомерСтроки КАК НомерСтроки,
+    ЗаказНаПроизводство2_2Продукция.Ссылка.Номер КАК НомерЗП
+ИЗ
+    Документ.ЗаказНаПроизводство2_2.Продукция КАК ЗаказНаПроизводство2_2Продукция
+ГДЕ
+    ЗаказНаПроизводство2_2Продукция.Ссылка.Ссылка = &Ссылка;
+                                                               """
+        refs = APIERP.Refs_wet(text)
+        ref_obj = APIERP.Ref_wet('Ссылка', 'Документы.ЗаказНаПроизводство2_2', refKey_zp)
+
+        refs.add_ref(ref_obj)
+        key, res = APIERP.get_wet_request(text=text, refs=refs)
+
+        if key != 200:
+            err.append(f'Ошибка получения данных из ЕРП ЗаказНаПроизводство2_2')
+            return False, err
+        if not res['data']:
+            err.append(f'ТЧ ЗаказНаПроизводство2_2 пусто')
+            return False, err
+
+
+        return True, res['data']
+
+    def get_count_null_etap(refKey_zp:str):
+        text = f"""  ВЫБРАТЬ
+    ЭтапПроизводства2_2.Распоряжение КАК Распоряжение,
+    ЭтапПроизводства2_2.НЭ_НулевойЭтап КАК НЭ_НулевойЭтап
+
+    ИЗ Документ.ЭтапПроизводства2_2 КАК ЭтапПроизводства2_2
+    ГДЕ
+         ЭтапПроизводства2_2.НЭ_НулевойЭтап = ИСТИНА И ЭтапПроизводства2_2.Распоряжение.Ссылка = &Ссылка;
+                                                               """
+        refs = APIERP.Refs_wet(text)
+        ref_obj = APIERP.Ref_wet('Ссылка', 'Документы.ЗаказНаПроизводство2_2', refKey_zp)
+
+        refs.add_ref(ref_obj)
+        key, res = APIERP.get_wet_request(text=text, refs=refs)
+
+        if key != 200:
+            err.append(f'Ошибка получения данных из ЕРП ЭтапПроизводства2_2')
+            return False, err
+
+        return len(res['data'])
+
+    def upd_kpl_data(tbl_kpl_name, field_kpl_name, val_name,НомПл):
+        if isinstance(val_name, str):
+            val_name = f'"{val_name}"'
+        res_upd = CSQ.custom_request_c(db_kplan, f"""UPDATE {tbl_kpl_name} SET ({field_kpl_name})
+               = ({val_name}) WHERE НомПл == {НомПл}""")
+        return res_upd
+
+    answ = []
+    max_width = 200
+    err = []
+
+    offset_to_zero_stage = 0
+    count_null_etap = get_count_null_etap(refKey_zp)
+    if count_null_etap:
+        offset_to_zero_stage = 1
+    succ, list_res = get_list_res(refKey_zp)
+    if not succ:
+        return answ, list_res, max_width
+    pref = list_res[0]['НомерЗП'][:2]
+    if pref not in DICT_ORGANIZTIONS:
+        err.append(f'Документ {list_res[0]['НомерЗП']} не может быть учтен в МЕС. Неопознан префикс')
+    CFG.SingletonMeta.clear_instance(CFG.Place)
+    CFG.Config.place = CFG.Place(DICT_ORGANIZTIONS[pref]['Имя'])
+
+    fl_recalc_data_etaps_from_erp = False
+
+    for row in list_res:
+        refKey_res = row['refKey_res']
+        НоменклатураНаименование = row['НоменклатураНаименование']
+        Количество = row['Количество']
+        НомерСтроки = row['НомерСтроки']
+        
+        res_erp_obj = CMS.ResSpecERP(refKey_res)
+        СпецификацияНаименование:str = res_erp_obj.Наименование
+        СпецификацияКод:str = res_erp_obj.Код
+        СпецификацияОписание:str = res_erp_obj.Описание
+        dict_СпецификацияОписание = res_erp_obj.dict_description_self()
+
+        НомПартии_ЗП = НомерСтроки + offset_to_zero_stage
+
+        
+        if res_erp_obj.is_predv:
+            err.append(f'Для {НоменклатураНаименование} выбрана предварительная спецификация {СпецификацияНаименование}')
+            continue
+            
+        num_mk = None
+
+        fl_naid = False
+        fl_res_match = False
+        fl_res_name = False
+        fl_res_kod = False
+        ref_res_mes = None
+        
+
+        if 'Номер МК' in dict_СпецификацияОписание and F.is_numeric(dict_СпецификацияОписание['Номер МК']):
+            num_mk = int(dict_СпецификацияОписание['Номер МК'])
+
+            kpl = CSQ.custom_request_c(db_kplan, f"""SELECT 
+                            пл_топ.НомПл,  
+                            знпр.s_num as знпр_s_num,
+                            пл_оуп.Номенклатура_ЕРП,   
+                                    пл_оуп.НомПартии_ЗП, знпр.data_etaps_from_erp, 
+                                    пл_топ.Спецификация_ЕРП as Спецификация_ЕРП_пл_топ, 
+                                    пл_топ.Спецификация_код_ЕРП as Спецификация_код_ЕРП_пл_топ, 
+                                    mk.Пномер  as  Пномер_mk,
+                                    mk.Тип as Тип_mk
+                                 FROM знпр  
+                                 INNER JOIN пл_оуп ON пл_оуп.Пномер_ЗП == знпр.s_num 
+                                 INNER JOIN пл_топ ON пл_топ.НомПл == пл_оуп.НомПл 
+                                 INNER JOIN mk ON mk.НомКплан == пл_оуп.НомПл 
+                                  WHERE mk.Пномер == {num_mk}  ;""",
+                                                rez_dict=True, one=True, attach_dbs=(db_naryad))
+            НомПл = kpl['НомПл']
+            if kpl['Номенклатура_ЕРП'] != НоменклатураНаименование:
+                upd_kpl_data('пл_оуп','Номенклатура_ЕРП',НоменклатураНаименование,НомПл)
+            if kpl['НомПартии_ЗП'] not in ('', 0, None) and kpl['НомПартии_ЗП'] != НомПартии_ЗП:
+                upd_kpl_data('пл_оуп','НомПартии_ЗП',НомПартии_ЗП,НомПл)
+                fl_recalc_data_etaps_from_erp = kpl['знпр_s_num']
+
+            fl_naid = True
+            fl_res_match = True
+            fl_res_kod = True
+            if kpl['Спецификация_ЕРП_пл_топ'] != СпецификацияНаименование:
+                upd_kpl_data('пл_топ','Спецификация_ЕРП',СпецификацияНаименование,НомПл)
+            if kpl['Спецификация_код_ЕРП_пл_топ'].strip() != СпецификацияКод.strip():
+                upd_kpl_data('пл_топ','Спецификация_код_ЕРП',СпецификацияКод.strip(),НомПл)
+            fl_res_name = True
+        else:
+            list_poz_mes = CSQ.custom_request_c(db_kplan, f"""SELECT 
+                            пл_топ.НомПл,  
+                            пл_оуп.Номенклатура_ЕРП,   
+                                    пл_оуп.НомПартии_ЗП, знпр.data_etaps_from_erp, 
+                                    пл_топ.Спецификация_ЕРП as Спецификация_ЕРП_пл_топ, 
+                                    пл_топ.Спецификация_код_ЕРП as Спецификация_код_ЕРП_пл_топ, 
+                                    mk.Пномер  as  Пномер_mk 
+
+                                 FROM знпр  
+                                 INNER JOIN пл_оуп ON пл_оуп.Пномер_ЗП == знпр.s_num 
+                                 INNER JOIN пл_топ ON пл_топ.НомПл == пл_оуп.НомПл 
+                                 INNER JOIN mk ON mk.НомКплан == пл_оуп.НомПл 
+                                  WHERE знпр.Ref_Key_py == "{refKey_zp}" 
+                                  and mk.Тип == 1;""",
+                                                rez_dict=True, attach_dbs=(db_naryad))
+            for kpl in list_poz_mes:
+                НомПл = kpl['НомПл']
+                if kpl['Номенклатура_ЕРП'] == НоменклатураНаименование and  kpl['НомПартии_ЗП'] == НомерСтроки + offset_to_zero_stage:
+                    num_mk = kpl['Пномер_mk']
+                    fl_naid = True
+                    dict_etaps_from_erp = F.from_binary_pickle(kpl['data_etaps_from_erp'])
+                    ref_res_mes = dict_etaps_from_erp[str(kpl['НомПартии_ЗП'])]
+                    if ref_res_mes['Спецификация_Key'] == refKey_res:
+                        fl_res_match = True
+                    if ref_res_mes['Спецификация'].strip() == СпецификацияКод.strip():
+                        fl_res_kod = True
+
+                    
+                    if kpl['Спецификация_ЕРП_пл_топ'] == СпецификацияНаименование and kpl['Спецификация_код_ЕРП_пл_топ'].strip() == СпецификацияКод.strip():
+                        fl_res_name = True
+                    else:
+                        if fl_naid and fl_res_kod:
+                            if kpl['Спецификация_ЕРП_пл_топ'] != СпецификацияНаименование:
+                                upd_kpl_data('пл_топ', 'Спецификация_ЕРП', СпецификацияНаименование, НомПл)
+                            if kpl['Спецификация_код_ЕРП_пл_топ'].strip() != СпецификацияКод.strip():
+                                upd_kpl_data('пл_топ', 'Спецификация_код_ЕРП', СпецификацияКод.strip(), НомПл)
+                            fl_res_name = True
+                    break
+            if fl_naid == False:
+                err.append(f'{НоменклатураНаименование} Не найдена в МЕС где НомПартии_ЗП = {НомерСтроки + offset_to_zero_stage} (сверить с КПЛ пл_оуп.Номенклатура_ЕРП)')
+            if fl_res_match == False:
+                err.append(f'Для {НоменклатураНаименование}  в МЕС и в 1С не соответстувют ресурсные по ссылкам.')
+            if ref_res_mes and  fl_res_kod == False:
+                err.append(f'Для ресурсной {СпецификацияНаименование} в МЕС и в 1С не соответстувют коды'
+                           f' ({ref_res_mes['Спецификация'].strip()} и {СпецификацияКод.strip()}).')
+            if fl_res_name == False:
+                err.append(f'Для ресурсной {СпецификацияНаименование} в МЕС и в 1С не соответстувют наименования'
+                           f' (МЕС: {kpl['Спецификация_ЕРП_пл_топ']} ).')
+
+        if fl_naid and fl_res_match and fl_res_kod and fl_res_name:
+            code, data = res_erp_obj.load_tch(CMS.TchNamesResSpecERP.Трудозатраты,{'ВидРабот'})
+            if code != 200:
+                err.extend(data)
+                return answ, err, max_width
+            dict_trdz_tch = res_erp_obj.calc_trdz_tch_as_dict('ВидРабот_refKey')
+            if len(СпецификацияНаименование)> 16:
+                СпецификацияНаименованиеМК = f'{НомерСтроки}, {СпецификацияНаименование[:8].strip()}...{СпецификацияНаименование[-8:].strip()} ({num_mk})'
+            else:
+                СпецификацияНаименованиеМК = f'{НомерСтроки}, {СпецификацияНаименование} ({num_mk})'
+            res = CMS.ResSpec(num_mk)
+            list_dict_compare = res.compare_vids_rab(name_key = 'Вид работ, минут.', right=dict_trdz_tch,
+                                                left_name='МES',right_name='ERP', result_key_ref=False)
+            list_dict_compare = F.insert_key_to_dicts(list_dict_compare,0,'           N,Рес.(МК)           ',СпецификацияНаименованиеМК)
+            summ_left = 0
+            summ_right = 0
+            summ_delta = 0
+            if list_dict_compare:
+                for row in list_dict_compare:
+                    row['Дельта'] = round(row['ERP'] - row['МES'],3)
+                    summ_left += row['МES']
+                    summ_right += row['ERP']
+                    summ_delta += row['Дельта']
+                    
+                list_dict_compare.append({'          Рес.(МК)         ': '',
+                                          'Вид работ, минут.': '     ИТОГО:'  ,
+                                          'МES': round(summ_left,3)  ,
+                                          'ERP': round(summ_right,3) ,
+                                          'Дельта': round(summ_delta,3) ,
+                                          })
+                if len(list_res)>1:
+                    list_dict_compare.append({'          Рес.(МК)         ': ' '*len(СпецификацияНаименованиеМК),
+                                              'Вид работ, минут.': ' '*len(СпецификацияНаименованиеМК)  ,
+                                              'МES': ' '*len(СпецификацияНаименованиеМК)  ,
+                                              'ERP': ' '*len(СпецификацияНаименованиеМК) ,
+                                              'Дельта': ' '*len(СпецификацияНаименованиеМК) ,
+                                              })
+            if not list_dict_compare:
+                err.append(f'{СпецификацияНаименованиеМК} Различий в трудоемкости не обнаружено')
+            else:
+                answ.extend(list_dict_compare)
+            
+
+    if fl_recalc_data_etaps_from_erp:
+        m = ERP.OrdersComposit()
+        resp = CMS.make_dict_etaps_from_erp(m, refKey_zp)
+        CMS.update_data_etaps_from_erp(db_kplan, resp, fl_recalc_data_etaps_from_erp)
+
+    if answ:
+        max_width = calc_table_width(answ)
+
+    return answ ,err ,max_width
 
 def eval_1c_parse_prices_v1(data):
     answ = PRS.run_parse(data.data_nomens)
@@ -1322,28 +1563,24 @@ def get_file(data):
     return data_resp, list_err
 
 
-def update_drawback_journal(deal_id: int | str, data: dict, queue: str = 'bitrix24.Неудача.ОбновлениеСтатуса'):
+def update_drawback_journal(deal_id: int | str, data: dict,
+                            queue: str = 'bitrix24.Неудача.ОбновлениеСтатуса',
+                            is_test = None):
     list_err = None
     file_db = F.scfg('files')
-
-    def check_data_existing(cur_hash: str):
-        res = CSQ.custom_request_c(file_db, f'SELECT id FROM exchange WHERE key = {cur_hash!r}', hat_c=False)
-        if not isinstance(res, list):
-            raise Exception(f'[B24-HANDLER]Ошибка при проверке ключа {queue!r}')
-        return not bool(res)
-
     hash_data = hashlib.sha256(f'{deal_id}|{data}'.encode('utf8')).hexdigest()
-    if check_data_existing(hash_data):
-        b_data = pickle.dumps(data)
-        kwargs = {'key': hash_data, 'queue': queue, 'data': b_data}
-        keys = ', '.join(kwargs.keys())
-        values_eq = ', '.join('?' for _ in kwargs)
-        values = list(kwargs.values())
-        result = CSQ.custom_request_c(
-            F.scfg('files'),
-            f'INSERT INTO exchange({keys}) VALUES ({values_eq})',
-            list_of_lists_c=[values]
-        )
-        if result == False:
-            raise Exception('[B24-HANDLER]Не удалось сохранить данные неудачной попытки')
+    b_data = pickle.dumps(data)
+    kwargs = {'key': hash_data, 'queue': queue, 'data': b_data, 'is_test': is_test} #17.09.25
+    keys = ', '.join(kwargs.keys())
+    values_eq = ', '.join('?' for _ in kwargs)
+    values = list(kwargs.values())
+    result = CSQ.custom_request_c(
+        F.scfg('files'),
+        f'INSERT INTO exchange({keys}) VALUES ({values_eq})',
+        list_of_lists_c=[values]
+    )
+    if result == False:
+        raise Exception('[B24-HANDLER]Не удалось сохранить данные неудачной попытки')
     return None, list_err
+
+

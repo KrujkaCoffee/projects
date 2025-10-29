@@ -4,10 +4,17 @@ import logging
 import copy
 import os
 import dataclasses
-from PyQt5 import QtWidgets
+try:
+    from PyQt5 import QtWidgets
+except:
+    print(f'Cust_config err import QtWidgets')
 import project_cust_38.Cust_Functions as F
 import project_cust_38.Cust_SQLite as CSQ
-from project_cust_38 import Cust_Qt as CQT
+try:
+    from project_cust_38 import Cust_Qt as CQT
+except:
+    print(f'Cust_config err import Cust_Qt')
+
 
 
 class SingletonMeta(type):
@@ -18,6 +25,12 @@ class SingletonMeta(type):
             instance = super().__call__(*args, **kwargs)
             cls.__instances[cls] = instance
         return cls.__instances[cls]
+
+    @classmethod
+    def clear_instance(mcs, cls):
+        """Удаляет сохранённый экземпляр класса"""
+        if cls in mcs.__instances:
+            del mcs.__instances[cls]
 
 class ConfigMeta(SingletonMeta): #18.08.25
     def __init__(cls, name, bases, attrs, **kwargs):
@@ -407,6 +420,8 @@ class User_config(metaclass=SingletonMeta):
                 CQT.msgbox(f'Перезапустить приложение')
                 quit()
             self.load_user_config(window)
+            return True
+        return False
 
 class CodeNaryad:
     Плановая: int = None
@@ -462,18 +477,23 @@ class Place(metaclass=SingletonMeta):
     limit_time_on_naryad: int = None #15.08.25
     КодГруппыРесурсных: str = None #20.08.2025
     use_month_closing_block_for_naryads: int = None #10.09.2025  100060031 Сергей Козырьков12:36 необходимо снять блок по периоду на время закрытия предыдущих МК в месе,Тренировка,отработка возможных ошибок сотрудников. на срок до 22.09.
+    auto_change_state_kplan: int = None #18.09.2025  100060322  Дмитрий Никандров09:43, как только выстроим цепочку работы с конструкторами, технологами мы сопоставим статусы и донесем до вас.
+    autoload_fact_kpl_onoff: int = None #26.09.2025 100060640  тобы в ганте увидеть, что начались работы
+
 
     def __init__(self, organization_name: str | None = None) -> None:
         if not organization_name:
             if AppConfig().is_disabled:
                 return
             user_config = User_config()
-            if not isinstance(user_config.Organization, dict) or not user_config.Organization.get('Значение'):
+            if not isinstance(user_config.Organization, dict) or not user_config.Organization.get('Значение') or user_config.Organization.get('Значение') in ('None' or None):
                 if QtWidgets.QApplication.instance() is None:
                     app = QtWidgets.QApplication(sys.argv)
                 widget = QtWidgets.QMainWindow()
                 CQT.msgbox('Не выбрана организация')
                 user_config.gui_load(widget)
+                if not user_config.Organization or not user_config.Organization.get('Значение'):
+                    quit()
                 return
             organization_name = user_config.Organization.get('Значение')
         # db_naryad = F.scfg('Naryad')

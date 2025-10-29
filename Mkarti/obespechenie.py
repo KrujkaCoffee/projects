@@ -144,6 +144,8 @@ def load_shablon_dsem(res):
             spis_oper.append([dse['Номенклатурный_номер'],dse['Наименование'],
                               dse['Количество'],f'{oper["Опер_номер"]}_{oper["Опер_наименование"]}','','','',''])
             for material in oper['Материалы']:
+                if not material:
+                    continue
                 if material['Мат_код'] not in dict_mat:
                     dict_mat[material['Мат_код']] = [material['Мат_код'],material['Мат_наименование'],
                                                      material['Мат_норма'],material['Мат_ед_изм'],'','','','']

@@ -23,8 +23,15 @@ import json #18.08.25
 import hashlib
 import inspect
 from functools import wraps
+
 try:
+    print(f'import config try...')
     import config
+    print(f'import config success')
+except:
+    print(f'import config err')
+    
+try:
     import pyperclip
     import json as js
     from jsonlines import open as jslopen
@@ -182,9 +189,7 @@ class StatisticDecorator:
 
     def __new__(cls, function: F, *args, **kwargs) -> F: #18.08.25
         instance = super().__new__(cls)
-        import socket
-        computer_name = socket.gethostname()
-        if computer_name.lower() == 'srv-mes' or computer_name.lower() == 'srv-mes.powerz.ru':
+        if os.environ.get('MES_IS_SERVER'): #15.09.25
             return function
         instance.function = function
         wraps(function)(instance)
@@ -286,10 +291,16 @@ class StatisticDecorator:
     def __call__(self, *args, **kwargs):
         start = time.time()
         result = self.function(*args, **kwargs)
+        bd = self.unpack_argument('bd', args, kwargs) #15.09.25
+        custom_request_c = self.unpack_argument('custom_request_c', args, kwargs) #15.09.25
+        if 'WidgetEvents' in custom_request_c:
+            return result
+        if not bd:
+            return result
         if self.config is None: # 18.08.25
             return result
         from concurrent.futures import ThreadPoolExecutor
-        pool = ThreadPoolExecutor(max_workers=1)
+        pool = ThreadPoolExecutor()
         data_for_task = copy.deepcopy(result) #19.08.25
         pool.submit(self.task, start, data_for_task, args, kwargs)
         return result
@@ -1025,9 +1036,38 @@ def is_date(string: str, maska: str = "%Y-%m-%d %H:%M:%S"):
 def datetostr(date, format="%Y-%m-%d %H:%M:%S"):#"%d.%m.%Y"   "%Y-%m-%dT%H:%M:%S"
     return date.strftime(format)
 
-def dateStrToStr(date, format="%Y-%m-%d %H:%M:%S",format_out="%Y-%m-%d"):#"%d.%m.%Y"   "%Y-%m-%dT%H:%M:%S"
-    return datetostr(strtodate(date,format),format_out)
-
+def dateStrToStr(date, format=None,format_out="%Y-%m-%d",onerror=None)->str|DT:#"%d.%m.%Y"   "%Y-%m-%dT%H:%M:%S"
+    set_formats = {"%Y-%m-%d %H:%M:%S",
+                   "%Y-%m-%dT%H:%M:%S",
+                   "%d.%m.%Y",
+                   "%Y-%m-%d",
+                   "%d.%m.%y",
+                   "%d\n%m\n%y",
+                   }
+    if date is None:
+        raise TypeError(f'{str(date)} format err')
+    if format_out == '':
+        if isinstance(date, DT):
+            return date
+        if format:
+            return strtodate(date, format)
+        for format in set_formats:
+            if is_date(date,format):
+                return strtodate(date, format)
+    else: 
+        
+        if isinstance(date,DT):
+            return datetostr(date, format_out)
+        if is_date(date, format_out):
+            return date
+        if format:
+            return datetostr(strtodate(date, format), format_out)
+        for format in set_formats:
+            if is_date(date,format):
+                return datetostr(strtodate(date, format), format_out)
+    if onerror:
+        return onerror
+    raise TypeError(f'{str(date)} format err')
 
 def month_rus_from_date(date, format="%Y-%m-%d %H:%M:%S", rodit_padej=True):
     month_list_rod = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
@@ -1387,7 +1427,8 @@ def list_to_dict(list_of_lists, key_to_dict=''):
                 else:
                     rez[list_of_lists[i][key_to_dict]] = tmp
         return rez
-
+def dict_to_param_val(data:dict,key_name:str,val_name:str)->list[dict]:
+    return [{key_name:k,val_name:v} for k,v in data.items()]
 
 def dict_to_list(dicton: dict, transponir=False):
     '''словарь в спискок в две колонки'''
@@ -1504,7 +1545,7 @@ def get_key_index_dict(dictionary, target_key):
             return index
     return None
 
-def insert_key_to_dicts(list_of_dicts, insert_index, new_key, default_value=None):
+def insert_key_to_dicts(list_of_dicts, insert_index, new_key, default_value=None)->list[dict]:
     """
     Вставляет новый ключ в указанную позицию каждого словаря в списке.
 
@@ -1620,7 +1661,7 @@ def paste_bufer(text=''):
 
 
 def boolm(str:str):
-    if str.lower() in {'false','0'}:
+    if str.lower() in {'false','0',''}:
         return False
     if str.lower() in {'true','1'}:
         return True
@@ -2073,7 +2114,7 @@ def inner_join(left_list, right_list, left_key, right_key):
     return result
 
 
-def left_join(left_list, right_list, left_key, right_key):
+def left_join(left_list, right_list, left_key, right_key,delete_key=None):
     """
     Выполняет LEFT JOIN двух списков словарей по указанным ключам.
 
@@ -2110,7 +2151,8 @@ def left_join(left_list, right_list, left_key, right_key):
                 if right_item_key != right_key and right_item_key not in merged:
                     merged[right_item_key] = None
             result.append(merged)
-
+        if delete_key:
+            merged.pop(delete_key,None)
     return result
 
 # ++ 30.07.25
@@ -2261,3 +2303,74 @@ def to_pep8_name(input_string: str) -> str:
         pep8_name = pep8_name + '_'
 
     return pep8_name
+
+
+def get_class_properties(cls_or_obj)->dict:
+    """
+    Возвращает словарь {prop_name: attr_name} для всех property в классе.
+    Если property ссылается на приватное поле через self._имя — оно тоже подставляется.
+    """
+    cls = cls_or_obj if isinstance(cls_or_obj, type) else type(cls_or_obj)
+    result = {}
+
+    for name, obj in cls.__dict__.items():
+        if isinstance(obj, property):
+            # попытка угадать имя приватного атрибута из getter-а
+            attr_name = None
+            if obj.fget and obj.fget.__code__.co_names:
+                # ищем первое упоминание "_имя" в коде геттера
+                for var_name in obj.fget.__code__.co_names:
+                    if var_name.startswith('_'):
+                        attr_name = var_name
+                        break
+            result[attr_name] = name
+
+    return result
+
+
+def get_all_attrs_with_properties(obj, include_private=False, prefer_properties=False)->dict:
+    """
+    Возвращает словарь {attr_name: value} для всех атрибутов экземпляра, включая property.
+
+    :param include_private: если False — пропускает имена, начинающиеся с "_"
+    :param prefer_properties: если True — исключает обычные атрибуты, у которых есть одноимённое property
+    """
+    result = {}
+
+    def allowed(name: str) -> bool:
+        return include_private or not name.startswith("_")
+
+    cls = type(obj)
+
+    # собрать property (включая унаследованные)
+    properties = {
+        name: prop
+        for name, prop in vars(cls).items()
+        if isinstance(prop, property)
+    }
+    # добавим свойства из родительских классов (если есть)
+    for base in cls.__mro__[1:]:
+        for name, prop in vars(base).items():
+            if isinstance(prop, property):
+                properties.setdefault(name, prop)
+
+    # 1. обычные атрибуты экземпляра
+    for name, value in vars(obj).items():
+        if not allowed(name):
+            continue
+        if prefer_properties and name in properties:
+            # пропускаем этот атрибут — есть property с тем же именем
+            continue
+        result[name] = value
+
+    # 2. property из класса
+    for name, prop in properties.items():
+        if not allowed(name):
+            continue
+        try:
+            result[name] = getattr(obj, name)
+        except Exception as e:
+            result[name] = f"<error: {e}>"
+
+    return result
+

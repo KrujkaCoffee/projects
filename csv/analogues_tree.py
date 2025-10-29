@@ -1,6 +1,7 @@
 from __future__ import annotations
 import base64
 import pprint
+import struct
 from collections import defaultdict
 import copy
 
@@ -458,9 +459,10 @@ def fill_tbl_strukt(self, data):
     fix_struct(data)
     scroll_vertical = self.ui.tbl_red_tree.verticalScrollBar().value()
     hidden_column = CQT.num_col_by_name_c(self.ui.tbl_red_tree, 'Ед.изм.')
-    CQT.fill_wtabl(data, self.ui.tbl_red_tree, self.edit_cr_mk, 200, height_row=24, auto_type=False)
+    CQT.fill_wtabl(data, self.ui.tbl_red_tree, self.edit_cr_mk, 200, height_row=24, auto_type=False,
+                   list_column_widths=CMS.load_column_widths(self,self.ui.tbl_red_tree))
     self.ui.tbl_red_tree.horizontalHeader().hideSection(hidden_column)
-    CMS.load_column_widths(self, self.ui.tbl_red_tree)
+    # CMS.load_column_widths(self, self.ui.tbl_red_tree)
     CQT.set_color_sort_cell_table_c(self.ui.tbl_red_tree)
     hide_columns_for_simple_mode(self, self.ui.tbl_red_tree)
     self.ui.tbl_red_tree.verticalScrollBar().setValue(scroll_vertical)
@@ -1145,6 +1147,7 @@ def red_tree_load(self: mywindow):
                 {hat: '', **elem} for hat in dif
                 for elem in spis
             ]
+    spis = check_knot(self, spis)
     fill_tbl_strukt(self, spis)
     fill_tab_to_level(self.ui.tbl_red_tree)
     recalc_weight(self)
@@ -1409,6 +1412,7 @@ def load_mats(self: mywindow):
     self.ui.tbl_anal_dse.setSelectionBehavior(1)
     self.ui.tbl_anal_dse.setSelectionMode(1)
     self.ui.tbl_anal_dse.setSortingEnabled(True)
+    self.ui.tbl_anal_mat.setToolTip('Нажмите F5 чтобы обновить')
 
 
 @CQT.onerror
@@ -1693,6 +1697,36 @@ def check_tree_on_type_tkp(window: mywindow):
                 cmb.setCurrentText(previous)
     cmb.setProperty('previous', current)
 
+def check_knot(self, struct):
+    spisok = copy.deepcopy(struct)
+    for i in range(len(spisok)):
+        spisok[i]['ID'] = spisok[i]['ID'].split('_')[0] + f'_{str(i)}'
+        nn_analogue = spisok[i]['Обозначение_аналог'].strip()
+        if nn_analogue and nn_analogue in self.Data_mes.dict_dse:
+            nn = self.Data_mes.dict_dse.get(nn_analogue) or {}
+            spisok[i]['Наименование_аналог'] = nn.get('Наименование', '')
+        else:
+            spisok[i]['Наименование_аналог'] = spisok[i]['Наименование'].strip()
+            spisok[i]['Обозначение_аналог'] = spisok[i]['Обозначение'].strip()
+
+        norma = 0
+        if '/' in spisok[i]['Масса/М1,М2,М3']:
+            if F.is_numeric(spisok[i]['Масса/М1,М2,М3'].split("/")[0]):
+                norma = str(round(F.valm(spisok[i]['Масса/М1,М2,М3'].split("/")[0]), 3))
+
+        spisok[i]['Код ERP'] = spisok[i]['Код ERP'].strip()
+        if spisok[i]['Код ERP'] != "":
+            name_mat = f"Материал {spisok[i]['Код ERP']} не найден"
+            if spisok[i]['Код ERP'] in self.Data_mes.dict_nomenklat_by_kod:
+                name_mat = self.Data_mes.dict_nomenklat_by_kod[spisok[i]['Код ERP']]['Наименование']
+            else:
+                print(f"Материал {spisok[i]['Код ERP']} не найден")
+            spisok[i]['Масса/М1,М2,М3'] = '/'.join([str(norma), name_mat])
+
+        if spisok[i]['Обозначение_аналог'].strip() not in self.Data_mes.dict_dse:
+            spisok[i]['Обозначение_аналог'] = 'Не найден в БД'
+            spisok[i]['Наименование_аналог'] = 'Не найден в БД'
+    return spisok
 
 @CQT.onerror
 def get_knot(self: mywindow):
@@ -1787,34 +1821,7 @@ def get_knot(self: mywindow):
         spisok.insert(q_strok, tmp_dict)
 
     spisok = get_convert_di(spisok)
-
-    for i in range(len(spisok)):
-        spisok[i]['ID'] = spisok[i]['ID'].split('_')[0] + f'_{str(i)}'
-        nn_analogue = spisok[i]['Обозначение_аналог'].strip()
-        if nn_analogue and nn_analogue in self.Data_mes.dict_dse:
-            nn = self.Data_mes.dict_dse.get(nn_analogue) or {}
-            spisok[i]['Наименование_аналог'] = nn.get('Наименование', '')
-        else:
-            spisok[i]['Наименование_аналог'] = spisok[i]['Наименование'].strip()
-            spisok[i]['Обозначение_аналог'] = spisok[i]['Обозначение'].strip()
-
-        norma = 0
-        if '/' in spisok[i]['Масса/М1,М2,М3']:
-            if F.is_numeric(spisok[i]['Масса/М1,М2,М3'].split("/")[0]):
-                norma = str(round(F.valm(spisok[i]['Масса/М1,М2,М3'].split("/")[0]), 3))
-
-        spisok[i]['Код ERP'] = spisok[i]['Код ERP'].strip()
-        if spisok[i]['Код ERP'] != "":
-            name_mat = f"Материал {spisok[i]['Код ERP']} не найден"
-            if spisok[i]['Код ERP'] in self.Data_mes.dict_nomenklat_by_kod:
-                name_mat = self.Data_mes.dict_nomenklat_by_kod[spisok[i]['Код ERP']]['Наименование']
-            else:
-                print(f"Материал {spisok[i]['Код ERP']} не найден")
-            spisok[i]['Масса/М1,М2,М3'] = '/'.join([str(norma), name_mat])
-
-        if spisok[i]['Обозначение_аналог'].strip() not in self.Data_mes.dict_dse:
-            spisok[i]['Обозначение_аналог'] = 'Не найден в БД'
-            spisok[i]['Наименование_аналог'] = 'Не найден в БД'
+    spisok = check_knot(self, spisok)
     spisok = [{'b': '', **elem} for elem in spisok]
     fill_tbl_strukt(self, spisok)
     accumulate_tree_mass(self)

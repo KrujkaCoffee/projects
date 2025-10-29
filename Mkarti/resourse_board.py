@@ -1099,7 +1099,9 @@ class mywindow_res(QtWidgets.QDialog):  # диалоговое окно
             "Крышки для ящиков",
             "Стенки боковые",
             "Стенки торцевые",
-           "Прочая продукция Келаста",)
+           "Прочая продукция Келаста",
+           "Арматура литейная",
+            )
 
         self.ui3.fr_res2.setHidden(True)
         self.ui3.fr_options_upload.setHidden(False)
@@ -1165,12 +1167,23 @@ class mywindow_res(QtWidgets.QDialog):  # диалоговое окно
 
         self.ui3.tbl_options_for_erp.cellChanged.connect(edit_art)
         str_НомерВидаНоменДляСозданияРесЕРП = self.myparent.Data_plan.DICT_VID_PO_NAPR[self.res_obj.вид_по_напр]['НомерВидаНоменДляСозданияРесЕРП']
+
+        dict_ordered_type_refs = None
+
         if str_НомерВидаНоменДляСозданияРесЕРП == None or str_НомерВидаНоменДляСозданияРесЕРП == '':
             list_tmp = copy.deepcopy(LIST_VIDS_NOMEN)
+            list_vids = ', '.join(['"' + _ + '"' for _ in list_tmp])
+            main_sql_param = f"ВидыНоменклатуры.Наименование В ({list_vids})"
         else:
-            list_tmp = copy.deepcopy([self.myparent.Data_plan.DICT_VID_NOMEN_NUM[int(_)]['name'] for _ in str_НомерВидаНоменДляСозданияРесЕРП.split(';')])
+            # list_tmp = copy.deepcopy([self.myparent.Data_plan.DICT_VID_NOMEN_NUM[int(_)]['name'] for _ in str_НомерВидаНоменДляСозданияРесЕРП.split(';')])
+            list_tmp = copy.deepcopy([self.myparent.Data_plan.DICT_VID_NOMEN_NUM[int(_)]['Ref_Key'] for _ in str_НомерВидаНоменДляСозданияРесЕРП.split(';')])
+            dict_ordered_type_refs = { # 22.10.25 по задаче 100061761
+                f'&ВидНоменклатуры_{index}':ref for index, ref in enumerate(list_tmp)
+                if F.is_unique_identifier(ref)
+            }
+            sql_vars = ", ".join(list(dict_ordered_type_refs.keys()))
+            main_sql_param = f"Номенклатура.ВидНоменклатуры В ({sql_vars})"
 
-        list_vids = ', '.join([ '"' +  _ + '"' for _ in list_tmp])
         affix = ''
 
         msg_about_nomen = f''
@@ -1191,9 +1204,15 @@ class mywindow_res(QtWidgets.QDialog):  # диалоговое окно
                 ЛЕВОЕ СОЕДИНЕНИЕ Справочник.Номенклатура КАК Номенклатура
                 ПО (Номенклатура.ВидНоменклатуры = ВидыНоменклатуры.Ссылка)
         ГДЕ
-            ВидыНоменклатуры.Наименование В ({list_vids})
+            {main_sql_param}
             И Номенклатура.ПометкаУдаления = ЛОЖЬ {affix}"""
-        code, data  = APIERP.get_wet_request(text=text)
+        refs = None # 22.10.25 по задаче 100061761
+        if dict_ordered_type_refs:
+            refs = APIERP.Refs_wet(text_req=text)
+            for nick, ref in dict_ordered_type_refs.items():
+                ref_obj = APIERP.Ref_wet(nick[1:], 'Справочники.ВидыНоменклатуры', ref)
+                refs.add_ref(ref_obj)
+        code, data  = APIERP.get_wet_request(text=text, refs=refs)
         list_nomen = []
         if code != 200:
             CQT.msgbox(f'Запрос get_wet_request номенклатуры в 1С ошибка {code}')

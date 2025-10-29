@@ -177,3 +177,19 @@ class Data_mes:
     DICT_VID_PO_NAPR = F.deploy_dict_c(VID_PO_NAPR, 'Пномер')
     dict_vid_napr = DICT_VID_PO_NAPR_NAME = F.deploy_dict_c(VID_PO_NAPR, 'Имя')
     print(f'Data_mes')
+
+    @classmethod
+    def reload_nomen(cls, db_mater):
+        cls.list_nomenklat = CSQ.custom_request_c(db_mater, f"""SELECT 
+        nomen.Пномер, 
+        nomen.Вид, 
+        nomen.Код, 
+        nomen.Артикул, 
+        nomen.Наименование, 
+        nomen.ЕдиницаИзмерения, 
+        nomen.Закупочная_цена,
+        nomen.Ref_Key,
+        nomen.На_удаление
+         FROM nomen LEFT JOIN ВидыНоменклатуры ON nomen.Вид_Ref_Key = ВидыНоменклатуры.Ref_Key  
+        WHERE ВидыНоменклатуры.ТКП = 1 and На_удаление = 0;""")  # 08.09.25
+        cls.dict_nomenklat_by_kod = F.deploy_dict_c(F.list_of_lists_to_list_of_dicts(cls.list_nomenklat), 'Код')

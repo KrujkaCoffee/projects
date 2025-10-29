@@ -40,6 +40,7 @@ import tatkuz_molding as TTKZ
 import project_cust_38.Cust_config as USRCNF
 import data_class
 import project_cust_38.api_erp_commands as APIERP
+import project_cust_38.Cust_emoji as CEMOJ
 try:
     import pl_xl_loader as PXL
 except Exception as e:
@@ -74,6 +75,7 @@ class mywindow(QtWidgets.QMainWindow):
         self.setWindowFlags(self.windowFlags() | QtCore.Qt.CustomizeWindowHint)
         CQT.load_icons(self, 24)
         CQT.connect_to_resize(self, CMS.tmp_dir())
+        CQT.load_resize_splitters(self,CQT.qt_tmp_dir())
         CMS.add_action_config_save_tbl_filtrs(self, self.ui)
         # disable (but not hide) close button
         # self.setWindowFlags(self.windowFlags() & ~QtCore.Qt.WindowCloseButtonHint)
@@ -120,19 +122,14 @@ class mywindow(QtWidgets.QMainWindow):
                       'Опер_потребл', 'Окрашивание'
             , 'dreva_kod', 'Кол. по заявке', 'Уровень']
 
-        self.SPIS_OP = CSQ.custom_request_c(self.bd_naryad,
-                                            f"""SELECT * FROM operacii WHERE poki == {self.place.poki}""")
+
         # self.DICT_FILTR = F.deploy_dict_c(CSQ.custom_request_c(self.db_mater, f"""SELECT * FROM complex_filtr""", rez_dict=True), 'kod')
         LIST_MAT = CSQ.custom_request_c(self.db_mater, f"""SELECT * FROM nomen""", rez_dict=True)
         self.DICT_MAT = F.deploy_dict_c(LIST_MAT,
                                         'Код')
         self.DICT_NOMEN_BY_SNUM = F.deploy_dict_c(LIST_MAT,
                                         'Пномер')
-        if self.SPIS_OP == False:
-            CQT.msgbox(f'БД занята, пробуй позже')
-            quit()
-        self.DICT_OP = F.list_to_dict(self.SPIS_OP, 'kod')
-        self.DICT_OP_NAME = F.list_to_dict(self.SPIS_OP, 'name')
+        self.DICT_OP, self.DICT_OP_NAME = CMS.calc_dicts_opers(USRCNF.Config.place.poki)
         conn_users, cur_users = CSQ.connect_bd(self.db_users)
         CMS.dict_rc(self,self.db_users)
 
@@ -329,6 +326,7 @@ class mywindow(QtWidgets.QMainWindow):
         # CQT.set_color_sort_cell_table_c(butt_vib_nomen)
 
         self.ui.btn_obnov_pr.clicked.connect(self.obn_spis_pr)
+        self.ui.btn_select_poz_cr_mk_pr.clicked.connect(self.select_poz_cr_mk_pr)
         self.ui.pushButton_create_MK.clicked.connect(self.create_mk)
         self.ui.pushButton_create_mk_clear.clicked.connect(self.clear_mk)
 
@@ -407,10 +405,12 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.btn_show_svod.clicked.connect(lambda: GVKPL.show_svod(self))
         self.ui.btn_pl_tabel.clicked.connect(lambda: KPL.show_tabel(self))
         self.ui.btn_load_file_mk_founfing.clicked.connect(self.load_file_mk_founfing)
+        self.ui.btn_select_nom_jur_vneplan.clicked.connect(self.select_nom_jur_vneplan)
         self.ui.btn_show_file_founding_mk.clicked.connect(self.show_file_founding_mk)
         self.ui.btn_pl_open_dir.clicked.connect(lambda: KPL.btn_pl_open_dir(self))
         self.ui.btn_pl_add_trbl.clicked.connect(lambda: KPL.btn_pl_add_trbl(self))
         self.ui.btn_pl_load_norm.clicked.connect(lambda: KPL.btn_pl_load_norm(self))
+        self.ui.btn_norm_fact_by_opers.clicked.connect(lambda: KPL.btn_norm_fact_by_opers(self))
         self.ui.btn_edit_zp_kpl.clicked.connect(lambda: KPL.btn_edit_zp_kpl(self))
         self.ui.btn_pl_reload.clicked.connect(lambda: KPL.update_tabels(self))
         self.ui.btn_pl_send_dates_into_ERP.clicked.connect(lambda: KPL.send_into_ERP(self))
@@ -515,6 +515,7 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.chk_schemas_show_alias.clicked.connect(lambda _, x=self: IND.select_schema(x))
         self.ui.chk_schemas_show_position.clicked.connect(lambda _, x=self: IND.select_schema(x))
         self.ui.chk_schemas_show_fio.clicked.connect(lambda _, x=self: IND.select_schema(x))
+        self.ui.chk_autorepeat_update_fact.clicked.connect(lambda: KPL.chk_autorepeat_update_fact(self))
         # ========================ACTIONS=================================
         if not self.USER_CONFIG.is_developer:
             self.ui.menu_2.setEnabled(False)
@@ -547,6 +548,7 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.action_xml_add_xml.triggered.connect(self.add_xml_to_mk)
         self.ui.action_clear_xml.triggered.connect(self.del_xml_from_mk)
         self.ui.action_update_db_info_fields_kpl.triggered.connect(lambda: KPL.update_db_info_fields_kpl(self))
+
 
         # =================================================================
         # =============LOADS========================================
@@ -586,12 +588,15 @@ class mywindow(QtWidgets.QMainWindow):
             quit()
 
         # ====================== txt
-        CMS.dict_projects(self, F.tcfg('BD_Proect'))
+        self.DICT_PROJECTS = dict()#todo вычисить
+        #CMS.dict_projects(self, F.tcfg('BD_Proect'))
         CVO.DICT_VAR_OPER(self)
         CMS.DICT_PLACES(self, self.db_users)
 
         # ======================= users
         conn_users, cur_users = CSQ.connect_bd(self.db_users)
+        self.DICT_VID_RABOT:dict = None
+        self.pnom_kplan_select:int = None
         rez = CMS.dict_professions(self, self.db_users, conn_users)
         if rez == False:
             CSQ.close_bd(conn_users, cur_users)
@@ -626,7 +631,8 @@ class mywindow(QtWidgets.QMainWindow):
         self.clear_mk()
         self.edit_cr_mk = {2, 3, 4, 5, 8, 9, 19}
         self.edit_cr_mk_ruch = {0, 1, 2, 3, 4, 5, 8, 9, 19, 20}
-
+        self.ui.cmb_nom_jur_vneplan.setEnabled(False)
+        self.ui.btn_select_nom_jur_vneplan.setEnabled(False)
         # self.TIP_NEGRUZ_DSE = ('Сборочный чертёж', 'Изделие проекта', 'Монтажный чертёж', 'Материал')
         self.TIP_NEGRUZ_DSE = CMS.LIST_NEGRUZ_DSE(self.db_mater)
         # CMS.add_menu(self)
@@ -1466,18 +1472,58 @@ class mywindow(QtWidgets.QMainWindow):
         self.key_handler(e.key(), e.modifiers())
 
     @CQT.onerror
+    def select_nom_jur_vneplan(self,*args):
+        self.ui.cmb_nom_jur_vneplan.setCurrentText('')
+        query = f"""SELECT 
+           jur_vnepl.Пномер,
+           jur_vnepl.МК,  
+           jur_vnepl.Дата,
+           jur_vnepl.ФИО,
+           jur_vnepl.Запрос,
+           jur_vnepl.Кплан_номер,
+           jur_vnepl.Примечание_цех_техн,
+           jur_vnepl.Дата_ответ,
+           jur_vnepl.Ответ,
+           jur_vnepl.Статус,
+           jur_vnepl.Журнал_замеч_номер,
+           jur_vnepl.Утверждено,
+           jur_vnepl.Номер_наряда_с_ошибкой,
+           jur_vnepl.Номер_внепланового_наряда
+             FROM jur_vnepl 
+                               INNER JOIN mk ON mk.Пномер == jur_vnepl.МК  
+                               INNER JOIN plan ON plan.Пномер == mk.НомКплан  
+                               WHERE jur_vnepl.Номер_нов_мк == 0 
+                               and  mk.Статус == 'Открыта' 
+                               and  jur_vnepl.Статус != 'Отклонено' 
+                               and plan.poki == {self.place.poki};"""
+        list_vneplan = CSQ.custom_request_c(self.bd_naryad, query, one_column=False, hat_c=False, rez_dict=True,
+                                            attach_dbs=self.db_kplan)
+
+        result = CQT.msgboxg_get_table(self,'Выбор внеплана',list_vneplan,"Выбор",
+                                    selection_from_tbl=True,ExtendedSelection=False,
+                                    selectRows=True,sortingEnabled=True)
+        if result:
+            self.ui.cmb_nom_jur_vneplan.setCurrentText(result['Пномер'])
+
+
+
+
+    @CQT.onerror
     def cmb_tip_click(self, nom):
         self.fill_cmb_dorez(True)
+        self.ui.btn_select_nom_jur_vneplan.setEnabled(False)
         if self.ui.cmb_tip_mk.currentText() == '':
             self.fill_cmb_dorez(True)
             return
         if self.DICT_TIP_MK[self.ui.cmb_tip_mk.currentText()]['Пномер'] == 2:  # Дорезка
             self.fill_cmb_dorez()
             self.fill_cmb_nom_jur_vneplan()
+            self.ui.btn_select_nom_jur_vneplan.setEnabled(True)
             return
         if self.DICT_TIP_MK[self.ui.cmb_tip_mk.currentText()]['Пномер'] == 5:  # Доработка(без дорезки)
             self.fill_cmb_dorab()
             self.fill_cmb_nom_jur_vneplan()
+            self.ui.btn_select_nom_jur_vneplan.setEnabled(True)
             return
 
     def fill_cmb_dorab(self, clear=False):
@@ -1505,7 +1551,9 @@ class mywindow(QtWidgets.QMainWindow):
             query = f"""SELECT jur_vnepl.Пномер, jur_vnepl.Запрос FROM jur_vnepl 
                         INNER JOIN mk ON mk.Пномер == jur_vnepl.МК  
                         INNER JOIN plan ON plan.Пномер == mk.НомКплан  
-                        WHERE jur_vnepl.Номер_нов_мк == 0 and jur_vnepl.Утверждено != '' and plan.poki == {self.place.poki};"""
+                        WHERE jur_vnepl.Номер_нов_мк == 0 and  mk.Статус == 'Открыта' 
+                        and  jur_vnepl.Статус != 'Отклонено' 
+                         and plan.poki == {self.place.poki};"""
             list_vneplan = CSQ.custom_request_c(self.bd_naryad, query, one_column=False, hat_c=False, rez_dict=True,
                                                 attach_dbs=self.db_kplan)
             for i, item in enumerate(list_vneplan):
@@ -2159,7 +2207,7 @@ class mywindow(QtWidgets.QMainWindow):
                     prim = mk_data['Примечание']
                     project = mk_data['Номенклатура']
                     osnovanie = mk_data['Основание']
-                    msg = f"{F.user_full_namre()}(PC:{os.environ.get('COMPUTERNAME')}) ЗАВРЕШИЛ МК № {str(nom_mk)}:\n{project} - {str(kolvo)} шт.\n{nom_pu_r.strip()} Проект: {nom_pr_r.strip()}\n" \
+                    msg = f"{F.user_full_namre()}(PC:{os.environ.get('COMPUTERNAME')}) ЗАВЕРШИЛ МК № {str(nom_mk)}:\n{project} - {str(kolvo)} шт.\n{nom_pu_r.strip()} Проект: {nom_pr_r.strip()}\n" \
                           f"Прим.: {prim} {osnovanie}"
                     CMS.send_info_mk_b24_by_action(msg, 'Готовность Маршрутных карт')
             # -- 09.06.2025
@@ -2248,9 +2296,15 @@ class mywindow(QtWidgets.QMainWindow):
 
     @CQT.onerror
     def update_norm(self, vid=''):  # 26.06.25
+
+
         tbl = self.ui.table_spis_MK
         if tbl.currentRow() == -1:
             return
+        fl_nar_exist = False
+        tbl_row = CQT.get_dict_line_form_tbl(tbl)
+        num_kpl = tbl_row['Номер КПЛ']
+        type_mk = tbl_row['Тип']
         nk_nommk = CQT.num_col_by_name_c(tbl, 'Пномер')
         nk_count_izd = CQT.num_col_by_name_c(tbl, 'Количество')
         count_izd = F.valm(tbl.item(tbl.currentRow(), nk_count_izd).text())
@@ -2258,8 +2312,22 @@ class mywindow(QtWidgets.QMainWindow):
         if not CQT.msgboxgYN(f'Обновить нормы для МК {nom_mk}?'):
             return
         res = CMS.load_res(int(nom_mk))
-        journal = [['ДСЕ', 'Операция', 'Атрибут', 'Было', 'Стало']]
+        if vid != 'mat':
+            journal = [['ДСЕ', 'Операция', 'Атрибут', 'Было', 'Стало']]
+        else:
+            journal = []
+        fl_is_exist_erp_res = False
+        res_spec = CMS.ResSpec(nom_mk)
+        list_erp_res = res_spec.find_erp_res()
+        if list_erp_res:
+            fl_is_exist_erp_res = True
+        #TODO не учтен случай когда ЕРП РС есть, но нормы в МК меньше, и нужно увеличить не превышая ЕРП рес
 
+        list_nar = CSQ.custom_request_c(USRCNF.Config.project.db_naryad,
+                    f'SELECT * FROM naryad WHERE Номер_мк == {int(nom_mk)}',rez_dict=True)
+        msg_error_ingr_time =  f'''введен строгий запрет на редактирование маршрутных карт в сторону 
+                                               увеличения трудоемкости свыше трудоемкости указанной в рабочей
+                                               ресурсной спецификации'''
         if res:
             for i in range(0, len(res)):
                 nn = res[i]['Номенклатурный_номер'].strip()
@@ -2354,20 +2422,41 @@ class mywindow(QtWidgets.QMainWindow):
                         if vid == 'vrem':
                             tpz_new, tpz_old = oper['t_pz'], operation['Опер_Тпз']
                             if round(res[i]['Операции'][j]['Опер_Тпз'], 3) != round(oper['t_pz'], 3):
-                                journal.append([nn, oper['name_ver'], 'Опер_Тпз', tpz_old, oper['t_pz']])
+                                row_j = [nn, oper['name_ver'], 'Опер_Тпз', tpz_old, oper['t_pz']]
+                                if fl_is_exist_erp_res and round(res[i]['Операции'][j]['Опер_Тпз'], 3) < round(oper['t_pz'], 3):
+                                    CQT.msgbox(f'{msg_error_ingr_time}:\n{str(row_j)}')
+                                    return
+                                journal.append(row_j)
                                 res[i]['Операции'][j]['Опер_Тпз'] = oper['t_pz']
+
                             if round(res[i]['Операции'][j]['Опер_Тшт_ед'], 3) != round(oper['t_sht'], 3):
-                                journal.append(
-                                    [nn, oper['name_ver'], 'Опер_Тшт_ед', operation['Опер_Тшт_ед'], oper['t_sht']])
+                                row_j = [nn, oper['name_ver'], 'Опер_Тшт_ед', operation['Опер_Тшт_ед'], oper['t_sht']]
+                                if fl_is_exist_erp_res and round(res[i]['Операции'][j]['Опер_Тшт_ед'], 3) < round(oper['t_sht'], 3):
+                                    CQT.msgbox(f'{msg_error_ingr_time}:\n{str(row_j)}')
+                                    return
+                                journal.append(row_j)
                                 res[i]['Операции'][j]['Опер_Тшт_ед'] = oper['t_sht']
                             if round(res[i]['Операции'][j]['Опер_Тшт'], 3) != round(oper['t_sht'] * dse['Количество'], 3):
-                                journal.append([nn, oper['name_ver'], 'Опер_Тшт', operation['Опер_Тшт'],
-                                                oper['t_sht'] * dse['Количество']])
+                                row_j = [nn, oper['name_ver'], 'Опер_Тшт', operation['Опер_Тшт'],
+                                                oper['t_sht'] * dse['Количество']]
+                                if fl_is_exist_erp_res and round(res[i]['Операции'][j]['Опер_Тшт'], 3) < round(oper['t_sht'] * dse['Количество'], 3):
+                                    CQT.msgbox(f'{msg_error_ingr_time}:\n{str(row_j)}')
+                                    return
+                                journal.append(row_j)
                                 res[i]['Операции'][j]['Опер_Тшт'] = oper['t_sht'] * dse['Количество']
+
+
                         if vid == 'rc':
                             if res[i]['Операции'][j]['Опер_РЦ_код'] != oper['rab_centr']:
-                                journal.append([nn, oper['name_ver'], 'РЦ', oper['rab_centr'], oper['rab_centr']])
+                                for nar in list_nar:
+                                    nar_obj = CMS.Naryads(nar)
+                                    for param in nar_obj.params:
+                                        if param['ДСЕ'] == '$'.join([naim, nn]):
+                                            if param['Операции_номер'] == oper['s_name']:
+                                                fl_nar_exist = True
+                                journal.append([nn, oper['name_ver'], 'РЦ', res[i]['Операции'][j]['Опер_РЦ_код'], oper['rab_centr']])
                                 res[i]['Операции'][j]['Опер_РЦ_код'] = oper['rab_centr']
+
                         if vid == 'prof':
                             if res[i]['Операции'][j]['Опер_профессия_код'] != oper['profession']:
                                 if oper['profession'] not in self.DICT_PROF_CODE:
@@ -2382,13 +2471,18 @@ class mywindow(QtWidgets.QMainWindow):
                                 res[i]['Операции'][j]['Опер_профессия_код'] = oper['profession']
                                 res[i]['Операции'][j]['Опер_профессия_наименование'] = \
                                 self.DICT_PROF_CODE[oper['profession']]['имя']
+            if fl_nar_exist:
+                CQT.msgbox(f'Нельзя проводить изменения {vid} если наряды уже существуют')
+                return
             if len(journal) > 1:
                 if not self.USER_CONFIG.is_developer:
                     user = F.user_full_namre()
                     result = CB24.B24Sender().send_msg_table(journal, 'chat83112', f'{user} пересчитал(а) МК {nom_mk}')
+                    result = CB24.B24Sender().send_msg_table(journal, 'chat41228', f'{user} пересчитал(а) МК {nom_mk}')
                     if not result:
                         CQT.msgbox('Ошибка отправки сообщения в б24')
-
+                else:
+                    return
             ves, ves_res_list = self.raschet_vesa_dse(res)
             if not self.USER_CONFIG.is_developer:
                 CSQ.custom_request_c(self.bd_naryad, f"""UPDATE mk SET Вес = {ves} WHERE Пномер = {int(nom_mk)}""")
@@ -2788,7 +2882,8 @@ class mywindow(QtWidgets.QMainWindow):
              пл_оуп.№проекта as "Проект", plan.Статус as Статус_poz, status_poz.Имя AS СтатусИмя, 
             пл_оуп.№ERP as "№ERP",  napravl_deyat.Псевдоним as "Вид",
                          napravlenie.name as "Направление",  пл_оуп.Количество as "Количество", 
-                         plan.Позиция, plan.Пномер as "Пномер" FROM пл_оуп  INNER JOIN 
+                         plan.Позиция, plan.Пномер as "Пномер", пл_оуп.Номенклатура_ЕРП as "Номен. ЕРП" 
+                         FROM пл_оуп  INNER JOIN 
                          plan ON пл_оуп.НомПл = plan.Пномер,
                          status_poz ON status_poz.Пномер = plan.Статус,
                 napravl_deyat ON napravl_deyat.Пномер = plan.Направление_деятельности,
@@ -3229,8 +3324,22 @@ class mywindow(QtWidgets.QMainWindow):
         else:
             return self.spis_poziciy_rez_ruchnoi
 
-    def obn_spis_pr(self):
+    def select_poz_cr_mk_pr(self):
+        row = CQT.msgboxg_get_table(self,'Выбор проекта',self.list_projects,'Выбор',
+                                    selection_from_tbl=True,ExtendedSelection=False,
+                                    selectRows=True,sortingEnabled=True)
 
+        if row:
+            self.ui.cmb_cr_mk_py.clear()
+            self.ui.cmb_cr_mk_poz.clear()
+            CQT.clear_tbl(self.ui.tbl_info_cr_mk)
+            self.ui.comboBox_sort_c.clear()
+            self.ui.comboBox_napravlenia.clear()
+            self.dict_cur_poz_cr_mk = row
+            self.fill_select_poz_for_mk()
+            self.res = ''
+
+    def obn_spis_pr(self):
         self.list_projects = CSQ.custom_request_c(self.db_kplan, f"""SELECT  
         пл_оуп.№проекта as "Проект",
          пл_оуп.№ERP as "№ERP", 
@@ -3239,7 +3348,7 @@ class mywindow(QtWidgets.QMainWindow):
         napravlenie.name as "Направление",  
         пл_оуп.Количество as "Количество", 
         plan.Позиция, 
-        plan.Пномер as "Пномер" 
+        plan.Пномер as "Пномер", пл_оуп.Номенклатура_ЕРП as "Номен. ЕРП" 
         FROM пл_оуп  
         INNER JOIN plan ON пл_оуп.НомПл = plan.Пномер,
         napravl_deyat ON napravl_deyat.Пномер = plan.Направление_деятельности,
@@ -3252,7 +3361,7 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.cmb_cr_mk_pr.clear()
         self.ui.cmb_cr_mk_py.clear()
         self.ui.cmb_cr_mk_poz.clear()
-        self.ui.lbl_cr_mk.clear()
+        CQT.clear_tbl(self.ui.tbl_info_cr_mk)
         self.ui.comboBox_sort_c.clear()
         self.ui.comboBox_napravlenia.clear()
         self.ui.cmb_cr_mk_pr.addItems(set_proj)
@@ -3276,7 +3385,7 @@ class mywindow(QtWidgets.QMainWindow):
         set_proj.sort()
         self.ui.cmb_cr_mk_py.clear()
         self.ui.cmb_cr_mk_poz.clear()
-        self.ui.lbl_cr_mk.clear()
+        CQT.clear_tbl(self.ui.tbl_info_cr_mk)
         self.ui.cmb_cr_mk_py.addItems(set_proj)
         self.ui.comboBox_sort_c.clear()
         self.ui.comboBox_napravlenia.clear()
@@ -3294,7 +3403,7 @@ class mywindow(QtWidgets.QMainWindow):
                              _[field_pr] == pr and _[field_py] == py]))
         set_proj.sort()
         self.ui.cmb_cr_mk_poz.clear()
-        self.ui.lbl_cr_mk.clear()
+        CQT.clear_tbl(self.ui.tbl_info_cr_mk)
         self.ui.cmb_cr_mk_poz.addItems(set_proj)
         self.ui.comboBox_sort_c.clear()
         self.ui.comboBox_napravlenia.clear()
@@ -3331,7 +3440,8 @@ class mywindow(QtWidgets.QMainWindow):
                 list_rez.append(cmb.itemText(i))
             return list_rez
 
-        self.ui.lbl_cr_mk.setText(str(self.dict_cur_poz_cr_mk))
+
+        CQT.fill_wtabl(F.dict_to_param_val(self.dict_cur_poz_cr_mk,'Параметр','Значение'),self.ui.tbl_info_cr_mk)
         if self.dict_cur_poz_cr_mk['Проект'] not in list_vals_cmb(self.ui.cmb_cr_mk_pr):
             self.ui.cmb_cr_mk_pr.addItem(self.dict_cur_poz_cr_mk['Проект'])
         self.ui.cmb_cr_mk_pr.setCurrentText(self.dict_cur_poz_cr_mk['Проект'])
@@ -3348,6 +3458,8 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.comboBox_sort_c.setCurrentText(self.dict_cur_poz_cr_mk['Вид'])
         self.ui.comboBox_napravlenia.addItem(self.dict_cur_poz_cr_mk['Направление'])
         self.ui.comboBox_napravlenia.setCurrentText(self.dict_cur_poz_cr_mk['Направление'])
+
+        self.ui.btn_select_nom_jur_vneplan.setEnabled(False)
 
         tbl = self.ui.table_zayavk
         CQT.clear_tbl(tbl)
@@ -3668,6 +3780,26 @@ class mywindow(QtWidgets.QMainWindow):
         if CMS.user_access(self.bd_naryad, 'созданиемаршрутныхкарт_удалить', F.user_name()) == False:
             return
 
+
+        mk_obj = CMS.Marshrut_cards(int(nom_mk), self.bd_naryad, self.db_resxml, load_resource=False)
+        if mk_obj.is_del():
+            if not CQT.msgboxgYN(f'Cнять отметку на УДАЛЕНИЕ маршрутной карты № {nom_mk} ?'):
+                return
+            CSQ.custom_request_c(self.bd_naryad,
+                                 f"""UPDATE mk SET (На_удал,Статус) = (0,"Закрыта") WHERE Пномер = {int(nom_mk)}""")
+            CQT.set_val_tbl_by_name(tbl, tbl.currentRow(), 'Статус', 'Закрыта')
+            CQT.set_val_tbl_by_name(tbl, tbl.currentRow(), 'На удаление', '')
+            CQT.msgbox(f"Маршрутная карта номер {nom_mk} снята с УДАЛЕНИЯ успешно")
+            try:
+                msg = (f"{F.user_full_namre()} !снял с УДАЛЕНИЯ мк"
+                       f" № {str(nom_mk)}:\n{project} - {str(kolvo)} шт.\n{nom_pu_r.strip()} Проект: {nom_pr_r.strip()}\n"
+                       f"Прим.: {prim} {osnovanie}")
+                CMS.send_info_mk_b24_by_action(msg, 'Готовность Маршрутных карт')
+            except:
+                print('Ошибка отправки в Б24')
+
+            return
+
         if row['Статус'] != 'Закрыта':
             CQT.msgbox(f'Удалить можно только закрытаую МК')
             return
@@ -3699,7 +3831,7 @@ class mywindow(QtWidgets.QMainWindow):
         #    otv = CQT.msgboxgYN('Точно удалить полность маршрутную карту №'
         #                        + nom_mk + '?')
         #    if otv:
-        #        # rez = CSQ.delete(self.bd_naryad, 'mk', {'Пномер': int(nom_tek_mk)})
+        #        # rez = CSQ.delete(self.bd_naryad, 'mk', {'Пномер': int(nom_mk)})
         #        rez = CSQ.custom_request_c(self.bd_naryad, f"""DELETE FROM mk where Пномер = {int(nom_mk)}""")
         #        if rez == False:
         #            CQT.msgbox('Запрос не выполнен')
@@ -4015,6 +4147,7 @@ class mywindow(QtWidgets.QMainWindow):
        THEN napravl_deyat.Псевдоним 
        ELSE mk.Вид 
        END AS Вид, 
+        mk.На_удал as "На удаление", 
            mk.Ресурсная_дата, mk.Примечание, mk.Основание,
          mk.Прогресс, 
          
@@ -4030,7 +4163,8 @@ class mywindow(QtWidgets.QMainWindow):
         
          
          mk.Вес, mk.Количество,  mk.Дата_завершения,  mk.Коэф_парал, 
-          mk.Искл_план_рм, тип_дорезок.Имя AS тип_дорезок, тип_доработок.Имя AS тип_доработок, mk.НомКплан as "Номер КПЛ", mk.ФИО as "Создал"  FROM mk 
+          mk.Искл_план_рм, тип_дорезок.Имя AS тип_дорезок, тип_доработок.Имя AS тип_доработок,
+           mk.НомКплан as "Номер КПЛ", mk.ФИО as "Создал"  FROM mk 
           LEFT JOIN plan ON plan.Пномер = mk.НомКплан  
           LEFT JOIN napravl_deyat ON napravl_deyat.Пномер = plan.Направление_деятельности 
           LEFT JOIN napravlenie ON napravlenie.Пномер = napravl_deyat.Направление  
@@ -4059,8 +4193,14 @@ class mywindow(QtWidgets.QMainWindow):
         CQT.color_cell_wtable_c(tabl_mk, 'Статус', '', 'Открыта', 243, 232, 149, False)
         CQT.color_cell_wtable_c(tabl_mk, 'Статус', '', 'НаУдаление', 255, 144, 75, False)
         nf_vid = CQT.num_col_by_name_c(tabl_mk, 'Вид')
+        nf_del = CQT.num_col_by_name_c(tabl_mk, "На удаление")
         for i in range(tabl_mk.rowCount()):
             vid = tabl_mk.item(i, nf_vid).text()
+            udal = tabl_mk.item(i, nf_del).text()
+            if udal == '1':
+                tabl_mk.item(i, nf_del).setText(CEMOJ.EmojiMain.Статусы.error.symbol)
+            else:
+                tabl_mk.item(i, nf_del).setText('')
             if vid in self.Data_plan.DICT_NAPR_DEYAT_PSDNAME:
                 r, g, b = self.Data_plan.DICT_NAPR_DEYAT_PSDNAME[vid]['Цвет'].split(';')
                 CQT.set_color_wtab_c(tabl_mk, i, nf_vid, r, g, b)
@@ -4094,7 +4234,7 @@ class mywindow(QtWidgets.QMainWindow):
 
         self.ui.cmb_cr_mk_py.clear()
         self.ui.cmb_cr_mk_poz.clear()
-        self.ui.lbl_cr_mk.clear()
+        CQT.clear_tbl(self.ui.tbl_info_cr_mk)
         self.ui.pushButton_ass_brak_to_mk.setEnabled(val)
         self.ui.btn_save_cust_drevo.setEnabled(val)
         self.ui.btn_load_cust_drevo.setEnabled(val)
@@ -4107,8 +4247,7 @@ class mywindow(QtWidgets.QMainWindow):
 
         self.ui.pushButton_save_MK.setEnabled(val)
         if 'dict_cur_poz_cr_mk' in self.__dict__:
-            self.ui.lbl_cr_mk.setText(str(self.dict_cur_poz_cr_mk))
-
+            CQT.fill_wtabl(F.dict_to_param_val(self.dict_cur_poz_cr_mk, 'Параметр', 'Значение'), self.ui.tbl_info_cr_mk)
     def clear_mk(self):
         tabl_cr_stukt = self.ui.table_razr_MK
 
@@ -5148,7 +5287,7 @@ class mywindow(QtWidgets.QMainWindow):
                         podr, per = podr_per.split("%")
                         if podr not in dict_norm:
                             CQT.msgbox(
-                                f"В бд не соотвествует этап {podr} базовому dict_norm")
+                                f"В бд для операции {oper['Опер_наименование']} не соответствует этап {podr} базовому dict_norm")
                         else:
                             time_paral = (oper['Опер_Тпз'] + time) * F.valm(per) / 100
                             koef_vneplana_tmp = 1
@@ -5946,7 +6085,11 @@ class mywindow(QtWidgets.QMainWindow):
 
         def select_and_load_file(self):
             tmp_putt = CMS.load_tmp_path("tmp_putt")
-            putt = CQT.f_dialog_name(self, 'Выбрать XML', tmp_putt, "Файлы *.xml")
+            nomen_name = ''
+            if getattr(self,'dict_cur_poz_cr_mk',False):
+                if 'Номен. ЕРП' in self.dict_cur_poz_cr_mk:
+                    nomen_name = f" для Номен. ЕРП: {self.dict_cur_poz_cr_mk['Номен. ЕРП']}"
+            putt = CQT.f_dialog_name(self, 'Выбрать XML' + nomen_name, tmp_putt, "Файлы *.xml")
             if putt == '' or putt == '.':
                 return None, None
 
@@ -6359,9 +6502,9 @@ class mywindow(QtWidgets.QMainWindow):
         self.val_masht = val
         CMS.save_tmp_path('mk_val_masht', str(self.val_masht))
         if self.kpl_mode == 0:
-            GKPL.oforml_table(self, self.ui.tbl_preview)
+            CMS.oforml_table(self, self.ui.tbl_preview)
         else:
-            GKPL.oforml_table(self, self.ui.tbl_pl_gaf, self.ui.tbl_pl_gaf_filtr)
+            CMS.oforml_table(self, self.ui.tbl_pl_gaf, self.ui.tbl_pl_gaf_filtr)
             GVKPL.load_svod(self)
 
     @CQT.onerror

@@ -318,7 +318,7 @@ class HTTPSrv:
         if xl_params and 'xlsx' in xl_params and isinstance(xl_params['xlsx'], FormulaXLSX):
             xl_obj = xl_params['xlsx']
             xl_obj.close_if_exists()
-            xl_obj.remove()
+            # xl_obj.remove()
             self.check_file(full_path, action, poki)
             new_obj = self.formulas.get_xlsx(xl_params['cache_path'])
             self.formulas.operations[poki][action][key_name]['xlsx'] = new_obj

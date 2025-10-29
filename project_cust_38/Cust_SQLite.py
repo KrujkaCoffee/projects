@@ -298,6 +298,49 @@ def list_types_table(bd, table):
     return rez
 
 
+def convert_dict_to_sqlite_types(data: dict, type_map: dict) -> dict:
+    """
+    Приводит значения словаря `data` к типам из словаря `type_map`,
+    где type_map[field] = тип (например int, float, str, bytes).
+    """
+    result = {}
+    for field, value in data.items():
+        target_type = type_map.get(field)
+        if target_type is None:
+            # поля нет в таблице — оставляем как есть
+            result[field] = value
+            continue
+
+        if value is None:
+            result[field] = None
+            continue
+
+        try:
+            # если уже нужного типа — не трогаем
+            if isinstance(value, target_type):
+                result[field] = value
+            else:
+                # особые случаи: конвертация строк, чисел и булевых
+                if target_type is int:
+                    result[field] = int(float(value))  # если число в виде строки "3.0"
+                elif target_type is float:
+                    result[field] = float(value)
+                elif target_type is str:
+                    result[field] = str(value)
+                elif target_type is bytes:
+                    if isinstance(value, str):
+                        result[field] = value.encode("utf-8")
+                    else:
+                        result[field] = bytes(value)
+                else:
+                    result[field] = value  # fallback
+        except Exception:
+            # если конвертация не удалась, оставляем оригинал
+            result[field] = value
+            raise TypeError(f'convert_dict_to_sqlite_types error to convert "{field}" ')
+    return result
+
+
 def fix_types_table(table, types_dict: dict):
     """list_types_table = types_dict"""
     for i in range(len(table[0])):
@@ -369,6 +412,26 @@ def prepare_list_to_tuple(list_nums:list|set) -> str:
         return tmp_list[0]
     return ','.join(tmp_list)
 
+def quote_text_values(values: list, quote: str = "'") -> list:
+    """
+    Возвращает новый список, где строковые элементы обёрнуты в указанные кавычки.
+    Нестроковые элементы остаются без изменений.
+
+    :param values: список значений
+    :param quote: символ кавычки, например "'" или '"'
+    """
+    if not values:
+        return ''
+    result = []
+    for v in values:
+        if isinstance(v, str):
+            # экранируем внутренние кавычки
+            escaped = v.replace(quote, quote * 2)
+            result.append(f"{quote}{escaped}{quote}")
+        else:
+            result.append(v)
+    return result
+
 @F.StatisticDecorator #18.08.25
 def custom_request_c(bd, custom_request_c, conn='', hat_c=True, list_of_lists_c=[[]], rez_dict=False, one=False, cur='',
                      one_column=False, returning=False, attach_dbs: tuple | str=()):
@@ -403,125 +466,108 @@ def custom_request_c(bd, custom_request_c, conn='', hat_c=True, list_of_lists_c=
         print(f'Ошибка соединения с БД {bd}')
         return
 
-    number_retry = 0
-    while True:
-        if number_retry != 0:
-            F.sleep(WAIT_TIME)
-        number_retry += 1
+    while True: # 19.09.25
         result = False
         type_query = custom_request_c.replace('\n', '').strip().split(' ')[0].upper()
-        try:
-            if 'EXPLAIN' == type_query: #15.08.25
-                result = get_tables_from_select(cur, custom_request_c.replace('?', "''"), list_of_lists_c)
-            if 'PRAGMA'  == type_query:
-                cur.execute(custom_request_c)
-                result = True
-            if 'CREATE'  == type_query:
-                cur.executescript(custom_request_c)
-                conn.commit()
-                result = True
-            if 'INSERT' == type_query:
-                pattern = r'\bRETURNING\b'
-                match = re.search(pattern, custom_request_c, re.IGNORECASE)
-                if match:
-                    cur.execute(custom_request_c, list_of_lists_c)
-                    result = cur.fetchall()
-                    returning = True
-                else:
-                    cur.executemany(custom_request_c, list_of_lists_c)
-                    conn.commit()
-                    result = True
-            if 'UPDATE' == type_query:
-                if list_of_lists_c == [[]]:
-                    cur.execute(custom_request_c)
-                else:
-                    if type(list_of_lists_c[0]) == list:
-                        cur.executemany(custom_request_c, list_of_lists_c)
-                    else:
-                        cur.execute(custom_request_c, list_of_lists_c)
-                conn.commit()
-                result = True
-            if 'DELETE' == type_query:
-                if list_of_lists_c == [[]]:
-                    cur.execute(custom_request_c)
-                else:
-                    if type(list_of_lists_c[0]) == list:
-                        cur.executemany(custom_request_c, list_of_lists_c)
-                    else:
-                        cur.execute(custom_request_c, list_of_lists_c)
-                conn.commit()
-                result = True
-            if 'SELECT' == type_query:
-                if list_of_lists_c == [[]]:
-                    cur.execute(custom_request_c)
-                else:
-                    if isinstance(list_of_lists_c, (list, tuple)):
-                        if type(list_of_lists_c[0]) == list or type(list_of_lists_c[0]) == tuple:
-                            cur.execute(custom_request_c, (list_of_lists_c[0][0],))
-                        else:
-                            cur.execute(custom_request_c,(list_of_lists_c[0],))
-                    else:
-                        cur.execute(custom_request_c, (list_of_lists_c,))
-                if one == True:
-                    result = cur.fetchone()
-                else:
-                    result = cur.fetchall()
+        if 'EXPLAIN' == type_query: #15.08.25
+            result = get_tables_from_select(cur, custom_request_c.replace('?', "''"), list_of_lists_c)
+        if 'PRAGMA'  == type_query:
+            cur.execute(custom_request_c)
+            result = True
+        if 'CREATE'  == type_query:
+            cur.executescript(custom_request_c)
+            conn.commit()
+            result = True
+        if 'INSERT' == type_query:
+            pattern = r'\bRETURNING\b'
+            match = re.search(pattern, custom_request_c, re.IGNORECASE)
+            if match:
+                cur.execute(custom_request_c, list_of_lists_c)
+                result = cur.fetchall()
                 returning = True
-            if returning:
-                if rez_dict:
-                    tmp = []
-                    cols = [x[0] for x in cur.description]
-                    if one == True:
-                        if result == None:
-                            result = []
-                        else:
-                            result = [result]
-                    for item in result:
-                        tmp_dict = dict()
-                        for i in range(len(cols)):
-                            if cols[i] in tmp_dict:
-                                cols[i] = str(i) + '_' + cols[i]
-                            tmp_dict[cols[i]] = item[i]
-                        tmp.append(tmp_dict)
-                    if one == True:
-                        result = dict()
-                        if len(tmp):
-                            result = tmp[0]
-                    else:
-                        result = tmp
-                else:
-                    if one == True:
-                        if result == None:
-                            result = []
-                        else:
-                            result = [list(result)]
-                    else:
-                        if result != []:
-                            #startTime = F.now('')
-                            result = [list(x) for x in result]
-                            #F.microseconds_passed(startTime,len(result))
-                    if hat_c == True:
-                        cols = [x[0] for x in cur.description]
-                        result.insert(0, cols)
-                if one_column:
-                    result = [_[0] for _ in result]
-            if close:
-                cur.close()
-                conn.close()
-            return result
-        except Exception as ex:
-            print(f'Ошибка выполнения запроса {custom_request_c}')
-            print(str(ex))
-            if number_retry == RE_COUNT:
-                try:
-                    cur.close()
-                    conn.close()
-                except:
-                    pass
-                finally:
-                    return False
             else:
-                print(f'Попытка {number_retry}')
+                cur.executemany(custom_request_c, list_of_lists_c)
+                conn.commit()
+                result = True
+        if 'UPDATE' == type_query:
+            if list_of_lists_c == [[]]:
+                cur.execute(custom_request_c)
+            else:
+                if type(list_of_lists_c[0]) == list:
+                    cur.executemany(custom_request_c, list_of_lists_c)
+                else:
+                    cur.execute(custom_request_c, list_of_lists_c)
+            conn.commit()
+            result = True
+        if 'DELETE' == type_query:
+            if list_of_lists_c == [[]]:
+                cur.execute(custom_request_c)
+            else:
+                if type(list_of_lists_c[0]) == list:
+                    cur.executemany(custom_request_c, list_of_lists_c)
+                else:
+                    cur.execute(custom_request_c, list_of_lists_c)
+            conn.commit()
+            result = True
+        if 'SELECT' == type_query:
+            if list_of_lists_c == [[]]:
+                cur.execute(custom_request_c)
+            else:
+                if isinstance(list_of_lists_c, (list, tuple)):
+                    if type(list_of_lists_c[0]) == list or type(list_of_lists_c[0]) == tuple:
+                        cur.execute(custom_request_c, (list_of_lists_c[0][0],))
+                    else:
+                        cur.execute(custom_request_c,(list_of_lists_c[0],))
+                else:
+                    cur.execute(custom_request_c, (list_of_lists_c,))
+            if one == True:
+                result = cur.fetchone()
+            else:
+                result = cur.fetchall()
+            returning = True
+        if returning:
+            if rez_dict:
+                tmp = []
+                cols = [x[0] for x in cur.description]
+                if one == True:
+                    if result == None:
+                        result = []
+                    else:
+                        result = [result]
+                for item in result:
+                    tmp_dict = dict()
+                    for i in range(len(cols)):
+                        if cols[i] in tmp_dict:
+                            cols[i] = str(i) + '_' + cols[i]
+                        tmp_dict[cols[i]] = item[i]
+                    tmp.append(tmp_dict)
+                if one == True:
+                    result = dict()
+                    if len(tmp):
+                        result = tmp[0]
+                else:
+                    result = tmp
+            else:
+                if one == True:
+                    if result == None:
+                        result = []
+                    else:
+                        result = [list(result)]
+                else:
+                    if result != []:
+                        #startTime = F.now('')
+                        result = [list(x) for x in result]
+                        #F.microseconds_passed(startTime,len(result))
+                if hat_c == True:
+                    cols = [x[0] for x in cur.description]
+                    result.insert(0, cols)
+            if one_column:
+                result = [_[0] for _ in result]
+        if close:
+            cur.close()
+            conn.close()
+        return result
+
 
 
 def update_bd_sql(bd, table, slovar_set, slovar_where, log='and ', conn="", cur="", close=True):
@@ -788,6 +834,7 @@ def questions_for_mask(list: list) -> str:
 
 
 if __name__ == '__main__':
+    quit()
     text = """PRAGMA foreign_keys = off;
 BEGIN TRANSACTION;
 

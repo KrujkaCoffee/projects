@@ -1,138 +1,36 @@
+﻿
+import logging
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logger = logging.getLogger('waitress')
+logger.setLevel(logging.INFO)
+
 import pickle
 import socketserver
 import logging
 import pathlib
 import re
+import sqlite3
+import sys
 from urllib.parse import quote
 
+sys.path.append(str(pathlib.Path().parent))
 from werkzeug import Request, Response
+from werkzeug.routing import Map, Rule
+from waitress import serve
 
 import project_cust_38.Cust_Functions as F
 import project_cust_38.Cust_SQLite as CSQ
-import project_cust_38.logistic_srv as LOG
+from project_cust_38 import Cust_client_socket as CCS
 
-
-
-# https://temofeev.ru/info/articles/rukovodstvo-po-programmirovaniyu-soketov-na-python-klient-server-i-neskolko-soedineniy/
-
-class MyTCPHandler(socketserver.BaseRequestHandler):
-    """
-    The request handler class for our server.
-    It is instantiated once per connection to the server, and must
-    override the handle() method to implement communication to the
-    client.
-    """
-
-    def val_ansvwer(self, ansvwer):
-        self.ansvwer = ansvwer
-
-    def handle(self):
-        # self.request is the TCP socket connected to the client
-        # self.data = self.reliable_receive()
-        # self.data = self.request.recv(1024).strip()
-        print(f"{F.now()} Connected by {self.client_address}")
-        try:
-            self.data = LOG.reliable_receive(self.request)
-            message_str = pickle.loads(self.data)
-            query = check_query(message_str)
-            print(f'Query: {message_str}')
-        except:
-            print(f'!!!   Ошибка получения')
-            LOG.reliable_send(self.request, pickle.dumps(False))
-            return
-        try:
-            if query == None:
-                response_str = None
-            else:
-                response_str = use_db(**query)
-            response = pickle.dumps(response_str)
-        except:
-            print(f'!!!   Ошибка обработки запроса {message_str}')
-            LOG.reliable_send(self.request, pickle.dumps(False))
-            try:
-                log_errors(message_str)
-            except:
-                pass
-            return
-
-        try:
-            LOG.reliable_send(self.request, response)
-            try:
-                if response_str == None:
-                    print(f'Answer: {response_str}', end='\n\n')
-                elif response_str == False:
-                    print(f'Answer: {False}', end='\n\n')
-                else:
-                    try:
-                        if len(str(response_str)) > 50:
-                            print(f'Answer: {str(response_str)[:50] + " ....."}', end='\n\n', )
-                        else:
-                            print(f'Answer: {str(response_str)}', end='\n\n', )
-                    except:
-                        print(f'Answer: {True}', end='\n\n', )
-            except:
-                pass
-            # conn.sendall(response)
-        except:
-            print(f'!!!   Ошибка отправки')
-            try:
-                LOG.reliable_send(self.request, pickle.dumps(None))
-            except:
-                pass
-            finally:
-                return
-
-
-def use_db(bd, zapros='', shapka=True, spisok_spiskov=(()), rez_dict=False, one=False, module='', client='',
-           one_column=False, hat_c='', custom_request_c='', list_of_lists_c=''):
-    if hat_c == '':
-        hat_c = shapka
-    if custom_request_c == '':
-        custom_request_c = zapros
-    if list_of_lists_c == '':
-        list_of_lists_c = spisok_spiskov
-    conn, cur = CSQ.connect_bd(bd)
-    res = CSQ.custom_request_c('', custom_request_c, conn=conn, cur=cur, hat_c=hat_c, list_of_lists_c=list_of_lists_c,
-                               rez_dict=rez_dict, one=one, one_column=one_column)
-    CSQ.close_bd(conn, cur)
-    return res
-
-
-def check_query(msg: dict):
-    if type(msg) != dict:
-        print('type of data must be dict')
-        return
-    if len(msg) <= 5:
-        print('dict not count all parametrs')
-        return
-    if F.existence_file_c(msg['bd']) == False:
-        print('database not found')
-        return
-    return msg
-
-
-def log_errors(msg):
-    path = r'Z:\MES_setup\errors\err_serv.txt'
-    if F.existence_file_c(path) == False:
-        F.save_file(path, '')
-    F.add_rec_into_file_c(path, str(msg), sep='')
-
-
-def run2(HOST: str, PORT: int, ansvwer: bool = True):
-    # Standard loopback interface address (localhost)
-    # Port to listen on (non-privileged ports are > 1023)
-    while True:
-        print('SRV: listen....')
-        with socketserver.TCPServer((HOST, PORT), MyTCPHandler) as server:
-            # Activate the server; this will keep running until you
-            # interrupt the program with Ctrl-C
-            server.serve_forever()
 
 import sys, io
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 sys.stderr = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
-logger = logging.getLogger('werkzeug')
+import logging
+logging.basicConfig(format='%(asctime)s -  %(message)s', level=logging.INFO, encoding='utf8')
+logger = logging.getLogger('waitress')
+logger.setLevel(logging.INFO)
 msg_format = '\n{lines}\nКлиент: {user}\nВ модуле: {module}\nСделал запрос: {query}\n{lines}\n'
 DB_PATH = pathlib.Path(r'C://DB_srv//').absolute()
 ATTACH_DBS = {
@@ -144,24 +42,30 @@ ATTACH_DBS = {
     'Naryad': ['DB_kplan.db']
 }
 
-def alert_b24(query, module, client):
-    try:
-        if query.lower().strip().startswith('delete'):
-            import requests
-            requests.post('https://bitrix24.kelast.ru/rest/1/ebehb6fsejx39kj2/im.message.add',
-                          json={
-                            'DIALOG_ID': 'chat78766',
-                            'MESSAGE': f"{module}\n{client}\n{query}",
-                          }, verify=False)
-    except Exception as e:
-        ...
+url_map = Map()
+route_handlers = {}
+
+def route(rule):
+    def decorator(func):
+        endpoint = func.__name__
+        url_map.add(Rule(rule, endpoint=endpoint))
+        route_handlers[endpoint] = func
+        def wrapper_route(*args, **kwargs):
+            try:
+                result = func(*args, **kwargs)
+                return Response(pickle.dumps(result), status=200)
+            except Exception as e:
+                print(f'Ошибка: {e}')
+                return Response('Error', status=502)
+        return wrapper_route
+    return decorator
+
 
 class HTTPSrv:
     def __init__(self):
         self.headers = {}
 
     def dispatch_query(self, msg: dict):
-        alert_b24(msg.get('custom_request_c', ''), msg.get('module', ''), msg.get('client', ''))
         message = msg_format.format(
             user=msg.get('client'),
             module=msg.get('module'),
@@ -171,15 +75,20 @@ class HTTPSrv:
         logger.info(message)
 
     def wsgi_app(self, environ, start_response):
+        logger.info('вызов')
+
+        request = Request(environ)
+        adapter = url_map.bind_to_environ(environ)
+        self.headers = {}
         try:
-            self.headers = {}
-            request = Request(environ)
-            data = pickle.loads(request.data)
-            self.dispatch_query(data)
-            result = self.use_db(**data)
-            response = Response(pickle.dumps(result), headers=self.headers)
+            endpoint, values = adapter.match()
+            func = getattr(self, endpoint)
+            if not func:
+                response = Response(status=404)
+            else:
+                response = func(request, **values)
         except Exception as e:
-            response = Response(status=500)
+            response = Response(status=501)
         return response(environ, start_response)
 
     def __call__(self, environ, start_response):
@@ -194,11 +103,37 @@ class HTTPSrv:
         if list_of_lists_c == '':
             list_of_lists_c = spisok_spiskov
         conn, cur = CSQ.connect_bd(bd)
+        try:
+            cur.execute("PRAGMA journal_mode=WAL;")
+            cur.execute("PRAGMA synchronous=NORMAL;")
+            cur.execute("PRAGMA busy_timeout = 30000;")
+            cur.execute("PRAGMA wal_autocheckpoint = 1000;")
+        except Exception as e:
+            logger.error(f' {e}')
         self.attach_db(cur, lst_dbs=attach_dbs)
-        res = CSQ.custom_request_c('', custom_request_c, conn=conn, cur=cur, hat_c=hat_c, list_of_lists_c=list_of_lists_c,
-                                   rez_dict=rez_dict, one=one, one_column=one_column)
-        CSQ.close_bd(conn, cur)
+        res = False
+        try:
+            res = CSQ.custom_request_c('', custom_request_c, conn=conn, cur=cur, hat_c=hat_c, list_of_lists_c=list_of_lists_c,
+                                       rez_dict=rez_dict, one=one, one_column=one_column)
+        except (sqlite3.OperationalError, sqlite3.IntegrityError, sqlite3.ProgrammingError, sqlite3.DataError) as e:
+            logger.error(f'Ошибка: {e}')
+            self.headers[CCS.SrvHeaders.SYNTAX_ERROR.value] = '1'
+        except Exception as e:
+            logger.error(f'Ошибка: {e}')
+            self.headers[CCS.SrvHeaders.EXCEPTION_MESSAGE.value] = quote(str(e))
+        finally:
+            CSQ.close_bd(conn, cur)
         return res
+
+    @route('/ping')
+    def ping(self, request: Request):
+        return 'pong'
+
+    @route('/')
+    def db_request(self, request: Request):
+        data = pickle.loads(request.data)
+        self.dispatch_query(data)
+        return self.use_db(**data)
 
     def attach_db(self, cursor, lst_dbs: tuple):
         lst_dbs = (lst_dbs, ) if isinstance(lst_dbs, str) else lst_dbs
@@ -209,7 +144,72 @@ class HTTPSrv:
                 learn_name = db_name.split('.')[0]
                 cursor.execute(f'ATTACH DATABASE "{str(DB_PATH / db_name)}" AS {learn_name}')
 
-
-def run(HOST: str, PORT: int | str, ansvwer: bool = True, que = None):
+def background_task(HOST, PORT):
     from werkzeug.serving import run_simple
-    run_simple(HOST, PORT, HTTPSrv())
+    serve(HTTPSrv(), host=HOST, port=PORT)
+
+
+def func_ping(HOST, PORT):
+    import requests, time
+    try:
+        time.sleep(60 * 5)
+        response = requests.get(f'http://{HOST}:{PORT}/ping')
+        print(f'SERVER: {HOST}:{PORT} проверка доступности: {response.ok!r}')
+        return response.ok
+    except KeyboardInterrupt as e:
+        print('Перезапуск...')
+    except Exception as e:
+        print('Ошибка доступа к серверу', e)
+    return False
+
+def run(HOST: str, PORT: int | str):
+    import multiprocessing
+
+    print('START SERVER')
+    table_ports = {
+        20002: [5200, 5201, 5202, 5203, 5204],
+        20006: [5600, 5601, 5602, 5603, 5604],
+        20007: [5700, 5701, 5702, 5703, 5704],
+        20010: [5100, 5101, 5102, 5103, 5104],
+    }
+    sub_ports = table_ports.get(PORT)
+    started_process = []
+    import time
+    try:
+        if sub_ports:
+            for port in sub_ports:
+                process = multiprocessing.Process(target=background_task, args=(HOST, port))
+                process.start()
+                started_process.append((process, HOST, port))
+        else:
+            process = multiprocessing.Process(target=background_task, args=(HOST, PORT))
+            process.start()
+            started_process.append((process, HOST, PORT))
+        while True:
+            cleaned_process = []
+            for process, host, port in started_process:
+                if not func_ping(host, port):
+                    try:
+                        process.kill()
+                        
+                        time.sleep(2)
+                    except Exception as e:
+                        print(e)
+                        pass
+                    try:
+                        logger.info("Попытка создаия процесса")
+                        process = multiprocessing.Process(target=background_task, args=(host, port))
+                        logger.info(f"Процесс создан с pid: {process.pid}")
+
+                        time.sleep(2)
+                    except Exception as e:
+                        logger.error(f"Ошибка создания процесса: {e}")
+                cleaned_process.append((process, host, port))
+            started_process = cleaned_process
+    except KeyboardInterrupt as e:
+        logger.info('Перезапуск...')
+    except Exception as e:
+        print(f'Работа сервера завершена: {e}')
+    finally:
+        for process, host, port in started_process:
+            process.kill()
