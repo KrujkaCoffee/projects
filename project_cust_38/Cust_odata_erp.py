@@ -50,8 +50,8 @@ class OrdersComposit():
         [_ for _ in dict_objs['Catalog'] if 'риостан' in _]
     def get_response(self, doc_name:str = None, wet_filtr:str = None,get_response_val=True,lazy_method_huours=0,
                      db_files=None,with_cod=False,
-                    dict_aliases: dict = None  # Словарь алиасов {"старое_имя": "новое_имя"}
-                     ):
+                    dict_aliases: dict = None,  # Словарь алиасов {"старое_имя": "новое_имя"}
+        timeout:int = 5 ):
         '''
         wet_filtr=f"?$filter=Code eq '{kod}' &$select=ИдентификаторВерсииДанных,Статус,Description"
         :param doc_name: 
@@ -167,7 +167,7 @@ class OrdersComposit():
 
 
         try:
-            response = requests.get(url, headers=headers, params=params, auth=(self.user, self.pswd), timeout=5) #07.07.25
+            response = requests.get(url, headers=headers, params=params, auth=(self.user, self.pswd), timeout=timeout) #07.07.25
             cod = response.status_code
             if cod != 200:
                 err_val = F.convert_binary_to_data(response.content)
@@ -177,7 +177,10 @@ class OrdersComposit():
                 else:
                     return  None
         except (
-        requests.exceptions.ConnectionError, requests.exceptions.ConnectTimeout, requests.exceptions.JSONDecodeError):
+        requests.exceptions.ConnectionError,
+        requests.exceptions.ConnectTimeout,
+        requests.exceptions.ReadTimeout,
+        requests.exceptions.JSONDecodeError):
             print(f'{F.now()} not connect ERP')
             if with_cod:
                 return None, None

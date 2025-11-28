@@ -12,7 +12,7 @@ class Data_plan:
 
         _INFO_FIELDS_KPL = CSQ.custom_request_c(db_kplan, f"""SELECT case when table_kpl = '' then name else  table_kpl 
      || "." || name end as name, nickname, hand_editable, edit_rules_str_digit_date, users_rule, 
-        rule_mode_1_disabled,hide FROM info_fields_kpl;""", rez_dict=True)
+        rule_mode_1_disabled,hide, is_system FROM info_fields_kpl;""", rez_dict=True) #10.11.25
         for item in _INFO_FIELDS_KPL:
             if item['name'].startswith('.'):
                 item['name'] = item['name'][1:]
@@ -104,7 +104,7 @@ class Data_plan:
     DICT_DOLGN_ETAP = F.deploy_dict_c(CSQ.custom_request_c(bd_naryad, f"""
     SELECT * FROM dolgn_etap""", rez_dict=True),"Должность")
     ETAPS_NAME = CSQ.custom_request_c(bd_naryad, f"""
-           SELECT * FROM etaps WHERE poki == {PLACE.poki};""", rez_dict=True)
+           SELECT * FROM etaps WHERE poki == {PLACE.poki} order by порядокДляРС;""", rez_dict=True)
     DICT_ETAPS_NAME = F.deploy_dict_c(ETAPS_NAME,"name")
     DICT_ETAPS_VID_NAME = F.deploy_dict_c(ETAPS_NAME, "имя_в_виды_по_напр")
     DICT_EMPLOEE_FULL_WITH_DEL = CMS.dict_emploee_full_with_del(db_users)

@@ -832,6 +832,8 @@ class ExcelParser:
 
 
 def prepare_docx_data(data, bold_header: bool):
+    from docxtpl import DocxTemplate, RichText
+
     if len(data) == 0:
         return
     if isinstance(data[0], dict):
@@ -859,6 +861,7 @@ def make_docx_report(
         template_name: str = "report.docx",
         output_docx_path: str = "output.docx"
 ):
+    from docxtpl import DocxTemplate, RichText
     doc = DocxTemplate(template_name)
     output_data = prepare_docx_data(output_rows, bold_output_headers)
     input_data = prepare_docx_data(input_rows, bold_input_headers)

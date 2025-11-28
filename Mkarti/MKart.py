@@ -73,10 +73,11 @@ class mywindow(QtWidgets.QMainWindow):
         USRCNF.Config.user_config.load_user_config(self)
         # enable custom window hint
         self.setWindowFlags(self.windowFlags() | QtCore.Qt.CustomizeWindowHint)
-        CQT.load_icons(self, 24)
+
         CQT.connect_to_resize(self, CMS.tmp_dir())
         CQT.load_resize_splitters(self,CQT.qt_tmp_dir())
         CMS.add_action_config_save_tbl_filtrs(self, self.ui)
+        CQT.load_icons(self, 24)
         # disable (but not hide) close button
         # self.setWindowFlags(self.windowFlags() & ~QtCore.Qt.WindowCloseButtonHint)
         # F.test_path()
@@ -315,6 +316,10 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.btn_generate_precsv_tree.clicked.connect(lambda: CHPY.generate_precsv_tree(self))
         self.ui.btn_generate_txt_res.clicked.connect(self.generate_txt_res)
         self.ui.btn_tkp_add_to_plan.clicked.connect(lambda: CVO.btn_tkp_add_to_plan(self))
+        self.ui.btn_close_all_groups.clicked.connect(lambda: KPL.close_all_groups(self))
+
+
+
         btn_korr_nom = self.ui.btn_korr_nom
         btn_korr_nom.clicked.connect(self.btn_korr_nom)
 
@@ -510,7 +515,11 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.chk_kpl_zaversch.blockSignals(True)
         self.ui.chk_kpl_zaversch.setChecked(False)
         self.ui.chk_kpl_zaversch.blockSignals(False)
+        self.ui.chk_kpl_groups.blockSignals(True)
+        self.ui.chk_kpl_groups.setChecked(CMS.load_tmp_stukt('chk_kpl_groups',False))
+        self.ui.chk_kpl_groups.blockSignals(False)
         self.ui.chk_kpl_zaversch.clicked.connect(lambda: KPL.set_params_kpl(self))
+        self.ui.chk_kpl_groups.clicked.connect(lambda: KPL.set_groups_kpl(self))
         self.ui.chk_paint_dates.clicked.connect(lambda: KPL.set_chk_paint_dates(self))
         self.ui.chk_schemas_show_alias.clicked.connect(lambda _, x=self: IND.select_schema(x))
         self.ui.chk_schemas_show_position.clicked.connect(lambda _, x=self: IND.select_schema(x))
@@ -701,10 +710,23 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.lbl_shema.mousePressEvent = self.getPos
 
         self._tkp_current_schema = CMS.TkpSchema()
-
+        self.ui.chk_consider_project_abs_product.clicked[bool].connect(self.on_click_chk_consider_project_abs_product) #12.11.25
         self._ttkz_tmp_settings = TTKZ.Ttkz_tmp_settings(self.ui.lbl_data_mold)
         IND.load_control_schema_output(self)
         self.apply_visible_by_places()
+
+    def fill_chk_consider_project_abs_product(self):
+        schema = getattr(self, 'tkp_current_schema', None)
+        if isinstance(schema, CMS.TkpSchema):
+            self.ui.chk_consider_project_abs_product.setChecked(
+                bool(schema.XML_start_from_project_product_type)
+            )
+
+    def on_click_chk_consider_project_abs_product(self, activated: bool) -> None: #12.11.25
+        self.tkp_current_schema['XML_start_from_project_product_type'] = activated
+        tree = self.ui.tree_base_tree
+        if tree.topLevelItemCount() >= 1:
+            tree.clear()
 
     @property
     def tkp_current_schema(self):
@@ -1394,6 +1416,7 @@ class mywindow(QtWidgets.QMainWindow):
         if self.ui.tbl_filtr_kal_pl.hasFocus():
             if key_val == 16777220:
                 CMS.apply_filtr_c(self, self.ui.tbl_filtr_kal_pl, self.ui.tbl_kal_pl)
+                CMS.apply_gui_groups(self)
         if self.ui.tbl_vacant_filtr.hasFocus():
             if key_val == 16777220:
                 CMS.apply_filtr_c(self, self.ui.tbl_vacant_filtr, self.ui.tbl_vacant)
@@ -2065,7 +2088,7 @@ class mywindow(QtWidgets.QMainWindow):
         tbl = self.ui.table_spis_MK
         nk_nommk = CQT.num_col_by_name_c(tbl, 'Пномер')
         nom_mk = int(tbl.item(tbl.currentRow(), nk_nommk).text())
-        self.xml_head = 1
+        self.xml_head = 0
         kolvo = tbl.item(tbl.currentRow(), CQT.num_col_by_name_c(tbl, 'Количество')).text()
 
         CSQ.custom_request_c(self.db_resxml, """UPDATE xml SET(data,Head) = (?,?) WHERE Номер_мк = ?;""",
@@ -2079,7 +2102,7 @@ class mywindow(QtWidgets.QMainWindow):
         putt_xml = CQT.f_dialog_name(self, 'Выбрать XML', tmp_putt, "Файлы *.xml")
         if putt_xml == '' or putt_xml == '.':
             return
-
+        self.xml_head = int(CMS.XML_check_root_on_project_product_type(putt_xml))
         CMS.save_tmp_path("tmp_putt", putt_xml, True)
 
         sp_xml_tmp = CMS.podgotovka_xml(self, XML.spisok_iz_xml(putt_xml))
@@ -2091,7 +2114,6 @@ class mywindow(QtWidgets.QMainWindow):
         tbl = self.ui.table_spis_MK
         nk_nommk = CQT.num_col_by_name_c(tbl, 'Пномер')
         nom_mk = int(tbl.item(tbl.currentRow(), nk_nommk).text())
-        self.xml_head = 1
         kolvo = tbl.item(tbl.currentRow(), CQT.num_col_by_name_c(tbl, 'Количество')).text()
 
         rez = CSQ.custom_request_c(self.db_resxml, f"""SELECT Номер_мк FROM xml WHERE Номер_мк = {int(nom_mk)}""",
@@ -2496,14 +2518,15 @@ class mywindow(QtWidgets.QMainWindow):
 
     def clk_fdate_res_erp(self):
         tbl = self.ui.table_spis_MK
-        nk_date_etap = CQT.num_col_by_name_c(tbl, 'Ресурсная_дата')
-        r = tbl.currentRow()
-        if r == None or r == -1:
-            return
-        val_date = tbl.item(r, nk_date_etap).text()
-        nk_nom_mk = CQT.num_col_by_name_c(tbl, 'Пномер')
-        nk_tip = CQT.num_col_by_name_c(tbl, 'Тип')
-        nom_mk = int(tbl.item(r, nk_nom_mk).text())
+
+        row_data = CQT.get_dict_line_form_tbl(tbl)
+
+        val_date = row_data['Ресурсная_дата']
+        nf = CQT.nums_col_by_name_dict(tbl)
+        nk_date_etap = nf['Ресурсная_дата']
+        nom_mk = int(row_data['Пномер'])
+        tip = row_data['Тип']
+        nom_pl = int(row_data['Номер КПЛ'])
         now = F.now("%Y-%m-%d")
         buf = F.paste_bufer()
         if buf.strip() != '':
@@ -2517,13 +2540,17 @@ class mywindow(QtWidgets.QMainWindow):
 
             request = f"""UPDATE mk SET Ресурсная_дата = '{now}' where Пномер == {nom_mk}"""
             CSQ.custom_request_c(self.bd_naryad, request)
-            if tbl.item(r, nk_tip).text() == 'Плановая':
-                nom_pl = CSQ.custom_request_c(self.db_kplan, f"""SELECT Пномер FROM plan where МК == {nom_mk}""")
-                if len(nom_pl) > 1:
+            if tip == 'Плановая':
+                if nom_pl > 1:
                     CSQ.custom_request_c(self.db_kplan, f"""UPDATE пл_топ SET ( Фдата_зав_спецЕРП, Фдата_нач_спецЕРП)
-                        = ('{now}', '{now}') where НомПл == {nom_pl[1][0]}""")
-            tbl.item(r, nk_date_etap).setText(now)
+                        = ('{now}', '{now}') where НомПл == {nom_pl}""")
+            tbl.item(tbl.currentRow(), nk_date_etap).setText(now)
+            obj_msg = CMS.Msg_b24(self.db_kplan, self.bd_naryad, self.db_resxml, self.db_users, nom_pl)
+            old_str = F.dateStrToStr(val_date,format_out="%d.%m.%Y", onerror='')
+            now_str = F.dateStrToStr(now,format_out="%d.%m.%Y", onerror='')
+            obj_msg.send_msg('upd_fdate_res_erp',additional_str=f'\n    было: {old_str}\n    стало: {now_str}')
             CQT.msgbox(f'Успешно')
+
         pass
 
     def raschet_etapa(self, fio):
@@ -4927,7 +4954,8 @@ class mywindow(QtWidgets.QMainWindow):
         self.cr_mk_xml_koef_norm_mat = F.valm(sp_izd[0][3])
         self.cr_mk_xml_koef_norm_time = F.valm(sp_izd[0][4])
         sp_xml_tmp = CMS.podgotovka_xml(self, XML.spisok_iz_xml(putt_xml),
-                                        correct_code_erp_tbl=True)  # 05.08.25 задача 100057976
+                                        correct_code_erp_tbl=True,
+                                        xml_head=self.tkp_current_schema.XML_start_from_project_product_type)  # 05.08.25 задача 100057976
         if sp_xml_tmp == None:
             CQT.msgbox('Файл не корректный')
             return
@@ -5441,9 +5469,9 @@ class mywindow(QtWidgets.QMainWindow):
         file = CSQ.custom_request_c(self.bd_files, f"""SELECT file FROM MK_founding WHERE Num_mk = {int(nom_mk)}""",
                                     one=True,
                                     hat_c=False, one_column=True)
-        if file == False or file == [] or file == ['']:
+        if file == False or file == [] or file == '':
             return False
-        unpack = F.unpack_byte_file(file[0])
+        unpack = F.unpack_byte_file(file)
         try:
             F.save_binary_convert_to_file(unpack,
                                           path_save + F.sep() + f'{str(nom_mk)}.pdf')
@@ -5499,8 +5527,8 @@ class mywindow(QtWidgets.QMainWindow):
             if nom_mk == False:
                 CQT.msgbox(f'Ошибка подбора МК')
                 return
-            if len(nom_mk) != 0:
-                CQT.msgbox(f'На эту позицию плановая МК {nom_mk[0]} уже ранее создана')
+            if nom_mk != []: #11.11.25
+                CQT.msgbox(f'На эту позицию плановая МК {nom_mk} уже ранее создана')
                 return
 
         tip_mk = self.DICT_TIP_MK[self.ui.cmb_tip_mk.currentText()]['Пномер']
@@ -5600,7 +5628,7 @@ class mywindow(QtWidgets.QMainWindow):
             "",
             ves, '', self.kol_izdeliy, '', '', '', 2, '', self.place.Код, '', tip_mk, '', F.user_full_namre(),
             self.dict_cur_poz_cr_mk['Пномер'], tip_dorabot]
-        self.xml_head = 1
+        self.xml_head = int(bool(self.tkp_current_schema.XML_start_from_project_product_type))
 
         if 'dict_cur_poz_cr_mk' not in self.__dict__:
             CQT.blink_obj_c(self, 2, self.ui.cmb_cr_mk_poz, f'Не выбрана позиция')
@@ -5642,7 +5670,7 @@ class mywindow(QtWidgets.QMainWindow):
                                         cur=cur)
         if not response:
             return CQT.msgbox('Ошибка создания МК')
-        nom = response['Пномер'][0]
+        nom = response['Пномер']
         # -- 27.07.25 по задаче 100057537
         CSQ.custom_request_c(self.bd_naryad, """INSERT INTO  zagot(Ном_МК,Прим_резка,Вес_по_рес) VALUES (?,?,?);""",
                              conn=CONN,
@@ -6082,6 +6110,11 @@ class mywindow(QtWidgets.QMainWindow):
         tabl.setColumnCount(5)
         tabl.setHorizontalHeaderLabels(hat_c)
         self.xml_name = None
+        if tab.tabText(tab.currentIndex()) == 'Просмотр структуры':
+            head_state = self.ui.chk_consider_project_abs_product.isChecked()
+            xml_head = int(bool(head_state))
+        else:
+            xml_head = self.tkp_current_schema.XML_start_from_project_product_type
 
         def select_and_load_file(self):
             tmp_putt = CMS.load_tmp_path("tmp_putt")
@@ -6097,7 +6130,7 @@ class mywindow(QtWidgets.QMainWindow):
 
             xml = XML.spisok_iz_xml(putt)
             self.xml_name = F.throw_out_extention_c(putt.split(F.sep())[-1])
-            spis_xml = CMS.podgotovka_xml(self, xml, show_negruz=True)
+            spis_xml = CMS.podgotovka_xml(self, xml, show_negruz=True, xml_head=xml_head)
             return putt, spis_xml
 
         def check_file(spis_xml):
@@ -6163,7 +6196,7 @@ class mywindow(QtWidgets.QMainWindow):
                 return
 
             list_user = CMS.load_tree(self, spis_xml, tree)
-            CMS.zapoln_tree_spiskom(self, spis_xml, list_user, tree)
+            CMS.zapoln_tree_spiskom(self, spis_xml, list_user, tree, xml_head)
             for _ in range(0, 8):
                 tree.resizeColumnToContents(_)
 
@@ -6212,8 +6245,14 @@ class mywindow(QtWidgets.QMainWindow):
                                 return False
 
                     if nomer_st == 4:
-                        if tk[i][15] != '':
-                            if tk[i][15] not in DICT_doc_reestr:
+                        if tk[i][15] != '': # 05.11.25
+                            attached_docs = set(tk[i][15].split('%20'))
+                            exists_in_db_files = attached_docs.intersection(DICT_doc_reestr.keys())
+                            exists_docs_protocol = any(
+                                doc for doc in attached_docs
+                                if doc.startswith('docs://')
+                            )
+                            if not exists_in_db_files and not exists_docs_protocol:
                                 return 'docs'
                         if tk[i][nomer_st] == "010101":
                             if tk[i][0] != 'Резка(ЧПУ)':
@@ -6297,6 +6336,8 @@ class mywindow(QtWidgets.QMainWindow):
         return True
 
     def nalich_tk(self, spisok):
+        xml_head = self.tkp_current_schema.XML_start_from_project_product_type
+        unavailable_types = CMS.XML_get_unavailable_xml_types(xml_head)
         s_bd = []
         spis_rc = self.SPIS_RC
         custom_request_c = f'''SELECT * FROM nomen WHERE П5 == "1" '''
@@ -6310,7 +6351,7 @@ class mywindow(QtWidgets.QMainWindow):
             return
         DICT_doc_reestr = F.deploy_dict_c(query, 'file_name')
 
-        spisok = [_ for _ in spisok if _['data']['Тип'] not in self.TIP_NEGRUZ_DSE]
+        spisok = [_ for _ in spisok if _['data']['Тип'] not in unavailable_types]
 
         for i in range(len(spisok)):
             print(f'{i} из {len(spisok)}')
@@ -6331,7 +6372,7 @@ class mywindow(QtWidgets.QMainWindow):
             if type(F.valm(spisok[i]['data']['Количество'])) == type(1.1):
                 flag_rashodnik = 1
             nom_tk = ''
-            if type_nn in self.TIP_NEGRUZ_DSE:
+            if type_nn in unavailable_types:
                 continue
             if nn not in DICT_NN_NTK:
                 CQT.msgbox(f'Не найдена {nn} в БД ДСЕ')

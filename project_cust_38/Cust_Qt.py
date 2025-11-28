@@ -6,11 +6,12 @@ import requests
 import subprocess
 from collections import namedtuple, defaultdict, deque
 from dataclasses import dataclass, field
-from functools import partial
 from itertools import count
+from contextlib import contextmanager
 import inspect
 from PyQt5 import QtWidgets, QtCore, QtGui, uic
-from PyQt5.QtWidgets import QStyledItemDelegate, QMainWindow, QTableWidget, QHeaderView, QApplication, QTabWidget, QTableWidgetItem
+from PyQt5.QtWidgets import (QStyledItemDelegate, QMainWindow, QTableWidget, QHeaderView,
+                             QApplication, QTabWidget, QTableWidgetItem,QMenu)
 from PyQt5.QtGui import QPixmap, QPen, QColor
 from PyQt5.QtCore import Qt ,QObject, QEvent, QSignalBlocker
 import project_cust_38.border_painter as CBPAINT
@@ -35,7 +36,7 @@ from typing import Iterable, Any, Callable, NamedTuple
 import ast
 from datetime import datetime
 from dateutil import parser
-
+from functools import partial
 
 ERP_CSS = """
         QTableWidget {
@@ -657,7 +658,92 @@ class LoadingBar(QtWidgets.QDialog):
             QLabel {
                     border-width: 0px;
             }""")
+
+
+class ContextMenuBuilder:
+    """
+    Универсальный билдер вложенных меню QMenu.
+    Можно использовать и напрямую, и через методы add_menu / add_submenu.
+
+    Пример:
         
+        b = ContextMenuBuilder(self)
+        b.add_menu("Просмотр", fnc1)
+        b.add_submenu("Редактировать")
+        b.add_menu("Переименовать", fnc2)
+        b.add_menu("Изменить", fnc3)
+        b.end_submenu()
+        menu = b.build()
+        menu.exec_(...)
+    """
+
+    def __init__(self, parent=None):
+        self.parent = parent
+        self._root = QMenu(parent)
+        self._stack = [self._root]
+        self._has_items = False
+
+    # --- публичные методы ---
+    def add_menu(self, name: str, fnc=None):
+        """Добавить пункт меню (QAction) в текущий уровень"""
+        current_menu = self._stack[-1]
+        act = QtWidgets.QAction(name, current_menu)
+        if callable(fnc):
+            # Оборачиваем вызов, чтобы после выполнения закрывать всё меню
+            act.triggered.connect(partial(self._on_action_triggered, fnc))
+        self._stack[-1].addAction(act)
+        self._has_items = True
+        return self  # для chain-нотации
+
+    def _on_action_triggered(self, fnc):
+        """Обертка для вызова функции и закрытия меню"""
+        fnc()
+        self.close_all()
+
+    def close_all(self):
+        """Закрывает все уровни меню"""
+        m = self._root
+        while isinstance(m, QMenu):
+            try:
+                m.blockSignals(True)
+                m.close()
+            except Exception:
+                break
+            m = m.parentWidget()
+        QApplication.processEvents()
+
+
+    def add_submenu(self, name: str):
+        """Добавить вложенное подменю и перейти внутрь него"""
+        sub = QMenu(name, self.parent)
+        self._stack[-1].addMenu(sub)
+        self._stack.append(sub)
+        self._has_items = True
+        return self
+
+    def end_submenu(self):
+        """Завершить текущий уровень вложенности"""
+        if len(self._stack) > 1:
+            self._stack.pop()
+        return self
+
+    def clear(self):
+        """Очистить всё меню"""
+        self._root.clear()
+        self._stack = [self._root]
+        self._has_items = False
+
+    def has_items(self) -> bool:
+        """Проверяет, добавлены ли пункты меню."""
+        return self._has_items
+
+    def build(self) -> QMenu:
+        """Вернуть собранное меню"""
+        # на случай незакрытых подменю — вернём корень
+        if self._has_items:
+            self._stack = [self._root]
+            return self._root
+
 def progress_decorator(fn):
     """
     При старте обернутой функции появляется окно загрузки
@@ -865,11 +951,22 @@ def clear_tbl(tbl:QtWidgets.QTableWidget):
     tbl.setColumnCount(0)
     tbl.blockSignals(False)
 
+def blink_widget_border(widget: QtWidgets.QWidget, blinks=3, delay=0.3,msg=None):
+    old_style = widget.styleSheet()
+    if msg:
+        msgbox(msg)
+    for _ in range(blinks):
+        widget.setStyleSheet("border: 2px solid red;")
+        QtWidgets.QApplication.processEvents()
+        time.sleep(delay)
+        widget.setStyleSheet(old_style)
+        QtWidgets.QApplication.processEvents()
+        time.sleep(delay)
 
 def blink_obj_c(self, chislo_mig, obj, msg, koef=0.3,icon = QtWidgets.QMessageBox.Information):
     """icon = NoIcon, Question, Information, Warning, Critical """
     msgbox(msg)
-    if str(type(obj)) == "<class 'PyQt5.QtWidgets.QTableWidgetItem'>":
+    if  isinstance(obj,QtWidgets.QTableWidgetItem) :
         old_col = obj.background()
         font = obj.font()
 
@@ -1049,6 +1146,32 @@ def select_cell(tbl,i,j):
     except:
         pass
 
+def nums_col_by_name_dict(table: QtWidgets.QTableWidget) -> dict[str, int]:
+    """
+    Возвращает словарь {имя_колонки: её индекс} для QTableWidget.
+    """
+    header = table.horizontalHeader()
+    columns = {}
+    for col in range(table.columnCount()):
+        item = table.horizontalHeaderItem(col)
+        if item is not None:
+            name = item.data(QtCore.Qt.UserRole)
+            if not name:
+                name = item.text()
+            columns[name] = col
+        else:
+            columns[f"col_{col}"] = col  # если у колонки нет заголовка
+    return columns
+
+
+def name_col_by_num(obj, num, not_found_val=None):
+    if obj.metaObject().className() == 'QTableWidget':
+        if obj.horizontalHeaderItem(num) != None:
+            name = obj.horizontalHeaderItem(num).data(QtCore.Qt.UserRole)
+            if not name:
+                name = obj.horizontalHeaderItem(num).text()
+            return name
+
 def num_col_by_name_c(obj, ima, not_found_val=None):
     if obj.metaObject().className() == 'QTreeWidget':
         for i in range(obj.columnCount()):
@@ -1128,7 +1251,9 @@ def get_list_line_form_tbl(tabl_bd:QTableWidget) -> list:
             if not tabl_bd.item(num_row,j) == None:
                 text = tabl_bd.item(num_row, j).text()
             if tabl_bd.horizontalHeaderItem(j) != None:
-                name = tabl_bd.horizontalHeaderItem(j).data(0)
+                name = tabl_bd.horizontalHeaderItem(j).data(QtCore.Qt.UserRole)
+                if not name:
+                    name = tabl_bd.horizontalHeaderItem(j).text()
                 if name in rez_dict:
                     name = name + "_" +str(j)
                 rez_dict[name] = text
@@ -1149,7 +1274,9 @@ def get_dict_line_form_tbl(tabl_bd:QTableWidget,row='') -> dict:
         if not tabl_bd.item(row, j) == None:
             text = tabl_bd.item(row, j).text()
         if tabl_bd.horizontalHeaderItem(j) != None:
-            name = tabl_bd.horizontalHeaderItem(j).data(0)
+            name = tabl_bd.horizontalHeaderItem(j).data(QtCore.Qt.UserRole)
+            if not name:
+                name = tabl_bd.horizontalHeaderItem(j).text()
             if name in rez_dict:
                 name = name + "_" + str(j)
             rez_dict[name] = text
@@ -1186,7 +1313,8 @@ def list_from_cmb_c(obj):
     return   rez
             
             
-def list_from_wtabl_c(obj, sep='', hat_c=False, only_visible=False, rez_dict=False, only_visible_columns = False,only_current_row=False):
+def list_from_wtabl_c(obj, sep='', hat_c=False, only_visible=False, rez_dict=False, only_visible_columns = False,
+                      only_current_row=False):
     spisok = []
     if obj == None:
         return []
@@ -1201,7 +1329,10 @@ def list_from_wtabl_c(obj, sep='', hat_c=False, only_visible=False, rez_dict=Fal
                     fl_column = False
             if fl_column:
                 if obj.horizontalHeaderItem(j) != None:
-                    s.append(obj.horizontalHeaderItem(j).data(0))
+                    header_name = obj.horizontalHeaderItem(j).data(QtCore.Qt.UserRole)
+                    if not  header_name:
+                        header_name = obj.horizontalHeaderItem(j).text()
+                    s.append(header_name)
                 else:
                     s.append('')
         if sep == '':
@@ -1327,7 +1458,7 @@ def add_color_wtab_c(obj, i, j, r, g, b):
         nb = 255
     obj.item(i, j).setBackground(QtGui.QColor(nr, ng, nb))
 
-def getCustData(obj, row: int = None, column: int = None):
+def getCustData(obj:QtWidgets.QTableWidget|QtWidgets.QTableWidgetItem, row: int = None, column: int = None):
     """
     Возвращает данные из Qt.UserRole.
     - Если obj — QTableWidgetItem, читает из него.
@@ -1349,6 +1480,39 @@ def getCustData(obj, row: int = None, column: int = None):
             return None
         return item.data(Qt.UserRole)
     raise TypeError(f"Недопустимый тип: {type(obj).__name__}")
+
+@contextmanager
+def table_updating(tbl: QtWidgets.QTableWidget):
+    """временно блокирует сигналы таблицы и ставит флаг _updating_table"""
+    is_outer_freeze = is_table_updating(tbl)
+    if not is_outer_freeze:
+        tbl.blockSignals(True)
+        tbl.setUpdatesEnabled(False)
+        tbl.setVisible(False)
+        tbl.setProperty('_updating_table', True)
+        #print(f'Установлен фриз {tbl.objectName()}')
+    else:
+        #print(f'Не установлен фриз {tbl.objectName()}')
+        pass
+    try:
+        yield tbl
+    finally:
+        if is_outer_freeze:
+            #print(f'Не снят фриз {tbl.objectName()}')
+            pass
+        else:
+            tbl.setProperty('_updating_table', False)
+            tbl.setUpdatesEnabled(True)
+            tbl.setVisible(True)
+            tbl.blockSignals(False)
+            QApplication.processEvents()
+            tbl.repaint()
+            #print(f'Снят фриз {tbl.objectName()}')
+
+
+def is_table_updating(tbl: QtWidgets.QTableWidget) -> bool:
+    """возвращает True, если таблица сейчас обновляется"""
+    return bool(tbl.property('_updating_table'))
 
 def setCustData(item:QTableWidgetItem|QTableWidget,data):
     if isinstance(item, QTableWidget):
@@ -1664,23 +1828,40 @@ def add_table(item, i, j, spis_spiskov, set_editeble_col_nomera={}, visota = 10,
     item.setCellWidget(i, j, table)
     return
 
-def add_combobox(self = '', table = '', i=0, j=0, list=[], first_void=True,  conn_func = '', editable = False, name_flag = None,list_tooltips=[]):
+def add_combobox(self = '', table = '', i=0, j=0, list=[], first_void=True,  conn_func = '', editable = False,
+                 name_flag = None,list_tooltips=[], list_data=[],return_data=False):
     current_text = table.item(i,j).text()
     combo = QtWidgets.QComboBox()
     combo.wheelEvent = lambda event: None
     fl = False
+
     if conn_func != '':
-        if self == '':
-            if name_flag != None:
-                combo.activated[str].connect(lambda text, row=i, col=j, flag=name_flag: conn_func(text,  row, col, flag))
-            else:
-                combo.activated[str].connect(lambda text, row=i, col=j, flag=name_flag: conn_func(text, row, col))
-        else:
-            if name_flag != None:
-                combo.activated[str].connect(lambda text, self=self, row=i, col=j, flag=name_flag: conn_func(self, text,  row, col,flag))
-            else:
-                combo.activated[str].connect(
-                    lambda text, self=self, row=i, col=j, flag=name_flag: conn_func(self, text, row, col))
+        signal = combo.activated[str]
+        get_value = lambda text: text
+        if return_data:
+            if len(list) != len(list_data):
+                raise ValueError(f'add_combobox len(list) != len(list_data)')
+            signal = combo.activated[int]
+            get_value = lambda i: combo.itemData(i)
+
+        def make_handler(self=self, row=i, col=j, flag=name_flag):
+            def handler(arg):
+                value = get_value(arg)
+                if self == '':
+                    if flag is not None:
+                        conn_func(value, row, col, flag)
+                    else:
+                        conn_func(value, row, col)
+                else:
+                    if flag is not None:
+                        conn_func(self, value, row, col, flag)
+                    else:
+                        conn_func(self, value, row, col)
+
+            return handler
+
+        signal.connect(make_handler())
+
     if first_void:
         combo.addItem("")
     if type(list) == type(dict()):
@@ -1690,19 +1871,29 @@ def add_combobox(self = '', table = '', i=0, j=0, list=[], first_void=True,  con
             koef = 1
         for iter_combo, key in enumerate(list):
             combo.addItem(key)
-            combo.setItemData(_+koef, list[key], QtCore.Qt.ToolTipRole)
+
+            if return_data:
+                combo.setItemData(_ + koef, list_data[iter_combo], QtCore.Qt.UserRole)
+
             if len(list_tooltips) == len(list):
                 index = combo.count() - 1
                 combo.setItemData(index, list_tooltips[iter_combo], QtCore.Qt.ToolTipRole)
+            else:
+                if isinstance(list[key], str):
+                    combo.setItemData(_ + koef, list[key], QtCore.Qt.ToolTipRole)
+
             if key == current_text:
                 fl = True
             _+=1
     else:
-        for iter_combo,  item in enumerate(list):
+        for iter_combo, item in enumerate(list):
             combo.addItem(item)
             if len(list_tooltips) == len(list):
                 index = combo.count() - 1
                 combo.setItemData(index, list_tooltips[iter_combo], QtCore.Qt.ToolTipRole)
+            if return_data:
+                index = combo.count() - 1
+                combo.setItemData(index, list_data[iter_combo], QtCore.Qt.UserRole)
             if item == current_text:
                 fl = True
     table.setCellWidget(i, j, combo)
@@ -1932,7 +2123,8 @@ def fill_wtabl(dict_or_list, object, set_editeble_col_nomera={}, ogr_maxshir_kol
                hide_head_column:bool=False,hide_head_rows:bool=False,StretchLastSection=True,select_last_row=False,
                list_column_widths:list=[],save_column_sort_hh: bool = False, StretchLastRow=False,tbl_vidget:tuple|None=None,count_unhide_rows=5,
                selectionBehavior="SelectItems",count_rows_cell_max=1, load_links=False, conn_func_label_link=None,
-               styleSheet=None,parent_self=None,sortingEnabled=False,selectionMode="ExtendedSelection"):
+               styleSheet=None,parent_self=None,sortingEnabled=False,selectionMode="ExtendedSelection",
+               fncContextMenu=None,aliases_header:dict=None):
 
 #16.07.25
     """
@@ -1962,6 +2154,10 @@ def fill_wtabl(dict_or_list, object, set_editeble_col_nomera={}, ogr_maxshir_kol
             2	    MultiSelection	            Множественный выбор (Ctrl+ЛКМ, но без Shift)
             3	    ExtendedSelection	        Расширенный выбор (как в проводнике — работает Shift и Ctrl)
             4	    ContiguousSelection	        Только смежные элементы (работает Shift, но не Ctrl)
+    :param fncContextMenu: 
+        fncContextMenu(self:mywindow,tbl:QtWidgets.QTableWidget,row:int,col:int,menu_builder:CQT.ContextMenuBuilder)
+    aliases_header :
+            Названия для пользователя
     :return:
     """
 
@@ -2013,7 +2209,21 @@ def fill_wtabl(dict_or_list, object, set_editeble_col_nomera={}, ogr_maxshir_kol
     start_fill = 1
     if not hide_head_column:
         object_tbl.setRowCount(len(list_of_data) - 1)
-        object_tbl.setHorizontalHeaderLabels(list_of_data[0])
+
+        # Настраиваем заголовки
+        for i_head, name_head in enumerate(list_of_data[0]):
+
+            if aliases_header:
+                name_head_alias = name_head
+                if name_head in aliases_header:
+                    name_head_alias = aliases_header[name_head]
+                item = QtWidgets.QTableWidgetItem(name_head_alias)
+                # Сохраняем внутреннее имя в UserRole
+                item.setData(QtCore.Qt.UserRole, name_head)
+            else:
+                item = QtWidgets.QTableWidgetItem(name_head)
+            object_tbl.setHorizontalHeaderItem(i_head, item)
+        #object_tbl.setHorizontalHeaderLabels(list_of_data[0])
     else:
         object_tbl.setRowCount(len(list_of_data))
         object_tbl.setHorizontalHeaderLabels(['' for _ in list_of_data[0]])
@@ -2106,7 +2316,8 @@ def fill_wtabl(dict_or_list, object, set_editeble_col_nomera={}, ogr_maxshir_kol
                                hide_head_column = hide_head_column, hide_head_rows = hide_head_rows, StretchLastSection=StretchLastSection,
                                select_last_row=select_last_row, list_column_widths = list_column_widths, 
                            StretchLastRow=StretchLastRow,tbl_vidget=(i-1,j),count_unhide_rows=count_unhide_rows,
-                           selectionBehavior=selectionBehavior,count_rows_cell_max=count_rows_cell_max, load_links=load_links)
+                           selectionBehavior=selectionBehavior,count_rows_cell_max=count_rows_cell_max,
+                           load_links=load_links,aliases_header=aliases_header)
     object_tbl.horizontalHeader().setMinimumSectionSize(1)
     object_tbl.horizontalHeader().setDefaultSectionSize(20)
     object_tbl.verticalHeader().setMinimumSectionSize(1)
@@ -2181,11 +2392,33 @@ def fill_wtabl(dict_or_list, object, set_editeble_col_nomera={}, ogr_maxshir_kol
                     object_tbl.setColumnWidth(i,int(list_column_widths[i]))
     if save_column_sort_hh and tbl_object_name:#16.07.25
         FillHorizontalHeaderSort(object_tbl)
+    
+    if fncContextMenu is not None:
+        # Разрешаем контекстное меню
+        object_tbl.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        def open_menu( pos: QtCore.QPoint):
+            item = object_tbl.itemAt(pos)
+            if not item:
+                return
+
+            row, col = item.row(), item.column()
+            menu_builder = ContextMenuBuilder(object_tbl)
+            fncContextMenu(parent_self if parent_self else object, object_tbl, row, col, menu_builder)
+
+
+            if menu_builder.has_items():
+                # ничего не добавлено — не открываем меню
+                menu = menu_builder.build()
+                menu.exec_(object_tbl.viewport().mapToGlobal(pos))
+
+        object_tbl.customContextMenuRequested.connect(open_menu)
+    
     if paret_item == None:
         return object_tbl
     paret_item.setCellWidget(tbl_vidget[0], tbl_vidget[1], object_tbl)
-    
 
+    
+        
 
 def fill_combobox_in_table_c(tbl):
     for i in range(tbl.rowCount()):
@@ -2595,74 +2828,80 @@ def fill_wtree_unique(tree:QtWidgets.QTreeWidget, list_dicts:list,  expand:bool 
     
 
 def load_icons(self:object,size:int=32):
+    
+    def calc_name_img(item:str)->None|str:
+        if F.existence_file_c(dir + F.sep() + item):
+            name_img = dir + F.sep() + item
+            return name_img
+        if F.existence_file_c(dir + F.sep() + item + '.png'):
+            name_img = dir + F.sep() + item + '.png'
+            return name_img
+        if F.existence_file_c(dir + F.sep() + item + '.ico'):
+            name_img = dir + F.sep() + item + '.ico'
+            return name_img
+        if F.existence_file_c(dir + F.sep() + item + '.svg'):
+            name_img = dir + F.sep() + item + '.svg'
+            return name_img
+    
     dir = F.sep().join([F.path_to_execut_file_c(), 'icons'])
-    if F.existence_file_c(dir):
-        try:
-            if "ui" in self.__dict__:
-                ui = self.ui
-            elif "ui2" in self.__dict__:
-                ui = self.ui2
-            elif "ui3" in self.__dict__:
-                ui = self.ui3
-        except:
-            return 
+    if not F.existence_file_c(dir):
+        return 
+    set_ui = set()
+    for attr in self.__dict__.keys():
+        if attr.startswith('ui'):
+            if len(attr) == 2 or (len(attr) == 3 and F.is_numeric(attr[-1])):
+                ui = getattr(self, attr)
+                set_ui.add(ui)
+    if not set_ui:
+        return 
+    for ui in set_ui:
         for item in ui.__dict__:
             if str(type(ui.__dict__[item])) == "<class 'PyQt5.QtWidgets.QLabel'>":
-                name_img = ''
-                if F.existence_file_c(dir + F.sep() + item + '.png'):
-                    name_img = dir + F.sep() + item + '.png'
-                if F.existence_file_c(dir + F.sep() + item + '.ico'):
-                    name_img = dir + F.sep() + item + '.ico'
-                if F.existence_file_c(dir + F.sep() + item + '.svg'):
-                    name_img = dir + F.sep() + item + '.svg'
-                if F.existence_file_c(dir + F.sep() + item):
-                    name_img = dir + F.sep() + item
-                if name_img != '':
+                name_img = calc_name_img(item)
+                if name_img:
                     icon1 = QtGui.QPixmap(name_img)
                     eval(f'ui.{item}.setPixmap(icon1)')
                     eval(f'ui.{item}.setScaledContents(True)')
                     eval(f'ui.{item}.setFixedSize({size}, {size})')
                     eval(f'ui.{item}.setToolTip(self.ui.{item}.text())')
                     eval(f'ui.{item}.setText("")')
-
-            if str(type(ui.__dict__[item])) == "<class 'PyQt5.QtWidgets.QPushButton'>":
-                name_img = ''
-                if F.existence_file_c(dir + F.sep() + item + '.png'):
-                    name_img = dir + F.sep() + item + '.png'
-                if F.existence_file_c(dir + F.sep() + item + '.ico'):
-                    name_img = dir + F.sep() + item + '.ico'
-                if F.existence_file_c(dir + F.sep() + item + '.svg'):
-                    name_img = dir + F.sep() + item + '.svg'
-                if F.existence_file_c(dir + F.sep() + item):
-                    name_img = dir + F.sep() + item
-                if name_img != '':
-
+                
+            elif str(type(ui.__dict__[item])) == "<class 'PyQt5.QtWidgets.QPushButton'>":
+                name_img = calc_name_img(item)
+                if name_img:
                     icon1 = QtGui.QIcon()
                     icon1.addPixmap(QtGui.QPixmap(name_img), QtGui.QIcon.Normal, QtGui.QIcon.Off)
                     eval(f'ui.{item}.setIcon(icon1)')
                     eval(f'ui.{item}.setIconSize(QtCore.QSize({size}, {size}))')
-                    eval(f'ui.{item}.setToolTip(self.ui.{item}.text())')
+                    tooltip = eval(f'ui.{item}.toolTip().strip()')
+                    if tooltip:
+                        tooltip = f'({tooltip})'
+                    eval(f'ui.{item}.setToolTip(self.ui.{item}.text()+"{tooltip}")')
                     eval(f'ui.{item}.setText("")')
-
-            if str(type(ui.__dict__[item])) == "<class 'PyQt5.QtWidgets.QTabWidget'>":#tabwidget
+    
+            elif str(type(ui.__dict__[item])) == "<class 'PyQt5.QtWidgets.QTabWidget'>":#tabwidget
                 for child in ui.__dict__:
                     if str(type(ui.__dict__[child])) == "<class 'PyQt5.QtWidgets.QWidget'>":
                         if eval(f'ui.{item}.isAncestorOf(ui.{child})'):
-                            i = eval(f'ui.{item}.indexOf(ui.{child})') 
-                            name_img = ''
-                            if F.existence_file_c(dir + F.sep() + child + '.png'):
-                                name_img = dir + F.sep() + child + '.png'
-                            if F.existence_file_c(dir + F.sep() + child + '.ico'):
-                                name_img = dir + F.sep() + child + '.ico'
-                            if F.existence_file_c(dir + F.sep() + child + '.svg'):
-                                name_img = dir + F.sep() + child + '.svg'
-                            if F.existence_file_c(dir + F.sep() + child):
-                                name_img = dir + F.sep() + child
-                            if name_img != '':
+                            i = eval(f'ui.{item}.indexOf(ui.{child})')
+                            name_img = calc_name_img(child)
+                            if name_img:
                                 icon1 = QtGui.QIcon()
                                 icon1.addPixmap(QtGui.QPixmap(name_img), QtGui.QIcon.Normal, QtGui.QIcon.Off)
                                 eval(f'ui.{item}.setTabIcon({i}, icon1)')
-            
+            # === Для QAction (например, кнопки меню и тулбара) ===
+            elif str(type(ui.__dict__[item])) == "<class 'PyQt5.QtWidgets.QAction'>":
+                name_img = calc_name_img(item)
+                if name_img:
+                    icon1 = QtGui.QIcon()
+                    icon1.addPixmap(QtGui.QPixmap(name_img), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+                    a = eval(f'ui.{item}')
+                    a.setIcon(icon1)
+                    a.setIconVisibleInMenu(True)
+                    tooltip = a.toolTip().strip()
+                    if tooltip:
+                        tooltip = f'({tooltip})'
+                    a.setToolTip(a.text()+tooltip)
 
 def read_err(exc_traceback):
     if exc_traceback.tb_next == None:
@@ -2672,6 +2911,12 @@ def read_err(exc_traceback):
         return filename, exc_traceback.tb_lineno, line
     else:
         return read_err(exc_traceback.tb_next)
+
+def get_mainwindow_background_color(self)->QtGui.QColor:
+    """Получает цвет фона MainWindow"""
+    palette = self.palette()
+    bg_color = palette.color(QtGui.QPalette.Window)
+    return bg_color
 
 
 def load_css(self, add_menu: bool = True):
@@ -2832,6 +3077,7 @@ def onerror(funcd):
                         pass
 
             rez = funcd( *args, **kwargs)
+
             return rez
         except Exception as ex:
             exc_type, exc_instance, exc_traceback = sys.exc_info()
@@ -3053,7 +3299,8 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
                  use_first_row_as_header=True, print_hat=True,
                  func_btn0=None, selection_from_tbl=False, ExtendedSelection=True, selectRows=False,
                  func_oform_filtr=None, load_links=False, conn_func_label_link=None, styleSheet=None, parent_self=None,
-                 sortingEnabled=False, not_standart_close=False, save_column_sort_hh: bool = False):
+                 sortingEnabled=False, not_standart_close=False, save_column_sort_hh: bool = False,
+                 aliases_header:dict=None):
         """        #SP_MessageBoxCritical
         #SP_MessageBoxInformation
         #SP_MessageBoxQuestion
@@ -3158,13 +3405,10 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
                 else:
                     dict_or_list.insert(0, [str(i) for i, v in enumerate(dict_or_list[0])])
             fill_wtabl(dict_or_list, tbl, height_row=25, auto_type=False, colorful_edit=colorful_edit,
-                       load_links=load_links, conn_func_label_link=conn_func_label_link,styleSheet=styleSheet,parent_self=parent_self,sortingEnabled=sortingEnabled,
-                       save_column_sort_hh=save_column_sort_hh)
-        if func_oform_tbl:
-            if parent_self:
-                func_oform_tbl(tbl,parent_self)
-            else:
-                func_oform_tbl(tbl)
+                       load_links=load_links, conn_func_label_link=conn_func_label_link,styleSheet=styleSheet,
+                       parent_self=parent_self,sortingEnabled=sortingEnabled,
+                       save_column_sort_hh=save_column_sort_hh,aliases_header=aliases_header)
+
         if selectRows:
             tbl.setSelectionBehavior(QtWidgets.QTableWidget.SelectionBehavior.SelectRows)
         else:
@@ -3173,7 +3417,25 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
             tbl.setSelectionMode(QtWidgets.QTableWidget.SelectionMode.ExtendedSelection)
         else:
             tbl.setSelectionMode(QtWidgets.QTableWidget.SelectionMode.SingleSelection)
-        
+        if func_oform_tbl:
+            if parent_self:
+                func_oform_tbl(tbl, parent_self)
+            else:
+                func_oform_tbl(tbl)
+        if show_filtr:
+            hat_c = {tbl.horizontalHeaderItem(col).text(): "" for col in range(tbl.columnCount())}
+            fill_wtabl([hat_c], tblf, height_row=25, auto_type=False,
+                       set_editeble_col_nomera={_ for _ in range(tbl.columnCount())})
+            _load_tbl(tbl, tblf, True)
+            tblf.setToolTip(
+                "фильтр по вхождению: \n* - любой символ\n! - не\n= - полное совпадение\n| - ИЛИ\n& - И\n'... - RegEx \nдаты: <24-11-11 & >24-11-01")
+            if func_oform_filtr:
+                if parent_self:
+                    func_oform_filtr(tbl, tblf, parent_self)
+                else:
+                    func_oform_filtr(tbl, tblf)
+        else:
+            tblf.setHidden(True)
         summ_width = 0
         for clmn in range(tbl.columnCount()):
             summ_width += (tbl.columnWidth(clmn) + 1)
@@ -3187,20 +3449,7 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
         self.setMinimumWidth(width_dialog)
         tbl.setToolTip(
             'F11 - полный экран')
-        if show_filtr:
-            hat_c = {tbl.horizontalHeaderItem(col).text(): "" for col in range(tbl.columnCount())}
-            fill_wtabl([hat_c], tblf, height_row=25, auto_type=False,
-                       set_editeble_col_nomera={_ for _ in range(tbl.columnCount())})
-            _load_tbl(tbl, tblf, True)
-            tblf.setToolTip(
-                "фильтр по вхождению: \n* - любой символ\n! - не\n= - полное совпадение\n| - ИЛИ\n& - И\n'... - RegEx \nдаты: <24-11-11 & >24-11-01")
-            if func_oform_filtr:
-                if parent_self:
-                    func_oform_filtr(tbl, tblf,parent_self)
-                else:
-                    func_oform_filtr(tbl, tblf)
-        else:
-            tblf.setHidden(True)
+
 
         self.ui.tbl_summ.setHidden(True)
         if load_summ:
@@ -3280,6 +3529,21 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
         load_icons(self, 24)
         self.oform_action()
         return
+
+    def disabled_btn0(self,val:bool=True):
+        bbox = self.ui.buttonBox
+        for btn in bbox.buttons():
+            if bbox.buttonRole(btn) in (QtWidgets.QDialogButtonBox.ButtonRole.ActionRole,
+                                        QtWidgets.QDialogButtonBox.ButtonRole.YesRole):
+                btn.setEnabled(not val)
+                break
+
+    def disabled_btn1(self,val:bool=True):
+        bbox = self.ui.buttonBox
+        for btn in bbox.buttons():
+            if bbox.buttonRole(btn) == QtWidgets.QDialogButtonBox.ButtonRole.NoRole:
+                btn.setEnabled(not val)
+                break
 
     def hide_widgets(self):
         self.ui.fr_figures.setHidden(True)
@@ -3810,7 +4074,7 @@ def msgboxg_get_table(self, msg, dict_or_list, btn0_name="Ввод", btn1_name="
                       print_hat=True,func_btn0=None,selection_from_tbl=False,ExtendedSelection=True,
                       selectRows=False,func_oform_filtr=None,load_links=False, conn_func_label_link=None,
                       styleSheet=None,parent_self=None,sortingEnabled=False,yesNoMode=False,not_standart_close=False,
-                      save_column_sort_hh: bool = False):
+                      save_column_sort_hh: bool = False,aliases_header=None):
     self.__ansver_Dialog_tbl = None
     dialog_tbl = Dialog_tbl(self,msg, dict_or_list, btn0_name, btn1_name, func_validate,
                             disable_btn0=disable_btn0,disable_btn1=disable_btn1,load_summ=load_summ,
@@ -3821,7 +4085,7 @@ def msgboxg_get_table(self, msg, dict_or_list, btn0_name="Ввод", btn1_name="
                             func_oform_filtr=func_oform_filtr,load_links=load_links,
                             conn_func_label_link=conn_func_label_link,styleSheet=styleSheet,parent_self=parent_self,
                             sortingEnabled=sortingEnabled,not_standart_close=not_standart_close,
-                            save_column_sort_hh=save_column_sort_hh)
+                            save_column_sort_hh=save_column_sort_hh,aliases_header=aliases_header)
 
     returnValue = dialog_tbl.exec()
     if yesNoMode:
@@ -3844,7 +4108,8 @@ def msgboxg_get_table_ok_inf(self, msg, dict_or_list, btn0_name="OK", btn1_name=
                              style_icon='SP_MessageBoxInformation',func_oform_tbl=None,use_first_row_as_header=True,
                              print_hat=True,func_btn0=None,selection_from_tbl=False,ExtendedSelection=True,
                              selectRows=False,func_oform_filtr=None,load_links=False, conn_func_label_link=None,
-                             styleSheet=None,parent_self=None,sortingEnabled=False, save_column_sort_hh: bool = False):
+                             styleSheet=None,parent_self=None,sortingEnabled=False, save_column_sort_hh: bool = False,
+                             aliases_header:dict=None):
     self.__ansver_Dialog_tbl = None
     dialog_tbl = Dialog_tbl(self,msg, dict_or_list, btn0_name, btn1_name, func_validate,disable_btn0=disable_btn0,
                             disable_btn1=disable_btn1,load_summ=load_summ,show_filtr=show_filtr,WindowTitle=WindowTitle,
@@ -3853,7 +4118,7 @@ def msgboxg_get_table_ok_inf(self, msg, dict_or_list, btn0_name="OK", btn1_name=
                             print_hat=print_hat,func_btn0=func_btn0,selection_from_tbl=selection_from_tbl,
                             ExtendedSelection=ExtendedSelection,selectRows=selectRows,func_oform_filtr=func_oform_filtr,
                             load_links=load_links, conn_func_label_link=conn_func_label_link,styleSheet=styleSheet,parent_self=parent_self,
-                            sortingEnabled=sortingEnabled, save_column_sort_hh=save_column_sort_hh)
+                            sortingEnabled=sortingEnabled, save_column_sort_hh=save_column_sort_hh,aliases_header=aliases_header)
     returnValue = dialog_tbl.exec()
     return
 #++20.05.25
@@ -3989,7 +4254,11 @@ def apply_summ_с(tbl, sredn=False):
     tbl.setRowHidden(tbl.rowCount() - 1, False)
 
 @onerror
-def apply_filtr_c(self, tblf, tbl,save_data=True):
+def apply_filtr_c(self, tblf, tbl,save_data=True,get_dict_by_fild:None|str=None)->dict:
+    dict_get_dict_by_fild = dict()
+    nf_fild =None
+    if get_dict_by_fild:
+        nf_fild = num_col_by_name_c(tblf,get_dict_by_fild)
     tbl.blockSignals(True)
     def easy_filtr(filtr_word, val_word):
         if tbl.item(i, j) == None:
@@ -4013,6 +4282,12 @@ def apply_filtr_c(self, tblf, tbl,save_data=True):
                         return False
 
                 else:
+                    if '&' in filtr_word: #20.11.25
+                        spis = filtr_word.split('&')
+                        return all(easy_filtr(usl, val_word) for usl in spis)
+                    if '|' in filtr_word:
+                        spis = filtr_word.split('|')
+                        return any(easy_filtr(usl, val_word) for usl in spis)
                     if len(filtr[0][j]) > 1 and filtr_word[0] == '!':
                         if len(filtr[0][j]) > 2 and filtr_word[1] == '=':
                             filtr_word = filtr_word[2:]
@@ -4055,9 +4330,7 @@ def apply_filtr_c(self, tblf, tbl,save_data=True):
                      "%y-%m-%d",
                      "%Y-%m-%dT%H:%M:%S"
                      ]
-    
     struck_save = dict()
-
     filtr = list_from_wtabl_c(tblf)
     for j in range(len(filtr[0])):
         filtr_word = filtr[0][j].strip()
@@ -4122,9 +4395,15 @@ def apply_filtr_c(self, tblf, tbl,save_data=True):
             if flag_ost == False:
                 break
         if flag_ost:
-            tbl.showRow(i)
+            if get_dict_by_fild:
+                dict_get_dict_by_fild[tbl.item(i,nf_fild).text()] = True
+            else:
+                tbl.showRow(i)
         else:
-            tbl.hideRow(i)
+            if get_dict_by_fild:
+                dict_get_dict_by_fild[tbl.item(i,nf_fild).text()] = False
+            else:
+                tbl.hideRow(i)
     tbl.blockSignals(False)
     def _save_tmp_stukt(data,name):
         puth_name = qt_tmp_dir() + os.sep + name + '.pickle'
@@ -4132,7 +4411,7 @@ def apply_filtr_c(self, tblf, tbl,save_data=True):
     if save_data: # saved_filter_
         put_value_in_filtr(struck_save, tblf, tbl)
         # _save_tmp_stukt(struck_save, "saved_filter_" + tblf.objectName())
-
+    return dict_get_dict_by_fild
 
 @onerror
 def fill_summ_tbl(self, tbls:QtWidgets.QTableWidget, tbl:QtWidgets.QTableWidget,
@@ -4205,8 +4484,11 @@ def fill_summ_tbl(self, tbls:QtWidgets.QTableWidget, tbl:QtWidgets.QTableWidget,
     tbls.blockSignals(False)
 
 
+
+
 @onerror
-def fill_filtr_c(self, tblf:QtWidgets.QTableWidget, tbl:QtWidgets.QTableWidget, spis_znach='', hidden_scroll=False):
+def fill_filtr_c(self, tblf:QtWidgets.QTableWidget, tbl:QtWidgets.QTableWidget, spis_znach='', hidden_scroll=False,
+                 USER_CONFIG_reset_tbl_filtrs_forsed_off = False ):
 
     tblf.blockSignals(True)
     # hat_c = {_:"" for _ in CQT.get_dict_line_form_tbl(tbl,0).keys()}
@@ -4234,7 +4516,7 @@ def fill_filtr_c(self, tblf:QtWidgets.QTableWidget, tbl:QtWidgets.QTableWidget, 
                 if key in hat_c:
                     hat_c[key] = spis_znach[key]
     else:
-        if 'USER_CONFIG' in self.__dict__ and self.USER_CONFIG.reset_tbl_filtrs['Значение'] == '0':
+        if 'USER_CONFIG' in self.__dict__ and self.USER_CONFIG.reset_tbl_filtrs['Значение'] == '0' and not USER_CONFIG_reset_tbl_filtrs_forsed_off:
             hat_c = get_spis_znach_for_filtr(self,tblf,tbl)
         else:
             for j in range(tblf.columnCount()):
@@ -4513,8 +4795,9 @@ def connect_to_resize(self,tmp_dir):
                 if isinstance(ui.__dict__[item],QtWidgets.QTableWidget):
                     table = ui.__dict__[item]
                     table.setToolTip('Ctrl+Shift+C - Копировать таблицу\nCtrl+Shift+P - Вывод доп.табличной формы')
-                    header = table.horizontalHeader()
-                    header.sectionResized[int, int, int].connect(lambda *args: on_section_resized(self, tmp_dir))
+                    header = ui.__dict__[item].horizontalHeader()
+                    header.sectionResized.connect(
+                        lambda  : on_section_resized(self, tmp_dir))
                 if isinstance(ui.__dict__[item],QtWidgets.QTreeWidget):
                     tree = ui.__dict__[item]
                     header = tree.header()
@@ -4528,28 +4811,79 @@ def connect_to_resize(self,tmp_dir):
                     splitter = ui.__dict__[item]
 
                     splitter.splitterMoved.connect(lambda pos, idx, sp=splitter: on_section_resized(self, tmp_dir, sp))
+@onerror
+def adjust_last_column_width(table: QtWidgets.QTableWidget, *args):
+    header = table.horizontalHeader()
+    col_count = header.count()
+    if col_count == 0:
+        return
+
+    # видимые и реально существующие по ширине колонки
+    visible_cols = [
+        i for i in range(col_count)
+        if not header.isSectionHidden(i) and header.sectionSize(i) > 0
+    ]
+    if not visible_cols:
+        return
+
+    last_col = visible_cols[-1]
+
+    # ширина доступной области таблицы
+    table_width = table.viewport().width()
+
+    # корректировка на вертикальный скроллбар
+    v_scroll = table.verticalScrollBar()
+    if v_scroll.isVisible():
+        table_width -= v_scroll.width()
+
+    # суммарная ширина всех видимых колонок кроме последней
+    used = 0
+    for col in visible_cols[:-1]:
+        w = header.sectionSize(col)
+        if w > 0:
+            used += w
+
+    free_width = table_width - used
+    if free_width < 0:
+        free_width = 0
+
+    # растягиваем последнюю видимую колонку
+    header.resizeSection(last_col, free_width)
+
+
 
 @onerror
-def load_column_widths(self='',tbl:QtWidgets.QTableWidget|QtWidgets.QTreeWidget|QtWidgets.QSplitter=None,tmp_dir:str=''):
+def load_column_widths(self='', tbl=None, tmp_dir='', adjust_last_column:bool=True):
+    if tbl is None:
+        return
+
     tbl.blockSignals(True)
+    tbl.setUpdatesEnabled(False)
+
     try:
-        spis_width = []
         putf = tmp_dir + F.sep() + tbl.objectName() + "_column_widths.txt"
+        spis_width = []
+
         if F.existence_file_c(putf):
             spis_width = F.load_file(putf)
-            if isinstance(tbl, QtWidgets.QSplitter): 
+
+            if isinstance(tbl, QtWidgets.QSplitter):
                 tbl.setSizes([int(_) for _ in spis_width])
-                #print(f'{tbl.objectName()} load {spis_width}')
+
             else:
                 if tbl.columnCount() == len(spis_width):
-                    #print(f'{tbl.objectName()} load {spis_width}')
                     for i in range(tbl.columnCount()):
                         tbl.setColumnWidth(i, int(spis_width[i]))
-    except:
+
+                if isinstance(tbl, QtWidgets.QTableWidget) and adjust_last_column:
+                    adjust_last_column_width(tbl)
+
+        return spis_width
+
+    finally:
+        tbl.setUpdatesEnabled(True)
         tbl.blockSignals(False)
-        return
-    tbl.blockSignals(False)
-    return spis_width
+        tbl.repaint()
 
 
 def tbl_encircle(tbl:QtWidgets.QTableWidget,r1=0,c1=0,r2=None,c2=None, thick_out: int = 4,
@@ -4575,6 +4909,12 @@ def tbl_encircle(tbl:QtWidgets.QTableWidget,r1=0,c1=0,r2=None,c2=None, thick_out
 def is_tbl_cell_encircle(tbl):
     pass
 
+def delete_cellWidget(table:QtWidgets.QTableWidget,row:int, column:int):
+    widget = table.cellWidget(row, column)
+    if widget is not None:
+        table.removeCellWidget(row, column)
+        widget.deleteLater()  # освобождает объект корректно
+    
 def delete_obj(obj):
     try:
         obj.deleteLater()
@@ -5105,7 +5445,8 @@ class InteractiveLabelInstance(QtCore.QObject):
             current_object: InteractiveLabelInstance # Для взаимодействия с виджетами table,label,buttons
             row: int,
             column: int,
-            cell_val: Any Дополнительный объект (по совместимости с CQT.add_btn
+            cell_val: Any Дополнительный объект (по совместимости с CQT.add_btn,
+        img_path=  F.sep().join([F.path_to_execut_file_c(),'icons','btn_select'])
         )
         """
         btn = QtWidgets.QPushButton(txt_button)

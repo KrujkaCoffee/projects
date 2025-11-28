@@ -86,7 +86,8 @@ class BaseConfig(metaclass=SingletonMeta):
     _CONFIG_DB = F.scfg('BD_users')
     if _CONFIG_DB == '':
         print(f'BD_users not defined')
-        raise Exception()
+        F.win_msgbox('[Cust_config] База данных конфигураций недоступна') #21.11.25
+        quit(1)
     __table__ = 'app_config'
     _key_col = 'name'
     _val_col = 'value'
@@ -214,11 +215,13 @@ class ProjectConfig(VerticalConfig['ProjectConfig']):
     db_kplan: str = Desc()
     db_users: str = Desc()
     db_resxml: str = Desc()
+    db_nomen: str = Desc() #10.11.25
     db_dse: str = Desc()
     db_flet: str = Desc()
     ERB_BASE_URL: str = Desc()
     tk_temp_folder: str = Desc()
     mk_temp_folder: str = Desc()
+    tk_storage_reestr: str = Desc() #10.11.25
 
 
 class AppConfig(HorizontalConfig):
@@ -228,6 +231,7 @@ class AppConfig(HorizontalConfig):
     module: str = Desc() #18,08.25
     params: list = Desc(sep='|')
     path: str = Desc()
+    is_ui: bool = Desc() #11.11.25 Для функций с ветвлением графического/консольного вывода
 
 
 def tmp_dir():
@@ -249,6 +253,10 @@ def load_tmp_stukt(ima,default_val = None):
         return val
     return default_val
 
+def load_place():
+    User_config.load_config(Config.user_config)
+    SingletonMeta.clear_instance(Place)
+    Config.place = Place(Config.user_config.Organization['Значение'])
 
 class User_config(metaclass=SingletonMeta):
     def __init__(self, common_config: ProjectConfig = None):
@@ -302,6 +310,7 @@ class User_config(metaclass=SingletonMeta):
                 'necessary_reload': False,
             }
         }
+
         self.__data_config_sample = data_config_sample
         self.reset_tbl_filtrs = None
         self.ERP_base_name = None
@@ -314,7 +323,7 @@ class User_config(metaclass=SingletonMeta):
         current_login = F.user_name()
         return current_login in self.common_config.developers.split('|')
 
-    def load_config(self):
+    def load_config(self=None):
         data = load_tmp_stukt('user_config', {})
         data_config = copy.deepcopy(self.__data_config_sample)
         for param, dic in data_config.items():
@@ -420,8 +429,6 @@ class User_config(metaclass=SingletonMeta):
                 CQT.msgbox(f'Перезапустить приложение')
                 quit()
             self.load_user_config(window)
-            return True
-        return False
 
 class CodeNaryad:
     Плановая: int = None
@@ -451,8 +458,8 @@ class Evaluation_department_podrazdel_for_reports:
             f'SELECT Имя FROM podrazdel WHERE Пномер = {eval_podr}', one_column=True,one=True,
             hat_c=False
         )
-        if isinstance(data, list):
-            self.Имя = data[0]
+        if data != False:
+            self.Имя = data #11.11.25
         else:
             logging.info('[Cust_config.Evaluation_department_podrazdel_for_reports] Не удалось инициализировать имя оценочного подразделения из-за недоступности БД')
 
@@ -486,14 +493,12 @@ class Place(metaclass=SingletonMeta):
             if AppConfig().is_disabled:
                 return
             user_config = User_config()
-            if not isinstance(user_config.Organization, dict) or not user_config.Organization.get('Значение') or user_config.Organization.get('Значение') in ('None' or None):
+            if not isinstance(user_config.Organization, dict) or not user_config.Organization.get('Значение'):
                 if QtWidgets.QApplication.instance() is None:
                     app = QtWidgets.QApplication(sys.argv)
                 widget = QtWidgets.QMainWindow()
                 CQT.msgbox('Не выбрана организация')
                 user_config.gui_load(widget)
-                if not user_config.Organization or not user_config.Organization.get('Значение'):
-                    quit()
                 return
             organization_name = user_config.Organization.get('Значение')
         # db_naryad = F.scfg('Naryad')

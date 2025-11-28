@@ -167,11 +167,13 @@ class PyQtEventHook(QObject):
                 profile = self.employee_by_login_key.get(F.user_name())
                 if CFG.Config.user_config.is_developer:
                     return
-                if not profile:
-                    return
+                if isinstance(CSQ.custom_request_c, F.StatisticDecorator):
+                    custom_request_c = CSQ.custom_request_c.function
+                else:
+                    custom_request_c = CSQ.custom_request_c
                 department = profile['Подразделение']
                 profession = profile['Должность']
-                CSQ.custom_request_c(
+                custom_request_c(
                     CFG.Config.project.db_files,
                     '''
                         INSERT INTO WidgetEvents(widget_type, widget_name, action, extra_data, profession, department, app, user)

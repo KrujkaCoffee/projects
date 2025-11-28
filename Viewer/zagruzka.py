@@ -61,7 +61,7 @@ def load_list_mk(self):
         if res == False:
             print(f'Ошибка загрузки ресурсной {nom_mk}')
         else:
-            ans[i]['Ресурсная'] = res[-1]
+            ans[i]['Ресурсная'] = res
         rez.append(ans[i])
     CSQ.close_bd(conn=con,cur=cur)
     return rez

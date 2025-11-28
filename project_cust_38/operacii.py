@@ -1948,7 +1948,8 @@ def materiali(self, ima_operacii, arr_tmp):
         mat = komp_kontrol_tcvet_defekt(self, ima_operacii, arr_tmp)
     if ima_operacii == 'Дробеструйная':
         mat = komp_drobestryi(self, ima_operacii, arr_tmp)
-
+    if mat == '':
+        return None
     tmp = []
     for i in range(len(mat)):
         tmp.append('$'.join(mat[i]))
@@ -1957,6 +1958,7 @@ def materiali(self, ima_operacii, arr_tmp):
 
 def list_mat_for_complex(self, ima_operacii, tag=0, uslovie='', conn=''):
     kod_oper = self.DICT_KOD_OPER[ima_operacii]
+
     if uslovie != '':
         query = f"""SELECT complex_filtr.kod, nomen.Наименование, nomen.ЕдиницаИзмерения,  complex_filtr.expenditure_per_smena FROM complex_filtr 
             INNER JOIN nomen ON nomen.Код == complex_filtr.kod 
@@ -1967,7 +1969,7 @@ def list_mat_for_complex(self, ima_operacii, tag=0, uslovie='', conn=''):
                     INNER JOIN nomen ON nomen.Код == complex_filtr.kod 
                                 WHERE complex_filtr.kod_oper == '{kod_oper}' AND complex_filtr.tag == {tag}
                         AND complex_filtr.filtr == 0"""
-    list = CSQ.custom_request_c(self.db_mater, query, hat_c=False, conn=conn)
+    list = CSQ.custom_request_c(CFG.Config.project.db_nomen, query, hat_c=False, conn=conn)
     return list
 
 
@@ -2111,7 +2113,6 @@ def komp_svarka(self, ima_operacii, arr_tmp):
     vrema = svarka(ima_operacii, arr_tmp)
     # Материал:str (1 - 12)
 
-    conn, cur = CSQ.connect_bd(self.db_mater)
     try:
         SLOV_ZAMEN = Data_oper_norm.SLOV_ZAMEN
 
@@ -2156,7 +2157,7 @@ def komp_svarka(self, ima_operacii, arr_tmp):
             plotn = F.valm(table(put + F.sep() + 'table7.txt', mat))
             koef_sl = koef_arr[0] if len(koef_arr) <= 1 else koef_arr[i]
             dlina = F.valm(dl_arr[i])
-            kod_prov = list_mat_for_complex(self, ima_operacii, int(mat), int_to_str(2, tolsh), conn=conn)
+            kod_prov = list_mat_for_complex(self, ima_operacii, int(mat), int_to_str(2, tolsh))
             vid_svarki = arr_vid_svarki[0] if len(arr_vid_svarki) <= 1 else arr_vid_svarki[i]
             if kod_prov == []:
                 continue
@@ -2164,7 +2165,7 @@ def komp_svarka(self, ima_operacii, arr_tmp):
                 kod_prov = kod_prov[-1][0]
 
             query = f"""SELECT Наименование, ЕдиницаИзмерения FROM nomen WHERE Код == '{kod_prov}' """
-            naim_prov, edizm_prov = CSQ.custom_request_c(self.db_mater, query, conn=conn)[-1]
+            naim_prov, edizm_prov = CSQ.custom_request_c(CFG.Config.project.db_nomen, query)[-1]
 
             putf = put + F.sep() + 'table2.txt'
             koef_sl_rez = F.valm(table(putf, koef_sl))  # оставить
@@ -2179,10 +2180,10 @@ def komp_svarka(self, ima_operacii, arr_tmp):
                 dict_prov[kod_prov] = [kod_prov, naim_prov, edizm_prov, nr_prov]
 
             if int(vid_svarki) == 20:
-                spis = list_mat_for_complex(self, ima_operacii, 20, conn=conn)  # полуавтомат
+                spis = list_mat_for_complex(self, ima_operacii, 20)  # полуавтомат
             if int(vid_svarki) == 21:
-                spis = list_mat_for_complex(self, ima_operacii, 21, str(mat), conn=conn)  # аргон
-                spis2 = list_mat_for_complex(self, ima_operacii, 21, '-', conn=conn)  # аргон
+                spis = list_mat_for_complex(self, ima_operacii, 21, str(mat))  # аргон
+                spis2 = list_mat_for_complex(self, ima_operacii, 21, '-')  # аргон
                 for item_extra in spis2:
                     spis_extra.append(item_extra)
             for item_extra in spis:
@@ -2199,7 +2200,6 @@ def komp_svarka(self, ima_operacii, arr_tmp):
     except:
         pass
     finally:
-        CSQ.close_bd(conn)
         return spis_prov
 
 

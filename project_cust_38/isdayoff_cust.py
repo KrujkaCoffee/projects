@@ -46,7 +46,7 @@ class ProdCalendar:
         })
 
     def _get(self, url, *args, **kwargs):
-        response = self._session.get(self.base_url + url, *args, **kwargs)
+        response = self._session.get(self.base_url + url, *args, **kwargs, verify=False) #19.11.25
         if response.status_code == 400:
             raise DataError('Date error')
         if response.status_code != 200:

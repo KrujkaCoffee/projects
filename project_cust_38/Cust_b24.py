@@ -13,8 +13,33 @@ urllib3.disable_warnings()
 id  ='chat49451'
 logging.basicConfig(level=logging.INFO)
 
+class BaseSender:
+    def _make_table_body(self,
+                         lst_of_lists: list[list] | list[dict],
+                         have_header: bool = True,
+                         horizontal: bool = True) -> dict[str, list[dict]]:
+        display_view = 'LINE' if horizontal else 'COLUMN'
 
-class B24Sender:
+        if len(lst_of_lists) == 0:
+            return False
+        msg = []
+        header = lst_of_lists[0]
+        if isinstance(header, dict):
+            lst_of_lists = F.list_of_dicts_to_list_of_lists(lst_of_lists)
+            header = lst_of_lists[0]
+
+        _slice = slice(None, None)
+        if have_header:
+            _slice = slice(1, None)
+        for column_idx in range(len(header)):
+            column_data = []
+            for row_data in lst_of_lists[_slice]:
+                column_data.append(str(row_data[column_idx]))
+            msg.append({'NAME': header[column_idx], 'VALUE': '\n'.join(column_data), 'DISPLAY': display_view})
+        return {'GRID': msg}
+
+
+class B24Sender(BaseSender):
     _URL = 'https://bitrix24.kelast.ru/rest/1/ebehb6fsejx39kj2/'
     _NOTIFY_ENDPOINT = 'im.notify.personal.add'
     _SEND_MESSAGE_ENDPOINT = 'im.message.add'
@@ -36,17 +61,20 @@ class B24Sender:
         if isinstance(result, dict) and 'chat_id' in result:
             return result['chat_id']
 
-    def send_msg_by_action(self, action: str, msg: str,form_dict:dict=None,msg_bold:bool=False,basement_msg:str=None) -> bool:
+    def send_msg_by_action(self, action: str, msg: str,form_dict:dict=None,msg_bold:bool=False,basement_msg:str=None,
+                           attach: list = None) -> bool:
         chat_id = self.get_chat_id_by_action(action)
         if chat_id:
-            return self.send_msg_by_chat_id(chat_id, msg,form_dict=form_dict,msg_bold=msg_bold,basement_msg=basement_msg)
+            return self.send_msg_by_chat_id(chat_id, msg,form_dict=form_dict,msg_bold=msg_bold,basement_msg=basement_msg, attach=attach)
         logging.error('[b24-chat]Ошибка отправки сообщения')
-        
+        return False
+
     def send_msg_table_by_action(self, action: str,title:str, tbl: list[dict]) -> bool:
         chat_id = self.get_chat_id_by_action(action)
         if chat_id:
             return self.send_msg_table(tbl, chat_id, title, bold_title = False  )
         logging.error('[b24-chat]Ошибка отправки сообщения')
+        return False
 
     def send_msg_by_chat_id(self, chat_id: str, msg: str, attach = None,form_dict:dict=None,msg_bold:bool=False,basement_msg:str=None,
                             message_id: int = None) -> bool:
@@ -76,7 +104,7 @@ class B24Sender:
 
     def send_msg_table( #03.09.25
             self,
-            lst_of_lists: list[list],
+            lst_of_lists: list[list] | list[dict],
             chat_id: str,
             title: str = '',
             bold_title: bool = True,
@@ -86,34 +114,18 @@ class B24Sender:
     ) -> bool:
         """
             Отправка табличной части как сообщение в чат Б24
-            send_msg_table(
-                lst_of_lists=[['header1', 'header2'], ['message1', 'message2']],
-                chat_id='chat123123',
-                title='Тест Тестович удалил(а) базу данных')
-
-            COLOR_TOKEN primary синий secondary серый alert красный base прозрачный
+            @example
+                send_msg_table(
+                    lst_of_lists=[['header1', 'header2'], ['message1', 'message2']],
+                    chat_id='chat123123',
+                    title='Тест Тестович удалил(а) базу данных')
         """
-        display_view = 'LINE' if horizontal else 'COLUMN'
-
         if len(lst_of_lists) == 0:
             return False
-        header = lst_of_lists[0]
-        if isinstance(header, dict):
-            lst_of_lists = F.list_of_dicts_to_list_of_lists(lst_of_lists)
-            header = lst_of_lists[0]
-
         if title and bold_title:
             title = f'[B]{title}[/B]'
-        msg = []
-        _slice = slice(None, None)
-        if have_header:
-            _slice = slice(1, None)
-        for column_idx in range(len(header)):
-            column_data = []
-            for row_data in lst_of_lists[_slice]:
-                column_data.append(str(row_data[column_idx]))
-            msg.append({'NAME': header[column_idx], 'VALUE': '\n'.join(column_data), 'DISPLAY': display_view})
-        return self.send_msg_by_chat_id(chat_id, title, [{'GRID': msg}], message_id=message_id)
+        attach_body = self._make_table_body(lst_of_lists=lst_of_lists, have_header=have_header, horizontal=horizontal)
+        return self.send_msg_by_chat_id(chat_id, title, [attach_body], message_id=message_id)
 
     def send_notify(self, user_id: int, message: str, message_for_mail: str = '', tag: str = 'MES'): #04.08.25
         """
@@ -130,6 +142,84 @@ class B24Sender:
         }
         response = requests.post(f'{self._URL}{self._NOTIFY_ENDPOINT}', json=body, verify=False)
         return response.ok
+
+class MessageBuilder:
+    """
+        @example
+            table1 = [{
+                'Наименование': 'Чехол защитный D600-800',
+                'Количество': 2
+            }]
+            table2 = [{
+                    'Операция': 'Раскрой',
+                    'Тшт': 46.8,
+                    'Тпз': 5.0,
+                    'КР': 1,
+                    'Профессия': 'Раскройщик 2 разряда'
+                },
+                {
+                    'Операция': 'Швейные работы',
+                    'Тшт': 32.8,
+                    'Тпз': 0.01,
+                    'КР': 1,
+                    'Профессия': 'Швея 3 разряда'
+            }]
+
+            template = CB24.MessageBuilder('Таблица с дсе') Инициализация (базовое сообщение)
+            template.add_table(table1)                      Добавить табличную часть
+            template.add_delimiter()                        Добавить разделитель
+            template.add_message('Таблица с операциями')    Добавить сообщение
+            template.add_table(table2)                      Добавить таблицу 2
+            template.send_by_chat_id('chat78766')           Итоговая отправка
+    """
+
+    def __init__(
+            self,
+            init_title: str,
+            bold_title: bool = True
+    ) -> None:
+        if bold_title:
+            init_title = f'[B]{init_title}[/B]'
+        self.title = init_title
+        self.sandwich = []
+        self.__sender = B24Sender()
+
+    def add_table(self,
+        lst_of_lists: list[list] | list[dict],
+        have_header: bool = True,
+        horizontal: bool = True
+    ):
+        table_body = self.__sender._make_table_body(lst_of_lists, have_header=have_header, horizontal=horizontal)
+        self.sandwich.append(table_body)
+
+    def add_message(self, message: str, bold: bool = False):
+        """Добавить сообщение."""
+        if bold:
+            message = f'[B]{message}[/B]'
+        self.sandwich.append({'MESSAGE': message})
+
+    def add_delimiter(self, size: int = 400, color: str = "#ffffff"):
+        """Добавляет разделитель.
+            :size - ширина линии.
+            :color цвет линии (по дефолту прозрачная).
+        """
+        self.sandwich.append({'DELIMITER': {'SIZE': size,'COLOR': color}})
+
+    def add_link(self, name: str, url: str):
+        """Добавляет кликабельную ссылку.
+            :name - Наименование ссылки.
+            :url ссылка.
+        """
+        self.sandwich.append({'LINK': {'NAME': name,'LINK': url}})
+
+    def send_by_action(self, action: str):
+        """Отправка сообщения по наименованию action (Все action содержаться в Naryad.db->place_chat_info"""
+        self.__sender.send_msg_by_action(action, self.title, attach=self.sandwich)
+
+    def send_by_chat_id(self, chat_id: str):
+        """Отправка сообщения по chat_id"""
+        self.__sender.send_msg_by_chat_id(chat_id, self.title, attach=self.sandwich)
+
 
 # https://bitrix24.kelast.ru/online/?IM_DIALOG=chat41228
 if __name__ == '__main__':

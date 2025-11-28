@@ -47,8 +47,9 @@ class ОперацииПроизводства:
     packaging: ClassVar[EmojiItem] = EmojiItem('📦', 'packaging', 'operations', 'Упаковка')
     shipping: ClassVar[EmojiItem] = EmojiItem('🚚', 'shipping', 'operations', 'Отгрузка')
     maintenance: ClassVar[EmojiItem] = EmojiItem('🛠️', 'maintenance', 'operations', 'Техобслуживание')
-    dse: ClassVar[EmojiItem] = EmojiItem('🔩', 'dse', 'item', 'Деталь или материал')
-    res: ClassVar[EmojiItem] = EmojiItem('📘', 'res', 'resource_spec', 'Ресурсная спецификация')
+    dse: ClassVar[EmojiItem] = EmojiItem('🔩', 'dse', 'operations', 'Деталь или материал')
+    res: ClassVar[EmojiItem] = EmojiItem('📘', 'res', 'operations', 'Ресурсная спецификация')
+    trd: ClassVar[EmojiItem] = EmojiItem('⏱️', 'trd', 'operations', 'Трудозатраты')
 
 
 class ПоказателиМетрики:
@@ -83,10 +84,11 @@ class ПерсоналРоли:
 
 class ДокументыДанные:
     """Категория документов и данных"""
-
     document: ClassVar[EmojiItem] = EmojiItem('📄', 'document', 'documents', 'Документ')
-    folder: ClassVar[EmojiItem] = EmojiItem('📁', 'folder', 'documents', 'Папка')
-    folder_closed: ClassVar[EmojiItem] = EmojiItem('📂', 'folder_closed', 'documents', 'Закрытая папка')
+    soon: ClassVar[EmojiItem] = EmojiItem('🔜', 'soon', 'documents', 'Скоро')
+    folder: ClassVar[EmojiItem] = EmojiItem('📂', 'folder', 'documents', 'Папка')
+    folder_closed: ClassVar[EmojiItem] = EmojiItem('📁', 'folder_closed', 'documents', 'Закрытая папка')
+    folder_group: ClassVar[EmojiItem] = EmojiItem('🗂', 'folder_group', 'documents', 'Закрытая папка')
     report: ClassVar[EmojiItem] = EmojiItem('📋', 'report', 'documents', 'Отчет')
     database: ClassVar[EmojiItem] = EmojiItem('🗄️', 'database', 'documents', 'База данных')
     analysis: ClassVar[EmojiItem] = EmojiItem('📊', 'analysis', 'documents', 'Анализ данных')
@@ -95,7 +97,11 @@ class ДокументыДанные:
     collapse: ClassVar[EmojiItem] = EmojiItem('▶️', 'collapse', 'documents', 'Свернуть')
     refresh: ClassVar[EmojiItem] = EmojiItem('🔄', 'refresh', 'operations', 'Обновить / Пересчитать')
     plus: ClassVar[EmojiItem] = EmojiItem('➕', 'plus', 'documents', 'Развернуть')
+    plus_circled: ClassVar[EmojiItem] = EmojiItem('⊕︎', 'plus_circled', 'documents', 'Развернуть')
+    plus_squared: ClassVar[EmojiItem] = EmojiItem('⊞', 'plus_squared', 'documents', 'Развернуть')
     minus: ClassVar[EmojiItem] = EmojiItem('➖', 'minus', 'documents', 'Свернуть')
+    minus_circled: ClassVar[EmojiItem] = EmojiItem('⊖︎', 'minus_circled', 'documents', 'Свернуть')
+    minus_squared: ClassVar[EmojiItem] = EmojiItem('⊟', 'minus_squared', 'documents', 'Свернуть')
     pencil: ClassVar[EmojiItem] = EmojiItem('✏️', 'pencil', 'documents', 'Изменяемый')
     pencil2: ClassVar[EmojiItem] = EmojiItem('🖉', 'pencil2', 'documents', 'Изменяемый2')
     pencil2: ClassVar[EmojiItem] = EmojiItem('🖉', 'pencil2', 'documents', 'Изменяемый2')

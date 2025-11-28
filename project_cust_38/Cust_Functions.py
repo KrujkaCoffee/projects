@@ -292,9 +292,6 @@ class StatisticDecorator:
         start = time.time()
         result = self.function(*args, **kwargs)
         bd = self.unpack_argument('bd', args, kwargs) #15.09.25
-        custom_request_c = self.unpack_argument('custom_request_c', args, kwargs) #15.09.25
-        if 'WidgetEvents' in custom_request_c:
-            return result
         if not bd:
             return result
         if self.config is None: # 18.08.25
@@ -306,8 +303,14 @@ class StatisticDecorator:
         return result
 # --18.08.25
 
-def path_to_execut_file_c():
-    if getattr(sys, 'frozen', False):
+def path_to_execut_file_c(end_sep = True):
+    is_subprocess = not getattr(sys.modules['__main__'], '__file__', False) # 21.11.25
+    if is_subprocess:
+        if end_sep:
+            return os.getcwd() + os.sep
+        else:
+            return os.getcwd()
+    elif getattr(sys, 'frozen', False):
         # If the application is run as a bundle, the pyInstaller bootloader
         # extends the sys module by a flag frozen=True and sets the app
         # path into variable _MEIPASS'.
@@ -318,8 +321,10 @@ def path_to_execut_file_c():
         os.path.abspath(sys.modules['__main__'].__file__)
         tmp = os.path.abspath(sys.modules['__main__'].__file__).split(os.sep)
         tmp.pop()
-        return os.sep.join(tmp) + os.sep
-
+        if end_sep:
+            return os.sep.join(tmp) + os.sep
+        else:
+            return os.sep.join(tmp)
 
 def get_parent_dir(path: str) -> str:
     """
@@ -359,19 +364,26 @@ def check_server_drive_connection():
         print(f'ДИСК Z: НЕДОСТУПЕН ПОПЫТКА ПОДКЛЮЧЕНИЯ: {cnt}')
     return True
 
-def load_cfg(log=True):
+def win_msgbox(title: str, message: str): #21.11.25
+    """Окно ошибки до иницализации UI"""
+    return ctypes.windll.user32.MessageBoxW(
+        0,
+        message,
+        title,
+        0x10
+    )
+
+def load_cfg(log=True): #21.11.25
     is_server = os.environ.get('MES_IS_SERVER')
     if is_server:
         check_server_drive_connection()
     else:
         if not check_network_drive_connection(): #11.08.25 Проверка для пользователя
-            ctypes.windll.user32.MessageBoxW(
-                0,
-                "Диск Z: в данный момент недоступен. Обратитесь к системному администратору",
-                "Ошибка",
-                0x10
+            win_msgbox(
+                title="Ошибка",
+                message="Диск Z: в данный момент недоступен. Обратитесь к системному администратору"
             )
-            raise Exception("Диск Z недоступен")
+            quit(1)
     try:
         print('======Загрузка настроек ' + path_to_execut_file_c() + '======') if log else None
         put_conf = path_to_execut_file_c() + 'Config' + os.sep + 'CFG.cfg'
@@ -383,7 +395,12 @@ def load_cfg(log=True):
                 print(f'    {put_conf}', end='\n') if log else None  # файл конфига, находится п папке конфиг
             except:
                 print(f'    Не корректный файл {put_conf} формат должен быть без спецификации') if log else None
-                return
+                msg = f"Ошибка инициализации объекта локальной конфигурации {put_conf}"
+                win_msgbox(
+                    title="Ошибка",
+                    message=msg
+                )
+                quit(1)
             tmp_dict = dict()
             cfg_dict = cfg.as_dict()
             for key in cfg_dict.keys():
@@ -425,10 +442,15 @@ def load_cfg(log=True):
                             #    print(f'        Для {key} принят {path}') if log else None
                             #    fl = True
                             #    break
-                            
+
                     if fl == False:
                         print(f'    Не верный путь для {key}') if log else None
-                        return
+                        msg = "Найдена некорректная строка конфигурации. Обратитесь к администратору МЕС"
+                        win_msgbox(
+                            title="Ошибка",
+                            message=msg
+                        )
+                        quit(1)
                 else:
                     print(f'    {cfg_dict[key]}') if log else None
                     tmp_dict[key] = cfg_dict[key]
@@ -436,9 +458,16 @@ def load_cfg(log=True):
             return tmp_dict
         else:
             print(f'    Файл настроек не найден по {put_conf}') if log else None
+            msg = f'Файл настроек не найден по {put_conf}'
+
     except:
-        print(f'    Не открыть файл CFG.cfg') if log else None
-        return
+        print(f'    Не открыть файл CFG.cfg {path_to_execut_file_c()}') if log else None
+        msg = f'Не удалось открыть локальный файл файл конфигураций'
+        win_msgbox(
+            title="Ошибка",
+            message=msg
+        )
+        quit(1)
 
 
 cfg = load_cfg()
@@ -589,7 +618,7 @@ def is_link_file(putf):
         if os.path.isfile(put):
             return True
     return False
-    
+
 def check_for_russian(string):
     alphabet = ["а", "б", "в", "г", "д", "е", "ё", "ж", "з", "и", "й", "к", "л", "м", "н", "о", "п", "р", "с", "т", "у",
                 "ф", "х", "ц", "ч", "ш", "щ", "ъ", "ы", "ь", "э", "ю", "я"]
@@ -851,6 +880,30 @@ def save_file_pickle(putima, obj):
         pickle.dump(obj, f)
 
 
+def print_badtypes(obj):
+    import  dill
+    try:
+        errs = dill.detect.errors(obj)
+        if not errs:
+            print("✅ Ошибок сериализации не найдено")
+            return []
+
+        if isinstance(errs, list):
+            print("❌ Найдены проблемы с объектами:")
+            for bad_obj, err in errs:
+                print(f"  - {type(bad_obj).__name__}: {err}")
+            return errs
+
+        # Если вернулось исключение, а не список
+        print("⚠️ detect.errors вернул одиночную ошибку:")
+        print(errs)
+        return [(obj, errs)]
+
+    except Exception as e:
+        print(f"💥 detect.errors вызвал исключение: {e}")
+        return [(obj, e)]
+
+
 def to_binary_pickle(obj):
     return pickle.dumps(obj)
 
@@ -926,7 +979,7 @@ def save_file(putima, obj_str, utf=True,sep='|',copy_bufer=False):
             except:
                 print(f'save_file err')
                 #sleep(0.2)
-        
+
 
 def write_file_c(putima, spisok, separ='', pickl=False, utf8=False):
     if existence_file_c(os.sep.join(putima.split(os.sep)[:-1])) == False:
@@ -974,6 +1027,8 @@ def write_file_c(putima, spisok, separ='', pickl=False, utf8=False):
 def user_full_namre():
     try:
         NetGetAnyDCName = win32net.NetGetAnyDCName()
+        # NetGetAnyDCName = '\\\\TOMSK'
+
     except:
         print('user_full_namre error get NetGetAnyDCName')
         return None
@@ -1036,7 +1091,7 @@ def is_date(string: str, maska: str = "%Y-%m-%d %H:%M:%S"):
 def datetostr(date, format="%Y-%m-%d %H:%M:%S"):#"%d.%m.%Y"   "%Y-%m-%dT%H:%M:%S"
     return date.strftime(format)
 
-def dateStrToStr(date, format=None,format_out="%Y-%m-%d",onerror=None)->str|DT:#"%d.%m.%Y"   "%Y-%m-%dT%H:%M:%S"
+def dateStrToStr(date, format=None,format_out="%Y-%m-%d",onerror='None')->str|DT:#"%d.%m.%Y"   "%Y-%m-%dT%H:%M:%S"
     set_formats = {"%Y-%m-%d %H:%M:%S",
                    "%Y-%m-%dT%H:%M:%S",
                    "%d.%m.%Y",
@@ -1065,9 +1120,10 @@ def dateStrToStr(date, format=None,format_out="%Y-%m-%d",onerror=None)->str|DT:#
         for format in set_formats:
             if is_date(date,format):
                 return datetostr(strtodate(date, format), format_out)
-    if onerror:
-        return onerror
-    raise TypeError(f'{str(date)} format err')
+    if onerror == 'None':
+        raise TypeError(f'{str(date)} format err')
+    return onerror
+
 
 def month_rus_from_date(date, format="%Y-%m-%d %H:%M:%S", rodit_padej=True):
     month_list_rod = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
@@ -1272,23 +1328,21 @@ def is_bool(string: str):
         return True
     return False
 
-def is_numeric(string: str):
-    if type(string) == type(1.1):
+def is_numeric(string: any):
+    # уже число
+    if isinstance(string, (int, float)):
         return True
-    if type(string) == type(2):
-        return True
-    try:
-        string = string.replace(',', '.')
-    except:
+    # не строка — сразу нет
+    if not isinstance(string, str):
         return False
-    if string.isdigit():
+    # нормализация
+    val = string.replace(',', '.')
+    # попытка преобразования
+    try:
+        float(val)
         return True
-    else:
-        try:
-            float(string)
-            return True
-        except ValueError:
-            return False
+    except ValueError:
+        return False
 
 
 def inscribe_c(slovo, zn, levz=':', prz=':', orient=1):
@@ -1569,6 +1623,43 @@ def insert_key_to_dicts(list_of_dicts, insert_index, new_key, default_value=None
             new_dict[new_key] = default_value
         modified_list.append(new_dict)
     return modified_list
+
+def move_key_in_dicts(list_of_dicts: list[dict], key_name: str, new_index: int) -> list[dict]:
+    """
+    Перемещает указанный ключ в новую позицию (по индексу) в каждом словаре списка.
+
+    :param list_of_dicts: Список словарей для модификации
+    :param key_name: Имя ключа, который нужно переместить
+    :param new_index: Индекс новой позиции (начиная с 0)
+    :return: Новый список словарей с изменённым порядком ключей
+    """
+    modified_list = []
+    for original_dict in list_of_dicts:
+        if key_name not in original_dict:
+            modified_list.append(original_dict.copy())
+            continue
+
+        items = list(original_dict.items())
+        # Извлекаем целевой элемент
+        target_item = None
+        for i, (k, v) in enumerate(items):
+            if k == key_name:
+                target_item = items.pop(i)
+                break
+
+        # Корректируем индекс (если за пределами)
+        if new_index < 0:
+            new_index = 0
+        elif new_index > len(items):
+            new_index = len(items)
+
+        # Вставляем элемент в новую позицию
+        items.insert(new_index, target_item)
+
+        modified_list.append(dict(items))
+
+    return modified_list
+
 
 def num_col_by_name_in_hat_c(sp, ima):
     if type(sp[0]) == list:

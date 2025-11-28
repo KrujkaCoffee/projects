@@ -1,5 +1,6 @@
 import dataclasses
 import os
+import re
 import typing
 from urllib.parse import urlparse, parse_qs, quote, unquote
 
@@ -7,6 +8,13 @@ from requests import Session, Response, get
 
 from project_cust_38 import Cust_Functions as F
 from project_cust_38 import Cust_SQLite as CSQ
+from project_cust_38 import Cust_config as CFG
+
+
+
+DOCS_NAME_FORMAT = 'docs://{file_id}/{full_name}'
+DOCS_PATTERN = r'docs://(\d+)/(.+)'
+DOCS_SEP = '%20'
 
 
 class Utils:
@@ -132,6 +140,7 @@ class ProcessTkp(typing.NamedTuple):
     номерПозиции_card: str | None       #[Карточка проекта] Номер позиции
     наименование_card: str | None       #[Карточка проекта] Наименование
     датаСоздания_card: str | None       #[Карточка проекта] Дата создания
+    uuiD_card: int                      #[Карточка проекта] UUID
 
     названиеВарианта_card: str | None   #[Карточка проекта] Название варианта
     ссылкаДокс_card: str | None         #[Карточка проекта] Ссылка
@@ -149,6 +158,18 @@ class ProcessTkp(typing.NamedTuple):
     желаемаяДата_proc: int              #[Процесс ТКП2] Желаемая дата
     кодРС_proc: int                     #[Процесс ТКП2] КОд ресурсной
     ссылкаДокс_proc: int                #[Процесс ТКП2] Ссылка
+    uuiD_proc: int                      #[Процесс ТКП2] UUID
+
+
+
+
+class FileDocs(typing.NamedTuple):
+    file_id: int
+    ext: str
+    name: str
+    filename: str
+    ref: str
+    binary_content: bytes
 
 
 class TFlexMaterialFinderClient(TFlexHttpClient):
@@ -284,6 +305,7 @@ class TFlexTkpProcessClient(TFlexHttpClient):
             self,
             folder_uuid_lst: list[str] = (),
             schema_uuid_lst: list[str] = (),
+            active_process: bool = None
     ) -> tuple[int, list[ProcessTkp] | Response]:
         """
         Возвращает элементы из справочника "процессы ТКП 2"
@@ -291,8 +313,12 @@ class TFlexTkpProcessClient(TFlexHttpClient):
         Если без параметров, то вернет все существующие процессы
 
         Принимает:
-        folder_uuid_lst: str    Список уникальных идентификаторов папок процессов
-        schema_uuid_lst: str    Список уникальных идентификаторов схем процессов
+        @folder_uuid_lst: str    Список уникальных идентификаторов папок процессов
+        @schema_uuid_lst: str    Список уникальных идентификаторов схем процессов
+        @active_process: bool
+            Если None = загрузить без фильтра статусов
+            Если True = загрузить с активными статусами (Начат, В работе, В очереди)
+            Если False = Загрузить с неактивными статусами (Завершен, Отклонён)
 
         Примеры:
             data = get_process_tkp(folder_uuid_lst=['1b0fa0e6-ac0b-4474-9ba3-d00ddc719b6c'])
@@ -310,11 +336,50 @@ class TFlexTkpProcessClient(TFlexHttpClient):
                 )
         """
         url = self.make_url(self._GET_ALL_PROCESS_TKP)
-        response = self.session.post(url, json={'folders': list(folder_uuid_lst), 'schemas': list(schema_uuid_lst)})
+        response = self.session.post(url, json={
+            'folders': list(folder_uuid_lst),
+            'schemas': list(schema_uuid_lst),
+            'procActiveStatus': active_process
+        })
         if response.ok:
             return response.status_code, [ProcessTkp(**item) for item in response.json()]
         return response.status_code, response
 
+
+class DocsFileManager:
+    def is_docs_reference(self, filename: str):
+        return filename.strip().startswith('docs://')
+
+    def unpack_include_format(self, filename):
+        file_id = ''
+        if match := re.search(DOCS_PATTERN, filename):
+            file_id = match.group(1)
+            filename = match.group(2)
+        name, ext = filename.rsplit('.', 1)
+        return file_id, ext, name, filename
+
+    def load_docs_file(self, full_path: str, nn: str) -> typing.Optional[FileDocs]:
+        file_id, ext, name, filename = self.unpack_include_format(full_path)
+        with TFlexFileClient() as client:
+            files = client.get_filenames_by_nomen_name(nn)
+            if files is None: #21.11.25
+                return None
+            for file in files:
+                if file['s_ObjectID'] == int(file_id):
+                    content = client.get_binary_file(
+                        srv_name=file['source'],
+                        object_id=file['s_ObjectID'],
+                        revision=file['s_Version']
+                    )
+                    return FileDocs(
+                        file_id=file_id,
+                        name=name,
+                        ext=ext,
+                        filename=filename,
+                        ref=full_path,
+                        binary_content=content
+                    )
+        return None
 #================== DOCS fncs==============================
 
 def get_orders_tatkuz():#TEST
@@ -346,6 +411,7 @@ def test_request_tkp_process():
         code, data_by_schema = client.get_process_tkp( # Этап 3. Выбираем процессы по схеме
             schema_uuid_lst=[random_schema.uuid]
         )
+        print([i.статус_proc for i in data_by_schema])
         pprint(f'Результат: {data_by_schema[:1]}')
 
 if __name__ == '__main__':

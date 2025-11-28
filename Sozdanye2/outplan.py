@@ -77,14 +77,13 @@ def start_form(self:mywindow,*args,**kwargs):
     current_mk = str(self.glob_nom_mk)
     self.ui.tabWidget.setCurrentIndex(CQT.number_table_by_name_c(self.ui.tabWidget,'Внеплан'))
     query = f"""SELECT Пномер FROM plan WHERE МК = {current_mk}"""
-    rez = CSQ.custom_request_c(self.db_kplan,query,one_column=True,one=True,hat_c=False)
+    rez = CSQ.custom_request_c(self.db_kplan,query,one_column=True,one=True,hat_c=False) # 11.11.25
     if rez== None or rez==False:
         CQT.msgbox(f'Ошибка запроса')
         return
-    if rez[0] == '':
+    if rez == '':
         CQT.msgbox(f'МК в плане не найдена')
         return
-    rez = rez[0]
     for i in range(self.ui.cmb_outplan.count()):
         tmp_list= self.ui.cmb_outplan.itemText(i).split(' | ')
         if tmp_list[4] == str(rez):
@@ -400,7 +399,7 @@ def tbl_out_select_row(self:mywindow):
         list_mk = CSQ.custom_request_c(self.db_naryd,f"""SELECT Пномер, Номенклатура FROM mk WHERE НомКплан = {nom_kpl} and Тип in (2,5)""",hat_c=True,rez_dict=True)
         list_mk = F.deploy_dict_c(list_mk,'Пномер')
         list_used = CSQ.custom_request_c(self.db_naryd, f"""SELECT Номер_нов_мк FROM jur_vnepl""",
-                                       hat_c=False)
+hat_c=False)
         result_dict_mk = dict()
         for k in list_mk.keys():
             if not k in list_used:

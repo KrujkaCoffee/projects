@@ -1,7 +1,6 @@
 from __future__ import annotations
 import base64
 import pprint
-import struct
 from collections import defaultdict
 import copy
 
@@ -10,6 +9,8 @@ import project_cust_38.Cust_Functions as F
 import project_cust_38.Cust_SQLite as CSQ
 import project_cust_38.Cust_Qt as CQT
 import project_cust_38.Cust_mes as CMS
+from project_cust_38.Cust_config import Config
+
 from PyQt5 import QtGui, QtCore, QtWidgets
 import project_cust_38.xml_v_drevo as XML
 from typing import TYPE_CHECKING
@@ -221,6 +222,8 @@ def recalc_weight(self, *args):
 
 @CQT.onerror
 def save_red_tree(self: mywindow):
+    # 24.11.25 (Чат доработка МЕС: Арсенов) Актуализация номенклатуры перед валидацией
+    self.Data_mes.reload_nomen(Config.project.db_nomen)
     def generate_rez_dict(self: mywindow):
         struct = CQT.list_from_wtabl_c(self.ui.tbl_red_tree, rez_dict=True)
         for item in struct:
@@ -453,10 +456,19 @@ def fix_struct(struct):
             continue
         if item['Обозначение'] == '':
             item['Обозначение'] = item['Обозначение_аналог']
+def fix_columns(tabl_cr_stukt):
+    required_columns = ['b', 'Наименование', 'Обозначение', 'Количество', 'Масса/М1,М2,М3','Количество на изделие', 'Примечание', 'ПКИ', 'Код ERP',
+                  'Наименование_аналог', 'Обозначение_аналог', 'Уд_количество_аналог', 'Коэфф_длины_швов', 'Кол. по заявке', 'Уровень']
+    for col in range(tabl_cr_stukt.columnCount()):
+        text = tabl_cr_stukt.horizontalHeaderItem(col).text()
+        width = tabl_cr_stukt.columnWidth(col)
+        if text in required_columns and width < 20:
+            tabl_cr_stukt.setColumnWidth(col, 20)
 
 @CQT.onerror
 def fill_tbl_strukt(self, data):
     fix_struct(data)
+    horizontal_scroll = self.ui.tbl_red_tree.horizontalScrollBar().value()
     scroll_vertical = self.ui.tbl_red_tree.verticalScrollBar().value()
     hidden_column = CQT.num_col_by_name_c(self.ui.tbl_red_tree, 'Ед.изм.')
     CQT.fill_wtabl(data, self.ui.tbl_red_tree, self.edit_cr_mk, 200, height_row=24, auto_type=False,
@@ -466,6 +478,8 @@ def fill_tbl_strukt(self, data):
     CQT.set_color_sort_cell_table_c(self.ui.tbl_red_tree)
     hide_columns_for_simple_mode(self, self.ui.tbl_red_tree)
     self.ui.tbl_red_tree.verticalScrollBar().setValue(scroll_vertical)
+    self.ui.tbl_red_tree.horizontalScrollBar().setValue(horizontal_scroll)
+    fix_columns(self.ui.tbl_red_tree)
 
 
 
@@ -1208,6 +1222,12 @@ def add_row_branch(self: mywindow, *args):
     data[tbl.currentRow() + 1] = new_data
     fill_tbl_strukt(self, data)
 
+def rollback(self: mywindow, tbl):
+    # CQT.RollBackUserChangesDelegator.
+    ...
+
+def add_stack_row(self, tbl):
+    ...
 
 @CQT.onerror
 def mat_apply(self: mywindow, val: str, name: str, kod: str):
@@ -1443,15 +1463,19 @@ def prepare_tbl_red_stukt(self: mywindow):
     tabl_cr_stukt = self.ui.tbl_red_tree
     tabl_cr_stukt.clearContents()
     tabl_cr_stukt.setRowCount(0)
-    tabl_cr_stukt.setColumnCount(21)
     self.hat_c = ['b', 'Наименование', 'Обозначение', 'Количество', 'Ед.изм.', 'Масса/М1,М2,М3', 'Ссылка',
                   'ID', 'Количество на изделие', 'Примечание', 'ПКИ', 'Сумм.Количество', 'Код ERP',
                   'Наименование_аналог', 'Обозначение_аналог', 'Уд_количество_аналог', 'Коэфф_длины_швов', '_5', '_6'
         , 'dreva_kod', 'Кол. по заявке', 'Уровень']
+    tabl_cr_stukt.setColumnCount(len(self.hat_c))
+
     tabl_cr_stukt.setHorizontalHeaderLabels(self.hat_c)
-    tabl_cr_stukt.resizeColumnsToContents()
-    for i in range(17, 21):
-        tabl_cr_stukt.setColumnHidden(i, True)
+    # tabl_cr_stukt.resizeColumnsToContents()
+    for column_name in ('_5', '_6', 'dreva_kod', 'ID'):
+        try:
+            tabl_cr_stukt.setColumnHidden(CQT.num_col_by_name_c(tabl_cr_stukt, column_name), True)
+        except Exception as e:
+            ...
     # tabl_cr_stukt.setColumnHidden(7, True)
     # tabl_cr_stukt.setColumnHidden(10, True)
     CQT.set_color_sort_cell_table_c(tabl_cr_stukt)
@@ -1543,7 +1567,7 @@ def accumulate_tree_mass(self: mywindow, previous: int = 0, row: int = None, col
     tree_knot_object = TreeKnotList(data)
     data = tree_knot_object.calc_knot()
     fill_tbl_strukt(self, data)
-    CMS.load_column_widths(self, self.ui.tbl_red_tree)
+    # CMS.load_column_widths(self, self.ui.tbl_red_tree)
     return data
 
 

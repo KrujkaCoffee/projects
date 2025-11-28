@@ -264,11 +264,27 @@ def list_of_columns_c(bd, table, dict=False):
         return dict_tmp
     return rez
 
+def dict_zero_val_row(db,tbl_name):
+    objs = {
+        int: 0,
+        float: 0.0,
+        str:'',
+        bytes: b'',
+    }
+    row = dict_types_tbl(db,tbl_name)
+    for k, v in row.items():
+        if v in objs:
+            row[k] = objs[v]
+        else:
+            row[k] = None
+    return row
+
 def dict_types_tbl(db,tbl_name):
     list_dicts = custom_request_c(db, custom_request_c=f"""SELECT name, type FROM pragma_table_info('{tbl_name}')""",
                                   rez_dict=True)
     objs = {
         'INTEGER':int,
+        'INT':int,
         'REAL':float,
         'TEXT':str,
         'BLOB':bytes,
@@ -399,10 +415,10 @@ def apply_alias_list(list_resp, dict_alias):
                     print(f'CMS.apply_alias_list err not found alias for {result[i][j]}')
     return result
 
-def prepare_list_to_tuple(list_nums:list|set) -> str:
+def prepare_list_to_tuple(list_nums:list|set|tuple) -> str:
     if not list_nums:
         return ''
-    if isinstance(list_nums,set):
+    if isinstance(list_nums,(set,tuple)):
         list_nums = list(list_nums)
     if isinstance(list_nums[0], float) or isinstance(list_nums[0], int):
         tmp_list = [str(_) for _ in list_nums]
@@ -432,12 +448,27 @@ def quote_text_values(values: list, quote: str = "'") -> list:
             result.append(v)
     return result
 
+def check_operator_returning(query: str) -> bool: #11.11.25
+    pattern = r'\bRETURNING\b'
+    return bool(re.search(pattern, query, re.IGNORECASE))
+
+def unpack_single_value(result): #11.11.25
+    if result and isinstance(result, list):
+        return unpack_single_value(result[0])
+    if result and isinstance(result, dict):
+        return unpack_single_value(list(result.values()))
+    return result
+
 @F.StatisticDecorator #18.08.25
 def custom_request_c(bd, custom_request_c, conn='', hat_c=True, list_of_lists_c=[[]], rez_dict=False, one=False, cur='',
                      one_column=False, returning=False, attach_dbs: tuple | str=()):
     '''sqlite_insert_with_param = """INSERT INTO sqlitedb_developers
                               (id, name, email, joining_date, salary)
-                              VALUES (?, ?, ?, ?, ?);"""'''
+                              VALUES (?, ?, ?, ?, ?);"""
+        UPDATE users
+                SET  (field1, field2, field3)
+                    = ('value1', 'value2', 'value3')
+                            WHERE some_condition ;'''
     if isinstance(list_of_lists_c[0],dict):
         list_of_lists_c = F.list_of_dicts_to_list_of_lists(list_of_lists_c)[1:]
     if 'SRV:' in bd: #18.08.25
@@ -448,10 +479,6 @@ def custom_request_c(bd, custom_request_c, conn='', hat_c=True, list_of_lists_c=
                                     client_name=F.user_name(), port=port, one_column=one_column, attach_dbs=attach_dbs)
         return rez
 
-    '''UPDATE users
-    SET  (field1, field2, field3)
-   = ('value1', 'value2', 'value3')
-    WHERE some_condition ;'''
     RE_COUNT = 1
     try:
         if conn == '' or conn == False:
@@ -468,6 +495,7 @@ def custom_request_c(bd, custom_request_c, conn='', hat_c=True, list_of_lists_c=
 
     while True: # 19.09.25
         result = False
+        returning = False
         type_query = custom_request_c.replace('\n', '').strip().split(' ')[0].upper()
         if 'EXPLAIN' == type_query: #15.08.25
             result = get_tables_from_select(cur, custom_request_c.replace('?', "''"), list_of_lists_c)
@@ -479,36 +507,47 @@ def custom_request_c(bd, custom_request_c, conn='', hat_c=True, list_of_lists_c=
             conn.commit()
             result = True
         if 'INSERT' == type_query:
-            pattern = r'\bRETURNING\b'
-            match = re.search(pattern, custom_request_c, re.IGNORECASE)
-            if match:
+            if check_operator_returning(custom_request_c):
                 cur.execute(custom_request_c, list_of_lists_c)
-                result = cur.fetchall()
                 returning = True
             else:
                 cur.executemany(custom_request_c, list_of_lists_c)
                 conn.commit()
                 result = True
         if 'UPDATE' == type_query:
-            if list_of_lists_c == [[]]:
-                cur.execute(custom_request_c)
-            else:
-                if type(list_of_lists_c[0]) == list:
-                    cur.executemany(custom_request_c, list_of_lists_c)
+            if check_operator_returning(custom_request_c):
+                if list_of_lists_c == [[]]:
+                    cur.execute(custom_request_c)
                 else:
                     cur.execute(custom_request_c, list_of_lists_c)
-            conn.commit()
-            result = True
+                returning = True
+            else:
+                if list_of_lists_c == [[]]:
+                    cur.execute(custom_request_c)
+                else:
+                    if type(list_of_lists_c[0]) == list:
+                        cur.executemany(custom_request_c, list_of_lists_c)
+                    else:
+                        cur.execute(custom_request_c, list_of_lists_c)
+                conn.commit()
+                result = True
         if 'DELETE' == type_query:
-            if list_of_lists_c == [[]]:
-                cur.execute(custom_request_c)
-            else:
-                if type(list_of_lists_c[0]) == list:
-                    cur.executemany(custom_request_c, list_of_lists_c)
+            if check_operator_returning(custom_request_c):
+                if list_of_lists_c == [[]]:
+                    cur.execute(custom_request_c)
                 else:
                     cur.execute(custom_request_c, list_of_lists_c)
-            conn.commit()
-            result = True
+                returning = True
+            else:
+                if list_of_lists_c == [[]]:
+                    cur.execute(custom_request_c)
+                else:
+                    if type(list_of_lists_c[0]) == list:
+                        cur.executemany(custom_request_c, list_of_lists_c)
+                    else:
+                        cur.execute(custom_request_c, list_of_lists_c)
+                conn.commit()
+                result = True
         if 'SELECT' == type_query:
             if list_of_lists_c == [[]]:
                 cur.execute(custom_request_c)
@@ -520,12 +559,13 @@ def custom_request_c(bd, custom_request_c, conn='', hat_c=True, list_of_lists_c=
                         cur.execute(custom_request_c,(list_of_lists_c[0],))
                 else:
                     cur.execute(custom_request_c, (list_of_lists_c,))
+            returning = True
+
+        if returning:
             if one == True:
                 result = cur.fetchone()
             else:
                 result = cur.fetchall()
-            returning = True
-        if returning:
             if rez_dict:
                 tmp = []
                 cols = [x[0] for x in cur.description]
@@ -563,6 +603,8 @@ def custom_request_c(bd, custom_request_c, conn='', hat_c=True, list_of_lists_c=
                     result.insert(0, cols)
             if one_column:
                 result = [_[0] for _ in result]
+            if one and one_column:
+                result = unpack_single_value(result)
         if close:
             cur.close()
             conn.close()

@@ -235,7 +235,7 @@ class mywindow(QtWidgets.QMainWindow):
         self.path_cash_poki = os.path.join(F.scfg('cash'), str(self.place.poki))
 
         F.test_path()
-        self.resized.connect(self.widths)
+        self.resized.connect(self.widths) # 10.11.25 конфликт с connect_to_resize
         self.chbox_edit_combos = False
         self.flag_proverka_op = True
         CMS.dict_kod_oper(self, self.db_naryad)
@@ -494,7 +494,7 @@ class mywindow(QtWidgets.QMainWindow):
 
         self.ui.tbl_mat_edit.cellChanged[int,int].connect(self.edit_tbl_mat)
         #============================================================
-        self.load_nomen()
+        # self.load_nomen() # 10.11.25 Дубликат без ссылок (замедлял время запуска)
 
         btn_prim_izm_shablon = self.ui.btn_prim_shablon_op
         btn_prim_izm_shablon.clicked.connect(self.btn_prim_izm_shablon)
@@ -1456,21 +1456,18 @@ class mywindow(QtWidgets.QMainWindow):
                     flag = True
                 if sp_tree[i][20] == '1'and sp_tree[i][0] == 'Резка(ЧПУ)' and sp_tree[i][4] == '010101':
                     if sp_tree[i][15] != '':
-                        file_prikr = CDOCS.Utils.check_dxf_exists(sp_tree[i])
-                        # if F.keep_extention_c(file_prikr) == '.dxf':
-                        if file_prikr:
-                            file = db_files_load(self, file_prikr)
-                            if file == None or file == False:
-                                nom_op = sp_tree[i][2]
-                                name_op = sp_tree[i][0]
-                                CQT.msgbox(f'[{nom_op} {name_op}]DXF файл в базе не найден')
-                                break
-                            dict_rez = CDXF.raschet_dxf(file)
-                            if dict_rez != None:
-                                self.global_param_tk_dxf = dict_rez
-                            else:
-                                CQT.msgbox('DXF не корректный, не распознать.')
+                        file = self.operation_docs.storage.get_dxf(sp_tree[i][15], self.dse_nn) # 10.11.25
+                        if file == None or file == False:
+                            nom_op = sp_tree[i][2]
+                            name_op = sp_tree[i][0]
+                            CQT.msgbox(f'[{nom_op} {name_op}]DXF файл в базе не найден')
                             break
+                        dict_rez = CDXF.raschet_dxf(file)
+                        if dict_rez != None:
+                            self.global_param_tk_dxf = dict_rez
+                        else:
+                            CQT.msgbox('DXF не корректный, не распознать.')
+                        break
         # ===============================================
 
 
@@ -4104,6 +4101,8 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
                 arr_tmp = tmp
         try:
             mat = operacii.materiali(self, ima_operacii, arr_tmp)
+            if mat is None: #25.11.25
+                return item
         except:
             mat = ""
             CQT.msgbox('Материалы не расчитаны')
@@ -4160,6 +4159,9 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
                 vrema = 0
         if vrema == 0:
             CQT.msgbox('Не рассчиано время, материалы не заненсены.')
+        if F.valm(vrema) >= CFG.Config.place.limit_time_on_naryad: #25.11.25
+            CQT.msgbox(f'Время: "{vrema}" на единицу превышает установленный лимит на один наряд {CFG.Config.place.limit_time_on_naryad}\nИзменения не применены')
+            return item
         item.setText(7, str(vrema))
         return item
 

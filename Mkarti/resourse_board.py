@@ -53,7 +53,7 @@ class Resourse_mk():
             if num_kpl == None or nom_mk == False:
                 CQT.msgbox(f'Ошибка получения НомКплан по МК {nom_mk}')
                 raise ValueError(f"Ошибка получения НомКплан по МК {nom_mk}")
-            num_kpl = num_kpl[0]
+            num_kpl = num_kpl #12.11.25
             self.num_kpl = num_kpl
             self.poz = CMS.Pozition(num_kpl, self.db_kplan, self.bd_naryad, self.db_resxml, self.db_users, self.parent_self)
             self.poz.load_kpl_table('пл_топ')
@@ -784,8 +784,9 @@ class Resourse_mk():
                     return
                 Примечание = ''
                 if rc['Опер_РЦ_код'] in self.parent_self.myparent.DICT_RC:
+                    Опер_РЦ_наименование = self.parent_self.myparent.DICT_RC[rc['Опер_РЦ_код']]['Имя']
                     Примечание = " (" + self.parent_self.myparent.DICT_RC[rc['Опер_РЦ_код']]['Примечание'] + ')'
-                rez_list = add_row(rez_list, 2, 'РЦ', rc['Опер_РЦ_наименование'] + Примечание, rc['Опер_РЦ_код'],
+                rez_list = add_row(rez_list, 2, 'РЦ', Опер_РЦ_наименование + Примечание, rc['Опер_РЦ_код'],
                                    vid_rab, round(rc['Опер_Тпз'] + rc['Опер_Тшт'], 3), 'мин', etap,
                                    rc['Опер_наименование_подразделения'])
                 test.append([dse['Номенклатурный_номер'], rc['Опер_РЦ_наименование'], etap,
@@ -901,8 +902,20 @@ class mywindow_res(QtWidgets.QDialog):  # диалоговое окно
 
         proj_name = self.myparent.dict_cur_poz_cr_mk['Проект']
         if proj_name and len(proj_name) == 5 and '.ВО' in proj_name:
-            if 'file_name' in self.myparent.tkp_current_schema:
-                name_res_for_ERP = self.myparent.tkp_current_schema['file_name']
+            schema = self.myparent.tkp_current_schema
+            if 'file_name' in schema:
+                name_res_for_ERP = schema['file_name']
+                napr_deyat_is_kt = None
+
+                if F.valm(schema['вид_по_напр']) in self.myparent.Data_plan.DICT_VID_PO_NAPR:
+                    napr_deyat_is_kt = self.myparent.Data_plan.DICT_VID_PO_NAPR[int(schema['вид_по_напр'])]['napravl_deyat.Псевдоним'] == 'КТ'
+                if schema['name_tkp'] is not None and (schema['name_tkp'].lower() == 'Компенсатор тканевый'.lower() or napr_deyat_is_kt):
+                    try:
+                        pref, snom, *nomen  =  schema['nnom_tkp'].split('_')
+                        nomen = '_'.join(nomen)
+                        name_res_for_ERP = f'{pref}_{snom}_Металлическая арматура для компенсатора {nomen}'
+                    except:
+                        pass
             else:
                 name_res_for_ERP = (f"{F.clear_row_for_file_name_c(self.myparent.tkp_current_schema['nnom_tkp'])}"
                                     f"_{F.clear_row_for_file_name_c(self.myparent.tkp_current_schema['name_tkp'])}")
@@ -1334,13 +1347,15 @@ class mywindow_res(QtWidgets.QDialog):  # диалоговое окно
                 return
 
             dict_nomen = {'Наименование':new_nomen,
-                               'Артикул':new_art,
+                          'НаименованиеПолное': new_nomen,
+                            'Артикул':new_art,
                           'ТипНоменклатуры': 'Товар',
                           'ВариантОформленияПродажи': 'РеализацияТоваровУслуг',
                           'ГруппаДоступа': 'Продукция Пауэрз для Эластика',
                           'ЕдиницаИзмерения': 'Штука',
                           'ЕдиницаДляОтчетов': 'Штука',
-                          'СкладскаяГруппа': 'Листы',
+                          'ИспользованиеХарактеристик': 'НеИспользовать',
+                          'ВидНоменклатуры': 'Металлоизделия',
                           'СтавкаНДС': '20%',
                           'ГруппаАналитическогоУчета': 'Металлоизделия',
                           'ГруппаФинансовогоУчета': 'Продукция собственного производства (Пауэрз)',
@@ -1351,9 +1366,9 @@ class mywindow_res(QtWidgets.QDialog):  # диалоговое окно
                 CQT.msgbox(f'Запрос создания номенклатуры в 1С ошибка код {code}\n{data["Ошибки"]}')
                 return
             new_cod = data["Код"]
-            self.ui3.tbl_options_for_erp.item(3, 1).setText(new_nomen)
-            self.ui3.tbl_options_for_erp.item(4, 1).setText(new_art)
-            self.ui3.tbl_options_for_erp.item(5, 1).setText(new_cod)
+            self.ui3.tbl_options_for_erp.item(4, 1).setText(new_nomen)
+            self.ui3.tbl_options_for_erp.item(5, 1).setText(new_art)
+            self.ui3.tbl_options_for_erp.item(6, 1).setText(new_cod)
 
             CQT.msgbox('Успешно',time_life=0.5)
 

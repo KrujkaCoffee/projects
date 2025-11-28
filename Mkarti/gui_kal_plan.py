@@ -457,12 +457,24 @@ def tab_addit_info_poz_gant_click(self:mywindow,ind):
 
                 if data_py['ДокументОснование_Type'] not in ('StandardODATA.Document_ЗаказКлиента',
                                                              'StandardODATA.Document_ЗаказНаСборку',
-                                                             'StandardODATA.Document_ЗаказНаВнутреннееПотребление'):
+                                                             'StandardODATA.Document_ЗаказНаВнутреннееПотребление',
+                                                             'StandardODATA.Document_ЗаказДавальца2_5'
+                                                             ):
                     CQT.msgbox(f"Основание для {self.place.doc_prefix}:\n{data_py['ДокументОснование_Type']}.\n Нужен Заказа клиента/Заказ на сборку")
                     return
                 client_order = data_py['ДокументОснование']
+                data_co = None
+                if data_py['ДокументОснование_Type'] == 'StandardODATA.Document_ЗаказДавальца2_5':
+                    data_co = m.get_response(doc_name=f"Document_ЗаказДавальца2_5(guid'{data_py['ДокументОснование']}')",
+                                             wet_filtr=f"?$select= Number,Date,Статус,"
+                                                       f"Комментарий,Продукция/LineNumber,"
+                                                       f"Продукция/Номенклатура_Key,Продукция/Количество,"
+                                                       f"Продукция/ДатаОтгрузки,"
+                                                       f"Сделка_Key ")
 
-
+                    data_co['Документ'] = f"ЗаказДавальца {data_co['Number']}"
+                    data_co['Товары'] = data_co['Продукция']
+                    data_co.pop('Продукция',None)
 
                 if data_py['ДокументОснование_Type'] == 'StandardODATA.Document_ЗаказНаСборку':
                     sb_order = data_py['ДокументОснование']
@@ -485,7 +497,7 @@ def tab_addit_info_poz_gant_click(self:mywindow,ind):
 
 
 
-                else:
+                if data_co is None:
                     data_co = m.get_response(doc_name=f"Document_ЗаказКлиента(guid'{client_order}')",
                                                  wet_filtr=f"?$select=Number,Date,Статус,ДокументОснование,"
                                                            f"ДокументОснование_Type,Комментарий,Товары/LineNumber,"
@@ -1389,6 +1401,8 @@ def load_fields_for_tree(self:mywindow):
     #    dict_of_dicts[tbl_name].append(field)
     if currentRow == None:
         CQT.msgbox(f'Не выбрана позиция')
+        return
+    if currentRow['plan.Статус'] == 'Группа':
         return
     data_from_db, fields_info = KPL.load_db(self,currentRow['plan.Пномер'])
     data_from_db_dict = F.list_of_lists_to_list_of_dicts(data_from_db)[0]

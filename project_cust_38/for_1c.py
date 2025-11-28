@@ -854,8 +854,8 @@ class Fcns():
 
 @dataclass
 class Data_1с:
-    DEBUG = '22.10.2025'
-    if True:#if F.now("%d.%m.%Y") != DEBUG:
+    DEBUG = '31.10.2025'
+    if  F.now("%d.%m.%Y") != DEBUG:
         code,  nomen_names  = APIERP.get_wet_request(f'''ВЫБРАТЬ
             ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(Номенклатура.Ссылка)) КАК Ref,
             Номенклатура.Код + " " + Номенклатура.Наименование КАК Descr

@@ -237,7 +237,7 @@ def add_tbl_rm(row_rm, res, ima_table_rm):
     CSQ.add_line_into_db_sql_c(put_db, ima_table_rm, row_rm_tmp)
     print(f'    Добавлен {ima_table_rm}')
 
-def reload_tbl_empl(ima_table_empl, LIST_DICT_EMPLOYEE_FULL, res, dict_rab_vrema):
+def reload_tbl_empl_old(ima_table_empl, LIST_DICT_EMPLOYEE_FULL, res, dict_rab_vrema):
     USE_SINCHRON_FACT_TIME = False
     list_erp_tabels = []
     if 'mtdz' in ima_table_empl:
@@ -548,6 +548,300 @@ def reload_tbl_empl(ima_table_empl, LIST_DICT_EMPLOYEE_FULL, res, dict_rab_vrema
     print(f'        delete duplicaters')
     delete_duplicates(put_db,ima_table_empl,'ФИО')
 
+
+#++12.11.25
+def get_current_state_employee(fio: str, prof: str, ref_key: str):
+    return CSQ.custom_request_c(put_db, f"""
+        SELECT * FROM employee 
+        WHERE ФИО = {fio!r} AND Должность = {prof!r} AND ID_ФизЛица = {ref_key!r}
+        ORDER BY Пномер DESC LIMIT 1;
+    """, rez_dict=True, one=True)
+
+
+def reload_tbl_employee(ima_table_empl, LIST_DICT_EMPLOYEE_FULL, res, dict_rab_vrema):
+    from dateutil.relativedelta import relativedelta
+    USE_SINCHRON_FACT_TIME = False
+    list_erp_tabels = []
+    if 'mtdz' in ima_table_empl:
+        USE_SINCHRON_FACT_TIME = True
+
+    week_step = F.datetostr(F.date_add_days(F.now(''), WEEK_STEP_DAYS, '', ''), "mtdz_%Y_%m_01")
+    if USE_SINCHRON_FACT_TIME and (ima_table_empl == F.now("mtdz_%Y_%m_01") or week_step == ima_table_empl):
+        current_month = F.strtodate(ima_table_empl, "mtdz_%Y_%m_%d")
+        ПериодРегистрации = F.datetostr(F.strtodate(ima_table_empl, "mtdz_%Y_%m_%d"), "ДАТАВРЕМЯ(%Y, %m, %d)")
+        ПериодРегистрации_конец = F.datetostr(current_month + relativedelta(months=1), "ДАТАВРЕМЯ(%Y, %m, %d)")
+        ПериодРегистрации_str = F.datetostr(F.strtodate(ima_table_empl, "mtdz_%Y_%m_%d"), "%d.%m.%Y")
+        text = f"""
+       ВЫБРАТЬ
+    ТабельУчетаРабочегоВремениДанныеОВремени.Сотрудник.Наименование КАК Сотрудник,
+    УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ТабельУчетаРабочегоВремениДанныеОВремени.Сотрудник.ФизическоеЛицо.Ссылка) КАК Ref_Физлица,
+    УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ТабельУчетаРабочегоВремениДанныеОВремени.Сотрудник.Ссылка) КАК Ref,
+    ДанныеДляПодбора.Должность КАК ТекущаяДолжность,
+    СУММА(ВЫБОР
+            КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени1.БуквенныйКод В ("Я", "Н", "РВ", "С")
+                ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов1
+            ИНАЧЕ 0
+        КОНЕЦ) КАК Часов1,
+    СУММА(ВЫБОР
+            КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени2.БуквенныйКод В ("Я", "Н", "РВ", "С")
+                ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов2
+            ИНАЧЕ 0
+        КОНЕЦ) КАК Часов2,
+    СУММА(ВЫБОР
+            КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени3.БуквенныйКод В ("Я", "Н", "РВ", "С")
+                ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов3
+            ИНАЧЕ 0
+        КОНЕЦ) КАК Часов3,
+    СУММА(ВЫБОР
+            КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени4.БуквенныйКод В ("Я", "Н", "РВ", "С")
+                ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов4
+            ИНАЧЕ 0
+        КОНЕЦ) КАК Часов4,
+    СУММА(ВЫБОР
+            КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени5.БуквенныйКод В ("Я", "Н", "РВ", "С")
+                ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов5
+            ИНАЧЕ 0
+        КОНЕЦ) КАК Часов5,
+    СУММА(ВЫБОР
+            КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени6.БуквенныйКод В ("Я", "Н", "РВ", "С")
+                ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов6
+            ИНАЧЕ 0
+        КОНЕЦ) КАК Часов6,
+    СУММА(ВЫБОР
+            КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени7.БуквенныйКод В ("Я", "Н", "РВ", "С")
+                ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов7
+            ИНАЧЕ 0
+        КОНЕЦ) КАК Часов7,
+    СУММА(ВЫБОР
+            КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени8.БуквенныйКод В ("Я", "Н", "РВ", "С")
+                ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов8
+            ИНАЧЕ 0
+        КОНЕЦ) КАК Часов8,
+    СУММА(ВЫБОР
+            КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени9.БуквенныйКод В ("Я", "Н", "РВ", "С")
+                ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов9
+            ИНАЧЕ 0
+        КОНЕЦ) КАК Часов9,
+    СУММА(ВЫБОР
+            КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени10.БуквенныйКод В ("Я", "Н", "РВ", "С")
+                ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов10
+            ИНАЧЕ 0
+        КОНЕЦ) КАК Часов10,
+    СУММА(ВЫБОР
+            КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени11.БуквенныйКод В ("Я", "Н", "РВ", "С")
+                ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов11
+            ИНАЧЕ 0
+        КОНЕЦ) КАК Часов11,
+    СУММА(ВЫБОР
+            КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени12.БуквенныйКод В ("Я", "Н", "РВ", "С")
+                ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов12
+            ИНАЧЕ 0
+        КОНЕЦ) КАК Часов12,
+    СУММА(ВЫБОР
+            КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени13.БуквенныйКод В ("Я", "Н", "РВ", "С")
+                ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов13
+            ИНАЧЕ 0
+        КОНЕЦ) КАК Часов13,
+    СУММА(ВЫБОР
+            КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени14.БуквенныйКод В ("Я", "Н", "РВ", "С")
+                ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов14
+            ИНАЧЕ 0
+        КОНЕЦ) КАК Часов14,
+    СУММА(ВЫБОР
+            КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени15.БуквенныйКод В ("Я", "Н", "РВ", "С")
+                ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов15
+            ИНАЧЕ 0
+        КОНЕЦ) КАК Часов15,
+    СУММА(ВЫБОР
+            КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени16.БуквенныйКод В ("Я", "Н", "РВ", "С")
+                ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов16
+            ИНАЧЕ 0
+        КОНЕЦ) КАК Часов16,
+    СУММА(ВЫБОР
+            КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени17.БуквенныйКод В ("Я", "Н", "РВ", "С")
+                ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов17
+            ИНАЧЕ 0
+        КОНЕЦ) КАК Часов17,
+    СУММА(ВЫБОР
+            КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени18.БуквенныйКод В ("Я", "Н", "РВ", "С")
+                ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов18
+            ИНАЧЕ 0
+        КОНЕЦ) КАК Часов18,
+    СУММА(ВЫБОР
+            КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени19.БуквенныйКод В ("Я", "Н", "РВ", "С")
+                ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов19
+            ИНАЧЕ 0
+        КОНЕЦ) КАК Часов19,
+    СУММА(ВЫБОР
+            КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени20.БуквенныйКод В ("Я", "Н", "РВ", "С")
+                ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов20
+            ИНАЧЕ 0
+        КОНЕЦ) КАК Часов20,
+    СУММА(ВЫБОР
+            КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени21.БуквенныйКод В ("Я", "Н", "РВ", "С")
+                ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов21
+            ИНАЧЕ 0
+        КОНЕЦ) КАК Часов21,
+    СУММА(ВЫБОР
+            КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени22.БуквенныйКод В ("Я", "Н", "РВ", "С")
+                ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов22
+            ИНАЧЕ 0
+        КОНЕЦ) КАК Часов22,
+    СУММА(ВЫБОР
+            КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени23.БуквенныйКод В ("Я", "Н", "РВ", "С")
+                ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов23
+            ИНАЧЕ 0
+        КОНЕЦ) КАК Часов23,
+    СУММА(ВЫБОР
+            КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени24.БуквенныйКод В ("Я", "Н", "РВ", "С")
+                ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов24
+            ИНАЧЕ 0
+        КОНЕЦ) КАК Часов24,
+    СУММА(ВЫБОР
+            КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени25.БуквенныйКод В ("Я", "Н", "РВ", "С")
+                ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов25
+            ИНАЧЕ 0
+        КОНЕЦ) КАК Часов25,
+    СУММА(ВЫБОР
+            КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени26.БуквенныйКод В ("Я", "Н", "РВ", "С")
+                ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов26
+            ИНАЧЕ 0
+        КОНЕЦ) КАК Часов26,
+    СУММА(ВЫБОР
+            КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени27.БуквенныйКод В ("Я", "Н", "РВ", "С")
+                ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов27
+            ИНАЧЕ 0
+        КОНЕЦ) КАК Часов27,
+    СУММА(ВЫБОР
+            КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени28.БуквенныйКод В ("Я", "Н", "РВ", "С")
+                ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов28
+            ИНАЧЕ 0
+        КОНЕЦ) КАК Часов28,
+    СУММА(ВЫБОР
+            КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени29.БуквенныйКод В ("Я", "Н", "РВ", "С")
+                ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов29
+            ИНАЧЕ 0
+        КОНЕЦ) КАК Часов29,
+    СУММА(ВЫБОР
+            КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени30.БуквенныйКод В ("Я", "Н", "РВ", "С")
+                ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов30
+            ИНАЧЕ 0
+        КОНЕЦ) КАК Часов30,
+    СУММА(ВЫБОР
+            КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.ВидВремени31.БуквенныйКод В ("Я", "Н", "РВ", "С")
+                ТОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Часов31
+            ИНАЧЕ 0
+        КОНЕЦ) КАК Часов31
+ИЗ
+    Документ.ТабельУчетаРабочегоВремени.ДанныеОВремени КАК ТабельУчетаРабочегоВремениДанныеОВремени
+ЛЕВОЕ СОЕДИНЕНИЕ РегистрСведений.ДанныеДляПодбораСотрудников КАК ДанныеДляПодбора
+    ПО ДанныеДляПодбора.Сотрудник = ТабельУчетаРабочегоВремениДанныеОВремени.Сотрудник 
+ГДЕ
+    (ВЫРАЗИТЬ(ТабельУчетаРабочегоВремениДанныеОВремени.Ссылка.Комментарий КАК СТРОКА(20))) = "Фактическая явка"
+    И ТабельУчетаРабочегоВремениДанныеОВремени.Ссылка.ПериодРегистрации = {ПериодРегистрации}
+    И ДанныеДляПодбора.Начало <= {ПериодРегистрации}
+    И ДанныеДляПодбора.Окончание >= {ПериодРегистрации_конец}
+
+СГРУППИРОВАТЬ ПО
+    ТабельУчетаРабочегоВремениДанныеОВремени.Сотрудник.Наименование,
+    ТабельУчетаРабочегоВремениДанныеОВремени.Сотрудник.Ссылка,
+    ТабельУчетаРабочегоВремениДанныеОВремени.Сотрудник.ФизическоеЛицо.Ссылка,
+    ДанныеДляПодбора.Должность
+
+    """
+
+        key, result_req = APIERP.get_wet_request(text=text)
+        if key != 200:
+            print(f'[reload_tbl_employee]Ошибка получения данных из ЕРП')
+            return
+        if not result_req['data']:
+            print(f'[reload_tbl_employee]Табели Факт. явки за  {ПериодРегистрации_str} пуст')
+            return
+        else:
+            list_erp_tabels = result_req['data']
+
+    def calc_summ_time(fio: str, day: str) -> int | float:
+        summ = 0
+        name_field_erp = F.datetostr(F.strtodate(day, "d_%Y_%m_%d"), "Часов%#d")
+        for item in list_erp_tabels:
+            if item['Сотрудник'] == fio:
+                for erp_day, erp_val_item in item.items():
+                    if erp_day == name_field_erp:
+                        summ += erp_val_item
+
+        return summ
+    custom_request_c = f'SELECT * FROM {ima_table_empl} WHERE Пномер > 2 and ФИО != "";'
+    list_from_scedule_month = CSQ.custom_request_c(put_db, custom_request_c, rez_dict=True)
+    list_to_add_scedule = []
+    print(f'    Обновление времени {ima_table_empl} ')
+    used_indexes = set()
+    cache_employee = {}
+    for item_erp in list_erp_tabels:
+        is_finded = False
+        fio = item_erp['Сотрудник'].strip()
+        phys_ref = item_erp['Ref_Физлица'].strip()
+        prof = item_erp['ТекущаяДолжность'].strip()
+        employee_key = (fio, phys_ref, prof)
+        if employee_key in cache_employee:
+            current_state = cache_employee[employee_key]
+        else:
+            current_state = get_current_state_employee(fio, prof, phys_ref)
+            cache_employee[employee_key] = current_state
+        if current_state == False:
+            print(f'[reload_tbl_employee]Прогрузка {ima_table_empl} была прервана из-за некорректного ответа БД')
+            return
+
+        for idx, item_scedule in enumerate(list_from_scedule_month):
+            if item_scedule['ФИО'] == f"{fio} {prof}":
+                comment = ""
+                if current_state['Статус'] == 'Увольнение':
+                    comment = "Увольнение"
+
+                is_finded = True
+                used_indexes.add(idx)
+                for day, val in item_scedule.items():
+                    if 'd_' in day:
+                        erp_val = calc_summ_time(item_erp['Сотрудник'], day)
+                        Пномер = item_scedule['Пномер']
+                        if erp_val != val or (item_scedule['Примечание'] != comment):
+                            CSQ.custom_request_c(put_db, f"""UPDATE {ima_table_empl} SET ({day}) = 
+                                                                     ({erp_val}), Примечание = {comment!r} WHERE Пномер == {Пномер};""")
+                            print(
+                                f"        {item_erp['Сотрудник']}   {item_erp['ТекущаяДолжность']}    {F.datetostr(F.strtodate(day, 'd_%Y_%m_%d'), '%d.%m.%Y')},  было {val} / стало {erp_val} час.")
+        if not is_finded:
+            strok = [f"{fio} {prof}", '']
+            tek_dat = F.now('')
+            if current_state['ДатаИзмененияДолжности'] != '':
+                tek_dat = F.strtodate(current_state['ДатаИзмененияДолжности'], "%Y-%m-%d")
+            for i in res:
+                if F.strtodate(i, "%Y.%m.%d") <= tek_dat:
+                    strok.append(0)
+                else:
+                    if res[i].value == 1:
+                        strok.append(0)
+                    else:
+                        norma = 8
+                        if fio in dict_rab_vrema:
+                            norma = dict_rab_vrema[fio]
+                        strok.append(norma)
+            list_to_add_scedule.append(strok)
+    for idx, item_scedule in enumerate(list_from_scedule_month):
+        if idx not in used_indexes:
+            fields_to_update = {'Примечание': 'Увольнение'}
+            pk = item_scedule['Пномер']
+            for key, val in item_scedule.items():
+                if F.is_date(key, 'd_%Y_%m_%d'):
+                    fields_to_update[key] = 0
+            fields = ','.join(f'{key} = {val!r}' for key, val in fields_to_update.items())
+            CSQ.custom_request_c('SRV:BD_users.db', f'UPDATE {ima_table_empl} SET {fields} WHERE Пномер = {pk}')
+
+    if len(list_to_add_scedule)>0:
+        CSQ.add_line_into_db_sql_c(put_db, ima_table_empl, list_to_add_scedule)
+    print(f'        delete duplicaters')
+    delete_duplicates(put_db,ima_table_empl,'ФИО')
+    return
+#--12.11.25
+
 def delete_duplicates(put_db, tbl,name_row):
     CSQ.custom_request_c(put_db,f"""delete   from {tbl} 
     where   rowid not in (select  min(rowid)
@@ -683,13 +977,16 @@ def reload_jurnal_kplan(dict_podr, res, ima_table_jurnal_kplan,spis_empl,DICT_PO
         if v != int(res[date_for_api]):
             CSQ.custom_request_c(db_kplan,f"""UPDATE {ima_table_jurnal_kplan} SET ({k}) = ({int(res[date_for_api])}) WHERE Пномер = 1""")
             print(f'Обновлен выходной {ima_table_jurnal_kplan} - {k} было {v} стало {int(res[date_for_api])}')
+
+
+
 def check_empl(ima_table_empl,LIST_DICT_EMPLOYEE_FULL,res,dict_rab_vrema):
     if ima_table_empl not in CSQ.get_list_of_tables_c(put_db):
         add_tbl_empl(LIST_DICT_EMPLOYEE_FULL, res, ima_table_empl,dict_rab_vrema)
     else:
         print(f'    {ima_table_empl} на месте')
         print(f'     обновление')
-        reload_tbl_empl(ima_table_empl, LIST_DICT_EMPLOYEE_FULL, res,dict_rab_vrema)
+        reload_tbl_employee(ima_table_empl, LIST_DICT_EMPLOYEE_FULL, res,dict_rab_vrema) #12.11.25
 
 def check_eq(ima_table_eq, row_equip, res):
     if ima_table_eq not in CSQ.get_list_of_tables_c(put_db):
@@ -802,11 +1099,12 @@ def main():
                            month_str,tabel_workforce,DICT_PROFESSIONS_NICKNAME)
         check_empl(ima_table_empl_tdz, LIST_DICT_EMPLOYEE_FULL, calendar_dict, dict_rab_vrema)
         # check_empl(ima_table_empl,LIST_DICT_EMPLOYEE_FULL,calendar_dict,dict_rab_vrema) # #04.07.25
-        check_eq(ima_table_eq, row_equip, calendar_dict)
-        check_rm(ima_table_rm, row_rm, calendar_dict)
-        check_jurnaltdz(ima_table_jur_tdz, calendar_dict)
+        # check_eq(ima_table_eq, row_equip, calendar_dict)
+        # check_rm(ima_table_rm, row_rm, calendar_dict)
+        # check_jurnaltdz(ima_table_jur_tdz, calendar_dict)
     print('Проверка производственного календаря завершено')
     print('==================================')
     calendar.close()
     return
 print('==================================')
+main()

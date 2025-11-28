@@ -791,14 +791,15 @@ if __name__ == "__main__":
     if app.config['TEMPLATES_AUTO_RELOAD']:
         p = Thread(target=start_daemon_thread, args=(settings.TIME_CHECK_HTML,), daemon=True)
         p.start()
-    if socket.gethostname() == "POW-ING23":
-        app.run(debug=True, host='192.168.47.61', port=20000)  # g.sviridov
+    if socket.gethostname() == "POW18-08": # для локальных werkzeug
+        app.run(debug=True, host='192.168.47.68', port=20000)  # a.a.fedorov
     else:
-        if socket.gethostname() == "POW18-15":
+        if socket.gethostname() == "POW18-15": # для локальных werkzeug
             app.run(debug=False, host='192.168.14.71', port=20001)#a.belyakov
-        else:
-            # app.run(debug=False, host='192.168.47.123', port=20000)
-            # app.run(debug=False,host='192.168.50.230',port=20000)
-            app.run(debug=False, host='0.0.0.0', port=20000)  # SRVmes 'http://mesinfo.powerz.ru:20000/'
+        else: # для прода waitres
+            from waitress import serve
+            import logging
+            logging.basicConfig(level=logging.INFO)
+            serve(app, host='0.0.0.0', port=20000, _quiet=False, threads=4)  # SRVmes 'http://mesinfo.powerz.ru:20000/'
             print('mesinfo.powerz.ru')
 

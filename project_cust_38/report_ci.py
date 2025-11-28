@@ -4121,7 +4121,10 @@ def plan_fact_grafic_mes(self, data_nach, data_kon, *args):
         summ_vrem_osv_vneplan = dxict_moth['Внеплан сумма, н-см./чел.']
         summ_ves_fact = summ_vrem_osvoeno + summ_vrem_osv_vneplan
         k = 0
-        summ_ves_vir_vneplan_proc = round(100 * summ_vrem_osv_vneplan / summ_ves_fact, 2)
+        try:
+            summ_ves_vir_vneplan_proc = round(100 * summ_vrem_osv_vneplan / summ_ves_fact, 2)
+        except ZeroDivisionError as e: #27.11.2025
+            summ_ves_vir_vneplan_proc = 'Проигнорировано т.к. "План, н-см./чел." и "Внеплан сумма, н-см./чел." равны нулю'
         if summ_vrem_osvoeno > 0:
             k = summ_ves_fact / summ_vrem_osvoeno
         plan_normo_sm = round((item['Нормо_смены_сб'] + item['Нормо_смены_св'] + item['Нормо_смены_зачист']), 2)

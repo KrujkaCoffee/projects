@@ -630,23 +630,43 @@ def apply_diap_dates_to_sb_in_tbl(self: mywindow, *args):
         for item in rez:
             data_pl = F.from_binary_pickle(item)
             set_kpls = set_kpls.union({str(_) for _ in data_pl.keys()})
-        rez_snums = CSQ.custom_request_c(self.db_kplan, f"""SELECT plan.Пномер FROM plan INNER JOIN  status_poz ON 
-        status_poz.Пномер == plan.Статус WHERE plan.Пномер NOT IN ({CSQ.prepare_list_to_tuple(list(set_kpls))}) AND  plan.poki = {self.place.poki} AND status_poz.Имя IN ("К производству","Подготовка","Изготовление");""",
-                                         one_column=True, hat_c=False) # по задаче 100059785
-        str_pnums = '|'.join([str(_) for _ in rez_snums])  # '(?!3273|3332)
-        sp_znch = {'plan.Пномер': str_pnums}
+        rez_snums = CSQ.custom_request_c(self.db_kplan, f"""SELECT plan.Пномер, plan.Группа FROM plan INNER JOIN  status_poz ON 
+        status_poz.Пномер == plan.Статус WHERE plan.Пномер NOT IN ({CSQ.prepare_list_to_tuple(list(set_kpls))}) AND 
+         plan.poki = {self.place.poki} AND status_poz.Имя IN ("К производству","Подготовка");""",
+                                         one_column=False,rez_dict=True)
+
+
+        str_pnums = '|'.join([str(_["Пномер"]) for _ in rez_snums])  # '(?!3273|3332)
+        reg_groups = ''
+        if self.ui.chk_kpl_groups.isChecked():
+            str_groups = '|'.join([str(_["Группа"]) for _ in rez_snums if _["Группа"] != '' ])  #
+            str_pnums = str_pnums + '|-1'
+            reg_groups = rf"'^\s*(?:{str_groups})?\s*$"
+        sp_znch = {'plan.Пномер': str_pnums}#, 'plan.Группа':reg_groups}
+
+
     else:
         if not F.is_date(month, "%Y-%m-%d"):
             CQT.msgbox('Не выбран месяц')
             return
         rez = CSQ.custom_request_c(self.db_kplan, f"""SELECT file_poz_plan FROM mnts_plan WHERE poki = {self.place.poki} and Дата ="{month}";""")
+
+
         data_pl = F.from_binary_pickle(rez[-1][0])
         list_noms = [str(_) for _ in data_pl.keys()]
+        reg_groups = ''
+        if self.ui.chk_kpl_groups.isChecked():
+            rez_groups = CSQ.custom_request_c(self.db_kplan, f"""SELECT DISTINCT plan.Группа FROM plan 
+             WHERE plan.Пномер IN ({CSQ.prepare_list_to_tuple(list(data_pl.keys()))}) and plan.Группа != '';""",
+                                             one_column=True, hat_c=False)
+            list_noms.append('-1')
+            str_groups = '|'.join([str(_) for _ in rez_groups])  #
+            reg_groups = rf"'^\s*(?:{str_groups})?\s*$"
         str_pnums = '|'.join(list_noms)
-        sp_znch = {'plan.Пномер': str_pnums}
+        sp_znch = {'plan.Пномер': str_pnums}#, 'plan.Группа':reg_groups}
     CMS.fill_filtr_c(self, self.ui.tbl_filtr_kal_pl, self.ui.tbl_kal_pl, sp_znch, True)
     CMS.apply_filtr_c(self, self.ui.tbl_filtr_kal_pl, self.ui.tbl_kal_pl)
-
+    CMS.apply_gui_groups(self)
 
 def load_poz_pl_from_db(self: mywindow):
     # F.from_binary_pickle(res[-1][0])

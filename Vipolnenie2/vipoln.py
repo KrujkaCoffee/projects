@@ -984,7 +984,10 @@ class mywindow(QtWidgets.QMainWindow):
                 if not path:
                     iter_state.append(li_form % {'text': doc})
                     continue
-                resolve = F.resolve_lnk_target(path)
+                file_name, ext = os.path.splitext(path)
+                resolve = path
+                if ext == '.lnk': #28.11.25
+                    resolve = F.resolve_lnk_target(path)
                 if not pathlib.Path(resolve).exists():
                     iter_state.append(li_form % {'text': doc})
                     continue
@@ -1447,7 +1450,7 @@ class mywindow(QtWidgets.QMainWindow):
                    usr_1, usr_2]
             num_brak = CSQ.custom_request_c(self.bd_naryad,
                                  f"""INSERT INTO brak (date,empl,nom_nar,msg,usr_1,usr_2) VALUES ({CSQ.questions_for_mask(row)}) RETURNING s_num""",
-                                 list_of_lists_c=row, one=True, rez_dict=True)['s_num'][0]
+                                 list_of_lists_c=row, one=True, rez_dict=True)['s_num'] # 10.11.25
             # num_brak = CSQ.custom_request_c(self.bd_naryad, f"""SELECT s_num FROM brak ORDER BY s_num DESC LIMIT 1""",
             rows_list_brak = []
             for item in self.list_otk_brak[1:]:

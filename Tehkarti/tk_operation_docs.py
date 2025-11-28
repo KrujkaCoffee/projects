@@ -12,6 +12,8 @@ import project_cust_38.Cust_Qt as CQT
 import project_cust_38.Cust_SQLite as CSQ
 import project_cust_38.Cust_Functions as F
 import project_cust_38.Cust_mes as CMS
+import project_cust_38.Cust_config as CFG
+import project_cust_38.Cust_storage as CSTORE
 
 
 if typing.TYPE_CHECKING:
@@ -29,6 +31,7 @@ class OperationDocs:
         self.modal_tbl = None
         self.dialog: CQT.Dialog_tbl = None
         self.add_btn_state = False
+        self.storage = CSTORE.FileStorage(CFG.Config.project.tk_storage_reestr)
 
     def show_modal(self, *args):
         docs = self.get_oper_docs(include_tflex_data=True)
@@ -76,16 +79,24 @@ class OperationDocs:
     def doc_view_clicked(self, row, *args):
         place_nk = CQT.num_col_by_name_c(self.modal_tbl, 'Хранилище')
         id_nk = CQT.num_col_by_name_c(self.modal_tbl, 'ID')
+        rez = None
         if place_nk:
             place = self.modal_tbl.item(row, place_nk).text()
             filename = self.get_filename(self.modal_tbl, row)
             if place == 'МЕС':
-                rez = db_files_load(self.window, filename)
+                # rez = db_files_load(self.window, filename)
+                # # put_file_tmp = CMS.tmp_dir() + os.sep + 'tmp_files' + os.sep + \
+                # #                str(F.get_time_shtamp_c()).split('.')[-1] + "_" + \
+                # #                F.transliterate(filename.replace('ь', ''))
+                rez = self.storage.get_file_by_name(filename,
+                                                                                                )
                 if rez == False:
                     return
             if place == 'DOCS':
                 file_id = self.modal_tbl.item(row, id_nk).text()
                 rez = self.load_docs_file(filename)
+            if rez is None:
+                return CQT.msgbox('Не удалось открыть документ')
             F.run_file_os_c(rez)
 
     def get_file_content(self, file_id: int | str, nn: str):
@@ -129,7 +140,7 @@ class OperationDocs:
         if item == None or item.text(15) == "":
             return
         if batch == 'МЕС':
-            db_files_del(self.window, filename, self.window.nom_tk)
+            self.storage.delete_file(filename, self.window.nom_tk)
         self.drop_oper_doc(row)
         self.window.save_tk()
         self.refill_doc_tables(self.main_tbl, self.modal_tbl)
@@ -159,12 +170,12 @@ class OperationDocs:
                     filename_for_replace = self.check_dxf_exists()
                     if not CQT.msgboxgYN(f'Файл dxf с именем {filename_for_replace!r} уже прикреплен к операции \nПерезаписать существующий?'):
                         return
-                    db_files_del(self.window, exist_dxf, self.window.nom_tk)
+                    self.storage.delete_file(filename, self.window.nom_tk)
                     tree_item = self.window.ui.tree.currentItem()
                     exists_docs = self.oper_filenames()
                     exists_docs.remove(filename_for_replace)
                     tree_item.setText(15, DOCS_SEP.join(exists_docs))
-            file_name_bd = db_files_nalich(self.window, putf, self.window.nom_tk)
+            file_name_bd = self.storage.put_file(putf, self.window.nom_tk)
             if file_name_bd == None: return
             self.add_oper_doc(modal_tbl=self.modal_tbl, row=self.modal_tbl.currentRow(), tree_item=item,
                                           filename=filename)
@@ -212,7 +223,7 @@ class OperationDocs:
             if filename.startswith('docs://'):
                 batch = 'DOCS'
             else:
-                rez = db_files_load(self.window, filename)
+                rez = self.storage.get_file_by_name(filename)
                 if rez == False:
                     continue
             file_id, ext, name, filename = self.unpack_include_format(filename)
@@ -220,26 +231,29 @@ class OperationDocs:
             data.append(['', file_id, batch, name, ext, filename])
         self.add_btn_state = include_tflex_data
         if include_tflex_data:
-            if CMS.user_access(
+            is_access_user = CMS.user_access(
                 self.window.db_naryad,
                 'тк_просмотр_добавление_документов_докс',
                 F.user_name(),
                 msg=False
-            ):
-                nn = self.window.ui.lineEdit_dse.text()
-                with CDOCS.TFlexFileClient() as client:
-                    docs_filenames = client.get_filenames_by_nomen_name(nn)
-                # docs_filenames = self.manager.get_dse_filenames(nn)
-                    if not docs_filenames:
-                        self.add_btn_state = False
-                    else:
-                        for item in docs_filenames:
-                            file_id = item.get('s_ObjectID')
-                            if file_id not in attached_ids:
-                                filename = item.get('name')
-                                *name_parts, format = filename.split('.')
-                                name = '.'.join(name_parts)
-                                data.append(['', file_id, 'DOCS', name, format, filename])
+            ) #17.11.25
+            nn = self.window.ui.lineEdit_dse.text()
+            with CDOCS.TFlexFileClient() as client:
+                docs_filenames = client.get_filenames_by_nomen_name(nn)
+                if not docs_filenames:
+                    self.add_btn_state = False
+                else:
+                    for item in docs_filenames:
+                        fullname = item.get('name', '')
+                        n, e = os.path.splitext(fullname)
+                        if not is_access_user and e != '.dxf':
+                            continue
+                        file_id = item.get('s_ObjectID')
+                        if file_id not in attached_ids:
+                            filename = item.get('name')
+                            *name_parts, format = filename.split('.')
+                            name = '.'.join(name_parts)
+                            data.append(['', file_id, 'DOCS', name, format, filename])
         return data
 
     def refill_doc_tables(self, main_tbl = None, modal_tbl = None):
@@ -318,7 +332,6 @@ class OperationDocs:
             file_id, ext, name, filename = self.unpack_include_format(filename)
 
             CQT.msgbox(f'Документ {filename!r} успешно откреплен')
-
 
 
 @CQT.onerror
@@ -426,10 +439,18 @@ def db_files_nalich(self, put_file,nom_tk):
 
 
 @CQT.onerror
-def db_files_load(self, name):
-    custom_request_c = f"""SELECT reestr.file FROM reestr INNER JOIN names on names.nom_data = reestr.Пномер WHERE names.name == '{name}'"""
-    query = CSQ.custom_request_c(self.db_files, custom_request_c,rez_dict=True)
-    if len(query) == 0:
+def db_files_load(self, name, available_ext = None):
+    custom_request_c = f"""
+        SELECT 
+            reestr.file, 
+            storage_types.name as storage,
+            reestr.hesh
+        FROM reestr 
+        INNER JOIN names on names.nom_data = reestr.Пномер 
+        LEFT JOIN storage_types ON storage_types.id = reestr.storage
+        WHERE names.name == '{name}'"""
+    query = CSQ.custom_request_c(CFG.Config.project.db_files, custom_request_c,rez_dict=True, one=True)
+    if not isinstance(query, dict):
         return False
     #return query[1][nk_name]
     put_tmp = CMS.tmp_dir() + os.sep + 'tmp_files'
@@ -437,15 +458,22 @@ def db_files_load(self, name):
         F.ochist_papky(put_tmp)
     else:
         F.create_dir_c(put_tmp)
+
     put_file_tmp = CMS.tmp_dir() + os.sep + 'tmp_files' + os.sep + \
                    str(F.get_time_shtamp_c()).split('.')[-1] + "_" +\
                    F.transliterate(name.replace('ь', ''))
-    F.save_binary_convert_to_file(query[0]['file'],put_file_tmp)
-    return put_file_tmp
+
+    if query['storage'] == 'database':
+        F.save_binary_convert_to_file(query['file'],put_file_tmp)
+        return put_file_tmp
+
+    if query['storage'] == 'filesystem':
+        storage = CSTORE.FileStorage(CFG.Config.project.tk_storage_reestr)
+        return storage.retrieve_by_path(query['hesh'], put_file_tmp)
 
 
 @CQT.onerror
-def db_files_del(self,name,nom_tk):
+def db_files_del(self,name,nom_tk = None):
     list_uses_tk = CSQ.custom_request_c(self.db_files,f"""SELECT * FROM t_kards WHERE file_name == '{name}'""",rez_dict=True)
     if len(list_uses_tk) == 1 or len(list_uses_tk) == 0:
         list_uses_names = CSQ.custom_request_c(self.db_files, f"""SELECT * FROM names WHERE name == '{name}'""", rez_dict=True)

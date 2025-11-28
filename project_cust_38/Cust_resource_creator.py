@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 import project_cust_38.Cust_odata_erp as ODAT
 import project_cust_38.Cust_Functions as F
 import os
@@ -19,8 +19,90 @@ if __name__ == '__main__':
     LAZY_METHOD_HUOURS = 0.02
 
 
+def __________attrs_nomen___________():
+    pass
+class base_attr():
+    DICT_ALIASES = {
+        'name':'Имя',
+        'order':'Порядок',
+        'code':'Код',
+        'fullname':'Полное имя',
+        'value_type': 'Вид',
+        'group': 'Тип',
+        'parent': 'Родитель'
+    }
+
+# --- СтавкиНДС ---
+@dataclass
+class NDS_rates(base_attr):
+    name: str
+    ref_key: str | None
+
+# --- ВидыНоменклатуры ---
+@dataclass
+class VidNomem(base_attr):
+    name: str
+    parent: str
+    group: bool
+    ref_key: str | None
+
+# --- ГруппаНоменклатуры ---
+@dataclass
+class GruopNomen(base_attr):
+    name: str
+    code: str
+    parent: str
+    group: bool
+    ref_key: str | None
+
+# --- ТипыНоменклатуры ---
+@dataclass
+class TypeNomen(base_attr):
+    name: str
+    order: int | None
+    ref_key: str | None
+
+# --- ВариантыОформленияПродажи ---
+@dataclass
+class SalesOptions(base_attr):
+    name: str
+    order: int | None
+    ref_key: str | None
+
+# --- ГруппыДоступаНоменклатуры ---
+@dataclass
+class AccessGroup(base_attr):
+    name: str
+    ref_key: str | None
+
+# --- УпаковкиЕдиницыИзмерения ---
+@dataclass
+class PackagingUnits(base_attr):
+    name: str
+    code: str
+    fullname: str
+    ref_key: str | None
+
+# --- ГруппыАналитическогоУчетаНоменклатуры ---
+@dataclass
+class NomenAnalysisGroups(base_attr):
+    name: str
+    parent: str
+    group: bool
+    ref_key: str | None
+
+# --- ГруппыФинансовогоУчетаНоменклатуры ---
+@dataclass
+class FinancialAccountingGroup(base_attr):
+    name: str
+    parent: str
+    value_type: str
+    group: bool
+    ref_key: str | None
+
 def __________attrs____________():
     pass
+
 
 
 # --- ПодразделениеДиспетчер ---
@@ -28,7 +110,6 @@ def __________attrs____________():
 class Subdivision:
     name: str
     code: str
-
 
 # --- РодительКод ---
 @dataclass
@@ -312,6 +393,7 @@ class MethodOfObtainingMaterialspecifications:
 class ArticulationArticles:
     name: str
     parent: str
+    ref_key: str
 
 
 @dataclass
@@ -342,74 +424,6 @@ class CurrentUser:
         self.ref_key = data_rez['data'][0]['ref_key']
 
 
-
-# --- Главный класс ---
-@dataclass
-class ResourceSpecification:
-    hat: ResourceHeader
-    stages: List[Stage] = field(default_factory=list)
-
-    def add_stage(self, stage: Stage):
-        self.stages.append(stage)
-
-    def to_dict(self) -> dict:
-        """Структура полностью совместимая с JSON для РесурсныхСпецификаций 1С"""
-        rez = {
-            "hat": {
-                "ОсновноеИзделиеКод": self.hat.ОсновноеИзделиеКод.Код,
-                "КоличествоУпаковок": self.hat.КоличествоУпаковок,
-                "Наименование ресурсной": self.hat.Наименование,
-                "ТекущийПользователь": self.hat.ТекущийПользователь.name,
-                "НачалоДействия": F.dateStrToStr(self.hat.ДатаНачала,"%Y-%m-%d","%Y%m%d"),
-                "КонецДействия": F.dateStrToStr(self.hat.ДатаОкончания,"%Y-%m-%d","%Y%m%d"),
-                "Сохранять": self.hat.Сохранять,
-                "ИмяБазы": self.hat.ИмяБазы,
-                "КластерСерверов": self.hat.КластерСерверов,
-                "ПодразделениеДиспетчер": self.hat.ПодразделениеДиспетчер.code,
-                "ВыпускПроизвольнымиПорциями": self.hat.ВыпускПроизвольнымиПорциями,
-                "РодительКод": self.hat.РодительКод.code,
-                "ВариантПодбораВДокументы": self.hat.ВариантПодбораВДокументы.order,
-                "СпособРаспределенияЗатратНаВыходныеИзделия": self.hat.СпособРаспределенияЗатрат.order,
-                "Описание": self.hat.Описание,
-                "Код": self.hat.Код
-            },
-            "data": [
-                {
-                    "Этап": stage.НаименованиеЭтапа,
-                    "Данные": {
-                        "Опер_наименование_подразделения": stage.Данные.Подразделение.name,
-                        "Материалы": [
-                            {
-                                "Мат_код": m.КодНоменклатуры,
-                                "Мат_норма": m.Количество,
-                                "Материалы_Статья_калькуляции": m.СтатьяКалькуляции.name,
-                                "Способы_получения_материала": m.СпособПолучения.order,
-                                "ИсточникПолученияПолуфабриката": m.ИсточникПолученияПолуфабриката.code,
-                            } for m in stage.Данные.Материалы
-                        ],
-                        "Трудозатраты": {
-                            lc.ВидРабот.ref_key: lc.Количество
-                            for lc in stage.Данные.Трудозатраты
-                        },
-                        "ДлительностьЭтапа": stage.Данные.ДлительностьМинут
-                    }
-                }
-                for stage in self.stages
-            ]
-        }
-        return rez
-
-    def to_json(self, ensure_ascii=False, indent=2) -> str:
-        return json.dumps(self.to_dict(), ensure_ascii=ensure_ascii, indent=indent)
-
-    def send(self) -> dict|bool:
-        ERP_base_name = self.hat.ИмяБазы
-        code, answ = APIERP.post_res_json(self.to_dict(), ERP_base_name)
-        if code == 200:
-            return answ
-        else:
-            CQT.msgbox(f'Ошибка создания ресурсной. Код {code}\n{answ["Ошибки"]}')
-        return False
 
 def ___________data____________():
     pass
@@ -477,22 +491,22 @@ class ObjsData():
         return default
 
     @classmethod
-    def find_by_code(cls, code: str, default=ValueError):
+    def find_by_code(cls, code: str|None, default=ValueError):
         return cls.__find_by(code,'code',default)
 
     @classmethod
-    def find_by_ref(cls, ref_key: str, default=ValueError):
+    def find_by_ref(cls, ref_key: str|None, default=ValueError):
         return cls.__find_by(ref_key, 'ref_key', default)
 
     @classmethod
-    def find_by_name(cls, name: str, default=ValueError):
+    def find_by_name(cls, name: str|None, default=ValueError):
         return cls.__find_by(name,'name',default)
 
     @classmethod
     def _get_data_erp(cls, req_text: str):
         key, data_rez = APIERP.get_wet_request(req_text, lazy_method_huours=LAZY_METHOD_HUOURS)
         if key != 200:
-            raise ConnectionError(f'Ошибка получения данных  из ERP')
+            raise ConnectionError(f'Ошибка получения данных {NAME_ERP_OBJ} из ERP')
         if not data_rez['data']:
             raise ValueError(f'Не найдено {NAME_ERP_OBJ} из ERP')
         return data_rez['data']
@@ -520,6 +534,11 @@ class ObjsData():
             print(f'=====  свойства {name_sub_cls} ========')
             print(f'')
             print(f'')
+
+    @classmethod
+    def to_list(cls)->list[tuple]:
+        pref = '_hnt_'
+        return [(_[len(pref):], val) for _,val in cls.__dict__.items() if _.startswith(pref)]
 
 # --- ПодразделениеДиспетчер ---
 
@@ -1189,6 +1208,7 @@ class ArticulationArticlesData(ObjsData):
     def init_data(cls):
         req_text = f"""ВЫБРАТЬ
                 СтатьиКалькуляции.Наименование КАК Наименование,
+                УНИКАЛЬНЫЙИДЕНТИФИКАТОР(СтатьиКалькуляции.Ссылка) КАК ref_key,
                 СтатьиКалькуляции.Родитель.Наименование КАК РодительПредставление
             ИЗ
                 Справочник.СтатьиКалькуляции КАК СтатьиКалькуляции
@@ -1196,9 +1216,895 @@ class ArticulationArticlesData(ObjsData):
                 СтатьиКалькуляции.ЭтоГруппа = ЛОЖЬ
                 И СтатьиКалькуляции.ПометкаУдаления = ЛОЖЬ"""
         data_erp = cls._get_data_erp(req_text)
-        cls._fill_data(data_erp, ArticulationArticles, {'name': 'Наименование', 'parent': 'РодительПредставление'})
+        cls._fill_data(data_erp, ArticulationArticles, {'name': 'Наименование', 'parent': 'РодительПредставление',
+                                                        'ref_key': 'ref_key'})
+
+def ___________data_nomen___________():
+    pass
 
 
+
+class NDS_ratesData(ObjsData):
+    NAME_ERP_OBJ = 'СтавкиНДС'
+    if 'свойства':
+        _hnt__0: NDS_rates
+        _hnt__10: NDS_rates
+        _hnt__10_110: NDS_rates
+        _hnt__15_25: NDS_rates
+        _hnt__16_67: NDS_rates
+        _hnt__18: NDS_rates
+        _hnt__18_118: NDS_rates
+        _hnt__20: NDS_rates
+        _hnt__20_120: NDS_rates
+        _hnt__5: NDS_rates
+        _hnt__5_105: NDS_rates
+        _hnt__7: NDS_rates
+        _hnt__7_107: NDS_rates
+        _hnt__9_09: NDS_rates
+        _hnt_без_ндс: NDS_rates
+
+    @classmethod
+    def init_data(cls):
+        req_text = f"""
+ВЫБРАТЬ
+    СтавкиНДС.Наименование КАК Наименование,
+    УНИКАЛЬНЫЙИДЕНТИФИКАТОР(СтавкиНДС.Ссылка) КАК ref_key
+ИЗ
+    Справочник.СтавкиНДС КАК СтавкиНДС
+ ГДЕ
+            СтавкиНДС.ПометкаУдаления = ЛОЖЬ
+        УПОРЯДОЧИТЬ ПО
+            Наименование
+            """
+        data_erp = cls._get_data_erp(req_text)
+        cls._fill_data(data_erp, NDS_rates, {'name': 'Наименование', 'ref_key': 'ref_key'})
+
+
+
+class VidNomemData(ObjsData):
+    NAME_ERP_OBJ = 'ВидыНоменклатуры'
+    if 'свойства':
+        pass
+
+
+    @classmethod
+    def init_data(cls):
+        req_text = f"""
+ВЫБРАТЬ
+    ВидыНоменклатуры.Родитель.Наименование КАК РодительНаименование,
+    ВидыНоменклатуры.Наименование КАК Наименование,
+    ВидыНоменклатуры.ЭтоГруппа КАК ЭтоГруппа,
+    УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ВидыНоменклатуры.Ссылка) КАК ref_key
+ИЗ
+    Справочник.ВидыНоменклатуры КАК ВидыНоменклатуры
+ГДЕ
+    ВидыНоменклатуры.ЭтоГруппа = ЛОЖЬ
+    И ВидыНоменклатуры.ПометкаУдаления = ЛОЖЬ
+            """
+        data_erp = cls._get_data_erp(req_text)
+        cls._fill_data(data_erp, VidNomem, {'name': 'Наименование', 'parent': 'РодительНаименование',
+                                            'group': 'ЭтоГруппа', 'ref_key': 'ref_key'})
+
+
+class TypeNomenData(ObjsData):
+    NAME_ERP_OBJ = 'ТипыНоменклатуры'
+    if 'свойства':
+        _hnt_товар_0: TypeNomen
+        _hnt_тара_1: TypeNomen
+        _hnt_услуга_2: TypeNomen
+        _hnt_работа_3: TypeNomen
+        _hnt_набор_4: TypeNomen
+
+
+    @classmethod
+    def init_data(cls):
+        req_text = f"""
+ВЫБРАТЬ
+    ПРЕДСТАВЛЕНИЕ(ТипыНоменклатуры.Ссылка) КАК Наименование,
+    ТипыНоменклатуры.Порядок КАК Порядок,
+	УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ТипыНоменклатуры.Ссылка) КАК ref_key
+ИЗ
+    Перечисление.ТипыНоменклатуры КАК ТипыНоменклатуры
+            """
+        data_erp = cls._get_data_erp(req_text)
+        cls._fill_data(data_erp, TypeNomen, {'name': 'Наименование', 'order': 'Порядок', 'ref_key': 'ref_key'})
+
+
+class AccessGroupData(ObjsData):
+    NAME_ERP_OBJ = 'ГруппыДоступаНоменклатуры'
+    if 'свойства':
+        _hnt_газоочистка_круги: AccessGroup
+        _hnt_газоочистка_листы: AccessGroup
+        _hnt_газоочистка_насосы: AccessGroup
+        _hnt_газоочистка_трубы: AccessGroup
+        _hnt_гибкие_вставки: AccessGroup
+        _hnt_гравировка: AccessGroup
+        _hnt_детали_рес_спец: AccessGroup
+        _hnt_детали_клапана: AccessGroup
+        _hnt_дополнительно: AccessGroup
+        _hnt_единая_номенклатура_материалов_для_ссзу_го: AccessGroup
+        _hnt_запорная_арматура: AccessGroup
+        _hnt_затворы_дисковые: AccessGroup
+        _hnt_канцелярия: AccessGroup
+        _hnt_клапаны_пауэрз: AccessGroup
+        _hnt_краны: AccessGroup
+        _hnt_манометр: AccessGroup
+        _hnt_материалы: AccessGroup
+        _hnt_материалы_полученные_от_давальцев: AccessGroup
+        _hnt_материалы_болт: AccessGroup
+        _hnt_материалы_винт: AccessGroup
+        _hnt_материалы_гайка: AccessGroup
+        _hnt_материалы_готовая_набивка: AccessGroup
+        _hnt_материалы_грунт_эмали: AccessGroup
+        _hnt_материалы_двутавр: AccessGroup
+        _hnt_материалы_детали_трубопровода: AccessGroup
+        _hnt_материалы_для_ткп: AccessGroup
+        _hnt_материалы_древесные_материалы_10_01: AccessGroup
+        _hnt_материалы_единая_номенклатура_конструкции_и_детали_10_02: AccessGroup
+        _hnt_материалы_закаленное_стекло_смотровое: AccessGroup
+        _hnt_материалы_заклёпки: AccessGroup
+        _hnt_материалы_зубчатые_рейки: AccessGroup
+        _hnt_материалы_квадрат: AccessGroup
+        _hnt_материалы_компл_для_газоходов: AccessGroup
+        _hnt_материалы_компл_для_проч_нест_обор: AccessGroup
+        _hnt_материалы_компл_для_эмульгаторов: AccessGroup
+        _hnt_материалы_круги: AccessGroup
+        _hnt_материалы_листы: AccessGroup
+        _hnt_материалы_масленки: AccessGroup
+        _hnt_материалы_металлорукав: AccessGroup
+        _hnt_материалы_нестандартные_детали_по_чертежам_на_заказ: AccessGroup
+        _hnt_материалы_нестандартные_позиции: AccessGroup
+        _hnt_материалы_пастообразные_материалы: AccessGroup
+        _hnt_материалы_пиломатериал: AccessGroup
+        _hnt_материалы_подшипники: AccessGroup
+        _hnt_материалы_приводы: AccessGroup
+        _hnt_материалы_прокладочный_материал: AccessGroup
+        _hnt_материалы_пружина: AccessGroup
+        _hnt_материалы_прутки: AccessGroup
+        _hnt_материалы_свар_проволока: AccessGroup
+        _hnt_материалы_стопорные_кольца: AccessGroup
+        _hnt_материалы_тара_и_упаковка: AccessGroup
+        _hnt_материалы_теплоизоляционный_материал: AccessGroup
+        _hnt_материалы_труба_квадратная: AccessGroup
+        _hnt_материалы_трубы: AccessGroup
+        _hnt_материалы_уголок: AccessGroup
+        _hnt_материалы_цепи: AccessGroup
+        _hnt_материалы_шайба: AccessGroup
+        _hnt_материалы_швеллер: AccessGroup
+        _hnt_материалы_шестигранник: AccessGroup
+        _hnt_материалы_шпилька: AccessGroup
+        _hnt_материалы_шплинт: AccessGroup
+        _hnt_материалы_шпонка: AccessGroup
+        _hnt_материалы_электрика_10_01: AccessGroup
+        _hnt_медосмотры: AccessGroup
+        _hnt_номенклатура_для_бюджетирования: AccessGroup
+        _hnt_обучение_по_охране_труда: AccessGroup
+        _hnt_отдел_главного_технолога: AccessGroup
+        _hnt_проведение_оценки_условий_труда_и_оценка_проф_рисков: AccessGroup
+        _hnt_продукция_пауэрз: AccessGroup
+        _hnt_продукция_пауэрз_для_эластика: AccessGroup
+        _hnt_продукция_рудтех_продакшн: AccessGroup
+        _hnt_продукция_эластик: AccessGroup
+        _hnt_продукция_эластик_для_пауэрза: AccessGroup
+        _hnt_продукция_эластик_кзх_стандарт: AccessGroup
+        _hnt_продукция_виртуальная_номенклатура_ссзу: AccessGroup
+        _hnt_прочие: AccessGroup
+        _hnt_работы: AccessGroup
+        _hnt_работы_новая_номенклатура: AccessGroup
+        _hnt_работы_разработка_проектной_и_рабочей_документации: AccessGroup
+        _hnt_расходники_расходные_материалы_для_сварочных_работ: AccessGroup
+        _hnt_расходники_расходные_материалы_для_слесарных_работ: AccessGroup
+        _hnt_расходники_расходные_материалы_для_станков_резки: AccessGroup
+        _hnt_расходники_расходные_материалы_для_токарных_станков: AccessGroup
+        _hnt_расходники_спецодежда: AccessGroup
+        _hnt_расходные_материалы_для_малярного_участка_10_09: AccessGroup
+        _hnt_расходные_материалы_для_складского_хозяйства_10_09: AccessGroup
+        _hnt_ремонт_и_то_запчасти: AccessGroup
+        _hnt_ремонтный_цех: AccessGroup
+        _hnt_ссзу_рукавные_фильтры: AccessGroup
+        _hnt_ссзу_шнек: AccessGroup
+        _hnt_стандартные_приводые_механизмы_мэо_ф: AccessGroup
+        _hnt_товары_powerz_gmbh_резиновые_компенсаторы: AccessGroup
+        _hnt_услуги_новая_единая_номенклатура: AccessGroup
+        _hnt_услуги_сторонних_организаций: AccessGroup
+        _hnt_услуги_оказываемые_нами: AccessGroup
+        _hnt_услуги_переработчики_для_ткп: AccessGroup
+        _hnt_хомуты: AccessGroup
+
+    @classmethod
+    def init_data(cls):
+        req_text = f"""
+ВЫБРАТЬ
+    ГруппыДоступаНоменклатуры.Наименование КАК Наименование,
+    УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ГруппыДоступаНоменклатуры.Ссылка) КАК ref_key
+ИЗ
+    Справочник.ГруппыДоступаНоменклатуры КАК ГруппыДоступаНоменклатуры
+ ГДЕ
+            ГруппыДоступаНоменклатуры.ПометкаУдаления = ЛОЖЬ
+        УПОРЯДОЧИТЬ ПО
+            Наименование
+            """
+        data_erp = cls._get_data_erp(req_text)
+        cls._fill_data(data_erp, AccessGroup, {'name': 'Наименование', 'ref_key': 'ref_key'})
+
+
+
+class GruopNomenData(ObjsData):
+    NAME_ERP_OBJ = 'ГруппыДоступаНоменклатуры'
+    if 'свойства':
+        _hnt_черный_листовой_металлопрокат_00_00045064_true_none: GruopNomen
+        _hnt_нержавеющий_металлопрокат_00_00065071_true_none: GruopNomen
+        _hnt_ссзу_00_00072425_true_none: GruopNomen
+        _hnt_го_00_00072426_true_none: GruopNomen
+        _hnt_го_ссзу_00_00072427_true_none: GruopNomen
+
+    @classmethod
+    def init_data(cls):
+        req_text = f"""
+ВЫБРАТЬ
+    Номенклатура.Наименование КАК Наименование,
+    Номенклатура.Код КАК Код,
+    УНИКАЛЬНЫЙИДЕНТИФИКАТОР(Номенклатура.Ссылка) КАК ref_key,
+    Номенклатура.ЭтоГруппа КАК ЭтоГруппа,
+    Номенклатура.Родитель.Код + " " + Номенклатура.Родитель.Наименование КАК Родитель
+ИЗ
+    Справочник.Номенклатура КАК Номенклатура
+ГДЕ
+    Номенклатура.ЭтоГруппа = ИСТИНА
+    И Номенклатура.ПометкаУдаления = ЛОЖЬ            """
+        data_erp = cls._get_data_erp(req_text)
+        cls._fill_data(data_erp, GruopNomen, {
+                                            'name': 'Наименование',
+                                            'code': 'Код',
+                                            'parent': 'Родитель',
+                                            'group': 'ЭтоГруппа',
+                                              'ref_key': 'ref_key'})
+
+
+class SalesOptionsData(ObjsData):
+    NAME_ERP_OBJ = 'ВариантыОформленияПродажи'
+    if 'свойства':
+        _hnt_реализация_товаров_и_услуг_0: SalesOptions
+        _hnt_акт_выполненных_работ_1: SalesOptions
+        _hnt_акт_на_передачу_прав_2: SalesOptions
+
+    @classmethod
+    def init_data(cls):
+        req_text = f"""
+ВЫБРАТЬ
+    ПРЕДСТАВЛЕНИЕ(ВариантыОформленияПродажи.Ссылка) КАК Наименование,
+    ВариантыОформленияПродажи.Порядок КАК Порядок,
+	УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ВариантыОформленияПродажи.Ссылка) КАК ref_key
+ИЗ
+    Перечисление.ВариантыОформленияПродажи КАК ВариантыОформленияПродажи
+        """
+        data_erp = cls._get_data_erp(req_text)
+        cls._fill_data(data_erp, SalesOptions, {'name': 'Наименование', 'order': 'Порядок', 'ref_key': 'ref_key'})
+
+
+class PackagingUnitsData(ObjsData):
+    NAME_ERP_OBJ = 'УпаковкиЕдиницыИзмерения'
+    if 'свойства':
+        _hnt__744_процент: PackagingUnits
+        _hnt__281_f_градус_фаренгейта: PackagingUnits
+        _hnt__280_с_градус_цельсия: PackagingUnits
+        _hnt__732_10_пар_десять_пар: PackagingUnits
+        _hnt__170_10_т3_килотонна: PackagingUnits
+        _hnt__387_10_12_руб_триллион_рублей: PackagingUnits
+        _hnt__801_10_12_шт_биллион_штук_европа_триллион_штук: PackagingUnits
+        _hnt__388_10_15_руб_квадрильон_рублей: PackagingUnits
+        _hnt__802_10_18_шт_квинтильон_штук_европа: PackagingUnits
+        _hnt__973_10_3_автомоб_км_тысяча_автомобиле_километров: PackagingUnits
+        _hnt__962_10_3_автомоб_мест_дн_тысяча_автомобиле_место_дней: PackagingUnits
+        _hnt__960_10_3_автомоб_т_дн_тысяча_автомобиле_тонно_дней: PackagingUnits
+        _hnt__961_10_3_автомоб_ч_тысяча_автомобиле_часов: PackagingUnits
+        _hnt__952_10_3_ваг_маш_км_тысяча_вагоно_машино_километров: PackagingUnits
+        _hnt__951_10_3_ваг_маш_ч_тысяча_вагоно_машино_часов: PackagingUnits
+        _hnt__724_10_3_га_порц_тысяча_гектаров_порций: PackagingUnits
+        _hnt__985_10_3_гол_тысяча_голов: PackagingUnits
+        _hnt__980_10_3_доллар_тысяча_долларов: PackagingUnits
+        _hnt__965_10_3_км_тысяча_километров: PackagingUnits
+        _hnt__673_10_3_компл_тысяча_комплектов: PackagingUnits
+        _hnt__981_10_3_корм_ед_тысяча_тонн_кормовых_единиц: PackagingUnits
+        _hnt__986_10_3_краск_оттиск_тысяча_краско_оттисков: PackagingUnits
+        _hnt__953_10_3_мест_км_тысяча_место_километров: PackagingUnits
+        _hnt__479_10_3_набор_тысяча_наборов: PackagingUnits
+        _hnt__709_10_3_ном_тысяча_номеров: PackagingUnits
+        _hnt__958_10_3_пасс_миль_тысяча_пассажиро_миль: PackagingUnits
+        _hnt__729_10_3_пач_тысяча_пачек: PackagingUnits
+        _hnt__930_10_3_пласт_тысяча_пластин: PackagingUnits
+        _hnt__956_10_3_поезд_км_тысяча_поездо_километров: PackagingUnits
+        _hnt__955_10_3_поезд_ч_тысяча_поездо_часов: PackagingUnits
+        _hnt__562_10_3_пряд_верет_тысяча_прядильных_веретен: PackagingUnits
+        _hnt__563_10_3_пряд_мест_тысяча_прядильных_мест: PackagingUnits
+        _hnt__761_10_3_стан_тысяча_станов: PackagingUnits
+        _hnt__957_10_3_т_миль_тысяча_тонно_миль: PackagingUnits
+        _hnt__966_10_3_тоннаж_рейс_тысяча_тоннаже_рейсов: PackagingUnits
+        _hnt__974_10_3_тоннаж_сут_тысяча_тоннаже_сут: PackagingUnits
+        _hnt__775_10_3_тюбик_тысяча_тюбиков: PackagingUnits
+        _hnt__782_10_3_упак_тысяча_упаковок: PackagingUnits
+        _hnt__776_10_3_усл_туб_тысяча_условных_тубов: PackagingUnits
+        _hnt__207_10_3_ц_тысяча_центнеров: PackagingUnits
+        _hnt__979_10_3_экз_тысяча_экземпляров: PackagingUnits
+        _hnt__241_10_6_а_ч_миллион_ампер_часов: PackagingUnits
+        _hnt__235_10_6_гкал_миллион_гигакалорий: PackagingUnits
+        _hnt__557_10_6_гол_год_миллион_голов_в_год: PackagingUnits
+        _hnt__120_10_6_дкл_миллион_декалитров: PackagingUnits
+        _hnt__056_10_6_дм2_миллион_квадратных_дециметров: PackagingUnits
+        _hnt__937_10_6_доз_миллион_доз: PackagingUnits
+        _hnt__901_10_6_домхоз_миллион_домохозяйств: PackagingUnits
+        _hnt__644_10_6_ед_миллион_единиц: PackagingUnits
+        _hnt__544_10_6_ед_год_миллион_единиц_в_год: PackagingUnits
+        _hnt__167_10_6_кар_миллион_каратов_метрических: PackagingUnits
+        _hnt__242_10_6_кв_а_миллион_киловольт_ампер: PackagingUnits
+        _hnt__982_10_6_корм_ед_миллион_тонн_кормовых_единиц: PackagingUnits
+        _hnt__987_10_6_краск_оттиск_миллион_краско_оттисков: PackagingUnits
+        _hnt__253_10_6_л_с_миллион_лошадиных_сил: PackagingUnits
+        _hnt__949_10_6_лист_оттиск_миллион_листов_оттисков: PackagingUnits
+        _hnt__057_10_6_м2_миллион_квадратных_метров: PackagingUnits
+        _hnt__089_10_6_м2_2_мм_исч_миллион_квадратных_метров_в_двухмиллиметровом_исчислении: PackagingUnits
+        _hnt__086_10_6_м2_жил_пл_миллион_квадратных_метров_жилой_площади: PackagingUnits
+        _hnt__083_10_6_м2_общ_пл_миллион_квадратных_метров_общей_площади: PackagingUnits
+        _hnt__159_10_6_м3_миллион_кубических_метров: PackagingUnits
+        _hnt__125_10_6_м3_перераб_газа_миллион_кубических_метров_переработки_газа: PackagingUnits
+        _hnt__838_10_6_пар_миллион_пар: PackagingUnits
+        _hnt__424_10_6_пасс_км_миллион_пассажиро_километров: PackagingUnits
+        _hnt__970_10_6_пасс_мест_миль_миллион_пассажиро_место_миль: PackagingUnits
+        _hnt__968_10_6_пасс_миль_миллион_пассажиро_миль: PackagingUnits
+        _hnt__129_10_6_пол_л_миллион_полулитров: PackagingUnits
+        _hnt__385_10_6_руб_миллион_рублей: PackagingUnits
+        _hnt__898_10_6_семей_миллион_семей: PackagingUnits
+        _hnt__171_10_6_т_миллион_тонн: PackagingUnits
+        _hnt__176_10_6_т_усл_топл_миллион_тонн_условного_топлива: PackagingUnits
+        _hnt__451_10_6_т_км_миллион_тонно_километров: PackagingUnits
+        _hnt__967_10_6_т_миль_миллион_тонно_миль: PackagingUnits
+        _hnt__550_10_6_т_год_миллион_тонн_в_год: PackagingUnits
+        _hnt__969_10_6_тоннаж_миль_миллион_тоннаже_миль: PackagingUnits
+        _hnt__779_10_6_упак_миллион_упаковок: PackagingUnits
+        _hnt__883_10_6_усл_банк_миллион_условных_банок: PackagingUnits
+        _hnt__878_10_6_усл_ед_миллион_условных_единиц: PackagingUnits
+        _hnt__895_10_6_усл_кирп_миллион_условных_кирпичей: PackagingUnits
+        _hnt__886_10_6_усл_кус_миллион_условных_кусков: PackagingUnits
+        _hnt__064_10_6_усл_м2_миллион_условных_квадратных_метров: PackagingUnits
+        _hnt__988_10_6_усл_плит_миллион_условных_плиток: PackagingUnits
+        _hnt__794_10_6_чел_миллион_человек: PackagingUnits
+        _hnt__799_10_6_шт_миллион_штук: PackagingUnits
+        _hnt__808_10_6_экз_миллион_экземпляров: PackagingUnits
+        _hnt__249_10_9_квт_ч_миллиард_киловатт_часов: PackagingUnits
+        _hnt__115_10_9_м3_миллиард_кубических_метров: PackagingUnits
+        _hnt__386_10_9_руб_миллиард_рублей: PackagingUnits
+        _hnt__800_10_9_шт_миллиард_штук: PackagingUnits
+        _hnt__626_100_л_сто_листов: PackagingUnits
+        _hnt__781_100_упак_сто_упаковок: PackagingUnits
+        _hnt__797_100_шт_сто_штук: PackagingUnits
+        _hnt__683_100_ящ_сто_ящиков: PackagingUnits
+        _hnt__264_1000_а_ч_тысяча_ампер_часов: PackagingUnits
+        _hnt__871_1000_ампул_тысяча_ампул: PackagingUnits
+        _hnt__869_1000_бут_тысяча_бутылок: PackagingUnits
+        _hnt__060_1000_га_тысяча_гектаров: PackagingUnits
+        _hnt__234_1000_гкал_тысяча_гигакалорий: PackagingUnits
+        _hnt__239_1000_гкал_ч_тысяча_гигакалорий_в_час: PackagingUnits
+        _hnt__556_1000_гол_год_тысяча_голов_в_год: PackagingUnits
+        _hnt__119_1000_дкл_тысяча_декалитров: PackagingUnits
+        _hnt__054_1000_дм2_тысяча_квадратных_дециметров: PackagingUnits
+        _hnt__640_1000_доз_тысяча_доз: PackagingUnits
+        _hnt__900_1000_домхоз_тысяча_домохозяйств: PackagingUnits
+        _hnt__643_1000_ед_тысяча_единиц: PackagingUnits
+        _hnt__165_1000_кар_тысяча_каратов_метрических: PackagingUnits
+        _hnt__250_1000_кв_а_р_тысяча_киловольт_ампер_реактивных: PackagingUnits
+        _hnt__910_1000_кварт_тысяча_квартир: PackagingUnits
+        _hnt__912_1000_коек_тысяча_коек: PackagingUnits
+        _hnt__875_1000_кор_тысяча_коробок: PackagingUnits
+        _hnt__559_1000_кур_несуш_тысяча_кур_несушек: PackagingUnits
+        _hnt__130_1000_л_тысяча_литров: PackagingUnits
+        _hnt__252_1000_л_с_тысяча_лошадиных_сил: PackagingUnits
+        _hnt__058_1000_м2_тысяча_квадратных_метров: PackagingUnits
+        _hnt__085_1000_м2_жил_пл_тысяча_квадратных_метров_жилой_площади: PackagingUnits
+        _hnt__082_1000_м2_общ_пл_тысяча_квадратных_метров_общей_площади: PackagingUnits
+        _hnt__088_1000_м2_уч_лаб_здан_тысяча_квадратных_метров_учебно_лабораторных_зданий: PackagingUnits
+        _hnt__114_1000_м3_тысяча_кубических_метров: PackagingUnits
+        _hnt__599_1000_м3_сут_тысяча_кубических_метров_в_сутки: PackagingUnits
+        _hnt__699_1000_мест_тысяча_мест: PackagingUnits
+        _hnt__837_1000_пар_тысяча_пар: PackagingUnits
+        _hnt__548_1000_пар_смен_тысяча_пар_в_смену: PackagingUnits
+        _hnt__423_1000_пасс_км_тысяча_пассажиро_километров: PackagingUnits
+        _hnt__127_1000_плотн_м3_тысяча_плотных_кубических_метров: PackagingUnits
+        _hnt__019_1000_пог_м_тысяча_погонных_метров: PackagingUnits
+        _hnt__128_1000_пол_л_тысяча_полулитров: PackagingUnits
+        _hnt__907_1000_посад_мест_тысяча_посадочных_мест: PackagingUnits
+        _hnt__546_1000_посещ_смен_тысяча_посещений_в_смену: PackagingUnits
+        _hnt__558_1000_птицемест_тысяча_птицемест: PackagingUnits
+        _hnt__905_1000_раб_мест_тысяча_рабочих_мест: PackagingUnits
+        _hnt__384_1000_руб_тысяча_рублей: PackagingUnits
+        _hnt__751_1000_рул_тысяча_рулонов: PackagingUnits
+        _hnt__897_1000_семей_тысяча_семей: PackagingUnits
+        _hnt__169_1000_т_тысяча_тонн: PackagingUnits
+        _hnt__177_1000_т_единовр_хран_тысяча_тонн_единовременного_хранения: PackagingUnits
+        _hnt__561_1000_т_пар_ч_тысяча_тонн_пара_в_час: PackagingUnits
+        _hnt__178_1000_т_перераб_тысяча_тонн_переработки: PackagingUnits
+        _hnt__553_1000_т_перераб_сут_тысяча_тонн_переработки_в_сутки: PackagingUnits
+        _hnt__175_1000_т_усл_топл_тысяча_тонн_условного_топлива: PackagingUnits
+        _hnt__450_1000_т_км_тысяча_тонно_километров: PackagingUnits
+        _hnt__538_1000_т_год_тысяча_тонн_в_год: PackagingUnits
+        _hnt__537_1000_т_сез_тысяча_тонн_в_сезон: PackagingUnits
+        _hnt__914_1000_том_книжн_фонд_тысяча_томов_книжного_фонда: PackagingUnits
+        _hnt__874_1000_туб_тысяча_тубов: PackagingUnits
+        _hnt__882_1000_усл_банк_тысяча_условных_банок: PackagingUnits
+        _hnt__543_1000_усл_банк_смен_тысяча_условных_банок_в_смену: PackagingUnits
+        _hnt__877_1000_усл_ед_тысяча_условных_единиц: PackagingUnits
+        _hnt__890_1000_усл_кат_тысяча_условных_катушек: PackagingUnits
+        _hnt__894_1000_усл_кирп_тысяча_условных_кирпичей: PackagingUnits
+        _hnt__885_1000_усл_кус_тысяча_условных_кусков: PackagingUnits
+        _hnt__048_1000_усл_м_тысяча_условных_метров: PackagingUnits
+        _hnt__063_1000_усл_м2_тысяча_условных_квадратных_метров: PackagingUnits
+        _hnt__124_1000_усл_м3_тысяча_условных_кубических_метров: PackagingUnits
+        _hnt__892_1000_усл_плит_тысяча_условных_плиток: PackagingUnits
+        _hnt__880_1000_усл_шт_тысяча_условных_штук: PackagingUnits
+        _hnt__888_1000_усл_ящ_тысяча_условных_ящиков: PackagingUnits
+        _hnt__903_1000_учен_мест_тысяча_ученических_мест: PackagingUnits
+        _hnt__873_1000_флак_тысяча_флаконов: PackagingUnits
+        _hnt__555_1000_ц_перераб_сут_тысяча_центнеров_переработки_в_сутки: PackagingUnits
+        _hnt__793_1000_чел_тысяча_человек: PackagingUnits
+        _hnt__541_1000_чел_дн_тысяча_человеко_дней: PackagingUnits
+        _hnt__542_1000_чел_ч_тысяча_человеко_часов: PackagingUnits
+        _hnt__730_20_два_десятка: PackagingUnits
+        _hnt__288_k_кельвин: PackagingUnits
+        _hnt__109_а_ар_100_м2: PackagingUnits
+        _hnt__260_а_ампер: PackagingUnits
+        _hnt__263_а_ч_ампер_час_3_6_ккл: PackagingUnits
+        _hnt__513_авто_т_автотонна: PackagingUnits
+        _hnt__959_автомоб_дн_автомобиле_день: PackagingUnits
+        _hnt__870_ампул_ампула: PackagingUnits
+        _hnt__301_ат_техническая_атмосфера_98066_5_па: PackagingUnits
+        _hnt__300_атм_физическая_атмосфера_101325_па: PackagingUnits
+        _hnt__255_байт_байт: PackagingUnits
+        _hnt__309_бар_бар: PackagingUnits
+        _hnt__254_бит_бит: PackagingUnits
+        _hnt__323_бк_беккерель: PackagingUnits
+        _hnt__616_боб_бобина: PackagingUnits
+        _hnt__258_бод_бод: PackagingUnits
+        _hnt__181_брт_брутто_регистровая_тонна_2_8316_м3: PackagingUnits
+        _hnt__868_бут_бутылка: PackagingUnits
+        _hnt__222_в_вольт: PackagingUnits
+        _hnt__226_в_а_вольт_ампер: PackagingUnits
+        _hnt__950_ваг_маш_дн_вагоно_машино_день: PackagingUnits
+        _hnt__954_ваг_сут_вагоно_сутки: PackagingUnits
+        _hnt__324_вб_вебер: PackagingUnits
+        _hnt__212_вт_ватт: PackagingUnits
+        _hnt__243_вт_ч_ватт_час: PackagingUnits
+        _hnt__306_г_д_и_грамм_делящихся_изотопов: PackagingUnits
+        _hnt__510_г_квт_ч_грамм_на_киловатт_час: PackagingUnits
+        _hnt__366_г_лет_год: PackagingUnits
+        _hnt__059_га_гектар: PackagingUnits
+        _hnt__310_гб_гектобар: PackagingUnits
+        _hnt__302_гбк_гигабеккерель: PackagingUnits
+        _hnt__247_гвт_ч_гигаватт_час_миллион_киловатт_часов: PackagingUnits
+        _hnt__160_гг_гектограмм: PackagingUnits
+        _hnt__233_гкал_гигакалория: PackagingUnits
+        _hnt__238_гкал_ч_гигакалория_в_час: PackagingUnits
+        _hnt__122_гл_гектолитр: PackagingUnits
+        _hnt__833_гл_100_спирта_гектолитр_чистого_100_спирта: PackagingUnits
+        _hnt__287_гн_генри: PackagingUnits
+        _hnt__836_гол_голова: PackagingUnits
+        _hnt__163_грамм_г: PackagingUnits
+        _hnt__290_гц_герц: PackagingUnits
+        _hnt__515_дедвейт_т_дедвейт_тонна: PackagingUnits
+        _hnt__361_дек_декада: PackagingUnits
+        _hnt__368_деслет_десятилетие: PackagingUnits
+        _hnt__271_дж_джоуль: PackagingUnits
+        _hnt__116_дкл_декалитр: PackagingUnits
+        _hnt__118_дл_децилитр: PackagingUnits
+        _hnt__005_дм_дециметр: PackagingUnits
+        _hnt__053_дм2_квадратный_дециметр: PackagingUnits
+        _hnt__639_доз_доза: PackagingUnits
+        _hnt__899_домхоз_домохозяйство: PackagingUnits
+        _hnt__641_дюжина_дюжина_12_шт: PackagingUnits
+        _hnt__733_дюжина_пар_дюжина_пар: PackagingUnits
+        _hnt__737_дюжина_рул_дюжина_рулонов: PackagingUnits
+        _hnt__780_дюжина_упак_дюжина_упаковок: PackagingUnits
+        _hnt__740_дюжина_шт_дюжина_штук: PackagingUnits
+        _hnt__039_дюйм_дюйм_25_4_мм: PackagingUnits
+        _hnt__071_дюйм2_квадратный_дюйм_645_16_мм2: PackagingUnits
+        _hnt__131_дюйм3_кубический_дюйм_16387_1_мм3: PackagingUnits
+        _hnt__642_ед_единица: PackagingUnits
+        _hnt__922_знак_знак: PackagingUnits
+        _hnt_зуб_зуб: PackagingUnits
+        _hnt__657_изд_изделие: PackagingUnits
+        _hnt__236_кал_ч_калория_в_час: PackagingUnits
+        _hnt__661_канал_канал: PackagingUnits
+        _hnt__977_канал_км_канало_километр: PackagingUnits
+        _hnt__978_канал_конц_канало_концы: PackagingUnits
+        _hnt__162_кар_метрический_карат_1_карат_200_мг_2_0_0001_кг: PackagingUnits
+        _hnt__312_кб_килобар: PackagingUnits
+        _hnt__256_кбайт_килобайт: PackagingUnits
+        _hnt__223_кв_киловольт: PackagingUnits
+        _hnt__227_кв_а_киловольт_ампер: PackagingUnits
+        _hnt__248_кв_а_р_киловольт_ампер_реактивный: PackagingUnits
+        _hnt__230_квар_киловар: PackagingUnits
+        _hnt__364_кварт_квартал: PackagingUnits
+        _hnt__909_кварт_квартира: PackagingUnits
+        _hnt__214_квт_киловатт: PackagingUnits
+        _hnt__245_квт_ч_киловатт_час: PackagingUnits
+        _hnt__166_кг_кг: PackagingUnits
+        _hnt__8751_кг_кг: PackagingUnits
+        _hnt_кг_вес_не_учит_в_ткп_килограмм_для_материалов_не_учитываемых_как_вес_в_ткп: PackagingUnits
+        _hnt__845_кг_90_с_в_килограмм_90_го_сухого_вещества: PackagingUnits
+        _hnt__841_кг_h_2_0_2_килограмм_пероксида_водорода: PackagingUnits
+        _hnt__861_кг_n_килограмм_азота: PackagingUnits
+        _hnt__863_кг_naoh_килограмм_гидроксида_натрия: PackagingUnits
+        _hnt__867_кг_u_килограмм_урана: PackagingUnits
+        _hnt__852_кг_к_2_о_килограмм_оксида_калия: PackagingUnits
+        _hnt__859_кг_кон_килограмм_гидроксида_калия: PackagingUnits
+        _hnt__865_кг_р_2_о_5_килограмм_пятиокиси_фосфора: PackagingUnits
+        _hnt__511_кг_гкал_килограмм_на_гигакалорию: PackagingUnits
+        _hnt__316_кг_м3_килограмм_на_кубический_метр: PackagingUnits
+        _hnt__499_кг_с_килограмм_в_секунду: PackagingUnits
+        _hnt__317_кг_см_2_килограмм_на_квадратный_сантиметр: PackagingUnits
+        _hnt__291_кгц_килогерц: PackagingUnits
+        _hnt__282_кд_кандела: PackagingUnits
+        _hnt__273_кдж_килоджоуль: PackagingUnits
+        _hnt__305_ки_кюри: PackagingUnits
+        _hnt__232_ккал_килокалория: PackagingUnits
+        _hnt__237_ккал_ч_килокалория_в_час: PackagingUnits
+        _hnt__270_кл_кулон: PackagingUnits
+        _hnt__349_кл_кг_кулон_на_килограмм: PackagingUnits
+        _hnt__049_км_усл_труб_километр_условных_труб: PackagingUnits
+        _hnt__008_км_1000_м_километр_тысяча_метров: PackagingUnits
+        _hnt__333_км_ч_километр_в_час: PackagingUnits
+        _hnt__061_км2_квадратный_километр: PackagingUnits
+        _hnt__911_коек_койка: PackagingUnits
+        _hnt__839_компл_комплект: PackagingUnits
+        _hnt__971_корм_дн_кормо_день: PackagingUnits
+        _hnt__8751_коробка_коробка: PackagingUnits
+        _hnt__297_кпа_килопаскаль: PackagingUnits
+        _hnt__820_креп_спирта_по_массе_крепость_спирта_по_массе: PackagingUnits
+        _hnt__821_креп_спирта_по_объему_крепость_спирта_по_объему: PackagingUnits
+        _hnt__831_л_100_спирта_литр_чистого_100_спирта: PackagingUnits
+        _hnt__625_л_лист: PackagingUnits
+        _hnt__918_л_авт_лист_авторский: PackagingUnits
+        _hnt__920_л_печ_лист_печатный: PackagingUnits
+        _hnt__251_л_с_лошадиная_сила: PackagingUnits
+        _hnt__921_л_уч_изд_лист_учетно_издательский: PackagingUnits
+        _hnt__112_литр_л: PackagingUnits
+        _hnt__283_лк_люкс: PackagingUnits
+        _hnt__284_лм_люмен: PackagingUnits
+        _hnt__006_м_метр: PackagingUnits
+        _hnt_м_метр: PackagingUnits
+        _hnt__328_м_с_метр_в_секунду: PackagingUnits
+        _hnt__335_м_с2_метр_на_секунду_в_квадрате: PackagingUnits
+        _hnt__231_м_ч_метр_в_час: PackagingUnits
+        _hnt__055_м2_квадратный_метр: PackagingUnits
+        _hnt__084_м2_жил_пл_квадратный_метр_жилой_площади: PackagingUnits
+        _hnt__081_м2_общ_пл_квадратный_метр_общей_площади: PackagingUnits
+        _hnt__087_м2_уч_лаб_здан_квадратный_метр_учебно_лабораторных_зданий: PackagingUnits
+        _hnt__113_м3_кубический_метр: PackagingUnits
+        _hnt__596_м3_с_кубический_метр_в_секунду: PackagingUnits
+        _hnt__598_м3_ч_кубический_метр_в_час: PackagingUnits
+        _hnt__308_мб_миллибар: PackagingUnits
+        _hnt__257_мбайт_мегабайт: PackagingUnits
+        _hnt__228_мв_а_мегавольт_ампер_тысяча_киловольт_ампер: PackagingUnits
+        _hnt__215_мвт_1000_квт_мегаватт_тысяча_киловатт: PackagingUnits
+        _hnt_мвт_ч_мвт_ч: PackagingUnits
+        _hnt__246_мвт_ч_1000_квт_ч_мегаватт_час_1000_киловатт_часов: PackagingUnits
+        _hnt__161_мг_миллиграмм: PackagingUnits
+        _hnt__292_мгц_мегагерц: PackagingUnits
+        _hnt__362_мес_месяц: PackagingUnits
+        _hnt__698_мест_место: PackagingUnits
+        _hnt__6_метр_м: PackagingUnits
+        _hnt__047_миля_морская_миля_1852_м: PackagingUnits
+        _hnt__355_мин_минута: PackagingUnits
+        _hnt__560_мин_заработн_плат_минимальная_заработная_плата: PackagingUnits
+        _hnt__304_мки_милликюри: PackagingUnits
+        _hnt__352_мкс_микросекунда: PackagingUnits
+        _hnt__126_мл_мегалитр: PackagingUnits
+        _hnt__353_млс_миллисекунда_эк: PackagingUnits
+        _hnt__003_мм_миллиметр: PackagingUnits
+        _hnt__009_мм_10_6_м_мегаметр_миллион_метров: PackagingUnits
+        _hnt__337_мм_вод_ст_миллиметр_водяного_столба: PackagingUnits
+        _hnt__338_мм_рт_ст_миллиметр_ртутного_столба: PackagingUnits
+        _hnt__050_мм2_квадратный_миллиметр: PackagingUnits
+        _hnt__110_мм3_кубический_миллиметр: PackagingUnits
+        _hnt__298_мпа_мегапаскаль: PackagingUnits
+        _hnt__289_н_ньютон: PackagingUnits
+        _hnt__704_набор_набор: PackagingUnits
+        _hnt__360_нед_неделя: PackagingUnits
+        _hnt__908_ном_номер: PackagingUnits
+        _hnt__331_об_мин_оборот_в_минуту: PackagingUnits
+        _hnt__330_об_с_оборот_в_секунду: PackagingUnits
+        _hnt__274_ом_ом: PackagingUnits
+        _hnt__294_па_паскаль: PackagingUnits
+        _hnt__715_пар_пара_2_шт: PackagingUnits
+        _hnt__547_пар_смен_пара_в_смену: PackagingUnits
+        _hnt__414_пасс_км_пассажиро_километр: PackagingUnits
+        _hnt__421_пасс_мест_пассажирское_место_пассажирских_мест: PackagingUnits
+        _hnt__991_пасс_миля_пассажиро_миля: PackagingUnits
+        _hnt__427_пасс_поток_пассажиропоток: PackagingUnits
+        _hnt__990_пасс_ч_пассажиров_в_час: PackagingUnits
+        _hnt__121_плотн_м3_плотный_кубический_метр: PackagingUnits
+        _hnt__018_пог_м_погонный_метр: PackagingUnits
+        _hnt__365_полгода_полугодие: PackagingUnits
+        _hnt__906_посад_мест_посадочное_место: PackagingUnits
+        _hnt__545_посещ_смен_посещение_в_смену: PackagingUnits
+        _hnt__734_посыл_посылка: PackagingUnits
+        _hnt__963_привед_ч_приведенный_час: PackagingUnits
+        _hnt__746_промилле_промилле_0_1_процента: PackagingUnits
+        _hnt__904_раб_мест_рабочее_место: PackagingUnits
+        _hnt_рабочие_дни_рабочие_дни: PackagingUnits
+        _hnt__383_руб_рубль: PackagingUnits
+        _hnt__736_рул_рулон: PackagingUnits
+        _hnt_рулон_рулон: PackagingUnits
+        _hnt__354_с_секунда: PackagingUnits
+        _hnt__964_самолет_км_самолето_километр: PackagingUnits
+        _hnt__173_сг_сантиграмм: PackagingUnits
+        _hnt__840_секц_секция: PackagingUnits
+        _hnt__896_семей_семья: PackagingUnits
+        _hnt__924_символ_символ: PackagingUnits
+        _hnt__923_слово_слово: PackagingUnits
+        _hnt__004_см_сантиметр: PackagingUnits
+        _hnt__296_см_сименс: PackagingUnits
+        _hnt__339_см_вод_ст_сантиметр_водяного_столба: PackagingUnits
+        _hnt__051_см2_квадратный_сантиметр: PackagingUnits
+        _hnt__111_см3_мл_кубический_сантиметр_миллилитр: PackagingUnits
+        _hnt__917_смен_смена: PackagingUnits
+        _hnt__762_станц_станция: PackagingUnits
+        _hnt__975_суго_сут_суго_сутки: PackagingUnits
+        _hnt__983_суд_сут_судо_сутки: PackagingUnits
+        _hnt__359_сут_дн_сутки: PackagingUnits
+        _hnt__168_т_тонна_метрическая_тонна_1000_кг: PackagingUnits
+        _hnt__847_т_90_с_в_тонна_90_го_сухого_вещества: PackagingUnits
+        _hnt__185_т_грп_грузоподъемность_в_метрических_тоннах: PackagingUnits
+        _hnt__533_т_пар_ч_тонна_пара_в_час: PackagingUnits
+        _hnt__552_т_перераб_сут_тонна_переработки_в_сутки: PackagingUnits
+        _hnt__172_т_усл_топл_тонна_условного_топлива: PackagingUnits
+        _hnt__449_т_км_тонно_километр: PackagingUnits
+        _hnt__512_т_ном_тонно_номер: PackagingUnits
+        _hnt__516_т_танид_тонно_танид: PackagingUnits
+        _hnt__514_т_тяги_тонна_тяги: PackagingUnits
+        _hnt__536_т_смен_тонна_в_смену: PackagingUnits
+        _hnt__535_т_сут_тонна_в_сутки: PackagingUnits
+        _hnt__534_т_ч_тонна_в_час: PackagingUnits
+        _hnt__313_тл_тесла: PackagingUnits
+        _hnt__913_том_книжн_фонд_том_книжного_фонда: PackagingUnits
+        _hnt__630_тыс_станд_усл_кирп_тысяча_стандартных_условных_кирпичей: PackagingUnits
+        _hnt__798_тыс_шт_1000_шт_тысяча_штук: PackagingUnits
+        _hnt__327_уз_узел_миля_ч: PackagingUnits
+        _hnt__778_упак_упаковка: PackagingUnits
+        _hnt__881_усл_банк_условная_банка: PackagingUnits
+        _hnt__876_усл_ед_условная_единица: PackagingUnits
+        _hnt__889_усл_кат_условная_катушка: PackagingUnits
+        _hnt__893_усл_кирп_условный_кирпич: PackagingUnits
+        _hnt__884_усл_кус_условный_кусок: PackagingUnits
+        _hnt__020_усл_м_условный_метр: PackagingUnits
+        _hnt__062_усл_м2_условный_квадратный_метр: PackagingUnits
+        _hnt__123_усл_м3_условный_кубический_метр: PackagingUnits
+        _hnt__891_усл_плит_условная_плитка: PackagingUnits
+        _hnt__915_усл_рем_условный_ремонт: PackagingUnits
+        _hnt__916_усл_рем_год_условный_ремонт_в_год: PackagingUnits
+        _hnt__179_усл_т_условная_тонна_т: PackagingUnits
+        _hnt__925_усл_труб_условная_труба: PackagingUnits
+        _hnt__879_усл_шт_условная_штука: PackagingUnits
+        _hnt__887_усл_ящ_условный_ящик: PackagingUnits
+        _hnt__902_учен_мест_ученическое_место: PackagingUnits
+        _hnt__314_ф_фарад: PackagingUnits
+        _hnt__872_флак_флакон: PackagingUnits
+        _hnt__041_фут_фут_0_3048_м: PackagingUnits
+        _hnt__073_фут2_квадратный_фут_0_092903_м2: PackagingUnits
+        _hnt__132_фут3_кубический_фут_0_02831685_м3: PackagingUnits
+        _hnt__206_ц_центнер_метрический_100_кг_гектокилограмм_квинтал_метрический_децитонна: PackagingUnits
+        _hnt__972_ц_корм_ед_центнер_кормовых_единиц: PackagingUnits
+        _hnt__554_ц_перераб_сут_центнер_переработки_в_сутки: PackagingUnits
+        _hnt__984_ц_га_центнеров_с_гектара: PackagingUnits
+        _hnt__356_ч_час: PackagingUnits
+        _hnt__735_часть_часть: PackagingUnits
+        _hnt__792_чел_человек: PackagingUnits
+        _hnt__540_чел_дн_человеко_день: PackagingUnits
+        _hnt__539_чел_ч_человеко_час: PackagingUnits
+        _hnt__522_чел_км2_человек_на_квадратный_километр: PackagingUnits
+        _hnt__521_чел_м2_человек_на_квадратный_метр: PackagingUnits
+        _hnt__989_чел_ч_человек_в_час: PackagingUnits
+        _hnt_шт_шт: PackagingUnits
+        _hnt__778_шт_штук: PackagingUnits
+        _hnt__976_штук_в_20_футовом_эквиваленте_штук_в_20_футовом_эквиваленте_дфэ: PackagingUnits
+        _hnt__796_штука_шт: PackagingUnits
+        _hnt_штука_шт: PackagingUnits
+        _hnt__745_элем_элемент: PackagingUnits
+        _hnt__043_ярд_ярд_0_9144_м: PackagingUnits
+        _hnt__075_ярд2_квадратный_ярд_0_8361274_м2: PackagingUnits
+        _hnt__133_ярд3_кубический_ярд_0_764555_м3: PackagingUnits
+        _hnt__810_яч_ячейка: PackagingUnits
+        _hnt__812_ящ_ящик: PackagingUnits
+
+    @classmethod
+    def init_data(cls):
+        req_text = f"""
+            ВЫБРАТЬ РАЗЛИЧНЫЕ
+                УНИКАЛЬНЫЙИДЕНТИФИКАТОР(УпаковкиЕдиницыИзмерения.Ссылка) КАК ref_key,
+                УпаковкиЕдиницыИзмерения.Код КАК Код,
+                УпаковкиЕдиницыИзмерения.Наименование КАК Наименование,
+                УпаковкиЕдиницыИзмерения.НаименованиеПолное КАК НаименованиеПолное
+            ИЗ
+                Справочник.УпаковкиЕдиницыИзмерения КАК УпаковкиЕдиницыИзмерения
+            ГДЕ
+                УпаковкиЕдиницыИзмерения.ПометкаУдаления = ЛОЖЬ
+                И УпаковкиЕдиницыИзмерения.НаименованиеПолное <> ""
+            
+            УПОРЯДОЧИТЬ ПО
+                Наименование
+        """
+        data_erp = cls._get_data_erp(req_text)
+        cls._fill_data(data_erp, PackagingUnits, {'name': 'Наименование',
+                                                  'code': 'Код',
+                                                  'fullname': 'НаименованиеПолное',
+                                                    'ref_key': 'ref_key'})
+
+
+class NomenAnalysisGroupsData(ObjsData):
+    NAME_ERP_OBJ = 'ГруппыАналитическогоУчетаНоменклатуры'
+    if 'свойства':
+        _hnt_шумоглушители_продукция: NomenAnalysisGroups
+        _hnt_тканевые_компенсаторы_продукция: NomenAnalysisGroups
+        _hnt_аппараты_обдувки_продукция: NomenAnalysisGroups
+        _hnt_быстросъемная_изоляция_продукция: NomenAnalysisGroups
+        _hnt_материалы_прочие_материалы: NomenAnalysisGroups
+        _hnt_материалы_основные_материалы: NomenAnalysisGroups
+        _hnt_товары_товары: NomenAnalysisGroups
+        _hnt_металлоизделия_продукция: NomenAnalysisGroups
+        _hnt_системы_сухого_золоудаления_продукция: NomenAnalysisGroups
+        _hnt_клапаны_продукция: NomenAnalysisGroups
+        _hnt_услуги_оказываемые_нами_услуги: NomenAnalysisGroups
+        _hnt_системы_продукция: NomenAnalysisGroups
+        _hnt_услуги_сторонних_организаций_услуги: NomenAnalysisGroups
+        _hnt_прочее_продукция: NomenAnalysisGroups
+        _hnt_линзовые_компенсаторы_продукция: NomenAnalysisGroups
+        _hnt_продукция_рудтех_продакшн_продукция: NomenAnalysisGroups
+        _hnt_горелки_продукция: NomenAnalysisGroups
+        _hnt_товары_продукция: NomenAnalysisGroups
+        _hnt_канцелярия_материалы: NomenAnalysisGroups
+        _hnt_полуфабрикаты_клапана_полуфабрикаты: NomenAnalysisGroups
+        _hnt_гибкие_вставки_и_лента_продукция: NomenAnalysisGroups
+        _hnt_испытательный_цех_продукция: NomenAnalysisGroups
+        _hnt_полуфабрикаты_заготовки_полуфабрикаты: NomenAnalysisGroups
+        _hnt_газоходы_продукция: NomenAnalysisGroups
+        _hnt_полуфабрикаты_тканевого_компенсатора_полуфабрикаты: NomenAnalysisGroups
+        _hnt_полуфабрикаты_быстросъёмной_изоляции_полуфабрикаты: NomenAnalysisGroups
+        _hnt_средства_индивидуальной_защиты_1_4_инвентарь_и_хоз_принадлежности: NomenAnalysisGroups
+        _hnt_теплоэнергия_1_5_топливо_энергия: NomenAnalysisGroups
+        _hnt_инструмент_1_1_материалы_и_работы: NomenAnalysisGroups
+        _hnt_канцелярские_товары_1_4_инвентарь_и_хоз_принадлежности: NomenAnalysisGroups
+        _hnt_представительские_расходы_none: NomenAnalysisGroups
+        _hnt_печатная_и_сувенирная_продукция_бланки_визитки_буклеты_4_4_маркетинг_и_реклама: NomenAnalysisGroups
+        _hnt_хоз_средства_1_4_инвентарь_и_хоз_принадлежности: NomenAnalysisGroups
+        _hnt_инвентарь_в_т_ч_мебель_1_4_инвентарь_и_хоз_принадлежности: NomenAnalysisGroups
+        _hnt_сырьё_деловой_отход_1_1_материалы_и_работы: NomenAnalysisGroups
+        _hnt_прочие_материалы_1_1_материалы_и_работы: NomenAnalysisGroups
+        _hnt_запчасти_и_масла_для_оборудования_и_инструмента_1_3_расходы_на_содержание_и_эксплуатацию_оборудования: NomenAnalysisGroups
+        _hnt_упаковка_1_1_материалы_и_работы: NomenAnalysisGroups
+        _hnt_полуфабрикаты_шумоглушителей_продукция: NomenAnalysisGroups
+        _hnt_бензин_1_2_гсм_и_запасные_части: NomenAnalysisGroups
+        _hnt_дизтопливо_1_2_гсм_и_запасные_части: NomenAnalysisGroups
+        _hnt_запчасти_и_технические_жидкости_для_автомобилей_1_2_гсм_и_запасные_части: NomenAnalysisGroups
+        _hnt_регулярный_ремонт_и_тех_обслуживание_ос_1_2_гсм_и_запасные_части: NomenAnalysisGroups
+        _hnt_автошины_1_2_гсм_и_запасные_части: NomenAnalysisGroups
+        _hnt_техника_и_оборудование_быт_орг_видео_выставочное_и_др_1_4_инвентарь_и_хоз_принадлежности: NomenAnalysisGroups
+        _hnt_строительные_материалы_1_4_инвентарь_и_хоз_принадлежности: NomenAnalysisGroups
+        _hnt_прочие_расходные_материалы_1_4_инвентарь_и_хоз_принадлежности: NomenAnalysisGroups
+        _hnt_основные_средства_none: NomenAnalysisGroups
+        _hnt_комплектующие_и_запчасти_для_орг_техники_провода_элементы_сети_1_4_инвентарь_и_хоз_принадлежности: NomenAnalysisGroups
+        _hnt_корпоративные_мероприятия_none: NomenAnalysisGroups
+        _hnt_товары_для_перепродажи_тканевые_компенсаторы_1_1_материалы_и_работы: NomenAnalysisGroups
+        _hnt_сырьё_листовой_металл_1_1_материалы_и_работы: NomenAnalysisGroups
+        _hnt_сырьё_метизы_1_1_материалы_и_работы: NomenAnalysisGroups
+        _hnt_сырьё_приводы_1_1_материалы_и_работы: NomenAnalysisGroups
+        _hnt_сырьё_шестигранник_1_1_материалы_и_работы: NomenAnalysisGroups
+        _hnt_сырьё_швеллер_1_1_материалы_и_работы: NomenAnalysisGroups
+        _hnt_сырьё_прокат_1_1_материалы_и_работы: NomenAnalysisGroups
+        _hnt_сырьё_трубы_1_1_материалы_и_работы: NomenAnalysisGroups
+        _hnt_сырьё_прокладочный_материал_1_1_материалы_и_работы: NomenAnalysisGroups
+        _hnt_сырьё_лакокрасочные_материалы_1_1_материалы_и_работы: NomenAnalysisGroups
+        _hnt_товары_для_перепродажи_газоходы_1_1_материалы_и_работы: NomenAnalysisGroups
+        _hnt_товары_для_перепродажи_газоочистное_оборудование_1_1_материалы_и_работы: NomenAnalysisGroups
+        _hnt_услуги_сторонних_организаций_по_проекту_1_1_материалы_и_работы: NomenAnalysisGroups
+        _hnt_товары_для_перепродажи_ссзу_1_1_материалы_и_работы: NomenAnalysisGroups
+        _hnt_товары_для_перепродажи_ао_1_1_материалы_и_работы: NomenAnalysisGroups
+        _hnt_литье_продукция: NomenAnalysisGroups
+        _hnt_рукава_фильтровальные_продукция: NomenAnalysisGroups
+        _hnt_работы_по_проекту_1_1_материалы_и_работы: NomenAnalysisGroups
+        _hnt_кмд_none: NomenAnalysisGroups
+
+    @classmethod
+    def init_data(cls):
+        req_text = f"""
+ВЫБРАТЬ
+УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ГруппыАналитическогоУчетаНоменклатуры.Ссылка) КАК ref_key,
+    ГруппыАналитическогоУчетаНоменклатуры.Наименование КАК Наименование,
+    ГруппыАналитическогоУчетаНоменклатуры.Родитель.Представление КАК РодительПредставление,
+    ГруппыАналитическогоУчетаНоменклатуры.ЭтоГруппа КАК ЭтоГруппа
+ИЗ
+    Справочник.ГруппыАналитическогоУчетаНоменклатуры КАК ГруппыАналитическогоУчетаНоменклатуры
+ГДЕ
+    ГруппыАналитическогоУчетаНоменклатуры.ЭтоГруппа = ЛОЖЬ
+    И ГруппыАналитическогоУчетаНоменклатуры.ПометкаУдаления = ЛОЖЬ
+        """
+        data_erp = cls._get_data_erp(req_text)
+        cls._fill_data(data_erp, NomenAnalysisGroups, {'name': 'Наименование',
+                                                       'parent': 'РодительПредставление',
+                                                       'group': 'ЭтоГруппа',
+                                                    'ref_key': 'ref_key'})
+
+
+
+class FinancialAccountingGroupData(ObjsData):
+    NAME_ERP_OBJ = 'ГруппыФинансовогоУчетаНоменклатуры'
+    if 'свойства':
+        _hnt_продукция_собственного_производства_пауэрз_продукция_собственного_производства_пауэрз_перепродажа_через_келаст_таткуз_10_01_товары: FinancialAccountingGroup
+        _hnt_материалы_сырье_и_материалы_10_01_товары: FinancialAccountingGroup
+        _hnt_продукция_собственного_производства_келаст_продукция_собственного_производства_келаст_товары: FinancialAccountingGroup
+        _hnt_товары_товары_на_складах_41_01_товары: FinancialAccountingGroup
+        _hnt_услуги_услуги_через_90_товары: FinancialAccountingGroup
+        _hnt_услуги_услуги_сторонних_организаций_товары: FinancialAccountingGroup
+        _hnt_материалы_прочие_материалы_10_06_товары: FinancialAccountingGroup
+        _hnt_материалы_топливо_10_03_товары: FinancialAccountingGroup
+        _hnt_материалы_10_09_инвентарь_и_хозяйственные_принадлежности_товары: FinancialAccountingGroup
+        _hnt_оборудование_оборудование_07_товары: FinancialAccountingGroup
+        _hnt_материалы_спецодежда_на_складах_10_10_товары: FinancialAccountingGroup
+        _hnt_материалы_строительные_материалы_10_08_товары: FinancialAccountingGroup
+        _hnt_материалы_покупные_полуфабрикаты_и_комплектующие_изделия_конструкции_и_детали_10_02_товары: FinancialAccountingGroup
+        _hnt_компоненты_ос_компоненты_основных_средств_08_04_1_ос: FinancialAccountingGroup
+        _hnt_материалы_тара_и_тарные_материалы_10_04_товары: FinancialAccountingGroup
+        _hnt_услуги_услуги_через_91_товары: FinancialAccountingGroup
+        _hnt_материалы_10_05_запасные_части_товары: FinancialAccountingGroup
+        _hnt_полуфабрикаты_полуфабрикаты_21_товары: FinancialAccountingGroup
+        _hnt_продукция_собственного_производства_рудтех_продакшн_продукция_собственного_производства_рудтех_продакшн_товары: FinancialAccountingGroup
+        _hnt_продукция_собственного_производства_келаст_продукция_собственного_производства_келаст_спецодежда_для_пауэрза_таткуза_10_10_товары: FinancialAccountingGroup
+        _hnt_продукция_собственного_производства_пауэрз_продукция_собственного_производства_пауэрз_перепродажа_келаст_через_41_товары: FinancialAccountingGroup
+        _hnt_продукция_собственного_производства_келаст_продукция_собственного_производства_келаст_тара_для_пауэрза_10_04_товары: FinancialAccountingGroup
+        _hnt_продукция_собственного_производства_келаст_продукция_собственного_производства_келаст_прочие_материалы_для_пауэрза_таткуза_10_06_товары: FinancialAccountingGroup
+        _hnt_продукция_собственного_производства_келаст_продукция_собственного_производства_келаст_инвентарь_для_пауэрза_10_09_товары: FinancialAccountingGroup
+        _hnt_продукция_собственного_производства_келаст_продукция_собственного_производства_келаст_перепродажа_пауэрз_таткуз_через_41_товары: FinancialAccountingGroup
+        _hnt_товары_товары_41_01_компоненты_ос_08_в_рудтех_продакшн_товары: FinancialAccountingGroup
+        _hnt_продукция_собственного_производства_пауэрз_продукция_собственного_производства_пауэрз_компоненты_ос_келаст_через_08_товары: FinancialAccountingGroup
+        _hnt_продукция_собственного_производства_пауэрз_продукция_собственного_производства_пауэрз_инвентарь_в_рудтехпродакшн_10_09_товары: FinancialAccountingGroup
+        _hnt_товары_товары_41_01_компоненты_ос_08_в_пауэрз_отгрузка_через_91_сч_товары: FinancialAccountingGroup
+        _hnt_материалы_материалы_основные_10_01_через_41_90_в_тузуксе_товары: FinancialAccountingGroup
+        _hnt_продукция_собственного_производства_келаст_продукция_собственного_производства_келаст_инвентарь_для_рудтехпродакшн_10_09_товары: FinancialAccountingGroup
+        _hnt_продукция_собственного_производства_пауэрз_продукция_собственного_производства_пауэрз_прочее_в_рудтехпродакшн_10_06_товары: FinancialAccountingGroup
+        _hnt_продукция_собственного_производства_пауэрз_продукция_собственного_производства_пауэрз_ос_в_рудтехпродакшн_08_товары: FinancialAccountingGroup
+        _hnt_товары_товары_41_01_компоненты_ос_08_в_келаст_отгрузка_через_90_сч_товары: FinancialAccountingGroup
+        _hnt_материалы_тара_10_04_через_43_90_в_келасте_на_складах_гот_продукции_товары: FinancialAccountingGroup
+        _hnt_товары_товары_41_01_компоненты_ос_08_в_хп_отгрузка_через_91_сч_товары: FinancialAccountingGroup
+        _hnt_товары_товары_41_01_компоненты_ос_08_в_пауэрз_отгрузка_через_91_сч_без_искл_товары: FinancialAccountingGroup
+        _hnt_товары_товары_41_01_отгрузка_через_91_сч_товары: FinancialAccountingGroup
+        _hnt_продукция_собственного_производства_пауэрз_продукция_собственного_производства_пауэрз_перепродажа_келаст_таткуз_через_10_06_товары: FinancialAccountingGroup
+        _hnt_товары_товары_41_01_компоненты_ос_08_в_ук_хп_отгрузка_через_90_сч_товары: FinancialAccountingGroup
+        _hnt_продукция_собственного_производства_таткуз_продукция_собственного_производства_таткуз_товары: FinancialAccountingGroup
+
+    @classmethod
+    def init_data(cls):
+        req_text = f"""
+ВЫБРАТЬ
+    УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ГруппыФинансовогоУчетаНоменклатуры.Ссылка) КАК ref_key,
+    ГруппыФинансовогоУчетаНоменклатуры.Родитель.Представление КАК Родитель,
+
+    ГруппыФинансовогоУчетаНоменклатуры.Наименование КАК Наименование,
+    ГруппыФинансовогоУчетаНоменклатуры.ЭтоГруппа КАК ЭтоГруппа,
+
+    ГруппыФинансовогоУчетаНоменклатуры.ВидЦенностиНДС КАК ВидЦенностиНДС
+ИЗ
+    Справочник.ГруппыФинансовогоУчетаНоменклатуры КАК ГруппыФинансовогоУчетаНоменклатуры
+ГДЕ
+    ГруппыФинансовогоУчетаНоменклатуры.ЭтоГруппа = ЛОЖЬ
+    И ГруппыФинансовогоУчетаНоменклатуры.ПометкаУдаления = ЛОЖЬ
+        """
+        data_erp = cls._get_data_erp(req_text)
+        cls._fill_data(data_erp, FinancialAccountingGroup, {'name': 'Наименование',
+                                                            'parent': 'Родитель',
+                                                            'value_type': 'ВидЦенностиНДС',
+                                                            'group': 'ЭтоГруппа',
+                                                    'ref_key': 'ref_key'})
+
+
+def ___________resource_specification____________():
+    pass
 
 
 @dataclass
@@ -1213,9 +2119,227 @@ class ResourceSpecificationInitData:
     TypeOfWorkData.init_data()
 
 
-def test_fnc():
-    ПодразделениеДиспетчер = SubdivisionsData._hnt_сталелитейный_цех_кбж_кбж_00_000157
+# --- Главный класс ---
+@dataclass
+class ResourceSpecification:
+    hat: ResourceHeader
+    stages: List[Stage] = field(default_factory=list)
 
+    def add_stage(self, stage: Stage):
+        self.stages.append(stage)
+
+    def to_dict(self) -> dict:
+        """Структура полностью совместимая с JSON для РесурсныхСпецификаций 1С"""
+        rez = {
+            "hat": {
+                "ОсновноеИзделиеКод": self.hat.ОсновноеИзделиеКод.Код,
+                "КоличествоУпаковок": self.hat.КоличествоУпаковок,
+                "Наименование ресурсной": self.hat.Наименование,
+                "ТекущийПользователь": self.hat.ТекущийПользователь.name,
+                "НачалоДействия": F.dateStrToStr(self.hat.ДатаНачала,"%Y-%m-%d","%Y%m%d"),
+                "КонецДействия": F.dateStrToStr(self.hat.ДатаОкончания,"%Y-%m-%d","%Y%m%d"),
+                "Сохранять": self.hat.Сохранять,
+                "ИмяБазы": self.hat.ИмяБазы,
+                "КластерСерверов": self.hat.КластерСерверов,
+                "ПодразделениеДиспетчер": self.hat.ПодразделениеДиспетчер.code,
+                "ВыпускПроизвольнымиПорциями": self.hat.ВыпускПроизвольнымиПорциями,
+                "РодительКод": self.hat.РодительКод.code,
+                "ВариантПодбораВДокументы": self.hat.ВариантПодбораВДокументы.order,
+                "СпособРаспределенияЗатратНаВыходныеИзделия": self.hat.СпособРаспределенияЗатрат.order,
+                "Описание": self.hat.Описание,
+                "Код": self.hat.Код
+            },
+            "data": [
+                {
+                    "Этап": stage.НаименованиеЭтапа,
+                    "Данные": {
+                        "Опер_наименование_подразделения": stage.Данные.Подразделение.name,
+                        "Материалы": [
+                            {
+                                "Мат_код": m.КодНоменклатуры,
+                                "Мат_норма": m.Количество,
+                                "Материалы_Статья_калькуляции": m.СтатьяКалькуляции.name,
+                                "Способы_получения_материала": m.СпособПолучения.order,
+                                "ИсточникПолученияПолуфабриката": m.ИсточникПолученияПолуфабриката.code,
+                            } for m in stage.Данные.Материалы
+                        ],
+                        "Трудозатраты": {
+                            lc.ВидРабот.ref_key: lc.Количество
+                            for lc in stage.Данные.Трудозатраты
+                        },
+                        "ДлительностьЭтапа": stage.Данные.ДлительностьМинут
+                    }
+                }
+                for stage in self.stages
+            ]
+        }
+        return rez
+
+    def to_json(self, ensure_ascii=False, indent=2) -> str:
+        return json.dumps(self.to_dict(), ensure_ascii=ensure_ascii, indent=indent)
+
+    def send(self,msg=True,return_err=False) -> dict|bool|tuple[bool|list]:
+        ERP_base_name = self.hat.ИмяБазы
+        code, answ = APIERP.post_res_json(self.to_dict(), ERP_base_name)
+        if code == 200:
+            if return_err:
+                return True, answ
+            else:
+                return answ
+        else:
+            if msg:
+                CQT.msgbox(f'Ошибка создания ресурсной. Код {code}\n{answ["Ошибки"]}')
+        if return_err:
+            return False, answ["Ошибки"]
+        else:
+            return False
+
+
+def ___________nomen____________():
+    pass
+
+
+@dataclass
+class NomenclatureInitData:
+    # Инициализация данных
+    NDS_ratesData.init_data()
+    TypeNomenData.init_data()
+    VidNomemData.init_data()
+    GruopNomenData.init_data()
+    AccessGroupData.init_data()
+    SalesOptionsData.init_data()
+    PackagingUnitsData.init_data()
+    NomenAnalysisGroupsData.init_data()
+    FinancialAccountingGroupData.init_data()
+
+class Nomenclature():
+    def __init__(self,
+            Наименование:  str = None,
+            Артикул: None | str = None,
+            ТипНоменклатуры:  TypeNomen = None,
+            Группа: None | GruopNomen = None,
+            ВидНоменклатуры: VidNomem = None,
+            ВариантОформленияПродажи: SalesOptions = None,
+            ГруппаДоступа:  AccessGroup = None,
+            ЕдиницаИзмерения: PackagingUnits = None,
+            ЕдиницаДляОтчетов:  PackagingUnits = None,
+            СтавкаНДС:  NDS_rates = None,
+            ГруппаАналитическогоУчета:  NomenAnalysisGroups = None,
+            ГруппаФинансовогоУчета:  FinancialAccountingGroup = None,
+
+                  ):
+        self.Наименование:None|str = str(Наименование)
+        self.Артикул:None|str = str(Артикул)
+        self.ТипНоменклатуры:None|TypeNomen = ТипНоменклатуры
+        self.Группа:None|GruopNomen = Группа
+        self.ВидНоменклатуры:None|VidNomem = ВидНоменклатуры
+        self.ТипНоменклатуры:None|TypeNomen = ТипНоменклатуры
+        self.ВариантОформленияПродажи:None|SalesOptions = ВариантОформленияПродажи
+        self.ГруппаДоступа:None|AccessGroup = ГруппаДоступа
+        self.ЕдиницаИзмерения:None|PackagingUnits = ЕдиницаИзмерения
+        self.ЕдиницаДляОтчетов:None|PackagingUnits = ЕдиницаДляОтчетов
+        self.СтавкаНДС:None|NDS_rates = СтавкаНДС
+        self.ГруппаАналитическогоУчета:None|NomenAnalysisGroups = ГруппаАналитическогоУчета
+        self.ГруппаФинансовогоУчета:None|FinancialAccountingGroup = ГруппаФинансовогоУчета
+
+
+    def check_data(self)->tuple[bool,list[str]]:
+        list_err = []
+        succ = True
+        if len(self.Артикул) > 50:
+            list_err.append(f'len(self.Артикул) > 50')
+            succ = False
+        if len(self.Наименование) > 150:
+            list_err.append(f'len(self.Наименование) > 150')
+            succ = False
+        if len(self.Наименование.strip()) == '' :
+            list_err.append(f'len(self.Наименование) == ""')
+            succ = False
+        if not isinstance(self.ТипНоменклатуры,TypeNomen):
+            list_err.append(f'not isinstance(self.ТипНоменклатуры,TypeNomen)')
+            succ = False
+        if not isinstance(self.ВариантОформленияПродажи,SalesOptions):
+            list_err.append(f'not isinstance(self.ВариантОформленияПродажи,SalesOptions)')
+            succ = False
+        if not isinstance(self.ГруппаДоступа,AccessGroup):
+            list_err.append(f'not isinstance(self.ГруппаДоступа,AccessGroup)')
+            succ = False
+        if not isinstance(self.ЕдиницаИзмерения,PackagingUnits):
+            list_err.append(f'not isinstance(self.ЕдиницаИзмерения,PackagingUnits)')
+            succ = False
+        if not isinstance(self.ЕдиницаДляОтчетов,PackagingUnits):
+            list_err.append(f'not isinstance(self.ЕдиницаДляОтчетов,PackagingUnits)')
+            succ = False
+        if not isinstance(self.СтавкаНДС,NDS_rates):
+            list_err.append(f'not isinstance(self.СтавкаНДС,NDS_rates)')
+            succ = False
+        if not isinstance(self.ГруппаАналитическогоУчета,NomenAnalysisGroups):
+            list_err.append(f'not isinstance(self.ГруппаАналитическогоУчета,NomenAnalysisGroups)')
+            succ = False
+        if not isinstance(self.ГруппаФинансовогоУчета,FinancialAccountingGroup):
+            list_err.append(f'not isinstance(self.ГруппаФинансовогоУчета,FinancialAccountingGroup)')
+            succ = False
+        if not isinstance(self.Группа, GruopNomen) and self.Группа is not None :
+            list_err.append(f'not isinstance(self.Группа,GruopNomen)')
+            succ = False
+        if not isinstance(self.ВидНоменклатуры,VidNomem):
+            list_err.append(f'not isinstance(self.ВидНоменклатуры,VidNomem)')
+            succ = False
+        return succ, list_err
+
+
+    @CQT.onerror
+    def create_nomen(self):
+        """
+                dict_nomen = {'Наименование': self.Наименование,
+                      'Артикул': self.Артикул,
+                      'ТипНоменклатуры': 'Товар',
+                      'ВариантОформленияПродажи': 'РеализацияТоваровУслуг',
+                      'ГруппаДоступа': 'Продукция Пауэрз для Эластика',
+                      'ЕдиницаИзмерения': 'Штука',
+                      'ЕдиницаДляОтчетов': 'Штука',
+
+                      'СтавкаНДС': '20%',
+                      'ГруппаАналитическогоУчета': 'Металлоизделия',
+                      'ГруппаФинансовогоУчета': 'Продукция собственного производства (Пауэрз)',
+                      }
+        :return:
+        """
+
+        succ, data = self.check_data()#TODO init
+        if not succ:
+            return  False, data
+
+        dict_nomen = {'Наименование': self.Наименование,
+                      'ТипНоменклатуры': self.ТипНоменклатуры.order,
+                      'ВариантОформленияПродажи': self.ВариантОформленияПродажи.order,
+                      'ГруппаДоступа': self.ГруппаДоступа.ref_key,
+                      'ЕдиницаИзмерения': self.ЕдиницаИзмерения.ref_key,
+                      'ЕдиницаДляОтчетов': self.ЕдиницаДляОтчетов.ref_key,
+                      'СтавкаНДС': self.СтавкаНДС.ref_key,
+                      'ГруппаАналитическогоУчета': self.ГруппаАналитическогоУчета.ref_key,
+                      'ГруппаФинансовогоУчета': self.ГруппаФинансовогоУчета.ref_key,
+                      'ВидНоменклатуры': self.ВидНоменклатуры.ref_key,
+                      'ГруппаФинансовогоУчета': self.ГруппаФинансовогоУчета.ref_key,
+                      'ИспользованиеХарактеристик': 'НеИспользовать',
+                      }
+        if self.Артикул:
+            dict_nomen['Артикул'] = self.Артикул
+        if self.Группа:
+            dict_nomen['Родитель'] =  self.Группа.ref_key
+        
+
+        code, data = APIERP.make_nomen(dict_nomen)
+        if code != 200:
+            return False, data
+        new_cod = data["Код"]
+        return True, data
+
+
+
+
+def test_fnc():
+    ПодразделениеДиспетчер = SubdivisionsData._hnt_производственные_подразделения_келаст_келаст_00_000129
     РодительКод = GroupResData._hnt_литье_таткуз_00_058862
     ВариантПодбораВДокументы = VariationsrespecificationdocumentsData._hnt_вручную_1
     СпособРаспределенияЗатратНаВыходныеИзделия = TheMethodOfAllocatingTheCostOfTheOutputProductsData._hnt_по_долям_стоимости_0
@@ -1266,4 +2390,5 @@ def test_fnc():
 
 
 if __name__ == '__main__':
-    test_fnc()
+    #test_fnc()
+    pass

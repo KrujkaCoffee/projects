@@ -156,6 +156,7 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.checkBox_vneplan_rab.stateChanged[int].connect(self.click_vneplan)
         self.ui.checkBox_full_dse.stateChanged.connect(self.check_box_load_full)
         self.ui.chk_progress.stateChanged.connect(self.zapoln_tabl_mk)
+        self.ui.chk_mode_reload_list_mk.stateChanged.connect(self.zapoln_tabl_mk)
         self.ui.chk_korr_nar_filtr_podtv.stateChanged.connect(self.apply_chk_korr_nar_filtr_podtv)
         # self.ui.chkb_autcourse.stateChanged.connect(self.click_chkb_autcourse)
 
@@ -4428,6 +4429,9 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
     def raschet_naruada_time_tmp(self, check='', i='', j='', *, clear_prof_state: bool = True):
         tbl = self.ui.tbl_dse
         nk_check = CQT.num_col_by_name_c(tbl, 'Чек')
+
+        count_izd = self.glob_res[0]['Количество']
+
         if nk_check is None:
             self.ui.tabWidget_2.setCurrentIndex(CQT.number_table_by_name_c(self.ui.tabWidget_2,'ДСЕ'))
             return
@@ -4450,6 +4454,7 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
         time = 0
         time_potenc = 0
         time_max = 0
+        time_max_one_izd = 0
         tpz_potenc = 0
         tsht_potenc = 0
         work_count_potenc = 0
@@ -4463,10 +4468,10 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
         for i in range(tbl.rowCount()):
             if tbl.cellWidget(i, nk_check).isChecked():
                 row = CQT.get_dict_line_form_tbl(tbl, i)
-                time_tmp = (F.valm(row['Тпз']) + F.valm(row['Тшт']) *
-                            F.valm(row['В работу,шт.']) / F.valm(row['КОИД']))
-                time_tmp_max = (F.valm(row['Тпз']) + F.valm(row['Тшт']) *
-                            F.valm(row['Количество,шт.']) / F.valm(row['КОИД']))
+                time_tmp =      F.valm(row['Тпз']) + F.valm(row['Тшт']) * F.valm(row['В работу,шт.']) / F.valm(row['КОИД'])
+                time_tmp_max = F.valm(row['Тпз']) + F.valm(row['Тшт']) * F.valm(row['Количество,шт.']) / F.valm(row['КОИД'])
+                time_tmp_max_one_izd  = (F.valm(row['Тпз']) + F.valm(row['Тшт']) *  F.valm(row['Количество,шт.']) / F.valm(row['КОИД'])) / count_izd
+
                 if F.valm(row['В работу,шт.']) != 0:
                     tpz_potenc += F.valm(row['Тпз'])
                     work_count_potenc += F.valm(row['В работу,шт.'])
@@ -4496,6 +4501,7 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
                         F.valm(row['Освоено,шт.']):
                     time += time_tmp
                 time_max += time_tmp_max
+                time_max_one_izd += time_tmp_max_one_izd
         for row in operations:
             if row['Чек']: #09.09.25
                 for set_prof in counter_prof:
@@ -4508,7 +4514,9 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
                 if self.ui.tabWidget_2.tabText(self.ui.tabWidget_2.currentIndex()) == 'Наряд':
                     return CQT.msgbox(f'Не выбрано ДСЕ')
         self.ui.lbl_tmp_time.setText(f'{str(round(time, 2))} мин.')
-        CQT.statusbar_text(self,f'Мах. время {str(round(time_max, 2))} мин. ({str(round(time_max/60, 2))}) час.')
+
+        CQT.statusbar_text(self,f'На {count_izd} изд. mах. время {str(round(time_max, 2))} мин. ({str(round(time_max/60, 2))}) час.|'
+                                f' на 1 изд. mах. время {str(round(time_max_one_izd, 2))} мин. ({str(round(time_max_one_izd/60, 2))}) час. ')
         # ++25.06.25
         time_is_valid = (
             time_potenc > 0 and
@@ -4815,16 +4823,20 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
                     CQT.msgbox('Не удалось открыть папку')
 
     @CQT.onerror
-    def zapoln_tabl_mk(self, *args):
+    def zapoln_tabl_mk(self,  *args):
         if self.glob_login == '':
             return
         self.get_plan_proj()
         tabl_sp_mk = self.ui.tableWidget_vibor_mk
         row = tabl_sp_mk.currentRow()
 
+        mode_only_not_open = False
+        chk_mode_reload_list_mk:QtWidgets.QCheckBox = self.ui.chk_mode_reload_list_mk
+        if chk_mode_reload_list_mk.isChecked():
+            mode_only_not_open = True
 
         var = f' == "Открыта"'
-        if 'shift' in CQT.get_key_modifiers(self):
+        if mode_only_not_open:
             var = f' != "Открыта"'
         custom_request_c = f'''SELECT mk.Пномер, mk.Дата, mk.Статус, Тип_мк.Имя as Тип, mk.Номенклатура, 
         CASE WHEN знпр.№ERP IS NOT NULL 

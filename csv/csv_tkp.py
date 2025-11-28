@@ -43,6 +43,10 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
         self.setFocusPolicy(QtCore.Qt.StrongFocus)
+        def qwe(self, column, *args, **kwargs):
+            text = self.ui.tbl_red_tree.horizontalHeaderItem(column).text()
+            return
+        self.ui.tbl_red_tree.setColumnHidden = lambda *args, **kwargs: qwe(self, *args, **kwargs)
         self.versia = '0.2.3.7'
         self.setWindowTitle(f"Создание CSV/ВО v{self.versia}")
         #pyinstaller.exe --onefile --icon=1.ico --noconsole csv_tkp.py

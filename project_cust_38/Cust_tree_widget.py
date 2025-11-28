@@ -1,5 +1,5 @@
+from __future__ import annotations
 import copy
-import json
 import pickle
 import os
 import sys
@@ -7,6 +7,8 @@ import typing
 import pathlib
 import logging
 import uuid
+from dataclasses import dataclass
+from collections import UserList
 
 from urllib.parse import quote
 
@@ -18,6 +20,9 @@ from project_cust_38 import Cust_Functions as F
 
 
 logger = logging.getLogger(__name__)
+
+ParentTreeItemType = typing.TypeVar("ParentTreeItemType")
+DroppedTreeItemType = typing.TypeVar("DroppedTreeItemType")
 
 
 def copy_base_widget_attributes(src: QtWidgets.QWidget, dst: QtWidgets.QWidget) -> None:
@@ -371,7 +376,7 @@ class InteractiveLabelInstance(QtCore.QObject):
         btn.setToolTip(tooltip)
         btn.setFlat(True)
         if on_clicked is not None: #29.08.25
-            column_item = ExtTreeWidgetColumn(
+            column_item = ExtTreeWidgetCell(
                 tree=self.cell_item.treeWidget(),
                 item=self.cell_item,
                 column=self.column
@@ -404,8 +409,10 @@ class BaseTreeWidgetItem(QtWidgets.QTreeWidgetItem):
     LEVEL_ROLE = Qt.UserRole + 1
     UUID_ROLE = Qt.UserRole + 2
     SYSTEM_FIELDS_ROLE = Qt.UserRole + 3
+    TEMP_FIELDS_ROLE = Qt.UserRole + 4
 
-    def __init__(self, texts, level: int = 0, object_uuid: str | None = None, system_data: dict = None):
+    def __init__(self, texts, level: int = 0, object_uuid: str | None = None, system_data: dict = None,
+                 temp_data: typing.Any = None):
         super().__init__([str(i) for i in texts])
         self.__init_system_fields(system_data)
         self.level = level
@@ -414,6 +421,7 @@ class BaseTreeWidgetItem(QtWidgets.QTreeWidgetItem):
 
         self.uuid = object_uuid
         self.background_changed = set()
+        self.temp_data = temp_data
 
     def __init_system_fields(self, system_data: dict = None):
         if not isinstance(system_data, dict):
@@ -453,6 +461,19 @@ class BaseTreeWidgetItem(QtWidgets.QTreeWidgetItem):
 
 
 class ExtTreeWidgetItem(BaseTreeWidgetItem):
+    @property
+    def temp_data(self):
+        """Взять временное свойство временное свойство"""
+        return self.data(0, self.TEMP_FIELDS_ROLE)
+
+    @temp_data.setter
+    def temp_data(self, value: typing.Any):
+        """Переназначить временное свойство временное свойство"""
+        self.setData(0, self.TEMP_FIELDS_ROLE, value)
+
+    def clear_children(self):
+        """Удалить дочерние элементы"""
+        self.setChildCount(0)
 
     def reload_row(self, new_value: dict) -> bool:
         """Перезаполнение строки указанными значениями
@@ -462,17 +483,47 @@ class ExtTreeWidgetItem(BaseTreeWidgetItem):
         """
         return self._reload_props(new_value)
 
-    def expand_parents(self, scroll_to_item: bool = True):
+    def expand_children(self, scroll_to_item: bool = True, select: bool = True, recursive = False):
+        """Раскрыть все дочерние элементы текущего элемента"""
+        cr_tree = self.treeWidget()
+        cr_tree.blockSignals(True)  # временно блокируем сигналы, чтобы не мешали
+
+        cr_tree.clearSelection()  # снимаем старое выделение — СНАЧАЛА
+
+        def expand_recursive(item):
+            """Рекурсивное раскрытие всех потомков"""
+            item.setExpanded(True)
+            for i in range(item.childCount()):
+                expand_recursive(item.child(i))
+
+        if recursive:
+            expand_recursive(self)
+        else:
+            self.setExpanded(True)
+        cr_tree.blockSignals(False)
+
+        if select:
+            self.setSelected(True)
+            cr_tree.setCurrentItem(self)
+
+        if scroll_to_item:
+            cr_tree.scrollToItem(self, cr_tree.EnsureVisible)
+
+        cr_tree.setFocus()
+
+    def expand_parents(self, scroll_to_item: bool = True,select: bool =True):
         """Раскрыть все родительские элементы"""
         cr_tree = self.treeWidget()
         parent = self.parent()
         while parent:
             parent.setExpanded(True)
             parent = parent.parent()
+        cr_tree.clearSelection()# снимаем старое выделение
         if scroll_to_item:
             cr_tree.scrollToItem(self)
         cr_tree.setFocus()
-        self.setSelected(True)
+        if select:
+            self.setSelected(True)
 
     def get_system_field(self, field: str, default: typing.Any = None):
         """Получить все служебное поле текущей строки или @default"""
@@ -485,6 +536,28 @@ class ExtTreeWidgetItem(BaseTreeWidgetItem):
         if not isinstance(row_data, dict):
             return
         return row_data.get(field, default)
+
+    def set_value_by_field(
+            self, field: str, new_value: typing.Any,
+            on_error: typing.Callable[["ExtTreeWidgetItem", Exception], None] = None
+        ) -> None:
+        """Вставить значение по имени поля
+        ----------------------------------
+        @field Имя поля
+        @new_value Значение
+        @on_error функция вызываемая при ошибке или отсутствия поля
+            Принимающая параметры [@ExtTreeWidgetItem, @Exception]
+        """
+        try:
+            tree = self.treeWidget()
+            field_column = tree.num_column_by_name(field)
+            if field_column is None and on_error is not None:
+                raise ValueError("")
+            self.setText(field_column, str(new_value))
+        except Exception as e:
+            logger.info(f'[set_value_by_field] Ошибка при вставке значения: {new_value!r} в поле: {field!r}')
+            if on_error is not None:
+                on_error(self, e)
 
     @property
     def system_fields(self) -> dict[str, typing.Any]:
@@ -520,10 +593,10 @@ class ExtTreeWidgetItem(BaseTreeWidgetItem):
     def level(self, lvl: int):
         super().setData(0, ExtTreeWidgetItem.LEVEL_ROLE, int(lvl))
 
-    def iter_column_by_row(self) -> typing.Generator["ExtTreeWidgetColumn", None, None]:
+    def iter_column_by_row(self) -> typing.Generator["ExtTreeWidgetCell", None, None]:
         """Получить генератор объектов колонок строки"""
         for column in range(self.columnCount()):
-            yield ExtTreeWidgetColumn(
+            yield ExtTreeWidgetCell(
                 tree=self.treeWidget(),
                 item=self,
                 column=column
@@ -536,6 +609,10 @@ class ExtTreeWidgetItem(BaseTreeWidgetItem):
         for i, it in enumerate(rows):
             if it is self:
                 return i
+    def get_set_columns(self)->set[str]:
+        header = self.treeWidget().headerItem()
+        columns = [header.text(i) for i in range(self.treeWidget().columnCount())]
+        return set(columns)
 
     def to_dict(
             self,
@@ -571,7 +648,7 @@ class ExtTreeWidgetItem(BaseTreeWidgetItem):
         combo.wheelEvent = lambda event: None
         fl = False
         if conn_func is not None:
-            column_item = ExtTreeWidgetColumn(
+            column_item = ExtTreeWidgetCell(
                 tree=self.treeWidget(),
                 item=self,
                 column=column
@@ -622,7 +699,7 @@ class ExtTreeWidgetItem(BaseTreeWidgetItem):
         check.setChecked(val)
         check.setEnabled(enabled)
         if conn_func is not None:
-            column_item = ExtTreeWidgetColumn(
+            column_item = ExtTreeWidgetCell(
                 tree=self.treeWidget(),
                 item=self,
                 column=column
@@ -632,6 +709,7 @@ class ExtTreeWidgetItem(BaseTreeWidgetItem):
             else:
                 check.clicked.connect(lambda checked: conn_func(additional_state, checked, column_item))
         self.treeWidget().setItemWidget(self, column, check)
+        return check
 
     def add_button(self, column, text='', val=True, conn_func = None, additional_state = '',img_path='',height: int = None,fontsize='',cell_val=None):
         btn = QtWidgets.QPushButton()
@@ -652,7 +730,7 @@ class ExtTreeWidgetItem(BaseTreeWidgetItem):
             font.setPointSize(int(fontsize))
             btn.setFont(font)
         if conn_func is not None:
-            column_item = ExtTreeWidgetColumn(
+            column_item = ExtTreeWidgetCell(
                 tree=self.treeWidget(),
                 item=self,
                 column=column
@@ -715,27 +793,24 @@ class ExtTreeWidgetItem(BaseTreeWidgetItem):
         @font_size Размер строки
 
         """
-        if item is None:
-            return
-
         fg = self.treeWidget().make_qcolor(foreground_color)
         bg = self.treeWidget().make_qcolor(background_color)
 
         cols = self.columnCount()
-        base_font = item.font(0) if cols > 0 else self.font()
+        base_font = self.font(0) if cols > 0 else self.font()
 
         for col in range(cols):
             if fg is not None:
-                item.setForeground(col, QtGui.QBrush(fg))
+                self.setForeground(col, QtGui.QBrush(fg))
             if bg is not None:
-                item.background_changed.add(col)
-                item.setBackground(col, QtGui.QBrush(bg))
+                self.background_changed.add(col)
+                self.setBackground(col, QtGui.QBrush(bg))
             if any(p is not None for p in (bold, italic, underline, strikeout, font_family, font_size)):
-                cur_font = item.font(col) or base_font
+                cur_font = self.font(col) or base_font
                 new_font = self.treeWidget().apply_font_modifications(cur_font, bold=bold, italic=italic,
                                                      underline=underline, strikeout=strikeout,
                                                      family=font_family, size=font_size)
-                item.setFont(col, new_font)
+                self.setFont(col, new_font)
 
     def set_column_style(self, column, *,
                          foreground_color=None,
@@ -762,27 +837,25 @@ class ExtTreeWidgetItem(BaseTreeWidgetItem):
         @font_family Задать объект QtGui.Font
         @font_size Размер строки
         """
-
-        if item is None:
+        tree = self.treeWidget()
+        if column < 0 or tree.columnCount() <= column:
             return
-        if column < 0 or column >= self.columnCount():
-            return
-        item.background_changed.add(column)
+        self.background_changed.add(column)
 
-        fg = self.treeWidget().make_qcolor(foreground_color)
-        bg = self.treeWidget().make_qcolor(background_color)
+        fg = tree.make_qcolor(foreground_color)
+        bg = tree.make_qcolor(background_color)
 
         if fg is not None:
-            item.setForeground(column, QtGui.QBrush(fg))
+            self.setForeground(column, QtGui.QBrush(fg))
         if bg is not None:
-            item.setBackground(column, QtGui.QBrush(bg))
+            self.setBackground(column, QtGui.QBrush(bg))
 
         if any(p is not None for p in (bold, italic, underline, strikeout, font_family, font_size)):
-            cur_font = item.font(column) or item.font(0) or self.font()
-            new_font = self.treeWidget().apply_font_modifications(cur_font, bold=bold, italic=italic,
+            cur_font = self.font(column) or self.font(0) or self.font()
+            new_font = tree.apply_font_modifications(cur_font, bold=bold, italic=italic,
                                                  underline=underline, strikeout=strikeout,
                                                  family=font_family, size=font_size)
-            item.setFont(column, new_font)
+            self.setFont(column, new_font)
 
     def add_interactive_label(
             self,
@@ -823,7 +896,7 @@ class ExtTreeWidgetItem(BaseTreeWidgetItem):
                                         parent_self=parent_self)
         return inst
 
-class ExtTreeWidgetColumn:
+class ExtTreeWidgetCell:
     def __init__(self, tree, item: ExtTreeWidgetItem, column: int):
         self.tree = tree
         self.row_item = item
@@ -834,8 +907,6 @@ class ExtTreeWidgetColumn:
     def set_text(self, new_value):
         self.row_item.setText(self.column, new_value)
 
-from dataclasses import dataclass
-from collections import UserList
 
 @dataclass
 class RowData:
@@ -893,7 +964,7 @@ def prepare_data_for_fill(data, nick_name_uuid: str, nick_name_level: str, prope
         )
     return data_for_fill
 
-
+QtWidgets.QTreeWidgetItem
 
 class BaseTreeWidget(QtWidgets.QTreeWidget):
     MIME_TYPE = 'application/x-ExtTreeWidgetItem'
@@ -916,6 +987,9 @@ class BaseTreeWidget(QtWidgets.QTreeWidget):
         self.max_col_width = None
         self.stretch_last_column = None
 
+        self.resize_first_column_after_expand = None
+        self.on_drop_access = None
+
         self.hover_indicator_color = None
         self._indicator_item = None
         self._indicator_pos = None
@@ -931,6 +1005,8 @@ class BaseTreeWidget(QtWidgets.QTreeWidget):
         self.header().setStretchLastSection(True)
         self.property_manager = None
         self.system_fields_prefix = None
+
+        self._drag_cache: dict[str, typing.Any] = {}  # 🔑 хранилище передаваемых объектов
 
     def __post_init__(self, old_tree_instance, ui_instance):
         replace_qtree(old_tree=old_tree_instance, new_tree=self, ui_instance=ui_instance)
@@ -1002,23 +1078,38 @@ class BaseTreeWidget(QtWidgets.QTreeWidget):
 
     def mimeData(self, items):
         def node_to_dict(node: QtWidgets.QTreeWidgetItem | None):
+            # создаём уникальный ID для узла
+            node_id = str(uuid.uuid4())
+
+
             if isinstance(node, ExtTreeWidgetItem):
+
+
                 return {
                     'texts': node.to_dict(),
                     'level': int(node.data(0, ExtTreeWidgetItem.LEVEL_ROLE) or 0),
                     'children': [node_to_dict(node.child(i)) for i in range(node.childCount())],
                     'uuid': node.uuid,
-                    'system_props': node.system_fields
+                    'system_props': node.system_fields,
+                    '_obj_ref_id': node_id,  # 🧩 ссылка на реальный объект
+                    
                 }
+                temp_props = node.temp_data
             else:
                 return {
                     'texts': [node.text(c) for c in range(self.columnCount())],
                     'level': int(node.data(0, ExtTreeWidgetItem.LEVEL_ROLE) or 0),
                     'children': [node_to_dict(node.child(i)) for i in range(node.childCount())],
                     'uuid': None,
-                    'system_props': None
+                    'system_props': None,
+                    '_obj_ref_id': node_id,  # 🧩 ссылка на реальный объект
+                    
                 }
-
+                temp_props = None
+            # сохраняем реальные объекты во внутренний кэш
+            self._drag_cache[node_id] = {
+                "temp_props": temp_props,
+            }
 
         data = [node_to_dict(it) for it in items]
         md = QtCore.QMimeData()
@@ -1032,7 +1123,19 @@ class BaseTreeWidget(QtWidgets.QTreeWidget):
             texts = []
             droped_text = nd.get('texts', [])
             uuid_ = nd.get('uuid')
+            obj_ref_id = nd.get('_obj_ref_id')
             system_props = nd.get('system_props')
+            temp_props = None
+            # ——— восстановление объектов из кэша ———
+            if hasattr(self, "_drag_cache"): 
+                cache_entry = self._drag_cache.get(obj_ref_id)
+                if cache_entry:
+                    temp_props = cache_entry.get("temp_props")
+                # чистим после использования
+                self._drag_cache.pop(obj_ref_id,None)
+
+            temp_props = nd.get('temp_props')
+
             if isinstance(droped_text, dict):
                 for col in range(self.columnCount()):
                     current_header = self.headerItem().text(col)
@@ -1048,7 +1151,7 @@ class BaseTreeWidget(QtWidgets.QTreeWidget):
                 column_level = F.num_col_by_name_in_hat_c(struct, self.nick_name_level)
                 if column_level < len(texts):
                     texts[column_level] = new_level
-            item = ExtTreeWidgetItem(texts, new_level, object_uuid=uuid_, system_data=system_props)
+            item = ExtTreeWidgetItem(texts, new_level, object_uuid=uuid_, system_data=system_props, temp_data=temp_props)
             for ch in nd.get('children', []):
                 item.addChild(create_node(ch, base_level))
             if self.min_row_height is not None:
@@ -1110,6 +1213,7 @@ class BaseTreeWidget(QtWidgets.QTreeWidget):
             self._clear_indicator()
             self._cancel_expand_timer()
             self.restruct_level_by_item(new_items)
+            self._hook_on_drop_event(new_items)
             return
 
         target_rect = self.visualItemRect(target_item)
@@ -1121,6 +1225,7 @@ class BaseTreeWidget(QtWidgets.QTreeWidget):
             self._clear_indicator()
             self._cancel_expand_timer()
             self.restruct_level_by_item(new_items)
+            self._hook_on_drop_event(new_items)
             return
 
         y = event.pos().y()
@@ -1175,6 +1280,16 @@ class BaseTreeWidget(QtWidgets.QTreeWidget):
         self._clear_indicator()
         self._cancel_expand_timer()
         self.restruct_level_by_item(new_items)
+        self._hook_on_drop_event(new_items)
+
+    def _hook_on_drop_event(self, items: list[ExtTreeWidgetItem]) -> None:
+        if self.on_drop_access is None:
+            return
+        try:
+            for item in items:
+                return self.on_drop_access(item.parent(), item)
+        except Exception as e:
+            logger.info(f'Ошибка при вызове: on_drop_access {e}')
 
     def _last_visible_item(self):
         """Возвращает последний топ-левел элемент, который видим (или None)."""
@@ -1413,21 +1528,6 @@ class BaseTreeWidget(QtWidgets.QTreeWidget):
         self._even_color = even_color
         self.apply_alternate_colors()
 
-    def _prepare_data_for_user_insert1(self, data: list[dict], level: int = 0, children = None):
-
-        if children is None:
-            children = []
-        data = prepare_data_for_fill(data, nick_name_level=self.nick_name_level, nick_name_uuid=self.nick_name_uuid)
-
-        return [
-            {
-                'texts': item.user_data,
-                'level': item.level,
-                'children': children,
-                'uuid': item.uuid_,
-                'system_props': item.system_data}
-            for item in data
-        ]
     def _prepare_data_for_user_insert(self, data: list[dict],
                                       parent_instance: ExtTreeWidgetItem = None,
                                       into: bool = False,
@@ -1442,7 +1542,7 @@ class BaseTreeWidget(QtWidgets.QTreeWidget):
         ui_index = None
         prev_lvl = None
         delta = 0
-
+        result_items = []
         for row_idx, row_data in enumerate(table_data): # type: RowData
             if ui_index is not None and prev_lvl is not None and prev_lvl == row_data.level and not after:
                 ui_index += 1
@@ -1503,14 +1603,20 @@ class BaseTreeWidget(QtWidgets.QTreeWidget):
                         parent.addChild(item)
                 parents[lvl] = item
             prev_lvl = row_data.level
+            result_items.append(item)
             # ui_index = None
         if parent_instance is not None:
-            return self.restruct_level_by_item([parent_instance])
-        return self.restruct_level_by_item(self._rows_generator())
+            self.restruct_level_by_item([parent_instance])
+        else:
+            self.restruct_level_by_item(self._rows_generator())
+        return result_items
 
     def _clear_table(self):
-        self.clear()
+        super().clear()
+        self.setColumnCount(0)
+        self.setHeaderLabels([])
         self.property_manager = None
+        self._ensure_header_connected()
 
     def _rows_generator(self) -> typing.Generator[ExtTreeWidgetItem, None, None]:
         def recurse(parent_item):
@@ -1533,7 +1639,7 @@ class ExtTreeWidget(BaseTreeWidget):
         Структура классов с открытым интерфейсом
             - ExtTreeWidget  Класс дерева
             -- ExtTreeWidgetItem Класс строки
-            --- ExtTreeWidgetColumn Класс ячейки в строке
+            --- ExtTreeWidgetCell Класс ячейки в строке
         Пример:
             ExtTreeWidget(old_tree_instance=self.ui.tree_base_tree, ui_instance=self.ui)
     """
@@ -1550,12 +1656,41 @@ class ExtTreeWidget(BaseTreeWidget):
             recurse(top)
         return out
 
-    def get_item_by_value(
+    def get_dict_uid_is_expand(self)->dict:
+        res = dict()
+        def walk_tree(item: ExtTreeWidgetItem):
+            """Рекурсивно обходит дерево, начиная с item."""
+            print(f"{item.text(0)} — {'развернут' if item.isExpanded() else 'свернут'}")
+            res[item.uuid] = item.isExpanded()
+            # Обходим все дочерние элементы
+            for i in range(item.childCount()):
+                child = item.child(i)
+                walk_tree(child)
+        walk_tree(self.topLevelItem(0))
+        return res
+
+    def get_item_cell_by_uuid(
+            self,
+            uuid:str
+    ) -> ExtTreeWidgetCell | list[ExtTreeWidgetCell] | None:
+        """
+        Поиск элемента таблицы по uuid
+
+        @uuid искомый uuid
+        """
+        elements = []
+        for item in self.iter_rows(): # type: ExtTreeWidgetItem
+            if item.uuid == uuid :
+                return item
+
+
+    def get_item_cell_by_value(
             self,
             value,
             column: int = None,
-            many: bool = False
-    ) -> ExtTreeWidgetColumn | list[ExtTreeWidgetColumn] | None:
+            many: bool = False,
+            strict_compare:bool = True
+    ) -> ExtTreeWidgetCell | list[ExtTreeWidgetCell] | None:
         """
         Поиск элемента таблицы по значению
 
@@ -1566,16 +1701,30 @@ class ExtTreeWidget(BaseTreeWidget):
         elements = []
         for item in self.iter_rows(): # type: ExtTreeWidgetItem
             if column is not None:
-                if str(item.text(column)).strip() == str(value).strip():
+                fl_ = False
+                if strict_compare:
+                    if str(item.text(column)).strip() == str(value).strip():
+                        fl_ = True
+                else:
+                    if str(value).strip() in str(item.text(column)).strip():
+                        fl_ = True
+                if fl_:
                     elements.append(
-                        ExtTreeWidgetColumn(tree=self,item=item,column=column
+                        ExtTreeWidgetCell(tree=self,item=item,column=column
                         )
                     )
             else:
                 for col in range(item.columnCount()):
-                    if str(item.text(col)).strip() == str(value).strip():
+                    fl_ = False
+                    if strict_compare:
+                        if str(item.text(col)).strip() == str(value).strip():
+                            fl_ = True
+                    else:
+                        if str(value).strip() in str(item.text(col)).strip():
+                            fl_ = True
+                    if fl_:
                         elements.append(
-                            ExtTreeWidgetColumn(tree=self, item=item, column=col
+                            ExtTreeWidgetCell(tree=self, item=item, column=col
                             )
                         )
         if not elements:
@@ -1584,6 +1733,9 @@ class ExtTreeWidget(BaseTreeWidget):
             return elements
         return elements[0]
 
+    def clear_table(self):
+        """Отчистить таблицу"""
+        self._clear_table()
 
     def fill_table(self,
         dict_or_list: list[list] | list[dict] | dict[str, dict],
@@ -1608,7 +1760,9 @@ class ExtTreeWidget(BaseTreeWidget):
         selection_mode: QtWidgets.QAbstractItemView.SelectionMode = QtWidgets.QAbstractItemView.SingleSelection,
         selection_behavior: QtWidgets.QAbstractItemView.SelectionBehavior = QtWidgets.QAbstractItemView.SelectRows,
         draggable: bool = True,
-        system_fields_prefix: str = '__'
+        system_fields_prefix: str = '__',
+        on_drop_access: typing.Callable[[ParentTreeItemType, DroppedTreeItemType], None] = None,
+        on_header_resized=None,
     ):
         """
         @dict_or_list Данные для размещения
@@ -1631,7 +1785,9 @@ class ExtTreeWidget(BaseTreeWidget):
         @hover_item_color: цвет строки при наведении
         @selected_item_color: цвет активной строки
         @resize_first_column_after_expand: Изменять размер первой колонки после раскрытия дочерних элентов
+        @on_drop_access: Функция-hook вызываемая при успешно размещением элемента инструментом drag on drop
         """
+        self._connected_header = None
         self._clear_table()
         self.setSelectionMode(selection_mode)
         self.setSelectionBehavior(selection_behavior)
@@ -1650,6 +1806,9 @@ class ExtTreeWidget(BaseTreeWidget):
         self.hover_indicator_color = hover_indicator_color
         self.system_fields_prefix = system_fields_prefix
         self.resize_first_column_after_expand = resize_first_column_after_expand
+        self.on_drop_access = on_drop_access
+        self.on_header_resized = on_header_resized
+        
 
         self.install_branch_and_selection_icons(
             branch_icon_if_can_open,
@@ -1673,11 +1832,15 @@ class ExtTreeWidget(BaseTreeWidget):
         cp_data = copy.deepcopy(list_of_data)
         table_data: TableData = prepare_data_for_fill(cp_data, nick_name_uuid, nick_name_level,
                                                       property_prefix=system_fields_prefix)
+
+
+
         if hide_horizontal_header:
             self.header().hide()
         else:
             header = table_data.user_headers
             self.setHeaderLabels(header)
+            self._ensure_header_connected()
             self.header().show()
             self.width_first_column = self.columnWidth(0)
         self.setRootIsDecorated(not hide_root_decorations)
@@ -1732,9 +1895,36 @@ class ExtTreeWidget(BaseTreeWidget):
                     if sh is not None and sh.height() > max_row_height:
                         it.setSizeHint(c, QtCore.QSize(sh.width(), max_row_height))
 
+
         self.set_row_colors(odd_item_color, even_item_color)
         self.normalize_row_heights()
+        # после полной инициализации подключим финальный header
+        QtCore.QTimer.singleShot(0, self._ensure_header_connected)
 
+
+    def _ensure_header_connected(self):
+        """Проверить, есть ли активный header, и подключить, если нужно"""
+        header = self.header()
+        if header is None:
+            return
+        if getattr(self,'_connected_header',None) is None:
+            self._connected_header = None
+        if self._connected_header is not header:
+            self._connect_header_signals(header)
+
+    def _connect_header_signals(self, header: QtWidgets.QHeaderView):
+        """Подключить сигналы только один раз для актуального header"""
+        if getattr(self,'on_header_resized',None) is None:
+            return 
+        try:
+            header.sectionResized.disconnect()
+        except Exception:
+            pass
+        header.sectionResized.connect(
+            lambda idx, old, new, h=header: self.on_header_resized(h, idx, old, new)
+        )
+        self._connected_header = header
+        
     def dump_as_table(self, rez_dict: bool = False,
                       level_nickname: str = None,
                       uuid_nickname: str = None
@@ -1793,7 +1983,9 @@ class ExtTreeWidget(BaseTreeWidget):
                 return column
         return None
 
-    def insert_before(self, row: int = None, *values: dict[str, typing.Any], into: bool = False):
+    def insert_before(self, row: int = None, *values: dict[str, typing.Any],
+                      into: bool = False
+        ) -> list[ExtTreeWidgetItem]:
         """
         Вставить строку/строки перед указанной строкой
             Если @logical_index is None в начало структуры
@@ -1831,7 +2023,9 @@ class ExtTreeWidget(BaseTreeWidget):
         return self._prepare_data_for_user_insert(values, None, into=True)
 
 
-    def insert_after(self, logical_index: int = None, *values: dict[str, typing.Any], into: bool = False):
+    def insert_after(self, logical_index: int = None, *values: dict[str, typing.Any],
+                     into: bool = False
+        ) -> list[ExtTreeWidgetItem]:
         """
         Вставить строку/строки после указанной строкой
             Если @logical_index is None в конец структуры
@@ -1906,12 +2100,14 @@ class ExtTreeWidget(BaseTreeWidget):
         return len(rows)
 
 
+
+
 if __name__ == '__main__':
     """
         Структура классов с открытым интерфейсом
         - ExtTreeWidget  Класс дерева
         -- ExtTreeWidgetItem Класс строки
-        --- ExtTreeWidgetColumn Класс ячейки в строке
+        --- ExtTreeWidgetCell Класс ячейки в строке
     """
 
 
@@ -1955,6 +2151,7 @@ if __name__ == '__main__':
         {'Наименование': 'Т1__элемент 1', 'Доп колонка': 'варвар', 'Уровень': 3},
         {'Наименование': 'Эмуляция сломанного слота', 'Уровень': 2},
     ]
+    on_dropped = lambda parent, new_item: print(f'Произошел дроп: parent {parent} child: {new_item}')
     tree1.fill_table(#TODO ЗАПОЛНЕНИЕ
         data,
         min_row_height=26,
@@ -1967,7 +2164,8 @@ if __name__ == '__main__':
         even_item_color='#f0f8ff',
         hover_indicator_color=(233, 233, 111),
         # branch_icon_if_can_close='./Mkarti/icons/1.ico',
-        hover_item_color="#91916a"
+        hover_item_color="#91916a",
+        on_drop_access=on_dropped
     )
     tree2.fill_table(data_for_table_2, hide_horizontal_header=False, min_col_width=80, stretch_last_column=True,
                                nick_name_level='Уровень')
@@ -1994,7 +2192,8 @@ if __name__ == '__main__':
     #  Добавление кнопки
     item.add_button(tree1.num_column_by_name('Уровень'), conn_func=my_func)
     column_count_ed = tree1.num_column_by_name('Количеств_ед')
-    tree1.iter_rows()[3].set_column_style(column=2, bold=True, background_color='red')
+    tree1.iter_rows()[3].set_column_style(column=2, bold=True, background_color='red', underline=True)
+    tree1.iter_rows()[4].set_row_style(bold=True, background_color='green', italic=True)
 
     # Добавление интерактивного лэйбла
     i_l = tree1.iter_rows()[0].add_interactive_label(
@@ -2005,7 +2204,7 @@ if __name__ == '__main__':
     i_l.add_button('A', on_clicked=my_func)
 
     # Поиск элементов по имени
-    a = tree1.get_item_by_value('АСО.400000И', many=True)
+    a = tree1.get_item_cell_by_value('АСО.400000И', many=True)
 
     count = 0
     variants = [
@@ -2034,6 +2233,7 @@ if __name__ == '__main__':
     btn_get_uuid = QtWidgets.QPushButton('Выдать UUID элемента')
     expand_parents = QtWidgets.QPushButton('Раскрыть родителей')
     reload_row = QtWidgets.QPushButton('Замена строки')
+    btn_set_temp = QtWidgets.QPushButton('Задать temp')
     btn_get_uuid.setFocusPolicy(QtCore.Qt.StrongFocus)
 
     line_edit = QtWidgets.QLineEdit()
@@ -2047,6 +2247,13 @@ if __name__ == '__main__':
         dump = table.dump_as_table(rez_dict=True) # Дамп списком
         dump2 = table.dump_as_nested() # Дамп с вложенностями
 
+        table: ExtTreeWidget = __get_current_table()
+        # row = line_edit.text()
+        # item: ExtTreeWidgetItem = table.currentItem()
+        # a = item.temp_data
+        # print(item.temp_data)
+        table.clear_table()
+
     def insert_before(window, tree, line, *args, **kwargs):
         idx = line.text()
         tree_name = combo.currentText()
@@ -2055,7 +2262,9 @@ if __name__ == '__main__':
             idx = table.current_row
         var = variants[int(combo_variants.currentText())]
 
-        table.insert_before(idx,  *var, into=check_uuid.isChecked())
+        resp = table.insert_before(idx,  *var, into=check_uuid.isChecked())
+        resp2 = [i.to_dict() for i in resp]
+        print()
 
     def __get_current_table():
         tree_name = combo.currentText()
@@ -2064,15 +2273,17 @@ if __name__ == '__main__':
     count = 0
     def insert_after(window, tree, *args, **kwargs):
         global count
-        table = __get_current_table()
-        idx = table.current_row
+        table: ExtTreeWidgetProtocol = __get_current_table()
+        elems: ExtTreeWidgetItemProtocol = table.insert_before()[0]
+        idx = 0
         count += 1
         var = variants[int(combo_variants.currentText())]
-        table.insert_after(idx, *var, into=check_uuid.isChecked())
+        resp = table.insert_after(idx, *var, into=check_uuid.isChecked())
+        resp2 = [i.to_dict() for i in resp]
+        print()
 
 
     btn_dump.clicked.connect(on_dump)
-    from project_cust_38 import Cust_Qt as CQT
     def on_ctrl_shift_p(window, table):
         CQT.msgboxg_get_table(window, msg='test', dict_or_list=table.dump_as_table(rez_dict=True),
                               btn0_name='ОК', disable_btn1=True, load_summ=True,
@@ -2081,7 +2292,7 @@ if __name__ == '__main__':
     def on_click_get_uuid(window, table, label, check):
         if check.isChecked():
             table = tree2
-        item = table.currentItem()
+        item = table.currentItem().current_index
 
         if not item:
             return
@@ -2096,9 +2307,16 @@ if __name__ == '__main__':
         global count
         row = line_edit.text()
         table = __get_current_table()
-        item = table.get_item_by_logical_index(row)
+        item: ExtTreeWidgetItemProtocol[ExtTreeWidgetItem] = table.get_item_by_logical_index(row)
         count += 1
         item.reload_row({'Наименование': f'test{count}', '__sys_col': 'Рандомная строка'.encode('utf8'), '__sys_date': datetime.datetime.now()})
+    def on_set_temp(*args):
+        table = __get_current_table()
+        row = line_edit.text()
+        item: ExtTreeWidgetItem = table.currentItem()
+        item.temp_data = b'test 1qweqweqwe'
+        a = item.temp_data
+        print(item.temp_data)
 
     btn_dump.clicked.connect(on_dump)
     btn_ctrl_shift_p.clicked.connect(lambda: on_ctrl_shift_p(window, tree1))
@@ -2106,6 +2324,7 @@ if __name__ == '__main__':
     btn_insert_after.clicked.connect(lambda: insert_after(window, tree1))
     btn_get_uuid.clicked.connect(lambda: on_click_get_uuid(window, tree1, label_uuid, check_uuid))
     expand_parents.clicked.connect(lambda: on_click_expand_parents(window, tree1, label_uuid, check_uuid))
+    btn_set_temp.clicked.connect(lambda: on_set_temp(window, tree1, label_uuid, check_uuid))
     reload_row.clicked.connect(on_click_reload)
 
     combo.addItems(['tree1', 'tree2'])
@@ -2120,6 +2339,7 @@ if __name__ == '__main__':
     vl.addWidget(btn_dump)
     vl.addWidget(btn_ctrl_shift_p)
     vl.addWidget(reload_row)
+    vl.addWidget(btn_set_temp)
 
     # test btn insert before
     layout_insert_before = QtWidgets.QHBoxLayout()

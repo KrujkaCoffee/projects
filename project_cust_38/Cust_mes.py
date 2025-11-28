@@ -8,6 +8,7 @@ import pprint
 import re
 
 import asyncio
+import typing
 from builtins import ValueError
 from itertools import accumulate
 from collections import defaultdict, OrderedDict
@@ -25,6 +26,7 @@ import project_cust_38.Cust_virbotka as VIR
 import project_cust_38.xml_v_drevo as XML
 import project_cust_38.report_ci as report_ci
 import project_cust_38.Cust_docs as CDOCS
+import project_cust_38.Cust_storage as CSTORE
 from project_cust_38 import Cust_progressBar as CPB
 import copy
 from datetime import timedelta
@@ -32,6 +34,7 @@ from dateutil.relativedelta import relativedelta
 import subprocess
 import winreg
 import project_cust_38.api_erp_commands as APIERP
+import project_cust_38.Cust_emoji as CEMOJ
 try:
     from project_cust_38.isdayoff_cust import ProdCalendar
 except:
@@ -45,11 +48,12 @@ except:
     print(f'Cust_b24 err import')
     pass
 import project_cust_38.operacii as operacii
-try:
-    import calculate_vo as CVO
-except:
-    print(f'calculate_vo err import')
-    pass
+#exclude import calculate_vo 11.11.25
+FOLDER_CLOSED = f'{CEMOJ.EmojiMain.ДокументыДанные.folder_closed.symbol}{CEMOJ.EmojiMain.ДокументыДанные.plus_circled.symbol}'
+FOLDER_OPEN = f'{CEMOJ.EmojiMain.ДокументыДанные.folder.symbol}{CEMOJ.EmojiMain.ДокументыДанные.minus_circled.symbol}'
+DOC_EMOJI = f'    {CEMOJ.EmojiMain.ДокументыДанные.document.symbol}'
+
+
 
 
 class Tabels_erp():
@@ -771,7 +775,8 @@ def get_db_rows_pl_etaps(pnom_or_pnoms: int | list[int]):
 # --06.06.2025 (по задаче 100055177 )
 
 class Pozitions():
-    def __init__(self,p_noms:list,db_kpl,db_naryad,db_resxml,db_users,parent_self=None, load_loacal_graf=False, load_day_plan=False):
+    def __init__(self,p_noms:list,db_kpl,db_naryad,db_resxml,db_users,parent_self=None, load_loacal_graf=False,
+                 load_day_plan=False):
         if p_noms == []:
             postfix_pnoms = ''
             postfix_pnoms_dates = ''
@@ -843,10 +848,53 @@ class Pozitions():
 
         # rows_dates_etaps = CSQ.custom_request_c(db_kpl, request, rez_dict=True)
         self.parent_self = parent_self
-        self.dict_pozs = dict()
+        self.dict_pozs:dict[int,Pozition] = dict()
         for i, item in enumerate(rows):
             row_dates_etaps= data_etaps.get(item['Пномер'])
             self.dict_pozs[item['Пномер']] =  Pozition(item,db_kpl,db_naryad,db_resxml,db_users,self.parent_self, row_dates_etaps= row_dates_etaps)
+    
+    def load_kpl_table(self,name_table):
+
+
+        request = f""" 
+                                SELECT * FROM {name_table} 
+                                WHERE НомПл in ({CSQ.prepare_list_to_tuple(list(self.dict_pozs.keys()))});"""
+        
+        rows = CSQ.custom_request_c(CFG.Config.project.db_kplan, request, rez_dict=True)
+        if name_table == 'пл_оуп':
+            request = f"""
+                    SELECT * FROM 
+                    знпр 
+                    WHERE знпр.s_num in ({CSQ.prepare_list_to_tuple([_['Пномер_ЗП'] for _ in rows])});"""
+            rows_оуп = CSQ.custom_request_c(CFG.Config.project.db_kplan, request, rez_dict=True)
+            row_оуп_zero = CSQ.dict_zero_val_row(CFG.Config.project.db_kplan, 'знпр')
+
+        for num_poz, poz in self.dict_pozs.items():
+            poz.dict_tables[name_table] = dict()
+            row = None
+            for row_iter in rows:
+                if row_iter['НомПл'] == num_poz:
+                    row = row_iter
+            if row is None:
+                raise ValueError(f'Pozitions: load_kpl_table row is None')
+
+            for key in row.keys():
+                exec(f'poz.dict_tables["{name_table}"]["{key.replace(".", "_")}"] = row[key]')
+
+            if name_table == 'пл_оуп':
+                row_оуп = None
+                for row_iter_оуп in rows_оуп:
+                    if row_iter_оуп['s_num'] == row['Пномер_ЗП']:
+                        row_оуп = row_iter_оуп
+
+                if row_iter_оуп is None:
+                    row_оуп = row_оуп_zero
+                else:
+                    for key in row_оуп.keys():
+                        field = key.replace(".", "_")
+                        if field in poz.dict_tables[name_table]:
+                            poz.dict_tables[name_table][f'{field}_base'] = poz.dict_tables[name_table][field]
+                        exec(f'poz.dict_tables["{name_table}"]["{field}"] = row_оуп[key]')
 
 class Pozition():
     def __init__(self,p_nom_or_row_preload,db_kpl=None,db_naryad=None,db_resxml=None,db_users=None,parent_self=None,
@@ -1300,12 +1348,14 @@ class Pozition():
                                 WHERE s_num == {self.dict_tables[name_table]['Пномер_ЗП']};"""
                 row = CSQ.custom_request_c(self.db, request, rez_dict=True)[0]
 
-                for key in row.keys():
-                    field = key.replace(".", "_")
-                    if field in self.dict_tables[name_table]:
-                        self.dict_tables[name_table][f'{field}_base'] = self.dict_tables[name_table][field]
-                    exec(f'self.dict_tables["{name_table}"]["{field}"] = row[key]')
 
+            else:
+                row = CSQ.dict_zero_val_row(self.db,'знпр')
+            for key in row.keys():
+                field = key.replace(".", "_")
+                if field in self.dict_tables[name_table]:
+                    self.dict_tables[name_table][f'{field}_base'] = self.dict_tables[name_table][field]
+                exec(f'self.dict_tables["{name_table}"]["{field}"] = row[key]')
     def get_list_link_mk(self):
         list_mk = CSQ.custom_request_c(self.db_naryad,f"""SELECT Пномер FROM mk 
          WHERE НомКплан == {self.Пномер} AND Дата_завершения == "" AND На_удал == 0;""",hat_c=False,one_column=True)
@@ -1577,7 +1627,7 @@ class Pozition():
         rez =  CSQ.custom_request_c(self.db,f"""SELECT Имя from status_poz WHERE Пномер = {self.Статус}""",one_column=True,one=True,hat_c=False)
         if rez == None or rez == False:
             return rez
-        return rez[0]
+        return rez #11.11.25
 
     def update_day_plan_etap_jurnal(self, data:dict, clear_upd = False):
         if clear_upd: #18.09.2025 от Моренко
@@ -1600,7 +1650,7 @@ class Pozition():
              plan WHERE Пномер == ?""",list_of_lists_c=[self.Пномер],one=True,one_column=True,hat_c=False)
             if data == None or data == False:
                 return False
-            self.fact_jurnal_blolb_data = data[0]
+            self.fact_jurnal_blolb_data = data #11.11.25
         if self.fact_jurnal_blolb_data == None or self.fact_jurnal_blolb_data== '':
             return defaultdict(defaultdict)
         else:
@@ -1732,20 +1782,25 @@ class Pozition():
         self.update_day_plan_etap_jurnal(dict_days,clear_upd=True)
         return dict_days
 
-
-
 class Techkards():
     UNRECALC_MARK = '='
     db_dse = None
-    def __init__(self,nn_or_snum:str|int,db_dse:str, nom_mk:int = '',path_docs='',db_nomen='',fix_mat=False,
+    def __init__(self,nn_or_snum:str|int,db_dse:str, nom_mk:int = '',path_docs='',
+                 db_nomen='', # не используется
+                 fix_mat=False,
             DICT_OP_NAME: dict = None,
             DICT_PROFESSIONS: dict = None #31.07.25
         ):
         poki = CFG.Config.place.poki
-        if DICT_OP_NAME==None:
+        self.DICT_OP_NAME = self.DICT_KOD_OPER = None
+        if DICT_OP_NAME is None:
             print(f'class Techkards: DICT_OP_NAME = None')
             config = CFG.Config.project #10.04.25
-            DICT_OP_NAME  = F.deploy_dict_c(CSQ.custom_request_c(config.db_naryad, f"""SELECT * FROM operacii WHERE poki == {poki}""",rez_dict=True),'name')
+            list_operations = CSQ.custom_request_c(config.db_naryad, f"""SELECT * FROM operacii WHERE poki == {poki}""",rez_dict=True)
+            DICT_OP_NAME = F.deploy_dict_c(list_operations,'name')
+        self.DICT_KOD_OPER = {oper_name: creds['kod'] for oper_name, creds in DICT_OP_NAME.items()} #20.11.25
+        self.fix_mat = fix_mat
+        self.fl_fix = False
 
         self.DICT_PROFESSIONS = DICT_PROFESSIONS
         if DICT_PROFESSIONS is None:
@@ -1797,27 +1852,27 @@ class Techkards():
                             CQT.msgbox(
                                 f"{nn} Операция ``{sp_tk[j][0]}`` не найдена в БД для {CFG.Config.user_config.Organization['Значение']}")
                             return
-                        mats = []
-                        for _ in sp_tk[j][10].split("{"):
-                            if _ == '':
-                                break
-                            if len(_.split("$")) == 3:
-                                ed_izm = ''
-                                if db_nomen == '':
-                                    print(f'error load edizm, need db_nomen')
-                                    return None
-                                dict_ed_izm = CSQ.custom_request_c(db_nomen,f"""SELECT * FROM nomen WHERE Код = "{_.split("$")[0]}"; """,rez_dict=True)
-                                if len(dict_ed_izm) >0:
-                                    ed_izm = dict_ed_izm[0]['ЕдиницаИзмерения']
-                                mats.append( {"cod":_.split("$")[0],"naimen":_.split("$")[1],"ed_izm":ed_izm,"norma":F.valm(_.split("$")[2])} )
-                                if fix_mat:
-                                    fl_fix=True
-
-                            else:
-                                try:
-                                    mats.append( {"cod":_.split("$")[0],"naimen":_.split("$")[1],"ed_izm":_.split("$")[2],"norma":F.valm(_.split("$")[3])} )
-                                except:
-                                    print(f'error load mats')
+                        mats = self.unpack_materials(sp_tk[j][10].split("{"))
+                        # for _ in sp_tk[j][10].split("{"):
+                        #     if _ == '':
+                        #         break
+                        #     if len(_.split("$")) == 3:
+                        #         ed_izm = ''
+                        #         if db_nomen == '':
+                        #             print(f'error load edizm, need db_nomen')
+                        #             return None
+                        #         dict_ed_izm = CSQ.custom_request_c(db_nomen,f"""SELECT * FROM nomen WHERE Код = "{_.split("$")[0]}"; """,rez_dict=True)
+                        #         if len(dict_ed_izm) >0:
+                        #             ed_izm = dict_ed_izm[0]['ЕдиницаИзмерения']
+                        #         mats.append( {"cod":_.split("$")[0],"naimen":_.split("$")[1],"ed_izm":ed_izm,"norma":F.valm(_.split("$")[2])} )
+                        #         if self.fix_mat:
+                        #             self.fl_fix=True
+                        #
+                        #     else:
+                        #         try:
+                        #             mats.append( {"cod":_.split("$")[0],"naimen":_.split("$")[1],"ed_izm":_.split("$")[2],"norma":F.valm(_.split("$")[3])} )
+                        #         except:
+                        #             print(f'error load mats')
 
                         perehs = []
                         for k in range(j + 1, len(sp_tk)):
@@ -1916,7 +1971,7 @@ class Techkards():
                            },
                    'bodys':bodys}
         self.sp_tk = sp_tk
-        if fix_mat and fl_fix:
+        if self.fix_mat and self.fl_fix:
             self.save_tk()
 
     def check_tk(self) -> str | None: #03.09.25
@@ -1928,6 +1983,79 @@ class Techkards():
             return f'Не найдена {nn!r}'
         if isinstance(self.tk, dict) and not self.tk.get('bodys'):
             return f'Техкарта {nn!r} не содержит операций'
+
+    def recalc_materials(self, strict: bool = False) -> list[str]: #24.11.25
+        """
+        Пересчет норм материалов на операцию заложенных в db_nomenclature.complex_filtr
+        @strict показывать все ошибки (для дебага)
+        """
+        messages = []
+        nn = self.dse["Номенклатурный_номер"]
+        if error := self.check_tk():
+            return [error]
+        for i, tk in enumerate(self.tk['bodys']):
+            for j, oper in enumerate(tk['opers']):
+                oper_name = oper["name_ver"]
+                params = prepareed_params = oper['params_dict']
+                if isinstance(params, dict):
+                    prepareed_params = F.list_of_dicts_to_list_of_lists([params])
+                if not isinstance(prepareed_params, list):
+                    oper_name = oper["name_ver"]
+                    print(f'ДСЕ: {nn} Строка: {i} Операции: {oper_name!r} некорректный тип параметров')
+                    messages.append(f'ДСЕ: {nn} Строка: {i} Операции: {oper_name!r} некорректный тип параметров')
+                    continue
+                try:
+                    recalced_mats_str = operacii.materiali(self, oper['name_ver'], prepareed_params)
+                    if recalced_mats_str is None: # Операция не найдена в функции materiali
+                        continue
+                except Exception as e:
+                    msg = f"Ошибка при расчёте материалов к операции: {oper_name} дсе: {nn}'"
+                    print(f'[Techkards.recalced_mats] {msg}')
+                    if strict:
+                        messages.append(msg)
+                    continue
+                oper['materials'] = self.unpack_materials(recalced_mats_str.split('{'))
+                recalced_mats = self.unpack_materials(recalced_mats_str.split('{'))#21.11.25
+                if recalced_mats:
+                    oper['materials'] = recalced_mats
+                # for new_mat in recalced_mats:
+                #     replace_idx = None
+                #     for idx, old_mat in enumerate(orig_mats):
+                #         if new_mat['cod'] == old_mat['cod']:
+                #             replace_idx = idx
+                #             break
+                #     if replace_idx is not None:
+                #         orig_mats[replace_idx] = new_mat.copy()
+                #     else:
+                #         orig_mats.append(new_mat)
+                # oper['materials'] = orig_mats
+        return messages
+
+    def unpack_materials(self, splited_row: list[str]):
+        db_nomen = CFG.Config.project.db_nomen
+        mats = []
+        for _ in splited_row:
+            if _ == '':
+                break
+            if len(_.split("$")) == 3:
+                ed_izm = ''
+                dict_ed_izm = CSQ.custom_request_c(db_nomen,
+                                                   f"""SELECT * FROM nomen WHERE Код = "{_.split("$")[0]}"; """,
+                                                   rez_dict=True)
+                if len(dict_ed_izm) > 0:
+                    ed_izm = dict_ed_izm[0]['ЕдиницаИзмерения']
+                mats.append({"cod": _.split("$")[0], "naimen": _.split("$")[1], "ed_izm": ed_izm,
+                             "norma": F.valm(_.split("$")[2])})
+                if self.fix_mat:
+                    self.fl_fix = True
+
+            else:
+                try:
+                    mats.append({"cod": _.split("$")[0], "naimen": _.split("$")[1], "ed_izm": _.split("$")[2],
+                                 "norma": F.valm(_.split("$")[3])})
+                except:
+                    print(f'error load mats')
+        return mats
 
     def check_code_profession(self, code: str): #10.04.25
         config = CFG.Config
@@ -2820,7 +2948,8 @@ class Naryads():
         for key in self.row.keys():
             if key in self.__dict__:
                 exec(f'self.row["{key}"] = self.{key}')
-
+        if not self.params: #10.11.25
+            return
         for key in self.params[0].keys():
             if key in self.__dict__:
                 elem = '|'.join([str(_[key]) for _ in self.params])
@@ -3932,6 +4061,7 @@ class Msg_b24():
         'check_etaps': {'chats': ['Списание_отгрузки Пауэрз на Келаст и ПР продукция Пауэрз']},
         'fix_name_res': {'chats': ['Готовность Маршрутных карт']},
         'reset_py': {'chats': ['Готовность Маршрутных карт']},
+        'upd_fdate_res_erp': {'chats': ['готовность РС']},
     }
 
     def __init__(self,db_kpl:str,db_naryad:str,db_resxml:str,db_users:str,nom_kpl:int=0,conn = None):
@@ -3972,6 +4102,10 @@ class Msg_b24():
         base_str ='err'
         form_dict = None
         pre_basement = ''
+        if type_msg == 'upd_fdate_res_erp':
+            base_str = f"""{self.fio} на """
+            form_dict = self.base_dict
+            pre_basement = f""",после утверждения выгрузки РС, заменил даты [B]{self.additional_str}[/B]."""
         if type_msg == 'reset_py':
             base_str = f"""{self.fio} на """
             form_dict = self.base_dict
@@ -4489,13 +4623,13 @@ class Plan_custom_weekends():
 
         dict_weekends = CSQ.custom_request_c(self.db_kplan, f"""SELECT fact_jurnal_blolb_weekends FROM plan 
                         WHERE Пномер = {Plan_custom_weekends.current_pnom_kplan_select}""", one_column=True, one=True, hat_c=False)
-        if not dict_weekends:
+        if dict_weekends == False: #11.11.25
             raise ConnectionError(f'ОШибка получения данных')
             return
-        if dict_weekends[0] == '':
+        if dict_weekends == '':
             dict_weekends = dict()
         else:
-            dict_weekends = F.from_binary_pickle(dict_weekends[0])
+            dict_weekends = F.from_binary_pickle(dict_weekends)
             if dict_weekends == None:
                 dict_weekends = dict()
         Plan_custom_weekends.current_dict_weekends  = dict_weekends
@@ -4712,7 +4846,9 @@ class ResSpec():
                     if vid_rab not in dict_res:
                         dict_res[vid_rab] = 0
                     dict_res[vid_rab] += (
-                            oper.Опер_Тпз + oper.Опер_Тшт / self.count)
+                            (oper.Опер_Тпз + oper.Опер_Тшт/ oper.Опер_КОИД ) / self.count )
+                    
+                    
 
         dict_res = {k:round(v,3) for k,v in dict_res.items()}
         return dict_res
@@ -5470,6 +5606,8 @@ def update_local_graf(self=None, update=False,pnom:int = 0,fill_gant=True,DICT_C
             if r == None or r == -1:
                 return
             nk_pnom = CQT.num_col_by_name_c(tbl, 'plan.Пномер')
+            if tbl.item(r, nk_pnom).text() == '-1':
+                return 
             pnom = int(tbl.item(r, nk_pnom).text())
         if 'shift' in CQT.get_key_modifiers(self):
             update = True
@@ -5983,6 +6121,8 @@ def fill_gant_table(self: mywindow , tbl, tbl_filtr='', dict_form='', pnom=0):
                 if r == None or r == -1:
                     return
                 nk_pnom = CQT.num_col_by_name_c(tbl, 'plan.Пномер')
+                if tbl.item(r, nk_pnom).text() == '-1':
+                    return 
                 pnom = int(tbl.item(r, nk_pnom).text())
         else:
             if pnom == 0:
@@ -6313,18 +6453,39 @@ def check_code_erp_for_pki_dse(self, lst_xml):
             lst_xml[int(idx_lst)]['data']['Код ERP'] = code_erp
         return lst_xml
     return
+# ++12.11.25
+@CQT.onerror
+def XML_check_root_on_project_product_type(putt_xml):
+    data = XML.spisok_iz_xml(putt_xml)
+    for idx, first_item in enumerate(data):
+        return first_item['data']['Тип'] == 'Изделие проекта'
+    return False
 
+# def XML_validate_type_element(xml_head: int, element: dict, logical_index: int) -> bool:
+def XML_get_unavailable_xml_types(xml_head: int):
+    poki = CFG.Config.place.poki
+    db_nomen = CFG.Config.project.db_nomen
+    where = ''
+    if xml_head == 1:
+        where = ' and resxml_head_state != 1'
+    return CSQ.custom_request_c(
+        db_nomen,
+        f'SELECT Имя FROM ТипДсе WHERE poki = {poki} AND Вкл = 0{where}',
+        hat_c=False,
+        one_column=True
+    )
+# --12.11.25
 
 @CQT.onerror
 def podgotovka_xml(self, spis_xml: list, xml_head='', show_negruz=False, correct_code_erp_tbl: bool = False):
     if spis_xml == None:
         return
     rez = []
-    if xml_head == '':
-
-        self.xml_head = 0
-    else:
-        self.xml_head = xml_head
+    exclude_types = XML_get_unavailable_xml_types(xml_head)  #++ 12.11.25
+    # if xml_head == '':
+    #     self.xml_head = 0
+    # else:
+    #     self.xml_head = xml_head
     if check_cad_xml(spis_xml): #10.04.25 убрал именованые аргументы
         spis_xml = prepare_lst_from_cad(spis_xml)
         if spis_xml == None:
@@ -6369,7 +6530,7 @@ def podgotovka_xml(self, spis_xml: list, xml_head='', show_negruz=False, correct
             if show_negruz:
                 rez.append(spis_xml[i])
             else:
-                if spis_xml[i]['data']['Тип'] not in self.TIP_NEGRUZ_DSE:
+                if spis_xml[i]['data']['Тип'] not in exclude_types: # 12.11.25
                     rez.append(spis_xml[i])
                 else:
                     tek_ur = spis_xml[i]['level_c']
@@ -7184,7 +7345,7 @@ def resursnaya_from_cust_struktura(self, spis_dse, kol_vo_izdeliy=None, ruchnoi=
         dict_dse = F.deploy_dict_c(dict_dse, 'Номенклатурный_номер')
 
 
-
+    list_msg_okrash = []
     for i in range(nach, len(spis_dse)):
         nn = spis_dse[i][nk_nn].strip()
         pseudo_nn = copy.copy(nn)
@@ -7302,7 +7463,8 @@ def resursnaya_from_cust_struktura(self, spis_dse, kol_vo_izdeliy=None, ruchnoi=
                                       koef_svar ,
                                       fl_okras,
                                       primech=prim,
-                                      list_msg= list_msg
+                                      list_msg= list_msg,
+                                      list_msg_okrash= list_msg_okrash
                                       )
                 pprint.pprint(rez_tmp)
                 if rez_tmp == None:
@@ -7315,6 +7477,8 @@ def resursnaya_from_cust_struktura(self, spis_dse, kol_vo_izdeliy=None, ruchnoi=
     # if "tkp_current_schema" in self.__dict__ and self.tkp_current_schema is not None:
     #     if 'type_tkp' in self.tkp_current_schema and self.tkp_current_schema['type_tkp'] in (3,4):
     if self.tkp_current_schema.is_tkp: #09.04.25
+        if list_msg_okrash:
+            CQT.msgboxg_get_table(self, 'Результаты применения коэффициентов', list_msg_okrash, 'OK', disable_btn1=True)
         if len(list_msg)>0:
             #CQT.msgbox(f'Результаты скоприрвоаны в буфер')
             #F.copy_bufer(pprint.pformat(list_msg))
@@ -7509,7 +7673,8 @@ def dse_for_res(self, putf, kolvo_summ, npp, naim, nn, level_c_dse, pki, mat, ss
                 koef_svar=1,
                 fl_okras = 1,
                 primech = None,
-                list_msg=[]):
+                list_msg=[],
+                list_msg_okrash = []):
     tkpa = False
     # if "tkp_current_schema" in self.__dict__ and self.tkp_current_schema is not None:
     #     if 'type_tkp' in self.tkp_current_schema and self.tkp_current_schema['type_tkp'] == 3:
@@ -7593,6 +7758,9 @@ def dse_for_res(self, putf, kolvo_summ, npp, naim, nn, level_c_dse, pki, mat, ss
             CQT.msgbox(f'Ошибка ошибка пересчета норм времени. Нужно править теккарту {nn}\n\n  {err} ')
             return
         print(f'Пересчет норм конец \n\n')
+    if self.tkp_current_schema.is_tkp:
+        messages = tk_obj.recalc_materials() #24.11.25
+        list_msg.extend(messages)
     # ==================================================================================================================
 
     fl_replace_analog_mat = True
@@ -7695,6 +7863,9 @@ def dse_for_res(self, putf, kolvo_summ, npp, naim, nn, level_c_dse, pki, mat, ss
         if primech== 'Комплексы':
             t_sht_ed = 0
             tpz = 0
+            if self.tkp_current_schema.is_analogue:
+                t_sht_ed = oper['t_sht'] * self.cr_mk_xml_koef_norm_mat#19.11.2025 по Задача № 100063161
+                tpz = 0
         else:
             t_sht_ed = oper['t_sht'] * self.cr_mk_xml_koef_norm_time * \
                    oper_koef_mass * oper_koef_tolsh * oper_koef_gabar * oper_koef_knot * oper_koef_svar
@@ -7703,15 +7874,16 @@ def dse_for_res(self, putf, kolvo_summ, npp, naim, nn, level_c_dse, pki, mat, ss
         except:
             pass
 
-
-        if num_name_add_oper != "":
-            print(f'  Окрашивание {kod_oper}  -   {fl_okras}')
-            if fl_okras == 0:
-                if self.DICT_OP[kod_oper]['okras_tkp_res'] == 1:
-                    CQT.msgbox(
-                        f"{pseudo_nn}\nОперация {oper['s_name']} {oper['name_ver']} пропущена , т.к. окрашивание {fl_okras}")
-                    continue
-
+        # 21.11.25 Учитывать галку окрашена в сборках
+        print(f'  Окрашивание {kod_oper}  -   {fl_okras}')
+        if fl_okras == 0 and primech != 'Комплексы':
+            if self.DICT_OP[kod_oper]['okras_tkp_res'] == 1:
+                #CQT.msgbox(
+                #    f"{pseudo_nn}\nОперация {oper['s_name']} {oper['name_ver']} пропущена , т.к. окрашивание {fl_okras}")
+                #
+                list_msg_okrash.append({'НН':pseudo_nn,'Операция':f'{oper['s_name']} {oper['name_ver']}',
+                                        'Статус': 'пропущена', 'Причина':f'окрашивание {fl_okras}' })
+                continue
         rez_spis_op.append({"Этап": etap,
                             "Опер_наименование": oper['name_ver'],
                             "Опер_код": kod_oper,
@@ -8945,7 +9117,7 @@ def load_tmp_path(ima):
 def load_tmp_val(ima,default_val = None,autotype=False,db_kplan=None):
     fl = False
     if db_kplan:
-        val = CSQ.custom_request_c(db_kplan,f"""SELECT val FROM general_settings WHERE name == "{ima}";""",one_column=True,one=True,hat_c=False)
+        val = CSQ.custom_request_c(db_kplan,f"""SELECT val FROM general_settings WHERE name == "{ima}";""",one_column=True,hat_c=False)# 11.11.25
         if val == None or val == "":
             return default_val
         fl = True
@@ -9031,8 +9203,8 @@ def apply_summ_с(self,tbl, sredn = False):
     CQT.apply_summ_с(tbl, sredn=sredn)
 
 
-def apply_filtr_c(self,tblf,tbl,save_data=True):
-    CQT.apply_filtr_c(self,tblf,tbl,save_data=save_data)
+def apply_filtr_c(self,tblf,tbl,save_data=True,get_dict_by_fild:None|str=None)->dict:
+    return CQT.apply_filtr_c(self,tblf,tbl,save_data=save_data,get_dict_by_fild=get_dict_by_fild)
 
 def note_OGK_c(strok:str):
     try:
@@ -9050,14 +9222,13 @@ def load_csv(self,db_nomen,db_kplan):
     nom_kpl = CSQ.custom_request_c(self.db_naryd,f'''SELECT  НомКплан FROM mk WHERE Пномер = {int(nom_mk)}''',one_column=True,one=True,hat_c=False)
     if nom_kpl == None or nom_kpl == False:
         CQT.msgbox(f'Не найден норма КПЛ')
-        return
-    nom_kpl = nom_kpl[0]
+        return #11.11.25 exclude nom_kpl (т.к. возвращается уже распакованый)
     otv_technolog_query = CSQ.custom_request_c(self.db_kplan,f'''SELECT пл_топ.Отв_технолог FROM пл_топ INNER JOIN plan
         ON plan.Пномер = пл_топ.НомПл WHERE plan.Пномер = {nom_kpl}''',one_column=True,one=True,hat_c=False)
     if otv_technolog_query == None or otv_technolog_query == False:
         otv_technolog = ''
     else:
-        otv_technolog = otv_technolog_query[-1]
+        otv_technolog = otv_technolog_query #11.11.25
 
     if user_access(self.db_naryd,'создание_задание_на_резку',name_by_empl_c(self.glob_login)) == False and self.glob_ima != otv_technolog:
         return False
@@ -9202,13 +9373,10 @@ LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП
                                     else:
                                         err_arr.append(f'Не найден в номенклатуре материал {nn_mat} {name_mat} на'
                                                        f' {nom_tk + "_" + nn + "_" + naim + " операция " + sp_tk[j][nk_op_tk]}')
-                            if kod_mat == '':
+                            if kod_mat == '' and not sp_tk[j][nk_mat_tk] == '': #24.11.25
                                 err_arr.append(f'Не найден матерал для резки (П5, П6, П1) на'
                                                 f' {nom_tk + "_" + nn + "_" + naim +  " операция " + sp_tk[j][nk_op_tk]}')
-                            ima_dxf = CDOCS.Utils.check_dxf_exists(sp_tk[j])
-                            if ima_dxf is None or ima_dxf == "" or ima_dxf.split('.')[-1] != 'dxf': # 23.06.25
-                                err_arr.append(f'Не прикреплен файл DXF на {nom_tk + "_" + nn}')
-                            kolvo_seg = 1
+                            kolvo_seg = 1 # 27.11.25
                             if j+1< len(sp_tk) and sp_tk[j+1][nk_ur_tk] == '2':
                                 flag_naid = False
                                 text = sp_tk[j+1][nk_textper]
@@ -9223,22 +9391,21 @@ LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП
                                     else:
                                         kolvo_seg = int(kolvo_seg)
 
-                            #custom_request_c = f"""SELECT * FROM reestr WHERE name == '{ima_dxf}'"""
-                            custom_request_c = f"""SELECT reestr.file FROM reestr INNER JOIN names on names.nom_data = reestr.Пномер WHERE names.name == '{ima_dxf}'"""
-                            query = CSQ.custom_request_c(self.db_files, custom_request_c,rez_dict=True)
+                            ima_dxf = sp_tk[j][15] #10.11.25
+                            storage = CSTORE.FileStorage(CFG.Config.project.tk_storage_reestr)
+                            new_name_dxf = f'{nom_mk}_{nn}.dxf'
+                            abs_path_dxf = storage.get_dxf(ima_dxf, nn, put, new_name_dxf)
+                            if abs_path_dxf is None:
+                                print()
+                                abs_path_dxf = storage.get_dxf(ima_dxf, nn, put, new_name_dxf)
 
-                            if query == []:
+                            if abs_path_dxf is None:
                                 F.copy_bufer(ima_dxf)
                                 err_arr.append(
                                     f'Отсутвует в бд файл {F.scfg("add_docs") + os.sep + ima_dxf} из текарты '
                                     f' {nom_tk + "_" + nn + ".pickle"}')
                             if err_arr == []:
-                                ima_dxf_new = nom_mk + "_" +  nn + '.dxf'
-
-                                put_file_tmp = put + os.sep + ima_dxf_new
-                                F.save_binary_convert_to_file(query[0]['file'], put_file_tmp)
-
-                                rez_csv.append([put+ os.sep + ima_dxf_new,ima_dxf_new , str(int(kolvo) * kolvo_seg), kod_mat,
+                                rez_csv.append([abs_path_dxf,new_name_dxf , str(int(kolvo) * kolvo_seg), kod_mat,
                                            tolsh, nppy, nom_mk, prioritet, ima_tehnolog, gravir])
                                 if nn != 'ТОП.ПР.008':
                                     set_mat_tolsh.add((tolsh,kod_mat))
@@ -9258,7 +9425,12 @@ LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП
         else:
             for i in range(1,len(rez_csv)):
                 сsv_sp.append(';'.join(rez_csv[i]))
-        F.write_file_c(put + os.sep + nom_mk + '.csv',сsv_sp,separ='')
+        try:
+            path = put + os.sep + nom_mk + '.csv'
+            F.write_file_c(put + os.sep + nom_mk + '.csv',сsv_sp,separ='')
+        except PermissionError as e:
+            CQT.msgbox(f'Файл {path!r} открыт или используется другой программой')
+            return
 
 
         otmetka = "_".join([F.user_name(),F.now() , put])
@@ -9269,8 +9441,15 @@ LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП
         CQT.msgbox('Готово')
         F.open_dir_c(put)
     else:
-        F.delete_dir_c(put)
-        CQT.msgbox('\n'.join(err_arr))
+        try:
+            F.delete_dir_c(put) #25.11.25
+        except PermissionError as e:
+            CQT.msgbox(f'Файл {put!r} открыт или используется другой программой')
+            return
+        correct_width = lambda tbl: [tbl.setRowHeight(row, 46) for row in range(tbl.rowCount())] #type: QtWidgets.QTableWidget
+        CQT.msgboxg_get_table_ok_inf(self, 'Ошибки при выгрузке dxf',dict_or_list=['Ошибки', *err_arr],
+                                     func_oform_tbl=correct_width, show_filtr=False)
+        # CQT.msgbox('\n'.join(err_arr))
         return False
     return True
 
@@ -9556,7 +9735,7 @@ def list_of_tasks_by_ID_oper_c(mk,id,spis_op,nar,sp_jur,max_kol_vo,poln_kompl):
 
 
 @CQT.onerror
-def zapoln_tree_spiskom(self, spisok: list, list_user,tree):
+def zapoln_tree_spiskom(self, spisok: list, list_user,tree, xml_head = None): # 12.11.25
     tree.clear()
     n = 0
     max_ur = 0
@@ -9594,7 +9773,8 @@ def zapoln_tree_spiskom(self, spisok: list, list_user,tree):
         tree.expandItem(root)
         tree.setCurrentItem(root)
         n += 1
-    CQT.colors_into_tree_c(tree, self.TIP_NEGRUZ_DSE, nk_tip, 222, 111, 111, 255)
+    available_types = XML_get_unavailable_xml_types(xml_head) # 12.11.25
+    CQT.colors_into_tree_c(tree, available_types, nk_tip, 222, 111, 111, 255)
 
 
 def grouping_TK_by_work_centres_c(self,tk,nn,ima):
@@ -11327,6 +11507,82 @@ def update_data_etaps_from_erp(db_kplan,resp,s_num):
 
 
 @CQT.onerror
+def apply_gui_groups(self: mywindow):
+    if not self.ui.chk_kpl_groups.isChecked():
+        return 
+    tbl:QtWidgets.QTableWidget = self.ui.tbl_kal_pl
+
+    dict_filtr = apply_filtr_c(self, self.ui.tbl_filtr_kal_pl, self.ui.tbl_kal_pl, False,
+                                   get_dict_by_fild='plan.Пномер')
+    
+    tbl.blockSignals(True)
+    tbl.setUpdatesEnabled(False)
+
+    nf = CQT.nums_col_by_name_dict(tbl)
+
+    col_group = nf['plan.Группа']
+    col_status = nf['plan.Статус']
+    col_type = nf['plan.ТипГр']
+    col_snum = nf['plan.Пномер']
+
+
+    row_count = tbl.rowCount()
+
+    # --- собрать все непустые группы, кроме статуса "Группа" ---
+    set_groups = set()
+    set_groups_filtr_all = set()
+    set_groups_filtr_wiev = set()
+    for i in range(row_count):
+        group_item = tbl.item(i, col_group)
+        if not group_item:
+            continue
+            
+        group = group_item.text().strip()
+        if group:
+            set_groups_filtr_all.add(group)
+        
+
+        status_item = tbl.item(i, col_status)
+        if not status_item:
+            continue
+        status = status_item.text()
+
+
+        if group and status != 'Группа':
+            snum = tbl.item(i, col_snum).text()
+            if snum in dict_filtr and dict_filtr[snum]:
+                set_groups_filtr_wiev.add(group)
+            if tbl.isRowHidden(i):
+                continue
+            set_groups.add(group)
+
+
+            
+    set_groups_filtr_hidden = set_groups_filtr_all - set_groups_filtr_wiev
+    # --- обновить только группы ---
+    for i in range(row_count):
+        status_item = tbl.item(i, col_status)
+        if not status_item or status_item.text() != 'Группа':
+            continue
+
+        group_item = tbl.item(i, col_group)
+        type_item = tbl.item(i, col_type)
+        if not group_item or not type_item:
+            continue
+
+        if group_item.text() in set_groups:
+            type_item.setText(FOLDER_OPEN)
+        else:
+            type_item.setText(FOLDER_CLOSED)
+        tbl.setRowHidden(i, False)
+        if group_item.text() in set_groups_filtr_hidden:
+            tbl.setRowHidden(i,True)
+
+    tbl.setUpdatesEnabled(True)
+    tbl.blockSignals(False)
+    tbl.viewport().update()
+    
+@CQT.onerror
 def make_dict_etaps_from_erp(m:ERP.OrdersComposit, ref_key_py:str):
     dict_etaps = dict()
     if ref_key_py == '':
@@ -11371,6 +11627,7 @@ class TkpSchema:
         self.type_tkp = None
         self.weight: float = None
         self.Параметры: dict = {}
+        self.XML_start_from_project_product_type: bool = False #12.11.25
 
     def __contains__(self, item):
         return self.__dict__.get(item) is not None
