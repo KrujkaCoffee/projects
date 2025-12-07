@@ -986,7 +986,7 @@ class mywindow(QtWidgets.QMainWindow):
                     continue
                 file_name, ext = os.path.splitext(path)
                 resolve = path
-                if ext == '.lnk': #28.11.25
+                if ext == '.lnk':
                     resolve = F.resolve_lnk_target(path)
                 if not pathlib.Path(resolve).exists():
                     iter_state.append(li_form % {'text': doc})

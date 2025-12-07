@@ -289,6 +289,7 @@ def load_projects(poki=None):
             otkl_dog = str(otkl_dog)
             pdo_prim = row['Примечание_ПДО']
             pdo_zayav = row["ПДО_Заявки_на_закуп"]
+            date_add_plan_month = row["Дата занесения в план месяца"] #05.12.2025
             list_dates_obesp = []
             for key, item in DICT_GROUP_PODR_VID_RAB_FOR_PLAN.items():
                 if not poki == item['poki']:
@@ -332,7 +333,8 @@ def load_projects(poki=None):
                          'Откл. от дог.': otkl_dog,  # 17
                          'Примечание сб. участок': primech,  # 18
                          'ПДО Примечание': pdo_prim,  # 19
-                         'ПДО Заявки на закуп': pdo_zayav  # 20
+                         'ПДО Заявки на закуп': pdo_zayav,  # 20
+                         'Дата занесения в план месяца': date_add_plan_month,  # 21 #05.12.2025
             })
         elif poki == 1:
             list_etaps_dates = [row['Раскрой'],
@@ -445,6 +447,7 @@ def load_projects(poki=None):
                 пл_оуп.№проекта AS "Номер проекта", 
                 пл_оуп.№ERP AS "Номер заявки", 
                 знпр.Ref_Key_py AS "Ref_Key_py", 
+                знпр.Дата_занесения_в_план_месяца AS "Дата занесения в план месяца",  
                 пл_оуп.Номенклатура_ЕРП AS "Номенклатура_ЕРП", 
                 plan.Позиция AS "Позиция", 
                 plan.Примечание as 'Примечание_ПДО',
@@ -468,7 +471,7 @@ def load_projects(poki=None):
                  пл_оуп.Дата_отгрузки_ПУ AS "Дата_отгрузки_ПУ",
                  пл_сб.Примечание_сб,
                  пл_сб.Прогноз_дата_зав_сб,
-                 napravl_deyat.Псевдоним """
+                 napravl_deyat.Псевдоним """ #05.12.2025
         join = f"""
                 LEFT JOIN napravl_deyat ON napravl_deyat.Пномер = plan.Направление_деятельности  
                 LEFT JOIN napravlenie ON napravlenie.Пномер = napravl_deyat.Направление

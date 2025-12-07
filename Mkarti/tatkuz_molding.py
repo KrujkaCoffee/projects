@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 import project_cust_38.Cust_Functions as F
 import project_cust_38.Cust_SQLite as CSQ
 import project_cust_38.Cust_Qt as CQT
@@ -128,21 +128,30 @@ class OrdersDocs:
         data = CSQ.apply_alias_list(data,self.DICT_ALIASES)
 
         self.list_orders_docs = data
-        list_mes = CSQ.custom_request_c(self._db, f"""SELECT s_num 
+        list_mes = F.deploy_dict_c( CSQ.custom_request_c(self._db, f"""SELECT s_num,date
                          FROM molding_orders;
-                       """, one_column=True,hat_c=False)
-        set_orders_mes = set(list_mes)
+                       """,rez_dict=True),'s_num')
+        set_orders_mes = list_mes
 
         list_keys = ['s_num','date']
         list_vals = []
         for docs_order in self.list_orders_docs:
             id_proc = docs_order["id_processes_tkp_proc_docs"]
-            date = F.datetostr(F.strtodate(docs_order["start_date_proc_docs"],"%Y-%m-%dT%H:%M:%S"),"%Y-%m-%d %H:%M:%S")
+            date = None
+            if docs_order["start_date_proc_docs"]:
+                date = F.datetostr(F.strtodate(docs_order["start_date_proc_docs"],
+                                               "%Y-%m-%dT%H:%M:%S"), "%Y-%m-%d %H:%M:%S")
             if id_proc not in set_orders_mes:
                 list_vals.append([id_proc,date])
+            else:
+                if date != set_orders_mes[id_proc]:
+                    CSQ.custom_request_c(self._db,f"""UPDATE molding_orders SET date = "{date}" WHERE 
+                        s_num == {id_proc} ; """)
+                    pass
         if list_vals:
             result = CSQ.custom_request_c(self._db,
-                                          f"""Insert INTO molding_orders ({CSQ.prepare_list_to_tuple(list_keys)}) VALUES ({CSQ.questions_for_mask(list_keys)})""",
+            f"""Insert INTO molding_orders ({CSQ.prepare_list_to_tuple(list_keys)}) 
+            VALUES ({CSQ.questions_for_mask(list_keys)})""",
                                           list_of_lists_c=list_vals)
             if not result:
                 CQT.msgbox(f'Ошибка объединения с DOCs')
@@ -855,8 +864,9 @@ def oform_tbl(self:mywindow,data:list[dict]):
     for i in range(tbl.rowCount()):
         if nf_state_docs:
             state = tbl.item(i,nf_state_docs).text()
-            clr = CMS.Color_tbl(dict_states[state])
-            CQT.set_color_wtab_c(tbl,i,nf_state_docs,clr.r,clr.g,clr.b)
+            if state in dict_states:
+                clr = CMS.Color_tbl(dict_states[state])
+                CQT.set_color_wtab_c(tbl,i,nf_state_docs,clr.r,clr.g,clr.b)
         if nf_state_mes:
             state:Stages_order_mold = data[i]['Стадия ТКП']
             clr =  CMS.Color_tbl(state.percent)

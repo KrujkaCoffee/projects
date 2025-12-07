@@ -756,7 +756,7 @@ def checking_positions_for_closed_mk(window: QtWidgets.QWidget, poz_nums: list[i
         list_if_status = CSQ.custom_request_c(
             CFG.Config.project.db_naryad,
             f"""SELECT Дата_завершения, Пномер, НомКплан as "КПЛ", Статус FROM mk
-         WHERE НомКплан IN ({list_joined_poz_pk}) AND Статус != 'НаУдаление';""", rez_dict=True)
+         WHERE НомКплан IN ({list_joined_poz_pk}) AND Статус == 'Открыта';""", rez_dict=True) #03.12.25
         list_open_mk = []
         for item in list_if_status:
             if item['Дата_завершения'] == "":
@@ -1779,7 +1779,7 @@ def btn_pl_load_norm(self: mywindow):
 
     list_mk = CSQ.custom_request_c(self.bd_naryad, f"""SELECT Пномер,Количество,Дата_завершения,Вес,Тип FROM mk WHERE 
     НомКплан == {poz.Пномер} AND На_удал == 0;""", rez_dict=True)
-    name_predv_res = poz.dict_tables['пл_топ']['Предв_спецификация_ЕРП'] #00-065171
+    descr_predv_res = poz.dict_tables['пл_топ']['Предв_спецификация_ЕРП'] #00-065171
 
     DICT_NAMES_ETAP_FROM_ERP = dict()
     for k, it in self.Data_plan.DICT_GROUP_VID_RAB_FOR_PLAN.items():
@@ -1797,15 +1797,67 @@ def btn_pl_load_norm(self: mywindow):
 
     dict_norm = calc_top(self, dict_norm, poz.dict_tables['пл_топ'])
 
+    def calc_prefix_tkpa(name_predv_res: str) -> int | None:
+        if name_predv_res.startswith('ТКПА_'):
+            list_name_predv_res = name_predv_res.split('_')
+            if len(list_name_predv_res) > 1 and F.is_numeric(list_name_predv_res[1]):
+                s_num_tkp = list_name_predv_res[1]
+                return int(s_num_tkp)
+
     if len(list_mk) == 0:
         # ============================НЕТ МК==================
         fl_calc_vo = False
 
-        if name_predv_res != '':
-            def is_name_predv_res_as_code(name_predv_res):
-                return name_predv_res.startswith('00-')
+        if descr_predv_res != '':
+            if not CQT.msgboxgYN(f'МК не создана!\n Попытаться рассчитать нормы по аналогу/ТКП?'):
+                return
+            def is_name_predv_res_as_code(descr_predv_res):
+                return descr_predv_res.startswith('00-')
+
+            code_predv_res = None
+            name_predv_res = None
+            if not is_name_predv_res_as_code(descr_predv_res):
+                name_predv_res = descr_predv_res
+                s_num_tkp = calc_prefix_tkpa(descr_predv_res)
+                postfix = ")"
+                if s_num_tkp:
+                    postfix = f' ИЛИ РесурсныеСпецификации.Наименование ПОДОБНО "ТКПА_{s_num_tkp}%")'
+                wet_req_text = f"""ВЫБРАТЬ  РесурсныеСпецификации.Код КАК Код,
+                                            РесурсныеСпецификации.Наименование КАК Наименование
+                                    ИЗ
+                                        Справочник.РесурсныеСпецификации КАК РесурсныеСпецификации
+                                    ГДЕ
+                                         РесурсныеСпецификации.ЭтоГруппа = ЛОЖЬ
+                                        И (РесурсныеСпецификации.Наименование = "{descr_predv_res}"{postfix}
+                                    """
+                res_get_wet = APIERP.get_wet_request_result(wet_req_text,msg_err=f'Не найдена ресурсная с названием "{descr_predv_res}"')
+                if res_get_wet is not None:
+                    code_predv_res = res_get_wet[0]['Код'].strip()
+                    name_predv_res = res_get_wet[0]['Наименование'].strip()
+                    CSQ.custom_request_c(self.db_kplan,f'''UPDATE пл_топ SET Предв_спецификация_ЕРП = "{code_predv_res}" WHERE НомПл == {pnom};''')
+
+            else:
+                code_predv_res = descr_predv_res
+                wet_req_text = f"""ВЫБРАТЬ
+                                                            РесурсныеСпецификации.Наименование КАК Наименование
+                                                        ИЗ
+                                                            Справочник.РесурсныеСпецификации КАК РесурсныеСпецификации
+                                                        ГДЕ
+                                                             РесурсныеСпецификации.ЭтоГруппа = ЛОЖЬ
+                                                            И РесурсныеСпецификации.Код = "{code_predv_res}"
+                                                        """
+                key, data_rez = APIERP.get_wet_request(wet_req_text)
+                if key != 200:
+                    CQT.msgbox(f'Ошибка получения данных код ({key}) из ERP')
+                    return
+                if data_rez['data']:
+                    name_predv_res = data_rez['data'][0]['Наименование']
+
+            if name_predv_res is None or code_predv_res is None:
+                fl_calc_vo = True
+
             # ================по ТКП================
-            if  is_name_predv_res_as_code(name_predv_res):
+            if not fl_calc_vo:
 
                 if CQT.msgboxgYN(f'{CEMOJ.EmojiMain.СтатусыПроизводства.alert.symbol} Просчитать нормы Предв_спецификация_ЕРП из','1C','MES'):
                     wet_req_text = f"""ВЫБРАТЬ
@@ -1816,7 +1868,7 @@ def btn_pl_load_norm(self: mywindow):
                     ИЗ
                         Справочник.РесурсныеСпецификации.Трудозатраты КАК РесурсныеСпецификацииТрудозатраты
                     ГДЕ
-                        РесурсныеСпецификацииТрудозатраты.Ссылка.Код = "{name_predv_res}";"""
+                        РесурсныеСпецификацииТрудозатраты.Ссылка.Код = "{code_predv_res}";"""
                     key, data_rez = APIERP.get_wet_request(wet_req_text)
                     if key != 200:
                         CQT.msgbox(f'Ошибка получения данных код ({key}) из ERP')
@@ -1834,48 +1886,27 @@ def btn_pl_load_norm(self: mywindow):
 
                 else:
 
-                    wet_req_text = f"""ВЫБРАТЬ
-                                            РесурсныеСпецификации.Наименование КАК Наименование
-                                        ИЗ
-                                            Справочник.РесурсныеСпецификации КАК РесурсныеСпецификации
-                                        ГДЕ
-                                             РесурсныеСпецификации.ЭтоГруппа = ЛОЖЬ
-                                            И РесурсныеСпецификации.Код = "{name_predv_res}"
-                                        """
-                    key, data_rez = APIERP.get_wet_request(wet_req_text)
-                    if key != 200:
-                        CQT.msgbox(f'Ошибка получения данных код ({key}) из ERP')
-                        return
-                    if data_rez['data']:
-                        name_predv_res = data_rez['data'][0]['Наименование']
 
-                    if name_predv_res.startswith('ТКПА_'):
-                        list_name_predv_res = name_predv_res.split('_')
-                        if len(list_name_predv_res)>1 and F.is_numeric(list_name_predv_res[1]):
-                            s_num_tkp = list_name_predv_res[1]
-                            resp = CSQ.custom_request_c(self.db_resxml, f"""SELECT data FROM predv_res WHERE Имя LIKE "ТКПА_{s_num_tkp}%";""")
-                        else:
-                            CQT.msgbox(f'Не корректное значение Предв_спецификация_ЕРП')
-                            return
+                    s_num_tkp = calc_prefix_tkpa(name_predv_res)
+
+                    if s_num_tkp:
+                        resp = CSQ.custom_request_c(self.db_resxml, f"""SELECT data FROM predv_res WHERE Имя LIKE "ТКПА_{s_num_tkp}%";""")
                     else:
                         resp = CSQ.custom_request_c(self.db_resxml, f"""SELECT data FROM predv_res WHERE Имя = ?;""",
                                                 list_of_lists_c=(name_predv_res,))
 
                     if resp != False and resp != None and len(resp) == 2:
-                        if not CQT.msgboxgYN(f'МК не создана, загрузить нормы по аналогу/ТКП?'):
-                            return
                         dict_norm, list_log = calc_by_tkp(resp, poz, dict_norm, koef_vneplana, koef_pogr_norm, pnom,
                                                           nk_stat_norm)
                     else:
+
                         fl_calc_vo = True
 
             # ======================================
-        else:
-            if not CQT.msgboxgYN(f'МК не создана и Ресурсная на аналог не создана, загрузить нормы по ВО?'):
-                return
-            fl_calc_vo = True
 
         if fl_calc_vo:
+            if not CQT.msgboxgYN(f'МК и Ресурсная не создана!\nПопытаться загрузить нормы по ВО?'):
+                return
             dict_norm = calc_by_vo(self, pnom, dict_norm, nk_stat_norm)
         if dict_norm == None:
             CQT.msgbox(f'Ошибка расчета норм')
@@ -4443,7 +4474,10 @@ def load_db(self: mywindow, pnom=False, only_hat=False,use_groups=False):
                 list_conf = move_gr_field(list_conf,use_groups)
         for i in range(len(list_conf[0])):
             if list_conf[1][i]:
-                rez_list_tabels.append(f'{list_conf[0][i]} as "{list_conf[0][i]}"')
+                alias = f'{list_conf[0][i]} as "{list_conf[0][i]}"'
+                if alias in dict_inner:
+                    alias = dict_inner[alias] #25.11.25
+                rez_list_tabels.append(alias)
     str_field = ', \n'.join(rez_list_tabels)
     for key in dict_inner.keys():
         str_field = str_field.replace(key, dict_inner[key])

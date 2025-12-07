@@ -3052,8 +3052,8 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.fr_additions_raspr.setHidden(True)
         CQT.clear_tbl(tbl_rasp)
         check_erp_zp_state = f''
-        if self.place.poki == 0:
-            check_erp_zp_state = f'AND знпр.Статус_поз_ЕРП != "Закрыт"'
+        # if self.place.poki == 0:
+        #     check_erp_zp_state = f'AND знпр.Статус_поз_ЕРП != "Закрыт"'
         tbl = self.ui.tbl_projs_raspred
         custom_request_c = f'''
                 SELECT DISTINCT

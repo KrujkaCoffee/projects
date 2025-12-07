@@ -68,8 +68,7 @@ class mywindow(QtWidgets.QMainWindow):
         self.name_module = f'{self.NAME_MODULE_BASE}'
         self.USER_CONFIG: USRCNF.User_config = None
         self.place: USRCNF.Place = None
-
-
+        self.APP_ARGS:dict|None = None
         USRCNF.Config.user_config.load_user_config(self)
         # enable custom window hint
         self.setWindowFlags(self.windowFlags() | QtCore.Qt.CustomizeWindowHint)

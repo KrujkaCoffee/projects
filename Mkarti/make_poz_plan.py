@@ -758,6 +758,14 @@ def save_kpl_plan(self: mywindow):
     for nom_poz, item in Month_plan.file.items():
         if 'Тип' in item and item['Тип'] != 'План':
             continue
+        resp = CSQ.custom_request_c( #05.12.2025
+            self.db_kplan,
+            f"""
+            UPDATE знпр 
+            SET Дата_занесения_в_план_месяца = ? 
+            WHERE s_num = (SELECT Пномер_ЗП FROM пл_оуп WHERE НомПл = {nom_poz})""",
+            list_of_lists_c=[F.now('%Y-%m-%d')]
+        )
         for rabot, dict_rabot in item['Группы_работ'].items():
             rabot_db = dict_db[rabot]
             rez_dict[rabot_db] += dict_rabot['Остаток_н_см']
@@ -781,8 +789,6 @@ def save_kpl_plan(self: mywindow):
     CSQ.custom_request_c(self.db_kplan, f"""UPDATE mnts_plan SET ( {str_hats} ) = 
          ({CSQ.questions_for_mask(list_hats)}) WHERE Дата = '{month}' and poki == {self.place.poki}""",
                          list_of_lists_c=[[_ for _ in rez_dict_kg.values()]])
-
-
     CQT.msgbox(f'Успешно')
 
 

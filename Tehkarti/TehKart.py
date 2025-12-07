@@ -1460,7 +1460,7 @@ class mywindow(QtWidgets.QMainWindow):
                         if file == None or file == False:
                             nom_op = sp_tree[i][2]
                             name_op = sp_tree[i][0]
-                            CQT.msgbox(f'[{nom_op} {name_op}]DXF файл в базе не найден')
+                            # CQT.msgbox(f'[{nom_op} {name_op}]DXF файл в базе не найден')
                             break
                         dict_rez = CDXF.raschet_dxf(file)
                         if dict_rez != None:
@@ -4159,9 +4159,6 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
                 vrema = 0
         if vrema == 0:
             CQT.msgbox('Не рассчиано время, материалы не заненсены.')
-        if F.valm(vrema) >= CFG.Config.place.limit_time_on_naryad: #25.11.25
-            CQT.msgbox(f'Время: "{vrema}" на единицу превышает установленный лимит на один наряд {CFG.Config.place.limit_time_on_naryad}\nИзменения не применены')
-            return item
         item.setText(7, str(vrema))
         return item
 
