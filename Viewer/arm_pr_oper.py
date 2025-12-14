@@ -353,6 +353,8 @@ def post_all_block_to_erp(self:mywindow,hook_prog_bar=None,*args):
     old_colmn = tbl.currentColumn()
 
     for i in range(tbl.rowCount()):
+        if tbl.isRowHidden(i): # 12.12.25 по задаче 100061422
+            continue
         hook_prog_bar.open()
         hook_prog_bar.set(0)
         hook_prog_bar.text(f'{i+1}/{tbl.rowCount()} Проверки')

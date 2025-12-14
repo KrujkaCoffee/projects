@@ -1,4 +1,19 @@
 # Новые входные параметры (42 записи). Вставьте в calc_silencer_input_params.py
+constants = {
+    'gas_constant': 287,
+    'gravity': 9.81,
+    'pi': 3.14,
+    'accel_zone_coef': 2.2,
+    'compressor_efficiency': 0.65,
+    'compressor_pressure_loss': 0.3,
+    'atm_pressure': 1.033,
+    'safety_factor': 1.2,
+    'maksimalnoe_kolichestvo_otverstij_sht': 500,
+    'minimalno_dopustimyj_diametr_otverstiya': 5,
+    'nalichie_obtekatelej_na_plastinah': 'Нет',
+    'atmosfernoe_davlenie_pa': 101325,
+    'koefficient_treniya': 0.02,
+}
 list_dicts_data_input = [
 {'name': 'nazvanie_proekta', 'header': 'Название проекта', 'val': 'шумик', 'dimension': '', 'min_max_list': '', 'default_val': 'шумик', 'data_type': 'str', 'comment': 'Параметры среды:',  'accuracy': 3 , 'group_name': 'Параметры среды:' },
 {'name': 'nomer_proekta', 'header': 'Номер проекта', 'val': '1902091', 'dimension': '', 'min_max_list': '', 'default_val': '1902091', 'data_type': 'str', 'comment': '',  'accuracy': 3 , 'group_name': 'Параметры среды:' },
@@ -9,12 +24,12 @@ list_dicts_data_input = [
 {'name': 'temperatura_sredy_s', 'header': 'Температура среды, С', 'val': 270, 'dimension': 'С', 'min_max_list': '', 'default_val': 270, 'data_type': 'float', 'comment': '',  'accuracy': 3 , 'group_name': 'Параметры дроссельного блока:' },
 {'name': 'davlenie_na_vhode_v_shg_ri_abs_mpa', 'header': 'Давление на входе в ШГ рi (абс.), МПа', 'val': 0.18, 'dimension': 'МПа', 'min_max_list': (0.01, 10.0), 'default_val': 0.18, 'data_type': 'float', 'comment': 'Абсолютное давление на входе в МПа',  'accuracy': 3 , 'group_name': 'Параметры дроссельного блока:' },
 {'name': 'kolichestvo_stupenej_drosselirovaniya_sht', 'header': 'Количество ступеней дросселирования, шт', 'val': 3, 'dimension': 'шт', 'min_max_list': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 'default_val': 3, 'data_type': 'int', 'comment': 'Целочисленное число ступеней (используется в блоках n1..n10)',  'accuracy': 3 , 'group_name': 'Параметры дроссельного блока:' },
-{'name': 'maksimalnoe_kolichestvo_otverstij_sht', 'header': 'Максимальное количество отверстий, шт', 'val': 500, 'dimension': 'шт', 'min_max_list': [100, 200, 300, 400, 500], 'default_val': 500, 'data_type': 'int', 'comment': 'Вспомогательный вход для дроссельных расчётов',  'accuracy': 3 , 'group_name': 'Параметры дроссельного блока:' },
+#{'name': 'maksimalnoe_kolichestvo_otverstij_sht', 'header': 'Максимальное количество отверстий, шт', 'val': 500, 'dimension': 'шт', 'min_max_list': [100, 200, 300, 400, 500], 'default_val': 500, 'data_type': 'int', 'comment': 'Вспомогательный вход для дроссельных расчётов',  'accuracy': 3 , 'group_name': 'Параметры дроссельного блока:' },
 {'name': 'pokazatel_gradienta', 'header': 'Показатель градиента ', 'val': 1.2, 'dimension': '', 'min_max_list': '', 'default_val': 1.2, 'data_type': 'float', 'comment': 'Вводится вручную.\n Показатель градиента должен быть строго больше 1.\n Наименьшие значения соответствуют чрезмерному вкладу в суммарный шум, наибольшие - ведут к росту габаритов ШГ',  'accuracy': 3 , 'group_name': 'Параметры дроссельного блока:' },
-{'name': 'minimalno_dopustimyj_diametr_otverstiya', 'header': 'Минимально допустимый диаметр отверстия ', 'val': 5, 'dimension': 'м', 'min_max_list': '', 'default_val': 5, 'data_type': 'float', 'comment': '',  'accuracy': 3 , 'group_name': 'Параметры дроссельного блока:' },
+#{'name': 'minimalno_dopustimyj_diametr_otverstiya', 'header': 'Минимально допустимый диаметр отверстия ', 'val': 5, 'dimension': 'м', 'min_max_list': '', 'default_val': 5, 'data_type': 'float', 'comment': '',  'accuracy': 3 , 'group_name': 'Параметры дроссельного блока:' },
 #{'name': 'tip_zp_kasset', 'header': 'Тип ЗП кассет', 'val': 'Кольцевые', 'dimension': '', 'min_max_list': ["Плоские","Кольцевые"], 'default_val': 'Кольцевые', 'data_type': 'str', 'comment': 'Параметры звукопоглощающих кассет:',  'accuracy': 3 , 'group_name': 'Параметры звукопоглощающих кассет:' },
 {'name': 'nalichie_kasset', 'header': 'Наличие кассет', 'val': 'Есть', 'dimension': '', 'min_max_list': ["Есть","Нет"], 'default_val': 'Есть', 'data_type': 'str', 'comment': '',  'accuracy': 3 , 'group_name': 'Параметры звукопоглощающих кассет:' },
-{'name': 'nalichie_obtekatelej_na_plastinah', 'header': 'Наличие обтекателей на пластинах', 'val': 'Нет', 'dimension': '', 'min_max_list': ["Есть","Нет"], 'default_val': 'Нет', 'data_type': 'str', 'comment': '',  'accuracy': 3 , 'group_name': 'Параметры звукопоглощающих кассет:' },
+#{'name': 'nalichie_obtekatelej_na_plastinah', 'header': 'Наличие обтекателей на пластинах', 'val': 'Нет', 'dimension': '', 'min_max_list': ["Есть","Нет"], 'default_val': 'Нет', 'data_type': 'str', 'comment': '',  'accuracy': 3 , 'group_name': 'Параметры звукопоглощающих кассет:' },
 {'name': 'kolichestvo_kolcevyh_kanalov_sht', 'header': 'Количество кольцевых каналов, шт', 'val': 2, 'dimension': 'шт', 'min_max_list': '', 'default_val': 2, 'data_type': 'int', 'comment': '',  'accuracy': 3 , 'group_name': 'Параметры звукопоглощающих кассет:' },
 {'name': 'vnutrennij_diametr_shumoglushitelya_korpus_m', 'header': 'Внутренний диаметр шумоглушителя (Корпус), м', 'val': 0.719, 'dimension': 'м', 'min_max_list': (0.001, 2.0), 'default_val': 0.719, 'data_type': 'float', 'comment': 'Внутренний диаметр корпуса (применяется при расчёте площади и периметра)',  'accuracy': 3 , 'group_name': 'Параметры звукопоглощающих кассет:' },
 {'name': 'tolschina_oblicovki_m', 'header': 'Толщина облицовки, м', 'val': '0.05', 'dimension': 'м', 'min_max_list': '', 'default_val': '0.05', 'data_type': 'float', 'comment': '',  'accuracy': 3 , 'group_name': 'Параметры звукопоглощающих кассет:' },
@@ -40,8 +55,8 @@ list_dicts_data_input = [
 {'name': 'udelnyj_obem_m3_kg', 'header': 'Удельный объем, м3/кг', 'val': 2.638799, 'dimension': 'м3/кг', 'min_max_list': '', 'default_val': 2.638799, 'data_type': 'float', 'comment': 'Удельный объем при заданной температуре и атмосферном давлении',  'accuracy': 3 , 'group_name': 'Параметры круглых кассет' },
 {'name': 'massovyj_rashod_kg_s', 'header': 'Массовый расход, кг/с', 'val': 19.45, 'dimension': 'кг/с', 'min_max_list': '', 'default_val': 19.45, 'data_type': 'float', 'comment': '',  'accuracy': 3 , 'group_name': 'Параметры круглых кассет' },
 {'name': 'diametr_shg_m', 'header': 'Диаметр ШГ, м', 'val': 1.479, 'dimension': 'м', 'min_max_list': '', 'default_val': 1.479, 'data_type': 'float', 'comment': '',  'accuracy': 3 , 'group_name': 'Параметры круглых кассет' },
-{'name': 'koefficient_treniya', 'header': 'ξ  - Коэффициент трения', 'val': 0.02, 'dimension': '', 'min_max_list': '', 'default_val': 0.02, 'data_type': 'float', 'comment': '',  'accuracy': 3 , 'group_name': 'Параметры круглых кассет' },
-{'name': 'atmosfernoe_davlenie_pa', 'header': 'Атмосферное давление, Па', 'val': 101325, 'dimension': 'Па', 'min_max_list': (80000.0, 110000.0), 'default_val': 101325, 'data_type': 'float', 'comment': 'Стандартное атмосферное давление (Па)',  'accuracy': 3 , 'group_name': 'Параметры круглых кассет' },
+#{'name': 'koefficient_treniya', 'header': 'ξ  - Коэффициент трения', 'val': 0.02, 'dimension': '', 'min_max_list': '', 'default_val': 0.02, 'data_type': 'float', 'comment': '',  'accuracy': 3 , 'group_name': 'Параметры круглых кассет' },
+#{'name': 'atmosfernoe_davlenie_pa', 'header': 'Атмосферное давление, Па', 'val': 101325, 'dimension': 'Па', 'min_max_list': (80000.0, 110000.0), 'default_val': 101325, 'data_type': 'float', 'comment': 'Стандартное атмосферное давление (Па)',  'accuracy': 3 , 'group_name': 'Параметры круглых кассет' },
 
 ]
 

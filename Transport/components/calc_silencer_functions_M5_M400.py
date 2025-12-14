@@ -2815,6 +2815,24 @@ def calc_n0_3(params):
     return 0
 
 
+def calc_udelnyj_obem_m3_kg_out(params):
+    """ трансляция из таблицы инпут"""
+    return params["udelnyj_obem_m3_kg"]
+def calc_massovyj_rashod_kg_s_out(params):
+    """ трансляция из таблицы инпут"""
+    return params["massovyj_rashod_kg_s"]
+def calc_diametr_shg_m_out(params):
+    """ трансляция из таблицы инпут"""
+    return params["diametr_shg_m"]
+def calc_koefficient_treniya_out(params):
+    """ трансляция из таблицы инпут"""
+    return params["koefficient_treniya"]
+def calc_atmosfernoe_davlenie_pa_out(params):
+    """ трансляция из таблицы инпут"""
+    return params["atmosfernoe_davlenie_pa"]
+
+
+
 CALC_FUNCTIONS = OrderedDict([("edinica_rashoda_imya", {"fnc": calc_edinica_rashoda_imya, "cell": "Excel O5"}),
 ("ploschad_vyhoda_shg_m2", {"fnc": calc_ploschad_vyhoda_shg_m2, "cell": "Excel O18"}),
 ("sreda_2", {"fnc": calc_sreda_2, "cell": "Excel O23"}),
@@ -3161,5 +3179,14 @@ CALC_FUNCTIONS = OrderedDict([("edinica_rashoda_imya", {"fnc": calc_edinica_rash
 ("dinamicheskaya_nagruzka_na_drosselnyj_blok_kn_2", {"fnc": calc_dinamicheskaya_nagruzka_na_drosselnyj_blok_kn_2, "cell": "Excel O304"}),
 ("dinamicheskaya_nagruzka_na_drosselnyj_blok_kn", {"fnc": calc_dinamicheskaya_nagruzka_na_drosselnyj_blok_kn, "cell": "Excel O170"}),
 ("davlenie_na_dnische_drosselnogo_bloka_mpa", {"fnc": calc_davlenie_na_dnische_drosselnogo_bloka_mpa, "cell": "Excel O308"}),
+                              ('udelnyj_obem_m3_kg_out', {"fnc":calc_udelnyj_obem_m3_kg_out, "cell":"input tbl"}),
+                               ('massovyj_rashod_kg_s_out', {"fnc":calc_massovyj_rashod_kg_s_out, "cell":"input tbl"}),
+                                ('diametr_shg_m_out', {"fnc":calc_diametr_shg_m_out, "cell":"input tbl"}),
+                              ('udelnyj_obem_m3_kg_out2', {"fnc":calc_udelnyj_obem_m3_kg_out, "cell":"input tbl"}),
+                               ('massovyj_rashod_kg_s_out2', {"fnc":calc_massovyj_rashod_kg_s_out, "cell":"input tbl"}),
+                                ('diametr_shg_m_out2', {"fnc":calc_diametr_shg_m_out, "cell":"input tbl"}),
+                                 ('koefficient_treniya_out', {"fnc":calc_koefficient_treniya_out, "cell":"input tbl"}),
+                                  ('atmosfernoe_davlenie_pa_out', {"fnc":calc_atmosfernoe_davlenie_pa_out, "cell":"input tbl"}),
+
                               ])
 

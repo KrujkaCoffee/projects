@@ -1099,9 +1099,9 @@ def main():
                            month_str,tabel_workforce,DICT_PROFESSIONS_NICKNAME)
         check_empl(ima_table_empl_tdz, LIST_DICT_EMPLOYEE_FULL, calendar_dict, dict_rab_vrema)
         # check_empl(ima_table_empl,LIST_DICT_EMPLOYEE_FULL,calendar_dict,dict_rab_vrema) # #04.07.25
-        # check_eq(ima_table_eq, row_equip, calendar_dict)
-        # check_rm(ima_table_rm, row_rm, calendar_dict)
-        # check_jurnaltdz(ima_table_jur_tdz, calendar_dict)
+        check_eq(ima_table_eq, row_equip, calendar_dict)
+        check_rm(ima_table_rm, row_rm, calendar_dict)
+        check_jurnaltdz(ima_table_jur_tdz, calendar_dict)
     print('Проверка производственного календаря завершено')
     print('==================================')
     calendar.close()

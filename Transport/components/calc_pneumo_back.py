@@ -1,4 +1,4 @@
-import os
+﻿import os
 
 import components.common_funcs as CMF
 from components.common_funcs import Table_data
@@ -384,7 +384,7 @@ def load_from_db_history_calc(Data: DTCLS.Data_page, s_num: int) -> (CMF.Table_d
                         pneumatic_transport_history WHERE s_num == {s_num}""", one=True, one_column=True, hat_c=False)
     if not data:
         return False
-    data_obj = F.from_binary_pickle(data[0])
+    data_obj = F.from_binary_pickle(data)
     ver = data_obj['ver']
     input_tbl = data_obj['input_tbl']
     output_tbl = data_obj['output_tbl']

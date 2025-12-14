@@ -763,7 +763,7 @@ def save_kpl_plan(self: mywindow):
             f"""
             UPDATE знпр 
             SET Дата_занесения_в_план_месяца = ? 
-            WHERE s_num = (SELECT Пномер_ЗП FROM пл_оуп WHERE НомПл = {nom_poz})""",
+            WHERE s_num = (SELECT Пномер_ЗП FROM пл_оуп WHERE НомПл = {nom_poz}) AND Дата_занесения_в_план_месяца == ''""", #10.12.2025
             list_of_lists_c=[F.now('%Y-%m-%d')]
         )
         for rabot, dict_rabot in item['Группы_работ'].items():

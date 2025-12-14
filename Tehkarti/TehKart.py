@@ -1456,7 +1456,8 @@ class mywindow(QtWidgets.QMainWindow):
                     flag = True
                 if sp_tree[i][20] == '1'and sp_tree[i][0] == 'Резка(ЧПУ)' and sp_tree[i][4] == '010101':
                     if sp_tree[i][15] != '':
-                        file = self.operation_docs.storage.get_dxf(sp_tree[i][15], self.dse_nn) # 10.11.25
+                        new_name = f'{F.clear_row_for_file_name_c(self.dse_nn)}.dxf'
+                        file = self.operation_docs.storage.get_dxf(sp_tree[i][15], self.dse_nn, new_name=new_name) # 08.12.25
                         if file == None or file == False:
                             nom_op = sp_tree[i][2]
                             name_op = sp_tree[i][0]

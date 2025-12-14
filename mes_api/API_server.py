@@ -18,10 +18,10 @@ from project_cust_38 import Cust_b24 as B24
 import project_cust_38.Cust_Functions as F
 from dependencies import import_for1c_depend
 import api_srv_config
-#
-#
-# sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-# sys.stderr = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+
+
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+sys.stderr = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
 PORT = api_srv_config.PORT
 HOST = api_srv_config.HOST

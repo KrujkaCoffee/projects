@@ -4681,7 +4681,8 @@ class DocumentedVariables():
     def __init__(self,сontext:str):
         self.сontext = сontext
         data = CSQ.custom_request_c(CFG.Config.project.db_dse, f"""SELECT 
-               ПараметрыФормул.Наименование , 
+               ПараметрыФормул.Наименование, 
+               ПараметрыФормул.Подгруппа, 
                ПараметрыФормул.БуквенноеОбозначение , 
                ЕдиницыИзмерения.Наименование as ЕдиницаИзмерения, 
                ПараметрыФормул.Мин, 
@@ -4734,6 +4735,7 @@ class DocumentedVariables():
 class DocumentedVariable():
     def __init__(self,row:dict):
         self.Наименование:str = None
+        self.Подгруппа:str = None
         self.БуквенноеОбозначение:str = None
         self.ЕдиницаИзмерения:str|None = None
         self.Мин:float|int|None = None
@@ -6263,7 +6265,7 @@ def calc_num_etap_from_name_etap(dict_etaps_from_erp,part_py,etap_name,s_num_kpl
     part_py= str(part_py)
     if part_py in dict_etaps_from_erp:
         for val_etap in dict_etaps_from_erp[part_py]['Этапы']:
-            if etap_name == val_etap['НаименованиеЭтапа']:
+            if etap_name.strip() == val_etap['НаименованиеЭтапа'].strip(): #12.12.25
                 fl = True
                 return  val_etap
         if not fl:

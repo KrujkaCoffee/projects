@@ -4,6 +4,7 @@ import project_cust_38.Cust_Functions as F
 import components.plug_page as PLUG
 import components.calc_pneumo as MCP
 import components.calc_silencer as MCS
+import components.calc_acoustic as MCSa
 import components.calc_airslide as MCA
 import components.calc_pneumatic_jet as MCPj
 import data_class as DTCLS
@@ -42,6 +43,11 @@ modules.sub_modules["modules"].add_submodule(DTCLS.Module_cfg("silencer",
                               "ПО для расчета шумоглушителей",
                               ft.Icons.VIBRATION,
                               ''))
+modules.sub_modules["modules"].add_submodule(DTCLS.Module_cfg("acoustic",
+                              "/modules/acoustic",
+                              "ПО для расчета шумоглушителей acoustic",
+                              ft.Icons.VIBRATION,
+                              ''))
 modules.sub_modules["modules"].add_submodule(DTCLS.Module_cfg("vipoln",
                               "/modules/vipoln",
                               "Выполнение нарядов (планшетный вариант)",
@@ -63,8 +69,6 @@ modules.add_submodule(DTCLS.Module_cfg("settings",
                               'Настройки',
                               ft.Icons.SETTINGS,
                               'Настройки'))
-
-
 modules.sub_modules["settings"].add_submodule(DTCLS.Module_cfg("decoration",
                               "/modules/decoration",
                               "Оформление",
@@ -189,4 +193,7 @@ def load_module(page: ft.Page):
     if page.route == ("/modules/silencer"):
         MCS.apply_page_settings(page,modules.get_module_by_route(page.route))
         return MCS.gen_page(page)
+    if page.route == ("/modules/acoustic"):
+        MCSa.apply_page_settings(page,modules.get_module_by_route(page.route))
+        return MCSa.gen_page(page)
     return PLUG.gen_page(page)

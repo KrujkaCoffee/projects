@@ -524,6 +524,7 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.chk_schemas_show_position.clicked.connect(lambda _, x=self: IND.select_schema(x))
         self.ui.chk_schemas_show_fio.clicked.connect(lambda _, x=self: IND.select_schema(x))
         self.ui.chk_autorepeat_update_fact.clicked.connect(lambda: KPL.chk_autorepeat_update_fact(self))
+        self.ui.chk_lump_production_method.clicked.connect(lambda: TTKZ.chk_lump_production_method(self))
         # ========================ACTIONS=================================
         if not self.USER_CONFIG.is_developer:
             self.ui.menu_2.setEnabled(False)

@@ -1,11 +1,17 @@
-﻿import difflib
+﻿import base64
+import difflib
+import enum
 import os
 import pickle
+import copy
 import logging
+import json
 import inspect
 import time
+import hashlib
 from functools import reduce
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Optional
 import sys, io
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
@@ -31,8 +37,9 @@ logger.addHandler(file_handler)
 
 from project_cust_38 import Cust_SQLite as CSQ
 import project_cust_38.Cust_odata_erp as ERP
-import project_cust_38.Cust_Functions as F
 import project_cust_38.Cust_b24 as CB24
+from project_cust_38 import Cust_config as CFG
+from project_cust_38 import Cust_Functions as F
 
 def log_prefix_decorator(event_name: str, target: str):
     def decorator(func):
@@ -94,6 +101,18 @@ patch('project_cust_38.Cust_config.User_config')
 
 
 TEST_CHAT = 'chat78766'
+
+
+## ================ ENUMS =================
+
+class B24MeasureAttributes(enum.Enum):
+    CODE = "CODE"
+    MEASURE_TITLE = 'MEASURE_TITLE'
+
+
+## ================ MODELS =================
+
+
 
 def concat_url(*args):
     form = lambda a, b: '%s/%s' % (a.strip('/'), b.strip('/'))
@@ -819,9 +838,9 @@ class Client1c:
         select = ','.join(select)
 
         order_by = '$orderby=Сделка/DataVersion asc'
-        filtr = ''
+        filtr = '&$filter=DeletionMark eq false'
         if mark:
-            filtr = f'&$filter=DataVersion ge {mark!r}'
+            filtr = f'&$filter=DataVersion ge {mark!r} and DeletionMark eq false'
         code, resp = self.client.get_response(
             doc_name='Document_КоммерческоеПредложениеКлиенту',
             wet_filtr=f"?$select={select}{filtr}&$expand=ВидНоменклатуры,Организация,Сделка&{order_by}",
@@ -1055,7 +1074,6 @@ from project_cust_38 import api_erp_commands as AEC
 def get_config_data(filename: str = './deal_config.pickle'):
     try:
         with open(filename, 'rb') as f:
-            import pickle
             return pickle.load(f)
     except FileNotFoundError:
         return {}
@@ -1072,7 +1090,6 @@ def get_last_data_version(queue: str):
 def put_config_data(key, data, filename: str = 'now'):
     prev_data = get_config_data(filename=filename)
     with open(filename, 'wb+') as f:
-        import pickle
         try:
             prev_data[key] = data
             pickle.dump(prev_data, f)
@@ -1081,7 +1098,6 @@ def put_config_data(key, data, filename: str = 'now'):
 def put_last_data_version(queue: str, data_version: str):
     data = get_config_data()
     with open('./deal_config.pickle', 'wb+') as f:
-        import pickle
         try:
             check = F.decode_1c_data_version_attribute(data_version)
             data[queue] = data_version
@@ -1417,6 +1433,8 @@ class CRMOrders:
         else:
             self.BASE_URL = 'https://bitrix24.kelast.ru/rest/3342/zmoegng9gl0gp5gm/'
 
+        self.nomenclature_crm = RecursiveResponse(is_test=is_test)
+
     def create_order(self, body, entity_type: EntityType | EntityType.Test) -> Optional[dict]:
         credentials = {
             'entityTypeId': entity_type.value,
@@ -1671,13 +1689,15 @@ class CRMOrders:
                 return first_product
         return False
 
-    def create_product_pos(self, ref_key: str, description: str, ratio: float | str):
+    def create_product_pos(self, ref_key: str, description: str, ratio: float | str, measure: str):
         url = f'{self.BASE_URL}catalog.product.add?iblockId=27'
+        measure_id = self.nomenclature_crm.get_measure_by_name(measure)
         response = requests.post(url, json={
             'fields': {
                 'name': description,
                 'iblockId': 27,
                 'xmlId': ref_key,
+                'measure': measure_id,
                 'property458': {'value': ratio}
             }
         })
@@ -1700,36 +1720,58 @@ class CRMOrders:
                 return True
         return False
 
+    def get_measure(self, measure: str, find_by: B24MeasureAttributes = B24MeasureAttributes.MEASURE_TITLE):
+        body = {
+            "filter": {find_by.value: measure}
+        }
+        response = requests.post(f'{self.BASE_URL}/crm.measure.list', json=body)
+        if not response.ok:
+            return None
+        data = response.json()
+        match data:
+            case {'result': [{"ID": id_measure}, *others]}:
+                return id_measure
+        return None
+
     def sync_order_products(self, order_id, source_products):
         data_for_post = []
         for idx, row in enumerate(source_products):
             ref_key = row['Ref_Key']
+            nomen_measure = row.get('measure_code_nomen', '')
             product = self.get_product_pos(ref_key)
             if not product:
                 product = self.create_product_pos(
                     description=row['description'],
                     ref_key=row['Ref_Key'],
                     ratio=row['ratio_for_report'],
+                    measure=nomen_measure
                 )
                 if not product:
                     return False
-            measure_code = row['measure_code']
-            if measure_code == 'NULL':
-                measure_code = ''
+            measure_name = row.get('measure_code_pos')
+            if measure_name == 'NULL':
+                measure_name = nomen_measure
+
+            measure_id = self.nomenclature_crm.get_measure_code_by_name(measure_name)
             data_for_post.append({
                 'productId': product['id'],
                 'quantity': row['count'],
                 'price': row['price'],
-                'measureCode': measure_code,
-                "sort": idx
+                'measureCode': measure_id,
+                "sort": idx,
+                'property458': {'value': row['ratio_for_report']}
             })
         return self.update_table_product_rows(order_id, data_for_post, source_products)
 
-def update_delivery_order_attributes(task):
+def update_delivery_order_attributes(task: dict):
     crm_client = CRMOrders()
     if 'xmlId' not in task:
         return
     order = crm_client.get_order_by_xml_id(task['xmlId'], entity_type=EntityType.ENTITY_TYPE_ID_DELIVERY_ORDER)
+    if 'ufCrm18Shipper2' in task:
+        task['ufCrm18Shipper'] = task.pop('ufCrm18Shipper2')
+    if 'ufCrm18ShippingAddress2' in task:
+        task['ufCrm18ShippingAddress'] = task.pop('ufCrm18ShippingAddress2')
     if order is None:
         # task = crm_client.mutable_delivery_order(task)
         return crm_client.create_order(task, EntityType.ENTITY_TYPE_ID_DELIVERY_ORDER)
@@ -1753,9 +1795,6 @@ def update_order_supplier_attributes(task):
     return crm_client.sync_order_products(order_id, products_1c)
 
 
-
-from project_cust_38 import Cust_config as CFG
-from project_cust_38 import Cust_Functions as F
 class DependenciesNomenclature:
     def __init__(self):
         self.list_nomen_types = CSQ.custom_request_c(
@@ -1766,19 +1805,6 @@ class DependenciesNomenclature:
         self.dict_nomen_types_by_ref = F.deploy_dict_c(self.list_nomen_types, 'Ref_Key')
 
 
-
-
-### TODO START
-import pickle
-from datetime import timezone, timedelta, datetime
-from pathlib import Path
-from typing import Any
-
-import requests
-
-
-
-
 def current_iso_date():
     tz = timezone(timedelta(hours=3))
     current_time = datetime.now(tz)
@@ -1787,7 +1813,6 @@ def current_iso_date():
 def get_config_data(filename: str = './deal_config.pickle'):
     try:
         with open(filename, 'rb') as f:
-            import pickle
             return pickle.load(f)
     except FileNotFoundError:
         return {}
@@ -1795,7 +1820,6 @@ def get_config_data(filename: str = './deal_config.pickle'):
 def put_config_data(key, data, filename: str = 'now'):
     prev_data = get_config_data(filename=filename)
     with open(filename, 'wb+') as f:
-        import pickle
         try:
             prev_data[key] = data
             pickle.dump(prev_data, f)
@@ -1810,7 +1834,6 @@ class RelationAttribute:
     name_1c: Any
 
 
-
 class RecursiveResponse:
 
 
@@ -1819,9 +1842,40 @@ class RecursiveResponse:
         if is_test:
             self.B24_BASE_URL = 'https://dev.bitrix24.kelast.ru/rest/2585/6tq57vcv71ou03r9'
 
-    def unpack_cache_b24(self):
-        with open(str(self.cache_filename), 'rb') as f:
-            return pickle.load(f)
+        self.measure_by_cut_name = {}
+        self.measure_by_title = {}
+        self.get_all_measure()
+
+    def get_measure_by_name(self, measure_name: str) -> Optional[int]:
+        if measure_name in self.measure_by_cut_name:
+            return self.measure_by_cut_name[measure_name]['ID']
+        if measure_name in self.measure_by_title:
+            return self.measure_by_title[measure_name]['ID']
+
+    def get_measure_code_by_name(self, measure_name: str) -> Optional[int]:
+        if measure_name in self.measure_by_cut_name:
+            return self.measure_by_cut_name[measure_name]['CODE']
+        if measure_name in self.measure_by_title:
+            return self.measure_by_title[measure_name]['CODE']
+
+    def get_all_measure(self):
+        result = {}
+        next_vals = '0'
+        credentials = {}
+        while not next_vals is None:
+            credentials['start'] = next_vals
+            last_deals = self.measure_list(credentials)
+            for measure_item in last_deals['result']:
+                self.measure_by_cut_name[measure_item['SYMBOL_RUS']] = measure_item
+                self.measure_by_title[measure_item['MEASURE_TITLE']] = measure_item
+            next_vals = last_deals.get('next')
+        return result
+
+    def measure_list(self, body: dict):
+        url = f'{self.B24_BASE_URL}/crm.measure.list'
+        response = requests.post(url, json=body)
+        data = response.json()
+        return data
 
     def get_section_b24_by_id(self, section_id):
         url = f'{self.B24_BASE_URL}/catalog.section.get?id={section_id}'
@@ -1893,9 +1947,10 @@ class RecursiveResponse:
                 return product
         # return data['result']['products']
 
-    def create_productby_b24(self, name: str, category_id: int, ref_key_1c: str, mass_per_unit: float):
+    def create_productby_b24(self, name: str, category_id: int, ref_key_1c: str, mass_per_unit: float, measure: str):
         print('создан', name, category_id, ref_key_1c)
         url = f'{self.B24_BASE_URL}/catalog.product.add'
+        measure_id = self.get_measure(measure, find_by=B24MeasureAttributes.MEASURE_TITLE)
         response = requests.post(url, json={
             'fields': {
                 'name': name,
@@ -1903,15 +1958,32 @@ class RecursiveResponse:
                 'property453': False,
                 'iblockSectionId': category_id,
                 'xmlId': ref_key_1c,
+                'measure': measure_id,
                 'property454': {'value': mass_per_unit}
             }
         })
         data = response.json()
         return data['result']['element']
 
-    def update_productby_b24(self, product_id: int, name: str, category_id: int, ref_key_1c: str, mass_per_unit: float):
+    def get_measure(self, measure: str, find_by: B24MeasureAttributes = B24MeasureAttributes.MEASURE_TITLE):
+        body = {
+            "filter": {find_by.value: measure}
+        }
+        response = requests.post(f'{self.B24_BASE_URL}/crm.measure.list', json=body)
+        if not response.ok:
+            return None
+        data = response.json()
+        match data:
+            case {'result': [{"ID": id_measure}, *others]}:
+                return id_measure
+        return None
+
+    def update_productby_b24(self, product_id: int, name: str, category_id: int, ref_key_1c: str, mass_per_unit: float, measure: str):
         print('обновлен', name, product_id, category_id, ref_key_1c)
         url = f'{self.B24_BASE_URL}/catalog.product.update?id={product_id}'
+        # measure_id = self.get_measure(measure, find_by=B24MeasureAttributes.MEASURE_TITLE)
+        measure_id = self.get_measure_by_name(measure)
+
         response = requests.post(url, json={
             'id': product_id,
             'fields': {
@@ -1920,7 +1992,8 @@ class RecursiveResponse:
                 'property453': {'value': False},
                 'iblockSectionId': category_id,
                 'xmlId': ref_key_1c,
-                'property454': {'value': mass_per_unit}
+                'property454': {'value': mass_per_unit},
+                'measure': measure_id
             }
         })
         data = response.json()
@@ -2040,10 +2113,33 @@ class Task:
 
     is_test: bool = False
 
+    def __hash__(self):
+        def _encode_struct(obj):
+            if isinstance(obj, dict):
+                return {k: _encode_struct(v) for k, v in obj.items()}
+            elif isinstance(obj, (list, tuple)):
+                return [_encode_struct(v) for v in obj]
+            elif isinstance(obj, (set, frozenset)):
+                return sorted([_encode_struct(v) for v in obj], key=lambda x: str(x))
+            elif isinstance(obj, bytes):
+                return base64.b64encode(obj).decode("ascii")
+            else:
+                return obj
+        struct = _encode_struct(self.credentials)
+        serialized = json.dumps(
+            struct,
+            sort_keys=True,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        digest = hashlib.sha256(serialized.encode("utf-8")).digest()
+        return hash((self.pk, digest))
+
 def update_delivery_order_pack_attributes(task: Task):
     entity_type = EntityType
     if task.is_test:
         entity_type = EntityType.Test
+        return True
     crm_client = CRMOrders(is_test=task.is_test)
     credentials = task.credentials
     ref_key = credentials['xmlId']
@@ -2076,6 +2172,8 @@ def update_delivery_order_pack_attributes(task: Task):
         return crm_client.update_order_fields(order_id, credentials, entity_type=entity_type.ENTITY_TYPE_ID_DELIVERY_ORDER_PACK)
 
 def sync_nomen_b24(task: Task):
+    if task.is_test:
+        return 204
     b24_nomen_client = RecursiveResponse(is_test=task.is_test)
     match task.credentials:
         case {
@@ -2089,7 +2187,9 @@ def sync_nomen_b24(task: Task):
             'Вид_Ref_Key': type_ref_key,
             'Вид': type_name,
             'Закупочная_цена': price,
-            'types_tree': hierarchy_nomen_types
+            'types_tree': hierarchy_nomen_types,
+            'unit_code': unit_code,
+            'unit_ratio': unit_ratio
         }:
             if hierarchy_nomen_types is None:
                 hierarchy_nomen_types = ''
@@ -2116,7 +2216,8 @@ def sync_nomen_b24(task: Task):
                     nomen_name,
                     section_b24['id'],
                     ref_key,
-                    1
+                    unit_ratio,
+                    measure=unit_of_measurement
                 )
                 if nomen_b24:
                     return 201
@@ -2128,7 +2229,8 @@ def sync_nomen_b24(task: Task):
                     name=nomen_name,
                     category_id=section_b24['id'],
                     ref_key_1c=ref_key,
-                    mass_per_unit=1
+                    mass_per_unit=unit_ratio,
+                    measure=unit_of_measurement
                 )
                 return 200 if product else 500
             return 500
@@ -2215,10 +2317,11 @@ def sync_nomen_mes(task):
     return 500
 
 def sync_nomen_tflex_docs(task: Task):
+    return 204
     if task.is_test:
         try:
             a = requests.post('http://192.168.14.69:5226/NomenFromOneEs',
-                          json=task.credentials, timeout=1)
+                         json=task.credentials, timeout=5)
             return a.status_code
 
         except Exception as e:
@@ -2293,6 +2396,9 @@ def send_nomen_message(
                       'Код состояния': status.status_code,
                       'Описание': status.description})
         statuses.append(status.status_code)
+
+    if message_id is None and all(status == 204 for status in statuses):
+        return True
     sender = CB24.B24Sender()
     result = sender.send_msg_table(table,
                                     title=message_template,
@@ -2405,6 +2511,106 @@ def update_deal_status(task: Task):
     logger.info(f'Сделка: {deal_id} | Завршено: {result} | Новый: {new_stage} | Предыдущий: {previous_stage}')
     return result
 
+
+def checking_positions_for_closed_mk(task: Task) -> bool:
+    znpr_ref = task.credentials['Ref_Key']
+    znpr_num = task.credentials['Number']
+
+    query_find_kpl = f"""
+        SELECT НомПл 
+        FROM пл_оуп
+        INNER JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП
+        INNER JOIN plan ON plan.Пномер = пл_оуп.НомПл
+        WHERE знпр.№ERP = {znpr_num!r} AND знпр.Ref_Key_py = {znpr_ref!r} AND plan.Статус != 4
+    """
+    kpl_items = CSQ.custom_request_c(
+        CFG.Config.project.db_kplan,
+        query_find_kpl,
+        one_column=True,
+        rez_dict=True)
+    if not isinstance(kpl_items, list):
+        return False
+    pk_kpl = [kpl for kpl in kpl_items]
+    kpl_nums = ','.join(str(i) for i in pk_kpl)
+
+    list_if_status = CSQ.custom_request_c(
+        CFG.Config.project.db_naryad,
+        f"""SELECT Пномер, НомКплан as "КПЛ", Статус FROM mk
+        WHERE НомКплан IN ({kpl_nums}) AND Статус != 'НаУдаление';""",
+        rez_dict=True)
+    list_open_mk = []
+    for item in list_if_status:
+        if item['Дата_завершения'] == "":
+            list_open_mk.append(item)
+    if list_open_mk:
+        mk_quot = "\n>> ".join(str(mk) for mk in list_open_mk)
+        message_template = f"""
+        По {znpr_num} создан документ "Передача продукции из производства"
+        Статус "Завершена" не был применен к номерам КПЛ ({kpl_nums}) из-за незакрытых МК
+        [B]Необходимо закрыть следующие МК[/B]
+        {mk_quot}
+        """
+        is_done = False
+    else:
+        mk_quot = "\n>> ".join(str(mk) for mk in list_open_mk)
+        message_template = f"""
+        По {znpr_num} создан документ "Передача продукции из производства"
+        Статус "Завершена" не был применен к номерам КПЛ ({kpl_nums}) из-за незакрытых МК
+        [B]Необходимо закрыть следующие МК[/B]
+        {mk_quot}
+        """
+        is_done = True
+        for pnum in pk_kpl:
+            CSQ.custom_request_c(
+                CFG.Config.project.db_kplan,
+                f"""UPDATE plan SET Статус = 4 WHERE Пномер = {pnum}""")
+    sender = CB24.B24Sender()
+    result = sender.send_msg_table(
+       title=message_template,
+       horizontal=True,
+       lst_of_lists=list_open_mk,
+       chat_id=task.chat_id)
+    return is_done
+
+def update_status_mes(task: Task):
+    default_status = ServiceStatus(Emoji.pending, 205, is_success=False, description='Не обработан')
+    current_status = dict.fromkeys(
+        task.services.keys(),
+        default_status
+    )
+    if task.message_status and task.message_status.services:
+        current_status = task.message_status.services
+
+    for service, func in task.services.items():
+        status = current_status.get(service, default_status)
+        if not status.is_success:
+            try:
+                code = func(task)
+                current_status[service] = create_status_by_code(code)
+            except Exception as e:
+                print(e) # todo error log
+    data = task.credentials
+    message_id = None
+    if isinstance(task.message_status, MessageStatus) and task.message_status.message_id:
+        message_id = task.message_status.message_id
+
+    chat_id = task.chat_id
+    if task.is_test:
+        chat_id = TEST_CHAT
+    send_nomen_message(
+        nomen_name=data['Наименование'],
+        code=data['Код'],
+        type_name=data['Вид'],
+        mark=data['Артикул'],
+        ref_key=data['Ref_Key'],
+        mark_delete=data['На_удаление'],
+        current_status=current_status,
+        chat_id=chat_id,
+        exchange_id=task.pk,
+        message_id=message_id
+    )
+    return all(status.is_success for status in current_status.values())
+
 commands = {
     'bitrix24.Сделка.Завершение': {
         'producer': deal_values,
@@ -2476,15 +2682,62 @@ commands = {
         'consumer': update_nomenclature,
         'check': True,
         'chat_id': 'chat59299',
-        'interval': 60 * 3 - 1,
+        'interval': 60 * 1 - 1,
         'new_task_format': True,
         'services': {
             'MES': sync_nomen_mes,
             'Bitrix24': sync_nomen_b24,
-            'TFLEX.Docs': sync_nomen_tflex_docs
+            'DOCs': sync_nomen_tflex_docs
         }
     },
+
 }
+# commands = {
+#     "bitrix24.РаспоряжениеНаДоставку/Упаковка.СинхронизацияТабличнойЧастиУпаковки": {
+#         # https://bitrix24.kelast.ru/company/personal/user/3076/tasks/task/view/100059053/
+#         'producer': None,
+#         'consumer': update_delivery_order_pack_attributes,
+#         'check': True,
+#         'chat_id': None,
+#         'interval': 60 * 3 - 1,
+#         'new_task_format': True,
+#         'services': None
+#     },
+# }
+# commands = {
+#     'bitrix24.ЗаказПоставщику.СинхронизацияЗаказа/ТабличнойЧасти': { # https://bitrix24.kelast.ru/company/personal/user/3076/tasks/task/view/100056637/?MID=888366#com888366
+#         'producer': None,
+#         'consumer': update_order_supplier_attributes,
+#         'check': True,
+#         'chat_id': None,
+#         'interval': 60 * 3 - 1,
+#         'new_task_format': False,
+#         'services': None
+#     },
+    # 'MES.Номенклатура/СинхронизацияПолей': {
+    #     'producer': None,
+    #     'consumer': update_nomenclature,
+    #     'check': True,
+    #     'chat_id': 'chat59299',
+    #     'interval': 60 * 3 - 1,
+    #     'new_task_format': True,
+    #     'services': {
+    #         'MES': sync_nomen_mes,
+    #         'Bitrix24': sync_nomen_b24,
+    #         'TFLEX.Docs': sync_nomen_tflex_docs
+    #     }
+    # },
+    # "MES.plan/ОбновлениеСтатусаПозиции": {
+    #     # https://bitrix24.kelast.ru/company/personal/user/3076/tasks/task/view/100059053/
+    #     'producer': None,
+    #     'consumer': checking_positions_for_closed_mk,
+    #     'check': True,
+    #     'chat_id': None,
+    #     'interval': 60 * 60 * 24,
+    #     'new_task_format': True,
+    #     'services': None
+    # },
+# }
 
 
 def check_commands():
@@ -2560,6 +2813,7 @@ def handle_tasks():
         stat = {'y': 0, 'n': 0}
         is_new_task_format = commands[queue][new_task_format]
         chat_id = commands[queue][chat_key]
+        used_tasks = set()
         if isinstance(last_tasks, list):
             if last_tasks:
                 result = {}
@@ -2581,14 +2835,18 @@ def handle_tasks():
                                 chat_accepted=chat_accepted,
                                 is_test=is_test
                             )
-                        import copy
+                            try:
+                                if data in used_tasks:
+                                    result[pk] = True
+                                    continue
+                                used_tasks.add(data)
+                            except Exception as e:
+                                logger.error(f'Ошибка при хэшировании задачи: {e}', exc_info=e, stack_info=True)
                         cp_data = copy.deepcopy(data)
                         cp_data2 = copy.deepcopy(data)
                         finished = commands[queue][fn_handle](cp_data)
                         if not finished:
-                            print()
                             finished = commands[queue][fn_handle](cp_data2)
-
                     except Exception as e:
                         logging.error('Ошибка выполнения задачи', exc_info=e, stack_info=True)
                         finished = False

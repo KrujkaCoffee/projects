@@ -4,7 +4,7 @@ import project_cust_38.Cust_SQLite as CSQ
 import project_cust_38.Cust_mes as CMS
 
 import project_cust_38.Cust_config as USRCNF
-
+###q
 @dataclass
 class Data_plan:
     @staticmethod

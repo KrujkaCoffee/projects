@@ -4458,7 +4458,7 @@ def apply_filtr_c(self, tblf, tbl,save_data=True,get_dict_by_fild:None|str=None)
                         spis = filtr_word.split('&')
                         return all(easy_filtr(usl, val_word) for usl in spis)
                     if '|' in filtr_word:
-                        spis = filtr_word.split('&')
+                        spis = filtr_word.split('|')
                         return any(easy_filtr(usl, val_word) for usl in spis)
                     if len(filtr[0][j]) > 1 and filtr_word[0] == '!':
                         if len(filtr[0][j]) > 2 and filtr_word[1] == '=':

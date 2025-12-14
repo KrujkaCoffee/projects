@@ -114,6 +114,7 @@ def main(page: ft.Page):
     page.on_resize = update_size
     page.on_route_change = route_change
 
+
     page.go(page.route)
 
 
@@ -129,10 +130,9 @@ if __name__ == "__main__":
             ft.app(name=FLET_PATH, target=main)
 
     else:
-        PATHF_IT_PLAN = fr'C:\srv_mes\srv_mes\plan_it_form_b24(gen by reiting).pickle'
+        PATHF_IT_PLAN = fr'C:\Users\A.A.Fedorov\MES\ideal_context\Transport\plan_it_form_b24(gen by reiting).pickle'
         print(f'http://{FLET_HOST}:{FLET_PORT}')
         print(f'http://mesinfo.powerz.ru:{FLET_PORT}')
         ft.app(name=FLET_PATH, target=main, view=ft.WEB_BROWSER, port=FLET_PORT,
-               host='0.0.0.0',
-
+               host='pow18-08',
                )  # SRVmes 'http://mesinfo.powerz.ru:20000/'

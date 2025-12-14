@@ -58,6 +58,7 @@ class Ttkz_tmp_settings:
         self.allow_stage=0
 
     def update_lbl_info(self: mywindow,modify=False):
+
         info_str = ''
         postfix = ''
         if modify:
@@ -91,8 +92,8 @@ class OrdersDocs:
             "желаемаяДата_proc": "wish_date_proc_docs",
             "кодРС_proc": "res_code_proc_docs",
             "ссылкаДокс_proc": "link_proc_docs",
-
         }
+
         self.SET_EXCLUDED_FIELDS = {
             'wish_date_proc_docs',"res_code_proc_docs"
         }
@@ -164,6 +165,9 @@ class OrdersDocs:
             item["link_proc_docs"] = '|'.join([item["link_proc_docs"],str(item['id_processes_tkp_proc_docs'])])
 
 class OrdersMolding:
+    ADDIT_ALIASES = {
+        "lump_production_method": "Cпособ\nполучать комья",
+    }
     def __init__(self):
         self.resp_objs = None
         self._db = CFG.Config.project.db_dse
@@ -249,6 +253,7 @@ class OrderMold:
         self.materials_for_forming:str|None = None
         self._tch: OrderMoldTch|None = None
         self._tch_res_product: OrderMoldTch|None = None
+        self.lump_production_method: int|None = None
         if data:
             self._row = data
             for key in self._row.keys():
@@ -281,9 +286,12 @@ class OrderMold:
     def save(self):
         data = self.get_dict(wo_docs=True)
         data['order_stage'] = data['order_stage'].snum
+
         if self.s_num:
             list_keys = list(data.keys())
             list_vals = [data[_] for _ in list_keys]
+            list_keys.append('lump_production_method')
+            list_vals.append(self.lump_production_method)
             result = CSQ.custom_request_c(self._db, f"""UPDATE molding_orders SET 
             ({CSQ.prepare_list_to_tuple(list_keys)}) = ({CSQ.questions_for_mask(list_keys)}) WHERE s_num == {self.s_num} """,
                                  list_of_lists_c=[list_vals])
@@ -292,11 +300,12 @@ class OrderMold:
             data = {k:v for k,v in data.items() if v != None}
             list_keys = list(data.keys())
             list_vals = [data[_] for _ in list_keys]
+            list_keys.append('lump_production_method')
+            list_vals.append(self.lump_production_method)
             result = CSQ.custom_request_c(self._db,
                                  f"""Insert INTO molding_orders 
                                  ({CSQ.prepare_list_to_tuple(list_keys)}) VALUES ({CSQ.questions_for_mask(list_keys)})""",
                                  list_of_lists_c=[list_vals])
-
         self.set_modify()
         return result
 
@@ -888,7 +897,7 @@ def load_form_rs_for_molding(self:mywindow, *args):
     data = PARAMS_FIELDS_MOLDING_DB.apply_alias_list(data)
     CQT.fill_wtabl(data, tbl,load_links=True,selectionBehavior='SelectRows',selectionMode='SingleSelection',
                    sortingEnabled=True,list_column_widths=CMS.load_column_widths(self,tbl),
-                   save_column_sort_hh=True)
+                   save_column_sort_hh=True,aliases_header=orders.ADDIT_ALIASES)
     CMS.fill_filtr_c(self,self.ui.tbl_list_orders_mold_filtr,tbl,hidden_scroll=True)
     self._ttkz_tmp_settings.clear()
     self._ttkz_tmp_settings.update_lbl_info()
@@ -937,13 +946,16 @@ def load_lists_res(self:mywindow):
     self._ttkz_tmp_settings.list_res = data_rez['data']
 
 
-
-@CQT.onerror
-def select_order(self: mywindow):
+def check_modify(self: mywindow):
     if self._ttkz_tmp_settings.current_order:
         if self._ttkz_tmp_settings.current_order.is_modify():
             if CQT.msgboxgYN(f'Имеются не сохраненные изменения. Продолжить редактирование?'):
-                return
+                return False
+    return True
+@CQT.onerror
+def select_order(self: mywindow):
+    if not check_modify(self):
+        return
     self._ttkz_tmp_settings.view_mode = True
     load_order_data(self)
 
@@ -978,6 +990,41 @@ def create_res_product(self: mywindow):
 
 def ___________Order_____________():
     pass
+@CQT.onerror
+def chk_lump_production_method(self:mywindow):
+    self._ttkz_tmp_settings.current_order.set_modify()
+    lump_production = 1
+    if is_3d_lump_production(self):
+        lump_production = 2
+
+    load_order_data(self,1,add_params={'forces_lump_production_method':lump_production})
+
+def is_3d_lump_production(self:mywindow)->bool:
+    return self.ui.chk_lump_production_method.isChecked()
+def set_checked_chk_lump_production_method(self:mywindow, set_checked:bool):
+    self.ui.chk_lump_production_method.blockSignals(True)
+    self.ui.chk_lump_production_method.setChecked(set_checked)
+    self.ui.chk_lump_production_method.blockSignals(False)
+def refill_tbl_order_by_lump_production_method(self,data:list[dict])->list[dict]:
+    if is_3d_lump_production(self):
+        name_sub_group_hide = 'Данные для формовки в ХТС'
+        name_sub_group_show = 'Данные для печатных комьев на 3д принтере'
+    else:
+        name_sub_group_hide = 'Данные для печатных комьев на 3д принтере'
+        name_sub_group_show = 'Данные для формовки в ХТС'
+
+    new_data = []
+    for i, row in enumerate(data):
+        params_field = PARAMS_FIELDS_MOLDING_DB.dict_vars[row['Name']]
+
+        if params_field.Подгруппа == name_sub_group_hide:
+           pass
+        else:
+            new_data.append(row)
+    return new_data
+
+
+
 
 @CQT.onerror
 def calc_stage(self:mywindow):
@@ -1129,7 +1176,13 @@ def apply_stage(self:mywindow):
     self.ui.fr_data_mold.setVisible(True)
 
 @CQT.onerror
-def load_order_data(self: mywindow, edit_etap_num=9):
+def load_order_data(self: mywindow, edit_etap_num=9,add_params:dict|None=None):
+
+    forces_lump_production_method = None
+    if add_params is not  None:
+        if 'forces_lump_production_method' in add_params:
+            forces_lump_production_method = add_params['forces_lump_production_method']
+
     def fcn_select_res(lnk, i, j, name, file,parent_self, *args):
         def fnc_oform_tbl_res(tbl):
             pass
@@ -1179,6 +1232,8 @@ def load_order_data(self: mywindow, edit_etap_num=9):
 
 
 
+    self.ui.chk_lump_production_method.setEnabled(False)
+
     if edit_etap_num:
         calc_stage(self)
     if edit_etap_num == 2:
@@ -1194,18 +1249,28 @@ def load_order_data(self: mywindow, edit_etap_num=9):
     apply_stage(self)
     self._ttkz_tmp_settings.update_lbl_info()
     cancel_new_or_edit_order(self)
-    order_obj_dict = dict()
-    if self._ttkz_tmp_settings.current_snum:
-        order_obj: OrderMold = OrdersMolding().load_order_by_num(self._ttkz_tmp_settings.current_snum)
-        order_obj_dict = order_obj.get_dict()
-        view_mode = self._ttkz_tmp_settings.view_mode
-        if not edit_etap_num == 2:
-            view_mode = True
-        load_order_tch(self, order_obj,view_mode)
-        view_mode = self._ttkz_tmp_settings.view_mode
-        if not edit_etap_num == 3:
-            view_mode = True
-        load_order_tch_res_product(self,order_obj,view_mode)
+    if self._ttkz_tmp_settings.current_order.order_stage.name == 'Песочная форма' and edit_etap_num==1:
+        self.ui.chk_lump_production_method.setEnabled(True)
+
+
+
+    order_obj: OrderMold = self._ttkz_tmp_settings.current_order
+    order_obj_dict = order_obj.get_dict()
+    view_mode = self._ttkz_tmp_settings.view_mode
+    if not edit_etap_num == 2:
+        view_mode = True
+    load_order_tch(self, order_obj,view_mode)
+    view_mode = self._ttkz_tmp_settings.view_mode
+    if not edit_etap_num == 3:
+        view_mode = True
+    load_order_tch_res_product(self,order_obj,view_mode)
+
+    if forces_lump_production_method is not None:
+        order_obj.lump_production_method = forces_lump_production_method
+    else:
+        set_checked_chk_lump_production_method(self,order_obj.lump_production_method==2)
+
+
     tbl = self.ui.tbl_data_mold
     data = [{"stage": v.Этап, "Name": _, "Реквизит": v.БуквенноеОбозначение, "Значение": v.Default_val, "Ед.Изм.":v.ЕдиницаИзмерения, "Описание":v.Описание}
             for _, v in PARAMS_FIELDS_MOLDING_DB.dict_vars.items() if v.Видимый and v.Этап <= edit_etap_num]
@@ -1214,36 +1279,43 @@ def load_order_data(self: mywindow, edit_etap_num=9):
             item['Значение'] = order_obj_dict[item['Name']]
     data = F.sort_by_column_c(data,"stage",)
 
+    data = refill_tbl_order_by_lump_production_method(self, data)
+
     CQT.fill_wtabl(data, tbl, set_editeble_col_nomera={"Значение"},list_column_widths=CMS.load_column_widths(self,tbl) )
 
     nf_val = CQT.num_col_by_name_c(tbl,"Значение")
     nf_req = CQT.num_col_by_name_c(tbl,"Реквизит")
-    for i in range(tbl.rowCount()):
-        row = CQT.get_dict_line_form_tbl(tbl,i)
-        for j in range(tbl.columnCount()):
-            CQT.set_cell_editable(tbl, i, j, False)
-            CQT.set_font_color_wtab_c(tbl, i, j, 100, 100, 100)
-            CQT.font_cell_size_format(tbl, i, j, bold=False)
-        if int(row['stage']) == edit_etap_num:
-            if PARAMS_FIELDS_MOLDING_DB.dict_vars[row['Name']].editable:
-                CQT.set_cell_editable(tbl,i,nf_val,True)
-                CQT.font_cell_size_format(tbl, i, nf_req,bold=True)
 
-            if row['Name'] in ('materials_for_alloy','materials_for_lining'):
-                link_name = row['Значение'].strip()
-                if not link_name:
-                    link_name = '     ...'
-                CQT.add_label_link(tbl,i,nf_val,link_name,link_name,fcn_select_res,self)
-                CQT.font_cell_size_format(tbl, i, nf_req, bold=True)
-            if row['Name'] in ('name_nomen_for_forming','name_nomen_for_res_product'):
-                link_name = row['Значение'].strip()
-                if not link_name:
-                    link_name = '     ...'
-                CQT.add_label_link(tbl,i,nf_val,link_name,link_name,fcn_select_name_nomen_for_forming,self)
-                CQT.font_cell_size_format(tbl, i, nf_req, bold=True)
-    if not CFG.Config.user_config.is_developer: #25.07.25
-        tbl.setColumnHidden(CQT.num_col_by_name_c(tbl,"stage",-1),True)
-        tbl.setColumnHidden(CQT.num_col_by_name_c(tbl,"Name",-1),True)
+    with CQT.table_updating(tbl):
+        for i in range(tbl.rowCount()):
+            row = CQT.get_dict_line_form_tbl(tbl,i)
+            params_field = PARAMS_FIELDS_MOLDING_DB.dict_vars[row['Name']]
+            for j in range(tbl.columnCount()):
+                CQT.set_cell_editable(tbl, i, j, False)
+                CQT.set_font_color_wtab_c(tbl, i, j, 100, 100, 100)
+                CQT.font_cell_size_format(tbl, i, j, bold=False)
+            if int(row['stage']) == edit_etap_num:
+                if params_field.editable:
+                    CQT.set_cell_editable(tbl,i,nf_val,True)
+                    CQT.font_cell_size_format(tbl, i, nf_req,bold=True)
+
+                if row['Name'] in ('materials_for_alloy','materials_for_lining'):
+                    link_name = row['Значение'].strip()
+                    if not link_name:
+                        link_name = '     ...'
+                    CQT.add_label_link(tbl,i,nf_val,link_name,link_name,fcn_select_res,self)
+                    CQT.font_cell_size_format(tbl, i, nf_req, bold=True)
+                if row['Name'] in ('name_nomen_for_forming','name_nomen_for_res_product'):
+                    link_name = row['Значение'].strip()
+                    if not link_name:
+                        link_name = '     ...'
+                    CQT.add_label_link(tbl,i,nf_val,link_name,link_name,fcn_select_name_nomen_for_forming,self)
+                    CQT.font_cell_size_format(tbl, i, nf_req, bold=True)
+
+
+        if not CFG.Config.user_config.is_developer: #25.07.25
+            tbl.setColumnHidden(CQT.num_col_by_name_c(tbl,"stage",-1),True)
+            tbl.setColumnHidden(CQT.num_col_by_name_c(tbl,"Name",-1),True)
     CMS.fill_filtr_c(self, self.ui.tbl_data_mold_filtr, tbl, hidden_scroll=True)
     print()
 
@@ -1252,6 +1324,8 @@ def ___________Order_data____________():
 @CQT.onerror
 def data_mold_cellchanged(self: mywindow,row:int,col:int):
     tbl = self.ui.tbl_data_mold
+    if CQT.is_table_updating(tbl):
+        return
     data = CQT.list_from_wtabl_c(tbl,rez_dict=True)
     stage = self._ttkz_tmp_settings.current_stage
     if stage == 1:  # песочная форма

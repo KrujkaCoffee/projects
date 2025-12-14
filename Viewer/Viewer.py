@@ -628,6 +628,9 @@ class mywindow(QtWidgets.QMainWindow):
         if e.key() == 80 and e.modifiers() == (QtCore.Qt.ControlModifier | QtCore.Qt.ShiftModifier):
             if CQT.focus_is_QTableWidget():
                 CQT.refill_tbl_into_msgbox_get_table(self,QtWidgets.QApplication.focusWidget())
+        if self.ui.tbl_report_add_filtr.hasFocus(): # 12.12.25 по задаче 100061422
+            if e.key() == 16777220:
+                CMS.apply_filtr_c(self, self.ui.tbl_report_add_filtr, self.ui.tbl_report_add)
         if self.ui.tbl_viev_etaps_erp_filtr.hasFocus():
             if e.key() == 16777220:
                 CMS.apply_filtr_c(self, self.ui.tbl_viev_etaps_erp_filtr, self.ui.tbl_viev_etaps_erp)

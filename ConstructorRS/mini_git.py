@@ -475,8 +475,10 @@ class Main:
                     self.copy_file(server_file, source, distanation, del_file)
             else:
                 print(f'копирование {server_file}')
-                self.copy_file(server_file, source, distanation, del_file)
-
+                try:
+                    self.copy_file(server_file, source, distanation, del_file)
+                except Exception as e:
+                    print(e)
     def is_old_struct(self, dir) -> bool:
         srv_files = os.listdir(dir)
         intersections = SET_PY_FILES.intersection(srv_files)

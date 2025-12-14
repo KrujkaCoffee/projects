@@ -105,6 +105,9 @@ class Cell_description():
                     return JS.loads(val)
 
             # Для простых типов используем стандартное преобразование
+            if type_val == float and isinstance(val,str):
+                val = val.replace(',','.')
+
             return type_val(val)
 
         except (ValueError, TypeError) as e:
@@ -172,7 +175,12 @@ class _Cell_data():
         cell_data.set_bgcolor(ft.Colors.ERROR)     # подсветить ошибку
         cell_data.set_disabled(True)               # сделать поле недоступным
         """
+    def on_focus(self,e:ft.ControlEvent):
+        self.parent_row.current_cell = self
 
+    def setFocus(self):
+        self.control_ref.current.focus()
+        self.parent_row.current_cell = self
 
     # --- Методы управления ячейкой ---
     def set_value_view(self, new_val):
@@ -242,6 +250,24 @@ class Row_data():
         self.sub_header_control_ref: ft.Ref[ft.Control] | None = None
         self.control_ref: ft.Ref[ft.Control] | None = None
         self.group_cell_text_ref: ft.Ref[ft.Text] | None = None
+        self._current_cell: None|_Cell_data = None
+    @property
+    def current_cell(self):
+        return self._current_cell
+
+    @current_cell.setter
+    def current_cell(self, val:_Cell_data):
+        self._current_cell = val
+        self.parent_table_data.current_row = self
+
+    @property
+    def is_visible(self):
+        return self.control_ref.current.visible
+
+    def setFocus(self,name_field):
+        for cell in self.cells:
+            if cell.params_field.name == name_field:
+                cell.setFocus()
 
 
     def set_visible(self, visible: bool =True):
@@ -385,7 +411,34 @@ class   Table_data():
         self._set_unique_vals = set()
         self.table_view:Table_view|None = None
         self.name = None
+        self.current_row:None|Row_data = None
 
+    def calc_next_row(self)->Row_data|None:
+        fl = True
+        for row in self.rows:
+            if not fl and not row.merge and row.is_visible :
+                return row
+            if row is self.current_row:
+                fl = False
+    def calc_previous_row(self)->Row_data|None:
+        pr_row = None
+        for row in self.rows:
+            if row is self.current_row:
+                return pr_row
+            if not row.merge and row.is_visible:
+                pr_row = row
+    def set_focus_next_row(self):
+        row = self.calc_next_row()
+        if row is None:
+            return
+        name_field = self.current_row.current_cell.params_field.name
+        row.setFocus(name_field)
+    def set_focus_previous_row(self):
+        row = self.calc_previous_row()
+        if row is None:
+            return
+        name_field = self.current_row.current_cell.params_field.name
+        row.setFocus(name_field)
 
     def hide_group(self,name:str|None=None,hide=True):
 
@@ -655,6 +708,7 @@ class Table_view(ft.DataTable):
 
 
     ):
+        self.table_data:Table_data = table_input_data
         row_height = None
         def header_gen(obj_type=ft.DataColumn, empty=False) -> list:
             cells_columns = []
@@ -945,6 +999,21 @@ class Table_view(ft.DataTable):
         self.fl_need_upd: bool = False
         if table_input_data.name and fnc_on_click:
             table_input_data.toggle_group(None)
+        DTCLS.Data_page.page.on_keyboard_event = self.on_key
+
+
+    def on_key(self, e: ft.KeyboardEvent):
+        #print("key:", e.key)
+        #print(f'current_row {self.table_data.current_row.dict_cells()}')
+        if e.key == 'Arrow Down':
+            self.table_data.set_focus_next_row()
+        if e.key == 'Arrow Up':
+            self.table_data.set_focus_previous_row()
+
+
+
+
+
 
     def update_view(self):
         """Обновляет отображение и сбрасывает флаг обновления"""
@@ -1016,6 +1085,7 @@ def create_value_cell(cell_data: _Cell_data, visible: bool = True, width=None, h
                             value=str(val),
                             data={"cell": cell_data},  # 🔑 привязка
                             on_change=fnc_on_change,
+                            on_focus=cell_data.on_focus,
                             tooltip=cell_data.description.comment,
                             border=ft.InputBorder.NONE,   # убираем рамку
                             width=width,
@@ -1041,8 +1111,9 @@ def create_value_cell(cell_data: _Cell_data, visible: bool = True, width=None, h
                     ref=control_ref,
                     value=value,
                     keyboard_type=ft.KeyboardType.NUMBER,
-                    input_filter=ft.InputFilter(r'^\d*\.?\d*$'),  # Только числа
+                    input_filter=ft.InputFilter(r'^\d*[.,]?\d*$'),  # Только числа
                     on_change=fnc_on_change,
+                    on_focus=cell_data.on_focus,
                     tooltip=tooltip,
                     border=ft.InputBorder.NONE,
                     width=width,
@@ -1053,6 +1124,7 @@ def create_value_cell(cell_data: _Cell_data, visible: bool = True, width=None, h
                 height=height,
                 width=width,  # Дублируем ширину у Container
                 margin=ft.margin.all(1),  # 🔑 оставить просвет для бордера
+
 
             )
             , visible=visible
@@ -1065,6 +1137,7 @@ def create_value_cell(cell_data: _Cell_data, visible: bool = True, width=None, h
                     ref=control_ref,
                     value=str(val),
                     on_change=fnc_on_change,
+                    on_focus=cell_data.on_focus,
                     border=ft.InputBorder.NONE,
                     tooltip=cell_data.description.comment,
                     width=width,  # Теперь должно работать
