@@ -219,6 +219,8 @@ class TFlexFileClient(TFlexHttpClient):
         """
         url = f'{self.BASE_URL}{self.GET_FILENAMES_BY_NOMEN_NAME}'
         files = self.post(url, body=name)
+        if not files:
+            return []
         set_pks = {file['nomenId'] for file in files}
         if len(set_pks) == 1:
             return files

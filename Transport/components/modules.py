@@ -1,3 +1,5 @@
+import os
+
 import flet as ft
 import components.settings as SETGS
 import project_cust_38.Cust_Functions as F
@@ -80,8 +82,9 @@ _ref_main = ft.Ref[ft.Row]()
 
 
 def main_page(page, PATHF_IT_PLAN):
-    data_it_plan = F.load_file_pickle(PATHF_IT_PLAN)
-    list_plan = [_ for _ in data_it_plan if _['Тип'] == 'Развитие процессов' and _['ПП'] == 'MES']
+    # data_it_plan = F.load_file_pickle(PATHF_IT_PLAN)
+    data_it_plan = []
+    list_plan = [_ for _ in data_it_plan if _['ТИП'] == 'Развитие процессов' and _['ПП'] == 'MES']
     list_completed = [_ for _ in list_plan if F.valm(_['ПРОЦЕНТ ВЫПОЛНЕНИЯ']) >= 1]
     list_intend = [_ for _ in list_plan if F.valm(_['ПРОЦЕНТ ВЫПОЛНЕНИЯ']) < 1]
 

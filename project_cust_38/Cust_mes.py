@@ -219,24 +219,41 @@ class Logs():
 
 class Color_tbl():
     DICT_COLOR = {0 : "248;105;107",
-10 : "249;131;112",
-20 : "250;157;117",
-30 : "252;183;122",
-40 : "253;209;127",
-50 : "255;235;132",
-60 : "224;227;131",
-70 : "193;218;129",
-80 : "162;208;127",
-90 : "131;199;125",
-100 : "99;190;123",
-}
-    def __init__(self,val:float|int,revers=False):
-        self.r, self.g, self.b = Color_tbl.DICT_COLOR[100].split(';')
+    10 : "249;131;112",
+    20 : "250;157;117",
+    30 : "252;183;122",
+    40 : "253;209;127",
+    50 : "255;235;132",
+    60 : "224;227;131",
+    70 : "193;218;129",
+    80 : "162;208;127",
+    90 : "131;199;125",
+    100 : "99;190;123",
+    }
+    DICT_COLOR_DARK = {
+        0: "198;55;57",  # Более насыщенный красный
+        10: "209;81;62",  # Теплый оранжево-красный
+        20: "220;107;67",  # Насыщенный оранжевый
+        30: "212;133;72",  # Золотисто-оранжевый
+        40: "203;159;77",  # Светло-оранжевый
+        50: "205;185;82",  # Желто-оранжевый
+        60: "174;177;81",  # Оливково-желтый
+        70: "143;168;79",  # Желто-зеленый
+        80: "112;158;77",  # Светло-зеленый
+        90: "81;149;75",  # Средне-зеленый
+        100: "49;140;73",  # Насыщенный зеленый
+    }
+    def __init__(self,val:float|int,revers=False,dark_mode=False):
+        DICT_COLOR = Color_tbl.DICT_COLOR
+        if dark_mode:
+            DICT_COLOR = Color_tbl.DICT_COLOR_DARK
+
+        self.r, self.g, self.b = DICT_COLOR[100].split(';')
 
         if revers:
-            dict_color = {(100-k):v for k,v in dict(reversed(Color_tbl.DICT_COLOR.items())).items()}
+            dict_color = {(100-k):v for k,v in dict(reversed(DICT_COLOR.items())).items()}
         else:
-            dict_color = copy.deepcopy(Color_tbl.DICT_COLOR)
+            dict_color = copy.deepcopy(DICT_COLOR)
         for key, color in dict_color.items():
             if key >= val:
                 self.r,self.g,self.b =color.split(';')
@@ -248,11 +265,14 @@ class Color_tbl():
 
 class Emploee_usr():
     def __init__(self,fio:str,user_db:str):
-        data = CSQ.custom_request_c(user_db,f"""SELECT * FROM employee WHERE ФИО == "{fio}";""",rez_dict =True)
+        if F.is_unique_identifier(fio):
+            data = CSQ.custom_request_c(user_db, f"""SELECT * FROM employee WHERE ID_ФизЛица == "{fio}";""", rez_dict=True)
+        else:
+            data = CSQ.custom_request_c(user_db,f"""SELECT * FROM employee WHERE ФИО == "{fio}";""",rez_dict =True)
         if len(data) == 0:
             raise Exception('не найден ФИО в БД')
         self.user_db = user_db
-        self.ФИО = fio
+        self.ФИО = None
 
         self.Пномер = None
         self.Должность = None
@@ -265,9 +285,10 @@ class Emploee_usr():
         self.ДатаИзмененияДолжности = None
         self.history = []
 
-        for key in data[-1].keys():
-            exec(f'self.{key.replace(".", "_")} = data[key]')
-
+        for record in data:
+            if record['Статус'] == 'Работа':
+                for key in record.keys():
+                    exec(f'self.{key.replace(".", "_")} = record[key]')
         for item in data:
             self.history.append(item)
 
@@ -295,7 +316,92 @@ class Emploee_usr():
 
 
 
+class Emploee_spread_db():
 
+    def __init__(self):
+        pass
+
+    def update_fiz_users(self):
+        text = """
+        ВЫБРАТЬ
+            ФизическиеЛица.Фамилия КАК Фамилия,
+            ФизическиеЛица.Имя КАК Имя,
+            ФизическиеЛица.Отчество КАК Отчество,
+            ПРЕДСТАВЛЕНИЕ(ФизическиеЛица.Пол.Ссылка) КАК Пол,
+            ФизическиеЛица.ПометкаУдаления КАК ПометкаУдаления,
+            ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ФизическиеЛица.Родитель.Ссылка))  КАК Родитель_key,
+            ФизическиеЛица.ЭтоГруппа КАК ЭтоГруппа,
+            Наименование КАК Наименование,
+            ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ФизическиеЛица.Ссылка)) КАК ФизическоеЛицо_Key
+        ИЗ
+            Справочник.ФизическиеЛица КАК ФизическиеЛица
+        ГДЕ
+            ФизическиеЛица.ПометкаУдаления = ЛОЖЬ
+        """
+        succ, data_1C = APIERP.get_wet_request(text)
+        if succ != 200:
+            print(f'update_fiz_users err data_1C')
+            return
+        data_1C = F.deploy_dict_c(data_1C['data'],'ФизическоеЛицо_Key',keep_key=True)
+
+
+        data_mes = CSQ.custom_request_c(CFG.Config.project.db_users,f"""SELECT * 
+                                                                                      FROM ФизическоеЛица;
+                                                                                    """,rez_dict=True)
+        if data_mes is None or data_mes == False:
+            print(f'update_fiz_users err data_mes')
+            return
+        data_mes = F.deploy_dict_c(data_mes,'ФизическоеЛицо_Key',keep_key=True)
+        
+        dict_add = dict()
+        dict_edit = dict()
+
+
+        def add_edit(ref,k,v):
+            if ref not in dict_edit:
+                dict_edit[ref] = dict()
+            dict_edit[ref][k] = v
+
+        for ref, vals_1c in data_1C.items():
+            if ref not in data_mes:
+                dict_add[ref] = vals_1c
+                continue
+            vals_mes = data_mes[ref]
+            for k,v in vals_1c.items():
+                if k not in vals_mes:
+                    print(f'update_fiz_users err attr {k}')
+                    return
+                v_mes = vals_mes[k]
+                if v != v_mes:
+                    add_edit(ref,k,v)
+
+        for ref, vals_mes in data_mes.items():
+            if vals_mes['ПометкаУдаления'] == 1:
+                continue
+            if ref not in data_1C:
+                add_edit(ref,'ПометкаУдаления',True)
+                continue
+
+        if dict_edit:
+            for ref, dict_vals in dict_edit.items():
+                list_k = list(dict_vals.keys())
+                list_v = list(dict_vals.values())
+                CSQ.custom_request_c(CFG.Config.project.db_users, f"""
+                        UPDATE ФизическоеЛица 
+                SET  ({','.join(list_k)})
+                    = ({CSQ.questions_for_mask(list_k)})
+                            WHERE ФизическоеЛицо_Key == "{ref}" ;""", list_of_lists_c=[list_v])
+                print(f'ФизическоеЛицо_Key == "{ref}" vals({list_v})')
+        if dict_add:
+            fields = [list(dict_vals.keys()) for dict_vals in dict_add.values()]
+            fields = fields[0]
+            list_of_lists = [list(dict_vals.values()) for dict_vals in dict_add.values()]
+            CSQ.custom_request_c(CFG.Config.project.db_users, f"""INSERT INTO ФизическоеЛица
+                              ({','.join(fields)}) 
+                              VALUES ({CSQ.questions_for_mask(fields)});""", list_of_lists_c=list_of_lists)
+        
+        
+        
 
 class Emploee_db():
     URI = fr'{CFG.Config.project.ERB_BASE_URL}/ERP/hs/SDE/Staff/'
@@ -1588,6 +1694,35 @@ class Pozition():
         else:
             return 'НомПл'
 
+    def update_znpr(self):
+        
+        fl = False
+        if 'пл_оуп' not in self.dict_tables:
+            return fl
+        
+        dict_for_update:dict = self.dict_tables['пл_оуп']
+        DICT_FIELDS_SHABL = CSQ.dict_types_tbl(self.db,'знпр')
+        data_znpr:dict = CSQ.custom_request_c(self.db,f"""SELECT * FROM знпр WHERE s_num == {dict_for_update['s_num']};""",rez_dict=True,one=True)
+        list_fields = []
+        list_vals = []
+        for field, type_val in DICT_FIELDS_SHABL.items():
+            if field in dict_for_update:
+                if type(dict_for_update[field]) == type(data_znpr[field]):
+                    if dict_for_update[field] != data_znpr[field]:
+                        list_fields.append(field)
+                        list_vals.append(dict_for_update[field])
+                else:
+                    raise TypeError(f'update_znpr: field {field} type not match')
+        if list_fields:
+            
+            str_fields = ', '.join(list_fields)
+            
+            fl = CSQ.custom_request_c(self.db,
+                                 f"""UPDATE знпр SET ({str_fields}) =
+                                  ({CSQ.questions_for_mask(list_fields)}) 
+                                  WHERE s_num == {dict_for_update['s_num']}""",list_of_lists_c=[list_vals])
+        return fl
+            
     def update_row_etaps(self,new_row_dates_etap:dict):
         list_name_fields = []
         list_dates = []
@@ -3144,7 +3279,7 @@ class Jurnal_nar():
                     dict_fields= CSQ.list_types_table(db_nar,'jurnal')
                     fields = ', '.join([k for k,v in dict_fields.items() if v != 'BLOB'])
                 list_zap = CSQ.custom_request_c(db_nar, f"""SELECT {fields}
-                        FROM jurnal WHERE {postfix_nom}{postfix};""",
+                        FROM jurnal WHERE {postfix_nom}{postfix} ORDER BY Номер_наряда, datetime(Дата) ASC;""", # 30.01.2026
                                                 rez_dict=True)
         else:
             if nom_nar == 0:
@@ -3486,7 +3621,7 @@ class Jurnal_nar():
         if self.nom_nar == 0:
             raise ValueError('self.nom_nar= 0')
         rez =  CSQ.custom_request_c(self.db_nar, f"""SELECT Статус FROM jurnal WHERE Номер_наряда == {self.nom_nar} 
-                    and ФИО == "{self.user}" ORDER BY Пномер DESC LIMIT 1""")[-1][0]
+                    and ФИО == "{self.user}" ORDER BY datetime(Дата) DESC LIMIT 1""")[-1][0] #03.02.2026
         if rez == None or rez == False:
             return None
         if len(rez) == 1:
@@ -3523,14 +3658,17 @@ class Jurnal_nar():
                 self.rows[self.selected_fragment_start_row_obj_nom]['Подытог_нормы'] != poditog_norm):
             custom_request_c = f'UPDATE jurnal SET Подытог == ?, Подытог_нормы == ? WHERE Пномер == ?'
             param = [poditog, poditog_norm, self.selected_fragment_start_s_num]
+            print(f"Наряд: {self.nom_nar} было {self.rows[self.selected_fragment_start_row_obj_nom]['Подытог']}", f'стало {poditog}')
         if (self.rows[self.selected_fragment_start_row_obj_nom]['Подытог'] != poditog and
                 self.rows[self.selected_fragment_start_row_obj_nom]['Подытог_нормы'] == poditog_norm):
             custom_request_c = f'UPDATE jurnal SET Подытог == ? WHERE Пномер == ?'
             param = [poditog, self.selected_fragment_start_s_num]
+            print(f"Наряд: {self.nom_nar} было {self.rows[self.selected_fragment_start_row_obj_nom]['Подытог']}", f'стало {poditog}')
         if (self.rows[self.selected_fragment_start_row_obj_nom]['Подытог'] == poditog and
                 self.rows[self.selected_fragment_start_row_obj_nom]['Подытог_нормы'] != poditog_norm):
             custom_request_c = f'UPDATE jurnal SET Подытог_нормы == ? WHERE Пномер == ?'
             param = [poditog_norm, self.selected_fragment_start_s_num]
+            print(f"Наряд: {self.nom_nar} было {self.rows[self.selected_fragment_start_row_obj_nom]['Подытог']}", f'стало {poditog}')
         if len(param)>0:
             try:
                 CSQ.custom_request_c(self.db_nar, custom_request_c, list_of_lists_c=param)
@@ -3651,21 +3789,91 @@ class Jurnal_nar():
 
             #self.nom_nar = None
 
-        CSQ.custom_request_c(self.db_nar,
+        journal_pk = CSQ.custom_request_c(self.db_nar, #25.01.2026
             f"""INSERT INTO jurnal 
             (Дата, Штамп, Номер_наряда,ФИО,Подытог,Статус,Примечание,Ном_заверш)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?);""", list_of_lists_c=[line])
-        F.time_sleep(2)
-        check = CSQ.custom_request_c(self.db_nar, f"""SELECT Пномер FROM jurnal WHERE Штамп = '{shtamp}' 
-                 and ФИО == '{self.user}'; """, one=True)
-        if len(check) == 1:
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING Пномер;""", list_of_lists_c=line, one=True, one_column=True, hat_c=False)
+        # F.time_sleep(2)
+        # check = CSQ.custom_request_c(self.db_nar, f"""SELECT Пномер FROM jurnal WHERE Штамп = '{shtamp}'
+        #          and ФИО == '{self.user}'; """, one=True)
+        if not isinstance(journal_pk, int):
             self.clear_poditog()
-            CQT.msgbox(f'Ошибка занесения в Журнал_3 попробуй позже')
-            return False
+            if CFG.Config.app.is_ui:
+                CQT.msgbox(f'Ошибка занесения в Журнал_3 попробуй позже')
+                return False
+            else:
+                raise Exception("[Cust_mes.add_new_row] Ошибка при попытке добавить строку")
 
         if state == 'Завершен':
             self.calc_and_fill_nar_by_zaversh(DICT_EMPL_FULL,lbl_abstract_text)
-        return shtamp
+        return journal_pk
+
+    def refresh(self): #02.02.2026
+        self.__init__(self.db_nar, self.nom_nar, self.user)
+
+    def update_row( #02.02.2026
+            self,
+            DICT_EMPL_FULL,
+            lbl_abstract_text,
+            journal_id: int,
+            is_idle: bool,
+            *,  # Поля таблицы
+            date_time: str = None,                  # Дата
+            state: str = None,                      # Статус
+            comment: str = None,                    # Примечание
+            num_end: int = None,                    # Ном_заверш
+            load_erp_date: str = None,              # Дата_выгрузки_ЕРП
+            load_erp_fio: str = None,               # ФИО_выгрузки_ЕРП
+            load_erp_file: bytes = None,            # Файл_выгрузки_ЕРП
+            load_erp_minutes: float | int = None,   # Минут_выгружено_ЕРП
+            base_ERP: int = None,                   # base_ERP
+    ):
+        """
+            Обновить строку журнала
+            @ Если указан date_time, то подытог пересчитывается по новому значению
+            """
+        body = {}
+        if date_time is not None:
+            body['Дата'] = date_time
+            body['Штамп'] = F.shtamp_from_date(date_time)
+        if state is not None:
+            body['Статус'] = state
+        if comment is not None:
+            body['Примечание'] = comment
+        if num_end is not None:
+            body['Ном_заверш'] = num_end
+        if load_erp_date is not None:
+            body['Дата_выгрузки_ЕРП'] = load_erp_date
+        if load_erp_fio is not None:
+            body['ФИО_выгрузки_ЕРП'] = load_erp_fio
+        if load_erp_file is not None:
+            body['Файл_выгрузки_ЕРП'] = load_erp_file
+        if load_erp_minutes is not None:
+            body['Минут_выгружено_ЕРП'] = load_erp_minutes
+        if base_ERP is not None:
+            body['base_ERP'] = base_ERP
+        if not body:
+            return
+        update_set = ','.join(f'{k} = ?' for k, v in body.items())
+        update_val = list(body.values())
+        if date_time and (state == 'Приостановлен' or state == 'Завершен'):
+            result = self.calc_and_set_poditog(state, date_time, is_idle)
+            if result == None or result == False:
+                raise ValueError("Ошибка расчета подытога")
+        journal_pk = CSQ.custom_request_c(
+            self.db_nar,  # 25.01.2026
+            f"""UPDATE jurnal SET {update_set} WHERE Пномер = {journal_id} RETURNING Пномер;""",
+            list_of_lists_c=update_val,
+            one=True,
+            one_column=True,
+            hat_c=False
+        )
+        if not isinstance(journal_pk, int):
+            print('[Cust_mes.Journal_nar.update_row] Не удалось обновить строку журнала')
+            return False
+        if date_time and state == 'Завершен':
+            self.calc_and_fill_nar_by_zaversh(DICT_EMPL_FULL, lbl_abstract_text)
+        return True
 
     def calc_and_fill_nar_by_zaversh(self,DICT_EMPL_FULL,lbl_abstract_text):
         fact_vr = self.get_summ_poditog(True)
@@ -4693,10 +4901,12 @@ class DocumentedVariables():
                ПараметрыФормул.Описание, 
                ПараметрыФормул.Видимый,
                ПараметрыФормул.Этап,
+               molding_order_stages.emoji as emoji,
                ПараметрыФормул.editable,
                ПараметрыФормул.allowedNullAndEmpty as РазрешенНульИПусто
                FROM ПараметрыФормул 
                LEFT JOIN ЕдиницыИзмерения ON ЕдиницыИзмерения.refKey =  ПараметрыФормул.ЕдиницаИзмерения 
+               LEFT JOIN molding_order_stages ON molding_order_stages.s_num =  ПараметрыФормул.Этап  
                WHERE ПараметрыФормул.Контекст = '{сontext}' and ПараметрыФормул.disabled = 0 order by orderf;""", rez_dict=True)
         self.dict_vars = {_['Наименование']:DocumentedVariable(_) for _ in data}
     def __repr__(self):
@@ -4748,6 +4958,7 @@ class DocumentedVariable():
         self.Этап:int|None = None
         self.editable:int|None = None
         self.РазрешенНульИПусто: int | None = None
+        self.emoji: str | None = ''
         for key in row.keys():
             exec(f'self.{str(key).replace(".", "_")} = row[key]')
         self.is_numeric =False
@@ -5200,22 +5411,60 @@ def LIST_NEGRUZ_DSE(db_nomen: str):
     )
 
 @CQT.onerror
-def DICT_RC_TBL(db_users):
-    custom_request_c = """SELECT rab_mesta.Пномер, places.adress as Расположение, rab_mesta.Прозвище, rab_c.Имя as РЦ, 
-    equipment.Наименование  || ' ' || equipment.Инв_номер as Оборудование,  professions.имя as Профессия_рм, 
-     s1.ФИО as ФИО_1см, s1.Должность as Должность_1см, Время_начала_1, Время_конца_1, Нераб_мин1, Между_нар_мин1, Коэфф_производит1,
-     s2.ФИО as ФИО_2см, s2.Должность as Должность_2см, Время_начала_2, Время_конца_2, Нераб_мин2, Между_нар_мин2, Коэфф_производит2,
-     s3.ФИО as ФИО_3см, s3.Должность as Должность_3см, Время_начала_3, Время_конца_3, Нераб_мин3, Между_нар_мин3, Коэфф_производит3, 
-     rab_mesta.Примечание, s1.Пномер as Пномер_emp1, s2.Пномер as Пномер_emp2, s3.Пномер as Пномер_emp3,  coord
-     FROM rab_mesta 
-     INNER JOIN rab_c ON rab_c.Код == rab_mesta.Код_РЦ 
-     INNER JOIN professions ON professions.код == rab_mesta.Код_профессии
-     INNER JOIN equipment ON equipment.Пномер == rab_mesta.Номер_осн_оборуд
-     INNER JOIN places ON places.serial == rab_mesta.Расположение
-     INNER JOIN employee s1 ON s1.Пномер == rab_mesta.ФИО_1
-     INNER JOIN employee s2 ON s2.Пномер == rab_mesta.ФИО_2
-     INNER JOIN employee s3 ON s3.Пномер == rab_mesta.ФИО_3"""
-    return CSQ.custom_request_c(db_users,custom_request_c,hat_c=True, rez_dict=True)
+def DICT_RC_TBL(db_users): #27.01.2026
+    current_org_id = CFG.Config.place.poki
+    custom_request_c = f"""SELECT rm.Пномер,
+                                   pc.adress AS Расположение,
+                                   rc.Имя AS РЦ,
+                                   rm.Прозвище,
+                                   eq.Наименование || ' ' || eq.Инв_номер AS Оборудование,
+                                   pr.имя AS Профессия_рм,
+
+                                   COALESCE(e1.Должность, '') AS Должность_1см,
+                                   COALESCE(e1.ФИО, '') AS ФИО_1см,
+                                   COALESCE(sw1.employee_id, 1) AS Пномер_emp1,
+                                   COALESCE(sw1.time_start, '07:00') AS Время_начала_1,
+                                   COALESCE(sw1.time_end,   '15:30') AS Время_конца_1,
+                                   COALESCE(sw1.Нераб_мин, 75) AS Нераб_мин1,
+                                   COALESCE(sw1.Между_нар_мин, 40) AS Между_нар_мин1,
+                                   COALESCE(sw1.Коэфф_производит, 1) AS Коэфф_производит1,
+
+                                   COALESCE(e2.Должность, '') AS Должность_2см,
+                                   COALESCE(e2.ФИО, '') AS ФИО_2см,
+                                   COALESCE(sw2.employee_id, 1) AS Пномер_emp2,
+                                   COALESCE(sw2.time_start, '15:30') AS Время_начала_2,
+                                   COALESCE(sw2.time_end,   '23:59') AS Время_конца_2,
+                                   COALESCE(sw2.Нераб_мин, 75) AS Нераб_мин2,
+                                   COALESCE(sw2.Между_нар_мин, 40) AS Между_нар_мин2,
+                                   COALESCE(sw2.Коэфф_производит, 0.9) AS Коэфф_производит2,
+
+                                   COALESCE(e3.Должность, '') AS Должность_3см,
+                                   COALESCE(e3.ФИО, '') AS ФИО_3см,
+                                   COALESCE(sw3.employee_id, 1) AS Пномер_emp3,
+                                   COALESCE(sw3.time_start, '00:01') AS Время_начала_3,
+                                   COALESCE(sw3.time_end,   '07:00') AS Время_конца_3,
+                                   COALESCE(sw3.Нераб_мин, 75) AS Нераб_мин3,
+                                   COALESCE(sw3.Между_нар_мин, 40) AS Между_нар_мин3,
+                                   COALESCE(sw3.Коэфф_производит, 0.8) AS Коэфф_производит3,
+
+                                   rm.Примечание,
+                                   rm.coord
+                            FROM rab_mesta rm
+                            LEFT JOIN places_capacity pc ON pc.serial == rm.Расположение
+                            LEFT JOIN rab_c rc ON rc.Код == rm.Код_РЦ
+                            LEFT JOIN equipment eq ON eq.Пномер == rm.Номер_осн_оборуд
+                            LEFT JOIN professions pr ON pr.код == rm.Код_профессии
+
+                            LEFT JOIN schedule_work_places sw1 ON sw1.workplace_id == rm.Пномер AND sw1.shift_no == 1
+                            LEFT JOIN schedule_work_places sw2 ON sw2.workplace_id == rm.Пномер AND sw2.shift_no == 2
+                            LEFT JOIN schedule_work_places sw3 ON sw3.workplace_id == rm.Пномер AND sw3.shift_no == 3
+                            LEFT JOIN employee e1 ON e1.Пномер == sw1.employee_id
+                            LEFT JOIN employee e2 ON e2.Пномер == sw2.employee_id
+                            LEFT JOIN employee e3 ON e3.Пномер == sw3.employee_id
+                            WHERE rm.poki = {current_org_id}
+                            ORDER BY rm.Пномер"""
+
+    return CSQ.custom_request_c(db_users, custom_request_c, hat_c=False, rez_dict=True) or []
 
 
 def tmp_dir():
@@ -5319,6 +5568,8 @@ def calc_dict_group_podr_vid_rab_for_plan(*args):
        group_vid_rab_for_plan.composite,
        group_vid_rab_for_plan.estimated,
        group_vid_rab_for_plan.koef_estimate,
+       group_vid_rab_for_plan.etap_name_from_erp_1c,
+       group_vid_rab_for_plan.average_efficiency,
        group_vid_rab_for_plan.num_podr
      FROM 
     group_vid_rab_for_plan INNER JOIN 
@@ -8287,7 +8538,7 @@ def load_order_outsourcing_c(self, tbl_nar, tbl_viev):
     primech = tbl.item(tbl.currentRow(), nk_primech).text()
     data = F.now("%d.%m.%Y %H:%M")
     custom_request_c = f'''SELECT Номенклатура,Номер_заказа FROM mk WHERE Пномер == {int(nom_nom_mk)}'''
-    query = CSQ.custom_request_c(self.db_mk, custom_request_c)
+    query = CSQ.custom_request_c(CFG.Config.project.db_naryad, custom_request_c)
     poz = query[-1][0]
     py = query[-1][1]
     rez = [['№ документа', '', 'Дата(дд.мм.гггг)', 'ВЕДОМОСТЬ АУТСОРСИНГ', f'№{nom_nar}', 'Заказ',"",""],
@@ -8354,15 +8605,7 @@ def dict_emploee(bd_users,conn=''):
     return DICT_EMPLOEE
 
 def dict_emploee_full(bd_users,conn='',self=None):
-    query = f"""SELECT * FROM employee WHERE Пномер IN( SELECT Пномер FROM (SELECT
-	MAX(Пномер) as Пномер,
-	ФИО
-FROM
-	employee
-GROUP BY
-	ФИО
-HAVING COUNT(*) >= 1 )) order by ФИО;"""
-    list_emploee_with_del = CSQ.custom_request_c(bd_users, query, rez_dict=True,conn =conn)
+    list_emploee_with_del = list_emploee_full_with_del(bd_users)
     list_emploee = [_ for _ in list_emploee_with_del if _['Статус'] != 'Увольнение']
     if list_emploee == False:
         return False
@@ -8374,15 +8617,7 @@ HAVING COUNT(*) >= 1 )) order by ФИО;"""
     return F.deploy_dict_c(list_emploee,'ФИО')
 
 def dict_emploee_full_with_del(bd_users,conn=''):
-    query = f"""SELECT * FROM employee WHERE Пномер IN( SELECT Пномер FROM (SELECT
-    	MAX(Пномер) as Пномер, 
-    	ФИО 
-    FROM 
-    	employee  
-    GROUP BY
-    	ФИО
-    HAVING COUNT(*) >= 1 )) order by ФИО;"""
-    list_emploee = CSQ.custom_request_c(bd_users, query, rez_dict=True,conn =conn)
+    list_emploee = list_emploee_full_with_del(bd_users)
     if list_emploee == False:
         return False
     return F.deploy_dict_c(list_emploee,'ФИО')
@@ -8421,7 +8656,7 @@ def DICT_CLD_KPLAN(bd_kplan):
     return  rez
 
 def DICT_PLACES(self,bd_users):
-    query = f"""SELECT * FROM places"""
+    query = f"""SELECT * FROM places_capacity"""
 
     PLACES = CSQ.custom_request_c(bd_users, query, rez_dict=True)
     if PLACES == False:
@@ -8514,7 +8749,7 @@ def load_ved_komplekt(self, tbl_nar, tbl_viev):
     nom_nom_mk = tbl.item(tbl.currentRow(), nk_nom_mk).text()
     data = F.now("%d.%m.%Y %H:%M")
     custom_request_c = f'''SELECT Номенклатура,Номер_заказа FROM mk WHERE Пномер == {int(nom_nom_mk)}'''
-    query = CSQ.custom_request_c(self.db_mk, custom_request_c)
+    query = CSQ.custom_request_c(CFG.Config.project.db_naryad, custom_request_c)
     poz = query[-1][0]
     py = query[-1][1]
     rez = [['№ документа', '', 'Дата(дд.мм.гггг)', 'ВЕДОМОСТЬ КОМПЛЕКТАЦИИ НАРЯДА', f'№{nom_nar}', 'Заказ'],
@@ -8758,11 +8993,14 @@ def load_peresilniy(self, tbl_nar, tbl_viev):
         #CQT.tbl_encircle(tbl,0,0,tbl.rowCount()-1,tbl.columnCount()-1)
         border = CQT.tbl_encircle(tbl, 0, 0, 0, tbl.columnCount() - 1, thick_in=1,thick_out=2)
         #CQT.tbl_encircle(tbl, tbl.rowCount()-1, 0, tbl.rowCount()-1, tbl.columnCount() - 1)
-        border.add_corner_inside((1, 0), (3, tbl.columnCount() - 1), thick=2)
-        border.add_corner_inside((4, 0), (4, tbl.columnCount() - 1), thick=2)
-        border.add_corner_inside((5, 0), (tbl.rowCount()-2, tbl.columnCount() - 1), thick=2,horizontal_inline=True,)
-        border.add_corner_inside((tbl.rowCount()-1, 0), (tbl.rowCount()-1, tbl.columnCount() - 1), thick=2)
+        try:
+            border.add_corner_inside((1, 0), (3, tbl.columnCount() - 1), thick=2)
+            border.add_corner_inside((4, 0), (4, tbl.columnCount() - 1), thick=2)
+            border.add_corner_inside((5, 0), (tbl.rowCount()-2, tbl.columnCount() - 1), thick=2,horizontal_inline=True,)
+            border.add_corner_inside((tbl.rowCount()-1, 0), (tbl.rowCount()-1, tbl.columnCount() - 1), thick=2)
         #tbl.resizeColumnToContents()
+        except:
+            CQT.msgbox('Ошибка обводки таблицы')
 
         tbl.custBorderInfo = border
 
@@ -8802,11 +9040,36 @@ use_in_estimate_plan as use_in_estimate_plan
     self.DICT_RC = F.deploy_dict_c(SPIS_RC,'Код')
     self.DICT_PODR_RC = F.deploy_dict_c(SPIS_RC, 'empl_Подразделение')
 
-def dict_rab_mesta(self, db_users,conn_users=''):
-    self.DICT_RM = dict()
-    custom_request_c = f'''SELECT * FROM rab_mesta'''
-    SPIS = CSQ.custom_request_c(db_users, custom_request_c, hat_c=False,rez_dict=True,conn=conn_users)
-    self.DICT_RM = F.deploy_dict_c(SPIS,'Пномер')
+
+def dict_rab_mesta(self = None, db_users: str = None, conn_users=None): #26.01.2026
+    q = """SELECT rm.Пномер,
+                    rm.Прозвище,
+                    rm.coord,
+                    rm.Расположение,
+                    COALESCE(sw1.employee_id, 1) AS ФИО_1,
+                    COALESCE(sw2.employee_id, 1) AS ФИО_2,
+                    COALESCE(sw3.employee_id, 1) AS ФИО_3
+             FROM rab_mesta rm
+             LEFT JOIN schedule_work_places sw1 ON sw1.workplace_id = rm.Пномер AND sw1.shift_no = 1
+             LEFT JOIN schedule_work_places sw2 ON sw2.workplace_id = rm.Пномер AND sw2.shift_no = 2
+             LEFT JOIN schedule_work_places sw3 ON sw3.workplace_id = rm.Пномер AND sw3.shift_no = 3
+          """
+    rows = CSQ.custom_request_c(db_users, q, rez_dict=True, hat_c=False)
+    DICT_RM = {} #27.01.2026
+    if rows:
+        for r in rows:
+            pnom = int(r.get('Пномер'))
+            DICT_RM[pnom] = {
+                'Прозвище': r.get('Прозвище') or '',
+                'coord': r.get('coord') or '',
+                'Расположение': r.get('Расположение') if r.get('Расположение') is not None else 0,
+                'ФИО_1': r.get('ФИО_1') if r.get('ФИО_1') is not None else 1,
+                'ФИО_2': r.get('ФИО_2') if r.get('ФИО_2') is not None else 1,
+                'ФИО_3': r.get('ФИО_3') if r.get('ФИО_3') is not None else 1,
+            }
+    if self is None:
+        return DICT_RM
+    self.DICT_RM = DICT_RM
 
 def dict_napravl(self, db_kplan):
     self.DICT_NAPRAVL = dict()
@@ -10230,9 +10493,9 @@ def check_and_fix_double_narayds(db_naryad,conn,cur):
 
     last_month = F.now("") - relativedelta(months=1)
     data_nach = F.start_end_dates_c(last_month, '', 'm', "%Y-%m-%d %H:%M:%S")[1]
-    query = f"""SELECT Номер_наряда || " " || ФИО as ФИО, Статус, Пномер FROM jurnal WHERE
-     datetime(jurnal.Дата) > datetime("{data_nach}");
-"""
+    query = f"""
+        SELECT Номер_наряда || " " || ФИО as ФИО, Статус, Пномер 
+        FROM jurnal WHERE datetime(jurnal.Дата) > datetime("{data_nach}") ORDER BY datetime(Дата);"""
     list_for_check = CSQ.custom_request_c(db_naryad, query, conn=conn, cur=cur, rez_dict=True)
     list_for_del = []
     for i, line in enumerate(list_for_check):
@@ -10250,9 +10513,16 @@ def check_and_fix_double_narayds(db_naryad,conn,cur):
         print()
         print(f'{F.now()} УДАЛЕНИЕ НАРЯДОВ {tuple_del} ЗАДВОЕНЫ НАЧАЛА')
         print()
-    query = f"""SELECT Дата, Номер_наряда || " " || ФИО, Пномер, COUNT(*) AS CNT
-   FROM (SELECT * FROM jurnal WHERE jurnal.Статус == "Завершен" and datetime(jurnal.Дата) > datetime("{data_nach}")
-   ORDER BY jurnal.Пномер DESC) GROUP BY Номер_наряда || " " || ФИО HAVING COUNT(*) > 1 ORDER BY Пномер DESC"""
+    query = f"""
+        SELECT Дата, Номер_наряда || " " || ФИО, Пномер, COUNT(*) AS CNT
+        FROM (
+            SELECT * FROM jurnal 
+            WHERE jurnal.Статус == "Завершен" 
+                and datetime(jurnal.Дата) > datetime("{data_nach}")
+                ORDER BY datetime(jurnal.Дата) DESC) 
+            GROUP BY Номер_наряда || " " || ФИО 
+            HAVING COUNT(*) > 1 
+            ORDER BY datetime(Дата) DESC"""
     list_for_check = CSQ.custom_request_c(db_naryad, query, conn=conn, cur=cur, rez_dict=True)
     for line in list_for_check:
         CSQ.custom_request_c(db_naryad,f"""UPDATE jurnal SET Статус = 'Приостановлен' WHERE Пномер = {line['Пномер']};""")
@@ -10284,8 +10554,15 @@ def check_and_fix_broken_narayds(db_naryad,conn,cur):
     def add_rec_task_c(db_naryad,conn,cur):
         #ищет в журнал сроки где начат и 0 и если далее есть пауза или завершен то ставит  сумму и дописывает в наряд если завершен
         print(f'Дозапись нарядов где по журналу завершено или пауза:')
-        query = f"""SELECT Пномер, Штамп, Номер_наряда, ФИО, Подытог, Статус FROM jurnal WHERE Номер_наряда in
-         (SELECT Номер_наряда FROM jurnal WHERE Подытог == 0 AND Статус == "Начат" and datetime(jurnal.Дата) > datetime("{data_nach}"))"""
+        query = f"""
+            SELECT Пномер, Штамп, Номер_наряда, ФИО, Подытог, Статус 
+            FROM jurnal 
+            WHERE Номер_наряда in (
+                SELECT Номер_наряда 
+                FROM jurnal 
+                WHERE Подытог == 0 
+                    AND Статус == "Начат" 
+                    AND datetime(jurnal.Дата) > datetime("{data_nach}"))"""
         list_for_check = CSQ.custom_request_c(db_naryad,query,conn=conn,cur=cur,rez_dict=True)
         if list_for_check == False:
             return
@@ -10379,7 +10656,7 @@ def check_and_fix_broken_narayds(db_naryad,conn,cur):
             list_nar_clear.append(list_nar1[i]['Пномер'])
         list_nar_clear = ', '.join(str(nar) for nar in list_nar_clear)
         list_jurnal = CSQ.custom_request_c(db_naryad, f"""SELECT Номер_наряда, ФИО, Подытог, Статус from jurnal 
-            WHERE Номер_наряда in ({list_nar_clear})  and datetime(jurnal.Дата) > datetime("{data_nach}");""", conn=conn, cur=cur, rez_dict=True)
+            WHERE Номер_наряда in ({list_nar_clear})  and datetime(jurnal.Дата) > datetime("{data_nach}") ORDER BY Дата ASC;""", conn=conn, cur=cur, rez_dict=True)
         for i in range(len(list_nar1)):
             fio = list_nar1[i][f'{fio_}']
             nnar = list_nar1[i]['Пномер']
@@ -10559,7 +10836,6 @@ def calc_productivity_c(data,db_users,db_naryad,db_act,db_kplan,DICT_EMPLOEE,DIC
     spis_rab_za_mes = sorted(spis_rab_za_mes)
 
     list_of_defects_per_months_c = report_ci.get_jur_brak(db_naryad, nach, konec)
-
 
     spis_rc = DICT_RC_TBL(db_users)
     DICT_MASTERS = get_dict_masters(spis_rc,podrazdelenie)
@@ -12598,3 +12874,89 @@ class TypesWorkingByDirections:
                         item[key] = val
             result.append(item)
         return result
+
+# +++ 25.01.2026
+def get_start_stop_journal_pairs(
+        ex_fio: str | list[str] = None,
+        num_naryad: int | list[int] = None,
+        between_start_datetime: str = None,
+        between_stop_datetime: str = None,
+):
+    """Выдает выборку записей журнала в разрезе старта + ближайшего финиша/паузы,
+         где одна строка состоит из:
+            - Старт наряда (запись со статусом Начат)
+            - Ближайший финиш/пауза наряда (запись со статусом Приостановлен/Завершен, текущего "отрезка")
+        С полями:
+            - Номер наряда
+            - ФИО исполнителя
+            - Пномер старта
+            - Пномер паузы/финиша
+            - Дата старта
+            - Дата паузы/финиша
+            - Статус паузы/финиша
+
+    CMS.get_start_stop_journal_pairs(between_start_datetime='2025-12-05', between_stop_datetime='2025-12-06')
+    """
+    where = ""
+    journal_where = ""
+    if between_start_datetime is not None:
+        where += f" AND (datetime(f.start_dt) >= datetime({between_start_datetime!r}) OR datetime(f.end_dt) >= datetime({between_start_datetime!r}))"
+    if between_stop_datetime is not None:
+        where += f" AND (datetime(f.start_dt) <= datetime({between_stop_datetime!r}) OR datetime(f.end_dt) <= datetime({between_stop_datetime!r}))"
+    if ex_fio or num_naryad:
+        lst = []
+        if num_naryad is not None:
+            if isinstance(num_naryad, (int, str)):
+                lst.append(f" j.Номер_наряда = {num_naryad}")
+            else:
+                pk_joined = ','.join(str(num) for num in num_naryad)
+                lst.append(f" j.Номер_наряда IN ({pk_joined})")
+        if ex_fio is not None:
+            if isinstance(ex_fio, str):
+                lst.append(f" j.ФИО = {ex_fio!r}")
+            else:
+                fio_joined = ','.join(repr(fio) for fio in ex_fio)
+                lst.append(f" j.ФИО IN ({fio_joined})")
+        journal_where = 'WHERE ' + ' AND '.join(lst)
+    query = f"""
+    WITH ordered AS (
+              SELECT
+                j.*,
+                SUM(CASE WHEN j.Статус = 'Начат' THEN 1 ELSE 0 END)
+                  OVER (PARTITION BY j.ФИО, j.Номер_наряда ORDER BY j.Дата, j.Пномер) AS frag_id
+              FROM jurnal j
+              {journal_where}
+            ),
+            frag AS (
+              SELECT
+                ФИО,
+                Номер_наряда,
+                frag_id,
+                MIN(CASE WHEN Статус = 'Начат' THEN Пномер END) AS start_pnomer,
+                MIN(CASE WHEN Статус = 'Начат' THEN Дата END)   AS start_dt,
+                MIN(CASE WHEN Статус IN ('Приостановлен', 'Завершен') THEN Пномер END) AS end_pnomer,
+                MIN(CASE WHEN Статус IN ('Приостановлен', 'Завершен') THEN Дата END)   AS end_dt,
+                MIN(CASE WHEN Статус = 'Начат' THEN Минут_выгружено_ЕРП END)   AS Минут_выгружено_ЕРП
+              FROM ordered
+              WHERE frag_id > 0
+              GROUP BY ФИО, Номер_наряда, frag_id
+            )
+            SELECT
+              f.start_pnomer,
+              f.end_pnomer,
+              f.start_dt,
+              f.end_dt,
+              e.Статус AS end_status,
+                e.ФИО as ФИО,
+                f.Номер_наряда AS "Номер_наряда",
+              ROUND((JULIANDAY(f.end_dt) - JULIANDAY(f.start_dt)) * 24 * 60, 2) AS duration_min,
+              f.Минут_выгружено_ЕРП as Минут_выгружено_ЕРП
+            FROM frag f
+                JOIN jurnal e ON e.Пномер = f.end_pnomer
+            WHERE f.start_pnomer IS NOT NULL
+              AND f.end_pnomer IS NOT NULL
+        {where}
+            ORDER BY f.start_dt;
+    """
+    return CSQ.custom_request_c(CFG.Config.project.db_naryad,
+                         query, rez_dict=True, attach_dbs=(CFG.Config.project.db_users))

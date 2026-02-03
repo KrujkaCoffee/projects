@@ -95,8 +95,9 @@ class Resourse_mk():
             nk_oper = CQT.num_col_by_name_c(tbl, 'ПномерОперации')
             tbl.hideColumn(nk_dse) or tbl.hideColumn(nk_oper)
             tbl.verticalHeader().setHidden(True)
-            for i in range(tbl.rowCount()):
-                tbl.item(i, nk_etap).setText('Сборка+сварка')
+            for i in range(tbl.rowCount()): # 17.12.25 по задаче 100064340
+                stages = list(sorted(dict_etaps))
+                tbl.item(i, nk_etap).setText(stages[0])
                 text_setter = lambda tbl, text, row, col: tbl.item(row, col).setText(text)
                 CQT.add_combobox(self=tbl, table=tbl, i=i, j=nk_etap, list=list(dict_etaps), first_void=False,
                                  conn_func=text_setter)

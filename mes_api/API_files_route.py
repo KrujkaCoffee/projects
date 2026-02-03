@@ -111,9 +111,12 @@ def get_list_srv_packages():
 @router.post('/py/packages/')
 def upload_dependencies(data: list[str]):
     """Маршрут для загрузки зависимостей и отправки недостающих."""
-    if len(data) > 0:
-        temp_download = download_and_archive_packages(data)
-        return FileResponse(temp_download, filename=temp_download)
+    try:
+        if len(data) > 0:
+            temp_download = download_and_archive_packages(data)
+            return FileResponse(temp_download, filename=temp_download)
+    except Exception as e:
+        print(e)
 
 @router.get('/py/')
 async def download_file():

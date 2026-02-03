@@ -209,10 +209,10 @@ class mywindow(QtWidgets.QMainWindow):
         self.place: USRCNF.Place = None
         self.setFocusPolicy(QtCore.Qt.StrongFocus)
         CFG.Config.user_config.load_user_config(self)
-        CQT.load_icons(self, 24)
+
         CQT.connect_to_resize(self, CMS.tmp_dir())
         CMS.add_action_config_save_tbl_filtrs(self, self.ui)
-
+        CQT.load_icons(self, 24)
         self.nom_tk = ''
         self.dse_nn = ''
         self.dse_naim = ''
@@ -493,6 +493,7 @@ class mywindow(QtWidgets.QMainWindow):
             self.ui.tblw_dse_find.horizontalScrollBar().setValue)
 
         self.ui.tbl_mat_edit.cellChanged[int,int].connect(self.edit_tbl_mat)
+        self.ui.tbl_mat_edit.cellClicked.connect(lambda i,j : self.enter_tbl_mat( i,j,self.ui.tbl_mat_edit))
         #============================================================
         # self.load_nomen() # 10.11.25 Дубликат без ссылок (замедлял время запуска)
 
@@ -524,6 +525,11 @@ class mywindow(QtWidgets.QMainWindow):
 
         action_unlock_tk = self.ui.action_unlock_tk
         action_unlock_tk.triggered.connect(self.unlock_tk)
+
+        self.view_lock_tk_action = QtWidgets.QAction() #29.01.2026
+        self.view_lock_tk_action.setText('Техкарты в работе')
+        self.view_lock_tk_action.triggered.connect(self.view_lock_tk_table)
+        self.ui.menu.addAction(self.view_lock_tk_action)
         # ===============CMB=============
         self.ui.cmb_mat_tbl.currentTextChanged.connect(self.select_tbl_mat_edit)
 
@@ -1284,6 +1290,9 @@ class mywindow(QtWidgets.QMainWindow):
             return
 
         if CMS.user_access(self.db_naryad,'тк_tbl_mat_edit_full',F.user_name(),msg=False):
+            if tbl_name == 'ВидыНоменклатуры':
+                editeble_col_nomera = {"ТКП",
+                                     }
             if tbl_name == 'nomen':
                 editeble_col_nomera = {"П1",
                                        "П2",
@@ -1347,7 +1356,17 @@ class mywindow(QtWidgets.QMainWindow):
                     )
                     interactive_widget.set_text(', '.join(result))
 
-    #-- 27.08.25
+
+
+    @CQT.onerror
+    def enter_tbl_mat(self, i,j,tbl:QtWidgets.QTableWidget):
+
+        if CQT.is_table_updating(tbl):
+            return
+        item: QtWidgets.QTableWidgetItem = tbl.item(i, j)
+        self._old_val_cell = item.text() if item else None
+
+
     @CQT.onerror
     def edit_tbl_mat(self,*args):
         if not CMS.user_access(self.db_naryad,'тк_tbl_mat_edit_full',F.user_name(),msg=False):
@@ -1355,7 +1374,16 @@ class mywindow(QtWidgets.QMainWindow):
         row,col = args
         tbl_name = self.ui.cmb_mat_tbl.currentText()
         tbl = self.ui.tbl_mat_edit
-        new_val = self.ui.tbl_mat_edit.item(row,col).text()
+        new_val = self.ui.tbl_mat_edit.item(row,col).text().strip()
+        nf = CQT.nums_col_by_name_dict(tbl)
+        if tbl_name == 'ВидыНоменклатуры':
+            if col == nf['ТКП']:
+                if not F.is_bool(new_val):
+                    tbl.blockSignals(True)
+                    tbl.item(row, col).setText(self._old_val_cell)
+                    tbl.blockSignals(False)
+                    CQT.msgbox(f'Недопустимое значение')
+                    return
         column_name= tbl.horizontalHeaderItem(col).text()
         table_conf = tbl.property(tbl_name.encode('utf8'))
         table_property = table_conf.get(column_name)
@@ -1456,12 +1484,12 @@ class mywindow(QtWidgets.QMainWindow):
                     flag = True
                 if sp_tree[i][20] == '1'and sp_tree[i][0] == 'Резка(ЧПУ)' and sp_tree[i][4] == '010101':
                     if sp_tree[i][15] != '':
-                        new_name = f'{F.clear_row_for_file_name_c(self.dse_nn)}.dxf'
+                        new_name = f'{F.clear_row_for_file_name_c(self.dse_nn)}.dxf' #29.01.2026 незафиксированная
                         file = self.operation_docs.storage.get_dxf(sp_tree[i][15], self.dse_nn, new_name=new_name) # 08.12.25
                         if file == None or file == False:
                             nom_op = sp_tree[i][2]
                             name_op = sp_tree[i][0]
-                            # CQT.msgbox(f'[{nom_op} {name_op}]DXF файл в базе не найден')
+                            CQT.msgbox(f'[{nom_op} {name_op}]DXF файл в базе не найден')
                             break
                         dict_rez = CDXF.raschet_dxf(file)
                         if dict_rez != None:
@@ -1470,7 +1498,113 @@ class mywindow(QtWidgets.QMainWindow):
                             CQT.msgbox('DXF не корректный, не распознать.')
                         break
         # ===============================================
+        # ++29.01.2026
+    @CQT.onerror
+    def on_click_close_lock_tk_table(self, label, row, *args, **kwargs):
+        try:
+            nn = label.item_text
+            table = label.table
+            login = F.user_name()
+            filename = os.path.join(self.path_cash_poki, 'lock_tk.picle')
+            data = F.load_file_pickle(filename)
+            cleaned_lst = {cr_nn: user_name for cr_nn, user_name in data.items() if cr_nn != nn and user_name != login}
+            F.save_file_pickle(filename, cleaned_lst)
+            table.removeRow(row)
+        except Exception as e:
+            print(e)
+            CQT.msgbox('Произошла ошибка при попытке удалить блок с техкарты')
 
+    @CQT.onerror
+    def on_click_open_lock_tk_table(self, label, *args):
+        poki = CFG.Config.place.poki
+        nn = label.item_text
+        if self.ui.tabWidget.tabText(self.ui.tabW.currentIndex()) != 'Номенклатура':
+            return CQT.msgbox('Переход возможен только из вкладки "Номенклатура"')
+        table_dse: QtWidgets.QTableWidget = self.ui.tblw_dse
+        nn_column = CQT.num_col_by_name_c(table_dse, 'Номенклатурный_номер')
+
+        lst_dse = CQT.list_from_wtabl_c(table_dse, rez_dict=True)
+        dse_by_nn = F.deploy_dict_c(lst_dse, 'Номенклатурный_номер')
+        exist_on_table = dse_by_nn.get(nn)
+        if not exist_on_table:
+            result = CSQ.custom_request_c(
+                CFG.Config.project.db_dse,
+                f'SELECT * FROM dse WHERE Номенклатурный_номер = ? AND poki = {poki} LIMIT 1',
+                list_of_lists_c=[[nn]],
+                rez_dict=True,
+                one=True
+            )
+            if not result:
+                return CQT.msgbox(f'Техкарта: {nn!r} не найдена!')
+            headers = {
+                table_dse.horizontalHeaderItem(column).text(): result.get(table_dse.horizontalHeaderItem(column).text())
+                for column in range(table_dse.columnCount())
+            }
+            lst_dse.append(headers)
+            CQT.fill_wtabl(lst_dse, self.ui.tblw_dse)
+        try:
+            idx_row = next(row for row in range(table_dse.rowCount()) if table_dse.item(row, nn_column).text() == nn)
+        except Exception as e:
+            print(e)
+            return
+        if table_dse.isRowHidden(idx_row):
+            table_dse.setRowHidden(idx_row, False)
+        with QtCore.QSignalBlocker(table_dse):
+            table_dse.setCurrentCell(idx_row, nn_column)
+            table_dse.selectRow(idx_row)
+            table_dse.scrollTo(table_dse.model().index(idx_row, 0))
+        self.load_zagolovok_dse(False)
+        self.btn_create_or_edit_tk(False)
+
+    @CQT.onerror
+    def decor_lock_tk_table(self, tbl: QtWidgets.QTableWidget):
+        nn_column = CQT.num_col_by_name_c(tbl, 'Обозначение')
+        for row in range(tbl.rowCount()):
+            label_tk = CQT.add_interactive_label(tbl, row, nn_column)
+            label_tk.add_button(txt_button='➡️', tooltip='Перейти', on_clicked=self.on_click_open_lock_tk_table)
+            label_tk.add_button(txt_button='❌', tooltip='Закрыть', on_clicked=self.on_click_close_lock_tk_table)
+
+    def get_lock_tk_data(self, all_lock_tk: bool = False):
+        filename = os.path.join(self.path_cash_poki, 'lock_tk.picle')
+        data = F.load_file_pickle(filename)
+        login = F.user_name()
+        table_data = []
+        try:
+            employee_by_login = {credentials['login']: fio for fio, credentials in self.DICT_EMPLOEE_FULL.items()}
+        except Exception as e:
+            employee_by_login = {}
+        for tk, user_name in data.items():
+            if all_lock_tk:
+                table_data.append({'Обозначение': tk, 'Пользователь': employee_by_login.get(user_name, user_name)})
+            elif user_name == login:
+                table_data.append({'Обозначение': tk})
+        return table_data
+
+    @CQT.onerror
+    def view_lock_tk_table(self, *args):
+        table_data = self.get_lock_tk_data()
+        dialog = CQT.Dialog_tbl(self, "Техкарты в работе", table_data, func_oform_tbl=self.decor_lock_tk_table,
+                                show_filtr=False,
+                                disable_btn1=True,
+                                btn0_name='OK')
+        chk = QtWidgets.QCheckBox()
+        dialog.ui.horizontalLayout_2.addWidget(chk)
+        chk.setText('Только свои')
+        chk.setChecked(True)
+        tbl = dialog.ui.tbl
+        is_enabled = CMS.user_access(CFG.Config.project.db_naryad, 'тк_разблокировать_тк', F.user_name(), msg=False)
+        chk.setEnabled(is_enabled)
+
+        def refill_tbl(tbl: QtWidgets.QTableWidget, chk: QtWidgets.QCheckBox):
+            table_data = self.get_lock_tk_data(not chk.isChecked())
+            if not table_data:
+                return CQT.clear_tbl(tbl)
+            CQT.fill_wtabl(dict_or_list=table_data, height_row=25, object=tbl, auto_type=False)
+            self.decor_lock_tk_table(tbl)
+            return
+        chk.clicked.connect(lambda *args: refill_tbl(tbl, chk))
+        return dialog.exec()
+        # --29.01.2026
 
     @CQT.onerror
     def obnov_dse(self,conn = '', cur = '', *args):
@@ -4160,6 +4294,9 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
                 vrema = 0
         if vrema == 0:
             CQT.msgbox('Не рассчиано время, материалы не заненсены.')
+        if F.valm(vrema) >= CFG.Config.place.limit_time_on_naryad: #25.11.25
+            CQT.msgbox(f'Время: "{vrema}" на единицу превышает установленный лимит на один наряд {CFG.Config.place.limit_time_on_naryad}\nИзменения не применены')
+            return item
         item.setText(7, str(vrema))
         return item
 

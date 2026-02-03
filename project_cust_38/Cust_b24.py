@@ -1,4 +1,5 @@
 import logging
+import typing
 
 import urllib3
 import requests
@@ -12,6 +13,18 @@ urllib3.disable_warnings()
 
 id  ='chat49451'
 logging.basicConfig(level=logging.INFO)
+
+class B24Config:
+    BASE_REST_URL = 'https://bitrix24.kelast.ru/rest/'
+
+    USER_ID_ADMIN = 1
+    USER_ID_BOTAPI = 3342
+
+    AUTH_TOKEN_LANDING = 'stno5v2z4n6qfu98'
+
+    # enpoints
+    END_CHANGE_LANDING_BLOCK = 'landing.block.updatecontent'
+
 
 class BaseSender:
     def _make_table_body(self,
@@ -40,7 +53,7 @@ class BaseSender:
 
 
 class B24Sender(BaseSender):
-    _URL = 'https://bitrix24.kelast.ru/rest/1/ebehb6fsejx39kj2/'
+    _URL = f'{B24Config.BASE_REST_URL}1/ebehb6fsejx39kj2/'
     _NOTIFY_ENDPOINT = 'im.notify.personal.add'
     _SEND_MESSAGE_ENDPOINT = 'im.message.add'
     _EDIT_MESSAGE_ENDPOINT = 'im.message.update'
@@ -219,6 +232,22 @@ class MessageBuilder:
     def send_by_chat_id(self, chat_id: str):
         """Отправка сообщения по chat_id"""
         self.__sender.send_msg_by_chat_id(chat_id, self.title, attach=self.sandwich)
+
+class HtmlContentDeployer:
+    def pick_html_into_landing_block(self, *, html, matrix_id_landing_b24, matrix_id_landing_table_block_b24) -> bool:
+        """Прикрепить html к блоку объекта landing"""
+        url = f'{B24Config.BASE_REST_URL}{B24Config.USER_ID_BOTAPI}/{B24Config.AUTH_TOKEN_LANDING}/{B24Config.END_CHANGE_LANDING_BLOCK}'
+        response = requests.post(
+            url,
+            json={
+                'lid': matrix_id_landing_b24,
+                'block': matrix_id_landing_table_block_b24,
+                'content': html,
+                'scope': 'knowledge'
+            },
+            verify=False
+        )
+        return response.ok
 
 
 # https://bitrix24.kelast.ru/online/?IM_DIALOG=chat41228

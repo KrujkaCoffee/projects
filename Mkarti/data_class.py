@@ -4,7 +4,7 @@ import project_cust_38.Cust_SQLite as CSQ
 import project_cust_38.Cust_mes as CMS
 
 import project_cust_38.Cust_config as USRCNF
-###q
+
 @dataclass
 class Data_plan:
     @staticmethod
@@ -118,4 +118,7 @@ class Data_plan:
     DICT_VID_NOMEN = F.deploy_dict_c(LIST_VID_NOMEN,'name')
     DICT_VID_NOMEN_NUM = F.deploy_dict_c(LIST_VID_NOMEN, 's_num')
     DICT_COMPOSITE_PODRAZD =  calc_composite_plan_group(db_kplan,db_users,PLACE,DICT_GROUP_VID_RAB_FOR_PLAN)
+    LIST_GROUP_VID_RAB_FOR_PLAN_VS_ETAP = CSQ.custom_request_c(db_users, f'''SELECT *
+     FROM group_vid_rab_for_plan_vs_etap 
+    INNER JOIN etaps ON etaps.s_num == group_vid_rab_for_plan_vs_etap.etap_id;''', rez_dict=True,attach_dbs=bd_naryad)
     DICT_GROUP_PODR_VID_RAB_FOR_PLAN = CMS.calc_dict_group_podr_vid_rab_for_plan()

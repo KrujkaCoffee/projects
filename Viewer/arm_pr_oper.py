@@ -81,8 +81,8 @@ def fill_tbl_report_add(self:mywindow,*args):
         LEFT JOIN jurnal ON jurnal.Номер_наряда = naryad.Пномер 
         LEFT JOIN bases_ERP ON jurnal.base_ERP = bases_ERP.s_num 
         WHERE jurnal.ФИО = "{user_name}" and jurnal.Номер_наряда == {item["Наряд№"]} 
-         and jurnal.Статус == "Начат" and jurnal.Пномер < {item['Пномер_жур']} ORDER BY jurnal.Пномер DESC LIMIT 1
-        """,rez_dict=True, attach_dbs=(self.db_kplan,self.bd_users),one=True)
+         and jurnal.Статус == "Начат" and datetime(jurnal.Дата) < datetime({item['Дата']!r}) ORDER BY datetime(jurnal.Дата) DESC LIMIT 1
+        """,rez_dict=True, attach_dbs=(self.db_kplan,self.bd_users),one=True) # 02.02.2026
         item['Номер_мк'] = list_nar_start['Номер_мк']
         list_narjur.append(list_nar_start)
         list_narjur.append(item)
@@ -561,6 +561,9 @@ def show_structure_nar(self:mywindow,*args):
                 for oper in dse['Операции']:
                     if oper['Опер_номер'] == row['Операции_номер']:
                         row['Код проф'] = oper['Опер_профессия_код']
+                        row['Этап'] = oper['Этап']
+                        row['Опер_РЦ_код'] = oper['Опер_РЦ_код']
+                        row['Опер_РЦ_наименование'] = oper['Опер_РЦ_наименование']
                         if row['Код проф'] in self.DICT_PROFESSIONS:
                             row['Прим. проф'] = self.DICT_PROFESSIONS[row['Код проф']]['примечание']
                             row['Прямые затраты'] = self.DICT_PROFESSIONS[row['Код проф']]['Прямые']

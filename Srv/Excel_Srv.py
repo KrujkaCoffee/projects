@@ -3,5 +3,5 @@ import socket
 
 PORT = 20012
 if __name__ == '__main__':
-    Srv.run("192.168.50.44", PORT)
+    Srv.run("192.168.100.135", PORT)
     quit(2)

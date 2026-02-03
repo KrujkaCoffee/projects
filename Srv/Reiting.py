@@ -28,6 +28,7 @@ if __name__ != '__main__':
 import requests
 import project_cust_38.Cust_Functions as F
 import time
+import copy
 import project_cust_38.report_ci as reports
 import project_cust_38.Cust_SQLite as CSQ
 import project_cust_38.Cust_Qt as CQT
@@ -39,6 +40,7 @@ from PyQt5 import QtWidgets
 import project_cust_38.api_erp_commands as APIERP
 import project_cust_38.Cust_Excel as CEX
 import project_cust_38.cust_pars_common_exel_b24 as GETPLIT
+from project_cust_38 import Cust_b24 as CB24
 import user_calendar
 # pyinstaller.exe --onefile main.py
 
@@ -160,6 +162,193 @@ class DbCacheCleaner:
 # -- 28.10.25
 
 
+# ++ 25.01.26
+class AutoBreaks:
+    def get_dict_worker_breaks_by_worker_ref(self):
+        query_schedules = """
+                          SELECT employee_phys_ref, period, schedule, error_margin
+                          FROM schedule_break
+                          """
+
+        breaks = CSQ.custom_request_c(
+            USRCNF.Config.project.db_users,
+            query_schedules,
+            rez_dict=True
+        )
+        schedules = {}
+
+        for break_ in breaks:
+            schedules.setdefault(break_['employee_phys_ref'], []).append(break_)
+        return schedules
+
+    def minutes_diff_hhmm(self, t1: str, t2: str) -> int:
+        fmt = "%H:%M"
+        a = datetime.strptime(t1, fmt)
+        b = datetime.strptime(t2, fmt)
+        return int((a - b).total_seconds() // 60)
+
+    def run(self):
+        """
+        Создание перерывов в нарядах
+
+        case 1 - [07:00-07:15] Если наряд начат вне диапазона перерыва нпр  06:53 и окончил/запаузил в течении перерыва - игнорируем
+        case 2 - [07:00-07:15] Начал до перерыва нпр 06:53 и окончил/запаузил в 15:02 - ставим паузу в 07:00 и старт в 07:15 + пересчет подытога в 15:02
+        case 3 - [07:00-07:15] Начал до перерыва 24-12-2025 06:53:00 окончил 25-12-2025 07:53:00 - если интервал больше 15 часов - игнорируем
+        case 4 - [06:00-06:15] Начал после начала перерыва ( с учетом margin) нпр 06:03 и окончен 15:04
+            переносим время старта, на время конца перерыва 6:15 + пересчет подытога по 15:04 (концу отрезка)
+        case 5 - [06:00-06:15] Если наряд начат во время перерыва и окончен во время перерыва - игнорируем
+        case 6 - [14:30-14:45] Перерыв начался перед окончанием наряда и продолжился после
+            например наряд начался в 6:53 окончился в 14:35, сдвигаем концовку до 14:30
+        """
+
+        ago = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+        result = CMS.get_start_stop_journal_pairs(between_start_datetime=ago)
+        dict_employee = CMS.dict_emploee_full(USRCNF.Config.project.db_users)
+
+        idle_codes = CSQ.custom_request_c(
+            USRCNF.Config.project.db_naryad,
+            f'SELECT code FROM коды_веплана_для_наряда WHERE name = "Простой"',
+            one_column=True,
+            hat_c=False
+        )
+        messages = []
+        schedules = self.get_dict_worker_breaks_by_worker_ref()
+        self.replaced_pk = {}
+        for segment_journal in result:
+            fio_segment = segment_journal['ФИО']
+            pk_naryad = segment_journal['Номер_наряда']
+
+            end_status = segment_journal['end_status']
+            interval = segment_journal['duration_min']
+            start_datetime_str = segment_journal['start_dt']
+            end_datetime_str = segment_journal['end_dt']
+
+            limit_minutes = 15 * 60
+            if interval > limit_minutes:
+                print(f'Наряд #{pk_naryad} был проигнорирован т.к. интервал отрезка равен {interval}')
+                continue
+            if fio_segment not in dict_employee:
+                continue
+            profile = dict_employee[fio_segment]
+            phys_ref = profile['ID_ФизЛица']
+
+            worker_schedules = schedules.get(phys_ref, [])
+            if not worker_schedules: continue
+
+            start_datetime = datetime.strptime(segment_journal['start_dt'], '%Y-%m-%d %H:%M:%S')
+            start_date_str = datetime.strftime(start_datetime, '%Y-%m-%d')
+            end_datetime = datetime.strptime(segment_journal['end_dt'], '%Y-%m-%d %H:%M:%S')
+            end_date_str = datetime.strftime(end_datetime, '%Y-%m-%d')
+
+            for schedule in worker_schedules:
+                start_journal_pk = self.find_last_key(segment_journal['start_pnomer'])
+                end_journal_pk = self.find_last_key(segment_journal['end_pnomer'])
+                start_period_hour, end_period_hour = schedule['schedule'].split('-')
+                if abs(self.minutes_diff_hhmm(start_period_hour, end_period_hour)) >= interval:
+                    continue
+
+                error_margin = schedule.get('error_margin') and 0
+                start_period_datetime = datetime.strptime(f"{start_date_str} {start_period_hour}:00", '%Y-%m-%d %H:%M:%S')
+                start_period_datetime_with_margin = start_period_datetime + timedelta(minutes=error_margin)
+                end_period_datetime = datetime.strptime(f"{end_date_str} {end_period_hour}:00", '%Y-%m-%d %H:%M:%S')
+                end_period_datetime_with_margin = end_period_datetime - timedelta(minutes=error_margin)
+
+                # Старт до перерыва и находится в промежутке между стартом(с учетом margin) и концом отрезка
+                start_before_condition = start_datetime < start_period_datetime_with_margin and start_period_datetime_with_margin < end_datetime and end_datetime > end_period_datetime_with_margin
+                # Старт после начала перерыва(с учетом margin), не превышающий конец отрезка
+                start_after_condition = start_datetime > start_period_datetime_with_margin and start_datetime < end_period_datetime_with_margin
+
+                start_before_and_end_after_condition = start_datetime < start_period_datetime_with_margin and start_period_datetime_with_margin < end_datetime and end_datetime < end_period_datetime_with_margin
+
+                code_vneplan = CSQ.custom_request_c(
+                    USRCNF.Config.project.db_naryad,
+                    f'SELECT Внеплан FROM naryad WHERE Пномер = {pk_naryad}',
+                    one_column=True,
+                    one=True,
+                    hat_c=False
+                )
+                is_idle = code_vneplan in idle_codes
+                template = {'Наряд': pk_naryad}
+                # if start_datetime < start_period_datetime_with_margin and start_period_datetime_with_margin < end_datetime:
+                if start_before_condition:
+                    journal = CMS.Jurnal_nar(USRCNF.Config.project.db_naryad, pk_naryad, user=fio_segment)
+                    journal.set_selected_fragment(start_journal_pk)
+                    schedule_start_datetime_str = f"{start_date_str} {start_period_hour}:00"
+                    schedule_end_datetime_str = f"{end_date_str} {end_period_hour}:00"
+                    pk_stop_by_scedule = journal.add_new_row(dict_employee, "", f"{start_date_str} {start_period_hour}:00", state='Приостановлен', primech='Перерыв начало', is_idle=is_idle)
+                    journal = CMS.Jurnal_nar(USRCNF.Config.project.db_naryad, pk_naryad, fio_segment)
+                    journal.set_selected_fragment(pk_stop_by_scedule)
+                    pk_start_by_schedule = journal.add_new_row(dict_employee, "", f"{end_date_str} {end_period_hour}:00", state='Начат', primech='Перерыв конец', is_idle=is_idle)
+
+                    row = journal.drop_row(end_journal_pk)
+                    old_comment = row['Примечание']
+
+                    journal = CMS.Jurnal_nar(USRCNF.Config.project.db_naryad, pk_naryad, fio_segment)
+                    journal.set_selected_fragment(pk_start_by_schedule)
+                    new_end_pk = journal.add_new_row(dict_employee, "", end_datetime_str, end_status,
+                                        primech=old_comment,
+                                        is_idle=is_idle)
+                    self.replaced_pk[end_journal_pk] = new_end_pk
+
+                    msg = f'Наряд {pk_naryad} создание перерывов Пауза - {schedule_start_datetime_str}; Начало - {schedule_end_datetime_str}'
+                    messages.append({**template, 'Инфо': msg})
+                    print(msg)
+                if start_after_condition:
+                    journal = CMS.Jurnal_nar(USRCNF.Config.project.db_naryad, pk_naryad, user=fio_segment)
+                    new_row_start = journal.drop_row(start_journal_pk)
+                    journal = CMS.Jurnal_nar(USRCNF.Config.project.db_naryad, pk_naryad, user=fio_segment)
+
+                    new_schedule_start_datetime_str = f"{start_date_str} {end_period_hour}:00"
+                    pk_start_by_schedule = journal.add_new_row(dict_employee, "", new_schedule_start_datetime_str, state='Начат', primech=' [Автоматические перерыва]Перенесено время старта', is_idle=is_idle)
+                    self.replaced_pk[start_journal_pk] = pk_start_by_schedule
+
+                    new_row_end = journal.drop_row(end_journal_pk)
+                    old_comment = new_row_end['Примечание']
+
+
+                    journal = CMS.Jurnal_nar(USRCNF.Config.project.db_naryad, pk_naryad, fio_segment)
+                    journal.set_selected_fragment(pk_start_by_schedule)
+                    new_end_pk = journal.add_new_row(dict_employee, "", end_datetime_str, end_status,
+                                        primech=old_comment,
+                                        is_idle=is_idle)
+                    self.replaced_pk[end_journal_pk] = new_end_pk
+
+                    msg = f'Наряд {pk_naryad} сдвиг старта было: {start_datetime_str}; стало: {new_schedule_start_datetime_str}'
+                    messages.append({**template, 'Инфо': msg})
+                    print(msg)
+
+                if start_before_and_end_after_condition:
+                    journal = CMS.Jurnal_nar(USRCNF.Config.project.db_naryad, pk_naryad, user=fio_segment)
+                    new_row_end = journal.drop_row(end_journal_pk)
+                    old_comment = new_row_end['Примечание']
+
+                    new_schedule_end_datetime_str = f"{end_date_str} {start_period_hour}:00"
+                    journal = CMS.Jurnal_nar(USRCNF.Config.project.db_naryad, pk_naryad, user=fio_segment)
+                    journal.set_selected_fragment(start_journal_pk)
+                    new_end_pk = journal.add_new_row(dict_employee, "", new_schedule_end_datetime_str, end_status,
+                                        primech=old_comment,
+                                        is_idle=is_idle)
+                    self.replaced_pk[end_journal_pk] = new_end_pk
+
+                    msg = f'Наряд {pk_naryad} сдвиг концовки было: {end_datetime_str}; стало: {new_schedule_end_datetime_str}'
+                    messages.append({**template, 'Инфо': msg})
+                    print(msg)
+        if messages:
+            sender = CB24.B24Sender()
+            sender.send_msg_table_by_action(
+                action='Корректировки данных',
+                title='Автоматически перерывы',
+                tbl=messages)
+
+    def find_last_key(self, journal_pk: int):
+        while journal_pk in self.replaced_pk:
+            journal_pk = self.replaced_pk[journal_pk]
+        return journal_pk
+
+# -- 25.01.26
+
+
+
 
 def export_data_for_excel_plan():
     query2 = "SELECT * FROM jurnal;"  # arr = select_SQL(putdb, query2, True)
@@ -205,25 +394,33 @@ def update_employee_registr_states_from_1c():
 
 def plan_it_form_b24():
     SET_UPLOADED_FIELDS = {'НОМЕР',
-                           'Тип',
+                           'ТИП',
                            'НАЗВАНИЕ ЗАДАЧИ',
                            'ПП',
-                           'Задача',
+                           'ЗАДАЧА',
                            'ОПИСАНИЕ',
+                           'КОММЕНТАРИИ',
                            'ПОСТАНВОЩИК',
+                           'ПРИОРИТЕТ',
                            'ОТВЕТСТВЕННЫЙ',
                            'ДАТА НАЧАЛА',
-                           'В месяце',
+                           'В МЕСЯЦЕ',
                            'ДАТА ОКОНЧАНИЯ',
+                           'ПРИЛОЖЕНИЕ',
                            'ПРОЦЕНТ ВЫПОЛНЕНИЯ',
                            'ПРОД-НОСТЬ, РАБ. ДН',
                            }
     try:
-        bitrix_file_reader = GETPLIT.GetBitrixFiles('89a19d9b18995d279d8e7aa189cfb495')
+        bitrix_file_reader = GETPLIT.GetBitrixFiles('34b9c2938b7d2fccaad26e33ac866397')
         data_plan_it = bitrix_file_reader.parse_xlsx_data(sheet_name='Диаграмма Ганта')
 
         data_plan_it = [{k: v for k, v in _.items() if k in SET_UPLOADED_FIELDS} for _ in data_plan_it]
-        F.save_file_pickle("plan_it_form_b24(gen by reiting).pickle", data_plan_it)
+        name_file = "plan_it_form_b24(gen by reiting).pickle"
+        z_path = fr'Z:\Data' + F.sep() + name_file
+        F.save_file_pickle(z_path, data_plan_it)
+        print(f'План ИТ сохранен в {z_path}')
+        F.save_file_pickle(name_file, data_plan_it)
+        print(f'План ИТ сохранен в {F.path_to_execut_file_c() + name_file}')
     except:
         print(f'ERROR GetBitrixFiles')
 
@@ -310,6 +507,12 @@ def update_vid_rab_from_1c():
 
 
 def update_emploee_to_db_from_1c(write=False):
+
+    print(f'===== {F.now()} UPDATE SPREAD EMPLOYEE========')
+    obj = CMS.Emploee_spread_db()
+    obj.update_fiz_users()
+
+    print(f'==============================')
     obj = CMS.Emploee_db(F.bdcfg('BD_users'))
     # rezult = obj.update_db(F.bdcfg('Naryad'),False)
     # print(rezult)
@@ -317,6 +520,7 @@ def update_emploee_to_db_from_1c(write=False):
     print(f'\n')
     obj.update_db(F.bdcfg('Naryad'), write)
     print(f'==============================')
+
     print(f'\n')
     print(f'\n')
 
@@ -1450,6 +1654,98 @@ def update_napravl_deyat():
     print('=' * 26)
 
 
+def update_podrazdeleniya():
+    print('=' * 26)
+    print()
+    print('Обновление поздразделений из 1С')
+
+    def get_data_from_erp(ref_org:str)->dict[dict]|None:
+        text = f"""
+        ВЫБРАТЬ
+            ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ПодразделенияОрганизаций.Владелец.Ссылка)) КАК Ref_Организация,
+            ПодразделенияОрганизаций.Наименование КАК Наименование,
+            ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ПодразделенияОрганизаций.Ссылка)) КАК Ref_Подразделение
+        ИЗ
+            Справочник.ПодразделенияОрганизаций КАК ПодразделенияОрганизаций
+        ГДЕ
+            ПодразделенияОрганизаций.ПометкаУдаления = ЛОЖЬ
+            И ПодразделенияОрганизаций.Расформировано = ЛОЖЬ
+            И ПодразделенияОрганизаций.Владелец.Ссылка = &Организация
+                """
+        refs = APIERP.Refs_wet(text)
+        ref_obj = APIERP.Ref_wet('Организация', 'Справочники.Организации', ref_org)
+        refs.add_ref(ref_obj)
+        key, data_rez = APIERP.get_wet_request(text=text, refs=refs)
+        if key != 200:
+            print(f' Ошибка получения данных update_podrazdeleniya код ({key}) из ERP')
+            return None
+
+        return F.deploy_dict_c(data_rez['data'],'Ref_Подразделение')
+    def get_data_from_mes(poki:int)->dict[dict]:
+        data_podrs = CSQ.custom_request_c(USRCNF.Config.project.db_users, f'''SELECT * 
+                     FROM Подразделения WHERE Организация_poki = {poki};''', rez_dict=True)
+        return F.deploy_dict_c(data_podrs,'Подразделение_Key')
+
+    try:
+        data_organizations = CSQ.custom_request_c(USRCNF.Config.project.db_naryad, f'''SELECT poki, Организация_Key 
+                 FROM places''' , rez_dict=True)
+
+        for org_data in data_organizations:
+            poki = org_data['poki']
+            data_podrs_mes = get_data_from_mes(poki)
+            if data_podrs_mes is None or data_podrs_mes == False:
+                continue
+            data_podrs_1C = get_data_from_erp(org_data['Организация_Key'])
+            if data_podrs_1C is None:
+                continue
+
+            set_ref_1c = set(data_podrs_1C.keys())
+            set_ref_mes = set(data_podrs_mes.keys())
+            set_delete = set_ref_mes - set_ref_1c
+            set_add = set_ref_1c - set_ref_mes
+            dict_edit = dict()
+            #===========DELETE==============================
+            for ref in set_delete:
+                if ref not in dict_edit:
+                    dict_edit[ref] = dict()
+                dict_edit[ref]['for_deletion'] = 1
+                print(f'ref {ref}  set deleted')
+            # ===========EDIT=============================
+            for ref, item_mes in data_podrs_mes.items():
+                item_1c = data_podrs_1C[ref]
+                Наименование = item_1c['Наименование']
+                if Наименование != item_mes['Наименование']:
+                    dict_edit[ref]['Наименование'] = Наименование
+                    print(f'ref {ref} set Наименование = "{Наименование}"')
+                if item_mes['for_deletion']:
+                    dict_edit[ref]['for_deletion'] = 0
+
+            for ref, data_edit in dict_edit.items():
+                list_fields = list(data_edit.keys())
+                list_vals = list(data_edit.values())
+                CSQ.custom_request_c(USRCNF.Config.project.db_users, f'''UPDATE Подразделения
+                                SET  ({','.join(list_fields)})
+                                    = ({CSQ.questions_for_mask(list_fields)})
+                                            WHERE Подразделение_Key == "{ref}" ;''',list_of_lists_c=[list_vals])
+            # ===========ADD=============================
+            if set_add:
+                list_add = []
+                for ref in set_add:
+                    name = data_podrs_1C[ref]['Наименование']
+                    Подразделение_Key = ref
+                    list_add.append([name,Подразделение_Key,poki])
+                    print(f'ref {Подразделение_Key}, "{name}", poki {poki} added')
+                CSQ.custom_request_c(USRCNF.Config.project.db_users, f'''INSERT INTO 
+                Подразделения(Наименование, Подразделение_Key, Организация_poki) 
+                                      VALUES (?, ?, ?);''', list_of_lists_c=list_add)
+
+    except Exception as e:
+            print(f"[update_podrazdeleniya] Ошибка: {e}")
+
+    print()
+    print('=' * 26)
+
+
 #---23.09.25
 
 db_users = F.bdcfg('BD_users')
@@ -1504,11 +1800,12 @@ count_reset = 3600 * 0.5  # каждые 0.5 часа обновление
 
 vrem = 600
 
-#update_vid_rab_from_1c()#TODO Виды работ для моямсина
+#update_vid_rab_from_1c()#
 #quit()
 #user_calendar.main()
 #quit()
 #nomen_erp.obn_mat_erp_file(db_mater)
+
 while True:
     counter_timer += vrem
     counter_timer_middle += vrem
@@ -1516,9 +1813,19 @@ while True:
     print(f'{F.now()} counter_mater: {counter_timer_middle}/{count_reset_middle}')
 
     current_hour = datetime.now().hour
-    if counter_timer_middle >= count_reset_middle and current_hour >= 0 and current_hour <= 5: #01.09.25
+    if counter_timer_middle >= count_reset_middle and current_hour >= 18 and current_hour <= 23: #01.09.25
         counter_timer_middle = 0
 
+        try:
+            print()  #25.01.2026
+            print('===' * 30)
+            print('Создание перерывов старт')
+            AutoBreaks().run()
+            print()
+            print('===' * 30)
+            print('Создание перерывов финиш')
+        except Exception as e:
+            print(e)
         ## обновление update_napravl_deyat
         try:
             if CALC_SINCHRONS:
@@ -1542,6 +1849,7 @@ while True:
         ## обновление сотрудников
         try:
             if CALC_SINCHRONS:
+                update_podrazdeleniya()
                 update_employee_registr_states_from_1c()
                 update_emploee_to_db_from_1c(True)
             if CALC_user_calendar:

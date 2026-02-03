@@ -2,12 +2,11 @@ import socket
 from os import path
 PORT = 20013
 if socket.gethostname() == 'POW18-15':#"POW-ING22":
-    HOST = '192.168.18.91'# AG local
+    HOST = '192.168.14.71'# AG local
     DIR_ROOT = r'C:\Python\gui_flet_mes'  # AG local
-if socket.gethostname() == 'POW18-08':
-    HOST = 'localhost'# AG local
-    DIR_ROOT = r'C:\Users\A.A.Fedorov\MES\ideal_context\Transport\gui_flet_mes'  # AG local
 else:
+
+
     HOST = '192.168.50.44'# server
     DIR_ROOT = r'C:\srv_mes\web_app_mes'  # srv
 

@@ -24,6 +24,12 @@ else:
 class Ref_wet():
 
     def __init__(self,name_var:str, path_conf_1c:str, ref_key:str):
+        """
+        
+        :param name_var: 
+        :param path_conf_1c: 'Документы.ЗаказПоставщику'
+        :param ref_key: 
+        """
         if '&' in name_var:
             raise ValueError(f'В name_var не должно быть `&`')
         if not F.is_unique_identifier(ref_key):
@@ -292,7 +298,7 @@ def get_wet_request_result(text: str, refs: Refs_wet | None = None, lazy_method_
         F.win_msgbox(f'Внимание!', f'Ошибка получения данных из ЕРП')
         return
     if not res['data']:
-        if msg_err is 'None':
+        if msg_err == 'None':
             msg_err = f'Данные не найдены'
         if msg_err:
             F.win_msgbox(f'Внимание!', msg_err)

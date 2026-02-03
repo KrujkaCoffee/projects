@@ -279,7 +279,7 @@ def dict_zero_val_row(db,tbl_name):
             row[k] = None
     return row
 
-def dict_types_tbl(db,tbl_name):
+def dict_types_tbl(db,tbl_name)->dict[str,type]:
     list_dicts = custom_request_c(db, custom_request_c=f"""SELECT name, type FROM pragma_table_info('{tbl_name}')""",
                                   rez_dict=True)
     objs = {
@@ -548,7 +548,7 @@ def custom_request_c(bd, custom_request_c, conn='', hat_c=True, list_of_lists_c=
                         cur.execute(custom_request_c, list_of_lists_c)
                 conn.commit()
                 result = True
-        if 'SELECT' == type_query:
+        if 'SELECT' == type_query or 'WITH' == type_query: # 25.01.2025s
             if list_of_lists_c == [[]]:
                 cur.execute(custom_request_c)
             else:

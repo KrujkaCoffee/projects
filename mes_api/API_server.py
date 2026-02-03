@@ -1,4 +1,4 @@
-import os
+﻿import os
 import importlib
 import traceback
 from threading import Thread
@@ -26,10 +26,13 @@ sys.stderr = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 PORT = api_srv_config.PORT
 HOST = api_srv_config.HOST
 
+
+
 fl_route_cust_files = False
 try:
     import API_files_route
     fl_route_cust_files = True
+
 except:
     pass
 
@@ -42,6 +45,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+try:
+    import revit_router
+    app.include_router(revit_router.router, tags=["revit"])
+except Exception as e:
+    print(e)
 # Автоматическое перенаправление HTTP → HTTPS
 #app.add_middleware(HTTPSRedirectMiddleware)
 

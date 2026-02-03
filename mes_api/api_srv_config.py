@@ -7,7 +7,7 @@ if socket.gethostname() == 'POW18-15':#"POW-ING22":
     PREFIX_DOWNLOAD_PATH = fr'C:\Python\gui_flet_mes\Modules_data'
     PREFIX_OPEN_LOCAL_DIR = fr'\\srv-fs\Disk_Z'
 else:
-    HOST = '192.168.50.44'# server
+    HOST = '192.168.100.135'# server
     DIR_BUDGETS = r'C:\srv_mes\1c\Бюджеты'  # server
     PREFIX_DOWNLOAD_PATH = fr'C:\srv_mes\web_app_mes\Modules_data'
     PREFIX_OPEN_LOCAL_DIR = fr'\\srv-fs\Disk_Z'

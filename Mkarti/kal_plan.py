@@ -756,7 +756,7 @@ def checking_positions_for_closed_mk(window: QtWidgets.QWidget, poz_nums: list[i
         list_if_status = CSQ.custom_request_c(
             CFG.Config.project.db_naryad,
             f"""SELECT Дата_завершения, Пномер, НомКплан as "КПЛ", Статус FROM mk
-         WHERE НомКплан IN ({list_joined_poz_pk}) AND Статус == 'Открыта';""", rez_dict=True) #03.12.25
+         WHERE НомКплан IN ({list_joined_poz_pk}) AND Статус == 'Открыта';""", rez_dict=True) #28.11.2025
         list_open_mk = []
         for item in list_if_status:
             if item['Дата_завершения'] == "":
@@ -1257,7 +1257,11 @@ def dict_norm_from_res(self, res, dict_norm='', koef_vneplana=1, koef_pogr_norm=
                         summ_time_fact_koef_naryads_tmp= ''
                         if F.is_numeric(summ_time_fact_koef_naryads):
                             summ_time_fact_koef_naryads_tmp = round(summ_time_fact_koef_naryads* koef_posta * F.valm(per) / 100 * koef_vneplana_tmp * koef_pogr_norm,2)
-                        dict_norm[podr] += itog_time
+                        if self.place.apply_ratio_on_calc_plan_norm: #27.01.2026 по задаче 100065475
+                            dict_norm[podr] += itog_time
+                        else:
+
+                            dict_norm[podr] += round(time_paral + koef_smen, 2)
                         mat_znch = 0
                         mat_name = ''
                         link_docs = ''
@@ -1600,16 +1604,8 @@ def btn_pl_load_norm(self: mywindow):
     if 'shift' in CQT.get_key_modifiers(self):
         btn_norm_fact_by_opers(self)
         return
-    # МИНУТ НА 1 КГ.
-    DICT_AVERAGE_EFFICIENCY = {"Лазерная резка": 0.632670759652881,
-                               "Сборка": 3.57824246635921,
-                               "Сварка": 3.57824246635921,
-                               "Покраска": 0.308754357651951,
-                               "Токарка_фрезеровка": 0.654724642342306,
-                               "Зачистка": 0.777399364802233,
-                               "Вспомогательная": 1.10964857367662346,
-                               "Подготовка_монтажного_комплекта": 0.168,
-                               }
+    # group_vid_rab_for_plan average_efficiency это МИНУТ НА 1 КГ.
+
 
     def fill_norm_db(self, dict_norm, pnom, dict_form_db, row_time_add_etap):
         list_change = []
@@ -1640,29 +1636,14 @@ def btn_pl_load_norm(self: mywindow):
                     #f'cтало  {str(round(norma, 2))}'])
         return list_change
 
-    def load_norm_vo(self, pnom: int, dict_norm: dict):
-        DICT_SOPOST_ETAPOV_VO_SRED = {'Лазерная резка': 'пл_заг.Нчас_заг',
-                                      'Сборка': 'пл_сб.Нчас_слсб',
-                                      'Сварка': 'пл_сб.Нчас_св',
-                                      'Покраска': 'пл_покр.Нчас_покр',
-                                      'Токарка_фрезеровка': 'пл_мех.Нчас_мехобр',
-                                      'Зачистка': 'пл_сб.Нчас_зач',
-                                      'Вспомогательная': 'plan.Нчас_вспом',
-                                      'Термическая': 'plan.Нчас_вспом',
-                                      'Подготовка_монтажного_комплекта': 'пл_компл.Нчас_упаковки',
-                                      'Упаковка_и_комплектование ЗИП': 'пл_компл.Нчас_упаковки'
+    def calc_norm_by_weight(dict_norm, ves):
+        for item_etap, data_etap in self.Data_plan.DICT_GROUP_PODR_VID_RAB_FOR_PLAN.items():
+            if item_etap in dict_norm and data_etap['poki'] == CFG.Config.place.poki:
+                dict_norm[item_etap] += round(
+                    F.valm(data_etap['average_efficiency']) * 1.32 * ves, 6)
+        return dict_norm
 
-                                      }
-        DICT_SOPOST_ETAPOV_VO_VID = {'Лазерная_резка': {'пл_заг.Нчас_заг': 100, },
-                                     'Сборка_сварка': {'пл_сб.Нчас_слсб': 59, 'пл_сб.Нчас_св': 59},
-                                     'Покраска': {'пл_покр.Нчас_покр': 100, },
-                                     'Токарка_фрезеровка': {'пл_мех.Нчас_мехобр': 100, },
-                                     'Зачистка': {'пл_сб.Нчас_зач': 100, },
-                                     'Вспомогательная': {'plan.Нчас_вспом': 100, },
-                                     'Термическая': {'plan.Нчас_вспом': 100, },
-                                     'Подготовка_монтажного_комплекта': {'пл_компл.Нчас_упаковки': 100, },
-                                     'Упаковка_и_комплектование_ЗИП': {'пл_компл.Нчас_упаковки': 100, },
-                                     }
+    def load_norm_vo(self, pnom: int, dict_norm: dict):
         item = CSQ.custom_request_c(self.db_kplan, f"""SELECT * FROM пл_топ WHERE НомПл == {pnom}""", one=True,
                                     rez_dict=True)
         if item['Уд_вес_ВО'] == '' or item['Уд_вес_ВО'] == 0:
@@ -1678,25 +1659,25 @@ def btn_pl_load_norm(self: mywindow):
 
         if self.Data_plan.DICT_VID_PO_NAPR[item['Вид']]['Выборка'] <= 3:
             CQT.msgbox(f'Выборка слишком мала, используем 121 кг/п/см.')
-            for etap in DICT_AVERAGE_EFFICIENCY:
-                if etap in DICT_SOPOST_ETAPOV_VO_SRED and DICT_SOPOST_ETAPOV_VO_SRED[etap] in dict_norm:
-                    dict_norm[DICT_SOPOST_ETAPOV_VO_SRED[etap]] += round(
-                        F.valm(DICT_AVERAGE_EFFICIENCY[etap]) * 1.32 * ves, 6)
+            dict_norm = calc_norm_by_weight(dict_norm,ves)
             return dict_norm
 
         CQT.msgbox(f"Принято для расчета {self.Data_plan.DICT_VID_PO_NAPR[item['Вид']]['Имя']} "
                    f" {self.Data_plan.DICT_VID_PO_NAPR[item['Вид']]['кг_на_пост_см']}"
                    f" кг/пост/смену (выборка {self.Data_plan.DICT_VID_PO_NAPR[item['Вид']]['Выборка']} изд.)"
-                   f"koef_vneplana {koef_vneplana}"
+                   f"koef_vneplana {koef_vneplana}, "
                    f"koef_pogr_norm {koef_pogr_norm}")
 
-        for etap in self.Data_plan.DICT_VID_PO_NAPR[item['Вид']]:
-            if etap in DICT_SOPOST_ETAPOV_VO_VID:
-                for kpl_etap in DICT_SOPOST_ETAPOV_VO_VID[etap].keys():
-                    if kpl_etap in dict_norm:
-                        dict_norm[kpl_etap] += \
-                            round(F.valm(self.Data_plan.DICT_VID_PO_NAPR[item['Вид']][etap]) *
-                                  koef_vneplana * ves * DICT_SOPOST_ETAPOV_VO_VID[etap][kpl_etap] / 100, 6)
+        for etap_name in self.Data_plan.DICT_VID_PO_NAPR[item['Вид']]:
+            for item_sootv in self.Data_plan.LIST_GROUP_VID_RAB_FOR_PLAN_VS_ETAP:
+                if item_sootv['pep_notation'] == etap_name:
+                    kpl_etap = item_sootv['group_vid_rab']
+                    koef = item_sootv['koef']
+                    if kpl_etap in self.Data_plan.DICT_GROUP_PODR_VID_RAB_FOR_PLAN:
+                        if kpl_etap in dict_norm and etap_name in self.Data_plan.DICT_VID_PO_NAPR[item['Вид']]:
+                            dict_norm[kpl_etap] += \
+                            round(F.valm(self.Data_plan.DICT_VID_PO_NAPR[item['Вид']][etap_name]) *
+                                  koef_vneplana * ves  *koef / 100, 6)
         return dict_norm
 
     def calc_by_tkp(resp, poz, dict_norm, koef_vneplana, koef_pogr_norm, pnom, nk_stat_norm):
@@ -1707,21 +1688,22 @@ def btn_pl_load_norm(self: mywindow):
 
         dict_norm, list_opers = dict_norm_from_res(self, res, dict_norm, koef_vneplana, koef_pogr_norm, count_izd)
         if dict_norm == None:
-            return
-        CSQ.custom_request_c(self.db_kplan,
-                             f"""UPDATE plan SET Статус_норм = 3 WHERE Пномер = {pnom} """)
-        if nk_stat_norm:
-            tbl.item(tbl.currentRow(), nk_stat_norm).setText(self.Data_plan.DICT_STATUS_NORM[3]['Имя'])
+            return None,None
         return dict_norm, list_opers
+
+    def calc_by_weight(self, ves, dict_norm, nk_stat_norm):
+        calc_norm_by_weight(dict_norm,ves)
+        if dict_norm == None:
+            return
+        return dict_norm
+
 
     def calc_by_vo(self, pnom, dict_norm, nk_stat_norm):
         # ==============ПО ВО===================
         dict_norm = load_norm_vo(self, pnom, dict_norm)
         if dict_norm == None:
             return
-        CSQ.custom_request_c(self.db_kplan, f"""UPDATE plan SET Статус_норм = 1 WHERE Пномер = {pnom} """)
-        if nk_stat_norm:
-            tbl.item(tbl.currentRow(), nk_stat_norm).setText(self.Data_plan.DICT_STATUS_NORM[1]['Имя'])
+
         return dict_norm
 
     def calc_top(self, dict_norm, data_top):
@@ -1729,6 +1711,7 @@ def btn_pl_load_norm(self: mywindow):
         dict_norm['пл_топ.Нчас_ТД'] = (data_top['Число_ДСЕ'] * 0.4 + 2) * 60
         return dict_norm
 
+    @CQT.onerror
     def tmp_log_calc(res,tmp_log):
         for dse in res:
             for oper in dse['Операции']:
@@ -1763,6 +1746,7 @@ def btn_pl_load_norm(self: mywindow):
     poz.load_kpl_table('пл_топ')
     poz.load_kpl_table('пл_оуп')
     vid_po_napr = poz.dict_tables['пл_топ']['Вид']
+    ud_ves_vo = poz.dict_tables['пл_топ']['Уд_вес_ВО']
     nk_napr = CQT.num_col_by_name_c(tbl, 'plan.Направление_деятельности')
     if nk_napr == None:
         CQT.msgbox(f'Отсутствует поле plan.Направление_деятельности')
@@ -1779,7 +1763,7 @@ def btn_pl_load_norm(self: mywindow):
 
     list_mk = CSQ.custom_request_c(self.bd_naryad, f"""SELECT Пномер,Количество,Дата_завершения,Вес,Тип FROM mk WHERE 
     НомКплан == {poz.Пномер} AND На_удал == 0;""", rez_dict=True)
-    descr_predv_res = poz.dict_tables['пл_топ']['Предв_спецификация_ЕРП'] #00-065171
+    descr_predv_res = poz.dict_tables['пл_топ']['Предв_спецификация_ЕРП'].strip() #00-065171
 
     DICT_NAMES_ETAP_FROM_ERP = dict()
     for k, it in self.Data_plan.DICT_GROUP_VID_RAB_FOR_PLAN.items():
@@ -1804,119 +1788,212 @@ def btn_pl_load_norm(self: mywindow):
                 s_num_tkp = list_name_predv_res[1]
                 return int(s_num_tkp)
 
-    if len(list_mk) == 0:
-        # ============================НЕТ МК==================
-        fl_calc_vo = False
+    emo_off = CEMOJ.СтатусыПроизводства.stopped.symbol
+    emo_on = CEMOJ.СтатусыПроизводства.normal.symbol
 
-        if descr_predv_res != '':
-            if not CQT.msgboxgYN(f'МК не создана!\n Попытаться рассчитать нормы по аналогу/ТКП?'):
-                return
-            def is_name_predv_res_as_code(descr_predv_res):
-                return descr_predv_res.startswith('00-')
-
-            code_predv_res = None
-            name_predv_res = None
-            if not is_name_predv_res_as_code(descr_predv_res):
-                name_predv_res = descr_predv_res
-                s_num_tkp = calc_prefix_tkpa(descr_predv_res)
-                postfix = ")"
-                if s_num_tkp:
-                    postfix = f' ИЛИ РесурсныеСпецификации.Наименование ПОДОБНО "ТКПА_{s_num_tkp}%")'
-                wet_req_text = f"""ВЫБРАТЬ  РесурсныеСпецификации.Код КАК Код,
-                                            РесурсныеСпецификации.Наименование КАК Наименование
-                                    ИЗ
-                                        Справочник.РесурсныеСпецификации КАК РесурсныеСпецификации
-                                    ГДЕ
-                                         РесурсныеСпецификации.ЭтоГруппа = ЛОЖЬ
-                                        И (РесурсныеСпецификации.Наименование = "{descr_predv_res}"{postfix}
-                                    """
-                res_get_wet = APIERP.get_wet_request_result(wet_req_text,msg_err=f'Не найдена ресурсная с названием "{descr_predv_res}"')
-                if res_get_wet is not None:
-                    code_predv_res = res_get_wet[0]['Код'].strip()
-                    name_predv_res = res_get_wet[0]['Наименование'].strip()
-                    CSQ.custom_request_c(self.db_kplan,f'''UPDATE пл_топ SET Предв_спецификация_ЕРП = "{code_predv_res}" WHERE НомПл == {pnom};''')
-
-            else:
-                code_predv_res = descr_predv_res
-                wet_req_text = f"""ВЫБРАТЬ
-                                                            РесурсныеСпецификации.Наименование КАК Наименование
-                                                        ИЗ
-                                                            Справочник.РесурсныеСпецификации КАК РесурсныеСпецификации
-                                                        ГДЕ
-                                                             РесурсныеСпецификации.ЭтоГруппа = ЛОЖЬ
-                                                            И РесурсныеСпецификации.Код = "{code_predv_res}"
-                                                        """
-                key, data_rez = APIERP.get_wet_request(wet_req_text)
-                if key != 200:
-                    CQT.msgbox(f'Ошибка получения данных код ({key}) из ERP')
-                    return
-                if data_rez['data']:
-                    name_predv_res = data_rez['data'][0]['Наименование']
-
-            if name_predv_res is None or code_predv_res is None:
-                fl_calc_vo = True
-
-            # ================по ТКП================
-            if not fl_calc_vo:
-
-                if CQT.msgboxgYN(f'{CEMOJ.EmojiMain.СтатусыПроизводства.alert.symbol} Просчитать нормы Предв_спецификация_ЕРП из','1C','MES'):
-                    wet_req_text = f"""ВЫБРАТЬ
-                        РесурсныеСпецификацииТрудозатраты.Количество КАК Количество,
-                        РесурсныеСпецификацииТрудозатраты.Этап.Наименование КАК ЭтапНаименование,
-                        РесурсныеСпецификацииТрудозатраты.Ссылка.ОсновноеИзделиеНоменклатура.Наименование КАК ОсновноеИзделиеНоменклатураНаименование,
-                        РесурсныеСпецификацииТрудозатраты.Ссылка.Код КАК Код
-                    ИЗ
-                        Справочник.РесурсныеСпецификации.Трудозатраты КАК РесурсныеСпецификацииТрудозатраты
-                    ГДЕ
-                        РесурсныеСпецификацииТрудозатраты.Ссылка.Код = "{code_predv_res}";"""
-                    key, data_rez = APIERP.get_wet_request(wet_req_text)
-                    if key != 200:
-                        CQT.msgbox(f'Ошибка получения данных код ({key}) из ERP')
-                        return
-                    if not data_rez['data']:
-                        CQT.msgbox(f'ТЧ в ресурсной {name_predv_res} пустая')
-                        return
-
-                    for et in data_rez['data']:
-                        if et['ЭтапНаименование'] in DICT_NAMES_ETAP_FROM_ERP:
-                            name_gr = DICT_NAMES_ETAP_FROM_ERP[et['ЭтапНаименование']]
-                            if name_gr in dict_norm:
-                                dict_norm[name_gr] += et['Количество']
+    is_may_mk = False
+    is_may_1c = False
+    is_may_tkpa = False
+    is_may_sort= False
+    is_may_weight = False
 
 
-                else:
+
+    def set_val_into_summary_info(sort:str,field:str,val):
+        for item in summary_info:
+            if item['Вид расчета'] == sort:
+                item[field] = val
+
+    def calc_code_name_predv_res(descr_predv_res)->tuple[str|None,str|None]:
+        def is_name_predv_res_as_code(descr_predv_res):
+            return descr_predv_res.startswith('00-')
 
 
-                    s_num_tkp = calc_prefix_tkpa(name_predv_res)
+        code_predv_res = None
+        name_predv_res = None
+        if not is_name_predv_res_as_code(descr_predv_res):
+            name_predv_res = descr_predv_res
+            s_num_tkp = calc_prefix_tkpa(descr_predv_res)
+            postfix = ")"
+            if s_num_tkp:
+                postfix = f' ИЛИ РесурсныеСпецификации.Наименование ПОДОБНО "ТКПА_{s_num_tkp}%")'
+            wet_req_text = f"""ВЫБРАТЬ  РесурсныеСпецификации.Код КАК Код,
+                                                    РесурсныеСпецификации.Наименование КАК Наименование
+                                            ИЗ
+                                                Справочник.РесурсныеСпецификации КАК РесурсныеСпецификации
+                                            ГДЕ
+                                                 РесурсныеСпецификации.ЭтоГруппа = ЛОЖЬ
+                                                И (РесурсныеСпецификации.Наименование = "{descr_predv_res}"{postfix}
+                                            """
+            res_get_wet = APIERP.get_wet_request_result(wet_req_text,
+                                                        msg_err=f'Не найдена ресурсная с названием "{descr_predv_res}"')
+            if res_get_wet is not None:
+                code_predv_res = res_get_wet[0]['Код'].strip()
+                name_predv_res = res_get_wet[0]['Наименование'].strip()
+                CSQ.custom_request_c(self.db_kplan,
+                                     f'''UPDATE пл_топ SET Предв_спецификация_ЕРП = "{code_predv_res}" WHERE НомПл == {pnom};''')
 
-                    if s_num_tkp:
-                        resp = CSQ.custom_request_c(self.db_resxml, f"""SELECT data FROM predv_res WHERE Имя LIKE "ТКПА_{s_num_tkp}%";""")
-                    else:
-                        resp = CSQ.custom_request_c(self.db_resxml, f"""SELECT data FROM predv_res WHERE Имя = ?;""",
-                                                list_of_lists_c=(name_predv_res,))
+        else:
+            code_predv_res = descr_predv_res
+            wet_req_text = f"""ВЫБРАТЬ
+                                                                    РесурсныеСпецификации.Наименование КАК Наименование
+                                                                ИЗ
+                                                                    Справочник.РесурсныеСпецификации КАК РесурсныеСпецификации
+                                                                ГДЕ
+                                                                     РесурсныеСпецификации.ЭтоГруппа = ЛОЖЬ
+                                                                    И РесурсныеСпецификации.Код = "{code_predv_res}"
+                                                                """
+            key, data_rez = APIERP.get_wet_request(wet_req_text)
+            if key != 200:
+                CQT.msgbox(f'Ошибка получения данных код ({key}) из ERP')
+                return code_predv_res,name_predv_res
 
-                    if resp != False and resp != None and len(resp) == 2:
-                        dict_norm, list_log = calc_by_tkp(resp, poz, dict_norm, koef_vneplana, koef_pogr_norm, pnom,
-                                                          nk_stat_norm)
-                    else:
+            if data_rez['data']:
+                name_predv_res = data_rez['data'][0]['Наименование']
 
-                        fl_calc_vo = True
+        return code_predv_res, name_predv_res
 
-            # ======================================
+    def calc_res_data(name_predv_res) -> bool | None | list:
+        s_num_tkp = calc_prefix_tkpa(name_predv_res)
 
-        if fl_calc_vo:
-            if not CQT.msgboxgYN(f'МК и Ресурсная не создана!\nПопытаться загрузить нормы по ВО?'):
-                return
-            dict_norm = calc_by_vo(self, pnom, dict_norm, nk_stat_norm)
-        if dict_norm == None:
-            CQT.msgbox(f'Ошибка расчета норм')
+        if s_num_tkp:
+            resp = CSQ.custom_request_c(self.db_resxml,
+                                        f"""SELECT data FROM predv_res WHERE Имя LIKE "ТКПА_{s_num_tkp}%";""")
+        else:
+            resp = CSQ.custom_request_c(self.db_resxml, f"""SELECT data FROM predv_res WHERE Имя = ?;""",
+                                        list_of_lists_c=(name_predv_res,))
+        return resp
+
+    @CQT.onerror
+    def calc_res_data_1c(code_predv_res,err_view = False):
+        wet_req_text = f"""ВЫБРАТЬ
+                                РесурсныеСпецификацииТрудозатраты.Количество КАК Количество,
+                                РесурсныеСпецификацииТрудозатраты.Этап.Наименование КАК ЭтапНаименование,
+                                РесурсныеСпецификацииТрудозатраты.Ссылка.ОсновноеИзделиеНоменклатура.Наименование КАК ОсновноеИзделиеНоменклатураНаименование,
+                                РесурсныеСпецификацииТрудозатраты.Ссылка.Код КАК Код
+                            ИЗ
+                                Справочник.РесурсныеСпецификации.Трудозатраты КАК РесурсныеСпецификацииТрудозатраты
+                            ГДЕ
+                                РесурсныеСпецификацииТрудозатраты.Ссылка.Код = "{code_predv_res}";"""
+        key, data_rez = APIERP.get_wet_request(wet_req_text)
+        if key != 200:
+            if err_view:
+                CQT.msgbox(f'Ошибка получения данных код ({key}) из ERP')
             return
-        for key in dict_norm.keys():
-            dict_norm[key] *= koef_pogr_norm
-        dict_norm['пл_сб.Нчас_сб'] = round((dict_norm['пл_сб.Нчас_слсб'] + dict_norm['пл_сб.Нчас_св'] +
-                                            dict_norm['пл_сб.Нчас_зач']) * koef_vneplana, 2)
-    # =====================================================
-    else:  # ПО МК
+        if not data_rez['data']:
+            if err_view:
+                CQT.msgbox(f'ТЧ в ресурсной {name_predv_res} пустая')
+            return
+        return data_rez
+
+    summary_info = [
+        {'':emo_off,'Вид расчета':'По МК',       'Основа':'','Новый статус':''},
+        {'':emo_off,'Вид расчета':'Ресурсная 1С','Основа':'','Новый статус':''},
+        {'':emo_off,'Вид расчета':'ТКПА',        'Основа':'','Новый статус':''},
+        {'':emo_off,'Вид расчета':'По виду',     'Основа':'','Новый статус':''},
+        {'':emo_on, 'Вид расчета':'По весу',     'Основа':'','Новый статус':''},
+    ]
+
+    if len(list_mk):
+        set_val_into_summary_info('По МК','',emo_on)
+        set_val_into_summary_info('По МК','Основа',f'{len(list_mk)} шт. МК')
+        set_val_into_summary_info('По МК','Новый статус',2)
+
+    if descr_predv_res:
+        code_predv_res, name_predv_res = calc_code_name_predv_res(descr_predv_res)
+        # нормы Предв_спецификация_ЕРП по MES
+        resp = calc_res_data(name_predv_res)
+        if resp != False and resp != None and len(resp) == 2:
+            set_val_into_summary_info('ТКПА','',emo_on)
+            set_val_into_summary_info('ТКПА','Основа',descr_predv_res)
+            set_val_into_summary_info('ТКПА','Новый статус',3)
+
+        data_rez = calc_res_data_1c(code_predv_res) # нормы Предв_спецификация_ЕРП по 1C
+        if data_rez:
+            set_val_into_summary_info('Ресурсная 1С', '', emo_on)
+            set_val_into_summary_info('Ресурсная 1С', 'Основа', code_predv_res)
+            set_val_into_summary_info('Ресурсная 1С', 'Новый статус', 3)
+
+    if True:# нормы по ВО
+        ves = 0
+        fl_on = True
+        if ud_ves_vo == '' or ud_ves_vo == 0:
+            set_val_into_summary_info('По виду', 'Основа', f'Не указан Уд_вес_ВО')
+            fl_on = False
+        else:
+            ves = F.valm(ud_ves_vo)
+            if vid_po_napr == 1:
+                set_val_into_summary_info('По виду', 'Основа', f'Не выбран Вид изделия')
+                fl_on = False
+            if vid_po_napr not in self.Data_plan.DICT_VID_PO_NAPR:
+                set_val_into_summary_info('По виду', 'Основа', f'Вид изделия не найден в базе')
+                fl_on = False
+
+        if fl_on:
+            set_val_into_summary_info('По виду', '', emo_on)
+            set_val_into_summary_info('По виду', 'Основа', f'{ves} кг. ({vid_po_napr})')
+            set_val_into_summary_info('По виду', 'Новый статус', 1)
+
+    if True:  # нормы по весу
+        ves = 0
+        fl_on = True
+        if ud_ves_vo == '' or ud_ves_vo == 0:
+            set_val_into_summary_info('По виду', 'Основа', f'Не указан Уд_вес_ВО')
+            fl_on = False
+        else:
+            ves = F.valm(ud_ves_vo)
+        if fl_on:
+            set_val_into_summary_info('По весу', '', emo_on)
+            set_val_into_summary_info('По весу', 'Основа', f'{ves} кг.')
+            set_val_into_summary_info('По весу', 'Новый статус', 1)
+
+    @CQT.onerror
+    def fnc_oform(tbl:CQT.QtWidgets.QTableWidget,parent_self:mywindow):
+        nf = CQT.nums_col_by_name_dict(tbl)
+        DICT_STATUS_NORM = parent_self.Data_plan.DICT_STATUS_NORM
+        def fnc_set_val(self,val,i,j):
+            val_str = val if val else ''
+            tbl.item(i,j).setText(str(val_str))
+
+        for i in range(tbl.rowCount()):
+            CQT.add_combobox(self, tbl, i, nf['Новый статус'], [_['Имя'] for _ in DICT_STATUS_NORM.values()], True,
+                             list_data=[_ for _ in DICT_STATUS_NORM.keys()], return_data=True, conn_func=fnc_set_val)
+            state = tbl.item(i,nf['Новый статус']).text()
+
+            if F.is_numeric(state):
+                state = F.valm(state)
+                state_name = DICT_STATUS_NORM[state]['Имя']
+                cmb:CQT.QtWidgets.QComboBox = tbl.cellWidget(i,nf['Новый статус'])
+                cmb.setCurrentText(state_name)
+
+
+            enable = tbl.item(i,nf['']).text()
+            if enable == emo_off:
+                CQT.setRowDisabled(tbl,i)
+
+    @CQT.onerror
+    def fnc_check_select(btn, dialog, t, p):
+        if btn.text() == 'Рассчитать':
+            row = CQT.get_dict_line_form_tbl(t)
+            if not  row:
+                CQT.msgbox(f'Не выбран метод расчета')
+                return
+            if row[''] == emo_off:
+                CQT.msgbox(f'Недоступно')
+                return
+            dialog.accept()
+        else:
+            dialog.reject()
+
+
+    result = CQT.msgboxg_get_table(self,'Выбор метода расчета',summary_info,'Рассчитать',show_filtr=False,
+                          func_oform_tbl=fnc_oform,selectRows=True,styleSheet=CQT.MES_CSS,parent_self=self,
+                                   func_btn0=fnc_check_select,not_standart_close=True)
+    if not result:
+        return
+    result = result[0]
+
+    if result['Вид расчета'] == 'По МК':
         tmp_log = []
         list_log = []
         for mk_item in list_mk:
@@ -1925,15 +2002,14 @@ def btn_pl_load_norm(self: mywindow):
             res = CMS.load_res(int(mk))
             # count_izd = poz.dict_tables['пл_оуп']['Количество']
 
-            tmp_log = tmp_log_calc(res,tmp_log)
+            tmp_log = tmp_log_calc(res, tmp_log)
 
-            koef_vneplana_tmp = copy.deepcopy(koef_vneplana)# 19.08.2025 Задача № 100058908
-            if mk_item['Тип'] in (2,3,5):
+            koef_vneplana_tmp = copy.deepcopy(koef_vneplana)  # 19.08.2025 Задача № 100058908
+            if mk_item['Тип'] in (2, 3, 5):
                 if koef_vneplana_tmp > 1.27:
                     koef_vneplana_tmp = 1.27
 
-
-            ves, ves_res_list = self.raschet_vesa_dse(res,False)
+            ves, ves_res_list = self.raschet_vesa_dse(res, False)
             if ves != mk_item['Вес']:
                 CSQ.custom_request_c(self.bd_naryad, f"""UPDATE mk SET Вес = {ves} WHERE Пномер = {int(mk)};""")
                 CQT.msgbox(f'В МК {mk} обновлен вес, было {mk_item["Вес"]} кг., стало {ves} кг.')
@@ -1941,21 +2017,32 @@ def btn_pl_load_norm(self: mywindow):
                 CQT.msgbox(f'{"пл_оуп.Количество"} не число')
             dict_norm, list_log = dict_norm_from_res(self, res, dict_norm, koef_vneplana_tmp, koef_pogr_norm, count_izd,
                                                      list_log, mk)
-            if dict_norm == None:
-                return
+        #CQT.msgboxg_get_table(self, 'Расчет веса для TEST', tmp_log, 'OK', disable_btn1=True, load_summ=True)
 
-        CQT.msgboxg_get_table(self, 'Расчет веса для TEST', tmp_log, 'OK', disable_btn1=True, load_summ=True)
 
-        CSQ.custom_request_c(self.db_kplan, f"""UPDATE plan SET Статус_норм = 2 WHERE Пномер = {pnom} """)
-        if nk_stat_norm:
-            tbl.item(tbl.currentRow(), nk_stat_norm).setText(self.Data_plan.DICT_STATUS_NORM[2]['Имя'])
-        for compose in self.Data_plan.DICT_COMPOSITE_PODRAZD.values():
-            name_compose =f"{compose['name']}.{compose['main_comp_field_name']}"
-            summ_compose = 0
-            for inp_field in compose['dict_input_fields'].keys():
-                name_inp_field = f"{compose['name']}.{inp_field}"
-                summ_compose+= dict_norm[name_inp_field]
-            dict_norm[name_compose] = round(summ_compose, 2)
+    elif result['Вид расчета'] == 'ТКПА':
+        dict_norm, list_log = calc_by_tkp(resp, poz, dict_norm, koef_vneplana, koef_pogr_norm, pnom,
+                                          nk_stat_norm)
+    elif result['Вид расчета'] == 'Ресурсная 1С':
+        for et in data_rez['data']:
+            if et['ЭтапНаименование'] in DICT_NAMES_ETAP_FROM_ERP:
+                name_gr = DICT_NAMES_ETAP_FROM_ERP[et['ЭтапНаименование']]
+                if name_gr in dict_norm:
+                    dict_norm[name_gr] += et['Количество']
+    elif result['Вид расчета'] == 'По виду':
+        dict_norm = calc_by_vo(self, pnom, dict_norm, nk_stat_norm)
+    else:#result['Вид расчета'] == 'По весу':
+        dict_norm = calc_by_weight(self,ves,dict_norm,nk_stat_norm)
+
+
+    for compose in self.Data_plan.DICT_COMPOSITE_PODRAZD.values():
+        name_compose = f"{compose['name']}.{compose['main_comp_field_name']}"
+        summ_compose = 0
+        for inp_field in compose['dict_input_fields'].keys():
+            name_inp_field = f"{compose['name']}.{inp_field}"
+            summ_compose += dict_norm[name_inp_field]
+        dict_norm[name_compose] = round(summ_compose, 2)
+
     list_change = fill_norm_db(self, dict_norm, pnom, poz.row_time_etap, poz.row_time_add_etap)
 
     for field in dict_norm:
@@ -1967,18 +2054,36 @@ def btn_pl_load_norm(self: mywindow):
         CMS.update_local_graf(self, update=True, pnom=pnom)
         obj_msg = CMS.Msg_b24(self.db_kplan, self.bd_naryad, self.db_resxml, self.db_users, pnom)
         obj_msg.send_msg('recalc_dates_disp', tbl = list_change)
+        CQT.msgboxg_get_table_ok_inf(self, 'Успешно пересчитано', list_change, show_filtr=False,
+                                     WindowTitle=f'Изменения пересчета КПЛ {pnom}')
+    else:
+        CQT.msgbox('Изменений норм нет.')
 
+    # ====================state===================
+    def set_state(state: int,poz:CMS.Pozition|None=None):
+        fl = True
+        if poz:
+            if poz.Статус_норм == state:
+                fl = False
+        if fl:
+            CSQ.custom_request_c(self.db_kplan, f"""UPDATE plan SET Статус_норм = {state} WHERE Пномер = {pnom} """)
+            if nk_stat_norm:
+                tbl.item(tbl.currentRow(), nk_stat_norm).setText(self.Data_plan.DICT_STATUS_NORM[state]['Имя'])
+
+    state = result['Новый статус']
+    if not state == '':
+        set_state(int(state),poz)
+    # =====================================
 
     CMS.Pozition.set_flag_recalc_dates(self.db_kplan, pnom, 1)
+
     if CQT.num_col_by_name_c(tbl, 'plan.Потребность_пересч_сроков') != None:
         CQT.set_val_tbl_by_name(self.ui.tbl_kal_pl, self.ui.tbl_kal_pl.currentRow(), 'plan.Потребность_пересч_сроков',
                                 '1')
+
     CQT.select_range(tbl, tbl.currentRow(), tbl.currentColumn())
     tbl.setFocus()
-    if list_change:
-        CQT.msgboxg_get_table_ok_inf(self, 'Успешно пересчитано', list_change, show_filtr=False,WindowTitle= f'Изменения пересчета КПЛ {pnom}')
-    else:
-        CQT.msgbox('Изменений норм нет.')
+
     if list_log:
         if CQT.msgboxgYN(f'Показать таблицу норм пооперационно?'):
             CQT.msgboxg_get_table(self, 'Расчет веса для сравнения', list_log, 'OK', disable_btn1=True, load_summ=True)
@@ -4981,6 +5086,30 @@ def load_table_db(self, hook_prog_bar=None):
     def fncContextMenu(self:mywindow,tbl:QtWidgets.QTableWidget,row:int,col:int,menu_builder:CQT.ContextMenuBuilder):
         cfg = CFG.Config.project
 
+        def fnc_edit_num_pr(self:mywindow,s_num_poz:int,change:bool=True):
+            poz = CMS.Pozition(s_num_poz)
+            poz.load_kpl_table('пл_оуп')
+            start_text = None
+            if change:
+                start_text = poz.dict_tables['пл_оуп']['№проекта']
+            succ, text = CQT.get_dialog_choose_text(self,f'Новый номер проекта:', placeholderText = '...',start_text=start_text)
+            if not succ:
+                return
+            new_np = text["text"].strip()
+            if len(new_np)<4:
+                CQT.msgbox(f'Не корректное значение')
+                return
+
+            if poz.dict_tables['пл_оуп']['№проекта'] == new_np:
+                CQT.msgbox(f'Номер проекта не изменился')
+                return
+            poz.dict_tables['пл_оуп']['№проекта'] = new_np
+            if not poz.update_znpr():
+                CQT.msgbox(f'Ошибка изменения ЗНПР')
+                return
+            update_tabels(self)
+
+
         def fnc_set_state(self:mywindow,s_num_state:int,list_s_num:tuple[int]):
             r , g, b = self.Data_plan.DICT_STATUS_POZ[s_num_state]['color'].split(';')
             state_name = self.Data_plan.DICT_STATUS_POZ[s_num_state]['Имя']
@@ -4997,12 +5126,12 @@ def load_table_db(self, hook_prog_bar=None):
         nf = CQT.nums_col_by_name_dict(tbl)
         row_data = CQT.get_dict_line_form_tbl(tbl)
         s_num_poz = row_data['plan.Пномер']
-        gr = row_data['plan.Группа']
+
         col_name = tbl.horizontalHeaderItem(col).text()
 
         if col_name == 'plan.ТипГр':
             if F.curr_user_c() in self.Data_plan.DICT_INFO_FIELDS_KPL['plan.Статус']['users_rule']:
-
+                gr = row_data['plan.Группа']
                 if tbl.item(row,col).text() == CMS.DOC_EMOJI:
                     s_num_pozs = [s_num_poz]
 
@@ -5032,6 +5161,21 @@ def load_table_db(self, hook_prog_bar=None):
                     fnc = partial(fnc_set_state, self,state_num,tuple(pozitions.dict_pozs.keys()))
                     menu_builder.add_menu(f'{emoji.symbol} {data_state["Имя"]}',
                             fnc)
+
+        if col_name == 'знпр.№проекта':
+            if tbl.item(row, col).text() == '' or tbl.item(row, nf['знпр.№ERP']).text() == '':
+                return
+            if F.curr_user_c() in self.Data_plan.DICT_INFO_FIELDS_KPL['знпр.№проекта']['users_rule']:
+                emoji: CEMOJ.EmojiItem = CEMOJ.EmojiMain.ДокументыДанные.pencil2
+
+                fnc = partial(fnc_edit_num_pr, self, int(s_num_poz),change=True)
+                menu_builder.add_menu(f'{emoji.symbol} {"Изменить"}',
+                                      fnc)
+
+                emoji: CEMOJ.EmojiItem = CEMOJ.EmojiMain.ДокументыДанные.document
+                fnc = partial(fnc_edit_num_pr, self, int(s_num_poz),change=False)
+                menu_builder.add_menu(f'{emoji.symbol} {"Ввести новый"}',
+                                      fnc)
 
 
 

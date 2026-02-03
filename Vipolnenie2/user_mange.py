@@ -59,6 +59,7 @@ def log_in(self,*args,**kwargs):
         return
     ima = CMS.name_by_empl_c(lbx.currentText())
     if self.ui.le_parol.text() == "Zflvby" or F.user_name() == 'a.belyakov':
+        self.superuser = True
         parol = True
     elif F.user_name() == 's.kozyrkov' and self.ui.le_parol.text() == '12369874':
         parol = True
@@ -104,16 +105,9 @@ def logout(self):
     CQT.clear_tbl(self.ui.tbl_stat_filtr)
     CQT.clear_tbl(self.ui.tbl_stat_filtr_last)
     CQT.clear_tbl(self.ui.tbl_stat_last)
+    CQT.clear_tbl(self.ui.tbl_descr_nar)
     self.ui.textBrowser_zadanie.setText('')
     self.ui.te_zamechain.setText('')
-    self.ui.lbl_tek_nar.setText('')
-    self.ui.lbl_tek_polz.setText('')
-    self.ui.lbl_sozdan.setText('')
-    self.ui.lbl_proekt.setText('')
-    self.ui.lbl_norma.setText('')
-    self.ui.lbl_nom_mk.setText('')
-    self.ui.lbl_isp1.setText('')
-    self.ui.lbl_isp2.setText('')
     self.ui.label_12.setText('План работы')
     self.ui.le_basa.setText('')
     self.ui.le_premia.setText('')

@@ -60,6 +60,7 @@ class ПоказателиМетрики:
     downtime: ClassVar[EmojiItem] = EmojiItem('📉', 'downtime', 'metrics', 'Простой оборудования')
     target: ClassVar[EmojiItem] = EmojiItem('🎯', 'target', 'metrics', 'Целевой показатель')
     deadline: ClassVar[EmojiItem] = EmojiItem('⏰', 'deadline', 'metrics', 'Срок выполнения')
+    thrive: ClassVar[EmojiItem] = EmojiItem('🌱', 'thrive', 'metrics', 'Постепенное развитие')
 
 
 class ОборудованиеИнструменты:
@@ -72,6 +73,8 @@ class ОборудованиеИнструменты:
     conveyor: ClassVar[EmojiItem] = EmojiItem('📦', 'conveyor', 'equipment', 'Конвейер')
     lock: ClassVar[EmojiItem] = EmojiItem('🔒', 'lock', 'equipment', 'Замок')
     label: ClassVar[EmojiItem] = EmojiItem('🏷', 'label', 'equipment', 'Ярлык')
+    bricks: ClassVar[EmojiItem] = EmojiItem('🧱', 'bricks', 'equipment', 'форма')
+    potion: ClassVar[EmojiItem] = EmojiItem('🧪', 'potion', 'equipment', 'смесь')
 
 class ПерсоналРоли:
     """Категория персонала и ролей"""
@@ -105,8 +108,8 @@ class ДокументыДанные:
     minus_squared: ClassVar[EmojiItem] = EmojiItem('⊟', 'minus_squared', 'documents', 'Свернуть')
     pencil: ClassVar[EmojiItem] = EmojiItem('✏️', 'pencil', 'documents', 'Изменяемый')
     pencil2: ClassVar[EmojiItem] = EmojiItem('🖉', 'pencil2', 'documents', 'Изменяемый2')
-    pencil2: ClassVar[EmojiItem] = EmojiItem('🖉', 'pencil2', 'documents', 'Изменяемый2')
     pencil_note: ClassVar[EmojiItem] = EmojiItem('📝', 'pencil_note', 'documents', 'Редактирование')
+    black_medium_small_square: ClassVar[EmojiItem] = EmojiItem('◾', 'Black_Medium_Small_Square', 'documents', 'Редактирование')
 
 class EmojiMain:
     """

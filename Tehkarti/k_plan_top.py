@@ -18,8 +18,9 @@ def check_plan_responce_sort_c_weight(self:mywindow):
         for item in responce:
             if item['Отв_технолог'] == '':
                 pull.append(item)
+
         if len(pull) > 0:
-            CQT.msgbox(f'не внесены "Отв_технолог"  в план МЕС   для:\n\n{pprint.pformat(pull)}')
+            CQT.msgboxg_get_table_ok_inf(self, 'не внесены "Отв_технолог"  в план МЕС   для', pull)
             return False
         return True
     def check_respons_sort_c_weight(self:mywindow,name):
@@ -32,23 +33,23 @@ def check_plan_responce_sort_c_weight(self:mywindow):
             if item['Вид'] == 1 or item['Уд_вес_ВО'] == 0:
                 pull.append(item)
         if len(pull) > 0:
-            CQT.msgbox(f'не внесены   "Вид",  "Уд_вес_ВО" в план МЕС    для:\n\n{pprint.pformat(pull)}')
+            CQT.msgboxg_get_table_ok_inf(self,f'не внесены   "Вид",  "Уд_вес_ВО" в план МЕС    для:',pull)
             return False
         return True
 
     LIST_CHECK_TECHN = ['Цеховой технолог','Инженер-технолог']
     LIST_CHECK_GL_TECHN = ['Главный технолог', 'Ведущий инженер-технолог']
     LIST_CHECK_GL_TECHN_EXCLUDE_FIO = ['Степанова Алёна Сергеевна']
-    name = F.user_full_namre()
+    name = F.user_full_namre()#name = 'Шалгин Алексей Николаевич'
     if name not in self.DICT_EMPLOEE_FULL:
         return True
     position = self.DICT_EMPLOEE_FULL[name]['Должность']
 
-    # if position in LIST_CHECK_GL_TECHN and name not in LIST_CHECK_GL_TECHN_EXCLUDE_FIO:
-    #     if not check_respons_techn(self):
-    #         return False
-    # if position in LIST_CHECK_TECHN:
-    #     if not check_respons_sort_c_weight(self,name):
-    #         return False
+    if position in LIST_CHECK_GL_TECHN and name not in LIST_CHECK_GL_TECHN_EXCLUDE_FIO:
+        if not check_respons_techn(self):
+            return False
+    if position in LIST_CHECK_TECHN:
+        if not check_respons_sort_c_weight(self,name):
+            return False
     return True
 

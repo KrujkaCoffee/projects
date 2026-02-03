@@ -24,7 +24,8 @@ import table_marsh as MARSH
 import outplan
 import project_cust_38.Cust_b24 as B24
 import project_cust_38.Cust_config as CFG
-
+import project_cust_38.competence_matrix as MTXCMP
+from dataClass import data_app as DTCLS
 # import traceback
 
 
@@ -47,130 +48,143 @@ class mywindow(QtWidgets.QMainWindow):
 
         CFG.Config.user_config.load_user_config(self)
         self.app_icons()
-        CQT.load_icons(self, 24)
+        DTCLS.app_self = self
         CQT.connect_to_resize(self, CMS.tmp_dir())
         CMS.add_action_config_save_tbl_filtrs(self, self.ui)
-
+        CQT.load_icons(self, 24)
         # ===========================================connects
         # ==================BTN
-        self.ui.btn_login.clicked.connect(lambda _, x=self: userm.log_in(x))
-        self.ui.btn_logout.clicked.connect(lambda _, x=self: userm.logout(x))
-        self.ui.btn_create_nar.clicked.connect(self.create_naryd)
-        self.ui.btn_select_all.clicked.connect(self.select_all_dse)
-        self.ui.btn_invers.clicked.connect(self.select_invers_dse)
-        self.ui.btn_unselect_all.clicked.connect(self.unselect_all_dse)
-        self.ui.btn_komplect.clicked.connect(self.otmeka_komplekt)
-        self.ui.btn_primen_imena.clicked.connect(self.primen_imena)
-        self.ui.btn_poz_kol_add.clicked.connect(self.poz_kol_add)
-        self.ui.btn_poz_kol_minus.clicked.connect(self.poz_kol_minus)
-        self.ui.btn_edit_clear_fio.clicked.connect(self.edit_clear_fio)
-        self.ui.btn_edit_clear_fio_and_jur.clicked.connect(self.edit_clear_fio_and_jur)
-        self.ui.btn_edit_add_addition_fio.clicked.connect(self.edit_add_addition_fio)
-        self.ui.btn_edit_delete_naruad.clicked.connect(self.edit_delete_naruad)
-        self.ui.btn_edit_check_naruad.clicked.connect(self.edit_check_naruad)
-        self.ui.btn_edit_check_vneplan.clicked.connect(self.edit_check_vneplan)
-        self.ui.btn_anal_load_txt_erp.clicked.connect(lambda _, x=self: compare.load_txt(x))
-        self.ui.btn_anal_load_txt_mes.clicked.connect(lambda _, x=self: compare.load_txt_mes(x))
-        self.ui.btn_anal_start.clicked.connect(lambda _, x=self: compare.anal_start(x))
+        if 'btn':
+            self.ui.btn_create_comp.clicked.connect(lambda: MTXCMP.create_comp(self))
+            self.ui.btn_info_comp.clicked.connect(lambda: MTXCMP.show_info_comp(self))
+            self.ui.btn_reset_changes_competence.clicked.connect(lambda: MTXCMP.reset_changes_competence(self))
+            self.ui.btn_apply_changes_competence.clicked.connect(lambda: MTXCMP.apply_changes_competence(self))
+            self.ui.btn_login.clicked.connect(lambda _, x=self: userm.log_in(x))
+            self.ui.btn_logout.clicked.connect(lambda _, x=self: userm.logout(x))
+            self.ui.btn_create_nar.clicked.connect(self.create_naryd)
+            self.ui.btn_select_all.clicked.connect(self.select_all_dse)
+            self.ui.btn_invers.clicked.connect(self.select_invers_dse)
+            self.ui.btn_unselect_all.clicked.connect(self.unselect_all_dse)
+            self.ui.btn_komplect.clicked.connect(self.otmeka_komplekt)
+            self.ui.btn_primen_imena.clicked.connect(self.primen_imena)
+            self.ui.btn_poz_kol_add.clicked.connect(self.poz_kol_add)
+            self.ui.btn_poz_kol_minus.clicked.connect(self.poz_kol_minus)
+            self.ui.btn_edit_clear_fio.clicked.connect(self.edit_clear_fio)
+            self.ui.btn_edit_clear_fio_and_jur.clicked.connect(self.edit_clear_fio_and_jur)
+            self.ui.btn_edit_add_addition_fio.clicked.connect(self.edit_add_addition_fio)
+            self.ui.btn_edit_delete_naruad.clicked.connect(self.edit_delete_naruad)
+            self.ui.btn_edit_check_naruad.clicked.connect(self.edit_check_naruad)
+            self.ui.btn_edit_check_vneplan.clicked.connect(self.edit_check_vneplan)
+            self.ui.btn_anal_load_txt_erp.clicked.connect(lambda _, x=self: compare.load_txt(x))
+            self.ui.btn_anal_load_txt_mes.clicked.connect(lambda _, x=self: compare.load_txt_mes(x))
+            self.ui.btn_anal_start.clicked.connect(lambda _, x=self: compare.anal_start(x))
 
-        self.ui.btn_edit_time_jur.clicked.connect(self.edit_time_jur_btn)
-        self.ui.btn_set_edit_time_jur.clicked.connect(self.set_edit_time_jur)
-        self.ui.btn_add_row_jur.clicked.connect(self.add_row_jur)
-        self.ui.btn_del_row_jur.clicked.connect(self.del_row_jur)
-        self.ui.btn_apply_deladd_row_jur.clicked.connect(self.apply_deladd_row_jur)
-        self.ui.btn_prosm_edit_time_clear_fio.clicked.connect(lambda _, x='ФИО': self.btn_prosm_edit_time_clear_fio(x))
-        self.ui.btn_prosm_edit_time_clear_fio2.clicked.connect(
-            lambda _, x='ФИО2': self.btn_prosm_edit_time_clear_fio(x))
-        self.ui.btn_reload_list_mk.clicked.connect(self.reload_list_mk)
-        self.ui.btn_dse_sh_tree.clicked.connect(self.btn_dse_sh_tree)
-        self.ui.btn_dse_sh_filtr.clicked.connect(self.btn_dse_sh_filtr)
-        self.ui.btn_dse_sh_elems.clicked.connect(self.btn_dse_sh_elems)
-        self.ui.btn_dse_info.clicked.connect(self.btn_dse_info)
-        self.ui.btn_outplan.clicked.connect(lambda: outplan.start_form(self))
-        self.ui.btn_outplan_ok.clicked.connect(lambda: outplan.outplan_ok(self))
-        self.ui.btn_outplan_apply.clicked.connect(lambda: outplan.apply_row_technolog(self))
-        self.ui.btn_open_vibor_assoc_prost.clicked.connect(lambda: self.open_vibor_assoc_proste_info('prost'))
-        self.ui.btn_open_vibor_assoc_plan.clicked.connect(lambda: self.open_vibor_assoc_proste_info('plan'))
-        self.ui.btn_vibor_assoc_prost.clicked.connect(self.vibor_assoc_prost_plan)
-        self.ui.btn_outplan_confirm.clicked.connect(lambda: outplan.confirm_row(self))
-        self.ui.btn_outplan_ansver.clicked.connect(lambda: outplan.ansver_row(self))
-        self.ui.btn_save_custom_list_marsh.clicked.connect(lambda: MARSH.save_custom_list_marsh(self))
-        self.ui.btn_add_rc_custom.clicked.connect(lambda: MARSH.add_rc_custom(self))
-        self.ui.btn_del_rc_custom.clicked.connect(lambda: MARSH.del_rc_custom(self))
-        self.ui.btn_order_recheck_otk.clicked.connect(self.order_recheck_otk)
-        self.ui.btn_peresilniy.clicked.connect(self.create_peresilniy)
+            self.ui.btn_edit_time_jur.clicked.connect(self.edit_time_jur_btn)
+            self.ui.btn_set_edit_time_jur.clicked.connect(self.set_edit_time_jur)
+            self.ui.btn_add_row_jur.clicked.connect(self.add_row_jur)
+            self.ui.btn_del_row_jur.clicked.connect(self.del_row_jur)
+            self.ui.btn_apply_deladd_row_jur.clicked.connect(self.apply_deladd_row_jur)
+            self.ui.btn_prosm_edit_time_clear_fio.clicked.connect(lambda _, x='ФИО': self.btn_prosm_edit_time_clear_fio(x))
+            self.ui.btn_prosm_edit_time_clear_fio2.clicked.connect(
+                lambda _, x='ФИО2': self.btn_prosm_edit_time_clear_fio(x))
+            self.ui.btn_reload_list_mk.clicked.connect(self.reload_list_mk)
+            self.ui.btn_dse_sh_tree.clicked.connect(self.btn_dse_sh_tree)
+            self.ui.btn_dse_sh_filtr.clicked.connect(self.btn_dse_sh_filtr)
+            self.ui.btn_dse_sh_elems.clicked.connect(self.btn_dse_sh_elems)
+            self.ui.btn_dse_info.clicked.connect(self.btn_dse_info)
+            self.ui.btn_outplan.clicked.connect(lambda: outplan.start_form(self))
+            self.ui.btn_outplan_ok.clicked.connect(lambda: outplan.outplan_ok(self))
+            self.ui.btn_outplan_apply.clicked.connect(lambda: outplan.apply_row_technolog(self))
+            self.ui.btn_open_vibor_assoc_prost.clicked.connect(lambda: self.open_vibor_assoc_proste_info('prost'))
+            self.ui.btn_open_vibor_assoc_plan.clicked.connect(lambda: self.open_vibor_assoc_proste_info('plan'))
+            self.ui.btn_vibor_assoc_prost.clicked.connect(self.vibor_assoc_prost_plan)
+            self.ui.btn_outplan_confirm.clicked.connect(lambda: outplan.confirm_row(self))
+            self.ui.btn_outplan_ansver.clicked.connect(lambda: outplan.ansver_row(self))
+            self.ui.btn_save_custom_list_marsh.clicked.connect(lambda: MARSH.save_custom_list_marsh(self))
+            self.ui.btn_add_rc_custom.clicked.connect(lambda: MARSH.add_rc_custom(self))
+            self.ui.btn_del_rc_custom.clicked.connect(lambda: MARSH.del_rc_custom(self))
+            self.ui.btn_order_recheck_otk.clicked.connect(self.order_recheck_otk)
+            self.ui.btn_peresilniy.clicked.connect(self.create_peresilniy)
         # ==================lines
-        self.ui.le_Nparol.setVisible(False)
-        self.ui.le_Nparol2.setVisible(False)
+        if 'le':
+            self.ui.le_Nparol.setVisible(False)
+            self.ui.le_Nparol2.setVisible(False)
         # ==================TABLES
-        self.ui.tbl_projs_raspred.itemSelectionChanged.connect(self.select_tbl_projs_raspred)
-        self.ui.tableWidget_vibor_mk.doubleClicked.connect(self.open_papka_chpy)
-        self.ui.tableWidget_vibor_mk.clicked.connect(self.tbl_mk_click)
-        self.ui.tableWidget_vibor_mk.setSelectionBehavior(0)
-        self.ui.tbl_dse.clicked.connect(self.tbl_dse_click)
-        self.ui.tbl_dse.itemSelectionChanged.connect(self.tbl_dse_select)
-        self.ui.tbl_dse.currentItemChanged.connect(self.raschet_naruada_time_tmp)
-        self.ui.tbl_prosmotr_nar.cellChanged[int, int].connect(self.edit_koeff_nar_tbl)
-        self.ui.tbl_red_zhur.cellChanged[int, int].connect(self.edit_red_zhur_koef_sl)
-        self.ui.tbl_red_zhur.clicked.connect(self.tbl_red_zhur_click)
-        self.ui.tbl_dse.doubleClicked.connect(self.tbl_dse_dblclick)
-        self.ui.tbl_vibor_nar_rasp.clicked.connect(self.tbl_nar_raspr_click)
-        self.ui.tbl_vibor_rabotn_rasp.clicked.connect(self.tbl_rabotn_raspr_click)
-        self.ui.tbl_komplektovka.itemSelectionChanged.connect(self.tbl_komplektovka_click)
-        self.ui.tbl_komplektovka_view.clicked.connect(self.tbl_komplektovka_view_click)
-        self.ui.tbl_prosmotr_nar.clicked.connect(self.tbl_prosmotr_nar_click)
-        self.ui.tbl_brak.doubleClicked.connect(self.dblclick_brak)
-        self.ui.tbl_prosmotr_nar.doubleClicked.connect(self.dblclick_tbl_prosmotr_nar)
-        self.ui.tbl_prosmotr_nar_jurnal.clicked.connect(self.tbl_prosmotr_nar_jurnal_clk)
-        self.ui.tbl_prosmotr_nar.horizontalScrollBar().valueChanged.connect(
-            self.ui.tbl_filtr_prosmotr_nar.horizontalScrollBar().setValue)
-        self.ui.tbl_komplektovka.horizontalScrollBar().valueChanged.connect(
-            self.ui.tbl_filtr_komplektovka.horizontalScrollBar().setValue)
-        self.ui.tableWidget_vibor_mk.horizontalScrollBar().valueChanged.connect(
-            self.ui.tbl_filtr_mk.horizontalScrollBar().setValue)
-        self.ui.tbl_dse.horizontalScrollBar().valueChanged.connect(
-            self.ui.tbl_filtr_dse.horizontalScrollBar().setValue)
-        self.ui.tbl_select_marsh.horizontalScrollBar().valueChanged.connect(
-            self.ui.tbl_select_marsh_filtr.horizontalScrollBar().setValue)
-        self.ui.tbl_vibor_nar_rasp.horizontalScrollBar().valueChanged.connect(
-            self.ui.tbl_filtr_vibor_nar_rasp.horizontalScrollBar().setValue)
-        self.ui.tbl_red_zhur.horizontalScrollBar().valueChanged.connect(
-            self.ui.tbl_red_zhur_filtr.horizontalScrollBar().setValue)
-        self.ui.tbl_select_marsh.clicked.connect(lambda: MARSH.tbl_select_marsh_clk(self))
-        self.ui.tbl_select_marsh.doubleClicked.connect(lambda: MARSH.tbl_select_marsh_dblclk(self))
-        self.ui.tbl_vibor_assoc_prost.clicked.connect(self.tbl_out_select_row)
-        self.ui.tbl_outplan.clicked.connect(lambda: outplan.tbl_out_select_row(self))
-        self.ui.tbl_outplan.itemSelectionChanged.connect(lambda: outplan.tbl_out_select_row(self))
-        self.ui.tbl_outplan.cellChanged[int, int].connect(lambda: outplan.tbl_outplan_change_cell(self))
-        self.ui.tbl_prosmotr_nar_jurnal.cellChanged[int, int].connect(
-            lambda row, column: self.tbl_prosmotr_nar_jurnal_cellChanged(row, column))
-        self.ui.tbl_brak.horizontalScrollBar().valueChanged.connect(
-            self.ui.tbl_brak_filtr.horizontalScrollBar().setValue)
+        if 'tbl':
+            self.ui.tbl_competence_users.itemActivated.connect(lambda item: MTXCMP.tbl_current_elem_itemActivated(self, item))
+            self.ui.tbl_competence_users.cellClicked.connect(lambda i,j : MTXCMP.tbl_current_elem_cellEntered(self, i,j))
+            self.ui.tbl_competence_users.itemChanged.connect(lambda item: MTXCMP.tbl_current_elem_itemChanged(self, item))
+            self.ui.tbl_projs_raspred.itemSelectionChanged.connect(self.select_tbl_projs_raspred)
+            self.ui.tableWidget_vibor_mk.doubleClicked.connect(self.open_papka_chpy)
+            self.ui.tableWidget_vibor_mk.clicked.connect(self.tbl_mk_click)
+            self.ui.tableWidget_vibor_mk.setSelectionBehavior(0)
+            self.ui.tbl_dse.clicked.connect(self.tbl_dse_click)
+            self.ui.tbl_dse.itemSelectionChanged.connect(self.tbl_dse_select)
+            self.ui.tbl_dse.currentItemChanged.connect(self.raschet_naruada_time_tmp)
+            self.ui.tbl_prosmotr_nar.cellChanged[int, int].connect(self.edit_koeff_nar_tbl)
+            self.ui.tbl_red_zhur.cellChanged[int, int].connect(self.edit_red_zhur_koef_sl)
+            self.ui.tbl_red_zhur.clicked.connect(self.tbl_red_zhur_click)
+            self.ui.tbl_dse.doubleClicked.connect(self.tbl_dse_dblclick)
+            self.ui.tbl_vibor_nar_rasp.clicked.connect(self.tbl_nar_raspr_click)
+            self.ui.tbl_vibor_rabotn_rasp.clicked.connect(self.tbl_rabotn_raspr_click)
+            self.ui.tbl_komplektovka.itemSelectionChanged.connect(self.tbl_komplektovka_click)
+            self.ui.tbl_komplektovka_view.clicked.connect(self.tbl_komplektovka_view_click)
+            self.ui.tbl_prosmotr_nar.clicked.connect(self.tbl_prosmotr_nar_click)
+            self.ui.tbl_brak.doubleClicked.connect(self.dblclick_brak)
+            self.ui.tbl_prosmotr_nar.doubleClicked.connect(self.dblclick_tbl_prosmotr_nar)
+            self.ui.tbl_prosmotr_nar_jurnal.clicked.connect(self.tbl_prosmotr_nar_jurnal_clk)
+            self.ui.tbl_prosmotr_nar.horizontalScrollBar().valueChanged.connect(
+                self.ui.tbl_filtr_prosmotr_nar.horizontalScrollBar().setValue)
+            self.ui.tbl_komplektovka.horizontalScrollBar().valueChanged.connect(
+                self.ui.tbl_filtr_komplektovka.horizontalScrollBar().setValue)
+            self.ui.tableWidget_vibor_mk.horizontalScrollBar().valueChanged.connect(
+                self.ui.tbl_filtr_mk.horizontalScrollBar().setValue)
+            self.ui.tbl_dse.horizontalScrollBar().valueChanged.connect(
+                self.ui.tbl_filtr_dse.horizontalScrollBar().setValue)
+            self.ui.tbl_select_marsh.horizontalScrollBar().valueChanged.connect(
+                self.ui.tbl_select_marsh_filtr.horizontalScrollBar().setValue)
+            self.ui.tbl_vibor_nar_rasp.horizontalScrollBar().valueChanged.connect(
+                self.ui.tbl_filtr_vibor_nar_rasp.horizontalScrollBar().setValue)
+            self.ui.tbl_red_zhur.horizontalScrollBar().valueChanged.connect(
+                self.ui.tbl_red_zhur_filtr.horizontalScrollBar().setValue)
+            self.ui.tbl_select_marsh.clicked.connect(lambda: MARSH.tbl_select_marsh_clk(self))
+            self.ui.tbl_select_marsh.doubleClicked.connect(lambda: MARSH.tbl_select_marsh_dblclk(self))
+            self.ui.tbl_vibor_assoc_prost.clicked.connect(self.tbl_out_select_row)
+            self.ui.tbl_outplan.clicked.connect(lambda: outplan.tbl_out_select_row(self))
+            self.ui.tbl_outplan.itemSelectionChanged.connect(lambda: outplan.tbl_out_select_row(self))
+            self.ui.tbl_outplan.cellChanged[int, int].connect(lambda: outplan.tbl_outplan_change_cell(self))
+            self.ui.tbl_prosmotr_nar_jurnal.cellChanged[int, int].connect(
+                lambda row, column: self.tbl_prosmotr_nar_jurnal_cellChanged(row, column))
+            self.ui.tbl_brak.horizontalScrollBar().valueChanged.connect(
+                self.ui.tbl_brak_filtr.horizontalScrollBar().setValue)
         # ==================TABS
-        self.ui.tabWidget_2.currentChanged[int].connect(self.tab2_clcik)
-        self.ui.tabWidget.currentChanged[int].connect(self.tab_clcik)
-        self.ui.tab_prosm_nar.currentChanged[int].connect(self.tab_prosm_nar)
-        self.ui.tabWidget.setTabEnabled(CQT.number_table_by_name_c(self.ui.tabWidget,'Контроль проектов'),False)
+        if 'tab':
+            self.ui.tabWidget_2.currentChanged[int].connect(self.tab2_clcik)
+            self.ui.tabWidget.currentChanged[int].connect(self.tab_clcik)
+            self.ui.tab_prosm_nar.currentChanged[int].connect(self.tab_prosm_nar)
+            self.ui.tabWidget.setTabEnabled(CQT.number_table_by_name_c(self.ui.tabWidget,'Контроль проектов'),False)
         # ===================CHECKBOX
-        self.ui.checkBox_min_rezhjim.stateChanged[int].connect(self.min_rejim)
-        self.ui.checkBox_vneplan_rab.stateChanged[int].connect(self.click_vneplan)
-        self.ui.checkBox_full_dse.stateChanged.connect(self.check_box_load_full)
-        self.ui.chk_progress.stateChanged.connect(self.zapoln_tabl_mk)
-        self.ui.chk_mode_reload_list_mk.stateChanged.connect(self.zapoln_tabl_mk)
-        self.ui.chk_korr_nar_filtr_podtv.stateChanged.connect(self.apply_chk_korr_nar_filtr_podtv)
-        # self.ui.chkb_autcourse.stateChanged.connect(self.click_chkb_autcourse)
-
+        if 'chk':
+            self.ui.checkBox_min_rezhjim.stateChanged[int].connect(self.min_rejim)
+            self.ui.checkBox_vneplan_rab.stateChanged[int].connect(self.click_vneplan)
+            self.ui.checkBox_full_dse.stateChanged.connect(self.check_box_load_full)
+            self.ui.chk_progress.stateChanged.connect(self.zapoln_tabl_mk)
+            self.ui.chk_mode_reload_list_mk.stateChanged.connect(self.zapoln_tabl_mk)
+            self.ui.chk_korr_nar_filtr_podtv.stateChanged.connect(self.apply_chk_korr_nar_filtr_podtv)
+            # self.ui.chkb_autcourse.stateChanged.connect(self.click_chkb_autcourse)
         # ===================COMBOBOX
-        self.ui.cmb_prof_rasp.activated[int].connect(self.select_prof_raspr)
-        self.ui.cmb_etapi.activated[int].connect(self.select_etap_dse)
-        self.ui.cmb_mat.activated[int].connect(self.select_etap_mat)
-        self.ui.cmb_prof.activated[int].connect(self.select_prof)
-        self.ui.cmb_current_rc.activated[int].connect(self.select_current_rc)
-        self.ui.cmb_list_marsh.activated[int].connect(lambda: MARSH.select_dse_po_marsh(self))
-        self.ui.cmb_vid_inf_marsh.activated[int].connect(lambda: MARSH.fill_tbl_select_marsh(self))
-        self.ui.cmb_outplan.activated[int].connect(lambda: outplan.select_mk(self))
-        self.ui.cmb_custom_marsh.activated[int].connect(lambda: MARSH.apply_custom_mar(self))
-        self.ui.cmb_select_rc_nar_korr.activated[int].connect(self.load_table_korr_naruad_by_rc)
+        if 'cmb':
+            self.ui.cmb_prof_rasp.activated[int].connect(self.select_prof_raspr)
+            self.ui.cmb_etapi.activated[int].connect(self.select_etap_dse)
+            self.ui.cmb_mat.activated[int].connect(self.select_etap_mat)
+            self.ui.cmb_prof.activated[int].connect(self.select_prof)
+            self.ui.cmb_current_rc.activated[int].connect(self.select_current_rc)
+            self.ui.cmb_list_marsh.activated[int].connect(lambda: MARSH.select_dse_po_marsh(self))
+            self.ui.cmb_vid_inf_marsh.activated[int].connect(lambda: MARSH.fill_tbl_select_marsh(self))
+            self.ui.cmb_outplan.activated[int].connect(lambda: outplan.select_mk(self))
+            self.ui.cmb_custom_marsh.activated[int].connect(lambda: MARSH.apply_custom_mar(self))
+            self.ui.cmb_select_rc_nar_korr.activated[int].connect(self.load_table_korr_naruad_by_rc)
+            self.ui.cmb_select_depatment_comp.activated[int].connect(lambda: MTXCMP.select_depatment_comp(self))
         # ===================RADIOBOX
         self.ui.radioButton_ispoln1.clicked.connect(self.clear_radio_isp)
         self.ui.radioButton_ispoln2.clicked.connect(self.clear_radio_isp)
@@ -192,6 +206,7 @@ class mywindow(QtWidgets.QMainWindow):
         self.superuser = False
         self.SPIS_EMPLOEE = []
         self.glob_login = ''
+        self.glob_ref_user:None|str = None
         self.glob_ima = ''
         self.glob_nom_mk = 0
         self.glob_res = []
@@ -408,6 +423,31 @@ class mywindow(QtWidgets.QMainWindow):
         # fix_nar2025_10_13_1332()
         return
 
+        def clear_naryad_stat_and_related_journals():
+            """01.11.2025 По задаче 100062451 """
+            naryads = (
+                145929,
+                145229,
+                144886,
+                144910,
+                144911,
+                144916,
+                145230,
+                145233,
+                145720
+            )
+            db_naryad = CFG.Config.project.db_naryad
+            for nom_nar in naryads:
+                result = CSQ.custom_request_c(
+                    db_naryad,
+                    f'DELETE FROM jurnal WHERE Номер_наряда = {nom_nar}'
+                )
+                print(f'Удаление журналов наряда: {nom_nar} Статус: {result}')
+                result = CSQ.custom_request_c(
+                    db_naryad,
+                    f"UPDATE naryad SET ФИО = '', ФИО2 = '', Фвремя = '', Фвремя2 = '', Распред_дата = '', Распред_ФИО = '' WHERE Пномер = {nom_nar}"
+                )
+                print(f'Обнуление (ФИО, Фвремя) в наряде: {nom_nar} Статус: {result}')
         # list_nar = CSQ.custom_request_c(self.db_naryd,f"""SELECT Пномер FROM naryad WHERE datetime(Дата) >= datetime('2024-08-01 07:12:41')""",hat_c=False)
         list_nar = [[48176]]
         for num in list_nar:
@@ -494,6 +534,9 @@ class mywindow(QtWidgets.QMainWindow):
             if CQT.focus_is_QTableWidget():
                 CQT.copy_bufer_table(QtWidgets.QApplication.focusWidget())
         tabl_sp_mk = self.ui.tableWidget_vibor_mk
+        if self.ui.tbl_competence_users_filtr.hasFocus():
+            if key_val == 16777220:
+                CMS.apply_filtr_c(self, self.ui.tbl_competence_users_filtr, self.ui.tbl_competence_users)
         if self.ui.tbl_outplan_naruad_filtr.hasFocus():
             if key_val == 16777220:
                 CMS.apply_filtr_c(self, self.ui.tbl_outplan_naruad_filtr, self.ui.tbl_outplan_naruad)
@@ -693,16 +736,7 @@ class mywindow(QtWidgets.QMainWindow):
             QtWidgets.QApplication.style().standardIcon(QtWidgets.QStyle.SP_TrashIcon)))
         self.ui.tabWidget_2.setTabIcon(3, QtGui.QIcon(
             QtWidgets.QApplication.style().standardIcon(QtWidgets.QStyle.SP_MessageBoxWarning)))
-        self.ui.tabWidget.setTabIcon(0, QtGui.QIcon(
-            QtWidgets.QApplication.style().standardIcon(QtWidgets.QStyle.SP_ComputerIcon)))
-        self.ui.tabWidget.setTabIcon(1, QtGui.QIcon(
-            QtWidgets.QApplication.style().standardIcon(QtWidgets.QStyle.SP_DialogOkButton)))
-        self.ui.tabWidget.setTabIcon(2, QtGui.QIcon(
-            QtWidgets.QApplication.style().standardIcon(QtWidgets.QStyle.SP_FileDialogInfoView)))
-        self.ui.tabWidget.setTabIcon(4, QtGui.QIcon(
-            QtWidgets.QApplication.style().standardIcon(QtWidgets.QStyle.SP_DriveHDIcon)))
-        self.ui.tabWidget.setTabIcon(5, QtGui.QIcon(
-            QtWidgets.QApplication.style().standardIcon(QtWidgets.QStyle.SP_FileDialogContentsView)))
+
 
     def get_plan_proj(self):
 
@@ -774,6 +808,9 @@ class mywindow(QtWidgets.QMainWindow):
             if CMS.user_access(self.db_naryd, 'создание_внепалн_ответ', self.glob_ima, False):
                 self.outplan_edit_acces = True
             outplan.load_form(self)
+        if name == 'Матрица компетенций':
+            hook_prog_bar.close()
+            MTXCMP.load_tbl(self)
 
     @CQT.onerror
     def tab2_clcik(self, nom, *args):
@@ -1139,8 +1176,13 @@ class mywindow(QtWidgets.QMainWindow):
         tblp = self.ui.tbl_prosmotr_nar
         tblj = self.ui.tbl_prosmotr_nar_jurnal
         nk_nom_nar = CQT.num_col_by_name_c(tblp, 'Пномер')
-        nom_nar = int(tblp.item(tblp.currentRow(), nk_nom_nar).text())
-        custom_request_c = f'''SELECT  Пномер, Номер_наряда, Дата, ФИО, Статус, Подытог, Примечание FROM jurnal WHERE Номер_наряда == {nom_nar}'''
+        nom_nar = int(tblp.item(tblp.currentRow(), nk_nom_nar).text()) #02.02.2026
+        custom_request_c = f'''SELECT  
+            Пномер, Номер_наряда, Дата, ФИО, Статус, Подытог, Примечание 
+            FROM jurnal 
+            WHERE Номер_наряда == {nom_nar}
+            ORDER BY datetime(Дата)
+        '''
         rez = CSQ.custom_request_c(self.db_naryd, custom_request_c)
         zad = CSQ.custom_request_c(self.db_naryd, f"""SELECT mk.Дата_завершения,
          naryad.Пномер, naryad.Задание FROM naryad Inner join mk ON mk.Пномер = naryad.Номер_мк WHERE naryad.Пномер == {nom_nar}""",
@@ -3052,8 +3094,8 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.fr_additions_raspr.setHidden(True)
         CQT.clear_tbl(tbl_rasp)
         check_erp_zp_state = f''
-        # if self.place.poki == 0:
-        #     check_erp_zp_state = f'AND знпр.Статус_поз_ЕРП != "Закрыт"'
+        if self.place.poki == 0:
+            check_erp_zp_state = f'AND знпр.Статус_поз_ЕРП != "Закрыт"'
         tbl = self.ui.tbl_projs_raspred
         custom_request_c = f'''
                 SELECT DISTINCT
@@ -3292,20 +3334,22 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
              naryad.Подтвержд_вып_дата, naryad.Подтвержд_вып_фио, 
                naryad.Обособленная_расценка, naryad.ФИО_для_ОТК, naryad.month_closing_block as "Блок по периоду" 
                                          FROM naryad 
-                                         INNER JOIN mk ON naryad.Номер_мк == mk.Пномер
+                                         LEFT JOIN mk ON naryad.Номер_мк == mk.Пномер
                                          LEFT JOIN plan ON plan.Пномер = mk.НомКплан 
                                          LEFT JOIN пл_оуп ON пл_оуп.НомПл = mk.НомКплан 
-                                        LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП """
-
+                                        LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП 
+                                        INNER JOIN коды_веплана_для_наряда ON коды_веплана_для_наряда.code = naryad.Внеплан
+"""
+        date_hide_prost = F.date_add_days(F.now(),-45) #03.02.2026
         if num_mk != None:
             custom_request_c = f'''{select} WHERE plan.poki = {self.place.poki} AND naryad.Номер_мк = {num_mk}'''
         else:
             if year == None:
-                custom_request_c = f'''{select} WHERE plan.poki = {self.place.poki} AND mk.Статус = "Открыта" OR naryad.Внеплан == {self.place.КодыНарядов.Простой} ;'''
+                custom_request_c = f'''{select} WHERE plan.poki = {self.place.poki} AND mk.Статус = "Открыта" OR (naryad.Внеплан == {self.place.КодыНарядов.Простой} AND datetime(naryad.Дата) >= datetime("{date_hide_prost}"))'''
             else:
                 colorfull = False
 
-                custom_request_c = f''' {select}  WHERE plan.poki = {self.place.poki} AND datetime(naryad.Дата) >= datetime("{year}-01-01 03:00:00") AND 
+                custom_request_c = f''' {select}  WHERE коды_веплана_для_наряда.poki = {self.place.poki} AND datetime(naryad.Дата) >= datetime("{year}-01-01 03:00:00") AND 
                                                                datetime(naryad.Дата) <= datetime("{year}-12-31 02:59:59") '''
         hook_prog_bar.set(0)
         hook_prog_bar.text('Получение данных')
@@ -3322,8 +3366,11 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
                 'Коэфф_сложности'
             }
 
-        list_dicts_jur = CSQ.custom_request_c(self.db_naryd,
-                                              f"""SELECT * FROM jurnal WHERE Номер_наряда IN ({CSQ.prepare_list_to_tuple([_['Пномер'] for _ in rez])})""",
+        list_dicts_jur = CSQ.custom_request_c(self.db_naryd, #02.02.2026
+                                              f"""
+                                                SELECT * FROM jurnal 
+                                                WHERE Номер_наряда IN ({CSQ.prepare_list_to_tuple([_['Пномер'] for _ in rez])})
+                                                ORDER BY Номер_наряда, datetime(Дата)""",
                                               rez_dict=True)
 
         def calc_delta(self, Фвремя, ФИО, Пномер, Норма_времени, count_users, list_dicts_jur):
@@ -4615,7 +4662,7 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
                                 F.valm(tbl.item(i, nk_v_rab).text()) / F.valm(tbl.item(i, nk_koid).text()))
                     time += time_tmp
 
-                    list_pereh = [f'        {str(i + 1)}. {_}' + _ for i, _ in
+                    list_pereh = [f'        {str(i + 1)}. {_}' for i, _ in
                                   enumerate(tbl.item(i, nk_per).text().split(";"))]
                     str_pereh = '\n'.join(list_pereh)
 

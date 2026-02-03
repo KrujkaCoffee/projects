@@ -100,10 +100,9 @@ class FinancialAccountingGroup(base_attr):
     group: bool
     ref_key: str | None
 
+
 def __________attrs____________():
     pass
-
-
 
 # --- ПодразделениеДиспетчер ---
 @dataclass
@@ -161,6 +160,16 @@ class Material:
             if self.ИсточникПолученияПолуфабриката == None:
                 raise ValueError(f"ИсточникПолученияПолуфабриката не может быть None для СпособПолучения = произвести_по_спецификации")
 
+# --- Материалы ---
+@dataclass
+class Byproduct_output:
+    КодНоменклатуры: str
+    Количество: float
+    СтатьяКалькуляции: ArticulationArticles = None
+
+    def __post_init__(self):
+        self.СтатьяКалькуляции = ArticulationArticlesData._hnt_возвратные_отходы_старое
+
 # --- Трудозатраты ---
 @dataclass
 class LaborCost:
@@ -173,11 +182,15 @@ class LaborCost:
 class StageData:
     Подразделение: Subdivision
     Материалы: List[Material] = field(default_factory=list)
+    ПобочныйВыход: List[Byproduct_output] = field(default_factory=list)
     Трудозатраты: List[LaborCost] = field(default_factory=list)
     ДлительностьМинут: int | float = 0
 
     def add_material(self, material: Material):
         self.Материалы.append(material)
+
+    def add_byproduct_and_intermediate_output(self, material: Byproduct_output):
+        self.ПобочныйВыход.append(material)
 
     def add_labor(self, labor: LaborCost):
         self.Трудозатраты.append(labor)
@@ -425,6 +438,7 @@ class CurrentUser:
 
 
 
+
 def ___________data____________():
     pass
 
@@ -506,9 +520,9 @@ class ObjsData():
     def _get_data_erp(cls, req_text: str):
         key, data_rez = APIERP.get_wet_request(req_text, lazy_method_huours=LAZY_METHOD_HUOURS)
         if key != 200:
-            raise ConnectionError(f'Ошибка получения данных {NAME_ERP_OBJ} из ERP')
+            raise ConnectionError(f'Ошибка получения данных {cls.NAME_ERP_OBJ} из ERP')
         if not data_rez['data']:
-            raise ValueError(f'Не найдено {NAME_ERP_OBJ} из ERP')
+            raise ValueError(f'Не найдено {cls.NAME_ERP_OBJ} из ERP')
         return data_rez['data']
 
     @classmethod
@@ -1086,12 +1100,12 @@ class ArticulationArticlesData(ObjsData):
     NAME_ERP_OBJ = 'СтатьиКалькуляции'
     if 'свойства':
         pass
-        _hnt_основной_фот: ArticulationArticles
-        _hnt_общепроизводственные_расходы: ArticulationArticles
-        _hnt_материалы_прочие: ArticulationArticles
-        _hnt_общехозяйственные_расходы: ArticulationArticles
-        _hnt_услуги_текущего_ремонта: ArticulationArticles
-        _hnt_транспортные_расходы_по_доставке: ArticulationArticles
+        _hnt_основной_фот_none: ArticulationArticles
+        _hnt_общепроизводственные_расходы_none: ArticulationArticles
+        _hnt_материалы_прочие_none: ArticulationArticles
+        _hnt_общехозяйственные_расходы_none: ArticulationArticles
+        _hnt_услуги_текущего_ремонта_none: ArticulationArticles
+        _hnt_транспортные_расходы_по_доставке_none: ArticulationArticles
         _hnt_материалы_дополнительные_производство: ArticulationArticles
         _hnt_материалы_основные_производство: ArticulationArticles
         _hnt_разработка_проектной_документации_производство: ArticulationArticles
@@ -2101,11 +2115,8 @@ class FinancialAccountingGroupData(ObjsData):
                                                             'value_type': 'ВидЦенностиНДС',
                                                             'group': 'ЭтоГруппа',
                                                     'ref_key': 'ref_key'})
-
-
-def ___________resource_specification____________():
+def __________initData____________():
     pass
-
 
 @dataclass
 class ResourceSpecificationInitData:
@@ -2117,6 +2128,24 @@ class ResourceSpecificationInitData:
     ArticulationArticlesData.init_data()
     MethodOfObtainingMaterialspecificationsData.init_data()
     TypeOfWorkData.init_data()
+
+
+@dataclass
+class NomenclatureInitData:
+    # Инициализация данных
+    NDS_ratesData.init_data()
+    TypeNomenData.init_data()
+    VidNomemData.init_data()
+    GruopNomenData.init_data()
+    AccessGroupData.init_data()
+    SalesOptionsData.init_data()
+    PackagingUnitsData.init_data()
+    NomenAnalysisGroupsData.init_data()
+    FinancialAccountingGroupData.init_data()
+
+def ___________resource_specification____________():
+    pass
+
 
 
 # --- Главный класс ---
@@ -2163,6 +2192,14 @@ class ResourceSpecification:
                                 "ИсточникПолученияПолуфабриката": m.ИсточникПолученияПолуфабриката.code,
                             } for m in stage.Данные.Материалы
                         ],
+                        "ПобочныйВыход": [
+                            {
+                                "Выход_код": b.КодНоменклатуры,
+                                "Выход_норма": b.Количество,
+                                "Выход_Статья_калькуляции": b.СтатьяКалькуляции.name,
+
+                            } for b in stage.Данные.ПобочныйВыход
+                        ],
                         "Трудозатраты": {
                             lc.ВидРабот.ref_key: lc.Количество
                             for lc in stage.Данные.Трудозатраты
@@ -2198,19 +2235,6 @@ class ResourceSpecification:
 def ___________nomen____________():
     pass
 
-
-@dataclass
-class NomenclatureInitData:
-    # Инициализация данных
-    NDS_ratesData.init_data()
-    TypeNomenData.init_data()
-    VidNomemData.init_data()
-    GruopNomenData.init_data()
-    AccessGroupData.init_data()
-    SalesOptionsData.init_data()
-    PackagingUnitsData.init_data()
-    NomenAnalysisGroupsData.init_data()
-    FinancialAccountingGroupData.init_data()
 
 class Nomenclature():
     def __init__(self,

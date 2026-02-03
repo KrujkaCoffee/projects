@@ -170,7 +170,8 @@ def gen_page(page):
                 _output_column_tabels_ref.current.controls.clear()
             _output_column_tabels_ref.current.controls.append(tbl_rez)
             set_header_elems_visible(btn_enabled)
-            _header_input_panel_textfield_ref.current.value = calc_silencer_back.get_name_new_calc(Data.Data_module.alias)
+            input_vals = calc_silencer_back.get_vals_from_input_data_tbl(_input_tabe_ref.current)
+            _header_input_panel_textfield_ref.current.value = calc_silencer_back.get_name_new_calc(input_vals)
             #DTCLS.Data_page.Data_module.status_bar.set_text('Успешно рассчитано')
             page.update()
 

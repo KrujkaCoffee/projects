@@ -1,3 +1,4 @@
+from __future__ import annotations
 import copy
 import pathlib
 import typing
@@ -72,6 +73,115 @@ ERP_CSS = """
     border: 1px solid rgb(204,204,204);
 }
                     """
+WHATS_NEW_CSS = """
+    QTableWidget {
+    border: none;
+    gridline-color: transparent;
+    background-color: rgb(255,255,255);
+    }
+    
+    QTableWidget::item {
+    padding: 6px 8px;
+    border-bottom: 1px solid rgb(235,235,235);
+    background-color: rgb(255,255,255);
+    color: rgb(40,40,40);
+    }
+    
+    QTableWidget::item:hover {
+    background-color: rgb(248,248,248);
+    }
+    
+    QTableWidget::item:selected {
+    background-color: rgb(255,245,215);
+    color: rgb(40,40,40);
+    border-bottom: 1px solid rgb(235,200,120);
+    }
+    
+    QTableWidget::item:selected:focus {
+    background-color: rgb(250,235,180);
+    color: rgb(40,40,40);
+    border-bottom: 1px solid rgb(235,200,120);
+    }
+    
+    QHeaderView::section {
+    background-color: rgb(245,245,245);
+    color: rgb(80,80,80);
+    padding: 6px 8px;
+    border: none;
+    border-bottom: 2px solid rgb(220,220,220);
+    font-weight: bold;
+    }
+    """
+MES_CSS = """
+    QTableWidget {
+    border: none;
+    gridline-color: transparent;
+    background-color: rgb(250,250,250);
+    color: rgb(40,40,40);
+    selection-background-color: transparent;
+    }
+    
+    /* Ячейки */
+    QTableWidget::item {
+    padding: 2px 3px;
+    border-bottom: 1px solid rgb(225,225,225);
+    }
+    
+    /* Зебра */
+    QTableWidget::item:!selected:alternate {
+    background-color: rgb(244,246,248);
+    }
+    
+    /* Hover по строке */
+    QTableWidget::item:hover {
+    background-color: rgb(238,244,232);
+    }
+    
+    /* Выделение без фокуса */
+    QTableWidget::item:selected {
+    background-color: rgb(225,240,220);
+    color: rgb(35,35,35);
+    }
+    
+    /* Выделение с фокусом */
+    QTableWidget::item:selected:focus {
+    background-color: rgb(205,225,195);
+    border: 1px solid rgb(170,205,160);
+    color: rgb(30,30,30);
+    }   
+    
+    /* Заголовки */
+    QHeaderView::section {
+    background-color: rgb(235,237,239);
+    color: rgb(30,30,30);
+    padding: 2px 2px;
+    border: none;
+    border-right: 1px solid rgb(200,200,200);
+    border-bottom: 2px solid rgb(180,180,180);
+    font-weight: bold;
+    }
+    
+    /* Hover заголовка */
+    QHeaderView::section:hover {
+    background-color: rgb(220,225,230);
+    }
+    
+    /* Вертикальный хедер */
+    QHeaderView::section:vertical {
+    border-right: none;
+    border-bottom: 1px solid rgb(200,200,200);
+    }
+    
+    /* Disabled */
+    QTableWidget:disabled {
+    background-color: rgb(235,235,235);
+    color: rgb(140,140,140);
+    }
+    
+    QTableWidget::item:disabled {
+    color: rgb(140,140,140);
+    }
+    """
 
 class DataTypes:
     class BaseType:
@@ -713,7 +823,7 @@ class ContextMenuBuilder:
             return self
 
         current_menu = self._stack[-1]
-        sub = current_menu.addMenu(name)
+        sub = current_menu.addMenu(f'{name}  ')
         self._stack.append(sub)
         self._has_items = True
         return self
@@ -725,6 +835,114 @@ class ContextMenuBuilder:
 
     def has_items(self):
         return self._has_items
+
+class FontDelegate(QtWidgets.QStyledItemDelegate):
+    def createEditor(self, parent, option, index):
+        editor = super().createEditor(parent, option, index)
+
+        # получаем шрифт из item
+        font = index.data(QtCore.Qt.FontRole)
+        if font:
+            editor.setFont(font)
+        return editor
+
+
+class TableContext:
+    def __init__(self, tbl:QtWidgets.QTableWidget):
+        self.tbl:QtWidgets.QTableWidget = tbl
+        self.nf:dict[str, int] = nums_col_by_name_dict(tbl)
+        self._row_count:int = tbl.rowCount()
+
+    def rows(self):
+        for i in range(self._row_count):
+            yield TableRow(self, i)
+
+    def set_value(self,i:int,name_field:str,new_val):
+
+        item = self.tbl.item(i,self.nf[name_field])
+
+        old_val = item.data(QtCore.Qt.DisplayRole)
+
+        # если раньше была строка (или пусто)
+        if isinstance(old_val, str) or old_val is None:
+            if new_val is None:
+                item.setData(QtCore.Qt.DisplayRole, '')
+            else:
+                item.setData(QtCore.Qt.DisplayRole, str(new_val))
+        else:
+            # раньше было число или другой нестроковый тип
+            if new_val is None:
+                item.setData(QtCore.Qt.DisplayRole, 0)
+            else:
+                item.setData(QtCore.Qt.DisplayRole, new_val)
+
+    def find_row(self,rules:dict)->list[TableRow]:
+        list_res = []
+        for row in self.rows():
+            for k,v in rules.items():
+                if k in row.nf:
+                    if isinstance(v, (list,set,tuple)):
+                        if row.value(k) in v:
+                            list_res.append(row)
+                    else:
+                        if row.value(k) == v:
+                            list_res.append(row)
+        return list_res
+        
+class TableRow:
+    def __init__(self, ctx: TableContext, row_index: int):
+        self.ctx = ctx
+        self.tbl = ctx.tbl
+        self.nf = ctx.nf
+        self.i = row_index
+
+    def __repr__(self):
+        # Покажем номер строки + словарь {имя колонки: значение} всех колонок
+        values = {name: self.value(name) for name in self.nf}
+        return f"<TableRow {self.row_number}: {values}>"
+
+    def __str__(self):
+        # Компактная строка — номер строки + несколько первых колонок
+        first_cols = list(self.nf.keys())[:3]  # можно поменять число колонок
+        vals = [f"{col}={self.value(col)}" for col in first_cols]
+        return f"Row {self.row_number}: " + ", ".join(vals)
+    
+    def hide(self,val:bool=True):
+        self.tbl.setRowHidden(self.i,val)
+        
+    def _col_index(self, col_name: str) -> int:
+        return self.nf[col_name]
+
+    def item(self, col_name: str) -> QtWidgets.QTableWidgetItem | None:
+        j = self._col_index(col_name)
+        return self.tbl.item(self.i, j)
+
+    def value(self, col_name: str):
+        item = self.item(col_name)
+        if item is None:
+            return None
+        return item.text()
+
+
+    def set_editable(self, col_name: str, value:bool=True):
+        set_cell_editable(self.tbl,self.i,self.nf[col_name],value)
+
+    def set_value(self, col_name: str, value):
+        j = self._col_index(col_name)
+        item = self.tbl.item(self.i, j)
+        if item is None:
+            item = QtWidgets.QTableWidgetItem()
+            self.tbl.setItem(self.i, j, item)
+        item.setText(str(value))
+
+    def is_numeric(self, col_name: str) -> bool:
+        return F.is_numeric(self.value(col_name))
+
+    @property
+    def row_number(self) -> int:
+        return self.i + 1
+
+
 def progress_decorator(fn):
     """
     При старте обернутой функции появляется окно загрузки
@@ -802,7 +1020,7 @@ def add_sub_action_menu(self,ui:object,name_menu:str,name_action:str,fnc:object)
     menu.addAction(ui.__getattribute__(pep_name))
 
 
-def fill_list_combobx(self,cmb,list_rows,list_colors=[],list_tooltip=[], sep_col = ';',first_void = False,list_bold=[],list_data=[]):
+def fill_list_combobx(self,cmb,list_rows,list_colors=[],list_tooltip=[], sep_col = ';',first_void = False,list_bold=[],list_data=[],current_text=None):
     cmb.clear()
     model = cmb.model()
 
@@ -830,7 +1048,9 @@ def fill_list_combobx(self,cmb,list_rows,list_colors=[],list_tooltip=[], sep_col
             cmb.setItemData(i, list_data[i], QtCore.Qt.UserRole)
     if first_void:
         model.insertRow(0,QtGui.QStandardItem(""))
-
+        cmb.setCurrentIndex(0)
+    if current_text:
+        cmb.setCurrentIndex(current_text)
     cmb.setMaxVisibleItems(len(list_rows))
 
 def set_cell_editable(tbl:QtWidgets.QTableWidget, r:int, c:int, val:bool):
@@ -1295,7 +1515,7 @@ def list_from_cmb_c(obj):
             
             
 def list_from_wtabl_c(obj, sep='', hat_c=False, only_visible=False, rez_dict=False, only_visible_columns = False,
-                      only_current_row=False):
+                      only_current_row=False,get_user_data=True):
     spisok = []
     if obj == None:
         return []
@@ -1311,7 +1531,7 @@ def list_from_wtabl_c(obj, sep='', hat_c=False, only_visible=False, rez_dict=Fal
             if fl_column:
                 if obj.horizontalHeaderItem(j) != None:
                     header_name = obj.horizontalHeaderItem(j).data(QtCore.Qt.UserRole)
-                    if not  header_name:
+                    if not  header_name or not get_user_data:
                         header_name = obj.horizontalHeaderItem(j).text()
                     s.append(header_name)
                 else:
@@ -1360,6 +1580,7 @@ def font_size(obj, kol: int, size: int):
     font.setPointSize(int(size))
     for i in range(0, obj.rowCount()):
         obj.item(i, kol).setFont(font)
+    obj.setItemDelegate(FontDelegate(obj))
 
 def font_cell_size_format(obj, i: int, j: int, size: int = 0, bold: bool = False,underline: bool = False,italic: bool = False):
     obj.blockSignals(True)
@@ -1372,6 +1593,7 @@ def font_cell_size_format(obj, i: int, j: int, size: int = 0, bold: bool = False
     font.setItalic(italic)
     obj.item(i, j).setFont(font)
     obj.blockSignals(False)
+    obj.setItemDelegate(FontDelegate(obj))
 
 def add_color_wtab(obj, i, j, r:int, g:int, b:int):
     if obj.item(i, j) == None:
@@ -1462,14 +1684,65 @@ def getCustData(obj:QtWidgets.QTableWidget|QtWidgets.QTableWidgetItem, row: int 
         return item.data(Qt.UserRole)
     raise TypeError(f"Недопустимый тип: {type(obj).__name__}")
 
+
+def save_selection(tbl: QtWidgets.QTableWidget):
+    ranges = tbl.selectedRanges()
+    if ranges:
+        val = [(r.topRow(), r.leftColumn(), r.bottomRow(), r.rightColumn()) for r in ranges]
+        tbl.setProperty(
+            '_saved_selected_ranges',
+            val)
+        #print(f'_saved_selected_ranges {val}')
+        tbl.setProperty('_saved_current_cell', None)
+    else:
+        row = tbl.currentRow()
+        col = tbl.currentColumn()
+        if row >= 0 and col >= 0:
+            tbl.setProperty('_saved_current_cell', (row, col))
+            #print(f'_saved_selected_ranges {(row, col)}')
+        else:
+            tbl.setProperty('_saved_current_cell', None)
+        tbl.setProperty('_saved_selected_ranges', None)
+
+
+def restore_selection(tbl: QtWidgets.QTableWidget):
+    tbl.blockSignals(True)
+
+    ranges = tbl.property('_saved_selected_ranges')
+    if ranges:
+        for top, left, bottom, right in ranges:
+            if bottom < tbl.rowCount() and right < tbl.columnCount():
+                tbl.setRangeSelected(
+                    QtWidgets.QTableWidgetSelectionRange(
+                        top, left-1, bottom, right-1
+                    ),
+                    True
+                )
+        # current — верхняя левая ячейка первого диапазона
+        top, left, _, _ = ranges[0]
+        tbl.setCurrentCell(top, left-1)
+        #print(f'restore_selection {(top, left)}')
+    else:
+        saved = tbl.property('_saved_current_cell')
+        if saved:
+            row, col = saved
+            if row < tbl.rowCount() and col < tbl.columnCount():
+                tbl.setCurrentCell(row, col-1)
+                #print(f'restore_selection {(row, col)}')
+
+    tbl.blockSignals(False)
+
 @contextmanager
 def table_updating(tbl: QtWidgets.QTableWidget):
+
+
     """временно блокирует сигналы таблицы и ставит флаг _updating_table"""
     is_outer_freeze = is_table_updating(tbl)
     if not is_outer_freeze:
         tbl.blockSignals(True)
         tbl.setUpdatesEnabled(False)
         tbl.setVisible(False)
+        save_selection(tbl)
         tbl.setProperty('_updating_table', True)
         #print(f'Установлен фриз {tbl.objectName()}')
     else:
@@ -1483,6 +1756,7 @@ def table_updating(tbl: QtWidgets.QTableWidget):
             pass
         else:
             tbl.setProperty('_updating_table', False)
+            restore_selection(tbl)
             tbl.setUpdatesEnabled(True)
             tbl.setVisible(True)
             tbl.blockSignals(False)
@@ -1810,8 +2084,9 @@ def add_table(item, i, j, spis_spiskov, set_editeble_col_nomera={}, visota = 10,
     return
 
 def add_combobox(self = '', table = '', i=0, j=0, list=[], first_void=True,  conn_func = '', editable = False,
-                 name_flag = None,list_tooltips=[], list_data=[],return_data=False):
-    current_text = table.item(i,j).text()
+                 name_flag = None,list_tooltips=[], list_data=[],return_data=False,current_text=None):
+    if current_text is None:
+        current_text = table.item(i,j).text()
     combo = QtWidgets.QComboBox()
     combo.wheelEvent = lambda event: None
     fl = False
@@ -1878,10 +2153,10 @@ def add_combobox(self = '', table = '', i=0, j=0, list=[], first_void=True,  con
             if item == current_text:
                 fl = True
     table.setCellWidget(i, j, combo)
-    if fl:
-        combo.setCurrentText(current_text)
     if first_void:
         combo.setCurrentIndex(0)
+    if fl:
+        combo.setCurrentText(current_text)
     if editable:
         combo.setEditable(True)
     return combo #22.08.25
@@ -1995,15 +2270,51 @@ class Delegate(QStyledItemDelegate):
             painter.setPen(QPen(Qt.red, 3))
             painter.drawLine(option.rect.topRight(), option.rect.bottomRight())
 
+
+def setRowDisabled(tbl, row_id, val=True):
+    """
+    Блокирует или разблокирует строку в QTableWidget.
+
+    :param tbl: QTableWidget, таблица, в которой нужно заблокировать строку.
+    :param row_id: int, индекс строки, которую нужно заблокировать/разблокировать.
+    :param val: bool, если True - заблокировать строку, если False - разблокировать.
+    """
+    for col in range(tbl.columnCount()):
+        item = tbl.item(row_id, col)
+        if item:
+            if val:
+                # Блокируем строку (запрещаем выделение и редактирование)
+                item.setFlags(item.flags() & ~Qt.ItemIsSelectable & ~Qt.ItemIsEditable)
+            else:
+                # Разблокируем строку (восстанавливаем возможность выделения и редактирования)
+                item.setFlags(item.flags() | Qt.ItemIsSelectable | Qt.ItemIsEditable)
+
 def set_cell_editable(tbl, i, j, val:bool=True):
+    """
+        Устанавливает возможность редактирования ячейки в таблице.
+
+        :param tbl: QTableWidget, таблица.
+        :param i: int, индекс строки.
+        :param j: int, индекс столбца.
+        :param val: bool, если True, ячейка редактируемая, если False, ячейка неизменяемая.
+        """
+    # Блокируем сигналы, чтобы избежать ненужных обновлений интерфейса
     tbl.blockSignals(True)
+
+    # Проверяем, существует ли ячейка
     cellinfo = tbl.item(i, j)
-    if val:
-        cellinfo.setFlags(QtCore.Qt.ItemIsSelectable | QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsEditable)
-        set_color_wtab_c(tbl, i , j, 250, 250, 250)
-    else:
-        cellinfo.setFlags(QtCore.Qt.ItemIsSelectable | QtCore.Qt.ItemIsEnabled)
-        set_color_wtab_c(tbl, i, j, 240, 240, 240)
+    if cellinfo is not None:
+        # Если редактируемая ячейка
+        if val:
+            # Устанавливаем флаги для редактируемости
+            cellinfo.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled | Qt.ItemIsEditable)
+            set_color_wtab_c(tbl, i, j, 250, 250, 250)  # Настроить цвет для редактируемой ячейки
+        else:
+            # Убираем флаг редактирования, оставляя возможность выделения
+            cellinfo.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
+            set_color_wtab_c(tbl, i, j, 240, 240, 240)  # Настроить цвет для неизменяемой ячейки
+
+    # Разблокируем сигналы после выполнения всех изменений
     tbl.blockSignals(False)
     
 def lbl_linkActivated(link, *args):
@@ -2161,6 +2472,7 @@ def fill_wtabl(dict_or_list, object, set_editeble_col_nomera={}, ogr_maxshir_kol
     object_tbl.setSelectionBehavior(eval(f'QtWidgets.QTableWidget.SelectionBehavior.{selectionBehavior}'))
     object_tbl.setSelectionMode(eval(f'QtWidgets.QTableWidget.SelectionMode.{selectionMode}'))
     tbl_object_name = object_tbl.objectName()
+
     if type(dict_or_list) == type(dict()):
         list_of_data = F.dict_of_dicts_to_list_of_lists(dict_or_list)
     if type(dict_or_list) == type(['']):
@@ -2206,9 +2518,11 @@ def fill_wtabl(dict_or_list, object, set_editeble_col_nomera={}, ogr_maxshir_kol
             object_tbl.setHorizontalHeaderItem(i_head, item)
         #object_tbl.setHorizontalHeaderLabels(list_of_data[0])
     else:
+        list_of_data = list_of_data[1:]
         object_tbl.setRowCount(len(list_of_data))
         object_tbl.setHorizontalHeaderLabels(['' for _ in list_of_data[0]])
         start_fill = 0
+
     if head_column != None:
         object_tbl.setVerticalHeaderLabels([_[head_column] for _ in list_of_data[start_fill:]])
     for i in range(start_fill, len(list_of_data)):
@@ -2350,10 +2664,6 @@ def fill_wtabl(dict_or_list, object, set_editeble_col_nomera={}, ogr_maxshir_kol
 
     if head_column != None:
         object_tbl.setColumnHidden(head_column,True)
-    if hide_head_column:
-        object_tbl.horizontalHeader().hide()
-    if hide_head_rows:
-        object_tbl.verticalHeader().hide()
         
     if isinstance(object_tbl,QtWidgets.QTableWidget):
         object_tbl.blockSignals(False)
@@ -2376,58 +2686,63 @@ def fill_wtabl(dict_or_list, object, set_editeble_col_nomera={}, ogr_maxshir_kol
 
 
     if fncContextMenu is not None:
-        object_tbl.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
-
-        # Флаг для предотвращения повторного вызова меню
-        if not hasattr(object_tbl, '_context_menu_enabled'):
-            object_tbl._context_menu_enabled = True
-    
-
-        def open_menu(pos: QtCore.QPoint):
-            # Проверяем, разрешено ли контекстное меню
-            if not object_tbl._context_menu_enabled:
-                return
-
-            item = object_tbl.itemAt(pos)
-            if not item:
-                return
-
-            row, col = item.row(), item.column()
-
-            # Создаем меню
-            menu = QMenu(object_tbl)
-            menu.setAttribute(QtCore.Qt.WA_DeleteOnClose)
-
-            # Создаем билдер
-            builder = ContextMenuBuilder(menu)
-
-            # Заполняем меню
-            fncContextMenu(parent_self if parent_self else object, object_tbl, row, col, builder)
-
-            if builder.has_items():
-                # Временно отключаем контекстное меню для таблицы
-                object_tbl._context_menu_enabled = False
-
-                def on_menu_destroyed():
-                    # Восстанавливаем контекстное меню через 300 мс
-                    QtCore.QTimer.singleShot(300,
-                                             lambda: setattr(object_tbl, '_context_menu_enabled', True))
-
-                menu.destroyed.connect(on_menu_destroyed)
-
-                # Показываем меню
-                menu.exec_(object_tbl.viewport().mapToGlobal(pos))
-            else:
-                menu.deleteLater()
-
-
-        object_tbl.customContextMenuRequested.connect(open_menu)
-
+        add_context_menu(object_tbl, parent_self, fncContextMenu)
+    if hide_head_column:
+        object_tbl.horizontalHeader().setHidden(True)
+    if hide_head_rows:
+        object_tbl.verticalHeader().setHidden(True)
     if paret_item == None:
         return object_tbl
     paret_item.setCellWidget(tbl_vidget[0], tbl_vidget[1], object_tbl)
 
-    
+
+
+
+def add_context_menu(object_tbl:QtWidgets.QTableWidget,parent_self,fncContextMenu):
+    object_tbl.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+
+    # Флаг для предотвращения повторного вызова меню
+    if not hasattr(object_tbl, '_context_menu_enabled'):
+        object_tbl._context_menu_enabled = True
+
+    def open_menu(pos: QtCore.QPoint):
+        # Проверяем, разрешено ли контекстное меню
+        if not object_tbl._context_menu_enabled:
+            return
+
+        item = object_tbl.itemAt(pos)
+        if not item:
+            return
+
+        row, col = item.row(), item.column()
+
+        # Создаем меню
+        menu = QMenu(object_tbl)
+        menu.setAttribute(QtCore.Qt.WA_DeleteOnClose)
+
+        # Создаем билдер
+        builder = ContextMenuBuilder(menu)
+
+        # Заполняем меню
+        fncContextMenu(parent_self if parent_self else object, object_tbl, row, col, builder)
+
+        if builder.has_items():
+            # Временно отключаем контекстное меню для таблицы
+            object_tbl._context_menu_enabled = False
+
+            def on_menu_destroyed():
+                # Восстанавливаем контекстное меню через 300 мс
+                QtCore.QTimer.singleShot(300,
+                                         lambda: setattr(object_tbl, '_context_menu_enabled', True))
+
+            menu.destroyed.connect(on_menu_destroyed)
+
+            # Показываем меню
+            menu.exec_(object_tbl.viewport().mapToGlobal(pos))
+        else:
+            menu.deleteLater()
+
+    object_tbl.customContextMenuRequested.connect(open_menu)
         
 
 def fill_combobox_in_table_c(tbl):
@@ -2606,7 +2921,7 @@ def focus_is_QTableWidget():
     return False
 
 def copy_bufer_table(tbl):
-    spis = list_from_wtabl_c(tbl, sep='',hat_c=True,only_visible=True,only_visible_columns = True)
+    spis = list_from_wtabl_c(tbl, sep='',hat_c=True,only_visible=True,only_visible_columns = True,get_user_data=False)
     F.copy_bufer_list(spis)
 
 def refill_tbl_into_msgbox_get_table(self,tbl:QtWidgets.QTableWidget,msg='Информация'):
@@ -3157,7 +3472,8 @@ def onerror(funcd):
 
 def add_error_line_in_debug_reestr(line: list):
     if not F.is_debug():
-        path = r'Z:\MES_setup\errors\debug.txt'
+        filename = F.now('%Y-%m.txt') # 24.12.2025
+        path = fr'Z:\MES_setup\errors\debug\{filename}'
         with open(path, 'a+', encoding='utf8') as f:
             f.write('|'.join(str(column).replace('|', '%7C') for column in line) + '\n')
 
@@ -3171,7 +3487,8 @@ def add_err_to_debug(list, path):
 
 
 
-def msgboxgYN(msg, btn0_name="Да", btn1_name="Нет", func_theme = '', icon = QtWidgets.QMessageBox.Question,fontsize=14,icon_str=None):
+def msgboxgYN(msg, btn0_name="Да", btn1_name="Нет", func_theme = '', icon = QtWidgets.QMessageBox.Question,fontsize=14,icon_str=None,
+              title: str = "Внимание!"): # 24.12.2025
     """icon = NoIcon, Question, Information, Warning, Critical """
     if icon_str != None:
         icon = eval(f'QtWidgets.QMessageBox.{icon_str}')
@@ -3182,7 +3499,7 @@ def msgboxgYN(msg, btn0_name="Да", btn1_name="Нет", func_theme = '', icon =
     font.setPointSize(int(fontsize))
     msgBox.setFont(font)
     msgBox.setText(msg)
-    msgBox.setWindowTitle("Внимание!")
+    msgBox.setWindowTitle(title)
     # msgBox.setStandardButtons(QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.Cancel)
     buttonoptionA = msgBox.addButton(btn0_name, QtWidgets.QMessageBox.YesRole)
     buttonoptionB = msgBox.addButton(btn1_name, QtWidgets.QMessageBox.AcceptRole)
@@ -3334,7 +3651,7 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
                  func_btn0=None, selection_from_tbl=False, ExtendedSelection=True, selectRows=False,
                  func_oform_filtr=None, load_links=False, conn_func_label_link=None, styleSheet=None, parent_self=None,
                  sortingEnabled=False, not_standart_close=False, save_column_sort_hh: bool = False,
-                 aliases_header:dict=None):
+                 aliases_header:dict=None,SelectionMode=None):
         """        #SP_MessageBoxCritical
         #SP_MessageBoxInformation
         #SP_MessageBoxQuestion
@@ -3376,11 +3693,15 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
 
         try:
             icon = QtGui.QIcon(QtWidgets.QApplication.style().standardIcon(eval(f'QtWidgets.QStyle.{style_icon}')))
+            self.ui.lbl_icon.setPixmap(icon.pixmap(24, 24))
         except:
-            icon = QtGui.QIcon(QtWidgets.QApplication.style().standardIcon(QtWidgets.QStyle.SP_MessageBoxInformation))
+            self.ui.lbl_icon.setText(style_icon)
+            ft = self.ui.lbl_icon.font()
+            ft.setPixelSize(18)
+            self.ui.lbl_icon.setFont(ft)
 
         self.msgboxg_get_table = None
-        self.ui.lbl_icon.setPixmap(icon.pixmap(24, 24))
+        
         self.ui.lbl_text.setText(msg)
         ft = self.ui.lbl_text.font()
         ft.setPixelSize(18)
@@ -3451,25 +3772,9 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
             tbl.setSelectionMode(QtWidgets.QTableWidget.SelectionMode.ExtendedSelection)
         else:
             tbl.setSelectionMode(QtWidgets.QTableWidget.SelectionMode.SingleSelection)
-        if func_oform_tbl:
-            if parent_self:
-                func_oform_tbl(tbl, parent_self)
-            else:
-                func_oform_tbl(tbl)
-        if show_filtr:
-            hat_c = {tbl.horizontalHeaderItem(col).text(): "" for col in range(tbl.columnCount())}
-            fill_wtabl([hat_c], tblf, height_row=25, auto_type=False,
-                       set_editeble_col_nomera={_ for _ in range(tbl.columnCount())})
-            _load_tbl(tbl, tblf, True)
-            tblf.setToolTip(
-                "фильтр по вхождению: \n* - любой символ\n! - не\n= - полное совпадение\n| - ИЛИ\n& - И\n'... - RegEx \nдаты: <24-11-11 & >24-11-01")
-            if func_oform_filtr:
-                if parent_self:
-                    func_oform_filtr(tbl, tblf, parent_self)
-                else:
-                    func_oform_filtr(tbl, tblf)
-        else:
-            tblf.setHidden(True)
+        if SelectionMode:
+            tbl.setSelectionMode(eval(f'QtWidgets.QTableWidget.SelectionMode.{SelectionMode}'))
+
         summ_width = 0
         for clmn in range(tbl.columnCount()):
             summ_width += (tbl.columnWidth(clmn) + 1)
@@ -3562,6 +3867,25 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
         self.setStyleSheet(parent.styleSheet())
         load_icons(self, 24)
         self.oform_action()
+        if func_oform_tbl:
+            if parent_self:
+                func_oform_tbl(tbl, parent_self)
+            else:
+                func_oform_tbl(tbl)
+        if show_filtr:
+            hat_c = {tbl.horizontalHeaderItem(col).text(): "" for col in range(tbl.columnCount())}
+            fill_wtabl([hat_c], tblf, height_row=25, auto_type=False,
+                       set_editeble_col_nomera={_ for _ in range(tbl.columnCount())})
+            _load_tbl(tbl, tblf, True)
+            tblf.setToolTip(
+                "фильтр по вхождению: \n* - любой символ\n! - не\n= - полное совпадение\n| - ИЛИ\n& - И\n'... - RegEx \nдаты: <24-11-11 & >24-11-01")
+            if func_oform_filtr:
+                if parent_self:
+                    func_oform_filtr(tbl, tblf, parent_self)
+                else:
+                    func_oform_filtr(tbl, tblf)
+        else:
+            tblf.setHidden(True)
         return
 
     def disabled_btn0(self,val:bool=True):
@@ -4108,7 +4432,17 @@ def msgboxg_get_table(self, msg, dict_or_list, btn0_name="Ввод", btn1_name="
                       print_hat=True,func_btn0=None,selection_from_tbl=False,ExtendedSelection=True,
                       selectRows=False,func_oform_filtr=None,load_links=False, conn_func_label_link=None,
                       styleSheet=None,parent_self=None,sortingEnabled=False,yesNoMode=False,not_standart_close=False,
-                      save_column_sort_hh: bool = False,aliases_header=None):
+                      save_column_sort_hh: bool = False,aliases_header=None,SelectionMode=None):
+    """
+    :param selectionBehavior: SelectItems|SelectRows|SelectColumns
+    :param selectionMode:
+            Число	Константа (SelectionMode)	Описание
+            0	    NoSelection	                Выделение запрещено
+            1	    SingleSelection	            Только один элемент (по умолчанию)
+            2	    MultiSelection	            Множественный выбор (Ctrl+ЛКМ, но без Shift)
+            3	    ExtendedSelection	        Расширенный выбор (как в проводнике — работает Shift и Ctrl)
+            4	    ContiguousSelection	        Только смежные элементы (работает Shift, но не Ctrl)
+    """
     self.__ansver_Dialog_tbl = None
     dialog_tbl = Dialog_tbl(self,msg, dict_or_list, btn0_name, btn1_name, func_validate,
                             disable_btn0=disable_btn0,disable_btn1=disable_btn1,load_summ=load_summ,
@@ -4119,7 +4453,7 @@ def msgboxg_get_table(self, msg, dict_or_list, btn0_name="Ввод", btn1_name="
                             func_oform_filtr=func_oform_filtr,load_links=load_links,
                             conn_func_label_link=conn_func_label_link,styleSheet=styleSheet,parent_self=parent_self,
                             sortingEnabled=sortingEnabled,not_standart_close=not_standart_close,
-                            save_column_sort_hh=save_column_sort_hh,aliases_header=aliases_header)
+                            save_column_sort_hh=save_column_sort_hh,aliases_header=aliases_header,SelectionMode=SelectionMode)
 
     returnValue = dialog_tbl.exec()
     if yesNoMode:
@@ -4157,20 +4491,20 @@ def msgboxg_get_table_ok_inf(self, msg, dict_or_list, btn0_name="OK", btn1_name=
     return
 
 def get_data_dialog_choose(parent,
-    msg: str,
-    btn0_name: str = "Ввод",
-    btn1_name: str = "Отмена",
-    func_validate=None,
-    disable_btn0=False,
-    disable_btn1=False,
-    WindowTitle='Выбор даты',
-    style_icon='SP_MessageBoxInformation',
-    start_date=None,
-    range_dates: bool = False,
-    format_dates:str|None = None,
-    not_standart_close=False,
-    info_point_size: int = 12,
-    on_confirm: callable = None):
+                            msg: str,
+                            btn0_name: str = "Ввод",
+                            btn1_name: str = "Отмена",
+                            func_validate=None,
+                            disable_btn0=False,
+                            disable_btn1=False,
+                            WindowTitle='Выбор даты',
+                            style_icon='SP_MessageBoxInformation',
+                            start_date=None,
+                            range_dates: bool = False,
+                            format_dates:str|None = None,
+                            not_standart_close=False,
+                            info_point_size: int = 12,
+                            on_confirm: callable = None):
 
     dialog = QtWidgets.QDialog(parent)
     dialog.setWindowTitle(WindowTitle)
@@ -4290,6 +4624,299 @@ def get_data_dialog_choose(parent,
         rez, data = func_validate(True, data)
         return True, rez
 
+    return True, data
+
+def get_dialog_choose_text(parent,
+                                msg: str,
+                                btn0_name: str = "Ввод",
+                                btn1_name: str = "Отмена",
+                                func_validate=None,
+                                disable_btn0=False,
+                                disable_btn1=False,
+                                WindowTitle='Ввод текста',
+                                style_icon='SP_MessageBoxInformation',
+                                start_text: str | None = None,
+                                placeholderText: str | None = None,
+                                input_mask: str | None = None,
+                                not_standart_close=False,
+                                info_point_size: int = 12,
+                                on_confirm: callable = None
+                                ):
+
+    dialog = QtWidgets.QDialog(parent)
+    dialog.setWindowTitle(WindowTitle)
+    dialog.setModal(True)
+
+    layout = QtWidgets.QVBoxLayout(dialog)
+
+    label = QtWidgets.QLabel(msg)
+    font = label.font()
+    font.setPointSize(info_point_size)
+    label.setFont(font)
+    label.setWordWrap(True)
+    layout.addWidget(label)
+
+    line_edit = QtWidgets.QLineEdit()
+    font = line_edit.font()
+    font.setPointSize(info_point_size)
+    line_edit.setFont(font)
+
+    if start_text is not None:
+        line_edit.setText(str(start_text))
+    if placeholderText is not None:
+        line_edit.setPlaceholderText(str(placeholderText))
+
+    if input_mask:
+        line_edit.setInputMask(input_mask)
+
+    layout.addWidget(line_edit)
+
+    font_btn = QtGui.QFont()
+    font_btn.setPointSize(12)
+
+    hbox = QtWidgets.QHBoxLayout()
+    hbox.addStretch(1)
+
+    btn_ok = QtWidgets.QPushButton(btn0_name)
+    btn_ok.setFont(font_btn)
+    btn_ok.setEnabled(not disable_btn0)
+
+    btn_cancel = QtWidgets.QPushButton(btn1_name)
+    btn_cancel.setFont(font_btn)
+    btn_cancel.setEnabled(not disable_btn1)
+
+    hbox.addWidget(btn_ok)
+    hbox.addWidget(btn_cancel)
+    layout.addLayout(hbox)
+
+    def build_data():
+        return {"text": line_edit.text()}
+
+    def accept_dialog():
+        data = build_data()
+
+        if on_confirm:
+            if not on_confirm("", data):
+                return
+
+        if func_validate:
+            rez, data = func_validate("", data)
+            dialog.done(1)
+            return rez, data
+
+        dialog.done(1)
+
+    def keyReleaseEvent(e: QtGui.QKeyEvent):
+        if e.key() == QtCore.Qt.Key_Return:
+            data = build_data()
+            if on_confirm:
+                if on_confirm("", data):
+                    dialog.done(1)
+            else:
+                dialog.done(1)
+
+    dialog.keyReleaseEvent = keyReleaseEvent
+
+    btn_ok.clicked.connect(accept_dialog)
+    btn_cancel.clicked.connect(lambda: dialog.done(0))
+
+    ret = dialog.exec()
+
+    if ret != 1:
+        return False, False
+
+    data = build_data()
+
+    if func_validate:
+        rez, data = func_validate(True, data)
+        return True, rez
+
+    return True, data
+
+# 26.01.2026
+def get_time_dialog_choose(parent,
+    msg: str,
+    btn0_name: str = "Ввод",
+    btn1_name: str = "Отмена",
+    func_validate=None,
+    disable_btn0: bool = False,
+    disable_btn1: bool = False,
+    WindowTitle: str = 'Выбор времени',
+    style_icon: str = 'SP_MessageBoxInformation',
+    start_time=None,
+    finish_time=None,
+    range_times: bool = False,
+    format_time: str | None = None,
+    swap_if_inverted: bool = True,
+    not_standart_close: bool = False,
+    info_point_size: int = 12,
+    on_confirm: callable = None):
+    """
+    Диалог выбора времени (HH:MM) / промежутка времени {'time_from': 'HH:MM', 'time_to': 'HH:MM'}
+
+    Возвращает:
+        (False, False)                  | если отмена
+        (True, {'time_from': t, 'time_to': t})
+        (True, rez)                     | если задан func_validate
+
+    start_time:
+        - QtCore.QTime / QtCore.QDateTime
+        - datetime
+        - str формата: 'HH:MM'
+        - int любой объект с hour/minute/(second)
+    """
+    dialog = QtWidgets.QDialog(parent)
+    dialog.setWindowTitle(WindowTitle)
+    dialog.setModal(True)
+
+    layout = QtWidgets.QVBoxLayout(dialog)
+
+    label = QtWidgets.QLabel(msg)
+    font = label.font()
+    font.setPointSize(info_point_size)
+    label.setFont(font)
+    label.setWordWrap(True)
+    layout.addWidget(label)
+
+    def to_qtime(val):
+        if val is None:
+            return QtCore.QTime.currentTime()
+        try:
+            if isinstance(val, QtCore.QTime):
+                return val
+        except Exception:
+            pass
+        try:
+            if isinstance(val, QtCore.QDateTime):
+                return val.time()
+        except Exception:
+            pass
+        try:
+            if isinstance(val, datetime):
+                return QtCore.QTime(val.hour, val.minute, getattr(val, 'second', 0))
+        except Exception:
+            pass
+        try:
+            if hasattr(val, 'hour') and hasattr(val, 'minute'):
+                sec = int(getattr(val, 'second', 0) or 0)
+                return QtCore.QTime(int(val.hour), int(val.minute), sec)
+        except Exception:
+            pass
+        if isinstance(val, str):
+            s = val.strip()
+            if s:
+                try:
+                    dt = parser.parse(s)
+                    return QtCore.QTime(dt.hour, dt.minute, dt.second)
+                except Exception:
+                    pass
+        return QtCore.QTime.currentTime()
+
+    def _qtime_to_value(t: QtCore.QTime):
+        h, m, s = t.hour(), t.minute(), t.second()
+        if format_time:
+            return datetime(2000, 1, 1, h, m, s).strftime(format_time)
+        return datetime(2000, 1, 1, h, m, s).time()
+
+    font = QtGui.QFont()
+    font.setPointSize(info_point_size)
+
+    time_from = QtWidgets.QTimeEdit()
+    time_from.setDisplayFormat("HH:mm")
+    time_from.setFont(font)
+    time_from.setTimeRange(QtCore.QTime(0, 0), QtCore.QTime(23, 59))
+
+    time_to = QtWidgets.QTimeEdit()
+    time_to.setDisplayFormat("HH:mm")
+    time_to.setFont(font)
+    time_to.setTimeRange(QtCore.QTime(0, 0), QtCore.QTime(23, 59))
+
+    t0 = to_qtime(start_time)
+    t1 = to_qtime(finish_time) if finish_time is not None else t0
+
+    if range_times:
+        time_from.setTime(t0)
+        time_to.setTime(t1)
+
+        row = QtWidgets.QHBoxLayout()
+        row.addWidget(QtWidgets.QLabel("С"))
+        row.addWidget(time_from)
+        row.addSpacing(10)
+        row.addWidget(QtWidgets.QLabel("По"))
+        row.addWidget(time_to)
+        row.addStretch(1)
+
+        w = QtWidgets.QWidget()
+        w.setLayout(row)
+        layout.addWidget(w)
+    else:
+        time_from.setTime(t0)
+        layout.addWidget(time_from)
+
+    font_btn = QtGui.QFont()
+    font_btn.setPointSize(12)
+
+    hbox = QtWidgets.QHBoxLayout()
+    hbox.addStretch(1)
+
+    btn_ok = QtWidgets.QPushButton(btn0_name)
+    btn_ok.setFont(font_btn)
+    btn_ok.setEnabled(not disable_btn0)
+
+    btn_cancel = QtWidgets.QPushButton(btn1_name)
+    btn_cancel.setFont(font_btn)
+    btn_cancel.setEnabled(not disable_btn1)
+
+    hbox.addWidget(btn_ok)
+    hbox.addWidget(btn_cancel)
+    layout.addLayout(hbox)
+
+    def build_range():
+        t1 = time_from.time()
+        t2 = time_to.time() if range_times else t1
+
+        if range_times and swap_if_inverted and t2 < t1:
+            t1, t2 = t2, t1
+
+        return {"time_from": _qtime_to_value(t1), "time_to": _qtime_to_value(t2)}
+
+    def accept_dialog():
+        data = build_range()
+
+        if on_confirm:
+            if not on_confirm("", data):
+                return
+
+        if func_validate:
+            rez, data = func_validate(data)
+            dialog.done(int(bool(data)))
+            return rez, data
+
+        dialog.done(1)
+
+    def keyReleaseEvent(e: QtGui.QKeyEvent):
+        if e.key() == QtCore.Qt.Key_Return:
+            data = build_range()
+            if on_confirm:
+                if on_confirm("", data):
+                    dialog.done(1)
+            else:
+                dialog.done(1)
+
+    dialog.keyReleaseEvent = keyReleaseEvent
+
+    btn_ok.clicked.connect(accept_dialog)
+    btn_cancel.clicked.connect(lambda: dialog.done(0))
+
+    ret = dialog.exec()
+
+    if ret != 1:
+        return False, False
+    data = build_range()
+
+    if func_validate:
+        rez, data = func_validate(data)
+        return True, rez
     return True, data
 
 
@@ -4448,13 +5075,17 @@ def apply_filtr_c(self, tblf, tbl,save_data=True,get_dict_by_fild:None|str=None)
                     return False
 
             else:
+                try:
+                    len(filtr[0][j]) > 1 and filtr_word[0] == '='
+                except:
+                    pass
                 if len(filtr[0][j]) > 1 and filtr_word[0] == '=':
                     filtr_word = filtr_word[1:]
                     if filtr_word.lower() != val_word:
                         return False
 
                 else:
-                    if '&' in filtr_word: #20.11.25
+                    if '&' in filtr_word: #24.12.25
                         spis = filtr_word.split('&')
                         return all(easy_filtr(usl, val_word) for usl in spis)
                     if '|' in filtr_word:
@@ -4507,6 +5138,8 @@ def apply_filtr_c(self, tblf, tbl,save_data=True,get_dict_by_fild:None|str=None)
     for j in range(len(filtr[0])):
         filtr_word = filtr[0][j].strip()
         fl_date_compare = False
+        if filtr_word == '':
+            continue
         if filtr_word != '' and filtr_word[0] in SET_SIGNS_FOR_DATE_COMPARE:
             fl_date_compare = True
             filtr_word_for_date = copy.copy(filtr_word)
@@ -4533,6 +5166,8 @@ def apply_filtr_c(self, tblf, tbl,save_data=True,get_dict_by_fild:None|str=None)
         flag_ost = True
         for j in range(len(filtr[0])):  # по полям фильтра
             filtr_word = filtr[0][j].strip()
+            if filtr_word == '':
+                continue
             if filtr_word != '':
                 struck_save[tblf.horizontalHeaderItem(j).text()] = filtr[0][j].strip()
             val_word = ''
@@ -4874,24 +5509,67 @@ def put_value_in_filtr(new_elem, tblf:QtWidgets.QTableWidget,tbl:QtWidgets.QTabl
     stack_instance.add_stack_element(new_elem)
 
 
-
 @onerror
 def output_gant(self, fig, obj_browser, name_f='text', dir=None, *args):
-    if dir == None:
+    if dir is None:
         dir = F.sep().join((F.scfg('files_tmp'), 'charts'))
-    html = fig.to_html()
-    print('2.1')
-    putf = F.sep().join((dir,f'{name_f}.html'))
-    print(f'Saved: {putf}')
-    print('2.2')
-    with open(putf, 'w+', encoding="utf-8") as f:
+
+    html_plot = fig.to_html(
+        full_html=False,
+        include_plotlyjs='cdn',
+        config={'responsive': True}
+    )
+
+    html = f"""<!DOCTYPE html>
+    <html lang="ru">
+    <head>
+    <meta charset="utf-8">
+    <style>
+    html, body {{
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+    }}
+
+    #plot {{
+        width: 100%;
+        height: 100%;
+    }}
+    </style>
+    </head>
+    <body>
+    <div id="plot">
+    {html_plot}
+    </div>
+
+    <script>
+    function resizePlot() {{
+        const plot = document.querySelector('.js-plotly-plot');
+        if (!plot) return;
+
+        const h = window.innerHeight;
+        plot.style.height = h + 'px';
+        Plotly.Plots.resize(plot);
+    }}
+
+    window.addEventListener('load', resizePlot);
+    window.addEventListener('resize', resizePlot);
+    </script>
+    </body>
+    </html>
+    """
+
+    putf = F.sep().join((dir, f'{name_f}.html'))
+
+    with open(putf, 'w', encoding='utf-8') as f:
         f.write(html)
-    # rez = self.browser.setHtml(html)
-    print('2.3')
-    # self.ui.browser.setUrl(QtCore.QUrl(f"file://{putf.replace(F.sep(),'/')}"))
-    obj_browser.setUrl(QtCore.QUrl(f"file:///{putf.replace(F.sep(), '/')}"))
-    print('2.4')
-    # print(rez)
+
+    obj_browser.setUrl(
+        QtCore.QUrl.fromLocalFile(putf)
+    )
+
 
 @onerror
 def on_section_resized_tree(header, idx, old, new):
@@ -5280,6 +5958,400 @@ class RollBackUserChangesDelegator(QStyledItemDelegate):
             self.undo_red_tree()
         return self.prev_key_listener_func(e)
 
+
+# 24.12.25 ++
+class DirtyState(QtCore.QObject):
+    """
+    Отслеживание "измененного" состояния (несохранённые изменения) с автозвёздочкой в заголовке окна.
+
+    @mark_dirty() / mark_clean() Пометить состояние как измененное / снять отметку
+    @suspended(): контекст-менеджер для пакетных правок, когда сигналы изменений нужно игнорировать
+    @watch_*(): регистрация контролов (таблицы/поля/комбобоксы и т.п.)
+    """
+    dirtyChanged = QtCore.pyqtSignal(bool)
+
+    def __init__(
+        self,
+        window: QtWidgets.QWidget,
+        *,
+        star_in_title: bool = True,
+        star_token: str = " *",
+    ):
+        super().__init__(window)
+        self.window = window
+        self.star_in_title = star_in_title
+        self.star_token = star_token
+
+        self._dirty: bool = False
+        self._suspend_counter: int = 0
+        self._in_title_update: bool = False
+
+        try:
+            self.window.installEventFilter(self)
+        except Exception:
+            pass
+
+    def is_dirty(self) -> bool:
+        """Узнать изменена ли вкладка True/False"""
+        return bool(self._dirty)
+
+    def mark_dirty(self) -> None:
+        """Пометить вкладку как 'измененная' """
+        if self._suspend_counter > 0:
+            return
+        if not self._dirty:
+            self._dirty = True
+            self._refresh_title()
+            self.dirtyChanged.emit(True)
+
+    def mark_clean(self) -> None:
+        """Отчистка состояния"""
+        if self._dirty:
+            self._dirty = False
+            self._refresh_title()
+            self.dirtyChanged.emit(False)
+        else:
+            self._refresh_title()
+
+    @contextmanager
+    def suspended(self):
+        """Игнорировать сигналы изменений внутри блока."""
+        self._suspend_counter += 1
+        try:
+            yield
+        finally:
+            self._suspend_counter = max(0, self._suspend_counter - 1)
+
+    def watch_table_widget(self, table: QtWidgets.QTableWidget) -> None:
+        """Регистрация наблюдателя за QtWidgets.QTableWidget"""
+        if not isinstance(table, QtWidgets.QTableWidget):
+            return
+
+        def _on_change(*_):
+            self.mark_dirty()
+
+        try:
+            table.cellChanged.connect(_on_change)
+        except Exception:
+            pass
+        try:
+            table.itemChanged.connect(_on_change)
+        except Exception:
+            pass
+        try:
+            model = table.model()
+            model.dataChanged.connect(lambda *_: self.mark_dirty())
+        except Exception:
+            pass
+
+    def watch_line_edit(self, le: QtWidgets.QLineEdit) -> None:
+        """Регистрация наблюдателя за QtWidgets.QLineEdit"""
+        if not isinstance(le, QtWidgets.QLineEdit):
+            return
+        try:
+            le.textEdited.connect(lambda *_: self.mark_dirty())
+        except Exception:
+            pass
+
+    def watch_plain_text(self, te: QtWidgets.QPlainTextEdit) -> None:
+        """Регистрация наблюдателя за QtWidgets.QPlainTextEdit"""
+        if not isinstance(te, QtWidgets.QPlainTextEdit):
+            return
+        try:
+            te.textChanged.connect(lambda *_: self.mark_dirty())
+        except Exception:
+            pass
+
+    def watch_combo_box(self, cb: QtWidgets.QComboBox, *, user_only: bool = True) -> None:
+        """Регистрация наблюдателя за QtWidgets.QComboBox"""
+        if not isinstance(cb, QtWidgets.QComboBox):
+            return
+        try:
+            if user_only:
+                cb.activated.connect(lambda *_: self.mark_dirty())
+            else:
+                cb.currentIndexChanged.connect(lambda *_: self.mark_dirty())
+        except Exception:
+            pass
+
+    def watch_check_box(self, chk: QtWidgets.QCheckBox, *, user_only: bool = True) -> None:
+        """Регистрация наблюдателя за QtWidgets.QCheckBox"""
+        if not isinstance(chk, QtWidgets.QCheckBox):
+            return
+        try:
+            if user_only:
+                chk.clicked.connect(lambda *_: self.mark_dirty())
+            else:
+                chk.stateChanged.connect(lambda *_: self.mark_dirty())
+        except Exception:
+            pass
+
+    def _strip_star(self, title: str) -> str:
+        t = (title or "").rstrip()
+        if t.endswith("*"):
+            t = t[:-1].rstrip()
+        return t
+
+    def _compose_title(self, base: str) -> str:
+        if not self.star_in_title:
+            return base
+        if self._dirty:
+            return f"{base}{self.star_token}"
+        return base
+
+    def _refresh_title(self) -> None:
+        if not self.star_in_title:
+            return
+        if self._in_title_update:
+            return
+        try:
+            self._in_title_update = True
+            base = self._strip_star(self.window.windowTitle())
+            new_title = self._compose_title(base)
+            if self.window.windowTitle() != new_title:
+                self.window.setWindowTitle(new_title)
+        finally:
+            self._in_title_update = False
+
+    def eventFilter(self, obj, event):
+        try:
+            if obj is self.window and event.type() == QtCore.QEvent.WindowTitleChange:
+                if self._dirty:
+                    self._refresh_title()
+        except Exception:
+            pass
+        return False
+
+
+
+
+class TabLeaveGuard(QtCore.QObject):
+    """
+    Окно предупреждения при выходе во вкладку, если имеются незафиксированные данные в текущей
+
+    Работает через eventFilter на tabBar() (MouseButtonPress / KeyPress), чтобы:
+      - показать Всплывающее окно да/нет;
+      - если Принять: вызывать discard() = разрешить переход;
+      - если Отмена: остаться на вкладке;
+    """
+    def __init__(
+        self,
+        tab_widget: QtWidgets.QTabWidget,
+        *,
+        is_dirty: typing.Callable[[], bool],
+        discard: typing.Callable[[], None] | None = None,
+        from_tabs: set = None,
+        allowed_tabs: set = None,
+        message: str = "У вас есть несохраненные изменения. Покинуть вкладку?",
+        title: str = "",
+        icon=QtWidgets.QMessageBox.Warning,
+        fontsize: int = 14,
+        icon_str: str | None = None,
+        sub_tubs: list[QtWidgets.QTabWidget] = None,
+        forbidden_sub_tubs: list[str] = None
+    ):
+        super().__init__(tab_widget)
+        self.tab_widget = tab_widget
+        self.tab_bar = tab_widget.tabBar()
+        self.is_dirty = is_dirty
+        self.discard = discard
+        self.from_tabs = from_tabs or set()
+        self.allowed_tabs = allowed_tabs or set()
+        self.message = message
+        self.title = title
+        self.icon = icon
+        self.fontsize = fontsize
+        self.icon_str = icon_str
+        self.sub_tubs = sub_tubs
+        self.forbidden_sub_tubs = forbidden_sub_tubs
+        try:
+            self.tab_bar.installEventFilter(self)
+        except Exception:
+            pass
+        try:
+            self.tab_widget.installEventFilter(self)
+        except Exception:
+            pass
+        if sub_tubs is not None:
+            try:
+                for sub_tub in sub_tubs:
+                    TabValidator(sub_tub, validate_func=self._on_subtub_changed)
+            except Exception as e:
+                print(e)
+
+
+    def _on_subtub_changed(self, tab_bar: QtWidgets.QTabBar, from_index: int, to_index: int):
+        name = tab_bar.tabText(to_index)
+        if name in self.forbidden_sub_tubs and self.is_dirty():
+            return  self._ask_user()
+        return True
+
+    def _tab_is_visible_enabled(self, idx: int) -> bool:
+        try:
+            if idx < 0 or idx >= self.tab_widget.count():
+                return False
+            if not self.tab_widget.isTabEnabled(idx):
+                return False
+            try:
+                if hasattr(self.tab_bar, "isTabVisible") and not self.tab_bar.isTabVisible(idx):
+                    return False
+            except Exception:
+                pass
+            return True
+        except Exception:
+            return False
+
+    def _tab_text(self, idx: int) -> str:
+        try:
+            return str(self.tab_widget.tabText(idx))
+        except Exception:
+            return ""
+
+    def _set_has_any(self, st: set, val: str) -> bool:
+        return ("*" in st) or (val in st)
+
+    def _is_from_protected(self, from_idx: int) -> bool:
+        if not self.from_tabs:
+            return True
+        if from_idx in self.from_tabs:
+            return True
+        txt = self._tab_text(from_idx)
+        return self._set_has_any(self.from_tabs, txt)
+
+    def _is_to_allowed(self, to_idx: int) -> bool:
+        if not self.allowed_tabs:
+            return False
+        if to_idx in self.allowed_tabs:
+            return True
+        txt = self._tab_text(to_idx)
+        return self._set_has_any(self.allowed_tabs, txt)
+
+    def _ask_user(self) -> bool:
+        try:
+            return bool(
+                msgboxgYN(
+                    self.message,
+                    title=self.title,
+                    icon=self.icon,
+                    fontsize=self.fontsize,
+                    icon_str=self.icon_str,
+                )
+            )
+        except Exception as e:
+            print(e)
+            return True
+
+    def _next_index_by_step(self, cur: int, step: int) -> int:
+        n = self.tab_widget.count()
+        if n <= 0:
+            return -1
+        for k in range(1, n + 1):
+            idx = (cur + step * k) % n
+            if self._tab_is_visible_enabled(idx):
+                return idx
+        return -1
+
+    def _should_block_switch(self, from_idx: int, to_idx: int) -> bool:
+        if to_idx < 0 or to_idx == from_idx:
+            return False
+        if not self._tab_is_visible_enabled(to_idx):
+            return False
+        if not self._is_from_protected(from_idx):
+            return False
+        if not self.is_dirty():
+            return False
+        if self._is_to_allowed(to_idx):
+            return False
+        return True
+
+    def _handle_attempt(self, to_idx: int) -> bool:
+        """
+        True -> блокируем переключение (eventFilter возвращает True)
+        False -> разрешаем (eventFilter возвращает False)
+        """
+        from_idx = self.tab_widget.currentIndex()
+        if not self._should_block_switch(from_idx, to_idx):
+            return False
+
+        if self._ask_user():
+            try:
+                if callable(self.discard):
+                    self.discard()
+            except Exception:
+                pass
+            return False
+
+        return True
+
+    def eventFilter(self, obj, event):
+        try:
+            et = event.type()
+            if obj is self.tab_bar and et == QtCore.QEvent.MouseButtonPress: # Мышь
+                if event.button() == QtCore.Qt.LeftButton:
+                    to_idx = self.tab_bar.tabAt(event.pos())
+                    if to_idx >= 0:
+                        if self._handle_attempt(to_idx):
+                            return True
+            if obj in (self.tab_bar, self.tab_widget) and et == QtCore.QEvent.KeyPress: # Клавиатура (Ctrl+Tab / Ctrl+Shift+Tab + стрелки
+                key = event.key()
+                mods = event.modifiers()
+
+                if key == QtCore.Qt.Key_Tab and (mods & QtCore.Qt.ControlModifier): # Ctrl+Tab / Ctrl+Shift+Tab
+                    step = -1 if (mods & QtCore.Qt.ShiftModifier) else 1
+                    to_idx = self._next_index_by_step(self.tab_widget.currentIndex(), step)
+                    if to_idx >= 0 and self._handle_attempt(to_idx):
+                        return True
+                if obj is self.tab_bar and key in (QtCore.Qt.Key_Left, QtCore.Qt.Key_Right): # Стрелки по табам
+                    step = -1 if key == QtCore.Qt.Key_Left else 1
+                    to_idx = self._next_index_by_step(self.tab_widget.currentIndex(), step)
+                    if to_idx >= 0 and self._handle_attempt(to_idx):
+                        return True
+        except Exception:
+            pass
+
+        return False
+
+
+class TabValidator(QtCore.QObject):
+    """
+    Принимает tab_widget и callable функцию, которая вызывается при переходе на вкладку
+    и в зависимости от её ответа True/False, переход на вкладку одобряется или откатывается
+    TabValidator(tab_widget, validate_func)
+
+    где:
+        @tab_widget: QtWidgets.QTabWidget
+        @validate_func функция принимающая 3 аргумента
+            @tab_bar: QtWidgets.QTabBar
+            @from_index: int Индекс предыдущей вкладки
+            @to_index: int Индекс новой вкладки
+    """
+
+    def __init__(
+        self,
+        tab_widget: QtWidgets.QTabWidget,
+        *,
+        validate_func: callable,
+    ):
+        super().__init__(tab_widget)
+        self.tabw = tab_widget
+        self.validate_func = validate_func
+        self.tabw.tabBar().installEventFilter(self)
+
+    def eventFilter(self, obj, event):
+        try:
+            if obj is self.tabw.tabBar() and event.type() == QtCore.QEvent.MouseButtonPress:
+                to_idx = obj.tabAt(event.pos())
+                from_idx = self.tabw.currentIndex()
+                if bool(self.validate_func(obj, from_idx, to_idx)):
+                    return False
+                else:
+                    return True
+        except Exception as e:
+            print(e)
+        return super().eventFilter(obj, event)
+# 24.12.25 --
+
+
 # 16.07.25 ++
 class FillHorizontalHeaderSort(QtCore.QObject):
     """
@@ -5531,6 +6603,8 @@ class InteractiveLabelInstance(QtCore.QObject):
         self._apply_label_bg_style(qcolor)
         self._init_label_color_state()
         self.label.destroyed.connect(self.on_destroyed)
+
+        self.container.setProperty("_interactive_label_instance", self)
   #++01.10.25
     @property
     def cell_item(self):
@@ -5716,6 +6790,39 @@ class InteractiveLabelInstance(QtCore.QObject):
         self.full_text = lbl_text
         if update_sizes:
             self._update_sizes()
+
+
+    @staticmethod
+    def get_interactive_label_from_cell(
+            table: QtWidgets.QTableWidget,
+            row: int,
+            column: int
+    ) -> QtWidgets.QLabel | None:
+        """
+        Возвращает QLabel из ячейки (row, column), если там InteractiveLabelInstance.
+        Обхода таблицы нет, только прямой доступ к cellWidget.
+        """
+
+        # 1. Берем виджет ячейки
+        container = table.cellWidget(row, column)
+        if container is None:
+            return None
+
+        # 2. Пытаемся получить InteractiveLabelInstance через property
+        inst = container.property("_interactive_label_instance")
+        if inst is not None:
+            lbl = getattr(inst, "label", None)
+            if isinstance(lbl, QtWidgets.QLabel):
+                return lbl
+
+        # 3. Fallback: ищем QLabel в дереве container
+        lbl = container.findChild(QtWidgets.QLabel)
+        if isinstance(lbl, QtWidgets.QLabel):
+            return lbl
+
+        return None
+
+
 # 16.07.25 ++
 
 def add_interactive_label(
@@ -5727,7 +6834,8 @@ def add_interactive_label(
         min_label_px: int = 40,
         btn_width: int = 20,
         mark_not_changed_item: bool = True,
-        parent_self: typing.Any = None
+        parent_self: typing.Any = None,
+        grab_style_from_cell:bool =False
 ) -> InteractiveLabelInstance:
     """
     Пример использования
@@ -5750,12 +6858,40 @@ def add_interactive_label(
     widget.add_button(txt_button='x', on_clicked=print, tooltip='Удалить')
     widget.add_button(txt_button='...', on_clicked=print, tooltip='...', img_path='btn_add_zamech')
     """
+    if grab_style_from_cell:
+
+        tbl_item = table.item(row, column)
+        # шрифт
+        font = tbl_item.font()
+        # фон
+        bg_color = tbl_item.background().color()
+        # текст
+        text_color = tbl_item.foreground().color()
+       
+    
+    
     inst = InteractiveLabelInstance(table, row, column, text,
                                     txt_cut=txt_cut,
                                     min_label_px=min_label_px,
                                     btn_width=btn_width,
                                     mark_not_changed_item=mark_not_changed_item,
                                     parent_self=parent_self)
+    if grab_style_from_cell:
+        lbl = inst.label
+        lbl.blockSignals(True)
+
+        # шрифт
+        lbl.setFont(font)
+
+        # QLabel нужно явно указывать, что фон заполняется
+        lbl.setAutoFillBackground(True)
+        # установка стиля с фоном и текстом
+        lbl.setStyleSheet(
+            f"background-color: rgb({bg_color.red()}, {bg_color.green()}, {bg_color.blue()}); "
+            f"color: rgb({text_color.red()}, {text_color.green()}, {text_color.blue()});"
+        )
+        lbl.blockSignals(False)
+
     return inst
 
 

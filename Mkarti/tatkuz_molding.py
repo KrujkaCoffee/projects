@@ -9,6 +9,7 @@ import project_cust_38.Cust_docs as CDCS
 from typing import TYPE_CHECKING
 import project_cust_38.api_erp_commands as APIERP
 from PyQt5.QtWidgets import QLabel
+import  project_cust_38.Cust_emoji as CEMOJ
 try:
     import project_cust_38.Cust_resource_creator as CRES
 except Exception as e:
@@ -41,7 +42,8 @@ class Stages_order_mold:
     def __repr__(self):
         return self.snum
 class Ttkz_tmp_settings:
-    def __init__(self,lbl_info:QLabel):
+    def __init__(self,lbl_info:QLabel,app_self:mywindow):
+        self.app_self:mywindow = app_self
         self._lbl_info = lbl_info
         self.current_snum:int|None=None
         self.current_order:OrderMold|None=None
@@ -254,6 +256,8 @@ class OrderMold:
         self._tch: OrderMoldTch|None = None
         self._tch_res_product: OrderMoldTch|None = None
         self.lump_production_method: int|None = None
+        self.name_byproduct_and_intermediate_output: str|None = None
+        self.val_byproduct_and_intermediate_output: float|None = None
         if data:
             self._row = data
             for key in self._row.keys():
@@ -266,6 +270,10 @@ class OrderMold:
     def set_modify(self, val:bool=True):
         self._modify = val
         self._ttkz_tmp_settings.update_lbl_info(self._modify)
+        app = self._ttkz_tmp_settings.app_self
+        btn = app.ui.btn_upload_1c_mold_tch
+        btn.setEnabled(not self._modify)
+
 
     def get_name_by_val(self,val):
         data = self.get_dict(wo_docs=True)
@@ -307,6 +315,7 @@ class OrderMold:
                                  ({CSQ.prepare_list_to_tuple(list_keys)}) VALUES ({CSQ.questions_for_mask(list_keys)})""",
                                  list_of_lists_c=[list_vals])
         self.set_modify()
+
         return result
 
     def delete_order(self):
@@ -473,12 +482,12 @@ def tab_rs_tch_currentChanged(self: mywindow):
         if tab.currentIndex() == CQT.number_table_by_name_c(tab,'Материалы на формовку'):
             self.ui.btn_add_row_mold_tch.setEnabled(True)
             self.ui.btn_del_row_mold_tch.setEnabled(True)
-            self.ui.btn_upload_1c_mold_tch.setEnabled(True)
+            self.ui.btn_upload_1c_mold_tch.setEnabled(False)
     if self._ttkz_tmp_settings.current_stage == 3:
         if tab.currentIndex() == CQT.number_table_by_name_c(tab,'Итоговая РС на изделие'):
             self.ui.btn_add_row_mold_tch.setEnabled(True)
             self.ui.btn_del_row_mold_tch.setEnabled(True)
-            self.ui.btn_upload_1c_mold_tch.setEnabled(True)
+            self.ui.btn_upload_1c_mold_tch.setEnabled(False)
 
 
 @CQT.onerror
@@ -607,7 +616,7 @@ def recalc_base_complex_res_product_tch(self:mywindow):
         if row.autocalc and mat_name and mat_name in OrderMoldTch.DICT_BASE_MATS_RES_PRODUCT :
             fnc = OrderMoldTch.DICT_BASE_MATS_RES_PRODUCT[mat_name]['fnc']
             try:
-                row.val =round(eval(f'{fnc}(order,row)'),2)
+                row.val =round(eval(f'{fnc}(order,row)'),5)
             except:
                 pass
     tch.save_data()
@@ -665,7 +674,7 @@ def recalc_base_complex_mold_tch(self:mywindow):
         if row.autocalc and row.mat_kod in base_code_erp :
             fnc = OrderMoldTch.DICT_BASE_MATS[row.mat_kod]['fnc']
             try:
-                row.val =round(eval(f'{fnc}(order,row)'),2)
+                row.val =round(eval(f'{fnc}(order,row)'),5)
             except:
                 pass
     tch.save_data()
@@ -958,7 +967,7 @@ def select_order(self: mywindow):
         return
     self._ttkz_tmp_settings.view_mode = True
     load_order_data(self)
-
+    self.ui.btn_upload_1c_mold_tch.setEnabled(False)
 
 @CQT.onerror
 def new_order(self: mywindow):
@@ -1200,6 +1209,37 @@ def load_order_data(self: mywindow, edit_etap_num=9,add_params:dict|None=None):
             CQT.add_label_link(tbl, i, j, res_code, res_code, fcn_select_res, self)
 
 
+    def fcn_select_name_nomen_for_res_product(lnk, i, j, name, file,parent_self, *args):
+            def fnc_oform_tbl(tbl):
+                pass
+            def fnc_select_tbl(tbl):
+                pass
+
+            wet_req_text = f"""ВЫБРАТЬ
+                    Номенклатура.Наименование КАК Наименование,
+                    Номенклатура.Код КАК Код,
+                    Номенклатура.ВидНоменклатуры.Наименование КАК ВидНоменклатуры
+                ИЗ
+                    Справочник.Номенклатура КАК Номенклатура
+                ГДЕ
+                    Номенклатура.ПометкаУдаления = ЛОЖЬ 
+                    И Номенклатура.ВидНоменклатуры.Родитель.Наименование = "Таткуз" 
+                    И Номенклатура.ВидНоменклатуры.Наименование = "Отливка арматуры";"""
+            key, data_rez = APIERP.get_wet_request(wet_req_text)
+            if key != 200:
+                CQT.msgbox(f'Ошибка получения данных код ({key}) из ERP')
+                return
+            result = CQT.msgboxg_get_table(self,f'Выбор номенклатуры',data_rez['data'],'Выбор',
+                                  func_oform_tbl=fnc_oform_tbl,
+                                  func_btn0=fnc_select_tbl,
+                                  ExtendedSelection=False,selectRows=True, styleSheet=CQT.ERP_CSS,sortingEnabled=True)
+            if result:
+                res_code = result['Код']
+                tbl.item(i,j).setText(res_code)
+                tbl.cellWidget(i,j).deleteLater()
+                CQT.add_label_link(tbl,i,nf_val,res_code,res_code,fcn_select_name_nomen_for_res_product,self)
+
+
     def fcn_select_name_nomen_for_forming(lnk, i, j, name, file,parent_self, *args):
             def fnc_oform_tbl(tbl):
                 pass
@@ -1207,15 +1247,15 @@ def load_order_data(self: mywindow, edit_etap_num=9,add_params:dict|None=None):
                 pass
 
             wet_req_text = f"""ВЫБРАТЬ
-    Номенклатура.Наименование КАК Наименование,
-    Номенклатура.Код КАК Код,
-    Номенклатура.ВидНоменклатуры.Наименование КАК ВидНоменклатуры
-ИЗ
-    Справочник.Номенклатура КАК Номенклатура
-ГДЕ
-    Номенклатура.ПометкаУдаления = ЛОЖЬ
-    И Номенклатура.ВидНоменклатуры.Родитель.Наименование = "ТАТКУЗ"
-    И (Номенклатура.ВидНоменклатуры.Наименование = "Стандартные изделия" ИЛИ Номенклатура.ВидНоменклатуры.Наименование = "Сырьё для сплава");"""
+                    Номенклатура.Наименование КАК Наименование,
+                    Номенклатура.Код КАК Код,
+                    Номенклатура.ВидНоменклатуры.Наименование КАК ВидНоменклатуры
+                ИЗ
+                    Справочник.Номенклатура КАК Номенклатура
+                ГДЕ
+                    Номенклатура.ПометкаУдаления = ЛОЖЬ 
+                    И Номенклатура.ВидНоменклатуры.Родитель.Наименование = "Таткуз" 
+                    И Номенклатура.ВидНоменклатуры.Наименование = "Формовка для отливки";"""
             key, data_rez = APIERP.get_wet_request(wet_req_text)
             if key != 200:
                 CQT.msgbox(f'Ошибка получения данных код ({key}) из ERP')
@@ -1229,6 +1269,272 @@ def load_order_data(self: mywindow, edit_etap_num=9,add_params:dict|None=None):
                 tbl.item(i,j).setText(res_code)
                 tbl.cellWidget(i,j).deleteLater()
                 CQT.add_label_link(tbl,i,nf_val,res_code,res_code,fcn_select_name_nomen_for_forming,self)
+
+
+
+    def fnc_select_exothermic_inserts_count(
+            current_object:CQT.InteractiveLabelInstance , # Для взаимодействия с виджетами table,label,buttons
+            parent_self:mywindow,
+            row:int,
+            column:int
+            ):
+
+        def fnc_chk(btn:CQT.QtWidgets.QPushButton,dialog:CQT.Dialog_tbl,tbl:CQT.QtWidgets.QTableWidget):
+            if btn.text() == 'Ввод':
+                nf = CQT.nums_col_by_name_dict(tbl)
+                for i in range(tbl.rowCount()):
+                    val = tbl.item(i,nf['Кол-во']).text().strip()
+                    if not F.is_numeric(val):
+                        CQT.msgbox(f'В строке {i+1} не число')
+                        return
+                    if F.valm(val) == 0:
+                        CQT.msgbox(f'В строке {i + 1} не корректное значение')
+                        return
+                dialog.accept()
+            else:
+                dialog.reject()
+        def fnc_out(*args):
+            return args[0]
+
+        def fnc_oform(tbl:CQT.QtWidgets.QTableWidget):
+            for row in CQT.TableContext(tbl).rows():
+                row.set_editable('Кол-во')
+            tbl.setColumnWidth(0,200)
+
+
+        nf = CQT.nums_col_by_name_dict(tbl)
+        current_name = tbl.item(row, nf['Name']).text()
+        if current_name == 'kolichestvo_ekzotermicheskikh_vstavok_na_1_kom':
+            types_name = 'type_ekzotermicheskikh_vstavok_na_1_kom'
+        else:
+            types_name = 'type_exothermic_inserts'
+        mask = None
+        for i in range(tbl.rowCount()):
+            if tbl.item(i, nf['Name']).text() == types_name:
+                mask = tbl.item(i, nf['Значение']).text()
+        if not mask:
+            return
+        mask_list = mask.split(';')
+        count_list = tbl.item(row, nf['Значение']).text().split(';')
+        templ = []
+        for i in range(len(mask_list)):
+            type_ins = mask_list[i]
+            count_ins = 0
+            if i < len(count_list):
+                if F.is_numeric(count_ins):
+                    count_ins = F.valm(count_list[i])
+            templ.append({'Тип':type_ins,'Кол-во':count_ins})
+        result = CQT.msgboxg_get_table(self,"Ввод количества",templ,func_btn0=fnc_chk,not_standart_close=True,
+                                       func_validate=fnc_out,func_oform_tbl=fnc_oform)
+        if not  result:
+            return
+
+        vals = ';'.join([_['Кол-во'] for _ in result])
+        tbl.item(row, nf['Значение']).setText(vals)
+        current_object.set_text(vals)
+
+
+    def fnc_clear_inserts_count(
+            current_object:CQT.InteractiveLabelInstance , # Для взаимодействия с виджетами table,label,buttons
+            parent_self:mywindow,
+            row:int,
+            column:int
+            ):
+        nf = CQT.nums_col_by_name_dict(tbl)
+
+        current_name = tbl.item(row,nf['Name']).text()
+        if current_name == 'kolichestvo_ekzotermicheskikh_vstavok_na_1_kom':
+            types_name = 'type_ekzotermicheskikh_vstavok_na_1_kom'
+        else:
+            types_name = 'type_exothermic_inserts'
+
+        for i in range(tbl.rowCount()):
+            if tbl.item(i,nf['Name']).text() == types_name:
+                lbl = CQT.InteractiveLabelInstance.get_interactive_label_from_cell(tbl, i, column)
+                tbl.item(i, column).setText('')
+                lbl.setText('')
+
+        current_object.set_text('')
+        tbl.item(row,column).setText('')
+
+
+    def fnc_clear_code(
+            current_object:CQT.InteractiveLabelInstance , # Для взаимодействия с виджетами table,label,buttons
+            parent_self:mywindow,
+            row:int,
+            column:int
+            ):
+
+        current_object.set_text('')
+        tbl.item(row,column).setText('')
+
+    def fnc_show_ekzotermicheskikh_vstavok(
+            current_object:CQT.InteractiveLabelInstance , # Для взаимодействия с виджетами table,label,buttons
+            parent_self: mywindow,
+            row:int,
+            column:int,
+            tbl:CQT.QtWidgets.QTableWidget
+            ):
+        def fnc_oform_tbl(tbl:CQT.QtWidgets.QTableWidget):
+            tbl.resizeColumnsToContents()
+
+        nf = CQT.nums_col_by_name_dict(tbl)
+        codes_str = tbl.item(row,column).text().strip()
+        list_codes = []
+        if codes_str:
+            list_codes = codes_str.split(';')
+
+        if not  list_codes:
+            return
+
+        codes_for_erp = ', '.join([f'"{_}"' for _ in list_codes])
+
+        wet_req_text = f"""ВЫБРАТЬ
+             Номенклатура.Код КАК Код,
+             Номенклатура.Наименование КАК Наименование,
+             Номенклатура.Описание КАК Описание
+         ИЗ
+             Справочник.Номенклатура КАК Номенклатура
+         ГДЕ
+             Номенклатура.Код В ({codes_for_erp});"""
+
+        key, res = APIERP.get_wet_request(text=wet_req_text)
+        if key != 200:
+            CQT.msgbox(f'Ошибка получения данных код ({key}) из ERP')
+            return
+
+        data = res['data']
+
+        if len(data) != len(list_codes):
+            CQT.msgbox(f'Ошибка сопоставления данных с 1С')
+            return
+
+        current_name = tbl.item(row,nf['Name']).text()
+
+        if current_name == 'type_ekzotermicheskikh_vstavok_na_1_kom' :
+            count_name = 'kolichestvo_ekzotermicheskikh_vstavok_na_1_kom'
+        else:
+            count_name = 'exothermic_inserts_count'
+        str_counts = ''
+        counts_list = []
+        for row_o in CQT.TableContext(tbl).rows():
+            if row_o.value('Name') == count_name:
+                str_counts = row_o.value('Значение').strip()
+        if str_counts:
+            counts_list = str_counts.split(';')
+
+        if len(counts_list) != len(list_codes):
+            CQT.msgbox(f'Ошибка сопоставления данных')
+            return
+
+        for row in  data:
+            code = row['Код']
+            count_it = "?"
+            for it in range(len(list_codes)):
+                if list_codes[it] == code:
+                    count_it = counts_list[it]
+                    break
+            row['Количество'] = count_it
+
+        CQT.msgboxg_get_table_ok_inf(self,'Просмотр',data,styleSheet=CQT.MES_CSS)
+
+
+
+
+
+
+
+    def fnc_select_type_ekzotermicheskikh_vstavok(
+            current_object:CQT.InteractiveLabelInstance , # Для взаимодействия с виджетами table,label,buttons
+            parent_self: mywindow,
+            row:int,
+            column:int
+            ):
+        def fnc_oform_tbl(tbl:CQT.QtWidgets.QTableWidget):
+            tbl.resizeColumnsToContents()
+
+        def fnc_select_tbl(tbl):
+            pass
+        ref = 'bc0d9fb3-dd3c-11ef-8600-00d861dd2b4a'#Сырьё для формовки
+        wet_req_text = f"""ВЫБРАТЬ
+            Номенклатура.Код КАК Код,
+            Номенклатура.Наименование КАК Наименование,
+            Номенклатура.Описание КАК Описание
+        ИЗ
+            Справочник.Номенклатура КАК Номенклатура
+        ГДЕ
+            Номенклатура.ВидНоменклатуры = &ВидНоменклатуры
+            И Номенклатура.Наименование ПОДОБНО "Вставка%"
+            И Номенклатура.ПометкаУдаления = ЛОЖЬ
+            И Номенклатура.ЭтоГруппа = ЛОЖЬ;"""
+
+        refs = APIERP.Refs_wet(wet_req_text)
+        ref_obj = APIERP.Ref_wet('ВидНоменклатуры', 'Справочники.ВидыНоменклатуры', ref)
+        refs.add_ref(ref_obj)
+        key, res = APIERP.get_wet_request(text=wet_req_text, refs=refs)
+        if key != 200:
+            CQT.msgbox(f'Ошибка получения данных код ({key}) из ERP')
+            return
+        result = CQT.msgboxg_get_table(self, f'Выбор номенклатуры', res['data'], 'Выбор',
+                                       func_oform_tbl=fnc_oform_tbl,
+                                       func_btn0=fnc_select_tbl,
+                                       ExtendedSelection=False, selectRows=True, styleSheet=CQT.ERP_CSS,
+                                       sortingEnabled=True)
+
+        if result:
+            res_code = result['Код']
+            list_codes = []
+            if tbl.item(row, column).text().strip():
+                list_codes = tbl.item(row, column).text().strip().split(';')
+            list_codes.append(res_code)
+            list_codes = ';'.join(list_codes)
+            tbl.item(row, column).setText(list_codes)
+            current_object.set_text(list_codes)
+            current_object.label.setFont(tbl.item(row, column).font())
+
+
+
+    def fnc_select_name_byproduct_and_intermediate_output(
+            current_object:CQT.InteractiveLabelInstance , # Для взаимодействия с виджетами table,label,buttons
+            parent_self: mywindow,
+            row:int,
+            column:int
+            ):
+        def fnc_oform_tbl(tbl):
+            pass
+
+        def fnc_select_tbl(tbl):
+            pass
+        ref = '090ab40d-c9e6-11f0-a479-30e1716be59f'#Сырье (основа) для литья (лом+ВСП)
+        wet_req_text = f"""ВЫБРАТЬ
+            Номенклатура.Код КАК Код,
+            Номенклатура.Наименование КАК Наименование,
+            Номенклатура.Описание КАК Описание
+        ИЗ
+            Справочник.Номенклатура КАК Номенклатура
+        ГДЕ
+            Номенклатура.ВидНоменклатуры = &ВидНоменклатуры
+            И Номенклатура.Наименование ПОДОБНО "ВСП%"
+            И Номенклатура.ПометкаУдаления = ЛОЖЬ
+            И Номенклатура.ЭтоГруппа = ЛОЖЬ;"""
+
+        refs = APIERP.Refs_wet(wet_req_text)
+        ref_obj = APIERP.Ref_wet('ВидНоменклатуры', 'Справочники.ВидыНоменклатуры', ref)
+        refs.add_ref(ref_obj)
+        key, res = APIERP.get_wet_request(text=wet_req_text, refs=refs)
+        if key != 200:
+            CQT.msgbox(f'Ошибка получения данных код ({key}) из ERP')
+            return
+        result = CQT.msgboxg_get_table(self, f'Выбор номенклатуры', res['data'], 'Выбор',
+                                       func_oform_tbl=fnc_oform_tbl,
+                                       func_btn0=fnc_select_tbl,
+                                       ExtendedSelection=False, selectRows=True, styleSheet=CQT.ERP_CSS,
+                                       sortingEnabled=True)
+        if result:
+            res_code = result['Код']
+            tbl.item(row, column).setText(res_code)
+            current_object.set_text(res_code)
+            current_object.label.setFont(tbl.item(row, column).font())
 
 
 
@@ -1272,7 +1578,7 @@ def load_order_data(self: mywindow, edit_etap_num=9,add_params:dict|None=None):
 
 
     tbl = self.ui.tbl_data_mold
-    data = [{"stage": v.Этап, "Name": _, "Реквизит": v.БуквенноеОбозначение, "Значение": v.Default_val, "Ед.Изм.":v.ЕдиницаИзмерения, "Описание":v.Описание}
+    data = [{"stage": v.Этап, "Этап": eval(f'CEMOJ.EmojiMain.{v.emoji}'), "Name": _, "Реквизит": v.БуквенноеОбозначение, "Значение": v.Default_val, "Ед.Изм.":v.ЕдиницаИзмерения, "Описание":v.Описание}
             for _, v in PARAMS_FIELDS_MOLDING_DB.dict_vars.items() if v.Видимый and v.Этап <= edit_etap_num]
     for item in data:
         if item['Name'] in order_obj_dict:
@@ -1285,16 +1591,19 @@ def load_order_data(self: mywindow, edit_etap_num=9,add_params:dict|None=None):
 
     nf_val = CQT.num_col_by_name_c(tbl,"Значение")
     nf_req = CQT.num_col_by_name_c(tbl,"Реквизит")
-
+    nf = CQT.nums_col_by_name_dict(tbl)
     with CQT.table_updating(tbl):
         for i in range(tbl.rowCount()):
+            tbl.setRowHeight(i,42)
             row = CQT.get_dict_line_form_tbl(tbl,i)
             params_field = PARAMS_FIELDS_MOLDING_DB.dict_vars[row['Name']]
             for j in range(tbl.columnCount()):
                 CQT.set_cell_editable(tbl, i, j, False)
                 CQT.set_font_color_wtab_c(tbl, i, j, 100, 100, 100)
                 CQT.font_cell_size_format(tbl, i, j, bold=False)
+
             if int(row['stage']) == edit_etap_num:
+
                 if params_field.editable:
                     CQT.set_cell_editable(tbl,i,nf_val,True)
                     CQT.font_cell_size_format(tbl, i, nf_req,bold=True)
@@ -1305,13 +1614,55 @@ def load_order_data(self: mywindow, edit_etap_num=9,add_params:dict|None=None):
                         link_name = '     ...'
                     CQT.add_label_link(tbl,i,nf_val,link_name,link_name,fcn_select_res,self)
                     CQT.font_cell_size_format(tbl, i, nf_req, bold=True)
-                if row['Name'] in ('name_nomen_for_forming','name_nomen_for_res_product'):
+                if row['Name'] in ('name_nomen_for_forming'):
                     link_name = row['Значение'].strip()
                     if not link_name:
                         link_name = '     ...'
                     CQT.add_label_link(tbl,i,nf_val,link_name,link_name,fcn_select_name_nomen_for_forming,self)
                     CQT.font_cell_size_format(tbl, i, nf_req, bold=True)
-
+                if row['Name'] == 'name_nomen_for_res_product':
+                    link_name = row['Значение'].strip()
+                    if not link_name:
+                        link_name = '     ...'
+                    CQT.add_label_link(tbl,i,nf_val,link_name,link_name,fcn_select_name_nomen_for_res_product,self)
+                    CQT.font_cell_size_format(tbl, i, nf_req, bold=True)
+                if row['Name'] in ('type_ekzotermicheskikh_vstavok_na_1_kom', 'type_exothermic_inserts'):
+                    widg = CQT.add_interactive_label(tbl, i,nf_val, row['Значение'],
+                                                     parent_self=self)
+                    widg.add_button(CEMOJ.EmojiMain.СтатусыПроизводства.ellipsis.symbol, 'Добавить',
+                                        fnc_select_type_ekzotermicheskikh_vstavok,
+                                        cell_val=None,img_path=  F.sep().join([F.path_to_execut_file_c(),
+                                                                              'icons','btn_add']) )
+                    widg.add_button(CEMOJ.EmojiMain.ДокументыДанные.archive.symbol, 'Просмотр',
+                                        fnc_show_ekzotermicheskikh_vstavok,
+                                        cell_val=tbl,img_path=  F.sep().join([F.path_to_execut_file_c(),
+                                                                              'icons','btn_show']) )
+                if row['Name'] in ('kolichestvo_ekzotermicheskikh_vstavok_na_1_kom', 'exothermic_inserts_count'):
+                    widg = CQT.add_interactive_label(tbl, i,nf_val, row['Значение'],
+                                                     parent_self=self)
+                    widg.add_button(CEMOJ.EmojiMain.СтатусыПроизводства.ellipsis.symbol, 'Выбор',
+                                        fnc_select_exothermic_inserts_count,
+                                        cell_val=None,img_path=  F.sep().join([F.path_to_execut_file_c(),
+                                                                              'icons','btn_select']) )
+                    widg.add_button(CEMOJ.EmojiMain.Статусы.error.symbol, 'Очистить', on_clicked=fnc_clear_inserts_count,
+                                    cell_val=None)
+                if row['Name'] == 'name_byproduct_and_intermediate_output':
+                    widg = CQT.add_interactive_label(tbl, i,nf_val, row['Значение'],
+                                                     parent_self=self)
+                    widg.add_button(CEMOJ.EmojiMain.СтатусыПроизводства.ellipsis.symbol, 'Выбор',
+                                        fnc_select_name_byproduct_and_intermediate_output,
+                                        cell_val=None,img_path=  F.sep().join([F.path_to_execut_file_c(),
+                                                                              'icons','btn_select']) )
+                    widg.add_button(CEMOJ.EmojiMain.Статусы.error.symbol, 'Очистить', on_clicked=fnc_clear_code,
+                                    cell_val=None)
+                if row['Name'] == 'res_product'  :
+                    link_name = row['Значение'].strip()
+                    if link_name:
+                        widg = CQT.add_interactive_label(tbl, i,nf_val, row['Значение'],
+                                                         parent_self=self)
+                        widg.add_button(CEMOJ.EmojiMain.Статусы.error.symbol, 'Очистить', on_clicked=fnc_clear_code,
+                                        cell_val=None)
+                CQT.add_color_wtab_c(tbl, i, nf['Этап'], 12, 0, 12)
 
         if not CFG.Config.user_config.is_developer: #25.07.25
             tbl.setColumnHidden(CQT.num_col_by_name_c(tbl,"stage",-1),True)
@@ -1328,10 +1679,15 @@ def data_mold_cellchanged(self: mywindow,row:int,col:int):
         return
     data = CQT.list_from_wtabl_c(tbl,rez_dict=True)
     stage = self._ttkz_tmp_settings.current_stage
-    if stage == 1:  # песочная форма
+    allow_stage = self._ttkz_tmp_settings.allow_stage
+
+    if stage == 1 or allow_stage == 1 :  # песочная форма
         calc_massa_godnogo(self,data)
+        data = CQT.list_from_wtabl_c(tbl, rez_dict=True)
         calc_tvg(self,data)
-    if stage == 2:  # материалы
+        data = CQT.list_from_wtabl_c(tbl, rez_dict=True)
+        calc_byproduct_and_intermediate_output(self,data)
+    if stage == 2 or allow_stage == 2:  # материалы
         pass
     self._ttkz_tmp_settings.current_order.set_modify()
 
@@ -1351,6 +1707,7 @@ def apply_new_or_edit_order(self:mywindow):
         order: OrderMold = self._ttkz_tmp_settings.current_order
     else:
         order = OrderMold()
+    order.set_modify(False)
     for item in data:
         if PARAMS_FIELDS_MOLDING_DB.dict_vars[item["Name"]].is_numeric:
             exec(f'order.{item["Name"]} = {F.valm(item["Значение"])}')
@@ -1361,6 +1718,7 @@ def apply_new_or_edit_order(self:mywindow):
         load_form_rs_for_molding(self)
     if order.name_nomen_for_forming:
         add_base_complex_mold_tch(self)
+
 
 @CQT.onerror
 def cancel_new_or_edit_order(self:mywindow):
@@ -1402,6 +1760,21 @@ def calc_tvg(self,data:list[dict]):
         tvg = massa_godnogo / massa_metalla_v_forme_brutto * 100
         tvg = round(tvg, PARAMS_FIELDS_MOLDING_DB.dict_vars['tvg'].КоличествоРазрядов)
         set_val_tbl_data_mold(self, 'tvg', tvg)
+    except:
+        pass
+
+@CQT.onerror
+def calc_byproduct_and_intermediate_output(self,data:list[dict]):
+    """(Масса металла в форме, брутто* (100%-ТВГ))/ Количество отливок в 1 песчаной форме. """
+    try:
+        massa_metalla_v_forme_brutto = get_val_tbl_data_mold(data, 'massa_metalla_v_forme_brutto')
+        сount_mold = get_val_tbl_data_mold(data, 'kolichestvo_otlivok_v_1_peschanoi_forme')
+        tvg = get_val_tbl_data_mold(data, 'tvg')
+        val_byproduct_and_intermediate_output = (massa_metalla_v_forme_brutto*(1-tvg/100))/сount_mold
+        val_byproduct_and_intermediate_output = round(
+            val_byproduct_and_intermediate_output,
+            PARAMS_FIELDS_MOLDING_DB.dict_vars['val_byproduct_and_intermediate_output'].КоличествоРазрядов)
+        set_val_tbl_data_mold(self, 'val_byproduct_and_intermediate_output', val_byproduct_and_intermediate_output)
     except:
         pass
 
@@ -1681,11 +2054,18 @@ def upload_1c_res_product_tch(self:mywindow):
                 CQT.msgbox(
                     f'пропущен материал \n`{mat.mat_kod}`\nт.к. кол-во = 0')
 
-        # Трудозатраты
-        ВидРабот = CRES.TypeOfWorkData.find_by_name('литье')
-        labor = CRES.LaborCost(ВидРабот, 90)
+        # Побочный и промежуточный выпуск
+        byproduct_output = CRES.Byproduct_output(self._ttkz_tmp_settings.current_order.name_byproduct_and_intermediate_output,
+                                          self._ttkz_tmp_settings.current_order.val_byproduct_and_intermediate_output,
+                                          )
+        stage_data.add_byproduct_and_intermediate_output(byproduct_output)
 
-        stage_data.add_labor(labor)
+
+        # Трудозатраты
+        # ВидРабот = CRES.TypeOfWorkData.find_by_name('литье') # 24.12.2025 по ТЗ(Важно! Во всех р/с Таткуза вкладку трудозатраты не заполняем! Оставляем ее пустой.)
+        # labor = CRES.LaborCost(ВидРабот, 90)
+
+        # stage_data.add_labor(labor)
 
         stage = CRES.Stage('литье', stage_data)
 
@@ -1725,6 +2105,9 @@ def upload_1c_res_product_tch(self:mywindow):
 
 
     if self._ttkz_tmp_settings.current_order.res_product:#'Перезаполнить'
+        if not CQT.msgboxgYN(f'Номер ресурсной уже указан.\nПроизойдет попытка перезаписи данных под этим номером.',
+                             'Продолжить','Выход'):
+            return
         code_old_res = self._ttkz_tmp_settings.current_order.res_product
         if not clear_res(code_old_res):
             return
@@ -1919,10 +2302,10 @@ def upload_1c_mold_tch(self:mywindow):
                     f'пропущен материал \n`{mat.mat_kod}`\nт.к. кол-во = 0')
 
         # Трудозатраты
-        ВидРабот = CRES.TypeOfWorkData.find_by_name('литье')
-        labor = CRES.LaborCost(ВидРабот, 1440)
+        #ВидРабот = CRES.TypeOfWorkData.find_by_name('литье') # 24.12.2025 по ТЗ(Важно! Во всех р/с Таткуза вкладку трудозатраты не заполняем! Оставляем ее пустой.)
+        #labor = CRES.LaborCost(ВидРабот, 1440)
 
-        stage_data.add_labor(labor)
+        #stage_data.add_labor(labor)
 
         stage = CRES.Stage('литье', stage_data)
 

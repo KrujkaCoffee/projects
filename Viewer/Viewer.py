@@ -18,6 +18,8 @@ import project_cust_38.Zamechaniya as ZMCH
 import project_cust_38.Cust_config as USRCNF
 import project_cust_38.Cust_odata_erp as ODAT
 import arm_pr_oper as ARMOPER
+import reports_of_personal as RPTP
+from dataClass import data_app as DTCLS
 cfg = config.Config(r'Config\CFG.cfg')  # файл конфига, находится в папке конфиг
 import json as JS
 F.test_path()
@@ -83,6 +85,7 @@ class Data:
         * FROM group_vid_rab_for_plan WHERE composite = 0;""", rez_dict=True)
     DICT_GROUP_VID_RAB_FOR_PLAN_NICKNAME = DICT_PROFESSIONS_NICKNAME = F.deploy_dict_c(group_vid_rab_for_plan,'nick_name')
     DICT_GROUP_VID_RAB_FOR_PLAN_NAME = F.deploy_dict_c(group_vid_rab_for_plan, 'name')
+    DICT_GROUP_PODR_VID_RAB_FOR_PLAN = CMS.calc_dict_group_podr_vid_rab_for_plan()
     DICT_EMPL_FULL = F.deploy_dict_c(CSQ.custom_request_c(bd_users, f"""SELECT * FROM employee WHERE Пномер IN( SELECT Пномер FROM (SELECT
         	MAX(Пномер) as Пномер,
         	ФИО
@@ -121,9 +124,11 @@ class mywindow(QtWidgets.QMainWindow):
 
         USRCNF.Config.user_config.load_user_config(self)
         CQT.load_icons(self)
+        DTCLS.app_self = self
         CQT.connect_to_resize(self, CMS.tmp_dir())
         CMS.add_action_config_save_tbl_filtrs(self, self.ui)
         OTCH.vibor_sort_c_report_c(self)
+        CQT.load_icons(self, 24)
 
         # =================add_ui============================
         self.parent_for_grafic = self.ui.verticalLayout_8
@@ -160,6 +165,9 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.btn_delete_block_from_etap.clicked.connect(lambda: ARMOPER.btn_delete_block_from_etap(self))
         self.ui.btn_show_history_nar.clicked.connect(lambda: ARMOPER.show_history_nar(self))
         self.ui.btn_show_structure_nar.clicked.connect(lambda: ARMOPER.show_structure_nar(self))
+        self.ui.bnt_glsv_append.clicked.connect(lambda: RPTP.bnt_glsv_append(self))
+        self.ui.bnt_glsv_edit_rule.clicked.connect(lambda: RPTP.bnt_glsv_edit_rule(self))
+        self.ui.bnt_glsv_add_rule.clicked.connect(lambda: RPTP.bnt_glsv_add_rule(self))
         # ==================lines
 
         # ==================TABLES
@@ -201,9 +209,13 @@ class mywindow(QtWidgets.QMainWindow):
         CMS.dict_opers(self, self.bd_naryad)
         CMS.dict_etapi(self, self.bd_naryad)
         self.DICT_EMPLOEE = CMS.dict_emploee(self.bd_users)
+        list_emploee_full_with_del = CMS.list_emploee_full_with_del(self.bd_users)
+        list_emploee = [_ for _ in list_emploee_full_with_del if _['Статус'] != 'Увольнение']
         self.DICT_PRICE_BRAK = CMS.DICT_PRICE_BRAK(self.bd_naryad)
-        self.DICT_EMPLOEE_FULL = CMS.dict_emploee_full(self.bd_users)
-        self.DICT_EMPLOEE_FULL_WITH_DEL = CMS.dict_emploee_full_with_del(self.bd_users)
+        self.DICT_EMPLOEE_FULL =  F.deploy_dict_c(list_emploee,'ФИО')
+        self.DICT_EMPLOEE_FULL_WITH_DEL = F.deploy_dict_c(list_emploee_full_with_del,'ФИО')
+        self.DICT_EMPLOEE_FULL_WITH_DEL_BY_REF = F.deploy_dict_c(list_emploee_full_with_del,'ID_ФизЛица')
+
         self.DICT_MK = CSQ.custom_request_c(self.bd_naryad,
                                             f"""SELECT Пномер, Номер_заказа || "$" || Номер_проекта as NPPY FROM mk""",
                                             rez_dict=True)
@@ -272,6 +284,7 @@ class mywindow(QtWidgets.QMainWindow):
 
         self.ui.fr_save_txt.setHidden(True)
         self.ui.fr_addition_tbl.setHidden(True)
+        self.ui.fr_erp_handler.setHidden(True)
         self.ui.fr_mk_zamech.setHidden(True)
         ZMCH.init_zamech_const(self)
         self.DICT_MAT = F.deploy_dict_c(CSQ.custom_request_c(self.bd_mat, f"""SELECT * FROM nomen""", rez_dict=True),
@@ -506,6 +519,35 @@ class mywindow(QtWidgets.QMainWindow):
             self.ui.le_path_save.setText(CMS.tmp_dir())
             return False
 
+        if self.vid_report_c == 'Анализ внеплана по видам работ':
+            if CMS.user_access(self.bd_naryad,
+                               'просмотр_обновить_внеплан_кэф_по_анализ_внеплана_по_видам_работ',F.user_name(),False):
+            #if USRCNF.Config.user_config.is_developer:  # 18.07.25
+                if CQT.msgboxgYN(f'Обновить процент внеплановых работ в таблице видов по направлениям?'):
+                    dict_vids_napr_percent = dict()
+                    for item in self.analysis_vneplan_by_vid_rab_tmp_res_list:
+                        if 'Вид_по_напр' not in item:
+                            continue
+                        if item['Вид_по_напр'] not in dict_vids_napr_percent:
+                            dict_vids_napr_percent[item['Вид_по_напр']] = {'p': 0,
+                                                                           'v': 0}
+                        if item['Тип'] == 'внеплан':
+                            dict_vids_napr_percent[item['Вид_по_напр']]['v'] += item['Tвремя']
+                        else:
+                            dict_vids_napr_percent[item['Вид_по_напр']]['p'] += item['Tвремя']
+
+                    for vid in dict_vids_napr_percent.keys():
+                        delta = 0
+                        if dict_vids_napr_percent[vid]['p'] > 0:
+                            delta = round(dict_vids_napr_percent[vid]['v'] / dict_vids_napr_percent[vid]['p'], 2)
+                            if delta > 5:
+                                delta = 5
+                        if not self.Data.DICT_VID_PO_NAPR_NAME[vid]['Утверждены_нормы']:
+                            #CSQ.custom_request_c(self.db_kplan,
+                            #                    f"""UPDATE виды_по_направлению SET (vneplan_percent) = {delta} WHERE Пномер = {vid}""")  # 18.08.25
+                            pass
+                    CQT.msgbox(f'Успешно')
+
         if self.vid_report_c == 'Трудозатраты':
             if not check_path_save(self):
                 return
@@ -547,6 +589,7 @@ class mywindow(QtWidgets.QMainWindow):
             tbl = self.ui.tbl_report_c
             list = CQT.list_from_wtabl_c(tbl, hat_c=True, only_visible=True, rez_dict=True)
             for item in list:
+
                 list_of_lists = [[int(item['Выборка,шт.']),
                                   F.valm(item['кг_на_пост_см_средн']),
                                   F.valm(item['Лазерная резка']),
@@ -561,16 +604,8 @@ class mywindow(QtWidgets.QMainWindow):
                                   ]]
                 kod = int(item['Код из бд'])
                 rez = CSQ.custom_request_c(self.db_kplan, f'''UPDATE виды_по_напр SET (Выборка, 
-                кг_на_пост_см, 
-                Лазерная_резка, 
-                Сборка_сварка, 
-                Покраска, 
-                Токарка_фрезеровка, 
-                Зачистка, 
-                Вспомогательная, 
-                Термическая, 
-                Подготовка_монтажного_комплекта, 
-                Упаковка_и_комплектование_ЗИП) = ({'?,'.join(['' for _ in list_of_lists[0]]) + '?'}) 
+                кг_на_пост_см
+               ) = ({'?,'.join(['' for _ in list_of_lists[0]]) + '?'}) 
                 WHERE  Пномер = {kod}''', list_of_lists_c=list_of_lists)
                 if rez == False:
                     CQT.msgbox(f'Ошибка')

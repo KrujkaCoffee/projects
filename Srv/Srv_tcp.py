@@ -155,7 +155,7 @@ def func_ping(HOST, PORT):
 
 def run(HOST: str, PORT: int | str):
     import multiprocessing
-
+    HOST = "192.168.100.135"
     print('START SERVER')
     table_ports = {
         20002: [5200, 5201, 5202, 5203, 5204],

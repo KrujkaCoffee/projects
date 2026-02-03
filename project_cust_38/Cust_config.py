@@ -1,9 +1,13 @@
+import datetime
 import sys
 import typing
 import logging
 import copy
 import os
 import dataclasses
+
+import config
+import project_cust_38.Cust_emoji as CEMOJ
 try:
     from PyQt5 import QtWidgets
 except:
@@ -258,6 +262,172 @@ def load_place():
     SingletonMeta.clear_instance(Place)
     Config.place = Place(Config.user_config.Organization['Значение'])
 
+class System_changes():
+    FILE_CHANGE_NAME = 'mes_changes.pickle'
+    DIR = CQT.qt_tmp_dir()
+    PFILE = DIR + F.sep() + FILE_CHANGE_NAME
+
+    B24_FILE_NAME = 'plan_it_form_b24(gen by reiting).pickle'
+    B24_DIR = fr'Z:\Data'
+    B24_PFILE = B24_DIR + F.sep() + B24_FILE_NAME
+    DICT_APP_COMPARE = {
+        'МКарты':{'МКарты','Сайт','ВебПриложение','Рейтинг','Установщик','Этапы'},
+        'Просмотр':{'Просмотр',},
+        'Техкарты':{'Техкарты',},
+        'Создание2':{'Создание2','Установщик'},
+        'Выполнение2':{'Выполнение2',},
+        'csv':{'csv',},
+        'АРМ_оператора':{'АРМ_оператора',},
+        'Этапы':{'Этапы',},
+        'Аутсорс':{'Аутсорс',},
+        'Рейтинг':{'Рейтинг',},
+        'Установщик':{'Установщик',},
+        'КонструкторРС':{'КонструкторРС',},
+        'Сайт':{'Сайт',},
+        'ВебПриложение':{'ВебПриложение',},
+
+    }
+    DICT_TYPES = { 'Мелкие улучшения':CEMOJ.EmojiMain.ОперацииПроизводства.assembly.symbol,
+                   'Развитие процессов':CEMOJ.EmojiMain.ПоказателиМетрики.thrive.symbol
+
+    }
+    def __init__(self,window):
+        self.db_users = Config.project.db_users
+        self.app_self = window
+        self.data_setup:datetime.datetime = None
+        self.set_passed_news:set = None
+        self.app = Config.app.app
+        self.b24_source = False
+        #self.clear_cache()
+        if F.existence_file_c(self.PFILE):
+            data = F.load_file_pickle(self.PFILE)
+            self.data_setup = data['data_setup']
+        else:
+            self.data_setup = self.yesterday_end_day(F.date_add_days(F.now(),-7,format_out=''))
+        
+
+    def show_hot(self):
+        self.get_news_b24()
+        if self.show_news():
+            self.save_cache()
+            
+    @staticmethod
+    def show(window):
+        obj = System_changes(window)
+        obj.get_news_b24(False)
+        obj.show_news()
+
+    @classmethod
+    def add_action_config(cls, window, self_ui):
+        self_ui.action_system_changes = QtWidgets.QAction('История изменений', window)
+        if not hasattr(self_ui, 'menu'):
+            print(f'Err add_action_config no menu attr')
+            quit()
+        self_ui.menu.addSeparator()
+        self_ui.menu.addAction(self_ui.action_system_changes)
+        self_ui.action_system_changes.triggered.connect(lambda _: cls.show(window))
+        self_ui.menu.addSeparator()
+
+
+
+    @staticmethod
+    def yesterday_end_day(start:datetime.datetime=F.now('')):
+        return F.start_end_dates_c(F.date_add_time(start,hours=-28),vid='d',format_in='',format_out='')[1]
+    
+    def get_news_b24(self,hot= True)->list[dict]:
+        self.news = []
+        if self.data_setup == self.yesterday_end_day() and hot:
+            return 
+        
+        news = []
+        self.b24_source = True
+        if F.existence_file_c(self.B24_PFILE):
+            news = F.load_file_pickle(self.B24_PFILE)
+        
+        max_date = self.yesterday_end_day()
+        for row in news:
+            if row['ПРОЦЕНТ ВЫПОЛНЕНИЯ'] != '1':
+                continue
+            if row['ПП'] != 'MES':
+                continue
+            if row['ТИП'] not in self.DICT_TYPES:
+                continue
+            if row['ПРИЛОЖЕНИЕ'] in self.DICT_APP_COMPARE and row['ПРИЛОЖЕНИЕ'] in self.DICT_APP_COMPARE[self.app]:
+                date_end_str = row['ДАТА ОКОНЧАНИЯ']
+                if F.is_date(date_end_str):
+                    date_end = F.strtodate(date_end_str)
+                    if not hot or (date_end > self.data_setup and date_end < max_date):
+                        self.news.append({
+                            '№':row['НОМЕР'],
+                            'Тип':self.DICT_TYPES[row['ТИП']],
+                              'Дата': F.dateStrToStr(row['ДАТА ОКОНЧАНИЯ'],format_out="%d.%m.%y"),
+                              'Инициатор':row['ПОСТАНВОЩИК'],
+                              'Описание':row['НАЗВАНИЕ ЗАДАЧИ'],
+                              'Результат':row['ОПИСАНИЕ']
+                              } 
+)
+        return self.news
+    
+    def get_news(self)->list[dict]:
+        news = CSQ.custom_request_c(self.db_users, f"""SELECT system_change.id as №,
+                                system_change.date_time as Дата,
+                                ФизическоеЛица.Фамилия as Инициатор,
+                                system_change.description as Описание,
+                                system_change.result as Результат
+                                 FROM system_change 
+                                 INNER JOIN ФизическоеЛица ON
+                                 ФизическоеЛица.id == system_change.customer 
+                                 WHERE system_change.app == "{self.app}" and 
+                                datetime(system_change.date_time) >= datetime("{F.datetostr(self.data_setup)}")""", rez_dict=True)
+        for row in news:
+            row['Дата'] = F.dateStrToStr(row['Дата'],format_out="%d.%m.%y")
+        self.news = news
+        return news
+
+    def show_news(self):
+        def func_oform(tbl:QtWidgets.QTableWidget):
+
+            nf = CQT.nums_col_by_name_dict(tbl)
+            with CQT.table_updating(tbl):
+                for i in range(tbl.rowCount()):
+                    tbl.setRowHeight(i,88)
+                    for j in range(tbl.columnCount()):
+                        if j in (nf['Описание'],nf['Результат']):
+                            CQT.font_cell_size_format(tbl,i,j,12)
+                        else:
+                            CQT.font_cell_size_format(tbl,i,j,14)
+                tbl.resizeColumnsToContents()
+                dlg = tbl.window()
+                dlg.showMaximized()
+                tbl.columnWidth(nf['Результат'])
+                CQT.select_cell(tbl, tbl.rowCount() - 1, 0)
+            tbl.setColumnWidth(nf['Описание'],round(tbl.width()*0.3))
+            tbl.setColumnWidth(nf['Результат'],round(tbl.width()*0.3))
+                
+        
+        if self.news:
+            CQT.msgboxg_get_table_ok_inf(self.app_self,f' Что нового',
+                                         self.news,func_oform_tbl=func_oform,
+                                         style_icon=CEMOJ.EmojiMain.ПерсоналРоли.training.symbol,
+                                         styleSheet=CQT.WHATS_NEW_CSS
+                                         
+                                         )
+            return True
+        return False
+
+
+    def save_cache(self):
+        if self.b24_source:
+            self.data_setup = self.yesterday_end_day()
+        else:
+            self.data_setup = F.now('')
+        data = {'data_setup':self.data_setup}
+        F.save_file_pickle(self.PFILE,data)
+        
+    def clear_cache(self):
+        F.delete_file_c(self.PFILE)
+
+
 class User_config(metaclass=SingletonMeta):
     def __init__(self, common_config: ProjectConfig = None):
         self.common_config = common_config #18.07.25
@@ -367,6 +537,18 @@ class User_config(metaclass=SingletonMeta):
         CQT.load_css(window)
         self.set_tooltip(window)
         window.place = Config.place
+        self.check_system_change_info(window)
+
+
+    def check_system_change_info(self,window):
+        if not Config.app.is_ui:
+            return
+        System_changes.add_action_config(window, window.ui)
+        
+        system_changes = System_changes(window)
+        system_changes.show_hot()
+        
+
 
     def set_tooltip(self, window):
         window.setWindowTitle(f"{window.name_module}")
@@ -491,6 +673,7 @@ class Place(metaclass=SingletonMeta):
     use_month_closing_block_for_naryads: int = None #10.09.2025  100060031 Сергей Козырьков12:36 необходимо снять блок по периоду на время закрытия предыдущих МК в месе,Тренировка,отработка возможных ошибок сотрудников. на срок до 22.09.
     auto_change_state_kplan: int = None #18.09.2025  100060322  Дмитрий Никандров09:43, как только выстроим цепочку работы с конструкторами, технологами мы сопоставим статусы и донесем до вас.
     autoload_fact_kpl_onoff: int = None #26.09.2025 100060640  тобы в ганте увидеть, что начались работы
+    apply_ratio_on_calc_plan_norm: int = None #27.01.2026 100065475 выключение/выключение коэффициентов для подгрузки норм позиции
 
 
     def __init__(self, organization_name: str | None = None) -> None:

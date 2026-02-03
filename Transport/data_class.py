@@ -128,8 +128,8 @@ class Client_data():
         return conf
     def get_user_config(self):
         conf =  self._load_user_config_data()
-        if not self.ip:
-            return
+        # if not self.ip:
+        #     return
         if not conf:
             if not self.add_new_user():
                 print(f'Ошибка добавления нового юзера для {self.ip}')
@@ -202,7 +202,7 @@ class StatausBar():
 
 class Module_cfg():
     _dict_routes = dict()
-    def __init__(self,alias:str|None='genesis',route:str|None=None,name:str='',icon:ft.Icons|None=None, tooltip:str='',sub_module:Optional['Module_cfg']=None):
+    def __init__(self,alias:str|None='genesis',route:str=None,name:str='',icon:ft.Icons=None, tooltip:str='',sub_module:Optional['Module_cfg']=None):
         self.alias:str = alias
         self.route:str = route
         self.sub_dir:str|None = None

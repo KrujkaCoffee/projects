@@ -6,6 +6,7 @@ import calendar
 import project_cust_38.Cust_mes as CMS
 import copy
 import project_cust_38.Cust_config as USRCNF
+from project_cust_38 import api_erp_commands as APIERP
 
 def start_of_period_c(data):
     date = F.strtodate(data)
@@ -108,22 +109,56 @@ def list_per_month_new_c(db,nach,konec,db_kplan,db_users,podrazdelenie,organizat
             if organization == None:
                 print('Не указана организаиця')
                 return
+        datetime_object_start = F.strtodate(nach, "%Y-%m-%d %H:%M:%S")
+        datetime_object_finish = F.strtodate(konec, "%Y-%m-%d %H:%M:%S")
+        beginning_month_datetime = datetime_object_start.replace(day=1)
+
+        beginning_month_str = F.datetostr(beginning_month_datetime, "ДАТАВРЕМЯ(%Y, %m, %d)")
+        start_month_datetime_str = F.datetostr(datetime_object_start, "ДАТАВРЕМЯ(%Y, %m, %d)")
+        finish_month_datetime_str = F.datetostr(datetime_object_finish, "ДАТАВРЕМЯ(%Y, %m, %d)")
+        text = f"""
+        ВЫБРАТЬ РАЗЛИЧНЫЕ
+            ДанныеДляПодбора.Должность КАК Должность,
+            ДанныеДляПодбора.Подразделение КАК Подразделение
+        ИЗ
+            Документ.ТабельУчетаРабочегоВремени.ДанныеОВремени КАК ТабельУчетаРабочегоВремениДанныеОВремени
+            ЛЕВОЕ СОЕДИНЕНИЕ РегистрСведений.ДанныеДляПодбораСотрудников КАК ДанныеДляПодбора
+                ПО ДанныеДляПодбора.Сотрудник = ТабельУчетаРабочегоВремениДанныеОВремени.Сотрудник 
+        ГДЕ
+            ТабельУчетаРабочегоВремениДанныеОВремени.Ссылка.ПериодРегистрации = {beginning_month_str}
+            И ДанныеДляПодбора.Начало <= {start_month_datetime_str}
+            И ДанныеДляПодбора.Окончание >= {finish_month_datetime_str}
+            И Подразделение.Наименование = "{podrazdelenie}"
+            И ДанныеДляПодбора.Филиал.Наименование = "{organization}"
+        СГРУППИРОВАТЬ ПО
+            ДанныеДляПодбора.Должность,
+            ДанныеДляПодбора.Подразделение
+        """
+
+        key, result_req = APIERP.get_wet_request(text=text)
+        if key == 200 and result_req['data']:
+            return [item['Должность'] for item in result_req['data']]
+        else:
             filtr_dolgn = CSQ.custom_request_c(db, f"""SELECT Должность FROM dolgn_etap WHERE 
-                     Подразделение == "{podrazdelenie}" AND Производство == "{organization}" ;""", hat_c=False,
-                                               one_column=True)
-        return filtr_dolgn
+                 Подразделение == "{podrazdelenie}" AND Производство == "{organization}" ;""", hat_c=False,
+                                           one_column=True)
+            return filtr_dolgn
 
     filtr_dolgn = get_filtr_dolgn(podrazdelenie,organization)
     postfix = ""
+    dict_employee = CMS.dict_emploee_full(db_users)
     if filtr_dolgn != None:
         filtr_fio = []
         if tabel_m == None:
             name_table = F.datetostr(F.strtodate(nach),"mtdz_%Y_%m_%d")
-            users = CSQ.custom_request_c(db_users,f"""SELECT ФИО FROM {name_table}""",hat_c=False,one_column=True)  
+            users = CSQ.custom_request_c(db_users,f"""SELECT ФИО FROM {name_table}""",hat_c=False,one_column=True)
         else:
             users = [_[1] for _ in tabel_m[3:]]
         for user in users:
             fio = ' '.join(user.split()[:3])
+            company = USRCNF.Config.place.Имя
+            if fio not in dict_employee or dict_employee[fio]['Компания'] != company or dict_employee[fio]['Подразделение'] != podrazdelenie: #28.01.2026
+                continue
             dolgn =  ' '.join(user.split()[3:])
             if dolgn in filtr_dolgn:
                 filtr_fio.append(fio)
@@ -152,10 +187,8 @@ def list_per_month_new_c(db,nach,konec,db_kplan,db_users,podrazdelenie,organizat
                      and  _['Подтвержд_вып'] == 1 ]
 
     spis_per_month_c = [_ for _ in spis_jur if _['Статус'] == "Начат"]
-    dict_per_month_c = dict()
+    dict_per_month_c = {item['ФИО']: 0 for item in spis_jur} #28.01.2026
     for row in spis_per_month_c:
-        if row['ФИО'] not in dict_per_month_c:
-            dict_per_month_c[row['ФИО']] = 0
         if not F.is_numeric(row['Подытог_нормы']):
             jur = CMS.Jurnal_nar(db, row['Номер_наряда'], row['ФИО'])
             por_nom = row['Пномер']

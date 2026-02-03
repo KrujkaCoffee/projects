@@ -159,9 +159,11 @@ class OperationDocs:
             if item == None: return
             ima_det = self.window.glob_tk_title.split('$')[1].replace('*', '')
             clean_name, *other = ima_det.split(' ')
+            clean_name = clean_name.replace('(', '?').replace(')', '?')
             tmp_putt = CMS.load_tmp_path("tmp_addtk_doc")
             putf = CQT.f_dialog_name(self.window, 'Выбрать файл', tmp_putt,
-                                     fr"Файлы (*{clean_name}*.dxf *.jpg *.pdf)")
+                                     rf"Файлы (*{clean_name}*.dxf *.jpg *.pdf);;DXF (*.dxf)") #13.12.25
+
             if putf == '' or putf == '.': return
             CMS.save_tmp_path("tmp_addtk_doc", putf, True)
             filename = Path(putf).name

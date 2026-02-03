@@ -174,6 +174,30 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.tabW_rab_places.currentChanged[int].connect(self.tabW_rab_places_click)
         self.ui.tab_rs_tch.currentChanged[int].connect(lambda: TTKZ.tab_rs_tch_currentChanged(self))
 
+        #++24.12.2025
+        # ================== UNSAVED CHANGES GUARD (Создание МК) ==================
+        self._mk_dirty = CQT.DirtyState(self)
+        self._mk_dirty.watch_table_widget(self.ui.table_razr_MK)     # таблица разработки МК
+        self._mk_dirty.watch_table_widget(self.ui.table_zayavk)      # таблица из XML
+        self._mk_dirty.watch_line_edit(self.ui.lineEdit_ves)         # вес
+        self._mk_dirty.watch_combo_box(self.ui.comboBox_napravlenia, user_only=True)
+        self._mk_dirty.watch_combo_box(self.ui.comboBox_sort_c, user_only=True)
+
+        self._mk_tab_guard = CQT.TabLeaveGuard(
+            self.ui.tabWidget,
+            is_dirty=self._mk_dirty.is_dirty,
+            discard=self._discard_create_mk_changes,
+            from_tabs={"Создание МК"},
+            allowed_tabs={"Номенклатура", "Брак"},
+            message="Вы покидаете вкладку «Создание МК» не сохранив данные.\nПри подтверждении данные будут очищены\nВы уверены что хотите покинуть вкладку?",
+            title="Несохраненные данные",
+            sub_tubs={self.ui.tabWidget_2},
+            forbidden_sub_tubs={'ТКП'},
+        )
+        self._mk_dirty.mark_clean()
+        # ========================================================================
+        #--24.12.25
+
         # ============================================================
         # ==================TABLE=====================================
         self.ui.tbl_data_mold.cellChanged.connect(lambda row, col: TTKZ.data_mold_cellchanged(self, row, col))
@@ -711,9 +735,18 @@ class mywindow(QtWidgets.QMainWindow):
 
         self._tkp_current_schema = CMS.TkpSchema()
         self.ui.chk_consider_project_abs_product.clicked[bool].connect(self.on_click_chk_consider_project_abs_product) #12.11.25
-        self._ttkz_tmp_settings = TTKZ.Ttkz_tmp_settings(self.ui.lbl_data_mold)
+        self._ttkz_tmp_settings = TTKZ.Ttkz_tmp_settings(self.ui.lbl_data_mold,self)
         IND.load_control_schema_output(self)
         self.apply_visible_by_places()
+
+        self.ui.tbl_rc_autopause_2.cellChanged.connect(lambda *args: IND.on_autopause_table_changed(self, *args)) #25.01.2026
+
+    def _discard_create_mk_changes(self): #24.12.2025
+        try:
+            with self._mk_dirty.suspended():
+                self.clear_mk()
+        finally:
+            self._mk_dirty.mark_clean()
 
     def fill_chk_consider_project_abs_product(self):
         schema = getattr(self, 'tkp_current_schema', None)
@@ -1353,6 +1386,13 @@ class mywindow(QtWidgets.QMainWindow):
         if self.ui.tbl_data_mold_tch_filtr.hasFocus():
             if key_val == 16777220:
                 CMS.apply_filtr_c(self, self.ui.tbl_data_mold_tch_filtr, self.ui.tbl_data_mold_tch)
+        if self.ui.tbl_rc_autopause_filtr.hasFocus(): #29.12.2025
+            if key_val == 16777220:
+                IND.apply_autoschedule_filter(self)
+                IND.load_breaks_tab(self)
+        if self.ui.tbl_rc_autopause_filtr_2.hasFocus():
+            if key_val == 16777220:
+                CMS.apply_filtr_c(self, self.ui.tbl_rc_autopause_filtr_2, self.ui.tbl_rc_autopause_2)
         if self.ui.tbl_data_mold_tch_res_product_filtr.hasFocus():
             if key_val == 16777220:
                 CMS.apply_filtr_c(self, self.ui.tbl_data_mold_tch_res_product_filtr,
@@ -1671,6 +1711,8 @@ class mywindow(QtWidgets.QMainWindow):
         if self.ui.tabWidget_4.tabText(nom) == 'Рабочие места':
             IND.zagruzka_rc(self)
             self.load_lbl_schema()
+        if self.ui.tabWidget_4.tabText(nom) == 'АвтоПерерывы':
+            IND.load_breaks_tab(self)
         if self.ui.tabWidget_4.tabText(nom) == 'Список сотрудников':
             IND.load_emploee(self)
         if self.ui.tabWidget_4.tabText(nom) == 'Вакантные места':
@@ -1697,6 +1739,7 @@ class mywindow(QtWidgets.QMainWindow):
             self.ui.gr_select_proj.setHidden(True)
 
         if self.ui.tabWidget_2.tabText(nom) == 'ТКП':
+            self._mk_dirty.mark_clean() #25.12.2025
             CMS.load_tkp_list(self, self.db_dse, CMS.DICT_NAME_SQL['tkp'], self.ui.tbL_tkp_list,
                               self.ui.tbL_tkp_list_filtr, {})
             list_technologs = [_ for _ in self.DICT_EMPLOEE_FULL.keys() if
@@ -4307,6 +4350,9 @@ class mywindow(QtWidgets.QMainWindow):
         except:
             pass
         CQT.clear_tbl(self.ui.table_zayavk)
+        # 24.12.2025
+        if hasattr(self, '_mk_dirty'):
+            self._mk_dirty.mark_clean()
 
     def check_pre_create_mk(self):
         butt_add_gl_uzel = self.ui.pushButton_create_koren
@@ -5785,6 +5831,9 @@ class mywindow(QtWidgets.QMainWindow):
         except:
             print('Ошибка отправки в Б24')
         CQT.msgbox('маршрутная карта ' + str(nom) + ' успешно сохранена')
+        # 24.12.2025
+        if hasattr(self, '_mk_dirty'):
+            self._mk_dirty.mark_clean()
         try:
             self.ui.tabWidget.setCurrentIndex(CQT.number_table_by_name_c(self.ui.tabWidget, 'Маршрутные карты'))
             nk_ststus = CQT.num_col_by_name_c(self.ui.tbl_filtr_mk, 'Статус')

@@ -4,6 +4,7 @@ import project_cust_38.Cust_Functions as F
 import project_cust_38.Cust_SQLite as CSQ
 import project_cust_38.Cust_mes as CMS
 import project_cust_38.api_erp_commands as APIERP
+from project_cust_38 import Cust_b24 as CB24
 import copy
 #F.test_path()
 
@@ -11,7 +12,7 @@ put_db = F.bdcfg('BD_users')
 put_emploee = F.tcfg('employee')
 db_kplan = F.bdcfg('DB_kplan')
 plecho = 15
-WEEK_STEP_DAYS = -7
+WEEK_STEP_DAYS = -14
 
 
 first_day_1 = F.date_add_days(F.now(''),WEEK_STEP_DAYS,'','').replace(day=1).date()
@@ -776,6 +777,7 @@ def reload_tbl_employee(ima_table_empl, LIST_DICT_EMPLOYEE_FULL, res, dict_rab_v
     print(f'    Обновление времени {ima_table_empl} ')
     used_indexes = set()
     cache_employee = {}
+    messages = []
     for item_erp in list_erp_tabels:
         is_finded = False
         fio = item_erp['Сотрудник'].strip()
@@ -806,6 +808,13 @@ def reload_tbl_employee(ima_table_empl, LIST_DICT_EMPLOYEE_FULL, res, dict_rab_v
                         if erp_val != val or (item_scedule['Примечание'] != comment):
                             CSQ.custom_request_c(put_db, f"""UPDATE {ima_table_empl} SET ({day}) = 
                                                                      ({erp_val}), Примечание = {comment!r} WHERE Пномер == {Пномер};""")
+                            if erp_val != val:
+                                messages.append({
+                                    'Сотрудник': item_scedule['ФИО'].split(' ')[:3],
+                                    'Комментарий было/стало': f"{item_scedule['Примечание']} / {comment}",
+                                    'Время было / стало': f"{val} / {erp_val}",
+                                })
+
                             print(
                                 f"        {item_erp['Сотрудник']}   {item_erp['ТекущаяДолжность']}    {F.datetostr(F.strtodate(day, 'd_%Y_%m_%d'), '%d.%m.%Y')},  было {val} / стало {erp_val} час.")
         if not is_finded:
@@ -834,7 +843,12 @@ def reload_tbl_employee(ima_table_empl, LIST_DICT_EMPLOYEE_FULL, res, dict_rab_v
                     fields_to_update[key] = 0
             fields = ','.join(f'{key} = {val!r}' for key, val in fields_to_update.items())
             CSQ.custom_request_c('SRV:BD_users.db', f'UPDATE {ima_table_empl} SET {fields} WHERE Пномер = {pk}')
-
+    if messages:
+        sender = CB24.B24Sender()
+        sender.send_msg_table_by_action(
+            action='Корректировки данных',
+            title='Обновление табеля МЕС',
+            tbl=messages)
     if len(list_to_add_scedule)>0:
         CSQ.add_line_into_db_sql_c(put_db, ima_table_empl, list_to_add_scedule)
     print(f'        delete duplicaters')
@@ -1107,4 +1121,3 @@ def main():
     calendar.close()
     return
 print('==================================')
-main()

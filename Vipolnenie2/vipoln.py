@@ -23,7 +23,8 @@ import copy
 F.test_path()
 import kpl_vipoln as KPLVIP
 import project_cust_38.Cust_config as USRCNF
-
+import classes as CLSS
+import  project_cust_38.Cust_emoji as CEMOJ
 class mywindow(QtWidgets.QMainWindow):
     def __init__(self):
         super(mywindow, self).__init__()
@@ -51,6 +52,7 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.btn_obnov_sp_nar.clicked.connect(self.zapoln_tabl_naryadov)
         self.ui.btn_add_type_brak.clicked.connect(self.add_type_brak)
         self.ui.btn_del_type_brak.clicked.connect(self.del_type_brak)
+        self.ui.btn_print_nar.clicked.connect(self.print_nar)
         #===================COMBOBOX
         self.ui.cmb_dolgn.activated[int].connect(lambda _, x = self: userm.load_po_dolg(x))
         self.ui.cmb_fio.activated[int].connect(self.check_selected_user)
@@ -62,9 +64,11 @@ class mywindow(QtWidgets.QMainWindow):
         self.glob_login = ''
         self.glob_fio = ''
         self.user_score = None
+        self.superuser = False
         self.glob_summ_treb_chas_tabel = 0
         self.glob_otk_kontrol = None
         self.glob_list_otk_brak = [['Кат_1','Кат_2','Кат_3','Тип','Кол_во']]
+        self.nar_info:CLSS.Naryad_info | None = None
         # =======tbls
         self.ui.tbl_naryadi.cellDoubleClicked[int,int].connect(self.load_naruad)
         self.ui.tbl_naryadi.clicked.connect(self.tbl_naryadi_click)
@@ -114,8 +118,9 @@ class mywindow(QtWidgets.QMainWindow):
         self.DICT_OPER_NAME = F.deploy_dict_c(DICT_OPER, 'name')
         self.DICT_NOMEN = F.deploy_dict_c(
             CSQ.custom_request_c(self.db_nomen, f"""SELECT * FROM nomen;""", rez_dict=True), 'Код')
-        self.DICT_VIDS_NOMEN = F.deploy_dict_c(
-            CSQ.custom_request_c(self.db_nomen, f"""SELECT * FROM ВидыНоменклатуры""", rez_dict=True), 'name')
+        list_nomens = CSQ.custom_request_c(self.db_nomen, f"""SELECT * FROM ВидыНоменклатуры""", rez_dict=True)
+        self.DICT_VIDS_NOMEN = F.deploy_dict_c(list_nomens, 'name')
+        self.DICT_VIDS_NOMEN_BY_REF = F.deploy_dict_c(list_nomens, 'Ref_Key')
         self.DICT_PRICE_BRAK = CMS.DICT_PRICE_BRAK(self.db_naryd)
         self.DICT_TYPE_PROSTOI =F.deploy_dict_c( CSQ.custom_request_c(self.db_naryd,f"""SELECT * FROM kategor_vnepl WHERE poki_{self.place.poki} = 1""", rez_dict=True),"value")
         self.DICT_DOLGN_ETAP = F.deploy_dict_c(
@@ -124,7 +129,7 @@ class mywindow(QtWidgets.QMainWindow):
 
         self.ui.le_Nparol.setVisible(False)
         self.ui.le_Nparol2.setVisible(False)
-
+        self.ui.fr_add_info_prost.setVisible(False)
         self.ui.tbl_chert.setSelectionBehavior(1)
         CQT.set_color_sort_cell_table_c(self.ui.tbl_chert, r=80, g=200, b=110)
         self.ui.tbl_td.setSelectionBehavior(1)
@@ -584,10 +589,10 @@ class mywindow(QtWidgets.QMainWindow):
 
     @CQT.onerror
     def history_nar_load(self):
-        if self.ui.lbl_nom_nar.text() == '':
+        if self.nar_info is None:
             return
-        nom_nar = int(self.ui.lbl_nom_nar.text())
-        custom_request_c = f'''SELECT  Дата, ФИО, Статус, Подытог, Примечание FROM jurnal WHERE Номер_наряда == {nom_nar}'''
+        custom_request_c = f'''SELECT  Дата, ФИО, Статус, Подытог, Примечание 
+                FROM jurnal WHERE Номер_наряда == {self.nar_info.nom_nar}'''
         rez = CSQ.custom_request_c(self.db_naryd, custom_request_c)
         CQT.fill_wtabl_old_c(self, rez, self.ui.tbl_history, isp_hat_c=True, separ='',min_shir_col=200)
 
@@ -602,10 +607,9 @@ class mywindow(QtWidgets.QMainWindow):
     @CQT.onerror
     def prosmotr_td_load(self):
         tblp = self.ui.tbl_td
-        if self.ui.lbl_nom_nar.text() == '':
+        if self.nar_info is None:
             return
-        nom_nar = int(self.ui.lbl_nom_nar.text())
-        custom_request_c = f'''SELECT ДСЕ,Операции,Номер_мк FROM naryad WHERE Пномер == {nom_nar}'''
+        custom_request_c = f'''SELECT ДСЕ,Операции,Номер_мк FROM naryad WHERE Пномер == {self.nar_info.nom_nar}'''
         rez = CSQ.custom_request_c(self.db_naryd, custom_request_c)
         spis_kd = rez[-1][0].split('|')
         spis_oper = rez[-1][1].split('|')
@@ -649,12 +653,9 @@ class mywindow(QtWidgets.QMainWindow):
     @CQT.onerror
     def prosmotr_kd_load(self):
         tblp = self.ui.tbl_chert
-        if self.ui.lbl_nom_nar.text() == '':
+        if self.nar_info is None:
             return
-        nom_nar = int(self.ui.lbl_nom_nar.text())
-
-
-        custom_request_c = f'''SELECT ДСЕ FROM naryad WHERE Пномер == {nom_nar}'''
+        custom_request_c = f'''SELECT ДСЕ FROM naryad WHERE Пномер == {self.nar_info.nom_nar}'''
         rez = CSQ.custom_request_c(self.db_naryd,custom_request_c)
 
         list_dse = CSQ.custom_request_c(self.db_dse,"""SELECT Путь_docs,Номенклатурный_номер FROM dse""", rez_dict=True)
@@ -725,16 +726,11 @@ class mywindow(QtWidgets.QMainWindow):
     @CQT.onerror
     def clear_naryad_bar(self,conn ='',cur = ''):
         self.lbl_tek_narayd(CMS.name_by_empl_c(self.glob_login))
+        self.nar_info.clear()
+        self.nar_info = None
         tab = self.ui.tabWidget_2
         #tab.setCurrentIndex(CQT.number_table_by_name_c(tab, 'Доступные наряды'))
-        self.ui.lbl_nom_nar.setText("")
-        self.ui.lbl_sozdan.setText("")
-        self.ui.lbl_proekt.setText("")
-        self.ui.lbl_norma.setText("")
-        self.ui.lbl_nom_mk.setText("")
-        self.ui.lbl_isp1.setText("")
-        self.ui.lbl_isp2.setText("")
-        self.ui.textBrowser_zadanie.setText("")
+
         self.ui.te_zamechain.clear()
         self.ui.le_id_peresil.clear()
         CQT.clear_tbl(self.ui.tbl_list_brak)
@@ -772,12 +768,15 @@ class mywindow(QtWidgets.QMainWindow):
 
         conn, cur = CSQ.connect_bd(self.db_naryd,2)
         CQT.clear_tbl(tblv)
-        # if int(tblk.item(r,nk_mk).text()) != 0:
-        #     CMS.specification_task_c(self, tblk, tblv,conn='',cur='')
-
+        if int(tblk.item(r,nk_mk).text()) != 0:
+            try:
+                CMS.specification_task_c(self, tblk, tblv,conn='',cur='')
+            except:
+                pass
+        # 03.02.2026
         custom_request_c = f'''SELECT sum(Подытог) AS "Total Salary" FROM jurnal WHERE Номер_наряда == {nom_nar} AND ФИО == "{CMS.name_by_empl_c(self.glob_login)}"'''
         rez = CSQ.custom_request_c(self.db_naryd,custom_request_c,conn=conn,cur=cur)
-        custom_request_c = f'''SELECT Штамп, Статус FROM jurnal WHERE Номер_наряда == {nom_nar} AND ФИО == "{CMS.name_by_empl_c(self.glob_login)}" ORDER BY Пномер DESC LIMIT 1'''
+        custom_request_c = f'''SELECT Штамп, Статус FROM jurnal WHERE Номер_наряда == {nom_nar} AND ФИО == "{CMS.name_by_empl_c(self.glob_login)}" ORDER BY datetime(Дата) DESC LIMIT 1'''
         rez_last = CSQ.custom_request_c(self.db_naryd, custom_request_c,conn=conn,cur = cur)
         CSQ.close_bd(conn,cur)
 
@@ -794,21 +793,26 @@ class mywindow(QtWidgets.QMainWindow):
                 t_zadel = (F.get_time_shtamp_c() - rez_last[-1][0])//60
         raznica = round(n_vrema-tfakt-t_zadel,2)
         raznica_tdz = round(nar.Твремя - tfakt-t_zadel,2)
+        def set_lbl_font_size(size=14):
+            font = self.ui.lbl_ostalos.font()
+            font.setPointSize(size)
+            self.ui.lbl_ostalos.setFont(font)
         if raznica < 0:
             CQT.set_color_of_obj_c(self.ui.lbl_ostalos,111,221,111)
             self.ui.lbl_ostalos.setText(f'По №{str(nom_nar)} дефицит нормы {F.miutes_to_time(abs(raznica))} (Трудов {raznica_tdz} мин.)  НЕ ЗАКРЫВАЙ наряд, не доделав до конца работу. иначе за простой придется отчитываться.')
+            set_lbl_font_size(12)
         else:
             CQT.set_color_of_obj_c(self.ui.lbl_ostalos)
             self.ui.lbl_ostalos.setText(f'По №{str(nom_nar)} осталось {F.miutes_to_time(raznica)} (Трудов {raznica_tdz}  мин.)')
-        font = QtGui.QFont()
-        font.setPointSize(14)
-        self.ui.lbl_ostalos.setFont(font)
+            set_lbl_font_size(14)
+
 
 
     @CQT.onerror
     def tbl_naryadi_click(self,*args):
         CQT.statusbar_text(self)
         self.time_ostalos_po_nar()
+        self.ui.fr_add_info_prost.setVisible(False)
         #F.sleep(3)
 
 
@@ -829,37 +833,27 @@ class mywindow(QtWidgets.QMainWindow):
                 F.open_dir_c(path)
         except:
             CQT.msgbox(f'Ошибка обработки строки')
-
-    def load_prostoy_nar(self):
+    def calc_nar_info(self):
         tbl = self.ui.tbl_naryadi
+        row_data = CQT.get_dict_line_form_tbl(tbl)
+        self.nar_info = None
+        if not row_data:
+            return row_data
+        self.nar_info = CLSS.Naryad_info(self, row_data)
+        self.nar_info.fill_tbl()
+        return  row_data
+    def load_prostoy_nar(self):
+
         tab = self.ui.tabWidget_2
-        r = tbl.currentRow()
-        nk_dat = CQT.num_col_by_name_c(tbl, 'Дата')
-        nk_np = CQT.num_col_by_name_c(tbl, 'Номер_проекта')
-        nk_nz = CQT.num_col_by_name_c(tbl, 'Номер_заказа')
-        nk_vrem = CQT.num_col_by_name_c(tbl, 'Твремя')
-        nk_nom_mk = CQT.num_col_by_name_c(tbl, 'Номер_мк')
-        nk_fio = CQT.num_col_by_name_c(tbl, 'ФИО')
-        nk_fio2 = CQT.num_col_by_name_c(tbl, 'ФИО2')
-        nk_zadanie = CQT.num_col_by_name_c(tbl, 'Задание')
+        self.calc_nar_info()
 
-        sozdan = tbl.item(r, nk_dat).text()
-        proj = tbl.item(r, nk_np).text() + ' ' + tbl.item(r, nk_nz).text()
-        vrem = tbl.item(r, nk_vrem).text()
-        mk = tbl.item(r, nk_nom_mk).text()
-        fio = tbl.item(r, nk_fio).text()
-        fio2 = tbl.item(r, nk_fio2).text()
-        zadanie = tbl.item(r, nk_zadanie).text()
-
-        self.ui.lbl_nom_nar.setText(str('-'))
-        self.ui.lbl_sozdan.setText(sozdan)
-        self.ui.lbl_proekt.setText(proj)
-        self.ui.lbl_norma.setText(vrem)
-        self.ui.lbl_nom_mk.setText(mk)
-        self.ui.lbl_isp1.setText(fio)
-        self.ui.lbl_isp2.setText(fio2)
-        self.ui.textBrowser_zadanie.setText(zadanie.replace('LF','\n'))
         tab.setCurrentIndex(CQT.number_table_by_name_c(tab, 'Управление нарядом'))
+
+    @CQT.onerror
+    def print_nar(self,*args,**kwargs):
+        #CQT.msgbox(f'{CEMOJ.EmojiMain.ОборудованиеИнструменты.tool.symbol} В разработке!')
+        from Documents_manage import print_out_naryad
+        print_out_naryad(self.nar_info)
 
     @CQT.onerror
     def del_type_brak(self,*args,**kwargs):
@@ -955,47 +949,86 @@ class mywindow(QtWidgets.QMainWindow):
         :font_weight Жирность шрифта после обработки
         :font_family Семейство шрифтов
         """
-        ul_form = '<ul>%(text)s</ul>'
-        li_form = '<li>%(text)s</li>'
-        a_form = '<li><a href="file:///%(link)s">%(text)s</a></li>'
-        pre_form = f'<pre style="font-family: {font_family!r}; font-weight: {font_weight}; font-size: {font_size};">%(text)s</pre>'
+        ul_form = '<ul>{text}</ul>'
+        li_form = '<li>{text}</li>'
+        a_form = '<li><a href="file:///{link}">{text}</a></li>'
+        pre_form = (
+            "<pre style="
+            f"\"font-family: {font_family}; "
+            f"font-weight: {font_weight}; "
+            f"font-size: {font_size};\">"
+            "{text}</pre>"
+        )
 
         signal_posted = label.property('anchor_posted')
         if not signal_posted:
             def anchorClicked(url, *args):
                 if url.scheme() == 'file':
-                    file_path = url.toLocalFile()
-                    os.startfile(file_path)
+                    os.startfile(url.toLocalFile())
                 return False
+
             label.anchorClicked.connect(anchorClicked)
             label.setProperty('anchor_posted', True)
 
-        matches = re.findall(regex, task_text)
-        for match in matches:
-            if not match:
+        result_parts = []
+        last_pos = 0
+
+        for m in re.finditer(regex, task_text):
+            start, end = m.span()
+
+            # текст до блока "Документы"
+            result_parts.append(task_text[last_pos:start])
+
+            docs_raw = m.group(1)
+            if not docs_raw:
+                result_parts.append(m.group(0))
+                last_pos = end
                 continue
+
             iter_state = []
-            documents = match.split('; ')
+            documents = docs_raw.split('; ')
+
             for doc in documents:
                 cleaned_doc = doc.strip()
                 if not cleaned_doc:
                     continue
-                path = F.find_file_by_name_without_extension(folder_with_pointer_href, doc)
+
+                path = F.find_file_by_name_without_extension(
+                    folder_with_pointer_href,
+                    cleaned_doc
+                )
+
                 if not path:
-                    iter_state.append(li_form % {'text': doc})
+                    iter_state.append(li_form.format(text=cleaned_doc))
                     continue
-                file_name, ext = os.path.splitext(path)
+
                 resolve = path
-                if ext == '.lnk':
+                if F.keep_extention_c(path) == '.lnk':
                     resolve = F.resolve_lnk_target(path)
-                if not pathlib.Path(resolve).exists():
-                    iter_state.append(li_form % {'text': doc})
+
+                if not resolve or not pathlib.Path(resolve).exists():
+                    iter_state.append(li_form.format(text=cleaned_doc))
                     continue
-                iter_state.append(a_form % {'link': path, 'text': doc})
-            text = ul_form % {'text': ''.join(iter_state)}
-            task_text = task_text.replace(match, text)
+
+                iter_state.append(
+                    a_form.format(link=path, text=cleaned_doc)
+                )
+
+            if iter_state:
+                block = 'Документы: ' + ul_form.format(
+                    text=''.join(iter_state)
+                ) + '\n'
+            else:
+                block = m.group(0)
+
+            result_parts.append(block)
+            last_pos = end
+
+        # хвост текста
+        result_parts.append(task_text[last_pos:])
+
         label.setOpenLinks(False)
-        return pre_form % {'text': task_text}
+        return pre_form.format(text=''.join(result_parts))
 
     @CQT.onerror
     def load_naruad(self,r,c,*args):
@@ -1052,23 +1085,11 @@ class mywindow(QtWidgets.QMainWindow):
         else:
             CSQ.close_bd(conn,cur)
             pass
-        dict_row = CQT.list_from_wtabl_c(tbl,'',rez_dict=True,only_current_row=True)[0]
 
 
-        proj = dict_row['Номер_проекта'] +' ' + dict_row['Номер_заказа']
+        row_data = self.calc_nar_info()
 
-        zadanie = dict_row['Задание']
-
-        self.ui.lbl_nom_nar.setText(str(nom_nar))
-        self.ui.lbl_sozdan.setText(dict_row['Дата'])
-        self.ui.lbl_proekt.setText(proj)
-        self.ui.lbl_norma.setText(dict_row['Твремя'])
-        self.ui.lbl_nom_mk.setText(dict_row['Номер_мк'])
-        self.ui.lbl_isp1.setText(dict_row['ФИО'])
-        self.ui.lbl_isp2.setText(dict_row['ФИО2'])
-        linked_text = self.unpack_links_to_documents(task_text=zadanie.replace('LF', '\n'), label=self.ui.textBrowser_zadanie)
-        self.ui.textBrowser_zadanie.setHtml(linked_text)
-        self.glob_otk_kontrol = is_otk_nar(self,dict_row['Операции'])
+        self.glob_otk_kontrol = is_otk_nar(self,row_data['Операции'])
         CQT.clear_tbl(self.ui.tbl_list_brak)
         self.list_otk_brak = copy.copy(self.glob_list_otk_brak)
 
@@ -1078,7 +1099,7 @@ class mywindow(QtWidgets.QMainWindow):
             if nar_obj.ФИО_для_ОТК_от_мастера != '':
                 row_fio_or_nars = nar_obj.ФИО_для_ОТК_от_мастера.replace(";","|")
             else:
-                row_fio_or_nars = CMS.get_list_fio_otk(self.db_naryd,dict_row['ФИО_для_ОТК'])
+                row_fio_or_nars = CMS.get_list_fio_otk(self.db_naryd,row_data['ФИО_для_ОТК'])
             list_for_select = [['Чек',"ФИО"]]
             for user in row_fio_or_nars.split('|'):
                 list_for_select.append(['',user])
@@ -1094,7 +1115,7 @@ class mywindow(QtWidgets.QMainWindow):
 
 
             self.ui.lbl_fio_for_otk.setText(row_fio_or_nars)
-            self.ui.lbl_fiomaster_for_otk.setText(dict_row['Распред_ФИО'])
+            self.ui.lbl_fiomaster_for_otk.setText(row_data['Распред_ФИО'])
             self.ui.fr_fio_for_otk.setHidden(False)
             self.ui.btn_pauza.setText('НЕ ПРИНЯТО (Shift-пауза)')
             self.ui.btn_zaconch.setText('ПРИНЯТО')
@@ -1197,7 +1218,7 @@ class mywindow(QtWidgets.QMainWindow):
             if rez[i]['ФИО'] != '' and  rez[i]['ФИО2'] !='':
                 rez[i]['Норматив время'] = round(rez[i]['Норматив время']/2,2)
             rez[i]['Время'] = F.miutes_to_time(rez[i]['Норматив время'])
-        self.ui.label_12.setText(f'План работ для {CMS.name_by_empl_c(self.glob_login)} на {F.now()}')
+        self.ui.label_12.setText(f'План работ для на {F.now()}')
         if len(rez)>0:
             rez = F.sort_by_column_c(rez,'Приоритет',type_compare='numeric')
         rez.insert(0,{
@@ -1252,10 +1273,13 @@ class mywindow(QtWidgets.QMainWindow):
         nf_prim = CQT.num_col_by_name_c(tbl,'Примечание')
 
         clr = CMS.Color_tbl(10)
-        for i in range(tbl.rowCount()):
-            if 'Повт.Приёмка' in tbl.item(i,nf_prim).text():
-                CQT.set_color_wtab_c(tbl,i,nf_prim,clr.r,clr.g,clr.b)
-
+        with CQT.table_updating(tbl):
+            for i in range(tbl.rowCount()):
+                if 'Повт.Приёмка' in tbl.item(i,nf_prim).text():
+                    CQT.set_color_wtab_c(tbl,i,nf_prim,clr.r,clr.g,clr.b)
+                for j in range(tbl.columnCount()):
+                    CQT.font_cell_size_format(tbl,i,j,12)
+            tbl.resizeColumnsToContents()
 
 
     def check_zav_nar(self,nom_nar,fio):
@@ -1269,6 +1293,7 @@ class mywindow(QtWidgets.QMainWindow):
         if text in self.DICT_TYPE_PROSTOI:
             koef = self.DICT_TYPE_PROSTOI[text]['Коэффициент_наряда']
         self.ui.tbl_naryadi.item(0,CQT.num_col_by_name_c(self.ui.tbl_naryadi,'Коэфф_сложности')).setText(str(koef))
+        self.ui.fr_add_info_prost.setVisible(True)
 
     def create_prostoi_nar(self,row,col):
         primech = self.ui.tbl_naryadi.cellWidget(self.ui.tbl_naryadi.currentRow(),5).currentText()
@@ -1310,14 +1335,14 @@ class mywindow(QtWidgets.QMainWindow):
         if not CMS.check_actual_parol(self.glob_fio):
             CQT.msgbox(f'Нужно обновить пароль через меню "Параметры"')
             return
-        try:
-            nom_nar = int(self.ui.lbl_nom_nar.text())
-        except:
+
+        if self.nar_info is None:
             CQT.msgbox(f'Наряд не выбран')
             return
-
+        nom_nar = self.nar_info.nom_nar
         if not CMS.check_execution_previous_operations(self,nom_nar):
-            CQT.msgbox(f'по наряду {nom_nar} не выполнены требования маршрута, работа наряда ЗАБЛОКИРОВАНА\n\nОбратиться к мастеру.')
+            CQT.msgbox(f'по наряду {nom_nar} не выполнены требования маршрута, '
+                       f'работа наряда ЗАБЛОКИРОВАНА\n\nОбратиться к мастеру.')
             return
 
         now = F.now()
@@ -1502,12 +1527,12 @@ class mywindow(QtWidgets.QMainWindow):
                 if len(self.list_otk_brak) > 1:
                     CQT.msgbox(f'Список браков НЕ пуст')
                     return
-
-        if self.ui.lbl_nom_nar.text() == '':
+        if self.nar_info is None:
             CQT.msgbox(f'не выбран наряд')
             return
-        nom_nar = int(self.ui.lbl_nom_nar.text())
-        nar_obj = CMS.Naryads(nom_nar,USRCNF.Config.project.db_naryad,self.DICT_DOLGN_ETAP,USRCNF.Config.project.db_users,self.DICT_EMPL_FULL)
+        nom_nar = self.nar_info.nom_nar
+        nar_obj = CMS.Naryads(nom_nar,USRCNF.Config.project.db_naryad,
+                              self.DICT_DOLGN_ETAP,USRCNF.Config.project.db_users,self.DICT_EMPL_FULL)
 
         if vid_stop == 'Завершен':
             if not CMS.check_id_peresil(self, nom_nar, self.ui.le_id_peresil.text(), kod_oper=2):
@@ -1518,7 +1543,7 @@ class mywindow(QtWidgets.QMainWindow):
             if self.glob_otk_kontrol:
                 lbl_abstract = self.glob_fio
                 abstract_name = self.get_current_abstract_name(nom_nar)
-                self.ui.lbl_nom_nar.setText(str(nom_nar))
+                #self.ui.lbl_nom_nar.setText(str(nom_nar)) ПРОВЕРИТЬ
                 jur_obj = CMS.Jurnal_nar(self.db_naryd, user=abstract_name, nom_nar=nom_nar)
             else:
                 jur_obj = CMS.Jurnal_nar(self.db_naryd, user=self.glob_fio)
@@ -1526,7 +1551,7 @@ class mywindow(QtWidgets.QMainWindow):
             nomer_naryada, pnomer, data_nach = jur_obj.get_ontime_naruad(True)
             if nomer_naryada == False:
                 return
-            if str(nomer_naryada) != self.ui.lbl_nom_nar.text():
+            if str(nomer_naryada) != self.nar_info:
                 CQT.msgbox('Выбран не запущенный наряд')
                 return False, False
             pnomer_nach = str(pnomer)
@@ -1584,7 +1609,7 @@ class mywindow(QtWidgets.QMainWindow):
                 if rez == False:
                     return
 
-        nom_mk = int(self.ui.lbl_nom_mk.text())
+        nom_mk = self.nar_info.mk
 
         is_idle = zadanie == 'ПРОСТОЙ'
         if not jur_obj.add_new_row(self.DICT_EMPL_FULL,lbl_abstract,now,vid_stop,primech, is_idle): #15.05.25

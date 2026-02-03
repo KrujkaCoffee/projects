@@ -1,8 +1,14 @@
+from __future__ import annotations
+
 import project_cust_38.Cust_Qt as CQT
 import project_cust_38.Cust_Functions as F
 import project_cust_38.Cust_mes as CMS
 import project_cust_38.Cust_SQLite as CSQ
 from project_cust_38 import Cust_config as CFG
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from Sozdanie import mywindow
+
 def reg_new_user(self):
     lbx = self.ui.lbx_spis_sotr
     ima = ' '.join(lbx.currentText().split()[:3])
@@ -22,7 +28,7 @@ def reg_new_user(self):
 
 
 def log_in(self):
-    lbx = self.ui.lbx_spis_sotr
+    lbx:CQT.QtWidgets.QComboBox = self.ui.lbx_spis_sotr
     if self.ui.le_parol.text() == "":
         return
     if self.glob_login != "":
@@ -33,6 +39,7 @@ def log_in(self):
         return
     self.superuser = False
     ima = CMS.name_by_empl_c(lbx.currentText())
+    ref = lbx.currentData(CQT.Qt.UserRole)
     if self.ui.le_parol.text() == "Zflvby" or F.user_name() == 'a.belyakov':
         self.superuser=True
         parol = True
@@ -46,6 +53,7 @@ def log_in(self):
     if parol == True:
         self.glob_login = f'{ima} {self.DICT_EMPLOEE_FULL_WITH_DEL[ima]["Должность"]}'#  CMS.empol_by_name_c(self,ima)
         self.glob_ima = ima
+        self.glob_ref_user = ref
         #self.setWindowTitle(ima)
         self.ui.le_parol.clear()
     else:
@@ -76,6 +84,7 @@ def logout(self):
     if self.glob_login == '':
         return
     self.glob_login = ''
+    self.glob_ref_user = None
     self.setWindowTitle("Создание нарядов")
     self.ui.le_Nparol.setVisible(False)
     self.ui.le_Nparol2.setVisible(False)
@@ -111,7 +120,7 @@ def logout(self):
     return
 
 
-def load_users(self,DICT_EMPLOEE_FULL:dict,LIST_DOLGN_ETAP:list, DICT_DOLGN_ETAP: dict[str, dict]):
+def load_users(self:mywindow,DICT_EMPLOEE_FULL:dict,LIST_DOLGN_ETAP:list, DICT_DOLGN_ETAP: dict[str, dict]):
     """Загрузить список сотрудников в листбокс"""
 
 
@@ -124,12 +133,13 @@ def load_users(self,DICT_EMPLOEE_FULL:dict,LIST_DOLGN_ETAP:list, DICT_DOLGN_ETAP
     #self.SPIS_EMPLOEE = CSQ.custom_request_c(self.bd_users,"""SELECT ФИО, Должность FROM employee WHERE Статус != 'Увольнение' AND Пномер > 2 ORDER BY ФИО ASC""",hat_c=False)
     #self.SPIS_EMPLOEE = [[k,DICT_EMPLOEE_FULL[k]['Должность']] for (k,v) in DICT_EMPLOEE_FULL.items() if DICT_EMPLOEE_FULL[k]['Компания'] == CFG.Config.place.Имя]
     #self.SPIS_EMPLOEE = F.sort_by_column_c(self.SPIS_EMPLOEE,0,hat_c=False)
-
+    cmb = self.ui.lbx_spis_sotr
     dict_dolgn_etap = {'$'.join([_['Должность'],_['Подразделение'],_['Производство']]):_ for _ in LIST_DOLGN_ETAP}
 
-    self.ui.lbx_spis_sotr.addItem('')
+    cmb.addItem('')
 
     for fio, vals in DICT_EMPLOEE_FULL.items():
+        ref = vals['ID_ФизЛица']
         dolg = vals['Должность']
         podr = vals['Подразделение']
         is_multi_user = DICT_DOLGN_ETAP.get(dolg, {}).get('multi_auth')
@@ -138,7 +148,9 @@ def load_users(self,DICT_EMPLOEE_FULL:dict,LIST_DOLGN_ETAP:list, DICT_DOLGN_ETAP
             continue
         dpc = '$'.join([dolg,podr,company])
         if dpc in dict_dolgn_etap and dict_dolgn_etap[dpc]['login_sozdanie']:
-            self.ui.lbx_spis_sotr.addItem(fio + ' ' + dolg)
+            cmb.addItem(fio + ' ' + dolg)
+            cmb.setItemData(cmb.count()-1, ref, CQT.Qt.UserRole)
+
     load_user_choice(self)
 
 

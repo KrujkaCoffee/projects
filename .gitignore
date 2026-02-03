@@ -18,3 +18,4 @@ get-pip.py
 .log
 .pickle
 notes
+*.pickle

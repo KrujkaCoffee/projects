@@ -4,12 +4,14 @@ from components.common_funcs import Table_data
 import flet as ft
 import project_cust_38.Cust_Functions as F
 import copy
+import math
+import re
 import project_cust_38.Cust_Excel as CEX
 import data_class as DTCLS
 import project_cust_38.Cust_SQLite as CSQ
 import Config.srv_config as SRVCFG
 from components import calc_silencer_input_params
-from components.calc_silencer_output_params import OUTPUT_PARAMS as OUTPUT_PARAMS
+from components.calc_silencer_output_params import GROUPS, OUTPUT_PARAMS
 import components.calc_silencer_functions_M5_M400 as silencer_functions
 import project_cust_38.Cust_emoji as Cust_emoji
 
@@ -46,6 +48,21 @@ TBL_HISTORY.append_column_desc(name='date', header='Дата', hidden=False, edi
 TBL_HISTORY.append_column_desc(name='name', header='Название', hidden=False, editable=False, width=500)
 
 
+
+
+def is_empty(val) -> bool:
+    """True если значение нельзя выводить в результирующую таблицу."""
+    if val is None:
+        return True
+    if isinstance(val, str) and val.strip() == '':
+        return True
+    if isinstance(val, float):
+        try:
+            if math.isnan(val) or math.isinf(val):
+                return True
+        except Exception:
+            pass
+    return False
 
 
 def calc_new_tbl_input():
@@ -107,76 +124,100 @@ def generate_input_data(fnc_onchange, ref, default_vals: dict | None = None) -> 
     return table_view, new_tbl_input
 
 
-def prepare_calc_new_data(data: list[dict], Data: DTCLS.Data_page) -> (list[dict] | dict,bool):
-    data_params = {_['Имя']: F.valm(_['Значение']) for _ in data}
-    #data_params = F.load_file_pickle('test_data_params.pickle')
-    Data.Data_module.cust_data: Cust_module_params
+def prepare_calc_new_data(data: list[dict], Data: DTCLS.Data_page) -> tuple[dict | None, list[dict], bool]:
     if not Data.Data_module.cust_data.input_tbl_editbl.sync_ui_to_data('val'):
-        return None, False
+        return None, [], False
 
     data_params = Data.Data_module.cust_data.input_tbl_editbl.to_dict_by_unique()
-    rez, success = calc_new_data({k: v['val'] for k,v in data_params.items()})
-    return rez, success
+    calculated, errors, success = calc_new_data({k: v['val'] for k, v in data_params.items()})
+    return calculated, errors, success
     # F.save_file_pickle('test_data_params.pickle',{_['Имя']:F.valm(_['Значение']) for _ in data})
 
 
-def generate_rez_tbl(e: ft.ControlEvent, tbl: ft.DataTable, ref_out,fnc_cell_click=None) -> bool | None:
+def generate_rez_tbl(e: ft.ControlEvent, tbl: ft.DataTable, ref_out, fnc_cell_click=None) -> bool | None:
+    """Генерация таблицы результатов."""
+
+    def _has_any_data_rows(tbl_data: CMF.Table_data) -> bool:
+        """Присутствуют ли данные в таблице output"""
+        if tbl_data is None:
+            return False
+        for row in getattr(tbl_data, 'rows', []):
+            if not getattr(row, 'merge', False) and not getattr(row, 'table_header', False):
+                return True
+        return False
     Data: DTCLS.Data_page = e.page.data
     data = CMF.datatable_to_dicts(tbl)
     DTCLS.Data_page.Data_module.cust_data: Cust_module_params
     DTCLS.Data_page.Data_module.cust_data.output_tbl = None
-    new_data, success = prepare_calc_new_data(data, Data)
-    if not new_data:
+
+    calculated, errors, success = prepare_calc_new_data(data, Data)
+    if calculated is None:
         return
-    if success:
-        #Data.Data_module.cust_data.input_tbl_editbl.set_all_cells_disabled(True)
-        tbl_output = make_res_tbl(new_data, ref_out, fnc_cell_click)
+
+    tbl_output = make_res_tbl(calculated, ref_out, fnc_cell_click)
+    warning_symbol = Cust_emoji.СтатусыПроизводства.warning.symbol
+    success_symbol = Cust_emoji.СтатусыПроизводства.success.symbol
+    if errors and not _has_any_data_rows(tbl_output):
+        tbl_output = make_err_tbl(errors, ref_out)
+        DTCLS.Data_page.Data_module.cust_data.output_tbl = tbl_output
+        Data.Data_module.status_bar.set_text(f"{warning_symbol} Ошибка расчёта: рассчитанных параметров нет")
+        return False
+
+    DTCLS.Data_page.Data_module.cust_data.output_tbl = tbl_output
+
+    if errors:
+        headers = ', '.join(f"{msg.get('header')}" for msg in errors if msg.get('header'))
+        Data.Data_module.status_bar.set_text(
+            f"{warning_symbol} Рассчитано частично: пропущено {len(errors)} параметров ({headers})"
+        )
     else:
-        # return  CMF.generate_param_table(Data.Data_module.cust_data.input_tbl_not_editbl,ref_out), new_data, True
-        tbl_output = make_err_tbl(new_data, ref_out)
-    DTCLS.Data_page.Data_module.cust_data.output_tbl: CMF.Table_data = tbl_output
-    return success
+        Data.Data_module.status_bar.set_text(f"{success_symbol}] Успешно рассчитано")
+    return True
 
 
-def make_res_tbl(data: dict, ref_out=None,fnc_cell_click=None) ->  CMF.Table_data:
+def make_res_tbl(data: dict, ref_out=None, fnc_cell_click=None) -> CMF.Table_data:
     new_tbl_output: Table_data = copy.deepcopy(TBL_OUTPUT)
     new_tbl_output.add_table_name(F.get_time_shtamp_c(), 'Расчетные данные:')
-    list_groups = []
-    for _ in OUTPUT_PARAMS.values():
-        group = ''
-        if 'group_name' in _:
-            group = _['group_name']
-        if _['group_name'] not in list_groups:
-            list_groups.append(group)
 
-
+    list_groups = [group for group, is_view in GROUPS.items() if is_view]
     for group in list_groups:
-        new_tbl_output.add_group(F.get_time_shtamp_c(), group)
+        group_items: list[tuple[str, object]] = []
         for name, val in data.items():
-            current_group = ''
-            if 'group_name' in OUTPUT_PARAMS[name]:
-                current_group = OUTPUT_PARAMS[name]['group_name']
+            if name not in OUTPUT_PARAMS:
+                continue
+            if not OUTPUT_PARAMS[name].get('view', False):
+                continue
+            current_group = OUTPUT_PARAMS[name].get('group_name', '')
             if current_group != group:
                 continue
+            if is_empty(val):
+                continue
+            group_items.append((name, val))
 
+        if not group_items:
+            continue
+
+        new_tbl_output.add_group(F.get_time_shtamp_c(), group)
+
+        for name, val in group_items:
             row = CMF.Row_data()
-            row.group_name = current_group
+            row.group_name = group
             row.append(name, CMF.Cell_description())
             row.append(OUTPUT_PARAMS[name]['header'], CMF.Cell_description())
+
             if F.is_numeric(val):
                 accuracy = OUTPUT_PARAMS[name]['accuracy']
                 row.append(val, CMF.Cell_description(accuracy=accuracy, data_type=float))
             else:
-                row.append(val, CMF.Cell_description( data_type=str))
+                row.append(val, CMF.Cell_description(data_type=str))
+
             row.append(OUTPUT_PARAMS[name]['dimension'], CMF.Cell_description())
-            comment = ''
-            if OUTPUT_PARAMS[name]['comment']:
-                comment = OUTPUT_PARAMS[name]['comment']
+            comment = OUTPUT_PARAMS[name].get('comment') or ''
             row.append(comment, CMF.Cell_description())
 
             new_tbl_output.add_row(row)
-    CMF.Table_view(new_tbl_output, ref=ref_out, fnc_on_click=fnc_cell_click)
 
+    CMF.Table_view(new_tbl_output, ref=ref_out, fnc_on_click=fnc_cell_click)
     return new_tbl_output
 
 
@@ -207,8 +248,34 @@ def load_from_db_history_calc(Data: DTCLS.Data_page, s_num: int) -> (CMF.Table_d
     return input_tbl, output_tbl
 
 
-def get_name_new_calc(prefix=""):
-    return f'calc_{prefix}_{F.now("%Y-%m-%d(%H%M%S)")}'
+def get_name_new_calc(input_vals: dict | None = None) -> str:
+    """Генерация имени расчёта по входным параметрам"""
+
+    def sanitize_part(s: str) -> str:
+        s = re.sub(r'[<>:"/\\|?*]+', '_', s)
+        return s.strip()
+
+    if not input_vals:
+        return f"calc_{F.now('%Y-%m-%d(%H%M%S)')}"
+
+    project_name = sanitize_part(str(input_vals.get('nazvanie_proekta', '') or ''))
+    project_num = sanitize_part(str(input_vals.get('nomer_proekta', '') or ''))
+
+    pos_raw = input_vals.get('pozicii', '')
+    pos_str = ''
+    if pos_raw is None:
+        pos_str = ''
+    else:
+        try:
+            pos_int = int(str(pos_raw).strip())
+            pos_str = f"{pos_int:02d}" if 0 <= pos_int < 100 else str(pos_int)
+        except Exception:
+            pos_str = sanitize_part(str(pos_raw))
+            if pos_str.isdigit() and len(pos_str) == 1:
+                pos_str = pos_str.zfill(2)
+
+    parts = [p for p in (project_name, project_num, pos_str) if p]
+    return '.'.join(parts) if parts else f"calc_{F.now('%Y-%m-%d(%H%M%S)')}"
 
 
 def generate_rezult_data_for_save(name: str, input_tbl: ft.DataTable, output_tbl: ft.DataTable) -> dict:
@@ -326,7 +393,7 @@ def save_in_db(e: ft.ControlEvent, name: str):
     return rez
 
 
-def calc_new_data(input_data: dict) -> (list | dict, bool):
+def calc_new_data(input_data: dict) -> tuple[dict, list[dict], bool]:
     list_err = []
     calculated = {}
 
@@ -377,9 +444,9 @@ def calc_new_data(input_data: dict) -> (list | dict, bool):
 
     # Возвращаем результат в зависимости от наличия ошибок
     if list_err:
-        return list_err, False
+        return calculated, list_err, False
     else:
-        return calculated, True
+        return calculated, [], True
 
 
 def oform_kolichestvo_kasset(cell:CMF._Cell_data,new_val):

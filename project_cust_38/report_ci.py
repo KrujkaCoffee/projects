@@ -17,7 +17,7 @@ except:
     pass
 
 import project_cust_38.Cust_Excel as CEX
-
+import project_cust_38.Cust_config as CFG
 import project_cust_38.Cust_Qt as CQT
 from datetime import datetime as DT, timedelta, time
 import project_cust_38.Cust_SQLite as CSQ
@@ -27,6 +27,13 @@ import project_cust_38.xml_v_drevo as XML
 import project_cust_38.Cust_odata_erp as ODAT
 import project_cust_38.Cust_perko as SCUD
 import project_cust_38.Cust_config as USRCNF
+import project_cust_38.competence_matrix as MTXCMP
+import project_cust_38.Cust_emoji as CEMOJ
+from functools import partial
+try:
+    import reports_of_personal as RPTP
+except:
+    pass
 try:
     import project_cust_38.Cust_b24 as СB24
 except:
@@ -47,6 +54,7 @@ try:
     import arm_pr_oper
 except:
     print(f'!!! ERROR IMPORT  MODULE arm_pr_oper')
+
     
 
 try:
@@ -86,6 +94,7 @@ DICT_VID_OTCH = {'': "",
                 'Текущие работы': "",
                  'Выработка сотрудника': "",
                  'Выработка сотрудников': "",
+                 'Отчетность персонала': "",
                  '-------------------------------------------------': '',
                  'Динамика производительности сотрудников': "Задача № 100045854 от  13.11.2024 13:06",
                  'Понедельный график выработки и отгрузок': "",
@@ -95,6 +104,7 @@ DICT_VID_OTCH = {'': "",
                  'Отчет для селектора': "по ТЗ Моренко от 03.03.2025",
                  'Выработка цеха по направлению': "",
                  'Внеплановые работы': "",
+                 'Матрицы компетенций': "по ТЗ  100060096 от 24.11.2025",
                  '-------------------------------------------------': '',
                  'Неосвоенный_вес_по_созданным_нарядам': "",
                  'Норматив материалов по завершенным нарядам': "",
@@ -127,18 +137,23 @@ def get_list_month_fact(self: mywindow):
 def vibor_additional_sort_report(self: mywindow, *args):
     def fill_cmb_addit_sort_c_report_by_podr(self,podr):
         set_users_empl_all = {_ for _ in self.DICT_EMPLOEE_FULL_WITH_DEL if
-                     self.DICT_EMPLOEE_FULL_WITH_DEL[_]['Подразделение'] == podr}
+                     self.DICT_EMPLOEE_FULL_WITH_DEL[_]['Подразделение'] == podr and
+                              self.DICT_EMPLOEE_FULL_WITH_DEL[_]['Компания'] == USRCNF.Config.place.Имя} #28.01.2026
         set_users_empl = {_ for _ in self.DICT_EMPLOEE_FULL if
-                     self.DICT_EMPLOEE_FULL[_]['Подразделение'] == podr}
+                     self.DICT_EMPLOEE_FULL[_]['Подразделение'] == podr and
+                              self.DICT_EMPLOEE_FULL_WITH_DEL[_]['Компания'] == USRCNF.Config.place.Имя}
 
         
         self.ui.cmb_addit_sort_c_report.clear()
         data_nach = self.ui.le_start_of_period.text()
         data_kon = self.ui.le_end_of_period.text()
+        poki = USRCNF.Config.place.poki
         custom_request_c = f"""SELECT distinct jurnal.ФИО AS "ФИО_журнал" FROM jurnal 
-
+                            INNER JOIN naryad ON naryad.Пномер = jurnal.Номер_наряда
+                            INNER JOIN коды_веплана_для_наряда ON коды_веплана_для_наряда.code = naryad.Внеплан
                             WHERE datetime(jurnal.Дата) >= datetime("{data_nach}") 
-                            and datetime(jurnal.Дата) <= datetime("{data_kon}") """
+                            and datetime(jurnal.Дата) <= datetime("{data_kon}") 
+                            AND коды_веплана_для_наряда.poki = {poki} """ #28.01.2026 по задаче 100065789
         rez_jur = CSQ.custom_request_c(self.bd_naryad, custom_request_c, hat_c=False, one_column=True)
         set_users = {_ for _ in rez_jur if _ in set_users_empl_all}
         list_users = list(set_users.union(set_users_empl))
@@ -162,6 +177,17 @@ def vibor_additional_sort_report(self: mywindow, *args):
             return
         fill_cmb_addit_sort_c_report_by_podr(self,podr)
 
+    if vid == 'Отчетность персонала':
+        type_rep = self.ui.cmb_podrazdelenie.currentText()
+        if type_rep == '':
+            return
+        if 'Отчет' in type_rep:
+            self.ui.cmb_addit_sort_c_report.setEnabled(True)
+            RPTP.fill_cmb_users_with_rules(self.ui.cmb_addit_sort_c_report)
+        else:
+            self.ui.cmb_addit_sort_c_report.setDisabled(True)
+
+
 @CQT.onerror
 def vibor_sort_c_report_c(self: mywindow, *args):
     vid = self.ui.cmb_sort_c_report.currentText()
@@ -171,6 +197,27 @@ def vibor_sort_c_report_c(self: mywindow, *args):
     self.ui.rbut_start_of_per.setEnabled(True)
     self.ui.rbut_end_of_period.setEnabled(True)
     self.ui.cmb_addit_sort_c_report.setEnabled(False)
+    if vid == 'Матрицы компетенций':
+        now = F.now("")
+        dates = F.start_end_dates_c(now, '', 'd', "%Y-%m-%d %H:%M:%S")
+        konec = dates[1]
+        nach = dates[0]
+        self.ui.le_end_of_period.setText(konec)
+        self.ui.le_start_of_period.setText(nach)
+        self.ui.cmb_podrazdelenie.clear()
+        MTXCMP.fill_cmb_to_select_dep(self.ui.cmb_podrazdelenie,CFG.Config.place.poki)
+        
+    if vid == 'Отчетность персонала':
+        now = F.now("")
+        dates = F.start_end_dates_c(now, '', 'd', "%Y-%m-%d %H:%M:%S")
+        konec = dates[1]
+        nach = dates[0]
+        self.ui.le_end_of_period.setText(konec)
+        self.ui.le_start_of_period.setText(nach)
+        self.ui.cmb_podrazdelenie.clear()
+        self.ui.cmb_podrazdelenie.setDisabled(False)
+        RPTP.fill_cmb_to_select_regime()
+        RPTP.init_rules()
 
 
     if vid == 'Не выгруженные в 1С наряды':
@@ -524,6 +571,7 @@ def check_interval(vid: str, start: str, end: str):
 def report_c(self: mywindow,hook_prog_bar=None,  *args):
     def oform_tbl(vid):
         tbl = self.ui.tbl_report_c
+        self.vid_report_c = vid
         if vid == 'Динамика производительности сотрудников':
             pass
         if vid == 'Выработка сотрудника':
@@ -642,15 +690,18 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
     self.ui.btn_save_txt.setDisabled(True)
     self.ui.fr_save_txt.setHidden(True)
     self.ui.fr_addition_tbl.setHidden(True)
+    self.ui.fr_erp_handler.setHidden(True)
     self.ui.btn_save_txt.setText(f'Выгрузить')
     self.ui.le_path_save.setEnabled(True)
     nach = self.ui.le_start_of_period.text()
     konec = self.ui.le_end_of_period.text()
     vid = self.ui.cmb_sort_c_report.currentText()
     podrazd = self.ui.cmb_podrazdelenie.currentText()
+    podrazd_data = self.ui.cmb_podrazdelenie.currentData(QtCore.Qt.UserRole)
     add_val = self.ui.cmb_addit_sort_c_report.currentText()
     self.ui.fr_mk_zamech.setHidden(True)
-
+    self.ui.frame.setHidden(True)
+    self.ui.fr_personal.setHidden(True)
     if not check_interval(vid, nach, konec):
         return
 
@@ -680,7 +731,7 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
     CQT.set_color_sort_cell_table_c(self.ui.tbl_viev_etaps_name, SelectionRow=False)
     CQT.set_color_sort_cell_table_c(self.ui.tbl_viev_etaps_erp, SelectionRow=False)
     rez_spis = [[]]
-    self.vid_report_c = vid
+    
     self.permission = False
     self.global_arm_oper_user_fio = None
     clear_graf(self)
@@ -694,6 +745,11 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
         if cur_sheet in self.excel_parser.worksheets:
             return self.excel_parser.data_by_worksheet(cur_sheet)
         return []
+
+    if vid == 'Матрицы компетенций':
+        rez_spis = report_matrix_competence(self,nach)
+
+
 
     if vid == 'Компоновщик':
         rez_spis = report_excel_builder(self)
@@ -748,11 +804,23 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
         rez_spis = virabotka_sotr_za_mes(self, nach, konec)
     if vid == 'План-фактный анализ по месяцам':
         rez_spis = plan_fact_mes(self, nach, konec, podrazd)
+    if vid == 'Отчетность персонала':
+        rez_spis = None
+        if podrazd_data == 'report':
+            RPTP.load_pers_reports()
+        if podrazd_data == 'settings':
+            RPTP.load_pers_rules()
+        self.ui.fr_personal.setHidden(False)
+        self.ui.fr_addition_tbl.setHidden(False)
+
     if vid == 'Трудозатраты':
         rez_spis = trudozatraty(self, nach, konec, podrazd)
         self.ui.btn_save_txt.setDisabled(False)
         self.ui.fr_save_txt.setHidden(False)
+        self.ui.frame.setHidden(False)
+        self.ui.fr_erp_handler.setHidden(False)
         if self.ARM_oper_using:
+            self.ui.fr_addition_tbl.setHidden(False)
             self.ui.fr_addition_tbl.setHidden(False)
         CQT.set_color_sort_cell_table_c(self.ui.tbl_report_c, SelectionRow=True)
         CQT.set_color_sort_cell_table_c(self.ui.tbl_report_add, SelectionRow=True)
@@ -799,7 +867,12 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
     if vid == 'Анализ эффективности работ на минуту':
         rez_spis = analysis_effectiv_work_per_minute(self, nach, konec, podrazd)
     if vid == 'Анализ внеплана по видам работ':
+
         rez_spis = analysis_vneplan_by_vid_rab(self, nach, konec, podrazd)
+        self.ui.fr_save_txt.setHidden(False)
+        self.ui.btn_save_txt.setText(f'Выгрузить коэфф. в БД')
+        self.ui.le_path_save.setEnabled(False)
+        self.ui.btn_save_txt.setDisabled(False)
     if vid == 'ПланФакт наряды с внепланом':
         rez_spis = planfact_nar_s_vneplan(self, nach, konec, podrazd)
     if vid == 'Отчет по загрузке оборудования':
@@ -1467,45 +1540,463 @@ INNER JOIN kod_zamech_vp ON kod_zamech_vp.Пномер = zamech.Код_вп
             pass
     return rez
 
-
 def load_browser(self):
     try:
         self.parent_for_grafic.removeWidget(self.browser)
-    except:
+        self.browser.deleteLater()
+    except Exception:
         pass
+
     self.browser = QtWebEngineWidgets.QWebEngineView(self)
-    self.parent_for_grafic.addWidget(self.browser)
+
+    layout = self.parent_for_grafic
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(0)
+
+    layout.addWidget(self.browser)
     
 @CQT.onerror
-def not_upload_erp_nar(self:mywindow, nach_data, kon_data):
+def  report_matrix_competence(self:mywindow, day:str):
+    def fnc_gen_grafic_user_btn(self, parent_self: mywindow, row, column, user: MTXCMP.User):
+        fnc_gen_grafic_user(parent_self,user)
 
-    custom_request_c = f"""SELECT 
-                             strftime('%d.%m.%Y',jurnal.Дата) as Дата, 
-                                CASE WHEN знпр.№ERP IS NOT NULL 
-                               THEN знпр.№ERP 
-                               ELSE mk.Номер_заказа 
-                               END AS ПУ, 
-                               
-                                 CASE WHEN знпр.№проекта IS NOT NULL 
-                           THEN знпр.№проекта 
-                           ELSE mk.Номер_проекта 
-                           END AS "Номер проекта", 
-                               
-                            jurnal.ФИО,
-                            "" as Должность, 
-                            "" as Подразделение,  
-                            naryad.Пномер as 'Номер наряда',
-                            naryad.Подтвержд_вып_дата as Подтвержден,
-                            jurnal.Подытог_нормы as "Труды в ЕРП",
-                            jurnal.Дата_выгрузки_ЕРП as "Выгружено в ЕРП"
-                          FROM jurnal
-                          INNER JOIN naryad ON naryad.Пномер == jurnal.Номер_наряда 
-                          INNER JOIN mk ON mk.Пномер == naryad.Номер_мк 
-                          LEFT JOIN пл_оуп ON пл_оуп.НомПл = mk.НомКплан 
-                            LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП 
-                           WHERE  naryad.Внеплан == 0 and jurnal.Статус == 'Начат' 
-                           and datetime(jurnal.Дата) > datetime("{nach_data}") 
-                           and datetime(jurnal.Дата) < datetime("{kon_data}")
+    def fnc_gen_grafic_user(parent_self:mywindow, user:MTXCMP.User):
+
+        users_map = CSQ.custom_request_c(CFG.Config.project.db_users,
+                            f"""SELECT competence_vals.value, 
+                            competence_vals.created_at, competence_vals.id_comp
+                  FROM competence_vals
+                       
+                 WHERE 
+                       competence_vals.id_user == "{user.ID_ФизЛица}"
+                 ORDER BY competence_vals.created_at;
+                """,rez_dict=True)
+
+
+        def color_by_user(user_id: str) -> str:
+            base = abs(hash(user_id)) % 360
+            return f'hsl({base}, 65%, 45%)'
+
+        
+
+        def color_by_value(value: int) -> str:
+            r, g, b = CMS.Color_tbl(value*25,dark_mode=True).rgb
+            return f'rgb({r},{g},{b})'
+        
+        
+        load_browser(parent_self)
+
+        total_by_date = {}
+        comp_count = len(user.base_competencies.COMPETENCE_SHABL)
+        list_all_dates = sorted(list(set([r['created_at'] for r in users_map])))
+
+        fig = go.Figure()
+        for comp_data in user.base_competencies.COMPETENCE_SHABL:
+            comp_id = comp_data['params_s_num']
+            comp_name = comp_data['params_name_competence']
+            user_points = [r for r in users_map if r['id_comp'] == comp_id]
+
+            
+
+            for r in user_points:
+                day = r['created_at']
+                if day not in total_by_date:
+                    total_by_date[day] = 0
+                total_by_date[day] += r['value']
+
+            if not user_points:
+                continue
+
+            user_points.sort(key=lambda x: x['created_at'])
+
+            x_dates = [r['created_at'] for r in user_points]
+            y_fio = [comp_name] * len(user_points)
+            values = [r['value'] for r in user_points]
+
+            # ======расчет цветов линий======
+            koef_color_line = 50
+            if len(values) > 1:
+                if values[-2] > values[-1]:
+                    koef_color_line = 0
+                if values[-2] < values[-1]:
+                    koef_color_line = 100
+
+            for all_date in list_all_dates:
+                if all_date>x_dates[-1]:
+                    x_dates.append(all_date)
+                    y_fio.append(comp_name)
+                    values.append(values[-1])
+
+            weak_marks = set()
+            for i, val in enumerate(values):
+                if i>0 and values[i] == values[i-1]:
+                    weak_marks.add(i)
+                
+            
+
+
+            r, g, b = CMS.Color_tbl(koef_color_line, dark_mode=True).rgb
+            color_line = f'rgb({r},{g},{b})'
+            #==========================================
+            line_width = 3
+            fig.add_trace(
+                go.Scatter(
+                    x=x_dates,
+                    y=y_fio,
+                    mode='lines+markers',
+                    name=comp_name,
+                    line=dict(
+                        color=color_line,
+                        width=line_width
+                    ),
+                    marker=dict(
+                        size=[6 + v * line_width if i not in weak_marks else line_width for i, v in enumerate(values)],
+                        color=[color_by_value(v) for v in values] ,
+                        line=dict(width=0.5, color='rgba(0,0,0,0.4)')
+                    ),
+                    hovertemplate=
+
+                    'Дата: %{x|%d.%m.%Y}<br>' +
+                    'Оценка: %{customdata}',
+                    customdata=values
+                )
+            )
+
+        if total_by_date:
+            dates_sorted = sorted(total_by_date.keys())
+            avg_values = [
+                round(total_by_date[d] / comp_count, 2)
+                for d in dates_sorted
+            ]
+
+            fig.add_trace(
+                go.Scatter(
+                    x=dates_sorted,
+                    y=['Итоговый балл'] * len(dates_sorted),
+                    mode='lines+markers',
+                    name='Итоговый балл',
+                    line=dict(
+                        color='rgb(120,80,80)',
+                        width=3
+                    ),
+                    marker=dict(
+                        size=[6 + v * 3 for v in avg_values],
+                        color=[color_by_value(int(round(v))) for v in avg_values],
+                        line=dict(width=1, color='rgba(0,0,0,0.6)')
+                    ),
+                    hovertemplate=
+
+                    'Дата: %{x|%d.%m.%Y}<br>'
+                    'Средний балл: %{customdata}',
+                    customdata=avg_values
+                )
+            )
+
+        fig.update_layout(
+             autosize=True,
+            title=dict(
+                text=
+                f'Компетенции для {user.ФИО} ({user.Должность})<br>'
+                '<span style="font-size:9px;color:rgb(80,80,80);line-height:50%;display:block;text-align:left">'
+                '<b>Критерии оценки:</b><br>'
+'1 — начальный уровень, теория | 2 — работает самостоятельно под наблюдением | 3 — выполняет самостоятельно, нужное качество и количество | 4 — эксперт, способен обучать',
+                x=0.5,  # центр по графику
+                xanchor='center'
+            ),
+
+            template='plotly_white',
+            xaxis=dict(
+                title='Дата',
+                type='date',
+                tickformat='%d.%m.%Y',
+                showgrid=True
+            ),
+            yaxis=dict(
+                domain=[0.02, 0.98]
+            ),
+            legend=dict(
+                orientation='v',
+                x=1.0,
+                y=0.8,
+                xanchor='left',
+                yanchor='top'
+            ),
+
+            margin=dict(l=100,
+                        r=160,
+                        t=40,
+                        b=40)
+        )
+
+        CQT.output_gant(parent_self, fig, parent_self.browser, parent_self.vid_report_c + '_' + parent_self.ui.cmb_podrazdelenie.currentText())
+        tab = parent_self.ui.tabw_otchet
+        tab.setCurrentIndex(CQT.number_table_by_name_c(tab,'График'))
+        return
+
+    def fnc_gen_grafic_comp(self:mywindow, comp:MTXCMP.Competence):
+        CQT.msgbox(f'В разработке')
+        return
+        users_map = CSQ.custom_request_c(CFG.Config.project.db_users,
+                            f"""SELECT competence_vals.value, 
+                            competence_vals.created_at, competence_vals.id_comp
+                  FROM competence_vals
+                       
+                 WHERE 
+                       competence_vals.id_user == "{user.ID_ФизЛица}"
+                 ORDER BY competence_vals.created_at;
+                """,rez_dict=True)
+
+
+        def color_by_user(user_id: str) -> str:
+            base = abs(hash(user_id)) % 360
+            return f'hsl({base}, 65%, 45%)'
+
+        
+
+        def color_by_value(value: int) -> str:
+            r, g, b = CMS.Color_tbl(value*25,dark_mode=True).rgb
+            return f'rgb({r},{g},{b})'
+        
+        
+        load_browser(parent_self)
+
+        total_by_date = {}
+        comp_count = len(user.base_competencies.COMPETENCE_SHABL)
+        
+        fig = go.Figure()
+        for comp_data in user.base_competencies.COMPETENCE_SHABL:
+            comp_id = comp_data['params_s_num']
+            comp_name = comp_data['params_name_competence']
+            user_points = [r for r in users_map if r['id_comp'] == comp_id]
+
+            
+
+            for r in user_points:
+                day = r['created_at']
+                if day not in total_by_date:
+                    total_by_date[day] = 0
+                total_by_date[day] += r['value']
+
+            if not user_points:
+                continue
+
+            user_points.sort(key=lambda x: x['created_at'])
+
+            x_dates = [r['created_at'] for r in user_points]
+            y_fio = [comp_name] * len(user_points)
+            values = [r['value'] for r in user_points]
+            weak_marks = set()
+            for i, val in enumerate(values):
+                if i>0 and values[i] == values[i-1]:
+                    weak_marks.add(i)
+                
+            
+            #======расчет цветов линий======
+            koef_color_line = 50
+            if len(values) > 1:
+                if values[-2] > values[-1]:
+                    koef_color_line = 0
+                if values[-2] < values[-1]:
+                    koef_color_line = 100
+
+            r, g, b = CMS.Color_tbl(koef_color_line, dark_mode=True).rgb
+            color_line = f'rgb({r},{g},{b})'
+            #==========================================
+            line_width = 3
+            fig.add_trace(
+                go.Scatter(
+                    x=x_dates,
+                    y=y_fio,
+                    mode='lines+markers',
+                    name=comp_name,
+                    line=dict(
+                        color=color_line,
+                        width=line_width
+                    ),
+                    marker=dict(
+                        size=[6 + v * line_width if i not in weak_marks else line_width for i, v in enumerate(values)],
+                        color=[color_by_value(v) for v in values] ,
+                        line=dict(width=0.5, color='rgba(0,0,0,0.4)')
+                    ),
+                    hovertemplate=
+
+                    'Дата: %{x|%d.%m.%Y}<br>' +
+                    'Оценка: %{customdata}',
+                    customdata=values
+                )
+            )
+
+        if total_by_date:
+            dates_sorted = sorted(total_by_date.keys())
+            avg_values = [
+                round(total_by_date[d] / comp_count, 2)
+                for d in dates_sorted
+            ]
+
+            fig.add_trace(
+                go.Scatter(
+                    x=dates_sorted,
+                    y=['Итоговый балл'] * len(dates_sorted),
+                    mode='lines+markers',
+                    name='Итоговый балл',
+                    line=dict(
+                        color='rgb(120,80,80)',
+                        width=3
+                    ),
+                    marker=dict(
+                        size=[6 + v * 3 for v in avg_values],
+                        color=[color_by_value(int(round(v))) for v in avg_values],
+                        line=dict(width=1, color='rgba(0,0,0,0.6)')
+                    ),
+                    hovertemplate=
+
+                    'Дата: %{x|%d.%m.%Y}<br>'
+                    'Средний балл: %{customdata}',
+                    customdata=avg_values
+                )
+            )
+
+        fig.update_layout(
+             autosize=True,
+            title=dict(
+                text=
+                f'Компетенции для {user.ФИО} ({user.Должность})<br>'
+                '<span style="font-size:9px;color:rgb(80,80,80);line-height:50%;display:block;text-align:left">'
+                '<b>Критерии оценки:</b><br>'
+'1 — начальный уровень, теория | 2 — работает самостоятельно под наблюдением | 3 — выполняет самостоятельно, нужное качество и количество | 4 — эксперт, способен обучать',
+                x=0.5,  # центр по графику
+                xanchor='center'
+            ),
+
+            template='plotly_white',
+            xaxis=dict(
+                title='Дата',
+                type='date',
+                tickformat='%d.%m.%Y',
+                showgrid=True
+            ),
+            yaxis=dict(
+                domain=[0.02, 0.98]
+            ),
+            legend=dict(
+                orientation='v',
+                x=1.0,
+                y=0.8,
+                xanchor='left',
+                yanchor='top'
+            ),
+
+            margin=dict(l=100,
+                        r=160,
+                        t=40,
+                        b=40)
+        )
+
+        CQT.output_gant(parent_self, fig, parent_self.browser, parent_self.vid_report_c + '_' + parent_self.ui.cmb_podrazdelenie.currentText())
+        tab = parent_self.ui.tabw_otchet
+        tab.setCurrentIndex(CQT.number_table_by_name_c(tab,'График'))
+        return
+
+    @CQT.onerror
+    def fncContextMenu(self: mywindow, tbl: QtWidgets.QTableWidget, row: int, col: int,
+                       menu_builder: CQT.ContextMenuBuilder):
+        EXCLUDE_COLUMNS_NAME = {
+        'ФИО',
+        'Должность',
+        'Ответственный',
+        'Итоговыйбалл',
+        }
+        def fnc_set_state(self: mywindow, s_num_state: int, list_s_num: tuple[int]):
+            r, g, b = self.Data_plan.DICT_STATUS_POZ[s_num_state]['color'].split(';')
+            state_name = self.Data_plan.DICT_STATUS_POZ[s_num_state]['Имя']
+            CSQ.custom_request_c(cfg.db_kplan,
+                                 f"""UPDATE plan SET (Статус) = ({s_num_state}) 
+                                     WHERE Пномер in ({CSQ.prepare_list_to_tuple(list_s_num)})""")
+            with CQT.table_updating(tbl):
+                for row_tbl in range(tbl.rowCount()):
+                    if int(tbl.item(row_tbl, nf['plan.Пномер']).text()) in list_s_num:
+                        tbl.item(row_tbl, nf['plan.Статус']).setText(state_name)
+                        CQT.set_color_wtab_c(tbl, row_tbl, nf['plan.Статус'], r, g, b)
+
+        emoji: CEMOJ.EmojiItem = CEMOJ.EmojiMain.ДокументыДанные.analysis
+        menu_builder.add_submenu(f"{emoji.symbol} График")
+        
+        nf = CQT.nums_col_by_name_dict(tbl)
+        row_data = CQT.get_dict_line_form_tbl(tbl)
+        col_name = tbl.horizontalHeaderItem(col).data(CQT.Qt.UserRole)
+
+        emoji: CEMOJ.EmojiItem = CEMOJ.EmojiMain.ПерсоналРоли.operator
+        user = comps.get_usr(tbl.item(row, nf['ID_ФизЛица']).text())
+        fnc = partial(fnc_gen_grafic_user, self, user)
+        menu_builder.add_menu(f'{emoji.symbol} По персоналу',
+                              fnc)
+        
+        if col_name not in EXCLUDE_COLUMNS_NAME and F.is_numeric(col_name):
+            comp_num = int(col_name)
+            if comp_num  in comps.DICT_COMPETENCE_SHABL:
+                comp = comps.DICT_COMPETENCE_SHABL[comp_num]
+                emoji: CEMOJ.EmojiItem = CEMOJ.EmojiMain.ПерсоналРоли.training 
+                fnc = partial(fnc_gen_grafic_comp, self, comp)
+                menu_builder.add_menu(f'{emoji.symbol} По компетенции',
+                                      fnc)
+                
+
+
+    cmb = self.ui.cmb_podrazdelenie
+    depatment = cmb.currentData(CQT.Qt.UserRole)
+    tbl = MTXCMP.Tbl_comp(self.ui.tbl_report_c)
+    comps = MTXCMP.Competencies(depatment, tbl,self.ui.tbl_report_c_filtr)
+    from dataClass import data_app as DTCLS
+    DTCLS.obj_Competencies = comps
+    comps.refill()
+    nf = CQT.nums_col_by_name_dict(tbl.tbl)
+
+    CQT.add_context_menu(tbl.tbl, self, fncContextMenu)
+
+    for i in range(tbl.tbl.rowCount()):
+        val = tbl.tbl.item(i,nf['ФИО']).text()
+        user = comps.get_usr(tbl.tbl.item(i,nf['ID_ФизЛица']).text())
+        widg = CQT.add_interactive_label(tbl.tbl, i, nf['ФИО'], val,
+                                         parent_self=self,grab_style_from_cell=True)
+
+        widg.add_button('', 'График',
+                        fnc_gen_grafic_user_btn,
+                        cell_val=user, img_path=F.sep().join([F.path_to_execut_file_c(),
+                                                              'icons', 'trending-up']))
+
+
+
+
+@CQT.onerror
+def not_upload_erp_nar(self:mywindow, nach_data, kon_data):
+    mark_sudden_tasks = USRCNF.Config.place.КодыНарядов.Плановая #24.12.2025
+    custom_request_c = f"""
+        SELECT 
+            strftime('%d.%m.%Y',jurnal.Дата) as Дата, 
+            CASE WHEN знпр.№ERP IS NOT NULL 
+                THEN знпр.№ERP 
+                ELSE mk.Номер_заказа 
+            END AS ПУ, 
+            CASE WHEN знпр.№проекта IS NOT NULL 
+                THEN знпр.№проекта 
+                ELSE mk.Номер_проекта 
+            END AS "Номер проекта", 
+            jurnal.ФИО,
+            "" as Должность, 
+            "" as Подразделение,  
+            naryad.Пномер as 'Номер наряда',
+            naryad.Подтвержд_вып_дата as Подтвержден,
+            jurnal.Подытог_нормы as "Труды в ЕРП",
+            jurnal.Дата_выгрузки_ЕРП as "Выгружено в ЕРП"
+        FROM jurnal
+            INNER JOIN naryad ON naryad.Пномер == jurnal.Номер_наряда 
+            INNER JOIN mk ON mk.Пномер == naryad.Номер_мк 
+            LEFT JOIN пл_оуп ON пл_оуп.НомПл = mk.НомКплан 
+            LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП 
+        WHERE  naryad.Внеплан == {mark_sudden_tasks} 
+            and jurnal.Статус == 'Начат' 
+            and datetime(jurnal.Дата) > datetime("{nach_data}") 
+            and datetime(jurnal.Дата) < datetime("{kon_data}")
                """
     rez = CSQ.custom_request_c(self.bd_naryad, custom_request_c, hat_c=True, rez_dict=True,attach_dbs=(self.db_kplan))
     for item in rez:
@@ -2567,6 +3058,9 @@ def calendar_click(self, *args):
     data = self.ui.calendarWidget.selectedDate()
     if self.ui.rbut_start_of_per.isChecked():
         self.ui.le_start_of_period.setText(F.datetostr(QtCore.QDate.toPyDate(data), "%Y-%m-%d 00:00:00"))
+        if self.ui.cmb_sort_c_report.currentText() == 'Матрицы компетенций':
+            konec = F.start_end_dates_c(date=self.ui.le_start_of_period.text(), vid='d')[1]
+            self.ui.le_end_of_period.setText(konec)
         if self.ui.cmb_sort_c_report.currentText() == 'Трудозатраты':
             konec = F.start_end_dates_c(date=self.ui.le_start_of_period.text(), vid='d')[1]
             self.ui.le_end_of_period.setText(konec)
@@ -2576,6 +3070,9 @@ def calendar_click(self, *args):
 
     if self.ui.rbut_end_of_period.isChecked():
         self.ui.le_end_of_period.setText(F.datetostr(QtCore.QDate.toPyDate(data), "%Y-%m-%d 23:59:59"))
+        if self.ui.cmb_sort_c_report.currentText() == 'Матрицы компетенций':
+            nach = F.start_end_dates_c(date=self.ui.le_end_of_period.text(), vid='d')[0]
+            self.ui.le_start_of_period.setText(nach)
         if self.ui.cmb_sort_c_report.currentText() == 'Трудозатраты':
             nach = F.start_end_dates_c(date=self.ui.le_end_of_period.text(), vid='d')[0]
             self.ui.le_start_of_period.setText(nach)
@@ -2588,6 +3085,7 @@ def calendar_click(self, *args):
         self.ui.le_end_of_period.setText(F.datetostr(QtCore.QDate.toPyDate(data), "%Y-%m-%d 23:59:59"))
         years  = range(F.strtodate(self.ui.le_start_of_period.text()).year, F.strtodate(self.ui.le_end_of_period.text()).year+1)
         get_list_py_by_year(self,years)
+
 
 @CQT.onerror
 def podrazdel_etapi(self, *args):
@@ -2875,6 +3373,7 @@ def analysis_vneplan_by_vid_rab(self: mywindow, nach, konec, podrazd=None, *args
         vid_po_napr = ''
         if item['виды_по_напр'] in self.Data.DICT_VID_PO_NAPR:
             vid_po_napr = self.Data.DICT_VID_PO_NAPR[item['виды_по_напр']]['Имя']
+            vid_po_napr_id = item['виды_по_напр']
         Фвремя = item['Фвремя']
         if item['fio_jur_zav'] == item['ФИО2']:
             Фвремя = item['Фвремя2']
@@ -2886,6 +3385,7 @@ def analysis_vneplan_by_vid_rab(self: mywindow, nach, konec, podrazd=None, *args
                     'Дата_журнал_кон.\n/Дата зав.мк': item['Дата_журнал_кон.'],
                     'Этап': etap,
                     'Вид_по_напр': vid_po_napr,
+                    'Вид_по_напр_id': vid_po_napr_id,
                     'Направление': item['Вид'],
                     'ПУ': item['Номер_заказа'],
                     'Номенклатура': item['Номенклатура'],
@@ -2931,30 +3431,8 @@ def analysis_vneplan_by_vid_rab(self: mywindow, nach, konec, podrazd=None, *args
             else:
                 print(f'if {vid_param} not in DICT_PROF_ALL')
         res_list.append(tmp_dict)
+    self.analysis_vneplan_by_vid_rab_tmp_res_list = res_list
 
-    # if CMS.user_access(self.bd_naryad,'созданиемаршрутныхкарт_удалить',F.user_name(),False):
-    if USRCNF.Config.user_config.is_developer: #18.07.25
-        if CQT.msgboxgYN(f'Обновить процент внеплановых работ в таблице видов по направлениям?'):
-            dict_vids_napr_percent = dict()
-            for item in res_list:
-                if item['Вид_по_напр'] not in dict_vids_napr_percent:
-                    dict_vids_napr_percent[item['Вид_по_напр']] = {'p': 0,
-                                                                   'v': 0}
-                if item['Тип'] == 'внеплан':
-                    dict_vids_napr_percent[item['Вид_по_напр']]['v'] += item['Tвремя']
-                else:
-                    dict_vids_napr_percent[item['Вид_по_напр']]['p'] += item['Tвремя']
-
-            for vid in dict_vids_napr_percent.keys():
-                delta = 0
-                if dict_vids_napr_percent[vid]['p'] > 0:
-                    delta = round(dict_vids_napr_percent[vid]['v'] / dict_vids_napr_percent[vid]['p'], 2)
-                    if delta > 5:
-                        delta = 5
-                if not self.Data.DICT_VID_PO_NAPR_NAME[vid]['Утверждены_нормы']:
-                    CSQ.custom_request_c(self.db_kplan,
-                                     f"""UPDATE виды_по_направлению SET (vneplan_percent) = {delta} WHERE Пномер = {vid}""") #18.08.25
-                
 
     for mk in set_mk:
         mk = CMS.Marshrut_cards(mk, self.bd_naryad, self.db_resxml, True)
@@ -3512,32 +3990,41 @@ def vneplan_rabot(self, data_nach, data_kon, *args):
 
 
 @CQT.onerror
-def jurnal_rabot(self, data_nach, data_kon, *args):
-    custom_request_c = f"""SELECT                                  
-                        CASE WHEN знпр.№проекта IS NOT NULL 
-                           THEN знпр.№проекта 
-                           ELSE mk.Номер_проекта 
-                           END AS "Номер_проекта", 
-                              CASE WHEN знпр.№ERP IS NOT NULL 
-                               THEN знпр.№ERP 
-                               ELSE mk.Номер_заказа 
-                               END AS Номер_заказа, 
-                            jurnal.Дата as "Дата_журнал", jurnal.ФИО AS "ФИО_журнал", jurnal.ФИО AS "Должность", jurnal.Статус, 
-            jurnal.Подытог, jurnal.Подытог_нормы as "Для трудозатрат",
+def jurnal_rabot(self, data_nach, data_kon, *args): #28.01.2026
+    custom_request_c = f"""
+        SELECT                                  
+            CASE WHEN знпр.№проекта 
+                IS NOT NULL 
+                THEN знпр.№проекта 
+                ELSE mk.Номер_проекта 
+            END AS "Номер_проекта", 
+            CASE WHEN знпр.№ERP IS NOT NULL 
+                THEN знпр.№ERP 
+                ELSE mk.Номер_заказа 
+            END AS Номер_заказа, 
+            jurnal.Дата as "Дата_журнал", 
+            jurnal.ФИО AS "ФИО_журнал", 
+            jurnal.ФИО AS "Должность", 
+            jurnal.Статус, 
+            jurnal.Подытог, 
+            jurnal.Подытог_нормы as "Для трудозатрат",
             jurnal.Дата_выгрузки_ЕРП,
-       jurnal.ФИО_выгрузки_ЕРП,
-       jurnal.Минут_выгружено_ЕРП, 
-             
-             jurnal.Примечание AS "Примеч_журнал", 
+            jurnal.ФИО_выгрузки_ЕРП,
+            jurnal.Минут_выгружено_ЕРП, 
+            jurnal.Примечание AS "Примеч_журнал", 
             naryad.Твремя, naryad.Пномер as "Наряд_пномер", 
             naryad.ФИО, naryad.Фвремя, naryad.ФИО2, 
             naryad.Фвремя2, naryad.Задание, naryad.Примечание AS "Примеч_наряд", 
-            naryad.Номер_мк, naryad.Внеплан FROM jurnal 
-            INNER JOIN naryad ON jurnal.Номер_наряда == naryad.Пномер 
-            INNER JOIN mk ON naryad.Номер_мк == mk.Пномер
-            LEFT JOIN пл_оуп ON пл_оуп.НомПл = mk.НомКплан
-            LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП 
-            WHERE datetime(jurnal.Дата) > datetime("{data_nach}") 
+            naryad.Номер_мк, 
+            коды_веплана_для_наряда.name AS "Внеплан"
+        FROM jurnal 
+        INNER JOIN naryad ON jurnal.Номер_наряда == naryad.Пномер 
+        LEFT JOIN коды_веплана_для_наряда ON коды_веплана_для_наряда.code = naryad.Внеплан 
+        INNER JOIN mk ON naryad.Номер_мк == mk.Пномер
+        LEFT JOIN plan ON plan.Пномер = mk.НомКплан 
+        LEFT JOIN пл_оуп ON пл_оуп.НомПл = mk.НомКплан
+        LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП 
+        WHERE коды_веплана_для_наряда.poki == {self.place.poki} and datetime(jurnal.Дата) > datetime("{data_nach}") 
             and datetime(jurnal.Дата) < datetime("{data_kon}") """
 
     rez_jur = CSQ.custom_request_c(self.bd_naryad, custom_request_c, hat_c=True,attach_dbs=(self.db_kplan))
@@ -4512,75 +4999,97 @@ def udel_trud_sort_c(self: mywindow, data_nach, data_kon, *args):
          'кг/чел/см_средн', 'кг/чел/см_кпл']]
     for oper in self.DICT_OPER_FULL.keys():
         etap = self.DICT_OPER_FULL[oper]['etap']
-        shablon_etaps[etap] = 0
+        if etap is not  None:
+            shablon_etaps[etap] = 0
     for etap in shablon_etaps:
         rez[0].append(etap)
 
+    list_tbls = CSQ.get_list_of_tables_c(self.db_kplan)
+
+
+    
+    podrs = CSQ.custom_request_c(self.db_kplan,f"""
+SELECT Пномер,
+       Имя,
+       Имя_поля,
+       Это_группа_сборки,
+       poki
+  FROM podrazdel WHERE poki = {CFG.Config.place.poki};
+""",rez_dict= True)
+
+    inner = "\n".join([f'{_["Имя"]} ON {_["Имя"]}.НомПл    = пл_оуп.НомПл,' for _ in podrs ])[:-1]
+    select = []
+    dinamic_names_fields = []
+    group_names_fields = []
+    for item in podrs:
+        list_names = item["Имя_поля"].split(';')
+        for i, name in enumerate(list_names):
+            if len(list_names) == 1 or i>0:
+                select.append(f'{item["Имя"]}.{name}')
+                dinamic_names_fields.append(name)
+            if i>0:
+                group_names_fields.append(name)
+    select = ", ".join(select)
+    
     query = f"""SELECT пл_оуп.№проекта || '$' || пл_оуп.№ERP as Проект, пл_оуп.Количество, plan.Пномер, пл_топ.Вид, пл_ко.Вес_ВО,
-     plan.Нчас_вспом, пл_заг.Нчас_заг, пл_компл.Нчас_упаковки,
-                 пл_мех.Нчас_мехобр, пл_отк.Нчас_контр, пл_покр.Нчас_покр, пл_сб.Нчас_сб , пл_сб.Нчас_св, пл_сб.Нчас_зач 
+     plan.Нчас_вспом, {select}
      FROM пл_оуп
     INNER JOIN
     plan ON plan.Пномер    = пл_оуп.НомПл,
-    пл_заг ON пл_заг.НомПл    = пл_оуп.НомПл,
-    пл_мех ON пл_мех.НомПл    = пл_оуп.НомПл,
-    пл_компл ON пл_компл.НомПл = пл_оуп.НомПл,
-    пл_сб    ON пл_сб.НомПл     = пл_оуп.НомПл,
-    пл_покр ON пл_покр.НомПл = пл_оуп.НомПл,
     пл_топ ON пл_топ.НомПл = пл_оуп.НомПл,
-    пл_ко ON пл_ко.НомПл = пл_оуп.НомПл,
-    пл_отк ON пл_отк.НомПл    = пл_оуп.НомПл
+    пл_ко  ON пл_ко.НомПл = пл_оуп.НомПл,
+    {inner}
     """
     responce = CSQ.custom_request_c(self.db_kplan, query, rez_dict=True)
     dict_kpl = dict()
+
+    template = {'Нчпс': 0, 'Вес': 0, 'Кол_во': 0}
+    for field in dinamic_names_fields:
+        template[field] = 0
     for item in responce:
         if item['Вид'] not in dict_kpl:
-            dict_kpl[item['Вид']] = {'Нчпс': 0, 'Вес': 0, 'Кол_во': 0, 'Нчас_заг': 0, 'Нчас_сб': 0, 'Нчас_св': 0,
-                                     'Нчас_зач': 0, 'Нчас_покр': 0, 'Нчас_мехобр': 0, 'Нчас_вспом': 0}
+
+            dict_kpl[item['Вид']] = copy.deepcopy(template)
+
+
         kol = F.valm(item['Количество'])
         if kol == 0:
             continue
         dict_kpl[item['Вид']]['Вес'] += F.valm(item['Вес_ВО']) / kol
-        dict_kpl[item['Вид']]['Нчас_сб'] += item['Нчас_сб'] / kol
-        dict_kpl[item['Вид']]['Нчас_св'] += item['Нчас_св'] / kol
-        dict_kpl[item['Вид']]['Нчас_зач'] += item['Нчас_зач'] / kol
-        if not item['Нчас_сб']:
+        for name in dinamic_names_fields:
+            dict_kpl[item['Вид']][name] += item[name] / kol
+
+        summ_val = 0
+        for name in group_names_fields:
+            summ_val += item[name]
+        if summ_val == 0:
             continue
 
         npsm = (F.valm(item['Вес_ВО']) / kol) / (
-                    ((item['Нчас_сб'] + item['Нчас_св'] + item['Нчас_зач']) / kol) / 8)
+                    (summ_val / kol) / 8)
+
         if npsm < 10 or npsm > 300:
             continue
         dict_kpl[item['Вид']]['Нчпс'] += npsm
-
         dict_kpl[item['Вид']]['Кол_во'] += 1
-        dict_kpl[item['Вид']]['Нчас_заг'] += item['Нчас_заг'] / kol
 
-        dict_kpl[item['Вид']]['Нчас_покр'] += item['Нчас_покр'] / kol
-        dict_kpl[item['Вид']]['Нчас_мехобр'] += item['Нчас_мехобр'] / kol
-        dict_kpl[item['Вид']]['Нчас_вспом'] += item['Нчас_вспом'] / kol
 
     for item in dict_kpl:
 
         if dict_kpl[item]['Кол_во']:
+            count_izd = dict_kpl[item]['Кол_во']
+
             dict_kpl[item]['Вес'] = round(dict_kpl[item]['Вес'] / dict_kpl[item]['Кол_во'], 1)
-            dict_kpl[item]['Нчас_заг'] = round(dict_kpl[item]['Нчас_заг'] / dict_kpl[item]['Кол_во'], 2)
-            dict_kpl[item]['Нчас_сб'] = round(dict_kpl[item]['Нчас_сб'] / dict_kpl[item]['Кол_во'], 2)
-            dict_kpl[item]['Нчас_св'] = round(dict_kpl[item]['Нчас_св'] / dict_kpl[item]['Кол_во'], 2)
-            dict_kpl[item]['Нчас_зач'] = round(dict_kpl[item]['Нчас_зач'] / dict_kpl[item]['Кол_во'], 2)
-            dict_kpl[item]['Нчас_покр'] = round(dict_kpl[item]['Нчас_покр'] / dict_kpl[item]['Кол_во'], 2)
-            dict_kpl[item]['Нчас_мехобр'] = round(dict_kpl[item]['Нчас_мехобр'] / dict_kpl[item]['Кол_во'], 2)
-            dict_kpl[item]['Нчас_вспом'] = round(dict_kpl[item]['Нчас_вспом'] / dict_kpl[item]['Кол_во'], 2)
             dict_kpl[item]['Нчпс'] = round(dict_kpl[item]['Нчпс'] / dict_kpl[item]['Кол_во'], 2)
+            for name in dinamic_names_fields:
+                dict_kpl[item][name] = round(dict_kpl[item][name] / count_izd, 2)
+
+
         else:
             dict_kpl[item]['Вес'] = 0
-            dict_kpl[item]['Нчас_заг'] = 0
-            dict_kpl[item]['Нчас_сб'] = 0
-            dict_kpl[item]['Нчас_св'] = 0
-            dict_kpl[item]['Нчас_зач'] = 0
-            dict_kpl[item]['Нчас_покр'] = 0
-            dict_kpl[item]['Нчас_мехобр'] = 0
-            dict_kpl[item]['Нчас_вспом'] = 0
+            for name in dinamic_names_fields:
+                dict_kpl[item][name] = 0
+
 
     query = f"""SELECT DISTINCT naryad.Номер_мк, naryad.Пномер, naryad.Дата, naryad.Твремя, naryad.Фвремя, naryad.Фвремя2, 
         naryad.ФИО, naryad.ФИО2, napravlenie.name as Направление, naryad.Опер_время, naryad.Операции, mk.Вес, 
@@ -4593,7 +5102,7 @@ def udel_trud_sort_c(self: mywindow, data_nach, data_kon, *args):
     INNER JOIN napravlenie ON napravlenie.Пномер = napravl_deyat.Направление  
     WHERE naryad.Подтвержд_вып == 1 AND datetime(naryad.Дата) > datetime("{data_nach}") 
                     and datetime(naryad.Дата) < datetime("{data_kon}") and mk.Направление != 'ПТ' 
-                     and naryad.Внеплан = 0 AND пл_топ.Вид != 1 and plan.poki == {self.place.poki} """
+                     and naryad.Внеплан in(10, 0) AND пл_топ.Вид != 1 and plan.poki == {self.place.poki} """
     dict_rez = dict()
     responce = CSQ.custom_request_c(self.bd_naryad, query, rez_dict=True,attach_dbs=(self.db_kplan))
 
@@ -4643,9 +5152,28 @@ def udel_trud_sort_c(self: mywindow, data_nach, data_kon, *args):
             if len(list_oper) > len(list_time):
                 continue
             etap = self.DICT_OPER_FULL[list_oper[i]]['etap']
+            if etap is None:
+                continue
             time_fact = list_time[i] / koef
             tmp_dict_mk[item['Номер_мк']]['Этапы'][etap] += time_fact
             tmp_dict_mk[item['Номер_мк']]['Этапы_нома'][etap] += list_time[i]
+
+
+    estimated_vid_rab_names_fact = {v['Имя'] for k, v in self.Data.DICT_GROUP_PODR_VID_RAB_FOR_PLAN.items()
+                                    if
+                                    v['estimated'] and v['poki'] == CFG.Config.place.poki}
+    def calc_estimated_etap(etap):
+        estimated = False
+        if etap in self.Data.DICT_ETAPI_FULL:
+            etap_data = self.Data.DICT_ETAPI_FULL[etap]
+            if etap_data['sopost_etapov_vo'] is not None:
+                sopost_etapov_vo = etap_data['sopost_etapov_vo'].split("|")
+                for elem in sopost_etapov_vo:
+                    if elem.split('.')[0] in estimated_vid_rab_names_fact:
+                        estimated = True
+                        break
+        return estimated
+
     for mk in tmp_dict_mk.keys():
         ves = tmp_dict_mk[mk]['Вес'] * KOEF_RASKLADKI
         vid = tmp_dict_mk[mk]['Вид']
@@ -4655,7 +5183,7 @@ def udel_trud_sort_c(self: mywindow, data_nach, data_kon, *args):
             pass
         dict_shabl_napr[vid]['Кол'] += 1
         for etap in tmp_dict_mk[mk]['Этапы'].keys():
-            if etap == 'Сборка+сварка':
+            if calc_estimated_etap(etap):
                 dict_shabl_napr[vid]['etap_fakt'][etap] += tmp_dict_mk[mk]['Этапы'][etap] * tmp_dict_mk[mk][
                     'koef_pogr_norm'] * tmp_dict_mk[mk]['koef_vneplana']
                 dict_shabl_napr[vid]['etap_norm'][etap] += tmp_dict_mk[mk]['Этапы_нома'][etap] * tmp_dict_mk[mk][
@@ -4677,21 +5205,28 @@ def udel_trud_sort_c(self: mywindow, data_nach, data_kon, *args):
                 continue
             dict_shabl_napr[vid]['etap_fakt'][etap] = round(dict_shabl_napr[vid]['etap_fakt'][etap] / ves, 1)
             dict_shabl_napr[vid]['etap_norm'][etap] = round(dict_shabl_napr[vid]['etap_norm'][etap] / ves, 1)
-        summ_sb_sv = dict_shabl_napr[vid]['etap_fakt']['Сборка+сварка'] + dict_shabl_napr[vid]['etap_fakt'][
-            'Зачистка']
-        summ_sb_sv_norm = dict_shabl_napr[vid]['etap_norm']['Сборка+сварка'] + dict_shabl_napr[vid]['etap_norm'][
-            'Зачистка']
-        if summ_sb_sv:
+
+        summ_estimated_fakt = 0
+        for etap,val in dict_shabl_napr[vid]['etap_fakt'].items():
+             if calc_estimated_etap(etap):
+                 summ_estimated_fakt += val
+        summ_estimated_norm  = 0
+        for etap,val in dict_shabl_napr[vid]['etap_norm'].items():
+             if calc_estimated_etap(etap):
+                 summ_estimated_norm += val
+
+
+        if summ_estimated_fakt:
             tmp[4] = 0
             tmp[5] = 0
             tmp[6] = 0
             tmp[7] = 0
             if vid in dict_kpl:
                 tmp[7] = dict_kpl[vid]['Нчпс']
-            if summ_sb_sv > 0:
-                tmp[4] = round(480 / summ_sb_sv)
-            if summ_sb_sv_norm > 0:
-                tmp[5] = round(480 / summ_sb_sv_norm)
+            if summ_estimated_fakt > 0:
+                tmp[4] = round(480 / summ_estimated_fakt)
+            if summ_estimated_norm > 0:
+                tmp[5] = round(480 / summ_estimated_norm)
 
             if tmp[4] != 0 and tmp[7] != 0:
                 tmp[6] = round((tmp[4] + tmp[7]) / 2, 1)
@@ -4929,7 +5464,7 @@ def get_plan_vneplan_data(self, data_nach, data_kon, vid='Все', etap='Сбо�
                     continue
             try:
                 if item_zav_nar['Тип'] == 'Плановая':  # Плановая
-                    if item_zav_nar['Внеплан'] == 0:
+                    if item_zav_nar['Внеплан'] in (0,10):
                         summ_ves_plan += add_time
                         list_by_vid_rab.append(['план', etap_user, '', add_time, item_zav_nar])
 
@@ -6328,6 +6863,9 @@ def clck_otch(self: mywindow, *args):
 
     if self.vid_report_c == "Трудозатраты":
         arm_pr_oper.fill_tbl_report_add(self)
+
+    if self.vid_report_c == "Отчетность персонала":
+        RPTP.clck_user()
 
 @CQT.onerror
 def dbl_clck_otch(self, *args):

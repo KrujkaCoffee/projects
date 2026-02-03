@@ -172,7 +172,7 @@ def generate_precsv_tree(self,p=None,write = True, *args,**kwargs):
     for item in dict_tree:
         if item['Код ERP'] == '':
             continue
-        if item['Код ERP'] not in self.DICT_NOMEN:
+        if item['Код ERP'].strip() not in self.DICT_NOMEN:
             list_err.append(f"Ошибка. {item['Обозначение полное']} код {item['Код ERP']} отсутствует в номенклатуре")
             continue
 
