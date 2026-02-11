@@ -5,6 +5,7 @@ import project_cust_38.Cust_SQLite as CSQ
 import project_cust_38.Cust_Qt as CQT
 import project_cust_38.Cust_mes as CMS
 import copy
+import kal_plan as KPL
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -723,10 +724,55 @@ def save_kpl_plan(self: mywindow):
         if not CQT.msgboxgYN(f'План был ранее сохранен, обновить?'):
             return
     month = tbl.item(tbl.currentRow(), 0).text()
+
+
     if month != Month_plan.month:
         CQT.msgbox(f'Сохранить план {Month_plan.month} в ячейку {month} невозможно')
         return
     print(f'месяц определен')
+
+    # ==================================Отметка даты внесения в план===============================================
+    now = F.now("%Y-%m-%d")
+    month_obj = F.strtodate(month)
+    name_plan = f'{F.month_rus_from_date(month_obj, "%Y-%m-%d", False)} {month_obj.year}'
+    new_poz_set = set(Month_plan.file.keys())
+    old_poz_set = set()
+    old_poz = CSQ.custom_request_c(self.db_kplan,
+                                   f"""SELECT file_poz_plan FROM mnts_plan 
+                                                          WHERE Дата = "{month}" and poki == {self.place.poki}""",
+                                   rez_dict=True,
+                                   one=True)
+    if old_poz:
+        if old_poz['file_poz_plan'] is not None:
+            file_poz_plan = F.from_binary_pickle(old_poz['file_poz_plan'])
+            old_poz_set = set([_ for _ in file_poz_plan.keys()])
+
+    poz_to_del = old_poz_set - new_poz_set
+    poz_to_add = new_poz_set - old_poz_set
+
+    if poz_to_add:
+        for poz_num in poz_to_add:
+            CSQ.custom_request_c(self.db_kplan,
+                                 f"""UPDATE plan SET
+                                   (Дата_внесения_в_план_месяца,Имя_внесения_в_план_месяца) = ("{now}","{name_plan}") 
+                                      WHERE Пномер == {poz_num};""")
+    if poz_to_del:
+        for poz_num in poz_to_del:
+            CSQ.custom_request_c(self.db_kplan,
+                                 f"""UPDATE plan SET
+                                   (Дата_внесения_в_план_месяца,Имя_внесения_в_план_месяца) = ("","") 
+                                      WHERE Пномер == {poz_num};""")
+    try:
+        comp = KPL.Сomparison_fields_vs_db([
+            KPL.Сomparison_fields_vs_db_field('plan.Дата_внесения_в_план_месяца','plan','Дата_внесения_в_план_месяца'),
+            KPL.Сomparison_fields_vs_db_field('plan.Имя_внесения_в_план_месяца','plan','Имя_внесения_в_план_месяца')
+        ])
+        comp.reload_fields_from_db()
+    except:
+        CQT.msgbox(f'Ошибка заполнения таблицы')
+
+    # ==================================Отметка даты внесения в план===============================================
+
     if len(Month_plan.file) == 0:
         print(f'длина Month_plan.file = 0')
         if tbl.item(tbl.currentRow(), 1).text() == '':
@@ -775,6 +821,8 @@ def save_kpl_plan(self: mywindow):
                 # napr = poz.get_napravl()['name']
                 napr = extra_data_plan[nom_poz]
                 rez_dict_kg[napr] += dict_rabot['Остаток_н_см']*DICT_GROUP_VID_RAB_FOR_PLAN_by_mnts_plan_name[rabot_db]['koef_estimate']
+
+
     list_hats = [_ for _ in dict_db.values()]
     str_hats = ', '.join(list_hats)
     rez = CSQ.custom_request_c(self.db_kplan, f"""UPDATE mnts_plan SET ( {str_hats} ) = 
@@ -790,6 +838,8 @@ def save_kpl_plan(self: mywindow):
     CSQ.custom_request_c(self.db_kplan, f"""UPDATE mnts_plan SET ( {str_hats} ) = 
          ({CSQ.questions_for_mask(list_hats)}) WHERE Дата = '{month}' and poki == {self.place.poki}""",
                          list_of_lists_c=[[_ for _ in rez_dict_kg.values()]])
+
+
     CQT.msgbox(f'Успешно')
 
 

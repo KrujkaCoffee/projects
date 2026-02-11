@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from typing import Optional
 import project_cust_38.Cust_config as MESCNF
@@ -128,8 +130,8 @@ class Client_data():
         return conf
     def get_user_config(self):
         conf =  self._load_user_config_data()
-        # if not self.ip:
-        #     return
+        if not self.ip:
+            return
         if not conf:
             if not self.add_new_user():
                 print(f'Ошибка добавления нового юзера для {self.ip}')
@@ -180,7 +182,7 @@ class Client_data():
             name = name.upper()# Т.К В Windows переменные окружения COMPUTERNAME и USERNAME традиционно хранятся в верхнем регистре
         return name
 
-class StatausBar():
+class StatusBar:
     def __init__(self,refConteiner=None,refStatusBarText=None):
         self._refConteiner:ft.Ref[ft.Container] = refConteiner
         self._refStatusBarText:ft.Ref[ft.Text] = refStatusBarText
@@ -200,9 +202,10 @@ class StatausBar():
 
 
 
-class Module_cfg():
+class ModuleCfg:
     _dict_routes = dict()
-    def __init__(self,alias:str|None='genesis',route:str=None,name:str='',icon:ft.Icons=None, tooltip:str='',sub_module:Optional['Module_cfg']=None):
+    def __init__(self, alias:str|None='genesis', route:str|None=None, name:str='', icon:ft.Icons|None=None, tooltip:str='', sub_module:Optional[
+        'ModuleCfg']=None):
         self.alias:str = alias
         self.route:str = route
         self.sub_dir:str|None = None
@@ -213,23 +216,23 @@ class Module_cfg():
         self.icon = icon
         self.tooltip = tooltip
 
-        self.status_bar:None|StatausBar = None
+        self.status_bar: None | StatusBar = None
 
-        self.sub_modules:dict[str, Module_cfg] = dict()
+        self.sub_modules:dict[str, ModuleCfg] = dict()
         if sub_module:
             self.sub_modules[sub_module.alias] = sub_module
-        Module_cfg._dict_routes[route] = self
+        ModuleCfg._dict_routes[route] = self
         self.settingsRef:None|ft.Ref[ft.Column] = None
     def set_status_bar(self,refContainer,refStatusBarText):
-        self.status_bar = StatausBar(refContainer,refStatusBarText)
+        self.status_bar = StatusBar(refContainer, refStatusBarText)
 
-    def add_submodule(self, module: 'Module_cfg'):
+    def add_submodule(self, module: 'ModuleCfg'):
         """Добавляет подмодуль к текущему модулю"""
         self.sub_modules[module.alias] = module
 
     def get_module_by_route(self,route:str):
-        if route in Module_cfg._dict_routes:
-            return Module_cfg._dict_routes[route]
+        if route in ModuleCfg._dict_routes:
+            return ModuleCfg._dict_routes[route]
 class Srv_data(metaclass=SingletonMeta):
     def __init__(self):
         self.ip =  SRVCFG.HOST
@@ -246,7 +249,7 @@ class Data_page(SingletonMeta):
     client_data:Client_data = None
     Data_user:Client_data = None
     Data_srv:Srv_data = None
-    Data_module:Module_cfg = None
+    Data_module:ModuleCfg = None
     @classmethod
     def reload(cls):
         print(f'==== INIT Data_page =======')
@@ -255,7 +258,7 @@ class Data_page(SingletonMeta):
         cls.client_data.get_user_config()
         cls.Data_user: Client_data = cls.client_data
         cls.Data_srv: Srv_data = Srv_data()
-        cls.Data_module: Module_cfg = Module_cfg(None, None)
+        cls.Data_module: ModuleCfg = ModuleCfg(None, None)
 
 
 

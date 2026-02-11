@@ -1,3 +1,4 @@
+import logging
 
 import Config.srv_config as SRVCFG
 import flet as ft
@@ -19,8 +20,11 @@ IN_BROUSER = SRVCFG.IN_BROUSER
 
 name_title = "MES app"
 name = "Веб приложение МЕС"
-
-
+import mimetypes
+mimetypes.add_type("application/javascript", ".js")
+mimetypes.add_type("application/javascript", ".mjs")
+mimetypes.add_type("application/wasm", ".wasm")
+logging.basicConfig(level=logging.INFO)
 def main(page: ft.Page):
 
 
@@ -41,7 +45,8 @@ def main(page: ft.Page):
     # if not F.existence_file_c(img_path):
     #    quit()
     # page.favicon = img_path
-
+    def on_range_change(e):
+        route_change(e.page)
     def route_change(e):
         if isinstance(e, ft.Page):
             page = e
@@ -58,9 +63,7 @@ def main(page: ft.Page):
             if controls:
                 page.views.append(
                     View(
-                        e.route, [
-                            controls
-                        ]
+                        route=e.route, controls=[controls]
                     )
                 )
         else:
@@ -81,8 +84,9 @@ def main(page: ft.Page):
             )
             page.views.append(
                 View(
-                    "/",
-                    [app_bar, modules.main_page(page, PATHF_IT_PLAN), ft.Divider(height=1),
+                    route="/",
+                    appbar=app_bar,
+                    controls=[modules.main_page(page, PATHF_IT_PLAN), ft.Divider(height=1),
                      SETGS.LeftNavigationMenu(visible=False, ref=_ref_settings)]
                     ,
 
@@ -105,17 +109,19 @@ def main(page: ft.Page):
     #print(f"Initial route: {page.route}")
 
     def update_size(e):
+        ...
         # Для веба: используем контейнер с expand=True
-        width = page.client_storage.get("window_width", 800)
-        height = page.client_storage.get("window_height", 600)
-        Data.Data_vars.width = width
-        Data.Data_vars.height = height
+        # width = page.client_storage.get("window_width", 800)
+        # height = page.client_storage.get("window_height", 600)
+        # Data.Data_vars.width = width
+        # Data.Data_vars.height = height
 
     page.on_resize = update_size
-    page.on_route_change = route_change
+    page.on_route_change = on_range_change
+    route_change(page)
 
 
-    page.go(page.route)
+    # await page.push_route(page.route)
 
 
 if __name__ == "__main__":
@@ -128,11 +134,20 @@ if __name__ == "__main__":
             ft.app(name=FLET_PATH, target=main, view=None, port=FLET_PORT, host=FLET_HOST, assets_dir="assets")
         else:
             ft.app(name=FLET_PATH, target=main)
-
+    elif socket.gethostname() == 'POW18-08':
+        PATHF_IT_PLAN = fr'C:\srv_mes\srv_mes\plan_it_form_b24(gen by reiting).pickle'
+        print(f'http://{FLET_HOST}:{FLET_PORT}')
+        print(f'http://mesinfo.powerz.ru:{FLET_PORT}') # SRVmes 'http://mesinfo.powerz.ru:20000/'
+        ft.run(name=FLET_PATH, main=main, view=ft.AppView.WEB_BROWSER, port=FLET_PORT,
+               host='localhost')
     else:
         PATHF_IT_PLAN = fr'C:\srv_mes\srv_mes\plan_it_form_b24(gen by reiting).pickle'
         print(f'http://{FLET_HOST}:{FLET_PORT}')
-        print(f'http://mesinfo.powerz.ru:{FLET_PORT}')
-        ft.app(name=FLET_PATH, target=main, view=ft.WEB_BROWSER, port=FLET_PORT,
-               host='localhost',
-               )
+        print(f'http://mesinfo.powerz.ru:{FLET_PORT}') # SRVmes 'http://mesinfo.powerz.ru:20000/'
+        app = ft.run(name=FLET_PATH, main=main, view=ft.AppView.WEB_BROWSER, port=FLET_PORT,
+               host='0.0.0.0', export_asgi_app=True)
+# PATHF_IT_PLAN = fr'C:\srv_mes\srv_mes\plan_it_form_b24(gen by reiting).pickle'
+# print(f'http://{FLET_HOST}:{FLET_PORT}')
+# print(f'http://mesinfo.powerz.ru:{FLET_PORT}') # SRVmes 'http://mesinfo.powerz.ru:20000/'
+# app = ft.run(name=FLET_PATH, main=main, view=ft.AppView.WEB_BROWSER, port=FLET_PORT,
+#        host='localhost', export_asgi_app=True)

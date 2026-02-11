@@ -410,6 +410,7 @@ class Competencies():
                     tmp_row[comp.params_s_num] = comp.val
             tmp_row[self.RESULT_NAME] = usr.calc_average()
             result.append(tmp_row)
+        result = F.sort_by_column_c(result,'Ответственный')
         return result
 
     def get_aliases_comps(self)->dict[int,str]:

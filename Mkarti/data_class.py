@@ -1,12 +1,27 @@
+from __future__ import annotations
 import project_cust_38.Cust_Functions as F
 from dataclasses import dataclass
 import project_cust_38.Cust_SQLite as CSQ
 import project_cust_38.Cust_mes as CMS
 
 import project_cust_38.Cust_config as USRCNF
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from MKart import mywindow
+class SingletonMeta(type):
+    __instances = {}
+
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls.__instances:
+            instance = super().__call__(*args, **kwargs)
+            cls.__instances[cls] = instance
+        return cls.__instances[cls]
+
+
+
 
 @dataclass
-class Data_plan:
+class Data_plan(SingletonMeta):
     @staticmethod
     def GET_DICT_INFO_FIELDS_KPL(db_kplan):
 
@@ -60,7 +75,7 @@ class Data_plan:
                                                         }
 
         return  result_dict
-
+    app_self:mywindow|None = None
     db_kplan = F.bdcfg('DB_kplan')
     db_invest = F.bdcfg('DB_invest')
     db_state = F.bdcfg('DB_staff_placement')

@@ -4,6 +4,15 @@ import components.common_funcs as CMF
 import data_class as DTCLS
 import project_cust_38.Cust_Functions as F
 import project_cust_38.Cust_emoji as Cust_emoji
+
+try:
+    from components.ext_report_native_menu import build_save_reports_menu
+    from components.ext_tech_report_excel import build_tech_report_xlsx
+    from components.ext_tech_report_settings_dialog import open_tech_report_settings_dialog
+except Exception:
+    build_save_reports_menu = None
+    open_tech_report_settings_dialog = None
+
 DICT_BARS = {"leading": {'text': 'Домой',
                          'icon': ft.Icons.HOME,
                          'selected_icon': ft.Icons.HOME_SHARP,
@@ -42,7 +51,7 @@ _general_module_row_ref = ft.Ref[ft.Row]()
 _desktop_column_ref = ft.Ref[ft.Column]()
 
 _header_input_panel_textfield_ref = ft.Ref[ft.TextField]()
-_header_input_panel_btn_save_ref = ft.Ref[ft.Button]()
+_header_input_panel_btn_save_ref = ft.Ref[ft.Control]()
 
 _input_column_tabels_ref = ft.Ref[ft.Column]()
 _output_column_tabels_ref = ft.Ref[ft.Column]()
@@ -56,7 +65,6 @@ NAME_MODULE = "silencer"
 
 
 def show_msgbox_err(e):
-    # Проверяем доступ к странице
     CMF.msgbox(
         e,
         msg="Файл не был сохранен! Ошибка генерации",
@@ -64,13 +72,120 @@ def show_msgbox_err(e):
         icon="WARNING",
         fontsize=14,
         title="Ошибка сохранения",
-        time_life=3  # Автозакрытие через 5 секунд
+        time_life=3
     )
-def apply_page_settings(page: ft.Page,MODULE:DTCLS.Module_cfg):
+
+def apply_page_settings(page: ft.Page,MODULE:DTCLS.ModuleCfg):
     Data: DTCLS.Data_page = page.data
-    route = page.route
     Data.Data_module = MODULE
     Data.Data_module.cust_data: calc_silencer_back.Cust_module_params = calc_silencer_back.Cust_module_params()
+
+def _save_word(e: ft.ControlEvent):
+    Data: DTCLS.Data_page = e.page.data
+    cfg_module = Data.Data_module
+    name = _header_input_panel_textfield_ref.current.value
+
+    # старую “заглушку” (Отчет не доделан) — убираем и реально сохраняем Word
+    rezult_data_for_save = calc_silencer_back.generate_rezult_data_for_save(
+        name, _input_tabe_ref.current, _output_tabe_ref.current
+    )
+    rez = calc_silencer_back.save_exel(
+        rezult_data_for_save["input"],
+        rezult_data_for_save["output"],
+        rezult_data_for_save["name"],
+        cfg_module.sub_dir,
+        cfg_module.name,
+    )
+    if not rez:
+        show_msgbox_err(e)
+        return
+
+    if not calc_silencer_back.save_in_db(e, name):
+        return
+
+    CMF.dialog_save_file(e, rez)
+
+def _save_excel(e: ft.ControlEvent):
+    DTCLS.Data_page.Data_module.status_bar.set_text(
+        f"{str(Cust_emoji.EmojiMain.Статусы.info)} Excel-отчёт пока в разработке"
+    )
+    e.page.update()
+
+def _tech_build(e: ft.ControlEvent):
+    if build_tech_report_xlsx is None:
+        DTCLS.Data_page.Data_module.status_bar.set_text(
+            f"{str(Cust_emoji.EmojiMain.Статусы.warning)} Модуль tech-отчёта не подключен"
+        )
+        e.page.update()
+        return
+
+    Data: DTCLS.Data_page = e.page.data
+    cfg_module = Data.Data_module
+    name = (_header_input_panel_textfield_ref.current.value or "tech_report").strip()
+
+    # входные строки (для блока "Входные данные")
+    input_rows = CMF.datatable_to_dicts(_input_tabe_ref.current)
+
+    # пересчёт (берём полный dict calculated + errors)
+    calculated, errors, success = calc_silencer_back.prepare_calc_new_data(input_rows, Data)
+    if calculated is None:
+        show_msgbox_err(e)
+        return
+
+    # пользовательский конфиг (из UI настроек)
+    cfg = getattr(cfg_module.cust_data, "tech_report_cfg", None) or {}
+
+    path = build_tech_report_xlsx(
+        report_name=name,
+        input_rows=input_rows,
+        calculated=calculated,
+        output_params=calc_silencer_back.OUTPUT_PARAMS,
+        errors=errors,
+        save_dir=cfg_module.sub_dir,
+        module_alias=cfg_module.alias,
+        cfg_raw=cfg,
+    )
+    if not path:
+        show_msgbox_err(e)
+        return
+
+    # как и для Word-отчёта: сохраняем расчёт в историю (опционально, но логично)
+    calc_silencer_back.save_in_db(e, name)
+
+    # отдаём файл пользователю
+    CMF.dialog_save_file(e, path)
+
+
+def _tech_settings(e: ft.ControlEvent):
+    Data: DTCLS.Data_page = e.page.data
+    cfg = getattr(Data.Data_module.cust_data, "tech_report_cfg", None)
+    if not isinstance(cfg, dict):
+        cfg = {
+  "transpose_enabled": True,
+  "transpose_num_prefixes": ["ak_srednegeometricheskaya_chastota_gc"],     # prefix_<NUM>
+  "transpose_numfix": ["ak_srednegeometricheskaya_chastota_gc||14"],       # stem_<NUM>_<FIX>
+  "transpose_tag_bases": ["pressure", "diameter"],                         # <base>_<tag><idx>
+}
+
+    def _on_save(new_cfg: dict):
+        setattr(Data.Data_module.cust_data, "tech_report_cfg", new_cfg)
+        try:
+            sb = DTCLS.Data_page.Data_module.status_bar
+            sb.set_text("Настройки технологического отчёта сохранены")
+            # обновляем только статусбар (без page.update!)
+            if getattr(sb, "_refConteiner", None) and sb._refConteiner.current:
+                sb._refConteiner.current.update()
+            if getattr(sb, "_refStatusBarText", None) and sb._refStatusBarText.current:
+                sb._refStatusBarText.current.update()
+        except Exception:
+            pass
+
+    open_tech_report_settings_dialog(
+        e.page,
+        output_params=calc_silencer_back.OUTPUT_PARAMS,
+        cfg=cfg,
+        on_save=_on_save,
+    )
 
 def gen_page(page):
     Data: DTCLS.Data_page = page.data
@@ -91,7 +206,7 @@ def gen_page(page):
 
                     if row_data.get_cell_unique().val == 'edinica_rashoda' and cell.params_field.name == 'val':
                         calc_silencer_back.oform_edinica_rashoda(cell,cell.val)
-            table_data.table_view.update_view()
+            # table_data.table_view.update_view()
 
 
         def fnc_onchange_tbl_input(e, *args):
@@ -110,8 +225,8 @@ def gen_page(page):
             if row_data.get_cell_unique().val == 'edinica_rashoda' and cell.params_field.name == 'val':
                 calc_silencer_back.oform_edinica_rashoda(cell, new_val)
 
-            if set_header_elems_visible(False) or table_data.table_view.fl_need_upd:
-                table_data.table_view.update_view()
+            # if set_header_elems_visible(False) or table_data.table_view.fl_need_upd:
+            #     table_data.table_view.update_view()
 
         page: ft.Page = e.page
 
@@ -145,7 +260,7 @@ def gen_page(page):
                             alignment=0.1,  # куда позиционировать (0.0 – верх, 1.0 – низ)
                             duration=300  # анимация
                         )
-
+            print('CLICK')
             meta = e.control.data
             cell: CMF._Cell_data = meta['cell']
             row_data: CMF.Row_data = cell.parent_row
@@ -154,7 +269,6 @@ def gen_page(page):
                 tbl_data.toggle_group(None)
             else:
                 tbl_data.toggle_group(cell.val)
-            tbl_data.table_view.update_view()
 
 
         def add_rez_table(e: ft.ControlEvent):
@@ -169,11 +283,11 @@ def gen_page(page):
             if _output_column_tabels_ref.current.controls:
                 _output_column_tabels_ref.current.controls.clear()
             _output_column_tabels_ref.current.controls.append(tbl_rez)
+            _output_column_tabels_ref.current.update()
             set_header_elems_visible(btn_enabled)
             input_vals = calc_silencer_back.get_vals_from_input_data_tbl(_input_tabe_ref.current)
             _header_input_panel_textfield_ref.current.value = calc_silencer_back.get_name_new_calc(input_vals)
             #DTCLS.Data_page.Data_module.status_bar.set_text('Успешно рассчитано')
-            page.update()
 
 
         def grab_new_table(e: ft.ControlEvent):
@@ -222,6 +336,18 @@ def gen_page(page):
             vertical_alignment=ft.CrossAxisAlignment.START,
             expand=True, ref=_desktop_row_ref)
 
+
+        save_control = build_save_reports_menu(
+            ref=_header_input_panel_btn_save_ref,
+            width=150,
+            height=50,
+            radius=1,
+            on_word=_save_word,
+            on_excel=_save_excel,
+            on_tech_build=_tech_build,
+            on_tech_settings=_tech_settings,
+        )
+
         header_input_panel = ft.Row(controls=[ft.VerticalDivider(thickness=0, width=200),
                                               ft.Button(
                                                   'Правка',
@@ -244,16 +370,16 @@ def gen_page(page):
                                               ft.TextField(label="Название расчета", hint_text="Введите текст",
                                                            width=500,
                                                            icon=ft.Icons.NOTE_ALT,
-                                                           ref=_header_input_panel_textfield_ref),
-                                              ft.Button(
-                                                  'Сохранить',
-                                                  ft.Icons.SAVE_AS,
-                                                  on_click=click_save_rez,
-                                                  style=ft.ButtonStyle(
-                                                      shape=ft.RoundedRectangleBorder(radius=1),
-                                                      # Радиус скругления в пикселях
-                                                  ), height=50, width=150, ref=_header_input_panel_btn_save_ref
-                                              )
+                                                           ref=_header_input_panel_textfield_ref), save_control
+                                              # ft.Button(
+                                              #     'Сохранить',
+                                              #     ft.Icons.SAVE_AS,
+                                              #     on_click=click_save_rez,
+                                              #     style=ft.ButtonStyle(
+                                              #         shape=ft.RoundedRectangleBorder(radius=1),
+                                              #         # Радиус скругления в пикселях
+                                              #     ), height=50, width=150, ref=_header_input_panel_btn_save_ref
+                                              # )
                                               ], spacing=120
                                     )
 
@@ -342,24 +468,24 @@ def gen_page(page):
     _refStatusBarText = ft.Ref[ft.Text]()
     DTCLS.Data_page.Data_module.set_status_bar(_refStatusBar, _refStatusBarText)
 
-    statusBar = ft.Column([ft.Divider(height=1),
-                           ft.Container(
-                               ft.Text('', ref=_refStatusBarText))]
-                          )
+    status_bar = ft.Column(
+        [
+            ft.Divider(height=1),
+            ft.Container(ft.Text("", ref=_refStatusBarText)),
+        ]
+    )
 
     dynamic_container = ft.Container(ft.Column(
         controls=[
         ],
         scroll=ft.ScrollMode.ALWAYS, expand=True, ref=_desktop_column_ref
     ), expand=True)
-    status_container = ft.Container(content=statusBar,
+    status_container = ft.Container(content=status_bar,
                                     ref=_refStatusBar,
                                     height=100
                                     )
     # _general_module_row_ref.current = None
     # _desktop_column_ref.current = None
-
-    # DTCLS.Data_page.Data_module.status_bar.set_text('123')
 
     return ft.Row([
         rail,
@@ -398,7 +524,7 @@ def paint_rail(select_destination):
         min_width=100,
         min_extended_width=400,
         leading=ft.FloatingActionButton(icon=leading_data['icon'],
-                                        text=leading_data['text'],
+                                        content=leading_data['text'],
                                         on_click=lambda _: go_home(_)),
         group_alignment=-0.9,
         destinations=list_bars,
@@ -407,7 +533,7 @@ def paint_rail(select_destination):
     return rail
 
 
-def set_header_elems_visible(val: bool = True):
+def set_header_elems_visible(val: bool = True): #todo нужен ли ререндер
     if not _header_input_panel_btn_save_ref.current.visible == val:
         _header_input_panel_btn_save_ref.current.visible = val
         _header_input_panel_textfield_ref.current.visible = val
@@ -415,7 +541,7 @@ def set_header_elems_visible(val: bool = True):
     return False
 
 
-def set_header_elems_enabled(val: bool = True):
+def set_header_elems_enabled(val: bool = True): #todo нужен ли ререндер
     if  _header_input_panel_btn_save_ref.current.disabled == val:
         _header_input_panel_btn_save_ref.current.disabled = not val
         _header_input_panel_textfield_ref.current.disabled = not val

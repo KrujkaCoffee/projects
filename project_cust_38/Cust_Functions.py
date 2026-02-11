@@ -1288,6 +1288,50 @@ def date_add_days(date: str, days, format="%Y-%m-%d %H:%M:%S", format_out="%Y-%m
         return datetostr(rez, format_out)
 
 
+def date_add_period(date: str = now(), format_in="%Y-%m-%d %H:%M:%S", vid: str = 'y',
+                    format_out="%Y-%m-%d %H:%M:%S", count=1):
+    """
+    Прибавляет или вычитает указанный период к дате
+
+    Параметры:
+    - date: исходная дата (строка или datetime)
+    - format_in: формат входной даты (если пустая строка, date должен быть datetime)
+    - vid: тип периода: 'y'-год, 'm'-месяц, 'q'-квартал, 'n'-неделя, 'd'-день
+    - format_out: формат выходной даты (если пустая строка, возвращается datetime)
+    - count: количество периодов (может быть отрицательным)
+
+    Возвращает:
+    - дату с прибавленным/вычтенным периодом в указанном формате
+    """
+    # Преобразуем строку в datetime, если нужно
+    if format_in == '':
+        dt = date
+    else:
+        dt = strtodate(date, format_in)
+
+    # Прибавляем/вычитаем период в зависимости от vid
+    if vid == 'y':
+        result = dt + relativedelta(years=count)
+    elif vid == 'm':
+        result = dt + relativedelta(months=count)
+    elif vid == 'q':
+        # Для квартала прибавляем 3 месяца * count
+        result = dt + relativedelta(months=count * 3)
+    elif vid == 'n':
+        # Для недели прибавляем 7 дней * count
+        result = dt + timedelta(days=count * 7)
+    elif vid == 'd':
+        result = dt + timedelta(days=count)
+    else:
+        raise ValueError(f"Неизвестный тип периода: {vid}. Допустимые: 'y', 'm', 'q', 'n', 'd'")
+
+    # Возвращаем результат в нужном формате
+    if format_out == '':
+        return result
+    else:
+        return datetostr(result, format_out)
+    
+    
 def start_end_dates_c(date: str = now(), format_in="%Y-%m-%d %H:%M:%S", vid: str = 'y', format_out="%Y-%m-%d %H:%M:%S"):
     """y,m,n,d"""
     if format_in == '':
@@ -1300,6 +1344,11 @@ def start_end_dates_c(date: str = now(), format_in="%Y-%m-%d %H:%M:%S", vid: str
     if vid == 'm':
         nach = today.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         out = nach, nach + relativedelta(months=1) - timedelta(seconds=1)
+    if vid == 'q':
+        quarter = (today.month - 1) // 3  # 0 - первый квартал, 1 - второй и т.д.
+        start_month = quarter * 3 + 1  # Январь (1), Апрель (4), Июль (7), Октябрь (10)
+        nach = today.replace(month=start_month, day=1, hour=0, minute=0, second=0, microsecond=0)
+        out = nach, nach + relativedelta(months=3) - timedelta(seconds=1)
     if vid == 'n':
         monday = today - timedelta(DT.weekday(today))
         nach = monday.replace(hour=0, minute=0, second=0, microsecond=0)

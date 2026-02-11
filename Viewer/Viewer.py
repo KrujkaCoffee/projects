@@ -106,7 +106,7 @@ class Data:
     type_workers = m.get_response('Catalog_ВидыРаботСотрудников',
                                                f"""?$filter=DeletionMark eq false &$select=Ref_Key, Description""")
     if type_workers is None:
-        CQT.msgbox('Не удалось установить соединение с сервром ERP')
+       F.win_msgbox('Упс!','Не удалось установить соединение с сервром ERP')
     else:
         DICT_TRDZ = F.deploy_dict_c(type_workers, "Ref_Key")
 
@@ -286,6 +286,7 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.fr_addition_tbl.setHidden(True)
         self.ui.fr_erp_handler.setHidden(True)
         self.ui.fr_mk_zamech.setHidden(True)
+        self.ui.fr_params_plan.setHidden(True)
         ZMCH.init_zamech_const(self)
         self.DICT_MAT = F.deploy_dict_c(CSQ.custom_request_c(self.bd_mat, f"""SELECT * FROM nomen""", rez_dict=True),
                                         'Код')
@@ -526,15 +527,15 @@ class mywindow(QtWidgets.QMainWindow):
                 if CQT.msgboxgYN(f'Обновить процент внеплановых работ в таблице видов по направлениям?'):
                     dict_vids_napr_percent = dict()
                     for item in self.analysis_vneplan_by_vid_rab_tmp_res_list:
-                        if 'Вид_по_напр' not in item:
+                        if 'Вид_по_напр_id' not in item:
                             continue
-                        if item['Вид_по_напр'] not in dict_vids_napr_percent:
-                            dict_vids_napr_percent[item['Вид_по_напр']] = {'p': 0,
+                        if item['Вид_по_напр_id'] not in dict_vids_napr_percent:
+                            dict_vids_napr_percent[item['Вид_по_напр_id']] = {'p': 0,
                                                                            'v': 0}
                         if item['Тип'] == 'внеплан':
-                            dict_vids_napr_percent[item['Вид_по_напр']]['v'] += item['Tвремя']
+                            dict_vids_napr_percent[item['Вид_по_напр_id']]['v'] += item['Tвремя']
                         else:
-                            dict_vids_napr_percent[item['Вид_по_напр']]['p'] += item['Tвремя']
+                            dict_vids_napr_percent[item['Вид_по_напр_id']]['p'] += item['Tвремя']
 
                     for vid in dict_vids_napr_percent.keys():
                         delta = 0
@@ -542,9 +543,9 @@ class mywindow(QtWidgets.QMainWindow):
                             delta = round(dict_vids_napr_percent[vid]['v'] / dict_vids_napr_percent[vid]['p'], 2)
                             if delta > 5:
                                 delta = 5
-                        if not self.Data.DICT_VID_PO_NAPR_NAME[vid]['Утверждены_нормы']:
-                            #CSQ.custom_request_c(self.db_kplan,
-                            #                    f"""UPDATE виды_по_направлению SET (vneplan_percent) = {delta} WHERE Пномер = {vid}""")  # 18.08.25
+                        if not self.Data.DICT_VID_PO_NAPR[vid]['Утверждены_нормы']:
+                            CSQ.custom_request_c(self.db_kplan,
+                                                f"""UPDATE виды_по_направлению SET (vneplan_percent) = {delta} WHERE Пномер = {vid}""")  # 18.08.25
                             pass
                     CQT.msgbox(f'Успешно')
 
@@ -740,10 +741,14 @@ class mywindow(QtWidgets.QMainWindow):
 
     @CQT.onerror
     def tbl_report_add_itemSelectionChanged(self,*args):
+        if self.vid_report_c == 'Отчетность персонала':
+            RPTP.clck_tbl_report_add()
 
-        ARMOPER.report_add_itemSelectionChanged(self)
+        if self.vid_report_c == 'Трудозатраты':
 
-        CQT.clear_tbl(self.ui.tbl_viev_etaps_erp)
+            ARMOPER.report_add_itemSelectionChanged(self)
+
+            CQT.clear_tbl(self.ui.tbl_viev_etaps_erp)
 
     @CQT.onerror
     def tbl_viev_etaps_name_itemSelectionChanged(self,*args):

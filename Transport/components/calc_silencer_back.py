@@ -1,19 +1,38 @@
 import os
-import components.common_funcs as CMF
-from components.common_funcs import Table_data
-import flet as ft
-import project_cust_38.Cust_Functions as F
 import copy
+import operator
 import math
 import re
+
+import flet as ft
+
+import project_cust_38.Cust_Functions as F
 import project_cust_38.Cust_Excel as CEX
-import data_class as DTCLS
+import project_cust_38.Cust_emoji as Cust_emoji
 import project_cust_38.Cust_SQLite as CSQ
 import Config.srv_config as SRVCFG
 from components import calc_silencer_input_params
-from components.calc_silencer_output_params import GROUPS, OUTPUT_PARAMS
+from components import calc_acoustic_input_params
+from components import calc_silencer_output_params
+from components import calc_acoustic_output_params
+# from components.calc_silencer_output_params import GROUPS, OUTPUT_PARAMS
 import components.calc_silencer_functions_M5_M400 as silencer_functions
-import project_cust_38.Cust_emoji as Cust_emoji
+import components.calc_acoustic_functions as acoustic_functions
+
+import components.common_funcs as CMF
+from components.common_funcs import Table_data
+import data_class as DTCLS
+
+CONSTANTS = {**calc_silencer_input_params.constants, **acoustic_functions.CONSTANTS}
+INPUT_PARAMS = [*calc_silencer_input_params.list_dicts_data_input, *calc_acoustic_input_params.list_dicts_data_input]
+OUTPUT_PARAMS = {**calc_silencer_output_params.OUTPUT_PARAMS, **calc_acoustic_output_params.OUTPUT_PARAMS_ACOUSTIC}
+CALC_FUNCTIONS = {**silencer_functions.CALC_FUNCTIONS, **acoustic_functions.CALC_FUNCTIONS}
+GROUPS = {**calc_silencer_output_params.GROUPS, **calc_acoustic_output_params.GROUPS}
+OPERATORS = {
+    '<=': operator.le,
+    '>=': operator.ge,
+    '=': operator.eq
+}
 
 class Cust_module_params():
     def __init__(self):
@@ -69,7 +88,7 @@ def calc_new_tbl_input():
     new_tbl_input_copy = copy.deepcopy(TBL_INPUT)
     new_tbl_input_copy.add_table_name(F.get_time_shtamp_c(), 'Ввод параметров:')
     prev_gr = ''
-    for item in calc_silencer_input_params.list_dicts_data_input:
+    for item in INPUT_PARAMS:
         name = item['name']
         header = item['header']
         dimension = item['dimension']
@@ -166,9 +185,9 @@ def generate_rez_tbl(e: ft.ControlEvent, tbl: ft.DataTable, ref_out, fnc_cell_cl
     DTCLS.Data_page.Data_module.cust_data.output_tbl = tbl_output
 
     if errors:
-        headers = ', '.join(f"{msg.get('header')}" for msg in errors if msg.get('header'))
+        headers = '\n '.join(f"{msg.get('header')}" for msg in errors if msg.get('header'))
         Data.Data_module.status_bar.set_text(
-            f"{warning_symbol} Рассчитано частично: пропущено {len(errors)} параметров ({headers})"
+            f"{warning_symbol} Произошли ошибки при расчете {len(errors)} параметров ({headers})"
         )
     else:
         Data.Data_module.status_bar.set_text(f"{success_symbol}] Успешно рассчитано")
@@ -180,12 +199,23 @@ def make_res_tbl(data: dict, ref_out=None, fnc_cell_click=None) -> CMF.Table_dat
     new_tbl_output.add_table_name(F.get_time_shtamp_c(), 'Расчетные данные:')
 
     list_groups = [group for group, is_view in GROUPS.items() if is_view]
+    # list_groups = []
+    # for key, _ in OUTPUT_PARAMS.items():
+    #     if key not in data:
+    #         continue
+    #     group = ''
+    #     if 'group_name' in _:
+    #         group = _['group_name']
+    #     if _['group_name'] not in list_groups:
+    #         list_groups.append(group)
+
+    list_groups = sorted(list_groups)
     for group in list_groups:
         group_items: list[tuple[str, object]] = []
         for name, val in data.items():
             if name not in OUTPUT_PARAMS:
                 continue
-            if not OUTPUT_PARAMS[name].get('view', False):
+            if not OUTPUT_PARAMS[name].get('view', True):
                 continue
             current_group = OUTPUT_PARAMS[name].get('group_name', '')
             if current_group != group:
@@ -204,20 +234,18 @@ def make_res_tbl(data: dict, ref_out=None, fnc_cell_click=None) -> CMF.Table_dat
             row.group_name = group
             row.append(name, CMF.Cell_description())
             row.append(OUTPUT_PARAMS[name]['header'], CMF.Cell_description())
-
             if F.is_numeric(val):
                 accuracy = OUTPUT_PARAMS[name]['accuracy']
                 row.append(val, CMF.Cell_description(accuracy=accuracy, data_type=float))
             else:
                 row.append(val, CMF.Cell_description(data_type=str))
-
             row.append(OUTPUT_PARAMS[name]['dimension'], CMF.Cell_description())
             comment = OUTPUT_PARAMS[name].get('comment') or ''
             row.append(comment, CMF.Cell_description())
 
             new_tbl_output.add_row(row)
+    CMF.Table_view(new_tbl_output, ref=ref_out, fnc_on_click=fnc_cell_click, lazy_groups=True, single_group_expand=True)
 
-    CMF.Table_view(new_tbl_output, ref=ref_out, fnc_on_click=fnc_cell_click)
     return new_tbl_output
 
 
@@ -397,11 +425,7 @@ def calc_new_data(input_data: dict) -> tuple[dict, list[dict], bool]:
     list_err = []
     calculated = {}
 
-    # Константы
-    constants = calc_silencer_input_params.constants
-
-    # Объединяем входные данные с константами
-    params = {**constants, **input_data}
+    params = {**CONSTANTS, **input_data}
 
     # Вспомогательные функции проверки
     def check_positive(name, value, header):
@@ -426,10 +450,20 @@ def calc_new_data(input_data: dict) -> tuple[dict, list[dict], bool]:
 
     # Выполняем расчеты
 
-    for key, info in silencer_functions.CALC_FUNCTIONS.items():
+    for key, info in CALC_FUNCTIONS.items():
         fn = info['fnc']
         try:
-            calculated[key] = fn({**params, **calculated})
+            validate = set()
+            if 'depends' in OUTPUT_PARAMS[key]:
+                for depend_key, creds in OUTPUT_PARAMS[key]['depends'].items():
+                    op = OPERATORS[creds['operator']]
+                    target_value = creds['value']
+                    current_value = params[depend_key]
+                    validate.add(op(target_value, current_value))
+            if all(validate):
+                calculated[key] = fn({**params, **calculated})
+            else:
+                params[key] = 0
         except Exception as e:
             calculated[key] = None
             name = key

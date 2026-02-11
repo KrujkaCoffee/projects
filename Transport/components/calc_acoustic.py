@@ -66,7 +66,7 @@ def show_msgbox_err(e):
         title="Ошибка сохранения",
         time_life=3  # Автозакрытие через 5 секунд
     )
-def apply_page_settings(page: ft.Page,MODULE:DTCLS.Module_cfg):
+def apply_page_settings(page: ft.Page, MODULE:DTCLS.ModuleCfg):
     Data: DTCLS.Data_page = page.data
     route = page.route
     Data.Data_module = MODULE
@@ -184,7 +184,7 @@ def gen_page(page):
             DTCLS.Data_page.page.update()
             return
             Data: DTCLS.Data_page = e.page.data
-            cfg_module: DTCLS.Module_cfg = Data.Data_module
+            cfg_module: DTCLS.ModuleCfg = Data.Data_module
             name = _header_input_panel_textfield_ref.current.value
             rezult_data_for_save = calc_acoustic_back.generate_rezult_data_for_save(name, _input_tabe_ref.current,
                                                                                   _output_tabe_ref.current)

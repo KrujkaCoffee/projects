@@ -82,8 +82,9 @@ class B24Sender(BaseSender):
         logging.error('[b24-chat]Ошибка отправки сообщения')
         return False
 
-    def send_msg_table_by_action(self, action: str,title:str, tbl: list[dict]) -> bool:
-        chat_id = self.get_chat_id_by_action(action)
+    def send_msg_table_by_action(self, action: str,title:str, tbl: list[dict],chat_id:str|None=None) -> bool:
+        if chat_id is None:
+            chat_id = self.get_chat_id_by_action(action)
         if chat_id:
             return self.send_msg_table(tbl, chat_id, title, bold_title = False  )
         logging.error('[b24-chat]Ошибка отправки сообщения')

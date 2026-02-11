@@ -58,6 +58,7 @@ def load_tbl_gant(self:mywindow):
         return query
 
     def generate_full_table(self,query:dict):
+        list_errs = []
         set_dates = set()
         dict_dates_vals = dict()
         for item in query:
@@ -66,7 +67,9 @@ def load_tbl_gant(self:mywindow):
                 print(f'Пномер {item["Пномер"]}, №проекта {item["№проекта"]} - Не сформирован локальный график')
                 datat_bin = CMS.update_local_graf(self, True, int(item['Пномер']), False)
                 if datat_bin == None:
-                    print(f"Ошибка генерации графика {str(item['Пномер'])}")
+                    msg = f"Ошибка генерации графика {str(item['Пномер'])}"
+                    print(msg)
+                    list_errs.append({'Ошибка':msg})
                     continue
                 print(f"Line {int(item['Пномер'])} update")
                 item['local_graf'] = datat_bin
@@ -100,21 +103,43 @@ def load_tbl_gant(self:mywindow):
                     dict_tmp_table[date] = tbl_gant[0]['data'][date]
             tmp_list = []
             #query[i]['local_graf'] = dict_tmp_table
-            dict_form.append({'pnom':item['Пномер'],'proj':f"{item['№проекта']} {item['№ERP']}",
-                              'poz':item['Позиция'],'napr_deya':item['Направление_деят'] ,
-                              'napr': item['Направление'],
-                              'data':dict_tmp_table})
+            dict_replace_by_days = {}
+            if item['fact_jurnal_blolb_data']:
+                fact_jurnal_blolb_data = F.from_binary_pickle(item['fact_jurnal_blolb_data'])
+                if fact_jurnal_blolb_data is not None:
+                    dict_replace_by_days = fact_jurnal_blolb_data
 
+            dict_form.append({'pnom':item['Пномер'],
+                              'proj':f"{item['№проекта']} {item['№ERP']}",
+                              'poz':item['Позиция'],
+                              'napr_deya':item['Направление_деят'] ,
+                              'napr': item['Направление'],
+                              'data':dict_tmp_table,
+                                'dict_replace_by_days':dict_replace_by_days })
+        if list_errs:
+            CQT.msgboxg_get_table_ok_inf(self,f'Ошибки генерации таблицы',list_errs)
+            return
         return dict_form
 
+    #list_of_tbls = load_tabels(self) 04.02.2026 убрано при переработке под локальный
 
-    list_of_tbls = load_tabels(self)
+    tbl = self.ui.tbl_kal_pl
+    kpl_nums = []
+    t = CQT.TableContext(tbl)
+    for row in t.rows():
+        if not tbl.isRowHidden(row.i):
+            kpl_nums.append(row.value('plan.Пномер'))
+    list_of_tbls = CMS.load_dict_poz_from_sql(kpl_nums)
     if not list_of_tbls:
         CQT.msgbox(f'Ошибка')
         return
+
     dict_form = generate_full_table(self,list_of_tbls)
+    if dict_form is None:
+        return
     self.current_kpl_table = 'tbl_pl_gaf'
     CMS.fill_gant_table(self, self.ui.tbl_pl_gaf, self.ui.tbl_pl_gaf_filtr, dict_form)
+
 
 
 def show_svod(self):

@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, TypeVar
 import project_cust_38.api_erp_commands as APIERP
 import project_cust_38.Cust_b24 as CB24
 import project_cust_38.Cust_emoji as CEMOJ
+from data_class import Data_plan as DTCLS
 from functools import partial
 if TYPE_CHECKING:
     from MKart import mywindow
@@ -1747,6 +1748,10 @@ def btn_pl_load_norm(self: mywindow):
     poz.load_kpl_table('пл_оуп')
     vid_po_napr = poz.dict_tables['пл_топ']['Вид']
     ud_ves_vo = poz.dict_tables['пл_топ']['Уд_вес_ВО']
+    count_izd = poz.dict_tables['пл_оуп']['Количество']
+    if count_izd == None or count_izd == '' or not F.is_numeric(count_izd):
+        CQT.msgbox(f'{"пл_оуп.Количество"} не число')
+        return
     nk_napr = CQT.num_col_by_name_c(tbl, 'plan.Направление_деятельности')
     if nk_napr == None:
         CQT.msgbox(f'Отсутствует поле plan.Направление_деятельности')
@@ -1791,11 +1796,6 @@ def btn_pl_load_norm(self: mywindow):
     emo_off = CEMOJ.СтатусыПроизводства.stopped.symbol
     emo_on = CEMOJ.СтатусыПроизводства.normal.symbol
 
-    is_may_mk = False
-    is_may_1c = False
-    is_may_tkpa = False
-    is_may_sort= False
-    is_may_weight = False
 
 
 
@@ -1993,6 +1993,8 @@ def btn_pl_load_norm(self: mywindow):
         return
     result = result[0]
 
+    list_err = []
+
     if result['Вид расчета'] == 'По МК':
         tmp_log = []
         list_log = []
@@ -2028,7 +2030,9 @@ def btn_pl_load_norm(self: mywindow):
             if et['ЭтапНаименование'] in DICT_NAMES_ETAP_FROM_ERP:
                 name_gr = DICT_NAMES_ETAP_FROM_ERP[et['ЭтапНаименование']]
                 if name_gr in dict_norm:
-                    dict_norm[name_gr] += et['Количество']
+                    dict_norm[name_gr] += et['Количество']*count_izd
+            else:
+                list_err.append({'Ошибка':f"Этап 1c `{et['ЭтапНаименование']}` не имеет соответствия в настройках МЕС. Норма не учтена"})
     elif result['Вид расчета'] == 'По виду':
         dict_norm = calc_by_vo(self, pnom, dict_norm, nk_stat_norm)
     else:#result['Вид расчета'] == 'По весу':
@@ -2042,6 +2046,9 @@ def btn_pl_load_norm(self: mywindow):
             name_inp_field = f"{compose['name']}.{inp_field}"
             summ_compose += dict_norm[name_inp_field]
         dict_norm[name_compose] = round(summ_compose, 2)
+
+    if list_err:
+        CQT.msgboxg_get_table_ok_inf(self,f'Ошибки расчета',list_err)
 
     list_change = fill_norm_db(self, dict_norm, pnom, poz.row_time_etap, poz.row_time_add_etap)
 
@@ -4489,6 +4496,172 @@ def create_db(self):
 """
     CSQ.create_db_sql_c(self.db_kplan, frase_tmp)
 
+@CQT.onerror
+def test_add_field_kpl():
+    list_files_bin = CSQ.custom_request_c(CFG.Config.project.db_kplan,
+                                          f"""SELECT file_poz_plan, Дата FROM mnts_plan 
+                                            WHERE file_poz_plan IS NOT NULL""",rez_dict=True)
+
+
+    list_znpr = CSQ.custom_request_c(CFG.Config.project.db_kplan,
+                                          f"""SELECT пл_оуп.НомПл, знпр.Дата_занесения_в_план_месяца  FROM знпр 
+                                          INNER JOIN пл_оуп ON пл_оуп.Пномер_ЗП = знпр.s_num 
+                                            WHERE знпр.Дата_занесения_в_план_месяца != "";""",rez_dict=True)
+
+    dict_znpr = F.deploy_dict_c(list_znpr,'НомПл')
+
+
+    list_files_bin = F.sort_by_column_c(list_files_bin,'Дата')
+    dict_date_add_poz = {}
+    for item in list_files_bin:
+        if not item:
+            continue
+        date = item['Дата']
+        file = F.from_binary_pickle(item['file_poz_plan'])
+        for num, data_poz in file.items():
+            if num not in dict_date_add_poz:
+                dict_date_add_poz[num] = date
+
+
+    for num, date in dict_date_add_poz.items():
+
+        date_mnts = date
+        date_mnts_obj = F.strtodate(date_mnts)
+        name_plan = f'{F.month_rus_from_date(date,"%Y-%m-%d",False)} {date_mnts_obj.year}'
+
+        if num in dict_znpr:
+            date_znpr = dict_znpr[num]
+            date_znpr_obj = F.strtodate(date_znpr)
+            month_znpr = date_znpr_obj.month
+
+            month_mnts = date_mnts_obj.month
+            if month_mnts == month_znpr:
+                date = dict_znpr[num]
+        rez = CSQ.custom_request_c(CFG.Config.project.db_kplan,f"""
+            UPDATE plan SET (Дата_внесения_в_план_месяца, Имя_внесения_в_план_месяца ) = ("{date}","{name_plan}") WHERE Пномер = {num};
+            """)
+        print(rez)
+
+class Сomparison_fields_vs_db_field():
+    def __init__(self,name_column_plan:str,name_tbl_db:str,name_field_db:str):
+        self.name_column_plan:str|None = name_column_plan
+        self.name_tbl_db:str|None = name_tbl_db
+        self.name_field_db:str|None = name_field_db
+        if self.name_tbl_db == 'plan':
+            ind_field = 'Пномер'
+        else:
+            ind_field = 'НомПл'
+        self.ind_field:str = ind_field
+
+class Сomparison_fields_vs_db():
+    def __init__(self,list_fields:list[Сomparison_fields_vs_db_field]):
+        tbl = DTCLS.app_self.ui.tbl_kal_pl
+        t = CQT.TableContext(tbl)
+        self.t: CQT.TableContext = t
+        self.list_fields:list[Сomparison_fields_vs_db_field] = []
+        self.dict_hierarchy_tbls_db = dict()
+        self.db = CFG.Config.project.db_kplan
+        self.kpls:dict[int,CQT.TableRow] = self._get_active_kpl_nums()
+        for field in list_fields:
+            if field.name_column_plan in t.nf:
+                self.list_fields.append(field)
+                if field.name_tbl_db not in self.dict_hierarchy_tbls_db:
+                    self.dict_hierarchy_tbls_db[field.name_tbl_db]={'items_fields':[],
+                                                                    'ind_field':field.ind_field}
+                self.dict_hierarchy_tbls_db[field.name_tbl_db]['items_fields'].append(field)
+        self._check_existance()
+
+
+    def _check_existance(self):
+        list_tbls = CSQ.get_list_of_tables_c(self.db)
+        exist_tbls = dict()
+        not_exist_tbls = set()
+        for it in self.list_fields:
+            tbl_name = it.name_tbl_db
+            field_name = it.name_field_db
+            if tbl_name in list_tbls:
+                if tbl_name not in exist_tbls:
+                    exist_tbls[tbl_name] = {'ind_field':it.ind_field,'field_name':[]}
+                exist_tbls[tbl_name]['field_name'].append(field_name)
+            else:
+                not_exist_tbls.add(tbl_name)
+        if not_exist_tbls:
+            raise ValueError(f'reload_fields_from_db err: tbls "{not_exist_tbls}" not found in db "{self.db}"')
+
+        not_exist_fields = set()
+        for tbl_db, fields_inf in exist_tbls.items():
+            fields = fields_inf['field_name']
+            ind_field = fields_inf['ind_field']
+
+            list_fields_db = CSQ.dict_types_tbl(self.db, tbl_db)
+            if ind_field not in list_fields_db:
+                raise ValueError(f'reload_fields_from_db err: ind_field "{ind_field}" not found in tbl: {tbl_db}, db: "{self.db}"')
+
+            for field_name in fields:
+                if field_name not in list_fields_db:
+                    not_exist_fields.add(f'{tbl_db}.{field_name}')
+        if not_exist_fields:
+            raise ValueError(f'reload_fields_from_db err: fields "{not_exist_fields}" not found in db "{self.db}"')
+
+    def _get_active_kpl_nums(self)->dict:
+        kpls = dict()
+        for it in self.t.rows():
+            kpls[int(it.value('plan.Пномер'))]=it
+        return kpls
+
+    @CQT.onerror
+    def reload_fields_from_db(self)->tuple[bool,dict]:
+        def norm(v):
+            return '' if v is None else str(v)
+
+
+        rez = dict()
+        suc_iter = False
+        limit = 1000
+        start = 0
+        if not self.kpls:
+            return suc_iter,rez
+        list_kpls = list(self.kpls.keys())
+        with CQT.table_updating(self.t.tbl):
+            while start < len(self.kpls):
+                chunk_kpl = list_kpls[start:start+limit]
+                start = start+limit
+                if not chunk_kpl: continue
+                for tbl_db, fields_name in self.dict_hierarchy_tbls_db.items():
+                    select_fields = [_.name_field_db for _ in fields_name['items_fields']]
+                    text = f'''SELECT {", ".join(select_fields)}, {fields_name['ind_field']} as id_row from {tbl_db} 
+                            WHERE {fields_name['ind_field']}
+                        in ({", ".join([str(_) for _ in chunk_kpl])});'''
+                    data = CSQ.custom_request_c(self.db,text,rez_dict=True)
+                    dict_data = F.deploy_dict_c(data,'id_row')
+                    for item in fields_name['items_fields']:
+                        name_field_db = item.name_field_db
+                        name_column_plan = item.name_column_plan
+                        for kpl in chunk_kpl:
+                            row = self.kpls.get(kpl)
+                            if not row: continue
+                            new_val = None
+                            if kpl in dict_data:
+                                new_val = dict_data[kpl][name_field_db]
+                            if new_val is  None:
+                                continue
+
+                            suc_iter = True
+                            old_val = row.value(name_column_plan)
+                            if norm(new_val) != norm(old_val):
+                                row.set_value(name_column_plan, new_val)
+                                if kpl not in rez:
+                                    rez[kpl] = []
+                                rez[kpl].append({'Поле':name_column_plan,
+                                          'Было':old_val,
+                                          'Стало':new_val})
+        return suc_iter,rez
+
+
+
+
+
+
 
 @CQT.onerror
 def load_db(self: mywindow, pnom=False, only_hat=False,use_groups=False):
@@ -4583,6 +4756,7 @@ def load_db(self: mywindow, pnom=False, only_hat=False,use_groups=False):
                 if alias in dict_inner:
                     alias = dict_inner[alias] #25.11.25
                 rez_list_tabels.append(alias)
+
     str_field = ', \n'.join(rez_list_tabels)
     for key in dict_inner.keys():
         str_field = str_field.replace(key, dict_inner[key])

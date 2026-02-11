@@ -1,12 +1,9 @@
-import os
-
 import flet as ft
 import components.settings as SETGS
 import project_cust_38.Cust_Functions as F
 import components.plug_page as PLUG
 import components.calc_pneumo as MCP
 import components.calc_silencer as MCS
-import components.calc_acoustic as MCSa
 import components.calc_airslide as MCA
 import components.calc_pneumatic_jet as MCPj
 import data_class as DTCLS
@@ -15,66 +12,61 @@ if __name__ == '__main__':
     quit()
 
 
-modules = DTCLS.Module_cfg()
+modules = DTCLS.ModuleCfg()
 
-modules.add_submodule(DTCLS.Module_cfg("modules",
+modules.add_submodule(DTCLS.ModuleCfg("modules",
                               "/modules/modules",
                               'Модули',
-                              ft.Icons.WIDGETS,
+                                      ft.Icons.WIDGETS,
                               'Выбор инструмента'))
 
-modules.sub_modules["modules"].add_submodule(DTCLS.Module_cfg("pneumatic_transport",
+modules.sub_modules["modules"].add_submodule(DTCLS.ModuleCfg("pneumatic_transport",
                               "/modules/pneumatic_transport_dev",
                               "ПО для расчета пневмотранспорта",
-                              ft.Icons.AIR,
+                                                             ft.Icons.AIR,
                               'Задача № 100050625'))
 
 
-modules.sub_modules["modules"].add_submodule(DTCLS.Module_cfg("airslide",
+modules.sub_modules["modules"].add_submodule(DTCLS.ModuleCfg("airslide",
                               "/modules/airslide",
                               "ПО для расчета аэрожелоба",
-                              ft.Icons.AIRLINE_STOPS,
+                                                             ft.Icons.AIRLINE_STOPS,
                               ''))
-modules.sub_modules["modules"].add_submodule(DTCLS.Module_cfg("pneumatic_jet",
+modules.sub_modules["modules"].add_submodule(DTCLS.ModuleCfg("pneumatic_jet",
                               "/modules/pneumatic_jet",
                               "ПО для расчета пневмотранспорта на базе струйного насоса",
-                              ft.Icons.TORNADO,
+                                                             ft.Icons.TORNADO,
                               ''))
-modules.sub_modules["modules"].add_submodule(DTCLS.Module_cfg("silencer",
+modules.sub_modules["modules"].add_submodule(DTCLS.ModuleCfg("silencer",
                               "/modules/silencer",
                               "ПО для расчета шумоглушителей",
-                              ft.Icons.VIBRATION,
+                                                             ft.Icons.VIBRATION,
                               ''))
-modules.sub_modules["modules"].add_submodule(DTCLS.Module_cfg("acoustic",
-                              "/modules/acoustic",
-                              "ПО для расчета шумоглушителей acoustic",
-                              ft.Icons.VIBRATION,
-                              ''))
-modules.sub_modules["modules"].add_submodule(DTCLS.Module_cfg("vipoln",
+modules.sub_modules["modules"].add_submodule(DTCLS.ModuleCfg("vipoln",
                               "/modules/vipoln",
                               "Выполнение нарядов (планшетный вариант)",
-                              ft.Icons.WORK_OUTLINE,
+                                                             ft.Icons.WORK_OUTLINE,
                               'Модуль "Выполнение" для планшета'))
-modules.sub_modules["modules"].add_submodule(DTCLS.Module_cfg("reports",
+modules.sub_modules["modules"].add_submodule(DTCLS.ModuleCfg("reports",
                               "/modules/reports",
                               "Отчеты",
-                              ft.Icons.INSERT_CHART,
+                                                             ft.Icons.INSERT_CHART,
                               'Производственные отчеты'))
-modules.sub_modules["modules"].add_submodule(DTCLS.Module_cfg("guides",
+modules.sub_modules["modules"].add_submodule(DTCLS.ModuleCfg("guides",
                               "/modules/guides",
                               "Руководства",
-                              ft.Icons.MENU_BOOK,
+                                                             ft.Icons.MENU_BOOK,
                               'Инструкции по работе с МЕС'))
 
-modules.add_submodule(DTCLS.Module_cfg("settings",
+modules.add_submodule(DTCLS.ModuleCfg("settings",
                               "/modules/settings",
                               'Настройки',
-                              ft.Icons.SETTINGS,
+                                      ft.Icons.SETTINGS,
                               'Настройки'))
-modules.sub_modules["settings"].add_submodule(DTCLS.Module_cfg("decoration",
+modules.sub_modules["settings"].add_submodule(DTCLS.ModuleCfg("decoration",
                               "/modules/decoration",
                               "Оформление",
-                              ft.Icons.STYLE,
+                                                              ft.Icons.STYLE,
                               'Оформление'))
 
 _ref_main = ft.Ref[ft.Row]()
@@ -82,8 +74,7 @@ _ref_main = ft.Ref[ft.Row]()
 
 
 def main_page(page, PATHF_IT_PLAN):
-    # data_it_plan = F.load_file_pickle(PATHF_IT_PLAN)
-    data_it_plan = []
+    data_it_plan = F.load_file_pickle(PATHF_IT_PLAN)
     list_plan = [_ for _ in data_it_plan if _['ТИП'] == 'Развитие процессов' and _['ПП'] == 'MES']
     list_completed = [_ for _ in list_plan if F.valm(_['ПРОЦЕНТ ВЫПОЛНЕНИЯ']) >= 1]
     list_intend = [_ for _ in list_plan if F.valm(_['ПРОЦЕНТ ВЫПОЛНЕНИЯ']) < 1]
@@ -127,9 +118,9 @@ def menubar():
         try:
             module_data
             if not module_data is select.data:
-                module_data: DTCLS.Module_cfg = select.data
+                module_data: DTCLS.ModuleCfg = select.data
         except:
-            module_data: DTCLS.Module_cfg = select.data
+            module_data: DTCLS.ModuleCfg = select.data
         if e.control.parent.content.value == 'Модули':
             pg.data.Data_module = module_data
             pg.go(module_data.route)
@@ -139,7 +130,7 @@ def menubar():
         if not isinstance(modules, dict):
             return
         for module in modules.values():
-            if not isinstance(module, DTCLS.Module_cfg):
+            if not isinstance(module, DTCLS.ModuleCfg):
                 return [module]
 
             if module.sub_modules:
@@ -171,7 +162,7 @@ def menubar():
     menubar = ft.MenuBar(
         expand=True,
         style=ft.MenuStyle(
-            alignment=ft.alignment.top_left,
+            alignment=ft.Alignment.TOP_LEFT,
             # bgcolor=ft.Colors.RED_100,
             mouse_cursor={
                 ft.ControlState.HOVERED: ft.MouseCursor.WAIT,
@@ -196,7 +187,5 @@ def load_module(page: ft.Page):
     if page.route == ("/modules/silencer"):
         MCS.apply_page_settings(page,modules.get_module_by_route(page.route))
         return MCS.gen_page(page)
-    if page.route == ("/modules/acoustic"):
-        MCSa.apply_page_settings(page,modules.get_module_by_route(page.route))
-        return MCSa.gen_page(page)
+
     return PLUG.gen_page(page)

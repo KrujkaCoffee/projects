@@ -112,6 +112,7 @@ WHATS_NEW_CSS = """
     font-weight: bold;
     }
     """
+
 MES_CSS = """
     QTableWidget {
     border: none;
@@ -137,6 +138,63 @@ MES_CSS = """
     background-color: rgb(238,244,232);
     }
     
+    /* Выделение без фокуса */
+    QTableWidget::item:selected {
+    background-color: rgb(225,240,220);
+    color: rgb(35,35,35);
+    }
+    
+    /* Выделение с фокусом */
+    QTableWidget::item:selected:focus {
+    background-color: rgb(205,225,195);
+    border: 1px solid rgb(170,205,160);
+    color: rgb(30,30,30);
+    }   
+    
+    /* Заголовки */
+    QHeaderView::section {
+    background-color: rgb(235,237,239);
+    color: rgb(30,30,30);
+    padding: 2px 2px;
+    border: none;
+    border-right: 1px solid rgb(200,200,200);
+    border-bottom: 2px solid rgb(180,180,180);
+    font-weight: bold;
+    }
+    
+    /* Hover заголовка */
+    QHeaderView::section:hover {
+    background-color: rgb(220,225,230);
+    }
+    
+    /* Вертикальный хедер */
+    QHeaderView::section:vertical {
+    border-right: none;
+    border-bottom: 1px solid rgb(200,200,200);
+    }
+    
+    /* Disabled */
+    QTableWidget:disabled {
+    background-color: rgb(235,235,235);
+    color: rgb(140,140,140);
+    }
+    
+    QTableWidget::item:disabled {
+    color: rgb(140,140,140);
+    }
+    """
+
+MES_EDIT_CSS = """
+
+    QTableWidget {
+    border: none;
+    gridline-color: rgb(200,200,200);
+   
+    selection-background-color: rgb(255,255,255);
+    }
+    
+
+
     /* Выделение без фокуса */
     QTableWidget::item:selected {
     background-color: rgb(225,240,220);
@@ -875,8 +933,11 @@ class TableContext:
                 item.setData(QtCore.Qt.DisplayRole, 0)
             else:
                 item.setData(QtCore.Qt.DisplayRole, new_val)
-
-    def find_row(self,rules:dict)->list[TableRow]:
+    
+    def current_row(self):
+        return TableRow(self,self.tbl.currentRow())
+    
+    def find_row(self,rules:dict,first=False)->list[TableRow]|TableRow:
         list_res = []
         for row in self.rows():
             for k,v in rules.items():
@@ -887,8 +948,16 @@ class TableContext:
                     else:
                         if row.value(k) == v:
                             list_res.append(row)
+        if first:
+            return list_res[0]
         return list_res
-        
+
+    def get_row(self, i)->TableRow:
+        return TableRow(self, i)
+
+    def hide(self,name:str, val:bool=True):
+        self.tbl.setColumnHidden(self.nf[name],val)
+
 class TableRow:
     def __init__(self, ctx: TableContext, row_index: int):
         self.ctx = ctx
@@ -896,17 +965,21 @@ class TableRow:
         self.nf = ctx.nf
         self.i = row_index
 
+    @property
+    def heigt(self)->int:
+        return self.tbl.rowHeight(self.i)
+
     def __repr__(self):
-        # Покажем номер строки + словарь {имя колонки: значение} всех колонок
+        
         values = {name: self.value(name) for name in self.nf}
         return f"<TableRow {self.row_number}: {values}>"
 
     def __str__(self):
-        # Компактная строка — номер строки + несколько первых колонок
-        first_cols = list(self.nf.keys())[:3]  # можно поменять число колонок
+        
+        first_cols = list(self.nf.keys())[:3]  
         vals = [f"{col}={self.value(col)}" for col in first_cols]
         return f"Row {self.row_number}: " + ", ".join(vals)
-    
+
     def hide(self,val:bool=True):
         self.tbl.setRowHidden(self.i,val)
         
@@ -917,11 +990,30 @@ class TableRow:
         j = self._col_index(col_name)
         return self.tbl.item(self.i, j)
 
-    def value(self, col_name: str):
+    def widget(self, col_name: str) -> QtWidgets.QTableWidgetItem | None:
+        j = self._col_index(col_name)
+        return self.tbl.cellWidget(self.i, j)
+
+
+
+    def value(self, col_name: str,sub_table = False):
         item = self.item(col_name)
         if item is None:
             return None
+        if sub_table:
+            wid = self.get_sub_table(col_name)
+            if wid:
+                return wid
         return item.text()
+
+    def get_sub_table(self, col_name: str)->QtWidgets.QTableWidget|bool:
+        wid = self.widget(col_name)
+        if  isinstance(wid,QTableWidget):
+            return wid
+        return  False
+
+    def set_height(self, px:int):
+        self.tbl.setRowHeight(self.i,px)
 
 
     def set_editable(self, col_name: str, value:bool=True):
@@ -1764,6 +1856,12 @@ def table_updating(tbl: QtWidgets.QTableWidget):
             tbl.repaint()
             #print(f'Снят фриз {tbl.objectName()}')
 
+def set_table_colorful_edit(tbl: QtWidgets.QTableWidget,val:bool=True):
+    tbl.setProperty('_colorful_edit', val)
+
+def is_table_colorful_edit(tbl: QtWidgets.QTableWidget) -> bool:
+    """возвращает True, если таблица автоподкрашивается при редактировании"""
+    return bool(tbl.property('_colorful_edit'))
 
 def is_table_updating(tbl: QtWidgets.QTableWidget) -> bool:
     """возвращает True, если таблица сейчас обновляется"""
@@ -2342,7 +2440,6 @@ class FillTableDelegator(QtWidgets.QStyledItemDelegate):
     def __init__(
             self,
             parent: QtWidgets.QTableWidget,
-            colorful_edit = True,
             editable_col_nomera = set(),
             load_links = False
     ):
@@ -2350,7 +2447,7 @@ class FillTableDelegator(QtWidgets.QStyledItemDelegate):
         self.parent = parent
         self.prev_delegator = self.parent.itemDelegate()
         self.editable_col_nomera = editable_col_nomera
-        self.colorful_edit = colorful_edit
+        self.colorful_edit = is_table_colorful_edit(self.parent)
         self.load_links = load_links
 
     def paint(self, painter: QtGui.QPainter, option, index: QtCore.QModelIndex):
@@ -2367,7 +2464,7 @@ class FillTableDelegator(QtWidgets.QStyledItemDelegate):
             if self.load_links and is_link_like(value):
                 cell = self.parent.cellWidget(index.row(), col)
                 if isinstance(cell, QtWidgets.QLabel):
-                    cell.setStyleSheet(f'background-color:rgba{*rgb, 1};')
+                    cell.setStyleSheet(f'background-color:rgba{*rgb, 255};')
             option.backgroundBrush = QtGui.QBrush(QtGui.QColor(*rgb))
             painter.fillRect(option.rect, option.backgroundBrush)
             if not value and placeholder_text and is_cell_editable(self.parent,index.row(),col):  # Если данных нет
@@ -2495,8 +2592,8 @@ def fill_wtabl(dict_or_list, object, set_editeble_col_nomera={}, ogr_maxshir_kol
         object_tbl.setStyleSheet(styleSheet)
         
     object_tbl.setSortingEnabled(sortingEnabled)
-    
-    delegate = FillTableDelegator(object_tbl, colorful_edit, set_editeble_col_nomera, load_links)
+    set_table_colorful_edit(object_tbl,colorful_edit) #is_table_colorful_edit(object_tbl)
+    delegate = FillTableDelegator(object_tbl, set_editeble_col_nomera, load_links)
     object_tbl.setItemDelegate(delegate)
     object_tbl.setColumnCount(len(list_of_data[0]))
     start_fill = 1
@@ -3585,9 +3682,20 @@ def _load_tbl(tbl:QtWidgets.QTableWidget,tblf:QtWidgets.QTableWidget,hidden_scro
         else:
             tblf.showColumn(i)
     non_zero_height = 0
+
+    def find_heigt_row_sub_tbl(tbl:QtWidgets.QTableWidget):
+        t = TableContext(tbl)
+        for row in t.rows():
+            for clmn in t.nf.keys():
+                sub_t = row.get_sub_table(clmn)
+                if sub_t:
+                    return find_heigt_row_sub_tbl(sub_t)
+            break
+        return row.heigt
+
     for i in range(tbl.rowCount()):
         if tbl.rowHeight(i)>0:
-            non_zero_height = tbl.rowHeight(i)
+            non_zero_height = find_heigt_row_sub_tbl(tbl)
             break
     if non_zero_height == 0:
         non_zero_height = 24
@@ -6612,10 +6720,26 @@ class InteractiveLabelInstance(QtCore.QObject):
             return self.table.iter_rows()[self.row]
         else:
             return self.table.item(self.row, self.column)
-
+        
+    def remove(self):
+        brush = QtGui.QBrush(QtGui.QColor(0, 0, 0, 255))
+        brush_b = QtGui.QBrush(QtGui.QColor(0, 0, 0, 0))
+        if isinstance(self.table, QtWidgets.QTreeWidget):
+            self.cell_item.setForeground(self.column, brush)
+            self.cell_item.setBackground(self.column, brush_b)
+            self.table.setItemWidget(item, self.column, self.container)
+        if isinstance(self.table, QtWidgets.QTableWidget):
+            self.cell_item.setForeground(brush)
+            self.cell_item.setBackground(brush_b)
+            self.table.setCellWidget(self.row, self.column, self.container)
+        self.table.removeCellWidget(self.row, self.column)
     def set_cell_widget(self, item):
         invisible_brush = QtGui.QBrush(QtGui.QColor(0, 0, 0, 0))
-
+        if is_table_colorful_edit(self.table):
+            if is_cell_editable(self.table,item.row(),item.column()):
+                invisible_brush = QtGui.QBrush(QtGui.QColor(250, 250, 250, 0))
+            else:
+                invisible_brush = QtGui.QBrush(QtGui.QColor(240, 240, 240, 0))
         if isinstance(self.table, QtWidgets.QTreeWidget):
             invisible_brush = QtGui.QBrush(QtGui.QColor(0, 0, 0, 0))
             item.setForeground(self.column, invisible_brush)
@@ -6865,9 +6989,14 @@ def add_interactive_label(
         font = tbl_item.font()
         # фон
         bg_color = tbl_item.background().color()
+        if is_table_colorful_edit(table):
+            if is_cell_editable(table, tbl_item.row(), tbl_item.column()):
+                bg_color.setRgb(250, 250, 250, 255 )
+            else:
+                bg_color.setRgb(240, 240, 240, 255 )
         # текст
         text_color = tbl_item.foreground().color()
-       
+
     
     
     inst = InteractiveLabelInstance(table, row, column, text,
@@ -6887,8 +7016,8 @@ def add_interactive_label(
         lbl.setAutoFillBackground(True)
         # установка стиля с фоном и текстом
         lbl.setStyleSheet(
-            f"background-color: rgb({bg_color.red()}, {bg_color.green()}, {bg_color.blue()}); "
-            f"color: rgb({text_color.red()}, {text_color.green()}, {text_color.blue()});"
+            f"background-color: rgba({bg_color.red()}, {bg_color.green()}, {bg_color.blue()}, {255}); "
+            f"color: rgba({text_color.red()}, {text_color.green()}, {text_color.blue()}, {255});"
         )
         lbl.blockSignals(False)
 

@@ -184,14 +184,17 @@ def vibor_additional_sort_report(self: mywindow, *args):
         if 'Отчет' in type_rep:
             self.ui.cmb_addit_sort_c_report.setEnabled(True)
             RPTP.fill_cmb_users_with_rules(self.ui.cmb_addit_sort_c_report)
+        elif 'Документы' in type_rep:
+            self.ui.cmb_addit_sort_c_report.setEnabled(True)
+            RPTP.fill_cmb_users_with_rules(self.ui.cmb_addit_sort_c_report)
         else:
             self.ui.cmb_addit_sort_c_report.setDisabled(True)
-
 
 @CQT.onerror
 def vibor_sort_c_report_c(self: mywindow, *args):
     vid = self.ui.cmb_sort_c_report.currentText()
     self.vid_report_c = vid
+    self.ui.fr_params_plan.setHidden(True)
     self.ui.le_end_of_period.setEnabled(True)
     self.ui.le_start_of_period.setEnabled(True)
     self.ui.rbut_start_of_per.setEnabled(True)
@@ -303,11 +306,13 @@ def vibor_sort_c_report_c(self: mywindow, *args):
         # nach = '2023-01-01 00:00:00'
         self.ui.le_start_of_period.setText(nach)
         self.ui.le_end_of_period.setText(konec)
+        self.ui.fr_params_plan.setHidden(False)
         self.ui.cmb_podrazdelenie.clear()
         self.ui.cmb_podrazdelenie.addItems(list(self.DICT_NAPRAVL.keys()))
         self.ui.cmb_podrazdelenie.addItem('Все')
         self.ui.cmb_podrazdelenie.setDisabled(False)
         list_etaps = sorted(list(set([_['этап'] for _ in self.Data.ETAP_BY_FIO.values() if _['этап'] != None])))
+        self.ui.fr_params_plan.setHidden(False)
         self.ui.cmb_gant_tochnost_dat.setEnabled(True)
         self.ui.cmb_gant_tochnost_dat.clear()
         self.ui.cmb_gant_tochnost_dat.addItem('')
@@ -354,6 +359,7 @@ def vibor_sort_c_report_c(self: mywindow, *args):
         dat = F.date_add_days(F.datetostr(DT.today()), -1)
         konec = F.start_end_dates_c(date=dat, vid='d')[1]
         nach = F.start_end_dates_c(date=dat, vid='d')[0]
+        self.ui.fr_params_plan.setHidden(False)
         self.ui.le_end_of_period.setText(konec)
         self.ui.le_start_of_period.setText(nach)
         list_podr = sorted(
@@ -691,6 +697,7 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
     self.ui.fr_save_txt.setHidden(True)
     self.ui.fr_addition_tbl.setHidden(True)
     self.ui.fr_erp_handler.setHidden(True)
+    self.ui.fr_params_plan.setHidden(True)
     self.ui.btn_save_txt.setText(f'Выгрузить')
     self.ui.le_path_save.setEnabled(True)
     nach = self.ui.le_start_of_period.text()
@@ -806,14 +813,22 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
         rez_spis = plan_fact_mes(self, nach, konec, podrazd)
     if vid == 'Отчетность персонала':
         rez_spis = None
-        if podrazd_data == 'report':
-            RPTP.load_pers_reports()
+
+        date_start = F.strtodate(self.ui.le_start_of_period.text())
+        date_end = F.strtodate(self.ui.le_end_of_period.text())
+        RPTP.init_dates_reports(date_start,date_end)
+        self.ui.fr_addition_tbl.setHidden(False)
+        if podrazd_data == 'events':
+            RPTP.load_pers_events()
         if podrazd_data == 'settings':
             RPTP.load_pers_rules()
+        if podrazd_data == 'report':
+            RPTP.load_pers_report()
         self.ui.fr_personal.setHidden(False)
-        self.ui.fr_addition_tbl.setHidden(False)
+        
 
     if vid == 'Трудозатраты':
+        self.ui.fr_params_plan.setHidden(False)
         rez_spis = trudozatraty(self, nach, konec, podrazd)
         self.ui.btn_save_txt.setDisabled(False)
         self.ui.fr_save_txt.setHidden(False)
@@ -850,6 +865,7 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
     if vid == 'Понедельный график выработки и отгрузок':
         rez_spis = ponedelniy_grafik_vir_otgr(self, nach, konec, podrazd)
     if vid == 'План работ':
+        self.ui.fr_params_plan.setHidden(False)
         rez_spis = plan_rabot_preload(self, nach, konec, podrazd)
     if vid == 'Селекторное':
         rez_spis = report_c_selector(self, nach, konec, podrazd)
@@ -1727,8 +1743,15 @@ def  report_matrix_competence(self:mywindow, day:str):
                         t=40,
                         b=40)
         )
+        try:
+            CQT.output_gant(parent_self, fig, parent_self.browser, parent_self.vid_report_c + '_' + parent_self.ui.cmb_podrazdelenie.currentText())
+        except PermissionError: #05.02.2026
+            import tempfile
+            CQT.output_gant(parent_self, fig, parent_self.browser,
+                            parent_self.vid_report_c + '_' + parent_self.ui.cmb_podrazdelenie.currentText(),
+                            dir=tempfile.gettempdir()
+                            )
 
-        CQT.output_gant(parent_self, fig, parent_self.browser, parent_self.vid_report_c + '_' + parent_self.ui.cmb_podrazdelenie.currentText())
         tab = parent_self.ui.tabw_otchet
         tab.setCurrentIndex(CQT.number_table_by_name_c(tab,'График'))
         return
@@ -4025,7 +4048,7 @@ def jurnal_rabot(self, data_nach, data_kon, *args): #28.01.2026
         LEFT JOIN пл_оуп ON пл_оуп.НомПл = mk.НомКплан
         LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП 
         WHERE коды_веплана_для_наряда.poki == {self.place.poki} and datetime(jurnal.Дата) > datetime("{data_nach}") 
-            and datetime(jurnal.Дата) < datetime("{data_kon}") """
+            and datetime(jurnal.Дата) < datetime("{data_kon}") ORDER BY naryad.Пномер, jurnal.ФИО ,DATETIME(jurnal.Дата)"""
 
     rez_jur = CSQ.custom_request_c(self.bd_naryad, custom_request_c, hat_c=True,attach_dbs=(self.db_kplan))
     if rez_jur == False:
@@ -5783,6 +5806,7 @@ def trudozatraty(self, data_nach, data_kon, podrazd='-', *args):
     list_users = den_tabel(self, data_nach)
     
     for item_mtdz in list_users:
+        print(item_mtdz)
         fiod_mtdz = item_mtdz['ФИО']
         fio_mtdz = ' '.join(fiod_mtdz.split(" ")[:3])
         dolgn_mtdz = ' '.join(fiod_mtdz.split(" ")[3:])
@@ -6885,7 +6909,8 @@ def dbl_clck_otch(self, *args):
             self.ui.cmb_sort_c_report.setCurrentText("Выработка цеха по направлению")
         self.ui.cmb_podrazdelenie.setCurrentText("current_ceh")
         report_c(self)
-
+    if self.vid_report_c == "Отчетность персонала":
+        RPTP.dbl_clck_user()
 
 @CQT.onerror
 def ves_tehnolohicheskiy(self, nom_mk: int, kolvo_izd, ves, conn, conn_mat, *args):

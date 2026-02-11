@@ -54,6 +54,14 @@ FOLDER_OPEN = f'{CEMOJ.EmojiMain.ДокументыДанные.folder.symbol}{C
 DOC_EMOJI = f'    {CEMOJ.EmojiMain.ДокументыДанные.document.symbol}'
 
 
+def is_user_profession(prof_name: str, dict_employee: dict = None) -> bool: #09.02.2026
+    if dict_employee is None:
+        dict_employee = dict_emploee_full(CFG.Config.project.db_users)
+    user = F.user_full_namre()
+    if user not in dict_employee:
+        return False
+    prof = dict_employee[user]['Должность']
+    return prof == prof_name
 
 
 class Tabels_erp():
@@ -284,11 +292,18 @@ class Emploee_usr():
         self.ВидЗанятости = None
         self.ДатаИзмененияДолжности = None
         self.history = []
-
+        
+        truth_record = None
         for record in data:
             if record['Статус'] == 'Работа':
-                for key in record.keys():
-                    exec(f'self.{key.replace(".", "_")} = record[key]')
+                truth_record = record
+                break
+        if not truth_record:
+            truth_record = data[-1]
+                
+        for key in truth_record.keys():
+            exec(f'self.{key.replace(".", "_")} = record[key]')
+  
         for item in data:
             self.history.append(item)
 
@@ -6065,11 +6080,33 @@ def update_local_graf(self=None, update=False,pnom:int = 0,fill_gant=True,DICT_C
         return dict_form
 
     def generane_new_gant(self: mywindow|None,DICT_CLD, DICT_PODR, dict_poz):
+        def fix_holyday_starts_ends(DICT_CLD:dict,dict_dates:dict)->dict:
+            clear_dict = {k:F.strtodate(v,"%Y-%m-%d") for k,v in dict_dates.items() if F.is_date(v,"%Y-%m-%d")}
+            for name,date in clear_dict.items():
+                days_add = 0
+                tmp_date =  copy.deepcopy(date)
+                while True:
+                    if DICT_CLD[tmp_date]['Выходные']:
+                        days_add+=1
+                        tmp_date += datetime.timedelta(days=1)
+                    else:
+                        break
+                if days_add:
+                    print(f'{name} adds {days_add} days')
+                    dict_dates[name] = F.datetostr(tmp_date,"%Y-%m-%d")
+            return dict_dates
 
         poz = Pozition(dict_poz['Пномер'], CFG.Config.project.db_kplan, CFG.Config.project.db_naryad, CFG.Config.project.db_resxml, CFG.Config.project.db_users)
+        new_row_dates_etap_plan = fix_holyday_starts_ends(DICT_CLD, copy.deepcopy(poz.row_dates_etap_plan))
+        poz.update_row_etaps(new_row_dates_etap_plan)
+        poz.row_dates_etap_plan = new_row_dates_etap_plan
         dict_dates = poz.row_dates_etap |  poz.row_dates_etap_fact
         dict_dates = dict_dates |  poz.row_dates_etap_plan
         dict_dates = dict_dates |  poz.row_dates_supply
+
+
+
+
 
         dict_norms= poz.row_time_etap |  poz.row_time_add_etap
 
@@ -6229,7 +6266,14 @@ def oforml_table(self:mywindow,tbl, tbl_filtr:QtWidgets.QTableWidget= ''):
     tbl.setRowHidden(1, True)
 
 
-def load_dict_poz_from_sql(pnom:int):
+def load_dict_poz_from_sql(pnom:int|list):
+    fl_single = False
+    if isinstance(pnom,int):
+        list_nums = [pnom]
+        fl_single = True
+    if isinstance(pnom,list):
+        list_nums = pnom
+
     query = CSQ.custom_request_c(CFG.Config.project.db_kplan, f"""SELECT plan.Пномер, plan.Позиция, plan.local_graf, plan.Приоритет, plan.fact_jurnal_blolb_data, 
             пл_оуп.№проекта, пл_оуп.№ERP, napravl_deyat.Псевдоним as Направление_деят, 
             napravlenie.name as Направление 
@@ -6237,10 +6281,18 @@ def load_dict_poz_from_sql(pnom:int):
             пл_оуп ON пл_оуп.НомПл = plan.Пномер, 
             napravl_deyat ON napravl_deyat.Пномер = plan.Направление_деятельности, 
             napravlenie ON napravlenie.Пномер = napravl_deyat.Направление 
-             WHERE plan.Пномер == {pnom}""", rez_dict=True)
+             WHERE plan.Пномер in ({CSQ.prepare_list_to_tuple(list_nums)})""", rez_dict=True)
     if query == False or len(query) == 0:
         return False
-    return query[0]
+    for item in query:
+        if item['local_graf'] == '':
+            datat_bin = update_local_graf(None, True, int(item['Пномер']), False)
+            print(f"Создан локальный график на {item['Пномер']}")
+            item['local_graf'] = datat_bin
+    if fl_single:
+        return query[0]
+    else:
+        return query
 
 @CQT.onerror
 def fill_gant_table(self: mywindow , tbl, tbl_filtr='', dict_form='', pnom=0):
@@ -6316,59 +6368,73 @@ def fill_gant_table(self: mywindow , tbl, tbl_filtr='', dict_form='', pnom=0):
             return None, None
         for i in range(len(list_sablon), len(list_tbl[0])):
             list_tbl[0][i] = F.datetostr(list_tbl[0][i], f"%d\n%m\n%y\n{DICT_DAY_NAME[int(list_tbl[2][i])]}")
-
-        if self.current_kpl_table == 'tbl_preview':
-
-            poz = Pozition(pnom_kplan_select, CFG.Config.project.db_kplan, CFG.Config.project.db_naryad,
-                           CFG.Config.project.db_resxml, CFG.Config.project.db_users, self,load_day_plan=True)
-
-            for field in DICT_REPLACE_BY_DAYS.keys():
-                # print(field)
-                for i_row in range(len(list_tbl)):
-                    # print(f'    строка {i_row}')
-                    if list_tbl[i_row][0] == field:
-                        for j_clmn in range(6, len(list_tbl[0])):
-                            list_tbl[i_row][j_clmn] = ''
-                            for day in DICT_REPLACE_BY_DAYS[field].keys():
-                                # print(f'        кол {j_clmn}')
-                                if list_tbl[0][j_clmn].startswith(day):
-                                    val3 = round(DICT_REPLACE_BY_DAYS[field][day] / 60, 3)
-                                    val = round(val3, 1)
-                                    if val3 > 0:
-                                        podr_cut = "_".join(field.split("_")[1:])
-
-                                        name_nach = DICT_PODR[podr_cut]['Имя_начала_этапа']
-                                        name_zav = DICT_PODR[podr_cut]['Имя_конца_этапа']
-                                        name_nach_f = DICT_PODR[podr_cut]['Имя_начала_этапа_факт']
-                                        name_zav_f = DICT_PODR[podr_cut]['Имя_конца_этапа_факт']
-                                        name_filed_hour = DICT_PODR[podr_cut]['Имя_поля'].split(';')[0]
-                                        date_nach = ''
-                                        date_zav = ''
-                                        if field.startswith('план'):
-                                            pass
-                                            date_nach = poz.row_dates_etap_plan[f'{podr_cut}.{name_nach}']
-                                            date_zav = poz.row_dates_etap_plan[f'{podr_cut}.{name_zav}']
-                                        if field.startswith('факт'):
-                                            pass
-                                            date_nach = poz.row_dates_etap_fact[f'{podr_cut}.{name_nach_f}']
-                                            date_zav = poz.row_dates_etap_fact[f'{podr_cut}.{name_zav_f}']
-                                        time_hour = ''
-                                        time_hour = poz.row_time_etap[f'{podr_cut}.{name_filed_hour}']
-                                        data_et = {"Время_час": time_hour,
-                                                   'Этап': f'{podr_cut}.{name_zav.lower().replace("нач", "").replace("зав", "")}',
-                                                   "Начало": date_nach,
-                                                   "Конец": date_zav,
-                                                   "Имя_нз": [f'{podr_cut}.{name_nach}', f'{podr_cut}.{name_zav}'],
-                                                   'По дню': val3
-                                                   }
-
-                                        if list_tbl_info[i_row][j_clmn] == '':
-                                            list_tbl_info[i_row][j_clmn] = []
-                                        list_tbl_info[i_row][j_clmn].append(data_et)
-                                        list_tbl[i_row][j_clmn] = val
-                                    else:
-                                        list_tbl[i_row][j_clmn] = ''
-
+        
+        if self.current_kpl_table in ('tbl_pl_gaf','tbl_preview'):
+            kpls = [_['pnom'] for _ in dict_form_list]
+            pozs = Pozitions(kpls,CFG.Config.project.db_kplan,CFG.Config.project.db_naryad,CFG.Config.project.db_resxml,
+                      CFG.Config.project.db_users,self,False,False)
+            for poz in pozs.dict_pozs.values():
+                #poz = Pozition(pnom_kplan_select, CFG.Config.project.db_kplan, CFG.Config.project.db_naryad,
+                #               CFG.Config.project.db_resxml, CFG.Config.project.db_users, self,load_day_plan=True)
+                kpl = poz.Пномер
+                if self.current_kpl_table == 'tbl_pl_gaf':
+                    dict_form_kpl = None
+                    for poz_from_list in dict_form_list:
+                        if poz_from_list['pnom'] == kpl:
+                            dict_form_kpl = poz_from_list
+                    if dict_form_kpl is None:
+                        continue
+                    dict_replace_by_days_tmp = dict_form_kpl['dict_replace_by_days']
+                if self.current_kpl_table == 'tbl_preview':
+                    dict_replace_by_days_tmp = DICT_REPLACE_BY_DAYS
+                nf = { _:it for it, _ in enumerate(list_tbl[0]) }
+            
+                for field in dict_replace_by_days_tmp.keys():
+                    # print(field)
+                    for i_row in range(len(list_tbl)):
+                        # print(f'    строка {i_row}')
+                        if list_tbl[i_row][nf['Этап']] == field and list_tbl[i_row][nf['Пномер']] == kpl:
+                            for j_clmn in range(6, len(list_tbl[0])):
+                                list_tbl[i_row][j_clmn] = ''
+                                for day in dict_replace_by_days_tmp[field].keys():
+                                    # print(f'        кол {j_clmn}')
+                                    if list_tbl[0][j_clmn].startswith(day):
+                                        val3 = round(dict_replace_by_days_tmp[field][day] / 60, 3)
+                                        val = round(val3, 1)
+                                        if val3 > 0:
+                                            podr_cut = "_".join(field.split("_")[1:])
+    
+                                            name_nach = DICT_PODR[podr_cut]['Имя_начала_этапа']
+                                            name_zav = DICT_PODR[podr_cut]['Имя_конца_этапа']
+                                            name_nach_f = DICT_PODR[podr_cut]['Имя_начала_этапа_факт']
+                                            name_zav_f = DICT_PODR[podr_cut]['Имя_конца_этапа_факт']
+                                            name_filed_hour = DICT_PODR[podr_cut]['Имя_поля'].split(';')[0]
+                                            date_nach = ''
+                                            date_zav = ''
+                                            if field.startswith('план'):
+                                                pass
+                                                date_nach = poz.row_dates_etap_plan[f'{podr_cut}.{name_nach}']
+                                                date_zav = poz.row_dates_etap_plan[f'{podr_cut}.{name_zav}']
+                                            if field.startswith('факт'):
+                                                pass
+                                                date_nach = poz.row_dates_etap_fact[f'{podr_cut}.{name_nach_f}']
+                                                date_zav = poz.row_dates_etap_fact[f'{podr_cut}.{name_zav_f}']
+                                            time_hour = ''
+                                            time_hour = poz.row_time_etap[f'{podr_cut}.{name_filed_hour}']
+                                            data_et = {"Время_час": time_hour,
+                                                       'Этап': f'{podr_cut}.{name_zav.lower().replace("нач", "").replace("зав", "")}',
+                                                       "Начало": date_nach,
+                                                       "Конец": date_zav,
+                                                       "Имя_нз": [f'{podr_cut}.{name_nach}', f'{podr_cut}.{name_zav}'],
+                                                       'По дню': val3
+                                                       }
+    
+                                            if list_tbl_info[i_row][j_clmn] == '':
+                                                list_tbl_info[i_row][j_clmn] = []
+                                            list_tbl_info[i_row][j_clmn].append(data_et)
+                                            list_tbl[i_row][j_clmn] = val
+                                        else:
+                                            list_tbl[i_row][j_clmn] = ''
         st_row = 3
         st_col = 6
         set_rows_to_add = set(range(st_row))
@@ -6381,9 +6447,10 @@ def fill_gant_table(self: mywindow , tbl, tbl_filtr='', dict_form='', pnom=0):
 
         list_tbl = [val for _,val  in enumerate(list_tbl) if _ in set_rows_to_add]
         list_tbl_info = [val for _,val  in enumerate(list_tbl_info) if _ in set_rows_to_add]
-
-
         return list_tbl,list_tbl_info
+
+
+
 
     if dict_form == None  or dict_form == '' or dict_form == []:
         if self:
@@ -8834,9 +8901,9 @@ def send_info_mk_b24_by_action(msg, action: str,form_dict:dict=None,msg_bold:boo
         CQT.msgbox(f'Ошибка отправки запроса в Б24')
 
 @CQT.onerror
-def send_tbl_b24_by_action(title, action: str,tbl:list[dict]):
+def send_tbl_b24_by_action(title, action: str,tbl:list[dict],chat_id:str|None=None):
     sender = CB24.B24Sender()
-    if not sender.send_msg_table_by_action(action, title,tbl):
+    if not sender.send_msg_table_by_action(action, title,tbl,chat_id):
         CQT.msgbox(f'Ошибка отправки запроса в Б24')
 
 
@@ -10495,7 +10562,7 @@ def check_and_fix_double_narayds(db_naryad,conn,cur):
     data_nach = F.start_end_dates_c(last_month, '', 'm', "%Y-%m-%d %H:%M:%S")[1]
     query = f"""
         SELECT Номер_наряда || " " || ФИО as ФИО, Статус, Пномер 
-        FROM jurnal WHERE datetime(jurnal.Дата) > datetime("{data_nach}") ORDER BY datetime(Дата);"""
+        FROM jurnal WHERE datetime(jurnal.Дата) > datetime("{data_nach}") ORDER BY datetime(Дата);""" # 02.02.2026
     list_for_check = CSQ.custom_request_c(db_naryad, query, conn=conn, cur=cur, rez_dict=True)
     list_for_del = []
     for i, line in enumerate(list_for_check):
@@ -10512,7 +10579,7 @@ def check_and_fix_double_narayds(db_naryad,conn,cur):
         CSQ.custom_request_c(db_naryad, f"""DELETE FROM jurnal WHERE Пномер in ({tuple_del})""")
         print()
         print(f'{F.now()} УДАЛЕНИЕ НАРЯДОВ {tuple_del} ЗАДВОЕНЫ НАЧАЛА')
-        print()
+        print()# 02.02.2026
     query = f"""
         SELECT Дата, Номер_наряда || " " || ФИО, Пномер, COUNT(*) AS CNT
         FROM (
@@ -10562,7 +10629,7 @@ def check_and_fix_broken_narayds(db_naryad,conn,cur):
                 FROM jurnal 
                 WHERE Подытог == 0 
                     AND Статус == "Начат" 
-                    AND datetime(jurnal.Дата) > datetime("{data_nach}"))"""
+                    AND datetime(jurnal.Дата) > datetime("{data_nach}")) ORDER BY datetime(Дата)""" #08.02.2026
         list_for_check = CSQ.custom_request_c(db_naryad,query,conn=conn,cur=cur,rez_dict=True)
         if list_for_check == False:
             return
@@ -10599,7 +10666,10 @@ def check_and_fix_broken_narayds(db_naryad,conn,cur):
     def fix_not_matched_pauz_and_ends(db_naryad, conn, cur):
         print(f'Правка начал на 0 не завершенных и не пауз:')
         query = f"""SELECT Пномер, Штамп, Номер_наряда, ФИО, Подытог, Статус FROM jurnal WHERE 
-        Номер_наряда not in (SELECT DISTINCT Номер_наряда FROM jurnal WHERE Статус == "Завершен" and datetime(jurnal.Дата) >= datetime("{data_nach}")) and datetime(Дата) >= datetime("{data_nach}")"""
+        Номер_наряда not in (
+            SELECT DISTINCT Номер_наряда 
+            FROM jurnal 
+            WHERE Статус == "Завершен" and datetime(jurnal.Дата) >= datetime("{data_nach}")) and datetime(Дата) >= datetime("{data_nach}") ORDER BY DATETIME(Дата)"""
         list_for_check = CSQ.custom_request_c(db_naryad, query, conn=conn, cur=cur, rez_dict=True)
         for i, item in enumerate(list_for_check):
             if item['Подытог'] != 0 and item['Статус'] == 'Начат':
@@ -12313,7 +12383,7 @@ class TypesWorkingByDirections:
             'Исполнение': [],
             'Геометрия': ['Плоский', 'Круглый']
         },
-        'ПР': {
+        'ПрП': { #04.02.2026
             'Тип оборуд.': ['Прочие'],
             'Тип поставки': [],
             'Исполнение': [],

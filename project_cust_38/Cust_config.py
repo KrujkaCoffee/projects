@@ -661,6 +661,7 @@ class Place(metaclass=SingletonMeta):
     doc_prefix: str = None
     ИспПроверкуВнесенияТрудозатрат: int = None
     ИспПроверкуТехартыВнесениеВидаИВесаТО: int = None
+    ИспПроверкуНаВнесенныйТипПланаОтделомТО: bool = None # 09.02.2026
     РодительВидаРабот: str = None
     ИспользоватьФильтрМКПоплану: int = None
     prefix_projects_localnet_path: str = None

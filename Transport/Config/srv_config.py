@@ -4,6 +4,9 @@ PORT = 20013
 if socket.gethostname() == 'POW18-15':#"POW-ING22":
     HOST = '192.168.14.71'# AG local
     DIR_ROOT = r'C:\Python\gui_flet_mes'  # AG local
+elif socket.gethostname() == 'POW18-08':#"POW-ING22":
+    HOST = 'localhost'# AG local
+    DIR_ROOT = r'C:\Python\gui_flet_mes'  # AG local
 else:
 
 

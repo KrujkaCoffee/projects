@@ -22,18 +22,23 @@ class СтатусыПроизводства:
     """Категория статусов производства"""
 
     success: ClassVar[EmojiItem] = EmojiItem('✅', 'success', 'status', 'Успешное выполнение')
+    error_bold: ClassVar[EmojiItem] = EmojiItem('❎', 'error_bold', 'status', 'Ошибка или сбой')
+    success_tin: ClassVar[EmojiItem] = EmojiItem('✔', 'success_tin', 'status', 'Успешное выполнение')
     checked: ClassVar[EmojiItem] = EmojiItem('☑️', 'checked', 'status', 'Отмечено')
     error: ClassVar[EmojiItem] = EmojiItem('❌', 'error', 'status', 'Ошибка или сбой')
     warning: ClassVar[EmojiItem] = EmojiItem('⚠️', 'warning', 'status', 'Предупреждение')
     info: ClassVar[EmojiItem] = EmojiItem('ℹ️', 'info', 'status', 'Информация')
     progress: ClassVar[EmojiItem] = EmojiItem('⏳', 'progress', 'status', 'В процессе выполнения')
     completed: ClassVar[EmojiItem] = EmojiItem('🎯', 'completed', 'status', 'Завершено')
+    specific: ClassVar[EmojiItem] = EmojiItem('🔵', 'specific', 'status', 'В ожидании')
     running: ClassVar[EmojiItem] = EmojiItem('🟢', 'running', 'status', 'Система работает')
     selected: ClassVar[EmojiItem] = EmojiItem('🔘', 'selected', 'status', 'Выбрано')
     uncertain: ClassVar[EmojiItem] = EmojiItem('🟠', 'uncertain', 'status', 'Неустойчивое состояние')
     stopped: ClassVar[EmojiItem] = EmojiItem('🔴', 'stopped', 'status', 'Система остановлена')
+    absence: ClassVar[EmojiItem] = EmojiItem('⚫', 'absence', 'status', 'Система отсутствие')
     idle: ClassVar[EmojiItem] = EmojiItem('🟡', 'idle', 'status', 'Ожидание')
     alert: ClassVar[EmojiItem] = EmojiItem('🚨', 'alert', 'status', 'Тревога')
+    alert_exclamation: ClassVar[EmojiItem] = EmojiItem('❗', 'alert_exclamation', 'status', 'Тревога')
     normal: ClassVar[EmojiItem] = EmojiItem('🟢', 'normal', 'status', 'Нормальный режим')
     ellipsis: ClassVar[EmojiItem] = EmojiItem('…', 'ellipsis', 'menu', 'Ещё / Дополнительно')
     vert_ellipsis: ClassVar[EmojiItem] = EmojiItem('⁞', 'vertEllipsis', 'menu', 'Ещё / Дополнительно')
@@ -56,6 +61,7 @@ class ПоказателиМетрики:
     """Категория показателей и метрик"""
 
     kpi: ClassVar[EmojiItem] = EmojiItem('📊', 'kpi', 'metrics', 'KPI показатели')
+    eye: ClassVar[EmojiItem] = EmojiItem('👁️‍🗨️', 'eye', 'metrics', 'Глаз')
     efficiency: ClassVar[EmojiItem] = EmojiItem('📈', 'efficiency', 'metrics', 'Эффективность')
     downtime: ClassVar[EmojiItem] = EmojiItem('📉', 'downtime', 'metrics', 'Простой оборудования')
     target: ClassVar[EmojiItem] = EmojiItem('🎯', 'target', 'metrics', 'Целевой показатель')
@@ -89,6 +95,9 @@ class ПерсоналРоли:
 class ДокументыДанные:
     """Категория документов и данных"""
     document: ClassVar[EmojiItem] = EmojiItem('📄', 'document', 'documents', 'Документ')
+    pushpin: ClassVar[EmojiItem] = EmojiItem('📍', 'pushpin', 'documents', 'булавка')
+    pushpin2: ClassVar[EmojiItem] = EmojiItem('📌', 'pushpin2', 'documents', 'кнопка')
+    magnifying: ClassVar[EmojiItem] = EmojiItem('🔍', 'magnifying', 'documents', 'Подбор')
     soon: ClassVar[EmojiItem] = EmojiItem('🔜', 'soon', 'documents', 'Скоро')
     folder: ClassVar[EmojiItem] = EmojiItem('📂', 'folder', 'documents', 'Папка')
     folder_closed: ClassVar[EmojiItem] = EmojiItem('📁', 'folder_closed', 'documents', 'Закрытая папка')

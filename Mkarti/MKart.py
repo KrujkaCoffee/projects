@@ -86,6 +86,7 @@ class mywindow(QtWidgets.QMainWindow):
         # CMS.load_ip_srv(self)
 
         self.Data_plan = data_class.Data_plan
+        self.Data_plan.app_self = self
         self.bd_naryad_TEST = F.scfg('Naryad') + F.sep() + 'old' + F.sep() + 'Naryad.db'
         self.bd_naryad = F.bdcfg('Naryad')
         self.bd_act = F.bdcfg('BDact')
@@ -556,6 +557,7 @@ class mywindow(QtWidgets.QMainWindow):
         else:
             CQT.add_sub_action_menu(self,self.ui,'menu_2', 'Удалить КПЛ', KPL.del_poz)#удаление строки КПЛ 04.09.2025
             CQT.add_sub_action_menu(self,self.ui,'menu_2', 'Восстановить КПЛ', KPL.fix_crashed_poz)#восстановление строки КПЛ 05.09.2025
+            CQT.add_sub_action_menu(self,self.ui,'menu_2', '!тестовй тык', self.test_fnc)#восстановление строки КПЛ 05.09.2025
 
         self.ui.test_action_1.triggered.connect(self.test_action_1)
 
@@ -740,6 +742,19 @@ class mywindow(QtWidgets.QMainWindow):
         self.apply_visible_by_places()
 
         self.ui.tbl_rc_autopause_2.cellChanged.connect(lambda *args: IND.on_autopause_table_changed(self, *args)) #25.01.2026
+
+
+
+    @CQT.onerror
+    def test_fnc(self,*args):
+        #KPL.test_add_field_kpl()#30.01.2026 тест внесения в план дат
+        comp = KPL.Сomparison_fields_vs_db([
+            KPL.Сomparison_fields_vs_db_field('plan.Дата_внесения_в_план_месяца', 'plan',
+                                              'Дата_внесения_в_план_месяца'),
+            KPL.Сomparison_fields_vs_db_field('plan.Имя_внесения_в_план_месяца', 'plan', 'Имя_внесения_в_план_месяца')
+        ])
+        comp.reload_fields_from_db()
+        pass
 
     def _discard_create_mk_changes(self): #24.12.2025
         try:
@@ -1641,13 +1656,39 @@ class mywindow(QtWidgets.QMainWindow):
         if CQT.number_table_by_name_c(self.ui.tabW_rab_places, 'Схема') == ind:
             IND.select_schema(self)
 
+    def validate_main_tab(self, tab_bar, from_index, to_index): # 09.02.2026
+        if not USRCNF.Config.place.ИспПроверкуНаВнесенныйТипПланаОтделомТО or not CMS.is_user_profession('Инженер-программист'):# CMS.is_user_profession('Главный технолог')::
+            return True
+        not_available_tabs = (
+            'Создание МК',
+            'Номенклатура',
+            'Маршрутные карты',
+        )
+        name = tab_bar.tabText(to_index)
+        if name in not_available_tabs:
+            query = f"""
+    SELECT plan.Пномер AS КПЛ, пл_топ.Вид, пл_топ.Отв_технолог
+    FROM пл_топ 
+    INNER JOIN plan ON plan.Пномер = пл_топ.НомПл 
+    WHERE пл_топ.Вид = 1 AND DATE(plan.Дата_внесения) >= DATE("2023-08-01") and plan.Статус IN (1,2,3,7) and plan.poki = {self.place.poki}"""
+            result = CSQ.custom_request_c(USRCNF.Config.project.db_kplan, query, rez_dict=True)
+            if result:
+                CQT.msgboxg_get_table_ok_inf(
+                    self,
+                    f'Найдено {len(result)} позиций c пустым полем пл_топ.Вид. Необходима срочная корректировка ',
+                    result
+                )
+                return False
+        return True
+
     @CQT.progress_decorator
     def tab_click(self, ind, hook_prog_bar=None):
 
         if CMS.kontrol_ver(self.versia, 'МКарты') == False:
             quit()
         tab = self.ui.tabWidget
-
+        # Валидация работающая на проф: "Главный технолог" на предмет проставленного пл_топ.Вид
+        main_tech_validator = CQT.TabValidator(tab_widget=tab, validate_func=self.validate_main_tab)
         hook_prog_bar.set(10)
         hook_prog_bar.text('Обработка')
         if tab.currentIndex() == 2:  # номенклатура

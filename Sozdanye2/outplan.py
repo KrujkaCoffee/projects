@@ -130,7 +130,7 @@ def fill_kplan_izd(self:mywindow):
 
 @CQT.onerror
 def load_form(self:mywindow):
-    fill_kplan_izd(self)
+    fill_kplan_izd(self) #  06.02.2026
     query = f"""SELECT jur_vnepl.Пномер, 
           
         
@@ -145,6 +145,10 @@ def load_form(self:mywindow):
        END AS Номер_проекта, 
         
         jur_vnepl.МК, 
+        CASE WHEN plan.Пномер IS NOT NULL 
+            THEN plan.Позиция
+            ELSE ""
+        END AS Позиция,
         jur_vnepl.Дата, 
         jur_vnepl.ФИО, 
         jur_vnepl.Запрос, 
@@ -159,7 +163,6 @@ def load_form(self:mywindow):
         jur_vnepl.Ответ, 
         jur_vnepl.Статус,
         jur_vnepl.Утверждено
-        
         
          FROM jur_vnepl 
           INNER JOIN mk 
