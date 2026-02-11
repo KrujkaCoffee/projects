@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Tuple
 
 import re
+import asyncio
 import flet as ft
 
 
@@ -25,6 +26,7 @@ class _SeriesInfo:
 
 
 _DEFAULT_SUFFIX_REGEX = r"^(?P<base>.+)_(?P<tag>[A-Za-z]+)(?P<idx>\d+)$"
+_DEFAULT_GZ_FORM = "Среднегеометрическая частота, Гц"
 
 
 def _default_visible(meta: dict) -> bool:
@@ -55,12 +57,7 @@ def _normalize_tags(raw: Any) -> List[str]:
 
 
 def _scan_series(output_params: Dict[str, dict], suffix_regex: str) -> Tuple[List[str], Dict[str, List[_SeriesInfo]]]:
-    """Сканирует OUTPUT_PARAMS и находит серии по suffix_regex.
-
-    Returns:
-        group_names: list[str]
-        series_by_group: group_name -> list[_SeriesInfo]
-    """
+    """Сканирует OUTPUT_PARAMS и находит серии по suffix_regex. """
     try:
         suffix_re = re.compile(suffix_regex)
     except Exception:
@@ -98,29 +95,12 @@ def _scan_series(output_params: Dict[str, dict], suffix_regex: str) -> Tuple[Lis
     group_names = sorted(tmp.keys(), key=lambda s: s.lower())
     series_by_group: Dict[str, List[_SeriesInfo]] = {}
     for g in group_names:
-        # stable sort: by header/base
         infos = list(tmp[g].values())
         infos.sort(key=lambda x: (x.header.lower(), x.base.lower()))
         series_by_group[g] = infos
 
     return group_names, series_by_group
 
-def _set_btn_busy(btn, text):
-    try:
-        btn.disabled = True
-        # на 0.80.x у кнопок обычно есть content
-        btn.content = ft.Row(
-            [ft.ProgressRing(width=16, height=16, stroke_width=2), ft.Text(text)],
-            tight=True,
-            spacing=8,
-        )
-    except Exception:
-        # fallback
-        try:
-            btn.disabled = True
-            btn.text = text
-        except Exception:
-            pass
 
 def open_tech_report_settings_dialog(
     page: ft.Page,
@@ -151,7 +131,6 @@ def open_tech_report_settings_dialog(
     else:
         cfg_t_bases = None
 
-    # ---- build output items ----
     items: List[_Item] = []
     for key, meta in (output_params or {}).items():
         if not isinstance(meta, dict):
@@ -175,7 +154,9 @@ def open_tech_report_settings_dialog(
     for it in items:
         group_to_items[it.group].append(it)
 
-    # ---- effective state ----
+    _item_lc = {it.key: (it.header.lower(), it.key.lower(), it.group.lower()) for it in items}
+    _group_lc = {g: g.lower() for g in group_names}
+
     field_state: Dict[str, bool] = {}
     for it in items:
         field_state[it.key] = bool(cfg_fields.get(it.key, it.default_visible))
@@ -184,7 +165,6 @@ def open_tech_report_settings_dialog(
     for g in group_names:
         group_state[g] = bool(cfg_groups.get(g, True))
 
-    # ---- transpose scan + state ----
     series_group_names, series_by_group = _scan_series(output_params, suffix_regex_init)
     all_bases: List[str] = []
     for g in series_group_names:
@@ -194,12 +174,10 @@ def open_tech_report_settings_dialog(
 
     transpose_group_state: Dict[str, bool] = {}
     for g in series_group_names:
-        # cfg stores only выключенные группы; default True
         transpose_group_state[g] = bool(cfg_t_groups.get(g, True))
 
     transpose_base_state: Dict[str, bool] = {}
     if cfg_t_bases is None:
-        # None => все базы включены
         for b in all_bases_set:
             transpose_base_state[b] = True
     else:
@@ -207,13 +185,23 @@ def open_tech_report_settings_dialog(
         for b in all_bases_set:
             transpose_base_state[b] = b in allowed
 
-    # ---- controls ----
     search_tf = ft.TextField(
         label="Поиск",
         hint_text="по имени / ключу параметра",
         prefix_icon=ft.Icons.SEARCH,
         expand=True,
         dense=True,
+    )
+
+    search_scope_dd = ft.Dropdown(
+        value="params",
+        dense=True,
+        width=220,
+        options=[
+            ft.dropdown.Option("params", "По параметрам"),
+            ft.dropdown.Option("groups", "По группам"),
+            ft.dropdown.Option("both", "Параметры + группы"),
+        ],
     )
 
     transpose_enabled_sw = ft.Switch(label="Включить транспонирование серий", value=transpose_enabled_init)
@@ -227,7 +215,6 @@ def open_tech_report_settings_dialog(
         label="Regex суффикса",
         value=suffix_regex_init,
         dense=True,
-        helper="Дефолт: <base>_<tag><idx>  (пример: pressure_n1)",
     )
 
     fields_body_ref = ft.Ref[ft.Column]()
@@ -237,38 +224,6 @@ def open_tech_report_settings_dialog(
     progress_ring = ft.ProgressRing(width=18, height=18, visible=False)
     btn_cancel = ft.TextButton("Отмена")
     btn_save = ft.FilledButton("Сохранить")
-
-    def _close(save: bool):
-        if _closing["busy"]:
-            return
-        _closing["busy"] = True
-
-        # instant feedback
-        _set_btn_busy(btn_save, "Сохранение…" if save else "Закрытие…")
-        _set_btn_busy(btn_cancel, "…")
-        try:
-            dlg.update()  # важно: обновляем только диалог
-        except Exception:
-            pass
-
-        # закрываем сразу (без page.update/close)
-        try:
-            dlg.open = False
-            dlg.update()
-        except Exception:
-            pass
-
-        # потом сохраняем (если нужно)
-        if save:
-            try:
-                on_save(_build_cfg())
-            except Exception as ex:
-                try:
-                    page.snack_bar = ft.SnackBar(ft.Text(f"Ошибка сохранения настроек: {ex}"))
-                    page.snack_bar.open = True
-                    page.update()
-                except Exception:
-                    pass
 
     _closing = {"busy": False}
 
@@ -322,8 +277,38 @@ def open_tech_report_settings_dialog(
         return out
 
     # ---- fields rendering ----
+        # ---- search/render control ----
+    _search_ctl = {"seq": 0, "limit": 200}
+
+    def _schedule_fields_render(*, reset_limit: bool = False):
+        """Debounce для тяжёлого рендера при вводе в поиск/переключении режима."""
+        if reset_limit:
+            _search_ctl["limit"] = 200
+        _search_ctl["seq"] += 1
+        seq = _search_ctl["seq"]
+
+        async def _debounced():
+            await asyncio.sleep(0.35)
+            if seq != _search_ctl["seq"]:
+                return
+            _render_fields()
+
+        try:
+            if hasattr(page, "run_task"):
+                page.run_task(_debounced)
+            else:
+                asyncio.create_task(_debounced())
+        except Exception:
+            try:
+                asyncio.create_task(_debounced())
+            except Exception:
+                _render_fields()
+
     def _render_fields():
-        q = (search_tf.value or "").strip().lower()
+        q_raw = (search_tf.value or "").strip()
+        q = q_raw.lower()
+        mode = str(search_scope_dd.value or "params")
+        limit = int(_search_ctl.get("limit", 200) or 200)
 
         tiles: List[ft.Control] = []
 
@@ -358,7 +343,7 @@ def open_tech_report_settings_dialog(
             spacing=10,
         )
 
-        tiles.append(ft.Row([search_tf, buttons], spacing=12))
+        tiles.append(ft.Row([search_tf, search_scope_dd, buttons], spacing=12))
         tiles.append(
             ft.Text(
                 "Подсказка: дефолтная видимость берётся из OUTPUT_PARAMS[key]['view'] (если задано).\n"
@@ -377,52 +362,123 @@ def open_tech_report_settings_dialog(
             kk = str(e.control.data)
             field_state[kk] = bool(e.control.value)
 
+        def _field_tile(it: _Item) -> ft.Control:
+            cb = ft.Checkbox(value=bool(field_state.get(it.key, True)), data=it.key, on_change=_on_field_toggle)
+            subtitle = f"{it.group} · {it.key}"
+            if it.dim:
+                subtitle = f"{subtitle} · {it.dim}"
+            return ft.ListTile(
+                leading=cb,
+                title=ft.Text(it.header),
+                subtitle=ft.Text(subtitle, size=11, opacity=0.75),
+                dense=True,
+            )
+
+        # ---- режим: поиск по параметрам (плоский список + лимит) ----
+        if mode == "params" and q and len(q) >= 2:
+            matched: List[_Item] = []
+            for it in items:
+                h_lc, k_lc, _g_lc = _item_lc[it.key]
+                if q in h_lc or q in k_lc:
+                    matched.append(it)
+
+            total = len(matched)
+            shown = matched[:limit]
+
+            tiles.append(ft.Text(f"Найдено: {total}. Показано: {len(shown)}.", size=12, opacity=0.8))
+
+            if not shown:
+                tiles.append(ft.Text("Ничего не найдено.", size=12, opacity=0.75))
+            else:
+                tiles.extend(_field_tile(it) for it in shown)
+
+            if total > limit:
+                def _more(_e):
+                    _search_ctl["limit"] = min(total, limit + 200)
+                    _render_fields()
+
+                tiles.append(ft.OutlinedButton(f"Показать ещё (+200)", on_click=_more))
+
+            fields_body_ref.current.controls = tiles
+            fields_body_ref.current.update()
+            return
+
+        # ---- иначе: показываем группы (поиск по группам / смешанный / без поиска) ----
+        match_by_group: Dict[str, List[_Item]] = {}
+        if q and len(q) >= 2 and mode in ("both",):
+            for it in items:
+                h_lc, k_lc, _g_lc = _item_lc[it.key]
+                if q in h_lc or q in k_lc:
+                    match_by_group.setdefault(it.group, []).append(it)
+
+        # в "groups" мы ищем только по имени группы
+        # в "both" — группа проходит, если совпала по имени ИЛИ есть совпадения по параметрам
+        groups_to_show: List[Tuple[str, List[_Item], bool]] = []  # (group, items_for_group, is_match_items_only)
         for g in group_names:
-            group_items = group_to_items.get(g, [])
+            g_lc = _group_lc.get(g, g.lower())
+            group_name_match = bool(q) and (q in g_lc)
 
-            if q:
-                group_items = [it for it in group_items if (q in it.header.lower()) or (q in it.key.lower())]
-                if not group_items:
+            if mode == "groups":
+                if q and not group_name_match:
                     continue
+                groups_to_show.append((g, group_to_items.get(g, []), False))
+                continue
 
+            if mode == "both" and q and len(q) >= 2:
+                if group_name_match:
+                    groups_to_show.append((g, group_to_items.get(g, []), False))
+                elif g in match_by_group:
+                    groups_to_show.append((g, match_by_group.get(g, []), True))
+                else:
+                    continue
+            else:
+                # без поиска или q слишком короткий — обычный список групп
+                groups_to_show.append((g, group_to_items.get(g, []), False))
+
+        if q and len(q) == 1 and mode in ("params", "both"):
+            tiles.append(ft.Text("Для поиска по параметрам введите минимум 2 символа.", size=12, opacity=0.75))
+
+        for g, group_items, match_only in groups_to_show:
             grp_cb = ft.Checkbox(value=bool(group_state.get(g, True)), data=g, on_change=_on_group_toggle)
+
+            cnt_txt = f"({len(group_items)})"
+            if match_only and q:
+                cnt_txt = f"({len(group_items)} совп.)"
+
             title_row = ft.Row(
                 controls=[
                     grp_cb,
                     ft.Text(g, weight=ft.FontWeight.W_600),
-                    ft.Text(f"({len(group_items)})", size=12, opacity=0.7),
+                    ft.Text(cnt_txt, size=12, opacity=0.7),
                 ],
                 spacing=8,
             )
 
-            field_tiles: List[ft.Control] = []
-            for it in group_items:
-                cb = ft.Checkbox(value=bool(field_state.get(it.key, True)), data=it.key, on_change=_on_field_toggle)
-                subtitle = it.key
-                if it.dim:
-                    subtitle = f"{subtitle} · {it.dim}"
-                field_tiles.append(
-                    ft.ListTile(
-                        leading=cb,
-                        title=ft.Text(it.header),
-                        subtitle=ft.Text(subtitle, size=11, opacity=0.75),
-                        dense=True,
-                    )
-                )
-
-            tiles.append(
-                ft.ExpansionTile(
-                    title=title_row,
-                    maintain_state=True,
-                    expanded=False,
-                    controls=field_tiles,
-                )
+            tile = ft.ExpansionTile(
+                title=title_row,
+                maintain_state=True,
+                expanded=False,
+                controls=[],  # lazy
             )
+
+            def _mk_on_tile_change(items_for_group: List[_Item]):
+                def _on_tile_change(e):
+                    if str(getattr(e, "data", "")) != "true":
+                        return
+                    # build only once for this tile instance
+                    if getattr(e.control, "controls", None):
+                        return
+                    e.control.controls = [_field_tile(it) for it in items_for_group]
+                    e.control.update()
+                return _on_tile_change
+
+            tile.on_change = _mk_on_tile_change(group_items)
+            tiles.append(tile)
 
         fields_body_ref.current.controls = tiles
         fields_body_ref.current.update()
 
-    # ---- transpose rendering ----
+# ---- transpose rendering ----
     def _render_transpose():
         tiles: List[ft.Control] = []
 
@@ -536,24 +592,39 @@ def open_tech_report_settings_dialog(
         transpose_body_ref.current.controls = tiles
         transpose_body_ref.current.update()
 
-    def _close_prev(save: bool):
+    # ---- dialog close ----
+    def _close(save: bool):
         if _closing["busy"]:
             return
         _closing["busy"] = True
+
+        # instant UI feedback
         progress_ring.visible = True
         btn_save.disabled = True
         btn_cancel.disabled = True
-        dlg.update()
+        try:
+            dlg.update()
+        except Exception:
+            pass
 
-        if save:
-            on_save(_build_cfg())
-        page.pop_dialog()
-
-
+        try:
+            if save:
+                on_save(_build_cfg())
+        finally:
+            try:
+                # prefer close dialog without global page.update()
+                if hasattr(page, "close"):
+                    page.close(dlg)
+                else:
+                    dlg.open = False
+                    dlg.update()
+            except Exception:
+                pass
 
     btn_cancel.on_click = lambda _e: _close(False)
     btn_save.on_click = lambda _e: _close(True)
 
+    # ---- tabs layout (Flet 0.80+) ----
     fields_tab = ft.Container(
         content=ft.Column(ref=fields_body_ref, controls=[], scroll=ft.ScrollMode.AUTO, expand=True),
         expand=True,
@@ -611,11 +682,25 @@ def open_tech_report_settings_dialog(
         actions=[progress_ring, btn_cancel, btn_save],
     )
 
-    page.show_dialog(dlg)
-
+    # open
+    try:
+        page.show_dialog(dlg)
+        # if hasattr(page, "open"):
+        #     page.open(dlg)
+        # else:
+        #     page.dialog = dlg
+        #     dlg.open = True
+        #     page.update()
+    except Exception:
+        page.dialog = dlg
+        dlg.open = True
+        page.update()
+    # initial render
     def _on_search_change(_e):
-        _render_fields()
+        _schedule_fields_render(reset_limit=True)
 
     search_tf.on_change = _on_search_change
+    search_scope_dd.on_change = _on_search_change
+
     _render_fields()
     _render_transpose()

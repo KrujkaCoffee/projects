@@ -138,7 +138,7 @@ if __name__ == "__main__":
         PATHF_IT_PLAN = fr'C:\srv_mes\srv_mes\plan_it_form_b24(gen by reiting).pickle'
         print(f'http://{FLET_HOST}:{FLET_PORT}')
         print(f'http://mesinfo.powerz.ru:{FLET_PORT}') # SRVmes 'http://mesinfo.powerz.ru:20000/'
-        ft.run(name=FLET_PATH, main=main, view=ft.AppView.WEB_BROWSER, port=FLET_PORT,
+        app = ft.run(name=FLET_PATH, main=main, view=ft.AppView.WEB_BROWSER, port=FLET_PORT,
                host='localhost')
     else:
         PATHF_IT_PLAN = fr'C:\srv_mes\srv_mes\plan_it_form_b24(gen by reiting).pickle'
@@ -146,8 +146,8 @@ if __name__ == "__main__":
         print(f'http://mesinfo.powerz.ru:{FLET_PORT}') # SRVmes 'http://mesinfo.powerz.ru:20000/'
         app = ft.run(name=FLET_PATH, main=main, view=ft.AppView.WEB_BROWSER, port=FLET_PORT,
                host='0.0.0.0', export_asgi_app=True)
-# PATHF_IT_PLAN = fr'C:\srv_mes\srv_mes\plan_it_form_b24(gen by reiting).pickle'
-# print(f'http://{FLET_HOST}:{FLET_PORT}')
-# print(f'http://mesinfo.powerz.ru:{FLET_PORT}') # SRVmes 'http://mesinfo.powerz.ru:20000/'
-# app = ft.run(name=FLET_PATH, main=main, view=ft.AppView.WEB_BROWSER, port=FLET_PORT,
-#        host='localhost', export_asgi_app=True)
+PATHF_IT_PLAN = fr'C:\srv_mes\srv_mes\plan_it_form_b24(gen by reiting).pickle'
+print(f'http://{FLET_HOST}:{FLET_PORT}')
+print(f'http://mesinfo.powerz.ru:{FLET_PORT}') # SRVmes 'http://mesinfo.powerz.ru:20000/'
+app = ft.run(name=FLET_PATH, main=main, view=ft.AppView.WEB_BROWSER, port=FLET_PORT,
+       host='localhost', export_asgi_app=True)

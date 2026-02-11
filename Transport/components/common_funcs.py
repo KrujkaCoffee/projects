@@ -2053,6 +2053,6 @@ def dialog_save_file(e: ft.ControlEvent, pathf: str):
     port_api = Data.Data_vars.DOWNLOAD_TEMP_FILE
     download_url = '/'.join(
         ['http:/', f"{Data.Data_srv.ip}:{port_api}", 'hs/mes/download-temp', Data.Data_module.alias, file_name])
-    print(download_url)
+    print(pathf)
     e.page.launch_url(download_url)
     # https://flet.dev/docs/controls/filepicker/#save_file

@@ -1,15 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Технологический отчёт (Excel .xlsx)
-
-Цели:
-- Выгрузка входных/выходных параметров в Excel
-- Транспонирование серийных параметров по суффиксам вида: <base>_<tag><idx>
-  Пример: pressure_n1, pressure_n2, pressure_n3  => строка "pressure" + колонки n1,n2,n3
-
-Файл сделан внешним модулем (можно легко выкинуть/мерджить).
-"""
-
 from __future__ import annotations
 
 import os
@@ -22,10 +10,7 @@ from openpyxl.styles import Alignment, Font, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 
 
-# ------------------------- helpers -------------------------
-
 def _safe_filename(name: str, repl: str = "_") -> str:
-    # Windows forbidden: <>:"/\|?* and control chars
     bad = r'<>:"/\\|?*'
     out = []
     for ch in (name or "").strip():
@@ -34,7 +19,6 @@ def _safe_filename(name: str, repl: str = "_") -> str:
         else:
             out.append(ch)
     s = "".join(out).strip()
-    # avoid empty
     return s if s else "report"
 
 
@@ -224,7 +208,6 @@ def build_tech_report_xlsx(
     ws = wb.active
     ws.title = "Технологический отчёт"
 
-    # styles
     bold = Font(bold=True)
     title_font = Font(bold=True, size=14)
     header_fill = PatternFill("solid", fgColor="F2F2F2")
@@ -250,7 +233,6 @@ def build_tech_report_xlsx(
     set_cell(row, 1, report_name, font=bold)
     row += 2
 
-    # -------- Inputs block --------
     set_cell(row, 1, "Входные данные", font=bold)
     row += 1
 
@@ -259,11 +241,13 @@ def build_tech_report_xlsx(
         set_cell(row, col, h, font=bold, fill=header_fill, align=Alignment(horizontal="center"), border_=border)
     row += 1
 
-    # input_rows usually contain: Имя (hidden), Параметр, Ед.изм, Значение
     for it in input_rows or []:
+
         param = it.get("Параметр", "")
         val = it.get("Значение", "")
         dim = it.get("Ед.изм", "")
+        if val in in_headers:
+            continue
         set_cell(row, 1, param, border_=border)
         set_cell(row, 2, val, border_=border)
         set_cell(row, 3, dim, border_=border)
@@ -271,7 +255,6 @@ def build_tech_report_xlsx(
 
     row += 2
 
-    # -------- Outputs block --------
     set_cell(row, 1, "Результаты расчёта", font=bold)
     row += 1
 
@@ -280,8 +263,6 @@ def build_tech_report_xlsx(
         set_cell(row, col, h, font=bold, fill=header_fill, align=Alignment(horizontal="center"), border_=border)
     row += 1
 
-    # Prepare group mapping
-    # group_key is group_name (можно потом заменить на group_id)
     grouped: Dict[str, List[str]] = {}
 
     def _default_visible(meta: dict) -> bool:
@@ -306,12 +287,10 @@ def build_tech_report_xlsx(
         meta = output_params[key] or {}
         group_name = str(meta.get("group_name", "") or "").strip()
 
-        # group visibility override (если задано в конфиге)
         if cfg.groups is not None:
             if group_name in cfg.groups and not cfg.groups[group_name]:
                 continue
 
-        # field visibility: сначала дефолт из OUTPUT_PARAMS['view'], затем override из cfg
         visible = _default_visible(meta)
         if cfg.fields is not None and key in cfg.fields:
             visible = bool(cfg.fields[key])
@@ -323,39 +302,33 @@ def build_tech_report_xlsx(
 
         grouped.setdefault(group_name, []).append(key)
 
-    # stable ordering: by group_name, then by header
     group_names = sorted(grouped.keys(), key=lambda s: s.lower())
 
     suffix_re = re.compile(cfg.suffix_regex)
     allowed_tags = set(t.lower() for t in (cfg.transpose_tags or ["n"]))  # default n
     allowed_bases = None
     if cfg.transpose_bases is not None:
-        # [] => отключить транспонирование вообще
         allowed_bases = set(str(b) for b in cfg.transpose_bases)
 
     for gname in group_names:
         keys = grouped[gname]
 
-        # group header row
         ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
         set_cell(row, 1, gname if gname else "Без группы", font=bold, fill=group_fill, border_=border)
         row += 1
 
-        # sort keys by visible header
         def _sort_key(k: str):
             meta = output_params.get(k, {}) or {}
             return str(meta.get("header", k)).lower()
 
         keys_sorted = sorted(keys, key=_sort_key)
 
-        # split into normal and series
         series: Dict[str, Dict[str, Dict[int, str]]] = {}  # tag -> base -> idx -> key
         normal: List[str] = []
 
         for k in keys_sorted:
             m = suffix_re.match(k)
             if cfg.transpose_enabled and m:
-                # group-level opt-out
                 if cfg.transpose_groups is not None:
                     if gname in cfg.transpose_groups and not cfg.transpose_groups[gname]:
                         normal.append(k)
@@ -371,7 +344,6 @@ def build_tech_report_xlsx(
                     continue
             normal.append(k)
 
-        # write normal rows
         for k in normal:
             meta = output_params.get(k, {}) or {}
             header = meta.get("header", k)
@@ -395,12 +367,10 @@ def build_tech_report_xlsx(
             set_cell(row, 4, comment, border_=border)
             row += 1
 
-        # write transposed blocks (series)
         for tag, base_map in series.items():
             if not base_map:
                 continue
 
-            # blank row between normal and transposed (if both exist)
             if normal:
                 row += 1
 
@@ -408,7 +378,7 @@ def build_tech_report_xlsx(
             idxs = sorted({idx for bm in base_map.values() for idx in bm.keys()})
             # header for block
             ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
-            set_cell(row, 1, f"Серии: _{tag}{{N}} (транспонирование)", font=bold, fill=header_fill)
+            set_cell(row, 1, f"Серии: _{tag}{{N}}", font=bold, fill=header_fill)
             row += 1
 
             # block header row: Parameter | tag1 | tag2 | ... | Unit
@@ -450,7 +420,6 @@ def build_tech_report_xlsx(
 
         row += 1  # gap after group
 
-    # cosmetics: column widths
     for col in range(1, ws.max_column + 1):
         max_len = 0
         for r in range(1, ws.max_row + 1):
@@ -460,14 +429,10 @@ def build_tech_report_xlsx(
             s = str(v)
             if len(s) > max_len:
                 max_len = len(s)
-        # clamp
         ws.column_dimensions[get_column_letter(col)].width = min(max(10, max_len + 2), 60)
 
-    # freeze header of outputs maybe
     ws.freeze_panes = "A5"
 
-    
-    # -------- Errors sheet (optional) --------
     if errors:
         ws_err = wb.create_sheet("Ошибки")
         ws_err["A1"] = "Параметры с ошибками расчёта"
@@ -479,7 +444,6 @@ def build_tech_report_xlsx(
             hdr = err.get("header") or err.get("name") or ""
             msg = err.get("Exception") or err.get("msg") or err.get("error") or ""
             ws_err.append([str(hdr), str(msg)])
-        # widths
         ws_err.column_dimensions["A"].width = 40
         ws_err.column_dimensions["B"].width = 80
 

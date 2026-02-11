@@ -161,11 +161,11 @@ def _tech_settings(e: ft.ControlEvent):
     cfg = getattr(Data.Data_module.cust_data, "tech_report_cfg", None)
     if not isinstance(cfg, dict):
         cfg = {
-  "transpose_enabled": True,
-  "transpose_num_prefixes": ["ak_srednegeometricheskaya_chastota_gc"],     # prefix_<NUM>
-  "transpose_numfix": ["ak_srednegeometricheskaya_chastota_gc||14"],       # stem_<NUM>_<FIX>
-  "transpose_tag_bases": ["pressure", "diameter"],                         # <base>_<tag><idx>
-}
+          "transpose_enabled": True,
+          "transpose_num_prefixes": ["ak_srednegeometricheskaya_chastota_gc"],
+          "transpose_numfix": ["ak_srednegeometricheskaya_chastota_gc||14"],
+          "transpose_tag_bases": ["pressure", "diameter"],
+        }
 
     def _on_save(new_cfg: dict):
         setattr(Data.Data_module.cust_data, "tech_report_cfg", new_cfg)
