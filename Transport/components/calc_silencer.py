@@ -4,14 +4,11 @@ import components.common_funcs as CMF
 import data_class as DTCLS
 import project_cust_38.Cust_Functions as F
 import project_cust_38.Cust_emoji as Cust_emoji
+from typing import Any
 
-try:
-    from components.ext_report_native_menu import build_save_reports_menu
-    from components.ext_tech_report_excel import build_tech_report_xlsx
-    from components.ext_tech_report_settings_dialog import open_tech_report_settings_dialog
-except Exception:
-    build_save_reports_menu = None
-    open_tech_report_settings_dialog = None
+from components.ext_report_native_menu import build_save_reports_menu
+from components.ext_tech_report_excel import build_tech_report_xlsx
+from components.ext_tech_report_settings_dialog import open_tech_report_settings_dialog
 
 DICT_BARS = {"leading": {'text': 'Домой',
                          'icon': ft.Icons.HOME,
@@ -80,6 +77,71 @@ def apply_page_settings(page: ft.Page,MODULE:DTCLS.ModuleCfg):
     Data.Data_module = MODULE
     Data.Data_module.cust_data: calc_silencer_back.Cust_module_params = calc_silencer_back.Cust_module_params()
 
+    # --- загрузка пользовательских настроек tech-отчёта из client_storage (локально на стороне юзера) ---
+    try:
+        storage_key = f"tech_report_cfg::{MODULE.alias}"
+        stored = page.client_storage.get(storage_key)
+        if isinstance(stored, str):
+            try:
+                import json
+
+                stored = json.loads(stored)
+            except Exception:
+                stored = None
+        if isinstance(stored, dict):
+            setattr(Data.Data_module.cust_data, "tech_report_cfg", stored)
+    except Exception:
+        pass
+
+
+def _client_storage_set_safe(page: ft.Page, key: str, value: Any) -> None:
+    """Best-effort запись в client_storage с поддержкой sync/async API в разных версиях Flet."""
+    try:
+        page.client_storage.set(key, value)
+        return
+    except Exception:
+        pass
+
+    async def _do():
+        try:
+            await page.client_storage.set_async(key, value)
+        except Exception:
+            pass
+
+    try:
+        if hasattr(page, "run_task"):
+            page.run_task(_do)
+        else:
+            import asyncio
+
+            asyncio.create_task(_do())
+    except Exception:
+        pass
+
+
+def _client_storage_remove_safe(page: ft.Page, key: str) -> None:
+    try:
+        page.client_storage.remove(key)
+        return
+    except Exception:
+        pass
+
+    async def _do():
+        try:
+            await page.client_storage.remove_async(key)
+        except Exception:
+            pass
+
+    try:
+        if hasattr(page, "run_task"):
+            page.run_task(_do)
+        else:
+            import asyncio
+
+            asyncio.create_task(_do())
+    except Exception:
+        pass
+
 def _save_word(e: ft.ControlEvent):
     Data: DTCLS.Data_page = e.page.data
     cfg_module = Data.Data_module
@@ -132,7 +194,6 @@ def _tech_build(e: ft.ControlEvent):
         show_msgbox_err(e)
         return
 
-    # пользовательский конфиг (из UI настроек)
     cfg = getattr(cfg_module.cust_data, "tech_report_cfg", None) or {}
 
     path = build_tech_report_xlsx(
@@ -149,10 +210,7 @@ def _tech_build(e: ft.ControlEvent):
         show_msgbox_err(e)
         return
 
-    # как и для Word-отчёта: сохраняем расчёт в историю (опционально, но логично)
     calc_silencer_back.save_in_db(e, name)
-
-    # отдаём файл пользователю
     CMF.dialog_save_file(e, path)
 
 
@@ -169,6 +227,19 @@ def _tech_settings(e: ft.ControlEvent):
 
     def _on_save(new_cfg: dict):
         setattr(Data.Data_module.cust_data, "tech_report_cfg", new_cfg)
+
+        # Persist (локально у пользователя) если включено в диалоге.
+        # Ветка под сохранение в БД оставлена в конфиге (storage="db"),
+        # но пока всё равно пишем в local client_storage (fallback).
+        try:
+            storage_key = f"tech_report_cfg::{Data.Data_module.alias}"
+            persist = bool(new_cfg.get("persist", True))
+            if persist:
+                _client_storage_set_safe(e.page, storage_key, new_cfg)
+            else:
+                _client_storage_remove_safe(e.page, storage_key)
+        except Exception:
+            pass
         try:
             sb = DTCLS.Data_page.Data_module.status_bar
             sb.set_text("Настройки технологического отчёта сохранены")

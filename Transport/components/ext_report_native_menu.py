@@ -1,11 +1,10 @@
-# components/ext_report_native_menu.py
 import flet as ft
 
 
 def build_save_reports_menu(
     *,
     ref: ft.Ref | None = None,
-    width: int = 150,
+    width: int = 200,
     height: int = 50,
     radius: int = 1,
     # callbacks:
@@ -14,22 +13,15 @@ def build_save_reports_menu(
     on_tech_build=None,
     on_tech_settings=None,
 ):
-    """
-    Нативное меню сохранения:
-      - Word (шаблон)
-      - Excel
-      - Технологический отчёт -> (Сформировать, Настройки)
-    """
+    """Нативное меню сохранения:"""
 
     def _safe_call(cb, e):
         if cb:
             cb(e)
 
-    # Подменю "Технологический отчёт" (как на твоём скрине — стрелка и каскад вправо)
     tech_submenu = ft.SubmenuButton(
         leading=ft.Icon(ft.Icons.FACT_CHECK),
         content=ft.Text("Технологический отчёт"),
-        # Для подменю обычно дефолтно уезжает вправо; стиль оставим минимальный
         controls=[
             ft.MenuItemButton(
                 leading=ft.Icon(ft.Icons.PLAY_ARROW),
@@ -44,20 +36,16 @@ def build_save_reports_menu(
         ],
     )
 
-    # Главное меню “Сохранить”
     save_menu = ft.SubmenuButton(
         ref=ref,
-        width=width,
+        # width=width,
         height=height,
         leading=ft.Icon(ft.Icons.SAVE_AS),
         content=ft.Text("Сохранить"),
         trailing=ft.Icon(ft.Icons.KEYBOARD_ARROW_DOWN),
         style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=radius)),
-        # ВАЖНО:
-        # alignment + alignment_offset позволяют "подвинуть" выпадающее меню.
-        # Если хочешь, чтобы меню появлялось СПРАВА от кнопки — сдвигай по X примерно на ширину кнопки.
         menu_style=ft.MenuStyle(alignment=ft.Alignment.TOP_LEFT),
-        alignment_offset=ft.Offset(width, 0),  # <-- стартово “справа”. Если не понравится — (0, 0) = ближе к кнопке.
+        alignment_offset=ft.Offset(width, 0),
         controls=[
             ft.MenuItemButton(
                 leading=ft.Icon(ft.Icons.DESCRIPTION),
@@ -69,7 +57,7 @@ def build_save_reports_menu(
                 content=ft.Text("Excel"),
                 on_click=lambda e: _safe_call(on_excel, e),
             ),
-            ft.MenuItemButton(),  # divider
+            ft.MenuItemButton(),
             tech_submenu,
         ],
     )

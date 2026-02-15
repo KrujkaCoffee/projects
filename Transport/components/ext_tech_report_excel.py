@@ -2,24 +2,26 @@ from __future__ import annotations
 
 import os
 import re
+import math
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from openpyxl import Workbook
+from openpyxl.comments import Comment
 from openpyxl.styles import Alignment, Font, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 
-
-def _safe_filename(name: str, repl: str = "_") -> str:
-    bad = r'<>:"/\\|?*'
-    out = []
-    for ch in (name or "").strip():
-        if ch in bad or ord(ch) < 32:
-            out.append(repl)
-        else:
-            out.append(ch)
-    s = "".join(out).strip()
-    return s if s else "report"
+class TechReportBuilder:
+    def clean_forbidden_chars(self, name: str, repl: str = "_") -> str:
+        bad = r'<>:"/\\|?*'
+        out = []
+        for ch in (name or "").strip():
+            if ch in bad or ord(ch) < 32:
+                out.append(repl)
+            else:
+                out.append(ch)
+        s = "".join(out).strip()
+        return s if s else "report"
 
 
 def _is_empty(val: Any) -> bool:
@@ -28,8 +30,6 @@ def _is_empty(val: Any) -> bool:
     if isinstance(val, str):
         return val.strip() == ""
     try:
-        # NaN / Inf
-        import math
         if isinstance(val, (int, float)) and (math.isnan(val) or math.isinf(val)):
             return True
     except Exception:
@@ -53,7 +53,7 @@ def _try_float(val: Any) -> Optional[float]:
     return None
 
 
-def _as_list(v):
+def _as_list(v: Any) -> Optional[List[str]]:
     if v is None:
         return None
     if isinstance(v, str):
@@ -63,64 +63,97 @@ def _as_list(v):
     return None
 
 
+def _slug_base(s: str) -> str:
+    s = (s or "").strip().lower()
+    s = re.sub(r"\s+", " ", s)
+    s = re.sub(r"[^0-9a-zа-я]+", "_", s, flags=re.IGNORECASE)
+    s = re.sub(r"_+", "_", s).strip("_")
+    return s or "series"
+
+
+_FREQ_RE = re.compile(
+    r"(?i)(?:гц|hz)\s*(?P<a>\d+(?:[.,]\d+)?)|(?P<b>\d+(?:[.,]\d+)?)\s*(?:гц|hz)"
+)
+
+
+def _extract_freq(header: str, comment: str) -> Optional[float]:
+    """Ищем частоту (31,5 / 250 / 1000) в header или comment."""
+    for s in (header or "", comment or ""):
+        m = _FREQ_RE.search(str(s))
+        if not m:
+            continue
+        raw = m.group("a") or m.group("b")
+        if not raw:
+            continue
+        try:
+            return float(raw.replace(",", "."))
+        except Exception:
+            return None
+    return None
+
+
+def _strip_freq_suffix(header: str) -> str:
+    """Убираем хвост вида ', Гц 250' или '250 Гц' если он стоит в конце header."""
+    s = (header or "").strip()
+    if not s:
+        return s
+    s2 = re.sub(r"(?:,\s*)?(?:гц|hz)\s*\d+(?:[.,]\d+)?\s*$", "", s, flags=re.IGNORECASE).strip()
+    if s2 != s:
+        return s2.strip(" ,")
+    s2 = re.sub(r"\d+(?:[.,]\d+)?\s*(?:гц|hz)\s*$", "", s, flags=re.IGNORECASE).strip()
+    return s2.strip(" ,")
+
+
 @dataclass(frozen=True)
 class TechReportCfg:
-    """
-    Конфиг отчёта.
-    Все поля опциональные; если чего-то нет — используются безопасные дефолты.
-    """
-    # key -> bool (если False - не включать)
-    fields: Dict[str, bool] | None = None
-    # group_id/group_name -> bool (если False - не включать целиком)
-    groups: Dict[str, bool] | None = None
+    """Конфиг тех-отчёта. Все поля опциональные; отсутствующие берутся из дефолтов."""
+    fields: Optional[Dict[str, bool]] = None
+    groups: Optional[Dict[str, bool]] = None
 
     transpose_enabled: bool = True
-    # теги серий для транспонирования: n, out, k, ...
-    transpose_tags: List[str] | None = None
-    # дополнительные фильтры транспонирования (опционально):
-    # - transpose_groups: группа -> bool (если False - серии в группе НЕ транспонировать)
-    # - transpose_bases: allow-list баз (если None - транспонировать все базы; если [] - ни одну)
-    transpose_groups: Dict[str, bool] | None = None
-    transpose_bases: List[str] | None = None
-    # регулярка для распознавания серий: <base>_<tag><idx>
+    # режим распознавания серий:
+    # - "auto"   : суффиксные серии + частотные серии
+    # - "suffix" : только <base>_<tag><idx>
+    # - "freq"   : только серии по частоте (Гц/Hz) из header/comment
+    # (поддерживаем legacy "header_n" как alias для freq)
+    transpose_mode: str = "auto"
+    transpose_tags: Optional[List[str]] = None
+    transpose_groups: Optional[Dict[str, bool]] = None
+    transpose_bases: Optional[List[str]] = None
     suffix_regex: str = r"^(?P<base>.+)_(?P<tag>[A-Za-z]+)(?P<idx>\d+)$"
 
-    transpose_tag_bases: List[str] | None = None
-    transpose_num_prefixes: List[str] | None = None
-    transpose_numfix: List[str] | None = None
+    # debug
+    debug_sheet: bool = False
 
 
 def cfg_from_any(raw: Any) -> TechReportCfg:
-    """
-    Преобразует любой словарь (например из cust_data.tech_report_cfg) в TechReportCfg
-    без жёсткой зависимости от структуры UI.
-    """
     if not isinstance(raw, dict):
         return TechReportCfg()
 
-    # разные возможные формы
     fields = raw.get("fields") or raw.get("field_visibility") or raw.get("visible_fields")
-    if isinstance(fields, dict):
-        fields = {str(k): bool(v) for k, v in fields.items()}
-    else:
-        fields = None
+    fields = {str(k): bool(v) for k, v in fields.items()} if isinstance(fields, dict) else None
 
     groups = raw.get("groups") or raw.get("group_visibility") or raw.get("visible_groups")
-    if isinstance(groups, dict):
-        groups = {str(k): bool(v) for k, v in groups.items()}
-    else:
-        groups = None
+    groups = {str(k): bool(v) for k, v in groups.items()} if isinstance(groups, dict) else None
 
     transpose_enabled = raw.get("transpose_enabled")
-    if transpose_enabled is None:
-        transpose_enabled = raw.get("transpose", {}).get("enabled") if isinstance(raw.get("transpose"), dict) else True
-    transpose_enabled = bool(transpose_enabled)
+    if transpose_enabled is None and isinstance(raw.get("transpose"), dict):
+        transpose_enabled = raw["transpose"].get("enabled")
+    transpose_enabled = bool(True if transpose_enabled is None else transpose_enabled)
+
+    mode = raw.get("transpose_mode")
+    if mode is None and isinstance(raw.get("transpose"), dict):
+        mode = raw["transpose"].get("mode")
+    mode = str(mode or "auto").strip().lower()
+    if mode == "header_n":
+        mode = "freq"
+    if mode not in ("auto", "suffix", "freq"):
+        mode = "auto"
 
     tags = raw.get("transpose_tags")
     if tags is None and isinstance(raw.get("transpose"), dict):
         tags = raw["transpose"].get("tags")
     if isinstance(tags, str):
-        # "n,out"
         tags = [t.strip() for t in tags.split(",") if t.strip()]
     if isinstance(tags, list):
         tags = [str(t).strip() for t in tags if str(t).strip()]
@@ -133,48 +166,37 @@ def cfg_from_any(raw: Any) -> TechReportCfg:
     if not isinstance(suffix_regex, str) or not suffix_regex.strip():
         suffix_regex = TechReportCfg.suffix_regex
 
-    # ---- optional transpose filters ----
     t_groups = raw.get("transpose_groups")
     if t_groups is None and isinstance(raw.get("transpose"), dict):
         t_groups = raw["transpose"].get("groups")
-    if isinstance(t_groups, dict):
-        t_groups = {str(k): bool(v) for k, v in t_groups.items()}
-    else:
-        t_groups = None
+    t_groups = {str(k): bool(v) for k, v in t_groups.items()} if isinstance(t_groups, dict) else None
 
     t_bases = raw.get("transpose_bases")
     if t_bases is None and isinstance(raw.get("transpose"), dict):
         t_bases = raw["transpose"].get("bases")
-    # поддержим формы: list[str] или dict[str,bool]
     if isinstance(t_bases, dict):
         t_bases = [str(k) for k, v in t_bases.items() if bool(v)]
     if isinstance(t_bases, str):
-        # "a,b,c"
         t_bases = [x.strip() for x in t_bases.split(",") if x.strip()]
     if isinstance(t_bases, list):
         t_bases = [str(x).strip() for x in t_bases if str(x).strip()]
     else:
         t_bases = None
 
-    tag_bases = _as_list(raw.get("transpose_tag_bases"))
-    num_prefixes = _as_list(raw.get("transpose_num_prefixes"))
-    numfix = _as_list(raw.get("transpose_numfix"))
+    debug_sheet = bool(raw.get("debug_sheet", False))
 
     return TechReportCfg(
         fields=fields,
         groups=groups,
         transpose_enabled=transpose_enabled,
+        transpose_mode=mode,
         transpose_tags=tags,
         transpose_groups=t_groups,
         transpose_bases=t_bases,
         suffix_regex=suffix_regex,
-        transpose_tag_bases=tag_bases,
-        transpose_num_prefixes=num_prefixes,
-        transpose_numfix=numfix,
+        debug_sheet=debug_sheet,
     )
 
-
-# ------------------------- main build -------------------------
 
 def build_tech_report_xlsx(
     *,
@@ -187,26 +209,20 @@ def build_tech_report_xlsx(
     module_alias: str = "silencer",
     cfg_raw: Any = None,
 ) -> str | bool:
-    """
-    Создаёт xlsx и возвращает путь или False.
-
-    input_rows — результат common_funcs.datatable_to_dicts(input_table)
-    calculated — dict всех рассчитанных значений (prepare_calc_new_data())
-    output_params — метаописание параметров (header, dimension, group_name, accuracy, comment, ...)
-    """
-
+    """Создаёт xlsx и возвращает путь, либо False."""
     cfg = cfg_from_any(cfg_raw)
 
     if not os.path.isdir(save_dir):
         os.makedirs(save_dir, exist_ok=True)
-
-    safe = _safe_filename(report_name)
+    safe = TechReportBuilder().clean_forbidden_chars(report_name)
     file_name = f"{safe}_tech.xlsx"
     path = os.path.join(save_dir, file_name)
 
     wb = Workbook()
     ws = wb.active
     ws.title = "Технологический отчёт"
+
+    debug_entries: list[dict[str, str]] = []
 
     bold = Font(bold=True)
     title_font = Font(bold=True, size=14)
@@ -227,6 +243,27 @@ def build_tech_report_xlsx(
             cell.border = border_
         return cell
 
+    def _default_visible(meta: dict) -> bool:
+        view = meta.get("view", True)
+        if isinstance(view, bool):
+            return view
+        if isinstance(view, dict):
+            return bool(view.get("visible", True))
+        return True
+
+    def _push_debug(*, key: str, group: str, meta: dict, value_cell_addr: str):
+        header = str(meta.get("header", key))
+        comment = str(meta.get("comment") or "")
+        debug_entries.append(
+            {
+                "key": str(key),
+                "group": str(group),
+                "header": header,
+                "comment": comment,
+                "addr": value_cell_addr,
+            }
+        )
+
     row = 1
     set_cell(row, 1, "Технологический отчёт", font=title_font)
     row += 1
@@ -235,17 +272,15 @@ def build_tech_report_xlsx(
 
     set_cell(row, 1, "Входные данные", font=bold)
     row += 1
-
     in_headers = ["Параметр", "Значение", "Ед.изм"]
     for col, h in enumerate(in_headers, start=1):
         set_cell(row, col, h, font=bold, fill=header_fill, align=Alignment(horizontal="center"), border_=border)
     row += 1
-
     for it in input_rows or []:
-
         param = it.get("Параметр", "")
         val = it.get("Значение", "")
         dim = it.get("Ед.изм", "")
+        if not param: continue
         if val in in_headers:
             continue
         set_cell(row, 1, param, border_=border)
@@ -257,39 +292,20 @@ def build_tech_report_xlsx(
 
     set_cell(row, 1, "Результаты расчёта", font=bold)
     row += 1
-
     out_base_headers = ["Параметр", "Значение", "Ед.изм", "Комментарий"]
     for col, h in enumerate(out_base_headers, start=1):
         set_cell(row, col, h, font=bold, fill=header_fill, align=Alignment(horizontal="center"), border_=border)
     row += 1
 
-    grouped: Dict[str, List[str]] = {}
-
-    def _default_visible(meta: dict) -> bool:
-        """Определяем базовую видимость из output_params[key]['view'].
-
-        Поддерживаем форматы:
-        - view: bool
-        - view: {"visible": bool, ...}
-        - отсутствует -> True
-        """
-        view = meta.get("view", True)
-        if isinstance(view, bool):
-            return view
-        if isinstance(view, dict):
-            return bool(view.get("visible", True))
-        return True
-
+    grouped: dict[str, list[str]] = {}
     for key, val in (calculated or {}).items():
         if key not in output_params:
             continue
-
         meta = output_params[key] or {}
         group_name = str(meta.get("group_name", "") or "").strip()
 
-        if cfg.groups is not None:
-            if group_name in cfg.groups and not cfg.groups[group_name]:
-                continue
+        if cfg.groups is not None and group_name in cfg.groups and not cfg.groups[group_name]:
+            continue
 
         visible = _default_visible(meta)
         if cfg.fields is not None and key in cfg.fields:
@@ -305,10 +321,15 @@ def build_tech_report_xlsx(
     group_names = sorted(grouped.keys(), key=lambda s: s.lower())
 
     suffix_re = re.compile(cfg.suffix_regex)
-    allowed_tags = set(t.lower() for t in (cfg.transpose_tags or ["n"]))  # default n
-    allowed_bases = None
-    if cfg.transpose_bases is not None:
-        allowed_bases = set(str(b) for b in cfg.transpose_bases)
+
+    _default_tags = ["n", "out", "k", "m"]
+    allowed_tags = set(t.lower() for t in (cfg.transpose_tags or _default_tags))
+    allowed_bases = set(str(b) for b in cfg.transpose_bases) if cfg.transpose_bases is not None else None
+
+    def _strip_series_idx_from_header(header: str) -> str:
+        s = (header or "").strip()
+        s = re.sub(r"(?:\s|\()N\s*\d+\)?\s*$", "", s, flags=re.IGNORECASE).strip()
+        return s
 
     for gname in group_names:
         keys = grouped[gname]
@@ -323,25 +344,76 @@ def build_tech_report_xlsx(
 
         keys_sorted = sorted(keys, key=_sort_key)
 
-        series: Dict[str, Dict[str, Dict[int, str]]] = {}  # tag -> base -> idx -> key
-        normal: List[str] = []
+        suffix_series: dict[str, dict[str, dict[int, str]]] = {}
+        suffix_base_header: dict[str, dict[str, str]] = {}
+        freq_series: dict[str, dict[float, str]] = {}
+        freq_base_header: dict[str, str] = {}
+        freq_base_dim: dict[str, str] = {}
+
+        normal: list[str] = []
 
         for k in keys_sorted:
-            m = suffix_re.match(k)
-            if cfg.transpose_enabled and m:
-                if cfg.transpose_groups is not None:
-                    if gname in cfg.transpose_groups and not cfg.transpose_groups[gname]:
-                        normal.append(k)
-                        continue
-                tag = m.group("tag").lower()
-                if (not allowed_tags) or (tag in allowed_tags):
-                    base = m.group("base")
+            meta_k = output_params.get(k, {}) or {}
+            header_k = str(meta_k.get("header", k))
+            comment_k = str(meta_k.get("comment") or "")
+
+            if not cfg.transpose_enabled:
+                normal.append(k)
+                continue
+
+            if cfg.transpose_groups is not None and gname in cfg.transpose_groups and not cfg.transpose_groups[gname]:
+                normal.append(k)
+                continue
+
+            if cfg.transpose_mode in ("auto", "freq"):
+                fval = _extract_freq(header_k, comment_k)
+                if fval is not None:
+                    base_header = _strip_freq_suffix(header_k) or header_k
+                    base = f"F__{_slug_base(base_header)}"
                     if allowed_bases is not None and base not in allowed_bases:
                         normal.append(k)
                         continue
-                    idx = int(m.group("idx"))
-                    series.setdefault(tag, {}).setdefault(base, {})[idx] = k
+                    base_used = base
+                    base_header_used = base_header
+                    if base_used in freq_series and fval in freq_series[base_used] and freq_series[base_used][fval] != k:
+                        n = 2
+                        while True:
+                            cand = f"{base}__{n}"
+                            if cand not in freq_series:
+                                base_used = cand
+                                base_header_used = f"{base_header} [{n}]"
+                                break
+                            n += 1
+
+                    freq_series.setdefault(base_used, {})[fval] = k
+                    freq_base_header[base_used] = base_header_used
+                    freq_base_dim.setdefault(base_used, str(meta_k.get("dimension", "") or ""))
                     continue
+
+            if cfg.transpose_mode in ("auto", "suffix"):
+                mk = suffix_re.match(str(k))
+                if mk:
+                    tag = str(mk.group("tag")).lower()
+                    if allowed_tags and tag not in allowed_tags:
+                        normal.append(k)
+                        continue
+
+                    base = str(mk.group("base"))
+                    try:
+                        idx = int(mk.group("idx"))
+                    except Exception:
+                        normal.append(k)
+                        continue
+
+                    if allowed_bases is not None and base not in allowed_bases:
+                        normal.append(k)
+                        continue
+
+                    base_header = _strip_series_idx_from_header(header_k)
+                    suffix_series.setdefault(tag, {}).setdefault(base, {})[idx] = k
+                    suffix_base_header.setdefault(tag, {}).setdefault(base, base_header or base)
+                    continue
+
             normal.append(k)
 
         for k in normal:
@@ -362,64 +434,124 @@ def build_tech_report_xlsx(
                 v_out = v
 
             set_cell(row, 1, header, border_=border)
-            set_cell(row, 2, v_out, border_=border)
+            value_cell = set_cell(row, 2, v_out, border_=border)
             set_cell(row, 3, dim, border_=border)
             set_cell(row, 4, comment, border_=border)
+
+            _push_debug(key=k, group=gname, meta=meta, value_cell_addr=value_cell.coordinate)
+
             row += 1
 
-        for tag, base_map in series.items():
+        for tag, base_map in suffix_series.items():
             if not base_map:
                 continue
 
             if normal:
                 row += 1
 
-            # determine indices union
             idxs = sorted({idx for bm in base_map.values() for idx in bm.keys()})
-            # header for block
+
             ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
             set_cell(row, 1, f"Серии: _{tag}{{N}}", font=bold, fill=header_fill)
             row += 1
 
-            # block header row: Parameter | tag1 | tag2 | ... | Unit
             set_cell(row, 1, "Параметр", font=bold, fill=header_fill, align=Alignment(horizontal="center"), border_=border)
             for j, idx in enumerate(idxs, start=2):
                 set_cell(row, j, f"{tag}{idx}", font=bold, fill=header_fill, align=Alignment(horizontal="center"), border_=border)
             set_cell(row, 2 + len(idxs), "Ед.изм", font=bold, fill=header_fill, align=Alignment(horizontal="center"), border_=border)
             row += 1
 
-            # write each base as a row
-            for base, idx_map in sorted(base_map.items(), key=lambda x: x[0].lower()):
-                # pick meta from the smallest idx key for header/dim
+            def _base_sort_key(x):
+                b = x[0]
+                return (suffix_base_header.get(tag, {}).get(b, b) or b).lower()
+
+            for base, idx_map in sorted(base_map.items(), key=_base_sort_key):
                 first_key = idx_map[sorted(idx_map.keys())[0]]
                 meta0 = output_params.get(first_key, {}) or {}
-                header = meta0.get("header", base)
+                header = suffix_base_header.get(tag, {}).get(base) or meta0.get("header", base)
+                header = _strip_series_idx_from_header(str(header))
                 dim = meta0.get("dimension", "")
 
                 set_cell(row, 1, header, border_=border)
+
                 for j, idx in enumerate(idxs, start=2):
                     k = idx_map.get(idx)
                     if not k:
                         set_cell(row, j, "", border_=border)
                         continue
+                    meta_k = output_params.get(k, {}) or meta0
                     v = calculated.get(k)
                     f = _try_float(v)
-                    if f is not None and "accuracy" in meta0:
+                    if f is not None and "accuracy" in meta_k:
                         try:
-                            f = round(f, int(meta0.get("accuracy") or 0))
+                            f = round(f, int(meta_k.get("accuracy") or 0))
                         except Exception:
                             pass
-                        set_cell(row, j, f, border_=border)
+                        cell = set_cell(row, j, f, border_=border)
                     else:
-                        set_cell(row, j, v, border_=border)
+                        cell = set_cell(row, j, v, border_=border)
+
+                    _push_debug(key=k, group=gname, meta=meta_k, value_cell_addr=cell.coordinate)
 
                 set_cell(row, 2 + len(idxs), dim, border_=border)
                 row += 1
 
-            row += 1  # gap after block
+            row += 1
 
-        row += 1  # gap after group
+        if freq_series:
+            row += 1 if (normal or suffix_series) else 0
 
+            freqs = sorted({f for m in freq_series.values() for f in m.keys()})
+
+            ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
+            set_cell(row, 1, "Серии по частоте (Гц/Hz)", font=bold, fill=header_fill)
+            row += 1
+
+            def _fmt_f(f: float) -> str:
+                if abs(f - int(f)) < 1e-9:
+                    return str(int(f))
+                s = f"{f}".replace(".", ",")
+                return s
+
+            set_cell(row, 1, "Параметр", font=bold, fill=header_fill, align=Alignment(horizontal="center"), border_=border)
+            for j, f in enumerate(freqs, start=2):
+                set_cell(row, j, _fmt_f(f), font=bold, fill=header_fill, align=Alignment(horizontal="center"), border_=border)
+            set_cell(row, 2 + len(freqs), "Ед.изм", font=bold, fill=header_fill, align=Alignment(horizontal="center"), border_=border)
+            row += 1
+
+            for base in sorted(freq_series.keys(), key=lambda b: (freq_base_header.get(b, b) or b).lower()):
+                hdr = freq_base_header.get(base, base)
+                dim = freq_base_dim.get(base, "")
+                set_cell(row, 1, hdr, border_=border)
+
+                idx_map = freq_series[base]
+                for j, f in enumerate(freqs, start=2):
+                    k = idx_map.get(f)
+                    if not k:
+                        set_cell(row, j, "", border_=border)
+                        continue
+                    meta_k = output_params.get(k, {}) or {}
+                    v = calculated.get(k)
+                    fv = _try_float(v)
+                    if fv is not None and "accuracy" in meta_k:
+                        try:
+                            fv = round(fv, int(meta_k.get("accuracy") or 0))
+                        except Exception:
+                            pass
+                        cell = set_cell(row, j, fv, border_=border)
+                    else:
+                        cell = set_cell(row, j, v, border_=border)
+
+                    _push_debug(key=k, group=gname, meta=meta_k, value_cell_addr=cell.coordinate)
+
+                set_cell(row, 2 + len(freqs), dim, border_=border)
+                row += 1
+
+            row += 1
+
+        row += 1
+
+    # --- autosize columns (sheet1 only) ---
     for col in range(1, ws.max_column + 1):
         max_len = 0
         for r in range(1, ws.max_row + 1):
@@ -433,6 +565,34 @@ def build_tech_report_xlsx(
 
     ws.freeze_panes = "A5"
 
+    if cfg.debug_sheet and debug_entries:
+        ws_dbg = wb.create_sheet("DEBUG", 1)
+        ws_dbg["A1"] = "DEBUG: значения (ссылки на лист 1)"
+        ws_dbg["A1"].font = title_font
+        ws_dbg.freeze_panes = "A2"
+        ws_dbg.column_dimensions["A"].width = 34
+
+        author = "dbg"
+        r = 2
+        for ent in debug_entries:
+            addr = ent["addr"]
+            sheet_title = ws.title
+            formula = f"='{sheet_title}'!{addr}"
+            cell = ws_dbg.cell(row=r, column=1, value=formula)
+            cell.hyperlink = f"#'{sheet_title}'!{addr}"
+            txt = (
+                f"key: {ent['key']}\n"
+                f"group: {ent['group']}\n"
+                f"header: {ent['header']}\n"
+                f"comment: {ent['comment']}\n"
+                f"cell: {sheet_title}!{addr}"
+            )
+            try:
+                cell.comment = Comment(txt, author)
+            except Exception:
+                pass
+            r += 1
+
     if errors:
         ws_err = wb.create_sheet("Ошибки")
         ws_err["A1"] = "Параметры с ошибками расчёта"
@@ -441,11 +601,13 @@ def build_tech_report_xlsx(
         ws_err["A2"].font = bold
         ws_err["B2"].font = bold
         for err in errors:
-            hdr = err.get("header") or err.get("name") or ""
-            msg = err.get("Exception") or err.get("msg") or err.get("error") or ""
-            ws_err.append([str(hdr), str(msg)])
-        ws_err.column_dimensions["A"].width = 40
-        ws_err.column_dimensions["B"].width = 80
+            ws_err.append([err.get("param", ""), err.get("msg", "")])
+        ws_err.column_dimensions["A"].width = 45
+        ws_err.column_dimensions["B"].width = 90
 
-    wb.save(path)
+    try:
+        wb.save(path)
+    except Exception:
+        return False
+
     return path

@@ -102,7 +102,7 @@ def main_page(page, PATHF_IT_PLAN):
 def menubar():
     def handle_menu_item_click(e):
         def clc_settings():
-            if DTCLS.Data_page.Data_module.settingsRef.current.visible:
+            if DTCLS.Data_page.Data_module.settingsRef.current and DTCLS.Data_page.Data_module.settingsRef.current.visible:
                 DTCLS.Data_page.Data_module.settingsRef.current.visible = False
             else:
                 DTCLS.Data_page.Data_module.settingsRef.current.visible = True

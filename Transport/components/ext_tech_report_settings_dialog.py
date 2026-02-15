@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Tuple, Optional
 
 import re
 import asyncio
@@ -22,21 +22,16 @@ class _SeriesInfo:
     base: str
     header: str
     tags: set[str]
-    idxs: set[int]
+    idxs: set[float]  # для suffix: N; для freq: частоты
 
 
-_DEFAULT_SUFFIX_REGEX = r"^(?P<base>.+)_(?P<tag>[A-Za-z]+)(?P<idx>\d+)$"
-_DEFAULT_GZ_FORM = "Среднегеометрическая частота, Гц"
+_DEFAULT_SUFFIX_REGEX = r"^(?P<base>.+)_(?P<tag>[A-Za-z]+)_?(?P<idx>\d+)(?P<rest>(?:_\d+)*)$"
+
+# Частота (Гц/Hz) может быть в header или comment
+_FREQ_RE = re.compile(r"(?i)(?:гц|hz)\s*(?P<a>\d+(?:[.,]\d+)?)|(?P<b>\d+(?:[.,]\d+)?)\s*(?:гц|hz)")
 
 
 def _default_visible(meta: dict) -> bool:
-    """Определяем дефолтную видимость параметра.
-
-    Поддерживаем форматы:
-    - view: bool
-    - view: {"visible": bool, ...}
-    - отсутствует -> True
-    """
     view = meta.get("view", True)
     if isinstance(view, bool):
         return view
@@ -56,41 +51,102 @@ def _normalize_tags(raw: Any) -> List[str]:
     return ["n"]
 
 
-def _scan_series(output_params: Dict[str, dict], suffix_regex: str) -> Tuple[List[str], Dict[str, List[_SeriesInfo]]]:
-    """Сканирует OUTPUT_PARAMS и находит серии по suffix_regex. """
-    try:
-        suffix_re = re.compile(suffix_regex)
-    except Exception:
-        suffix_re = re.compile(_DEFAULT_SUFFIX_REGEX)
+def _slug_base(s: str) -> str:
+    s = (s or "").strip().lower()
+    s = re.sub(r"\s+", " ", s)
+    s = re.sub(r"[^0-9a-zа-я]+", "_", s, flags=re.IGNORECASE)
+    s = re.sub(r"_+", "_", s).strip("_")
+    return s or "series"
+
+
+def _extract_freq(header: str, comment: str) -> Optional[float]:
+    for s in (header or "", comment or ""):
+        m = _FREQ_RE.search(str(s))
+        if not m:
+            continue
+        raw = m.group("a") or m.group("b")
+        if not raw:
+            continue
+        try:
+            return float(raw.replace(",", "."))
+        except Exception:
+            return None
+    return None
+
+
+def _strip_freq_suffix(header: str) -> str:
+    s = (header or "").strip()
+    if not s:
+        return s
+    s2 = re.sub(r"(?:,\s*)?(?:гц|hz)\s*\d+(?:[.,]\d+)?\s*$", "", s, flags=re.IGNORECASE).strip()
+    if s2 != s:
+        return s2.strip(" ,")
+    s2 = re.sub(r"\d+(?:[.,]\d+)?\s*(?:гц|hz)\s*$", "", s, flags=re.IGNORECASE).strip()
+    return s2.strip(" ,")
+
+
+def _fmt_num(x: float) -> str:
+    if abs(x - int(x)) < 1e-9:
+        return str(int(x))
+    return str(x).replace(".", ",")
+
+
+def _scan_series(
+    output_params: Dict[str, dict],
+    suffix_regex: str,
+    transpose_mode: str,
+) -> Tuple[List[str], Dict[str, List[_SeriesInfo]]]:
+    """
+    Парсинг OUTPUT_PARAMS для вкладки «Транспонирование».
+
+    transpose_mode:
+      - "auto"   : suffix + freq
+      - "suffix" : только suffix_regex
+      - "freq"   : только частоты (Гц/Hz) из header/comment
+    """
+    mode = (transpose_mode or "auto").strip().lower()
+    if mode not in ("auto", "suffix", "freq"):
+        mode = "auto"
+
+    suffix_re = re.compile((suffix_regex or _DEFAULT_SUFFIX_REGEX).strip())
 
     tmp: Dict[str, Dict[str, _SeriesInfo]] = {}  # group -> base -> info
 
-    for key, meta in (output_params or {}).items():
-        if not isinstance(meta, dict):
-            meta = {}
-
-        m = suffix_re.match(str(key))
-        if not m:
-            continue
-
-        base = str(m.group("base"))
-        tag = str(m.group("tag"))
-        try:
-            idx = int(m.group("idx"))
-        except Exception:
-            continue
-
-        group = str(meta.get("group_name") or "").strip() or "Без группы"
-        header = str(meta.get("header") or base)
-
+    def _add(*, group: str, base: str, header: str, tag: str, idx: float):
         gmap = tmp.setdefault(group, {})
         info = gmap.get(base)
         if info is None:
             info = _SeriesInfo(base=base, header=header, tags=set(), idxs=set())
             gmap[base] = info
-
         info.tags.add(tag)
-        info.idxs.add(idx)
+        info.idxs.add(float(idx))
+
+    for key, meta in (output_params or {}).items():
+        if not isinstance(meta, dict):
+            meta = {}
+
+        group = str(meta.get("group_name") or "").strip() or "Без группы"
+        header = str(meta.get("header") or key)
+        comment = str(meta.get("comment") or "")
+
+        if mode in ("auto", "suffix"):
+            m = suffix_re.match(str(key))
+            if m:
+                base = str(m.group("base"))
+                tag = str(m.group("tag"))
+                try:
+                    idx = float(int(m.group("idx")))
+                except Exception:
+                    idx = None
+                if idx is not None:
+                    _add(group=group, base=base, header=str(meta.get("header") or base), tag=tag, idx=idx)
+
+        if mode in ("auto", "freq"):
+            f = _extract_freq(header, comment)
+            if f is not None:
+                base_header = _strip_freq_suffix(header) or header
+                base = f"F__{_slug_base(base_header)}"
+                _add(group=group, base=base, header=base_header, tag="freq", idx=f)
 
     group_names = sorted(tmp.keys(), key=lambda s: s.lower())
     series_by_group: Dict[str, List[_SeriesInfo]] = {}
@@ -118,9 +174,17 @@ def open_tech_report_settings_dialog(
 
     transpose_enabled_init = bool(cfg.get("transpose_enabled", True))
     transpose_tags_init = _normalize_tags(cfg.get("transpose_tags"))
-    suffix_regex_init = str(cfg.get("suffix_regex") or _DEFAULT_SUFFIX_REGEX)
+    suffix_regex_init = str(cfg.get("suffix_regex") or _DEFAULT_SUFFIX_REGEX).strip()
 
-    # transpose filters (optional)
+    transpose_mode_init = str(cfg.get("transpose_mode") or "auto").strip().lower()
+    if transpose_mode_init == "header_n":  # legacy alias
+        transpose_mode_init = "freq"
+    if transpose_mode_init not in ("auto", "suffix", "freq"):
+        transpose_mode_init = "auto"
+
+    debug_sheet_init = bool(cfg.get("debug_sheet", False))
+    persist_init = bool(cfg.get("persist", True))
+
     cfg_t_groups: Dict[str, Any] = cfg.get("transpose_groups") if isinstance(cfg.get("transpose_groups"), dict) else {}
     cfg_t_bases_raw = cfg.get("transpose_bases")
     cfg_t_bases: List[str] | None
@@ -154,9 +218,6 @@ def open_tech_report_settings_dialog(
     for it in items:
         group_to_items[it.group].append(it)
 
-    _item_lc = {it.key: (it.header.lower(), it.key.lower(), it.group.lower()) for it in items}
-    _group_lc = {g: g.lower() for g in group_names}
-
     field_state: Dict[str, bool] = {}
     for it in items:
         field_state[it.key] = bool(cfg_fields.get(it.key, it.default_visible))
@@ -165,11 +226,17 @@ def open_tech_report_settings_dialog(
     for g in group_names:
         group_state[g] = bool(cfg_groups.get(g, True))
 
-    series_group_names, series_by_group = _scan_series(output_params, suffix_regex_init)
-    all_bases: List[str] = []
-    for g in series_group_names:
-        for info in series_by_group.get(g, []):
-            all_bases.append(info.base)
+    # ---------- series scan (depends on mode) ----------
+    series_group_names, series_by_group = _scan_series(output_params, suffix_regex_init, transpose_mode_init)
+
+    def _calc_all_bases() -> List[str]:
+        out: List[str] = []
+        for g in series_group_names:
+            for info in series_by_group.get(g, []):
+                out.append(info.base)
+        return out
+
+    all_bases = _calc_all_bases()
     all_bases_set = set(all_bases)
 
     transpose_group_state: Dict[str, bool] = {}
@@ -185,6 +252,7 @@ def open_tech_report_settings_dialog(
         for b in all_bases_set:
             transpose_base_state[b] = b in allowed
 
+    # ---------------- controls ----------------
     search_tf = ft.TextField(
         label="Поиск",
         hint_text="по имени / ключу параметра",
@@ -193,28 +261,36 @@ def open_tech_report_settings_dialog(
         dense=True,
     )
 
-    search_scope_dd = ft.Dropdown(
-        value="params",
-        dense=True,
-        width=220,
-        options=[
-            ft.dropdown.Option("params", "По параметрам"),
-            ft.dropdown.Option("groups", "По группам"),
-            ft.dropdown.Option("both", "Параметры + группы"),
-        ],
+    transpose_enabled_sw = ft.Switch(label="Включить транспонирование серий", value=transpose_enabled_init)
+
+    # режим транспонирования (две/три опции для пользователя)
+    transpose_mode_rg = ft.RadioGroup(
+        value=transpose_mode_init,
+        content=ft.Row(
+            controls=[
+                ft.Radio(value="auto", label="Авто (суффикс + частота)"),
+                ft.Radio(value="suffix", label="По суффиксу ключа"),
+                ft.Radio(value="freq", label="По частоте (Гц/Hz)"),
+            ],
+            wrap=True,
+            spacing=12,
+        ),
     )
 
-    transpose_enabled_sw = ft.Switch(label="Включить транспонирование серий", value=transpose_enabled_init)
+    debug_sheet_sw = ft.Switch(label="Лист DEBUG (ссылки на значения)", value=debug_sheet_init)
+    persist_sw = ft.Switch(label="Сохранять настройки на этом устройстве", value=persist_init)
+
     transpose_tags_tf = ft.TextField(
-        label="Теги серий (через запятую)",
+        label="Теги серий (через запятую) — только для суффиксного режима",
         value=", ".join(transpose_tags_init),
         hint_text="например: n, out",
         dense=True,
     )
     suffix_regex_tf = ft.TextField(
-        label="Regex суффикса",
+        label="Regex суффикса — только для суффиксного режима",
         value=suffix_regex_init,
         dense=True,
+        helper="Дефолт: <base>_<tag><idx>  (пример: pressure_n1)",
     )
 
     fields_body_ref = ft.Ref[ft.Column]()
@@ -229,6 +305,9 @@ def open_tech_report_settings_dialog(
 
     # ---- cfg builder ----
     def _build_cfg() -> Dict[str, Any]:
+        """ВАЖНО: делаем merge, чтобы не затирать ранее сохранённые ключи (num_prefixes и т.п.)."""
+        out: Dict[str, Any] = dict(cfg)
+
         # fields overrides: пишем только отличия от дефолта
         fields_overrides: Dict[str, bool] = {}
         for it in items:
@@ -255,257 +334,398 @@ def open_tech_report_settings_dialog(
         if not all_bases_set:
             transpose_bases_out = None
         else:
-            # если включены все - не пишем allow-list (значит "все")
             if set(enabled_bases) == set(all_bases_set):
                 transpose_bases_out = None
             else:
                 transpose_bases_out = enabled_bases  # может быть [] => "ничего"
 
-        out: Dict[str, Any] = {
-            "fields": fields_overrides,
-            "groups": groups_overrides,
-            "transpose_enabled": bool(transpose_enabled_sw.value),
-            "transpose_tags": _normalize_tags(transpose_tags_tf.value),
-            "suffix_regex": (suffix_regex_tf.value or _DEFAULT_SUFFIX_REGEX).strip(),
-        }
+        out["fields"] = fields_overrides
+        out["groups"] = groups_overrides
+        out["transpose_enabled"] = bool(transpose_enabled_sw.value)
+        out["transpose_mode"] = str(transpose_mode_rg.value or "auto")
+        out["transpose_tags"] = _normalize_tags(transpose_tags_tf.value)
+        out["suffix_regex"] = (suffix_regex_tf.value or _DEFAULT_SUFFIX_REGEX).strip()
+        out["debug_sheet"] = bool(debug_sheet_sw.value)
+        out["persist"] = bool(persist_sw.value)
 
+        # optional transpose filters
         if t_groups_overrides:
             out["transpose_groups"] = t_groups_overrides
+        else:
+            out.pop("transpose_groups", None)
+
         if transpose_bases_out is not None:
             out["transpose_bases"] = transpose_bases_out
+        else:
+            out.pop("transpose_bases", None)
 
         return out
 
-    # ---- fields rendering ----
-        # ---- search/render control ----
-    _search_ctl = {"seq": 0, "limit": 200}
+    # ---- fields UI (perf) ----
+    # Ключевая идея: НЕ пересоздавать тысячи контролов на каждый символ в поиске.
+    # 1) Список групп строим один раз (только шапки) и лениво подгружаем поля при раскрытии группы.
+    # 2) Поиск — с debounce; при активном поиске показываем плоский список результатов.
 
-    def _schedule_fields_render(*, reset_limit: bool = False):
-        """Debounce для тяжёлого рендера при вводе в поиск/переключении режима."""
-        if reset_limit:
-            _search_ctl["limit"] = 200
-        _search_ctl["seq"] += 1
-        seq = _search_ctl["seq"]
+    fields_dynamic_ref = ft.Ref[ft.Column]()
 
-        async def _debounced():
-            await asyncio.sleep(0.35)
-            if seq != _search_ctl["seq"]:
-                return
-            _render_fields()
+    group_cb_by_name: Dict[str, ft.Checkbox] = {}
+    group_cnt_by_name: Dict[str, ft.Text] = {}
+    group_children_by_name: Dict[str, ft.Column] = {}
+    group_block_by_name: Dict[str, ft.Column] = {}
+    group_expand_btn_by_name: Dict[str, ft.IconButton] = {}
 
-        try:
-            if hasattr(page, "run_task"):
-                page.run_task(_debounced)
-            else:
-                asyncio.create_task(_debounced())
-        except Exception:
+    # кешируем только уже построенные поля (группа могла ещё не раскрыться)
+    field_cb_by_key: Dict[str, ft.Checkbox] = {}
+
+    _group_built: Dict[str, bool] = {g: False for g in group_names}
+    _group_building: set[str] = set()
+
+    _search_seq = {"n": 0}
+
+    def _set_field_value(key: str, val: bool, *, source_cb: ft.Checkbox | None = None):
+        field_state[key] = bool(val)
+        cb = field_cb_by_key.get(key)
+        if cb is not None and cb is not source_cb:
+            cb.value = bool(val)
             try:
-                asyncio.create_task(_debounced())
+                cb.update()
             except Exception:
-                _render_fields()
+                pass
 
-    def _render_fields():
-        q_raw = (search_tf.value or "").strip()
-        q = q_raw.lower()
-        mode = str(search_scope_dd.value or "params")
-        limit = int(_search_ctl.get("limit", 200) or 200)
+    def _on_group_toggle(e: ft.ControlEvent):
+        gg = str(e.control.data)
+        group_state[gg] = bool(e.control.value)
 
-        tiles: List[ft.Control] = []
+    def _on_field_toggle(e: ft.ControlEvent):
+        kk = str(e.control.data)
+        _set_field_value(kk, bool(e.control.value), source_cb=e.control)
 
-        # bulk actions
-        def _apply_all(val: bool):
-            for it in items:
-                field_state[it.key] = val
-            for g in group_names:
-                group_state[g] = True
-            _render_fields()
+    def _bulk_apply_all(val: bool):
+        for it in items:
+            field_state[it.key] = bool(val)
+        for g in group_names:
+            group_state[g] = True
 
-        def _apply_none():
-            for it in items:
-                field_state[it.key] = False
-            for g in group_names:
-                group_state[g] = False
-            _render_fields()
+        for cb in group_cb_by_name.values():
+            cb.value = True
+        for cb in field_cb_by_key.values():
+            cb.value = bool(val)
 
-        def _apply_reset():
-            for it in items:
-                field_state[it.key] = it.default_visible
-            for g in group_names:
-                group_state[g] = True
-            _render_fields()
+        _apply_search_now()
 
-        buttons = ft.Row(
-            controls=[
-                ft.FilledButton("Все", on_click=lambda _e: _apply_all(True)),
-                ft.OutlinedButton("Ничего", on_click=lambda _e: _apply_none()),
-                ft.TextButton("Сброс", on_click=lambda _e: _apply_reset()),
-            ],
-            spacing=10,
-        )
+    def _bulk_apply_none():
+        for it in items:
+            field_state[it.key] = False
+        for g in group_names:
+            group_state[g] = False
 
-        tiles.append(ft.Row([search_tf, search_scope_dd, buttons], spacing=12))
-        tiles.append(
-            ft.Text(
-                "Подсказка: дефолтная видимость берётся из OUTPUT_PARAMS[key]['view'] (если задано).\n"
-                "Галочка группы выключает группу целиком в отчёте.",
-                size=12,
-                opacity=0.8,
-            )
-        )
+        for cb in group_cb_by_name.values():
+            cb.value = False
+        for cb in field_cb_by_key.values():
+            cb.value = False
 
-        def _on_group_toggle(e: ft.ControlEvent):
-            gg = str(e.control.data)
-            group_state[gg] = bool(e.control.value)
-            # группа — маска, поле не трогаем
+        _apply_search_now()
 
-        def _on_field_toggle(e: ft.ControlEvent):
-            kk = str(e.control.data)
-            field_state[kk] = bool(e.control.value)
+    def _bulk_apply_reset():
+        for it in items:
+            field_state[it.key] = bool(it.default_visible)
+        for g in group_names:
+            group_state[g] = True
 
-        def _field_tile(it: _Item) -> ft.Control:
+        for cb in group_cb_by_name.values():
+            cb.value = True
+        for it_key, cb in field_cb_by_key.items():
+            cb.value = bool(field_state.get(it_key, True))
+
+        _apply_search_now()
+
+    bulk_buttons = ft.Row(
+        controls=[
+            ft.FilledButton("Все", on_click=lambda _e: _bulk_apply_all(True)),
+            ft.OutlinedButton("Ничего", on_click=lambda _e: _bulk_apply_none()),
+            ft.TextButton("Сброс", on_click=lambda _e: _bulk_apply_reset()),
+        ],
+        spacing=10,
+    )
+
+    fields_hint = ft.Text(
+        "Подсказка: дефолтная видимость берётся из OUTPUT_PARAMS[key]['view'] (если задано).\n"
+        "Галочка группы выключает группу целиком в отчёте.",
+        size=12,
+        opacity=0.8,
+    )
+
+    def _build_group_children_sync(g: str) -> List[ft.Control]:
+        out: List[ft.Control] = []
+        for it in group_to_items.get(g, []):
             cb = ft.Checkbox(value=bool(field_state.get(it.key, True)), data=it.key, on_change=_on_field_toggle)
-            subtitle = f"{it.group} · {it.key}"
+            field_cb_by_key[it.key] = cb
+            subtitle = it.key
             if it.dim:
                 subtitle = f"{subtitle} · {it.dim}"
-            return ft.ListTile(
-                leading=cb,
-                title=ft.Text(it.header),
-                subtitle=ft.Text(subtitle, size=11, opacity=0.75),
-                dense=True,
+            out.append(
+                ft.ListTile(
+                    leading=cb,
+                    title=ft.Text(it.header),
+                    subtitle=ft.Text(subtitle, size=11, opacity=0.75),
+                    dense=True,
+                )
             )
+        return out
 
-        # ---- режим: поиск по параметрам (плоский список + лимит) ----
-        if mode == "params" and q and len(q) >= 2:
-            matched: List[_Item] = []
-            for it in items:
-                h_lc, k_lc, _g_lc = _item_lc[it.key]
-                if q in h_lc or q in k_lc:
-                    matched.append(it)
+    async def _build_group_children_async(g: str):
+        out: List[ft.Control] = []
+        group_items = group_to_items.get(g, [])
+        for i, it in enumerate(group_items):
+            cb = ft.Checkbox(value=bool(field_state.get(it.key, True)), data=it.key, on_change=_on_field_toggle)
+            field_cb_by_key[it.key] = cb
+            subtitle = it.key
+            if it.dim:
+                subtitle = f"{subtitle} · {it.dim}"
+            out.append(
+                ft.ListTile(
+                    leading=cb,
+                    title=ft.Text(it.header),
+                    subtitle=ft.Text(subtitle, size=11, opacity=0.75),
+                    dense=True,
+                )
+            )
+            if i and (i % 60 == 0):
+                await asyncio.sleep(0)
+        return out
 
-            total = len(matched)
-            shown = matched[:limit]
-
-            tiles.append(ft.Text(f"Найдено: {total}. Показано: {len(shown)}.", size=12, opacity=0.8))
-
-            if not shown:
-                tiles.append(ft.Text("Ничего не найдено.", size=12, opacity=0.75))
-            else:
-                tiles.extend(_field_tile(it) for it in shown)
-
-            if total > limit:
-                def _more(_e):
-                    _search_ctl["limit"] = min(total, limit + 200)
-                    _render_fields()
-
-                tiles.append(ft.OutlinedButton(f"Показать ещё (+200)", on_click=_more))
-
-            fields_body_ref.current.controls = tiles
-            fields_body_ref.current.update()
+    def _toggle_group_expand(e: ft.ControlEvent):
+        g = str(e.control.data)
+        col = group_children_by_name.get(g)
+        if col is None:
             return
 
-        # ---- иначе: показываем группы (поиск по группам / смешанный / без поиска) ----
-        match_by_group: Dict[str, List[_Item]] = {}
-        if q and len(q) >= 2 and mode in ("both",):
-            for it in items:
-                h_lc, k_lc, _g_lc = _item_lc[it.key]
-                if q in h_lc or q in k_lc:
-                    match_by_group.setdefault(it.group, []).append(it)
+        if _group_built.get(g, False):
+            col.visible = not bool(col.visible)
+            btn = group_expand_btn_by_name.get(g)
+            if btn is not None:
+                btn.icon = ft.Icons.EXPAND_MORE if col.visible else ft.Icons.CHEVRON_RIGHT
+            try:
+                group_block_by_name[g].update()
+            except Exception:
+                pass
+            return
 
-        # в "groups" мы ищем только по имени группы
-        # в "both" — группа проходит, если совпала по имени ИЛИ есть совпадения по параметрам
-        groups_to_show: List[Tuple[str, List[_Item], bool]] = []  # (group, items_for_group, is_match_items_only)
+        if g in _group_building:
+            col.visible = not bool(col.visible)
+            btn = group_expand_btn_by_name.get(g)
+            if btn is not None:
+                btn.icon = ft.Icons.EXPAND_MORE if col.visible else ft.Icons.CHEVRON_RIGHT
+            try:
+                group_block_by_name[g].update()
+            except Exception:
+                pass
+            return
+
+        _group_building.add(g)
+        col.controls = [ft.Row(controls=[ft.ProgressRing(width=16, height=16), ft.Text("Загрузка...")], spacing=8)]
+        col.visible = True
+        btn = group_expand_btn_by_name.get(g)
+        if btn is not None:
+            btn.icon = ft.Icons.EXPAND_MORE
+        try:
+            group_block_by_name[g].update()
+        except Exception:
+            pass
+
+        async def _task():
+            await asyncio.sleep(0)
+            if _closing["busy"]:
+                return
+            try:
+                children = await _build_group_children_async(g)
+            except Exception:
+                children = _build_group_children_sync(g)
+
+            col.controls = children
+            _group_built[g] = True
+            _group_building.discard(g)
+            try:
+                col.update()
+            except Exception:
+                pass
+
+        if hasattr(page, "run_task"):
+            try:
+                page.run_task(_task())
+            except Exception:
+                col.controls = _build_group_children_sync(g)
+                _group_built[g] = True
+                _group_building.discard(g)
+                try:
+                    col.update()
+                except Exception:
+                    pass
+        else:
+            col.controls = _build_group_children_sync(g)
+            _group_built[g] = True
+            _group_building.discard(g)
+            try:
+                col.update()
+            except Exception:
+                pass
+
+    def _build_group_blocks() -> List[ft.Control]:
+        blocks: List[ft.Control] = []
         for g in group_names:
-            g_lc = _group_lc.get(g, g.lower())
-            group_name_match = bool(q) and (q in g_lc)
+            g_items_cnt = len(group_to_items.get(g, []))
 
-            if mode == "groups":
-                if q and not group_name_match:
-                    continue
-                groups_to_show.append((g, group_to_items.get(g, []), False))
-                continue
+            exp_btn = ft.IconButton(
+                icon=ft.Icons.CHEVRON_RIGHT,
+                tooltip="Развернуть/свернуть",
+                data=g,
+                on_click=_toggle_group_expand,
+            )
+            group_expand_btn_by_name[g] = exp_btn
 
-            if mode == "both" and q and len(q) >= 2:
-                if group_name_match:
-                    groups_to_show.append((g, group_to_items.get(g, []), False))
-                elif g in match_by_group:
-                    groups_to_show.append((g, match_by_group.get(g, []), True))
-                else:
-                    continue
-            else:
-                # без поиска или q слишком короткий — обычный список групп
-                groups_to_show.append((g, group_to_items.get(g, []), False))
-
-        if q and len(q) == 1 and mode in ("params", "both"):
-            tiles.append(ft.Text("Для поиска по параметрам введите минимум 2 символа.", size=12, opacity=0.75))
-
-        for g, group_items, match_only in groups_to_show:
             grp_cb = ft.Checkbox(value=bool(group_state.get(g, True)), data=g, on_change=_on_group_toggle)
+            group_cb_by_name[g] = grp_cb
 
-            cnt_txt = f"({len(group_items)})"
-            if match_only and q:
-                cnt_txt = f"({len(group_items)} совп.)"
+            cnt_txt = ft.Text(f"({g_items_cnt})", size=12, opacity=0.7)
+            group_cnt_by_name[g] = cnt_txt
 
-            title_row = ft.Row(
-                controls=[
-                    grp_cb,
-                    ft.Text(g, weight=ft.FontWeight.W_600),
-                    ft.Text(cnt_txt, size=12, opacity=0.7),
-                ],
+            children_col = ft.Column(controls=[], visible=False, spacing=0)
+            group_children_by_name[g] = children_col
+
+            header_row = ft.Row(
+                controls=[exp_btn, grp_cb, ft.Text(g, weight=ft.FontWeight.W_600), cnt_txt],
                 spacing=8,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
             )
 
-            tile = ft.ExpansionTile(
-                title=title_row,
-                maintain_state=True,
-                expanded=False,
-                controls=[],  # lazy
+            block = ft.Column(
+                controls=[header_row, ft.Container(content=children_col, padding=ft.padding.only(left=28))],
+                spacing=0,
             )
+            group_block_by_name[g] = block
+            blocks.append(block)
+        return blocks
 
-            def _mk_on_tile_change(items_for_group: List[_Item]):
-                def _on_tile_change(e):
-                    if str(getattr(e, "data", "")) != "true":
-                        return
-                    # build only once for this tile instance
-                    if getattr(e.control, "controls", None):
-                        return
-                    e.control.controls = [_field_tile(it) for it in items_for_group]
-                    e.control.update()
-                return _on_tile_change
+    _group_blocks: List[ft.Control] = _build_group_blocks()
 
-            tile.on_change = _mk_on_tile_change(group_items)
-            tiles.append(tile)
+    def _build_search_results(q: str) -> List[ft.Control]:
+        q = (q or "").strip().lower()
+        if not q:
+            return []
 
-        fields_body_ref.current.controls = tiles
-        fields_body_ref.current.update()
+        matched = [it for it in items if (q in it.header.lower()) or (q in it.key.lower())]
 
-# ---- transpose rendering ----
+        limit = 400
+        sliced = matched[:limit]
+
+        out: List[ft.Control] = [
+            ft.Text(
+                f"Найдено: {len(matched)}" + (f" (показано первые {limit})" if len(matched) > limit else ""),
+                size=12,
+                opacity=0.75,
+            )
+        ]
+
+        for it in sliced:
+            cb = ft.Checkbox(value=bool(field_state.get(it.key, True)), data=it.key, on_change=_on_field_toggle)
+            subtitle = it.key
+            if it.dim:
+                subtitle = f"{subtitle} · {it.dim}"
+            title = ft.Text(f"[{it.group}] {it.header}")
+            out.append(
+                ft.ListTile(
+                    leading=cb,
+                    title=title,
+                    subtitle=ft.Text(subtitle, size=11, opacity=0.75),
+                    dense=True,
+                )
+            )
+        return out
+
+    def _apply_search_now():
+        if fields_dynamic_ref.current is None:
+            return
+
+        q = (search_tf.value or "").strip().lower()
+        if q:
+            fields_dynamic_ref.current.controls = _build_search_results(q)
+        else:
+            fields_dynamic_ref.current.controls = _group_blocks
+
+        try:
+            fields_dynamic_ref.current.update()
+        except Exception:
+            pass
+
+    async def _debounced_search(seq: int):
+        await asyncio.sleep(0.35)
+        if _closing["busy"]:
+            return
+        if seq != _search_seq["n"]:
+            return
+        _apply_search_now()
+
+    def _on_search_change(_e: ft.ControlEvent):
+        _search_seq["n"] += 1
+        seq = _search_seq["n"]
+        if hasattr(page, "run_task"):
+            try:
+                page.run_task(_debounced_search(seq))
+                return
+            except Exception:
+                pass
+        _apply_search_now()
+
+    # ---- transpose rendering ----
+    _transpose_rendered = {"done": False}
+
     def _render_transpose():
+        if transpose_body_ref.current is None:
+            return
+
         tiles: List[ft.Control] = []
 
         tiles.append(
             ft.Text(
-                "Транспонирование серий: собираем параметры вида <base>_<tag><idx> в одну строку\n"
-                "и раскладываем значения по колонкам (tag+idx).",
+                "Транспонирование серий — сворачиваем множество параметров в одну строку и раскладываем по колонкам.\n"
+                "• Суффиксный режим: <base>_<tag><idx>\n"
+                "• Частотный режим: частота (Гц/Hz) из header/comment\n",
                 size=12,
                 opacity=0.85,
             )
         )
+
         tiles.append(transpose_enabled_sw)
+        tiles.append(ft.Text("Метод транспонирования:", size=12, opacity=0.85))
+        tiles.append(transpose_mode_rg)
+        tiles.append(ft.Row([debug_sheet_sw, persist_sw], wrap=True, spacing=12))
 
         if not series_group_names:
-            tiles.append(
-                ft.Text(
-                    "Серийные поля не найдены (по regex суффикса).",
-                    size=12,
-                    opacity=0.75,
-                )
-            )
+            tiles.append(ft.Text("Серийные поля не найдены (для текущего режима).", size=12, opacity=0.75))
         else:
-            # bulk base actions
+            t_base_cb_by_base: Dict[str, ft.Checkbox] = {}
+            t_group_children_by_name: Dict[str, ft.Column] = {}
+            t_group_btn_by_name: Dict[str, ft.IconButton] = {}
+            t_group_built: Dict[str, bool] = {g: False for g in series_group_names}
+            t_group_building: set[str] = set()
+
+            def _on_t_group_toggle(e: ft.ControlEvent):
+                gg = str(e.control.data)
+                transpose_group_state[gg] = bool(e.control.value)
+
+            def _on_t_base_toggle(e: ft.ControlEvent):
+                bb = str(e.control.data)
+                transpose_base_state[bb] = bool(e.control.value)
+
             def _bases_all(val: bool):
                 for b in all_bases_set:
-                    transpose_base_state[b] = val
-                _render_transpose()
+                    transpose_base_state[b] = bool(val)
+                for cb in t_base_cb_by_base.values():
+                    cb.value = bool(val)
+                try:
+                    transpose_body_ref.current.update()
+                except Exception:
+                    pass
 
             tiles.append(
                 ft.Row(
@@ -517,61 +737,175 @@ def open_tech_report_settings_dialog(
                 )
             )
 
-            def _on_t_group_toggle(e: ft.ControlEvent):
-                gg = str(e.control.data)
-                transpose_group_state[gg] = bool(e.control.value)
+            async def _build_group_rows_async(g: str) -> List[ft.Control]:
+                out: List[ft.Control] = []
+                infos = series_by_group.get(g, [])
+                for i, info in enumerate(infos):
+                    tags_txt = ", ".join(sorted(info.tags, key=lambda s: s.lower()))
+                    idx_txt = "?"
+                    if info.idxs:
+                        mn, mx = min(info.idxs), max(info.idxs)
+                        if abs(mn - mx) < 1e-9:
+                            idx_txt = _fmt_num(mn)
+                        else:
+                            idx_txt = f"{_fmt_num(mn)}..{_fmt_num(mx)}"
+                        idx_txt = f"{idx_txt} (n={len(info.idxs)})"
 
-            def _on_t_base_toggle(e: ft.ControlEvent):
-                bb = str(e.control.data)
-                transpose_base_state[bb] = bool(e.control.value)
+                    cb = ft.Checkbox(
+                        value=bool(transpose_base_state.get(info.base, True)),
+                        data=info.base,
+                        on_change=_on_t_base_toggle,
+                    )
+                    t_base_cb_by_base[info.base] = cb
+
+                    out.append(
+                        ft.ListTile(
+                            leading=cb,
+                            title=ft.Text(info.header),
+                            subtitle=ft.Text(
+                                f"base: {info.base} · тип: {tags_txt} · индексы/частоты: {idx_txt}",
+                                size=11,
+                                opacity=0.75,
+                            ),
+                            dense=True,
+                        )
+                    )
+
+                    if i and (i % 60 == 0):
+                        await asyncio.sleep(0)
+                return out
+
+            def _toggle_t_group_expand(e: ft.ControlEvent):
+                g = str(e.control.data)
+                col = t_group_children_by_name.get(g)
+                if col is None:
+                    return
+
+                if t_group_built.get(g, False):
+                    col.visible = not bool(col.visible)
+                    btn = t_group_btn_by_name.get(g)
+                    if btn is not None:
+                        btn.icon = ft.Icons.EXPAND_MORE if col.visible else ft.Icons.CHEVRON_RIGHT
+                    try:
+                        transpose_body_ref.current.update()
+                    except Exception:
+                        pass
+                    return
+
+                if g in t_group_building:
+                    col.visible = not bool(col.visible)
+                    btn = t_group_btn_by_name.get(g)
+                    if btn is not None:
+                        btn.icon = ft.Icons.EXPAND_MORE if col.visible else ft.Icons.CHEVRON_RIGHT
+                    try:
+                        transpose_body_ref.current.update()
+                    except Exception:
+                        pass
+                    return
+
+                t_group_building.add(g)
+                col.controls = [ft.Row(controls=[ft.ProgressRing(width=16, height=16), ft.Text("Загрузка...")], spacing=8)]
+                col.visible = True
+                btn = t_group_btn_by_name.get(g)
+                if btn is not None:
+                    btn.icon = ft.Icons.EXPAND_MORE
+                try:
+                    transpose_body_ref.current.update()
+                except Exception:
+                    pass
+
+                async def _task():
+                    await asyncio.sleep(0)
+                    if _closing["busy"]:
+                        return
+                    try:
+                        rows = await _build_group_rows_async(g)
+                    except Exception:
+                        rows = []
+                    col.controls = rows
+                    t_group_built[g] = True
+                    t_group_building.discard(g)
+                    try:
+                        col.update()
+                    except Exception:
+                        pass
+
+                if hasattr(page, "run_task"):
+                    try:
+                        page.run_task(_task())
+                        return
+                    except Exception:
+                        pass
+
+                # fallback sync
+                rows_sync: List[ft.Control] = []
+                for info in series_by_group.get(g, []):
+                    cb = ft.Checkbox(
+                        value=bool(transpose_base_state.get(info.base, True)),
+                        data=info.base,
+                        on_change=_on_t_base_toggle,
+                    )
+                    t_base_cb_by_base[info.base] = cb
+                    tags_txt = ", ".join(sorted(info.tags, key=lambda s: s.lower()))
+                    idx_txt = f"n={len(info.idxs)}"
+                    rows_sync.append(
+                        ft.ListTile(
+                            leading=cb,
+                            title=ft.Text(info.header),
+                            subtitle=ft.Text(f"base: {info.base} · тип: {tags_txt} · {idx_txt}", size=11, opacity=0.75),
+                            dense=True,
+                        )
+                    )
+                col.controls = rows_sync
+                t_group_built[g] = True
+                t_group_building.discard(g)
+                try:
+                    col.update()
+                except Exception:
+                    pass
 
             for g in series_group_names:
                 infos = series_by_group.get(g, [])
                 if not infos:
                     continue
 
+                exp_btn = ft.IconButton(
+                    icon=ft.Icons.CHEVRON_RIGHT,
+                    tooltip="Развернуть/свернуть",
+                    data=g,
+                    on_click=_toggle_t_group_expand,
+                )
+                t_group_btn_by_name[g] = exp_btn
+
                 g_sw = ft.Switch(
                     value=bool(transpose_group_state.get(g, True)),
-                    label="Транспонировать в группе",
+                    label="Трансп.",
                     data=g,
                     on_change=_on_t_group_toggle,
                 )
 
-                rows: List[ft.Control] = []
-                for info in infos:
-                    tags_txt = ", ".join(sorted(info.tags, key=lambda s: s.lower()))
-                    if info.idxs:
-                        mn, mx = min(info.idxs), max(info.idxs)
-                        idx_txt = f"{mn}..{mx}" if mn != mx else f"{mn}"
-                    else:
-                        idx_txt = "?"
+                children_col = ft.Column(controls=[], visible=False, spacing=0)
+                t_group_children_by_name[g] = children_col
 
-                    rows.append(
-                        ft.ListTile(
-                            leading=ft.Checkbox(
-                                value=bool(transpose_base_state.get(info.base, True)),
-                                data=info.base,
-                                on_change=_on_t_base_toggle,
-                            ),
-                            title=ft.Text(info.header),
-                            subtitle=ft.Text(f"base: {info.base} · теги: {tags_txt} · индексы: {idx_txt}", size=11, opacity=0.75),
-                            dense=True,
-                        )
-                    )
+                header_row = ft.Row(
+                    controls=[
+                        exp_btn,
+                        ft.Text(g, weight=ft.FontWeight.W_600),
+                        ft.Text(f"({len(infos)})", size=12, opacity=0.7),
+                        ft.Container(expand=True),
+                        g_sw,
+                    ],
+                    spacing=8,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                )
 
                 tiles.append(
-                    ft.ExpansionTile(
-                        title=ft.Row(
-                            controls=[ft.Text(g, weight=ft.FontWeight.W_600), ft.Text(f"({len(infos)})", size=12, opacity=0.7)],
-                            spacing=8,
-                        ),
-                        maintain_state=True,
-                        expanded=False,
-                        controls=[g_sw] + rows,
+                    ft.Column(
+                        controls=[header_row, ft.Container(content=children_col, padding=ft.padding.only(left=28))],
+                        spacing=0,
                     )
                 )
 
-        # advanced settings
         tiles.append(
             ft.ExpansionTile(
                 title=ft.Text("Служебные настройки (не обязательно)", weight=ft.FontWeight.W_600),
@@ -579,7 +913,8 @@ def open_tech_report_settings_dialog(
                 expanded=False,
                 controls=[
                     ft.Text(
-                        "Если нужно — можно расширить список тегов или поменять regex распознавания серий.",
+                        "Теги/regex применяются только для суффиксного режима. "
+                        "Для частотного режима частота берётся из header/comment.",
                         size=12,
                         opacity=0.75,
                     ),
@@ -592,13 +927,71 @@ def open_tech_report_settings_dialog(
         transpose_body_ref.current.controls = tiles
         transpose_body_ref.current.update()
 
+    def _ensure_transpose_rendered():
+        if _transpose_rendered["done"]:
+            return
+        _transpose_rendered["done"] = True
+
+        if transpose_body_ref.current is None:
+            return
+
+        transpose_body_ref.current.controls = [
+            ft.Row(controls=[ft.ProgressRing(width=18, height=18), ft.Text("Загрузка вкладки...")], spacing=10)
+        ]
+        try:
+            transpose_body_ref.current.update()
+        except Exception:
+            pass
+
+        async def _task():
+            await asyncio.sleep(0)
+            if _closing["busy"]:
+                return
+            _render_transpose()
+
+        if hasattr(page, "run_task"):
+            try:
+                page.run_task(_task())
+                return
+            except Exception:
+                pass
+        _render_transpose()
+
+    # перескан серий при смене режима (чтобы не было "выключилось после сохранения")
+    def _rescan_and_rerender():
+        nonlocal series_group_names, series_by_group, all_bases, all_bases_set
+        series_group_names, series_by_group = _scan_series(output_params, suffix_regex_tf.value or _DEFAULT_SUFFIX_REGEX, transpose_mode_rg.value)
+        all_bases = _calc_all_bases()
+        all_bases_set = set(all_bases)
+
+        # дополняем состояния (не теряем текущие значения по старым ключам)
+        for g in series_group_names:
+            transpose_group_state.setdefault(g, True)
+        for b in all_bases_set:
+            transpose_base_state.setdefault(b, True)
+
+        # чистим то, чего больше нет
+        for g in list(transpose_group_state.keys()):
+            if g not in series_group_names:
+                transpose_group_state.pop(g, None)
+        for b in list(transpose_base_state.keys()):
+            if b not in all_bases_set:
+                transpose_base_state.pop(b, None)
+
+        if _transpose_rendered["done"]:
+            _render_transpose()
+
+    def _on_mode_change(_e: ft.ControlEvent):
+        _rescan_and_rerender()
+
+    transpose_mode_rg.on_change = _on_mode_change
+
     # ---- dialog close ----
     def _close(save: bool):
         if _closing["busy"]:
             return
         _closing["busy"] = True
 
-        # instant UI feedback
         progress_ring.visible = True
         btn_save.disabled = True
         btn_cancel.disabled = True
@@ -612,7 +1005,6 @@ def open_tech_report_settings_dialog(
                 on_save(_build_cfg())
         finally:
             try:
-                # prefer close dialog without global page.update()
                 if hasattr(page, "close"):
                     page.close(dlg)
                 else:
@@ -637,17 +1029,11 @@ def open_tech_report_settings_dialog(
     )
 
     tab_bar = ft.TabBar(
-        tabs=[
-            ft.Tab(label="Поля"),
-            ft.Tab(label="Транспонирование"),
-        ]
+        tabs=[ft.Tab(label="Поля"), ft.Tab(label="Транспонирование")]
     )
 
     tab_view = ft.TabBarView(
-        controls=[
-            fields_tab,
-            transpose_tab,
-        ],
+        controls=[fields_tab, transpose_tab],
         expand=True,
     )
 
@@ -656,11 +1042,7 @@ def open_tech_report_settings_dialog(
         selected_index=0,
         expand=True,
         content=ft.Column(
-            controls=[
-                tab_bar,
-                ft.Container(height=8),
-                tab_view,
-            ],
+            controls=[tab_bar, ft.Container(height=8), tab_view],
             expand=True,
         ),
     )
@@ -671,6 +1053,8 @@ def open_tech_report_settings_dialog(
             tabs.update()
         except Exception:
             pass
+        if str(e.data) == "1":
+            _ensure_transpose_rendered()
 
     tab_bar.on_click = _on_tab_click
 
@@ -685,22 +1069,57 @@ def open_tech_report_settings_dialog(
     # open
     try:
         page.show_dialog(dlg)
-        # if hasattr(page, "open"):
-        #     page.open(dlg)
-        # else:
-        #     page.dialog = dlg
-        #     dlg.open = True
-        #     page.update()
     except Exception:
         page.dialog = dlg
         dlg.open = True
         page.update()
-    # initial render
-    def _on_search_change(_e):
-        _schedule_fields_render(reset_limit=True)
 
+    # -----------------
+    # initial mount (after dialog open)
+    # -----------------
     search_tf.on_change = _on_search_change
-    search_scope_dd.on_change = _on_search_change
 
-    _render_fields()
-    _render_transpose()
+    def _mount_fields_tab():
+        if fields_body_ref.current is None:
+            return
+        fields_body_ref.current.controls = [
+            ft.Row([search_tf, bulk_buttons], spacing=12),
+            fields_hint,
+            ft.Container(height=6),
+            ft.Column(ref=fields_dynamic_ref, controls=_group_blocks, spacing=4),
+        ]
+        try:
+            fields_body_ref.current.update()
+        except Exception:
+            pass
+        _apply_search_now()
+
+    def _mount_transpose_placeholder():
+        if transpose_body_ref.current is None:
+            return
+        transpose_body_ref.current.controls = [
+            ft.Text(
+                "Откройте вкладку «Транспонирование», чтобы загрузить список серий (ленивая загрузка).",
+                size=12,
+                opacity=0.75,
+            )
+        ]
+        try:
+            transpose_body_ref.current.update()
+        except Exception:
+            pass
+
+    async def _post_open_init():
+        await asyncio.sleep(0)
+        _mount_fields_tab()
+        _mount_transpose_placeholder()
+
+    if hasattr(page, "run_task"):
+        try:
+            page.run_task(_post_open_init())
+        except Exception:
+            _mount_fields_tab()
+            _mount_transpose_placeholder()
+    else:
+        _mount_fields_tab()
+        _mount_transpose_placeholder()

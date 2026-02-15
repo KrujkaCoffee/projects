@@ -2047,6 +2047,9 @@ def msgbox(
     return close_modal  # Возвращаем функцию для ручного закрытия
 
 
+async def launch_url(page: ft.Page, url: str):
+    return await page.launch_url(url)
+
 def dialog_save_file(e: ft.ControlEvent, pathf: str):
     file_name = pathf.split(os.sep)[-1]
     Data: DTCLS.Data_page = e.page.data
@@ -2054,5 +2057,5 @@ def dialog_save_file(e: ft.ControlEvent, pathf: str):
     download_url = '/'.join(
         ['http:/', f"{Data.Data_srv.ip}:{port_api}", 'hs/mes/download-temp', Data.Data_module.alias, file_name])
     print(pathf)
-    e.page.launch_url(download_url)
-    # https://flet.dev/docs/controls/filepicker/#save_file
+    e.page.run_task(launch_url, page=e.page, url=download_url)
+    # e.page.launch_url(download_url)
