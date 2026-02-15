@@ -142,15 +142,27 @@ def select_kod_mat(self, text, row, col):
         CQT.msgbox('Код материала не найден')
     return
 
+def get_main_department_names(list_departments: list[dict]) -> dict[str, str]:
+    """Возвращает список основных подразделений
+        * list_departments: структура из таблицы DB_kplan.podrazdel
+    """
+    return {
+        item['Наименование']: item['Наименование_ЕРП']
+        for item in list_departments
+        if item['poki'] is None
+    }
+
+
+
 
 def init_zamech_const(self):
     SL_OSHIBKI = CSQ.custom_request_c(self.bd_naryad,f"""SELECT * FROM kod_zamech""", rez_dict=True)
     self.SL_OSHIBKI = F.deploy_dict_c(SL_OSHIBKI,'Пномер')
     exclude_podr = ['070000']
-    #self.SET_PODRAZD = ("ОУП", "ОГК", "Снабжение", "ОГТ", "Склад", "ПДО", "Производство")
-    self.SET_PODRAZD = [self.DICT_RC[_]['Сокр_наим_СТО'] for _ in self.DICT_RC.keys() if _[-4:] == '0000' and _[-4:] not in exclude_podr]
-    self.DICT_PODRAZD = {self.DICT_RC[_]['Сокр_наим_СТО']:self.DICT_RC[_]['Наим_СТО'] for _ in self.DICT_RC.keys() if
-                        _[-4:] == '0000' and _[-4:] not in exclude_podr}
+    self.SET_PODRAZD = [
+        self.DICT_RC[_]['Сокр_наим_СТО']
+        for _ in self.DICT_RC.keys()
+        if _[-4:] == '0000' and _[-4:] not in exclude_podr]
     rez = CSQ.custom_request_c(self.bd_naryad,'''SELECT * FROM material_kod''',hat_c= False)
     if rez == False:
         CQT.msgbox(f'Нет данных {init_zamech_const}')
@@ -168,7 +180,8 @@ def load_table_add(self):
     CQT.fill_wtabl_old_c(self, rez, tbl, isp_hat_c=True, separ='',set_editeble_col_nomera=set_edit_column)
     tbl.setColumnHidden(CQT.num_col_by_name_c(tbl,'Пномер'), True)
     nk_vinov = F.num_col_by_name_in_hat_c(rez,'Виновное_подразделение')
-    CQT.add_combobox(self,tbl,0,nk_vinov,self.DICT_PODRAZD,True, select_podrazd)
+    departments = get_main_department_names(CMS.calc_dict_podr()) # 13.02.2026
+    CQT.add_combobox(self,tbl,0,nk_vinov,departments,True, select_podrazd)
     nk_kod = CQT.num_col_by_name_c(self.ui.tbl_zamech_add_field, 'Код')
     CQT.set_cell_editable(tbl,0,nk_kod,False)
     nk_mater = F.num_col_by_name_in_hat_c(rez, 'Фпотери_материала_марка')

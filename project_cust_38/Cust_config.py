@@ -1,3 +1,4 @@
+
 import datetime
 import sys
 import typing
@@ -18,7 +19,6 @@ try:
     from project_cust_38 import Cust_Qt as CQT
 except:
     print(f'Cust_config err import Cust_Qt')
-
 
 
 class SingletonMeta(type):
@@ -237,6 +237,68 @@ class AppConfig(HorizontalConfig):
     path: str = Desc()
     is_ui: bool = Desc() #11.11.25 Для функций с ветвлением графического/консольного вывода
 
+
+class User_emploee():
+    def __init__(self, fio: str, user_db: str):
+        if F.is_unique_identifier(fio):
+            data = CSQ.custom_request_c(user_db, f"""SELECT * FROM employee WHERE ID_ФизЛица == "{fio}";""",
+                                        rez_dict=True)
+        else:
+            data = CSQ.custom_request_c(user_db, f"""SELECT * FROM employee WHERE ФИО == "{fio}";""", rez_dict=True)
+        if len(data) == 0:
+            raise Exception('не найден ФИО в БД')
+        self.user_db = user_db
+        self.ФИО = None
+
+        self.Пномер = None
+        self.Должность = None
+        self.Статус = None
+        self.Подразделение = None
+        self.Режим = None
+        self.Компания = None
+        self.ID_ФизЛица = None
+        self.ВидЗанятости = None
+        self.ДатаИзмененияДолжности = None
+        self.history = []
+
+        truth_record = None
+        for record in data:
+            if record['Статус'] == 'Работа':
+                truth_record = record
+                break
+        if not truth_record:
+            truth_record = data[-1]
+
+        for key in truth_record.keys():
+            exec(f'self.{key.replace(".", "_")} = record[key]')
+
+        for item in data:
+            self.history.append(item)
+
+    def is_dismissed_now(self, dolgn, date=None):
+        user_frame = dict()
+        for item in self.history[-1:-1:-1]:
+            if item['Должность'] == dolgn:
+                user_frame = item
+                break
+        if len(user_frame) == 0:
+            raise Exception('не найдена должность для ФИО в БД')
+
+        if item['Статус'] == 'Увольнение':
+            list_states = CSQ.custom_request_c(self.user_db, f"""SELECT s_num, user_id, state, date FROM 
+             employee_registr WHERE user_id == "{item['ID_ФизЛица']}" AND state == 10;""", rez_dict=True)
+            if date != None:
+                if F.strtodate(date) >= list_states[-1]['date']:
+                    list_states[-1]['date']
+                else:
+                    False
+            else:
+                return list_states[-1]['date']
+        else:
+            return False
+
+    def __str__(self):
+        return f'{self.ФИО} {self.Должность} {self.ID_ФизЛица}'
 
 def tmp_dir():
     ima_module = F.name_of_executable_file_c().split('.')[0]
@@ -486,12 +548,23 @@ class User_config(metaclass=SingletonMeta):
         self.ERP_base_name = None
         self.css_theme = None
         self.Organization = None
+        self.User:User_emploee|None = None
+
+
         self.load_config()
+        try:
+            self.User = User_emploee(F.user_full_namre(),self.common_config.db_users)
+        except:
+            pass
 
     @property
     def is_developer(self): #18.07.25
         current_login = F.user_name()
         return current_login in self.common_config.developers.split('|')
+
+    def set_not_dev(self):
+        self.common_config.developers = self.common_config.developers.replace(F.user_name(), '')
+
 
     def load_config(self=None):
         app_args = F.parse_args(sys.argv)

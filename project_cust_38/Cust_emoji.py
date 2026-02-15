@@ -24,6 +24,7 @@ class СтатусыПроизводства:
     success: ClassVar[EmojiItem] = EmojiItem('✅', 'success', 'status', 'Успешное выполнение')
     error_bold: ClassVar[EmojiItem] = EmojiItem('❎', 'error_bold', 'status', 'Ошибка или сбой')
     success_tin: ClassVar[EmojiItem] = EmojiItem('✔', 'success_tin', 'status', 'Успешное выполнение')
+    not_allowed: ClassVar[EmojiItem] = EmojiItem('🚫', 'not_allowed', 'status', 'Не доступно')
     checked: ClassVar[EmojiItem] = EmojiItem('☑️', 'checked', 'status', 'Отмечено')
     error: ClassVar[EmojiItem] = EmojiItem('❌', 'error', 'status', 'Ошибка или сбой')
     warning: ClassVar[EmojiItem] = EmojiItem('⚠️', 'warning', 'status', 'Предупреждение')

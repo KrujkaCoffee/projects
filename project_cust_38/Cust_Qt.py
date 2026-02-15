@@ -188,13 +188,10 @@ MES_EDIT_CSS = """
 
     QTableWidget {
     border: none;
-    gridline-color: rgb(200,200,200);
-   
+    gridline-color: rgb(230,230,230);
     selection-background-color: rgb(255,255,255);
     }
     
-
-
     /* Выделение без фокуса */
     QTableWidget::item:selected {
     background-color: rgb(225,240,220);
@@ -211,7 +208,6 @@ MES_EDIT_CSS = """
     /* Заголовки */
     QHeaderView::section {
     background-color: rgb(235,237,239);
-    color: rgb(30,30,30);
     padding: 2px 2px;
     border: none;
     border-right: 1px solid rgb(200,200,200);
@@ -908,13 +904,45 @@ class FontDelegate(QtWidgets.QStyledItemDelegate):
 class TableContext:
     def __init__(self, tbl:QtWidgets.QTableWidget):
         self.tbl:QtWidgets.QTableWidget = tbl
-        self.nf:dict[str, int] = nums_col_by_name_dict(tbl)
-        self._row_count:int = tbl.rowCount()
-
+        self.tbl.currentCellChanged.connect(self._on_current_cell_changed)
+        self._selected_row:int|None = None
+        self._selected_column:int|None = None
+        self._load()
+        self.save_coord()
+        
+    def _load(self):
+        self.nf:dict[str, int] = nums_col_by_name_dict(self.tbl)
+        self._row_count:int = self.tbl.rowCount()
+        self._previous_row:int|None = None
+        self._previous_column:int|None = None
+    
+    def reload(self):
+        self._load() 
+    
+    def save_coord(self):
+        self._selected_column = self.tbl.currentColumn()
+        self._selected_row = self.tbl.currentRow()
+    
+    def _on_current_cell_changed(self, current_row: int, current_column: int, previous_row: int, previous_column: int):
+        if is_table_updating(self.tbl):
+            return
+        self._selected_column = self.tbl.currentColumn()
+        self._selected_row = self.tbl.currentRow()
+        self._previous_row: int | None = previous_row
+        self._previous_column: int | None = previous_column
+        
     def rows(self):
         for i in range(self._row_count):
             yield TableRow(self, i)
 
+    def restore_selected_cell(self):
+        if self._selected_row is None or self._selected_column is None:
+            return
+        row = min(self._selected_row, self.tbl.rowCount() - 1)
+        col = min(self._selected_column, self.tbl.columnCount() - 1)
+        if row >= 0 and col >= 0:
+            QtCore.QTimer.singleShot(0, lambda: self.tbl.setCurrentCell(row, col))
+        
     def set_value(self,i:int,name_field:str,new_val):
 
         item = self.tbl.item(i,self.nf[name_field])
@@ -955,8 +983,13 @@ class TableContext:
     def get_row(self, i)->TableRow:
         return TableRow(self, i)
 
+    def get_current_row(self) -> TableRow:
+        return TableRow(self, self.tbl.currentRow())
+    
+    
     def hide(self,name:str, val:bool=True):
-        self.tbl.setColumnHidden(self.nf[name],val)
+        if self.tbl.columnCount():
+            self.tbl.setColumnHidden(self.nf[name],val)
 
 class TableRow:
     def __init__(self, ctx: TableContext, row_index: int):
@@ -969,6 +1002,7 @@ class TableRow:
     def heigt(self)->int:
         return self.tbl.rowHeight(self.i)
 
+
     def __repr__(self):
         
         values = {name: self.value(name) for name in self.nf}
@@ -979,6 +1013,10 @@ class TableRow:
         first_cols = list(self.nf.keys())[:3]  
         vals = [f"{col}={self.value(col)}" for col in first_cols]
         return f"Row {self.row_number}: " + ", ".join(vals)
+
+    def is_hidden(self)->bool:
+        return self.tbl.isRowHidden(self.i)
+
 
     def hide(self,val:bool=True):
         self.tbl.setRowHidden(self.i,val)
@@ -1034,6 +1072,79 @@ class TableRow:
     def row_number(self) -> int:
         return self.i + 1
 
+class Check_box_switcher(QtWidgets.QCheckBox):
+    def __init__(self, parent=None, checked=False):
+        super().__init__(parent)
+        self.setFixedSize(36, 18)
+        self.setCursor(QtCore.Qt.PointingHandCursor)
+
+        self.setChecked(checked)
+        self._handle_pos = 19 if self.isChecked() else 1
+        self._bg_color = QtGui.QColor(170, 205, 160) if self.isChecked() else QtGui.QColor(244, 246, 248)
+
+        # анимации
+        self.anim_handle = QtCore.QPropertyAnimation(self, b"handle_pos", self)
+        self.anim_color = QtCore.QVariantAnimation(self)
+        self.anim_color.valueChanged.connect(self._set_bg_color)
+
+        # анимация при любом изменении состояния
+        self.toggled.connect(self._start_animation)
+
+    def paintEvent(self, event):
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+
+        # фон
+        pen = QtGui.QPen(QtGui.QColor(180, 180, 180))
+        pen.setWidth(1)
+        painter.setPen(pen)
+        painter.setBrush(self._bg_color)
+        painter.drawRoundedRect(0, 0, self.width(), self.height(), 9, 9)
+
+        # бегунок
+        handle_rect = QtCore.QRectF(self._handle_pos, 1, 16, 16)
+        painter.setBrush(QtGui.QColor(255, 255, 255))
+        painter.setPen(QtGui.QColor(140, 140, 140))
+        painter.drawEllipse(handle_rect)
+
+    def mousePressEvent(self, event):
+        # Один клик – одно переключение. Не вызываем super(),
+        # чтобы избежать двойного срабатывания.
+        self.toggle()
+
+    def _start_animation(self):
+        # анимация бегунка
+        start_pos = self._handle_pos
+        end_pos = 19 if self.isChecked() else 1
+        self.anim_handle.stop()
+        self.anim_handle.setStartValue(start_pos)
+        self.anim_handle.setEndValue(end_pos)
+        self.anim_handle.setDuration(120)
+        self.anim_handle.start()
+
+        # анимация фона
+        start_color = self._bg_color
+        end_color = QtGui.QColor(170, 205, 160) if self.isChecked() else QtGui.QColor(244, 246, 248)
+        self.anim_color.stop()
+        self.anim_color.setStartValue(start_color)
+        self.anim_color.setEndValue(end_color)
+        self.anim_color.setDuration(120)
+        self.anim_color.start()
+
+    def _set_bg_color(self, color):
+        if isinstance(color, QtGui.QColor):
+            self._bg_color = color
+            self.update()
+
+    # свойство для анимации бегунка
+    def get_handle_pos(self):
+        return self._handle_pos
+
+    def set_handle_pos(self, pos):
+        self._handle_pos = pos
+        self.update()
+
+    handle_pos = QtCore.pyqtProperty(float, fget=get_handle_pos, fset=set_handle_pos)
 
 def progress_decorator(fn):
     """
@@ -1825,8 +1936,9 @@ def restore_selection(tbl: QtWidgets.QTableWidget):
     tbl.blockSignals(False)
 
 @contextmanager
-def table_updating(tbl: QtWidgets.QTableWidget):
-
+def table_updating(tbl: QtWidgets.QTableWidget|TableContext):
+    if isinstance(tbl,TableContext):
+        tbl = tbl.tbl
 
     """временно блокирует сигналы таблицы и ставит флаг _updating_table"""
     is_outer_freeze = is_table_updating(tbl)
@@ -2260,17 +2372,50 @@ def add_combobox(self = '', table = '', i=0, j=0, list=[], first_void=True,  con
     return combo #22.08.25
 
 
-def add_check_box(table, i, j, trisate=False, val=False, conn_func_checked_row_col = '', self = '',enabled=True):
+def add_check_box_switcher(table, i, j, val=False, conn_func_checked_row_col=None, self_obj=None, enabled=True):
+    switch = Check_box_switcher(checked=val)
+    switch.setEnabled(enabled)
+
+    if conn_func_checked_row_col:
+        def callback(checked, row=i, col=j):
+            if self_obj is None:
+                conn_func_checked_row_col(table,checked, row, col)
+            else:
+                conn_func_checked_row_col(self_obj,table, checked, row, col)
+        switch.stateChanged.connect(lambda state: callback(state == QtCore.Qt.Checked))
+
+    # контейнер для центрирования
+    row_height = table.rowHeight(i)
+    margin_top = max(0, (row_height - switch.height()) // 2)
+
+    cell_widget = QtWidgets.QWidget()
+    layout = QtWidgets.QHBoxLayout(cell_widget)
+    layout.addWidget(switch)
+    layout.setContentsMargins(0, margin_top, 0, 0)
+    layout.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignTop)
+    cell_widget.setLayout(layout)
+
+    table.setCellWidget(i, j, cell_widget)
+
+
+def add_check_box(table, i, j, trisate=False, val=False, conn_func_checked_row_col='', self_obj=None, enabled=True,
+                  **kwargs
+                  ):
+    if 'self' in kwargs:# 12.02.2026 Обратная совместимость / self=self_obj переименование
+        self_obj = kwargs['self']
     check = QtWidgets.QCheckBox()
     check.setTristate(trisate)
     check.setChecked(val)
     check.setEnabled(enabled)
-    if conn_func_checked_row_col != '':
-        if self == '':
+
+    if conn_func_checked_row_col:
+        if self_obj is None:
             check.clicked.connect(lambda checked, row=i, col=j: conn_func_checked_row_col(checked,row,col))
         else:
-            check.clicked.connect(lambda checked, row=i, col=j: conn_func_checked_row_col(self,checked,row,col))
+            check.clicked.connect(lambda checked, row=i, col=j: conn_func_checked_row_col(self_obj,checked,row,col))
+
     table.setCellWidget(i, j, check)
+
 
     
 def add_label_link(object_tbl, i,j, file, name,conn_func_label_link=None,parent_self=None):
@@ -3395,77 +3540,42 @@ def select_theme(*args):
             pass
 
 
-def get_hover_row_col(self, tbl:QtWidgets.QTableWidget, event):
-    """"#self.ui.tbl.setMouseTracking(True)
-    #self.ui.tbl.mouseMoveEvent = self.func(): ... r, c =  get_hover_row_col"""
-    row = 0
-    column = 0
-    y = event.pos().y()
-    x = event.pos().x()
-    left = 0
-    rigth = 0
-    hor = tbl.horizontalScrollBar().value()
-    vert = tbl.verticalScrollBar().value()
+def get_hover_row_col(self, tbl: QtWidgets.QTableWidget, event):
+    """
+    tbl.setMouseTracking(True)
+    tbl.mouseMoveEvent = ...
+    """
 
+    pos = event.pos()
 
-    start = 0
-    for column in range(tbl.columnCount()):
-        if tbl.columnWidth(column) == 0:
-            start +=1
-        else:
-            break
-    start+= hor
+    row = tbl.rowAt(pos.y())
+    column = tbl.columnAt(pos.x())
 
-    for column in range(start, tbl.columnCount()):
-        rigth += tbl.columnWidth(column)
-        if column >= tbl.columnCount() - 1:
-            #print(f'Column {column + 1}')
-            break
-        if left <= x and x < rigth:
-            #print(f'Column {column}')
-            break
-        left += tbl.columnWidth(column)
+    # если курсор вне ячеек
+    if row < 0 or column < 0:
+        return None, None
 
-
-    up = 0
-    down = 0
-
-    start = 0
-    for row in range(tbl.rowCount()):
-        if tbl.rowHeight(row) == 0:
-            start +=1
-        else:
-            break
-    start+= vert
-
-    for row in range(start, tbl.rowCount()):
-        down += tbl.rowHeight(row)
-        if row >= tbl.rowCount() - 1:
-            #print(f'Row {row + 1}')
-            break
-        if up <= y and y < down:
-            #print(f'Row {row}')
-            break
-        up += tbl.rowHeight(row)
     fl = False
-    if 'hover_row' not in self.__dict__:
+
+    if not hasattr(self, 'hover_row'):
         self.hover_row = row
         fl = True
-    else:
-        if self.hover_row != row:
-            fl = True
-            self.hover_row = row
-    if 'hover_column' not in self.__dict__:
+    elif self.hover_row != row:
+        self.hover_row = row
+        fl = True
+
+    if not hasattr(self, 'hover_column'):
         self.hover_column = column
         fl = True
-    else:
-        if self.hover_column != column:
-            fl = True
-            self.hover_column = column
+    elif self.hover_column != column:
+        self.hover_column = column
+        fl = True
+
     if fl:
         return row, column
     else:
         return None, None
+
 
 
 def summ_selct_tbl(self,tbl):
@@ -3486,11 +3596,11 @@ def summ_selct_tbl(self,tbl):
                     sch+=1
             except:
                 pass
-        self.glob_kpl_summ_selct_tbl = f'                                         Сумма: {summ},  Среднее: {round(summ/sch,3)}'
+        self.glob_kpl_summ_selct_tbl = f'                                         Сумма: {round(summ,3)},  Среднее: {round(summ/sch,3)}'
     except:
         pass
     try:
-        self.glob_kpl_summ_selct_tbl = f'                                         Сумма: {summ},  Среднее: {round(summ / sch,3)}'
+        self.glob_kpl_summ_selct_tbl = f'                                         Сумма: {round(summ,3)},  Среднее: {round(summ / sch,3)}'
     except:
         pass
     statusbar_text(self,self.glob_kpl_summ_selct_tbl)
@@ -5327,6 +5437,31 @@ def apply_filtr_c(self, tblf, tbl,save_data=True,get_dict_by_fild:None|str=None)
         put_value_in_filtr(struck_save, tblf, tbl)
         # _save_tmp_stukt(struck_save, "saved_filter_" + tblf.objectName())
     return dict_get_dict_by_fild
+
+
+def save_scroll(self,tbl:QtWidgets.QTableWidget):
+    if not hasattr(self,'_scroll_dict'):
+        self._scroll_dict = dict()
+    if tbl not in self._scroll_dict:
+        self._scroll_dict[tbl] = dict()
+    self._scroll_dict[tbl]['v_pos'] = tbl.verticalScrollBar().value()
+    self._scroll_dict[tbl]['h_pos'] = tbl.horizontalScrollBar().value()
+
+def load_scoll(self,tbl:QtWidgets,v_pos=True,h_pos=True):
+    if not v_pos and not h_pos:
+        return 
+    if not hasattr(self, '_scroll_dict'):
+        return
+    if tbl not in self._scroll_dict:
+        return
+    QtWidgets.QApplication.processEvents()
+    if v_pos:
+        v = self._scroll_dict[tbl]['v_pos']
+        tbl.verticalScrollBar().setValue(v)
+    if h_pos:
+        h = self._scroll_dict[tbl]['h_pos']
+        tbl.horizontalScrollBar().setValue(h)
+    
 
 @onerror
 def fill_summ_tbl(self, tbls:QtWidgets.QTableWidget, tbl:QtWidgets.QTableWidget,

@@ -699,9 +699,97 @@ def ochist_papky(top):
             return
 
 
-def copy_file_c(putf, putf2):
+def clean_and_normalize_path_part(name: str,
+                    replace_with: str = "_",
+                    max_length: int | None = 200) -> str:
+    """
+    Очистка части пути (имя файла или папки) под Windows.
+    """
+
+    if not isinstance(name, str):
+        name = str(name)
+
+    # запрещённые символы Windows
+    invalid_chars = r'<>:"/\\|?*'
+
+    # заменяем запрещённые символы
+    name = ''.join(
+        replace_with if ch in invalid_chars else ch
+        for ch in name
+    )
+
+    # удаляем управляющие ASCII символы (0–31)
+    name = re.sub(r'[\x00-\x1f]', '', name)
+
+    # убираем пробелы и точки в конце
+    name = name.rstrip(' .')
+
+    # если строка стала пустой
+    if not name:
+        name = "unnamed"
+
+    # ограничение длины
+    if max_length is not None:
+        name = name[:max_length]
+
+    return name
+
+
+def copy_file_c(putf, putf2, diagnostic=False):
     putf2 = os.path.normpath(putf2)
     putf = os.path.normpath(putf)
+    if diagnostic:
+        print('================ DIAGNOSTIC COPYFILE ================')
+
+        print('putf      =', putf)
+        print('putf2     =', putf2)
+        print('abs putf  =', os.path.abspath(putf))
+        print('abs putf2 =', os.path.abspath(putf2))
+
+        print('----------------------------------------------------')
+        print('exists putf      =', os.path.exists(putf))
+        print('isfile putf      =', os.path.isfile(putf))
+        print('isdir putf       =', os.path.isdir(putf))
+
+        if os.path.exists(putf):
+            try:
+                print('size putf        =', os.path.getsize(putf))
+            except Exception as e:
+                print('size error       =', e)
+
+        print('----------------------------------------------------')
+        dest_dir = os.path.dirname(putf2)
+        print('dest_dir          =', dest_dir)
+        print('exists dest_dir   =', os.path.exists(dest_dir))
+        print('isdir dest_dir    =', os.path.isdir(dest_dir))
+
+        if dest_dir:
+            print('write access dest =', os.access(dest_dir, os.W_OK))
+
+        print('read access putf  =', os.access(putf, os.R_OK))
+
+        print('----------------------------------------------------')
+        try:
+            same = os.path.abspath(putf) == os.path.abspath(putf2)
+            print('samefile          =', same)
+        except Exception as e:
+            print('samefile check error =', e)
+
+        print('----------------------------------------------------')
+        try:
+            print('start copy...')
+            shutil.copyfile(putf, putf2)
+            print('copy done')
+        except Exception as e:
+            print('ERROR TYPE:', type(e))
+            print('ERROR TEXT:', e)
+            traceback.print_exc()
+
+        print('================ END DIAGNOSTIC =====================')
+
+        return
+
+
     arr = putf2.split(os.sep)
     imaf2 = str(arr[-1])
     fold2 = putf2.replace(imaf2, '')
@@ -1907,14 +1995,14 @@ def valm(ch):
     if ch == 'None':
         return 0
     if isinstance(ch,str):
+        boolmval  =  boolm(ch)
+        if boolmval != None:
+            return int(boolmval)
         ch = ch.replace(',', '.')
         if 'e'  in ch.lower():
             return float(ch)
         if ch == '':
             return 0
-        boolmval  =  boolm(ch)
-        if boolmval != None:
-            return int(boolmval)
         try:
             if '.' in ch:
                 ch = float(ch.replace(' ', ''))
@@ -2213,7 +2301,28 @@ def camel_to_snake(name):
 
 
 def align_colors(str_clrs:str,sep:str =';',level=80, level_percent=0, saturation = None, saturation_percent = None,sep_out= ';') -> str:
-    '''стаблилизация цвета к уровню [level] - ментьше темнее; [saturation] - больше- насыщеннее'''
+    '''стаблилизация цвета к уровню [level] - ментьше темнее; [saturation] - больше- насыщеннее
+    level
+    Задаёт абсолютную яркость (Lightness = level / 255),
+    но используется только если level_percent = 0.
+
+    level_percent
+    Изменяет текущую яркость в процентах от исходной.
+    Если не равен 0 — параметр level игнорируется.
+
+    saturation_percent
+    Изменяет текущую насыщенность в процентах.
+
+    saturation
+    Задаёт абсолютную насыщенность (Saturation = saturation / 255).
+    Если задан — перезаписывает результат saturation_percent.
+
+    Приоритеты:
+
+    Яркость: либо абсолютный level, либо процент level_percent.
+
+    Насыщенность: сначала процент, потом абсолютное значение (если задано).
+    '''
     if isinstance(str_clrs,tuple) or isinstance(str_clrs,list):
         rgb_t = str_clrs
     if isinstance(str_clrs, str):

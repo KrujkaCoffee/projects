@@ -132,6 +132,8 @@ def get_list_month_fact(self: mywindow):
              WHERE Дата_завершения != '' and plan.poki == {self.place.poki} """,
                                                 rez_dict=True, attach_dbs=self.db_kplan)
 
+def _______SELECT_SUB_TYPE_REPORT_____________():
+    pass
 
 @CQT.onerror
 def vibor_additional_sort_report(self: mywindow, *args):
@@ -183,12 +185,30 @@ def vibor_additional_sort_report(self: mywindow, *args):
             return
         if 'Отчет' in type_rep:
             self.ui.cmb_addit_sort_c_report.setEnabled(True)
-            RPTP.fill_cmb_users_with_rules(self.ui.cmb_addit_sort_c_report)
+            RPTP.fill_cmb_users_with_rules(self.ui.cmb_addit_sort_c_report,filtr_by_owner_user=True)
         elif 'Документы' in type_rep:
             self.ui.cmb_addit_sort_c_report.setEnabled(True)
-            RPTP.fill_cmb_users_with_rules(self.ui.cmb_addit_sort_c_report)
+            RPTP.fill_cmb_users_with_rules(self.ui.cmb_addit_sort_c_report,filtr_by_current_user=True)
         else:
             self.ui.cmb_addit_sort_c_report.setDisabled(True)
+
+    if vid == 'Матрицы компетенций':
+        type_rep = self.ui.cmb_podrazdelenie.currentData(CQT.Qt.UserRole)
+        self.ui.cmb_addit_sort_c_report.clear()
+        if type_rep == '':
+            return
+        if type_rep == 'by_emploee' :
+            self.ui.cmb_addit_sort_c_report.setEnabled(True)
+            MTXCMP.fill_cmb_to_select_dep(self.ui.cmb_addit_sort_c_report,CFG.Config.place.poki)
+        elif type_rep == 'by_depatment':
+            self.ui.cmb_addit_sort_c_report.setEnabled(False)
+
+
+
+
+
+def _______SELECT_REPORT_____________():
+    pass
 
 @CQT.onerror
 def vibor_sort_c_report_c(self: mywindow, *args):
@@ -208,11 +228,13 @@ def vibor_sort_c_report_c(self: mywindow, *args):
         self.ui.le_end_of_period.setText(konec)
         self.ui.le_start_of_period.setText(nach)
         self.ui.cmb_podrazdelenie.clear()
-        MTXCMP.fill_cmb_to_select_dep(self.ui.cmb_podrazdelenie,CFG.Config.place.poki)
+        MTXCMP.fill_cmb_to_select_type_report(self.ui.cmb_podrazdelenie)
+        self.ui.cmb_podrazdelenie.setEnabled(True)
+
         
     if vid == 'Отчетность персонала':
         now = F.now("")
-        dates = F.start_end_dates_c(now, '', 'd', "%Y-%m-%d %H:%M:%S")
+        dates = F.start_end_dates_c(now, '', 'm', "%Y-%m-%d %H:%M:%S")
         konec = dates[1]
         nach = dates[0]
         self.ui.le_end_of_period.setText(konec)
@@ -572,14 +594,16 @@ def check_interval(vid: str, start: str, end: str):
             return False
     return True
 
+def _______GENERATE_REPORT_____________():
+    pass
+
 @CQT.progress_decorator
 @CQT.onerror
 def report_c(self: mywindow,hook_prog_bar=None,  *args):
     def oform_tbl(vid):
         tbl = self.ui.tbl_report_c
         self.vid_report_c = vid
-        if vid == 'Динамика производительности сотрудников':
-            pass
+
         if vid == 'Выработка сотрудника':
             col_bad = CMS.Color_tbl(0)
             col_good = CMS.Color_tbl(100)
@@ -620,7 +644,6 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
                 tbl.setColumnWidth(j, tbl.columnWidth(j) + 8)
                 CQT.font_cell_size_format(tbl, tbl.rowCount() - 2, j, bold=True)
             CQT._load_tbl(tbl,self.ui.tbl_report_c_filtr,True)
-
 
         if vid == 'Трудозатраты':
             #self.ui.tbl_report_c.setToolTip(
@@ -691,6 +714,14 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
                     clr_p_r,clr_p_g,clr_p_b = self.DICT_PODR_RC[tbl.item(i,nf_podr).text()]['Цвет'].split(',')
                     CQT.set_color_wtab_c(tbl, i, nf_podr, clr_p_r,clr_p_g,clr_p_b)
                 
+        if vid == 'Матрицы компетенций':
+            tbl = self.ui.tbl_report_c
+            t = CQT.TableContext(tbl)
+            t.hide('id_user')
+            t.hide('id_comp')
+            t.hide('_color_dep')
+            t.hide('id_depatment_mes')
+
 
     #self.ui.tbl_report_c.setToolTip('')
     self.ui.btn_save_txt.setDisabled(True)
@@ -754,9 +785,10 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
         return []
 
     if vid == 'Матрицы компетенций':
-        rez_spis = report_matrix_competence(self,nach)
-
-
+        if podrazd_data == 'by_depatment':
+            rez_spis = report_matrix_competence_by_depatment(self,nach,konec)
+        elif podrazd_data == 'by_emploee':
+            rez_spis = report_matrix_competence(self,nach)
 
     if vid == 'Компоновщик':
         rez_spis = report_excel_builder(self)
@@ -825,7 +857,6 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
         if podrazd_data == 'report':
             RPTP.load_pers_report()
         self.ui.fr_personal.setHidden(False)
-        
 
     if vid == 'Трудозатраты':
         self.ui.fr_params_plan.setHidden(False)
@@ -895,6 +926,8 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
         rez_spis = report_of_load_machine(self, nach,konec, podrazd)
     if vid == 'Отчет по проекту':
         rez_spis = report_by_proj(self, nach, konec, podrazd)
+
+
     if rez_spis == None:
         return
 
@@ -903,67 +936,71 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
 
     #CQT.fill_wtabl_old_c(self, rez_spis, tbl, separ='', isp_hat_c=True, max_vis_row=500)
     CQT.fill_wtabl(rez_spis,tbl,auto_type=False,height_row=24,sortingEnabled=True)
-    CMS.fill_filtr_c(self, self.ui.tbl_report_c_filtr, tbl, hidden_scroll=True)
 
-    CMS.update_width_filtr(tbl, self.ui.tbl_report_c_filtr)
+
     hook_prog_bar.set(90)
     hook_prog_bar.text('Оформление таблиц')
-    if vid == 'Трудозатраты':
+    # --- только оформление таблицы
+    if vid in (
+            'Трудозатраты',
+            'Отчет по отклонениям табеля и трудозатрат',
+            'Выработка сотрудника',
+            'Матрицы компетенций',
+    ):
         oform_tbl(vid)
-    if vid == 'Выработка сотрудников':
-        CMS.apply_summ_с(self, tbl)
-    if vid == 'Реестр проектов в работе':
+
+    # --- apply_summ_с со sredn=True
+    if vid in (
+            'Реестр проектов в работе',
+            'Выработка цеха понарядно',
+            'Понедельный график выработки и отгрузок',
+            'Статистика нормо-весовых харктеристик МК',
+            'План работ',
+            'План-фактный анализ по месяцам',
+            'О выработке сотрудников за месяц',
+            'Неосвоенный_вес_по_созданным_нарядам',
+            'Норматив материалов по завершенным нарядам',
+            'Журнал_техкарт',
+            'Журнал_замечаний',
+            'Сравнение норм времени по направлениям',
+            'График удельной производительности сборочного цеха',
+            'Выработка_ТОП',
+            'Отклонения от плановых дат по проектам',
+            'План-фактный график по месяцам',
+            'Динамика производительности сотрудников'
+    ):
         CMS.apply_summ_с(self, tbl, sredn=True)
-    if vid == 'Журнал работ':
-        CMS.apply_summ_с(self, tbl)
-    if vid == 'Выработка цеха понарядно':
-        CMS.apply_summ_с(self, tbl, sredn=True)
-    if vid == 'Выработка сотрудника':
-        CMS.apply_summ_с(self, tbl)
-        oform_tbl(vid)
-    if vid == 'Понедельный график выработки и отгрузок':
-        CMS.apply_summ_с(self, tbl, sredn=True)
-    if vid == 'Статистика нормо-весовых харктеристик МК':
-        CMS.apply_summ_с(self, tbl, sredn=True)
-    if vid == 'План работ':
-        CMS.apply_summ_с(self, tbl, sredn=True)
-    if vid == 'План-фактный анализ по месяцам':
-        CMS.apply_summ_с(self, tbl, sredn=True)
-    if vid == 'О выработке сотрудников за месяц':
-        CMS.apply_summ_с(self, tbl, sredn=True)
-    if vid == 'Неосвоенный_вес_по_созданным_нарядам':
-        CMS.apply_summ_с(self, tbl, sredn=True)
-    if vid == 'Норматив материалов по завершенным нарядам':
-        CMS.apply_summ_с(self, tbl, sredn=True)
-    if vid == 'Журнал_техкарт':
-        CMS.apply_summ_с(self, tbl, sredn=True)
-    if vid == 'Журнал_замечаний':
-        CMS.apply_summ_с(self, tbl, sredn=True)
-        self.permission = CMS.user_access(self.bd_naryad, 'просмотр_журнал_замечаний_корректировка_вн',
-                                          F.user_full_namre(), False)
-    if vid == 'Сравнение норм времени по направлениям':
-        CMS.apply_summ_с(self, tbl, sredn=True)
-    if vid == 'График удельной производительности сборочного цеха':
-        CMS.apply_summ_с(self, tbl, sredn=True)
-    if vid == 'Выработка_ТОП':
-        CMS.apply_summ_с(self, tbl, sredn=True)
-    if vid == 'Отклонения от плановых дат по проектам':
-        CMS.apply_summ_с(self, tbl, sredn=True)
-    if vid == 'План-фактный график по месяцам':
-        CMS.apply_summ_с(self, tbl, sredn=True)
-    if vid == 'Распределение работ по направлениям':
+
+    # --- apply_summ_с со sredn=False
+    if vid in ('Распределение работ по направлениям',
+               'Выработка сотрудников',
+               'Журнал работ',
+               'Выработка сотрудника'
+               ):
         CMS.apply_summ_с(self, tbl, sredn=False)
-    if vid == 'Динамика производительности сотрудников':
-        CMS.apply_summ_с(self, tbl, sredn=True)
-    if vid == 'Исполнение плана месяца' or vid ==  'Выполнение проектов находящихся в производстве без привязке к периоду':
+
+    # --- отдельное оформление плана
+    if vid in (
+            'Исполнение плана месяца',
+            'Выполнение проектов находящихся в производстве без привязке к периоду'
+    ):
         oform_tbl_execute_monh_plan(tbl)
-    if vid == 'Отчет по отклонениям табеля и трудозатрат':
-        oform_tbl(vid)
 
+    # --- особый случай с правами
+    if vid == 'Журнал_замечаний':
+        self.permission = CMS.user_access(
+            self.bd_naryad,
+            'просмотр_журнал_замечаний_корректировка_вн',
+            F.user_full_namre(),
+            False
+        )
 
+    CMS.fill_filtr_c(self, self.ui.tbl_report_c_filtr, tbl, hidden_scroll=True)
+    CMS.update_width_filtr(tbl, self.ui.tbl_report_c_filtr)
 
     hook_prog_bar.set(100)
     hook_prog_bar.text('')
+
     if self.chk_autohide:
         self.up_down()
 
@@ -1570,12 +1607,175 @@ def load_browser(self):
     layout.setSpacing(0)
 
     layout.addWidget(self.browser)
-    
+
+@CQT.onerror
+def report_matrix_competence_by_depatment(self:mywindow, start:str, end:str)->list[dict]:
+    tbl_data = MTXCMP.gen_report_data_by_department(start,end)
+
+    def fnc_gen_grafic_departments(parent_self, data: list[dict]):
+
+
+        from collections import defaultdict
+
+
+        if not data:
+            return
+
+        # ----------------------------------
+        # 1. Группировка по подразделению
+        # ----------------------------------
+        data_by_dep = defaultdict(list)
+        for row in data:
+            data_by_dep[row['id_depatment_mes']].append(row)
+
+        fig = go.Figure()
+        target_value = data[0]['Целевой балл']
+
+        # ----------------------------------
+        # 2. Строим линию для каждого подразделения
+        # ----------------------------------
+        for dep_id, dep_rows in data_by_dep.items():
+
+            dep_name = dep_rows[0]['Подразделение']
+
+            by_date_changes = defaultdict(list)
+            value_by_date = {}
+
+            for row in dep_rows:
+                day = F.strtodate(row['Дата'], '%Y-%m-%d')
+
+                by_date_changes[day].append(
+                    f"<b>{row['ФИО']}</b><br>"
+                    f"Было: {row['Было']} → Стало: {row['Стало']}<br>"
+                    f"{row['Компетенция']}"
+                )
+
+                value_by_date[day] = max(
+                    value_by_date.get(day, 0),
+                    row['Балл по цеху']
+                )
+
+            dates_sorted = sorted(by_date_changes.keys())
+            y_values = [value_by_date[d] for d in dates_sorted]
+
+            # Ограничение размера тултипа
+            hover_text = []
+            for d in dates_sorted:
+                changes = by_date_changes[d]
+
+                max_rows = 10
+                if len(changes) > max_rows:
+                    visible = changes[:max_rows]
+                    hidden_count = len(changes) - max_rows
+                    visible.append(f"<br><i>... ещё {hidden_count} записей</i>")
+                    hover_text.append("<br><br>".join(visible))
+                else:
+                    hover_text.append("<br><br>".join(changes))
+
+            clr = 'rgba(55,55,55,0.57)'
+            if data_by_dep[dep_id]:
+                clr = f"rgba({data_by_dep[dep_id][0]['_color_dep']},1)"
+            fig.add_trace(
+                go.Scatter(
+                    x=dates_sorted,
+                    y=y_values,
+                    mode='lines+markers',
+                    name=dep_name,
+                    customdata=hover_text,
+                    line=dict(
+                        color=clr,
+                        width=2
+                    ),
+                    hovertemplate=
+                    'Дата: %{x|%d.%m.%Y}<br><br>'
+                    '%{customdata}'
+                    '<extra></extra>'
+                )
+            )
+
+        # ----------------------------------
+        # 3. Линия целевого балла
+        # ----------------------------------
+        all_dates = sorted(
+            set(
+                F.strtodate(r['Дата'], '%Y-%m-%d')
+                for r in data
+            )
+        )
+
+        fig.add_trace(
+            go.Scatter(
+                x=all_dates,
+                y=[target_value] * len(all_dates),
+                mode='lines',
+                name='Целевой балл',
+                line=dict(color='red', width=2, dash='dash')
+            )
+        )
+
+        # ----------------------------------
+        # 4. Настройка отображения
+        # ----------------------------------
+        fig.update_layout(
+            template='plotly_white',
+            xaxis=dict(
+                title='Дата',
+                type='date',
+                tickformat='%d.%m.%Y'
+            ),
+            yaxis=dict(
+                title='Балл'
+            ),
+            hoverlabel=dict(
+                align='left',
+                font=dict(size=11,color='rgba(22,22,22,0.97)'),
+                bgcolor='rgba(255,255,255,0.57)',
+                bordercolor='rgba(120,120,120,0.5)'
+            ),
+            legend=dict(
+                orientation='v',
+                x=1.02,
+                y=1,
+                xanchor='left'
+            ),
+            margin=dict(l=60, r=180, t=40, b=40)
+        )
+
+        # ----------------------------------
+        # 5. Вывод
+        # ----------------------------------
+        load_browser(parent_self)
+        try:
+            CQT.output_gant(
+                parent_self,
+                fig,
+                parent_self.browser,
+                'График_подразделений'
+            )
+        except PermissionError:
+            import tempfile
+            CQT.output_gant(
+                parent_self,
+                fig,
+                parent_self.browser,
+                'График_подразделений',
+                dir=tempfile.gettempdir()
+            )
+
+        tab = parent_self.ui.tabw_otchet
+        tab.setCurrentIndex(
+            CQT.number_table_by_name_c(tab, 'График')
+        )
+
+    fnc_gen_grafic_departments(self, tbl_data)
+    return tbl_data
+
 @CQT.onerror
 def  report_matrix_competence(self:mywindow, day:str):
+
     def fnc_gen_grafic_user_btn(self, parent_self: mywindow, row, column, user: MTXCMP.User):
         fnc_gen_grafic_user(parent_self,user)
-
+    
     def fnc_gen_grafic_user(parent_self:mywindow, user:MTXCMP.User):
 
         users_map = CSQ.custom_request_c(CFG.Config.project.db_users,
@@ -1962,11 +2162,14 @@ def  report_matrix_competence(self:mywindow, day:str):
                 fnc = partial(fnc_gen_grafic_comp, self, comp)
                 menu_builder.add_menu(f'{emoji.symbol} По компетенции',
                                       fnc)
-                
 
 
-    cmb = self.ui.cmb_podrazdelenie
+    cmb = self.ui.cmb_addit_sort_c_report
     depatment = cmb.currentData(CQT.Qt.UserRole)
+    if depatment == '':
+        CQT.msgbox(f'Не выбран цех')
+        return
+
     tbl = MTXCMP.Tbl_comp(self.ui.tbl_report_c)
     comps = MTXCMP.Competencies(depatment, tbl,self.ui.tbl_report_c_filtr)
     from dataClass import data_app as DTCLS
@@ -2798,15 +3001,12 @@ def create_gant(self, *args):
             yaxis_title='')
         return fig
 
-
-
     if self.vid_report_c == 'Динамика производительности сотрудников':
         if args == None or len(args) == 0:
             return
         fig = fig_gr_dinam_proizv(self, args[0])
         load_browser(self)
         CQT.output_gant(self, fig, self.browser, self.vid_report_c + '_' + self.ui.cmb_addit_sort_c_report.currentText())
-
 
     if self.vid_report_c == 'Внеплановые работы по направлениям':
         if args == None or len(args) == 0:
@@ -4048,7 +4248,7 @@ def jurnal_rabot(self, data_nach, data_kon, *args): #28.01.2026
         LEFT JOIN пл_оуп ON пл_оуп.НомПл = mk.НомКплан
         LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП 
         WHERE коды_веплана_для_наряда.poki == {self.place.poki} and datetime(jurnal.Дата) > datetime("{data_nach}") 
-            and datetime(jurnal.Дата) < datetime("{data_kon}") ORDER BY naryad.Пномер, jurnal.ФИО ,DATETIME(jurnal.Дата)"""
+            and datetime(jurnal.Дата) < datetime("{data_kon}") """
 
     rez_jur = CSQ.custom_request_c(self.bd_naryad, custom_request_c, hat_c=True,attach_dbs=(self.db_kplan))
     if rez_jur == False:
@@ -5806,7 +6006,6 @@ def trudozatraty(self, data_nach, data_kon, podrazd='-', *args):
     list_users = den_tabel(self, data_nach)
     
     for item_mtdz in list_users:
-        print(item_mtdz)
         fiod_mtdz = item_mtdz['ФИО']
         fio_mtdz = ' '.join(fiod_mtdz.split(" ")[:3])
         dolgn_mtdz = ' '.join(fiod_mtdz.split(" ")[3:])

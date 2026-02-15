@@ -1,4 +1,6 @@
 from __future__ import annotations
+
+import dataclasses
 from typing import TYPE_CHECKING
 import copy
 
@@ -9,6 +11,7 @@ import project_cust_38.Cust_Functions as F
 import project_cust_38.Cust_mes as CMS
 import project_cust_38.Cust_SQLite as CSQ
 from project_cust_38 import Cust_b24 as CB24
+import project_cust_38.Cust_emoji as CEMOJ
 try:
     from dataClass import data_app as DTCLS
 except:
@@ -257,6 +260,9 @@ class Depatment():
 
     def __str__(self):
         return f"""Depatment: {self.Наименование} ({self.Организация_Имя})"""
+
+
+
 class Competencies():
     ADDIT_INFO = f'''
     	Критерии оценки навыков работников с бальными оценками
@@ -436,6 +442,147 @@ class Competencies():
         for usr in self.list_users:
             if usr.ID_ФизЛица == id:
                 return usr
+
+class Type_report():
+    def __init__(self,name,description,icon,tooltip):
+        self.name = name
+        self.description = description
+        self.icon = icon
+        self.tooltip = tooltip
+
+
+@dataclasses.dataclass
+class Types_report():
+    by_emploee:Type_report = Type_report('by_emploee','В разрезе персонала',CEMOJ.ПерсоналРоли.engineer.symbol,'Аналитика по персоналу')
+    by_depatment:Type_report = Type_report('by_depatment','В разрезе цехов',CEMOJ.ПоказателиМетрики.kpi.symbol,'Аналитика по цехам')
+
+
+def gen_report_data_by_department(start:str,end:str):
+    start = F.dateStrToStr(start,"%Y-%m-%d %H:%M:%S",format_out='')
+    end = F.dateStrToStr(end,"%Y-%m-%d %H:%M:%S",format_out='')
+    DICT_EMPL = DTCLS.app_self.DICT_EMPLOEE_FULL
+    data = CSQ.custom_request_c(CFG.Config.project.db_users, f"""SELECT DISTINCT 
+        competence_vals.created_at as Дата,
+         0 AS "Было",
+        competence_vals.value as Стало,
+          0 AS "Балл по цеху",
+          0 AS "Балл по сотруднику",
+          0 AS "Кол-во компетенций",
+          0 AS "Кол-во сотрудников",
+        5 as "Целевой балл",
+        competence_vals.id_user,
+        competence_vals.id_comp,
+        "" as ФИО,
+        "" as Должность,
+        competence_params.name_competence AS Компетенция, 
+        competence_matrix.name_matrix AS Матрица, 
+        Подразделения.Наименование AS Подразделение,
+        "" as _color_dep,
+        
+        competence_matrix.id_depatment_mes
+        FROM competence_vals INNER JOIN 
+        competence_params ON competence_params.s_num = competence_vals.id_comp, 
+        Подразделения ON Подразделения.id = competence_matrix.id_depatment_mes,
+        competence_matrix ON competence_matrix.s_num = competence_params.snum_matrix
+         WHERE  Подразделения.for_deletion = 0 AND 
+        competence_params.enable = 1 AND 
+        Подразделения.Организация_poki = {CFG.Config.place.poki} 
+        ORDER BY Дата """, rez_dict=True)
+    dict_vals = dict()
+
+    #=============DEPS========================
+    DICT_DEPS = dict()
+    for item in data:
+        id_dep = item["id_depatment_mes"]
+        id_user = item["id_user"]
+        if id_dep not in DICT_DEPS:
+            DICT_DEPS[id_dep] = set()
+        DICT_DEPS[id_dep].add(id_user)
+
+    for k,v in DICT_DEPS.items():
+        DICT_DEPS[k] = len(DICT_DEPS[k])
+    # =============DEPS========================
+    # =============COMPS========================
+    DICT_COMPS = F.deploy_dict_c( CSQ.custom_request_c(CFG.Config.project.db_users, f"""
+    SELECT competence_matrix.id_depatment_mes,
+       count(name_competence)
+    FROM competence_params
+    inner join competence_matrix ON competence_matrix.s_num = competence_params.snum_matrix
+     Where enable = 1  group by snum_matrix ;
+    
+    """, rez_dict=True),'id_depatment_mes')
+    # =============COMPS========================
+
+    def calc_average_by_empl(id_dep,id_emp) -> float:
+        summ_val = 0
+        for comp, comp_data in dict_vals[id_dep][id_emp].items():
+            summ_val += comp_data['стало']
+        return round(summ_val / DICT_COMPS[id_dep],3)
+
+    def calc_average_by_dep(id_dep)->float:
+        summ_by_dep = 0
+        for id_emp, usr_data in dict_vals[id_dep].items():
+            aver_val = calc_average_by_empl(id_dep,id_emp)
+            summ_by_dep += aver_val
+
+        return round(summ_by_dep/DICT_DEPS[id_dep],3)
+
+
+    for item in data:
+        id_user = item["id_user"]
+        id_comp = item["id_comp"]
+        id_dep = item["id_depatment_mes"]
+        new_val = int(item["Стало"])
+        if id_dep not in dict_vals:
+            dict_vals[id_dep] = dict()
+        if id_user not in dict_vals[id_dep]:
+            dict_vals[id_dep][id_user] = dict()
+        if id_comp not in dict_vals[id_dep][id_user]:
+            dict_vals[id_dep][id_user][id_comp] = {'было':0,'стало':0,'среднее':0}
+        dict_vals[id_dep][id_user][id_comp]['было'] = dict_vals[id_dep][id_user][id_comp]['стало']
+        dict_vals[id_dep][id_user][id_comp]['стало'] = new_val
+        dict_vals[id_dep][id_user][id_comp]['среднее'] = calc_average_by_dep(id_dep)
+
+        item["Было"] = dict_vals[id_dep][id_user][id_comp]['было']
+        item["Балл по цеху"] = dict_vals[id_dep][id_user][id_comp]['среднее']
+        item["Балл по сотруднику"] = calc_average_by_empl(id_dep, id_user)
+        item["Кол-во компетенций"] = DICT_COMPS[id_dep]
+        item["Кол-во сотрудников"] = DICT_DEPS[id_dep]
+        item["_color_dep"] = F.align_colors(DTCLS.app_self.DICT_PODR_RC[item['Подразделение']]['Цвет'],',',level=90,sep_out=',')
+        item["ФИО"] = DTCLS.app_self.DICT_EMPLOEE_FULL_WITH_DEL_BY_REF[id_user]['ФИО']
+        item["Должность"] = DTCLS.app_self.DICT_EMPLOEE_FULL_WITH_DEL_BY_REF[id_user]['Должность']
+
+    def filtr_by_date(list_data)->list:
+        rez = []
+        for item in list_data:
+            date = F.strtodate(item['Дата'],"%Y-%m-%d")
+            if date >= start and date <= end:
+               rez.append(item)
+        return rez
+
+    data = filtr_by_date(data)
+
+    return data
+
+
+
+@CQT.onerror
+def fill_cmb_to_select_type_report(cmb: CQT.QtWidgets.QComboBox):
+    all_types = F.get_all_attrs_with_properties(Types_report)
+    list_descr = [
+        f'{v.icon} {v.description}' for v in all_types.values()
+    ]
+    list_names = [
+        v.name for v in all_types.values()
+    ]
+
+    list_tooltips = [
+        v.tooltip for v in all_types.values()
+    ]
+    CQT.fill_list_combobx(DTCLS.app_self, cmb,
+                          list_descr,
+                          first_void=True, list_data=list_names, list_tooltip=list_tooltips)
+
 @CQT.onerror
 def fill_cmb_to_select_dep(cmb:CQT.QtWidgets.QComboBox,poki:int,selected_dep_name:str=None):
     depatments = CSQ.custom_request_c(CFG.Config.project.db_users, f"""

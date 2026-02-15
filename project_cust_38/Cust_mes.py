@@ -271,7 +271,10 @@ class Color_tbl():
         self.b = int(self.b)
         self.rgb = [self.r,self.g,self.b]
 
-class Emploee_usr():
+    def str_rgb(self,sep:str=' ,')->str:
+        return  sep.join([str(_) for _ in self.rgb])
+
+class Emploee_usr(CFG.User_emploee):
     def __init__(self,fio:str,user_db:str):
         if F.is_unique_identifier(fio):
             data = CSQ.custom_request_c(user_db, f"""SELECT * FROM employee WHERE ID_ФизЛица == "{fio}";""", rez_dict=True)
@@ -306,30 +309,7 @@ class Emploee_usr():
   
         for item in data:
             self.history.append(item)
-
-    def is_dismissed_now(self,dolgn,date=None):
-        user_frame = dict()
-        for item in self.history[-1:-1:-1]:
-            if item['Должность'] == dolgn:
-                user_frame = item
-                break
-        if len(user_frame) == 0:
-            raise Exception('не найдена должность для ФИО в БД')
-
-        if item['Статус'] == 'Увольнение':
-            list_states = CSQ.custom_request_c(self.user_db, f"""SELECT s_num, user_id, state, date FROM 
-             employee_registr WHERE user_id == "{item['ID_ФизЛица']}" AND state == 10;""",rez_dict=True)
-            if date != None:
-                if F.strtodate(date) >= list_states[-1]['date']:
-                    list_states[-1]['date']
-                else:
-                    False
-            else:
-                return list_states[-1]['date']
-        else:
-            return False
-
-
+        super().__init__(fio=fio,user_db=user_db)
 
 class Emploee_spread_db():
 
@@ -4866,7 +4846,7 @@ class Plan_custom_weekends():
         if dict_weekends == False: #11.11.25
             raise ConnectionError(f'ОШибка получения данных')
             return
-        if dict_weekends == '':
+        if dict_weekends is None or dict_weekends == '':
             dict_weekends = dict()
         else:
             dict_weekends = F.from_binary_pickle(dict_weekends)
@@ -5937,7 +5917,7 @@ def update_local_graf(self=None, update=False,pnom:int = 0,fill_gant=True,DICT_C
     def save_form_db(dict_form,pnom):
         data = F.to_binary_pickle(dict_form)
         CSQ.custom_request_c(CFG.Config.project.db_kplan,f"""UPDATE plan SET local_graf = ? WHERE Пномер == ?;""",list_of_lists_c=[data,pnom])
-        print(f'Update {pnom} success')
+        print(f'    Update {pnom} success')
         return data
 
     def setText_data(self,dict_form,pnom):
@@ -6002,7 +5982,9 @@ def update_local_graf(self=None, update=False,pnom:int = 0,fill_gant=True,DICT_C
                         data_et = {"Время_час" : mosh, 'Этап' : etap,
                                                          "Начало" : F.datetostr(date_nach,"%d.%m.%y"),
                                                          "Конец" : F.datetostr(date_zav,"%d.%m.%y"),
-                                                         "Имя_нз" : [name_nach,name_zav]}
+                                                         "Имя_нз" : [name_nach,name_zav],
+                                                        '_type_replace_by_days': False
+                                                            }
 
                         if dict_form[date]['podr'][podr] != '':
                             dict_form[date]['podr'][podr].append(data_et)
@@ -6092,7 +6074,7 @@ def update_local_graf(self=None, update=False,pnom:int = 0,fill_gant=True,DICT_C
                     else:
                         break
                 if days_add:
-                    print(f'{name} adds {days_add} days')
+                    print(f'    {name} adds {days_add} days')
                     dict_dates[name] = F.datetostr(tmp_date,"%Y-%m-%d")
             return dict_dates
 
@@ -6125,8 +6107,26 @@ def update_local_graf(self=None, update=False,pnom:int = 0,fill_gant=True,DICT_C
             setText_data(self, dict_form, dict_poz['Пномер'])
         return data_bin
 
-    dict_poz = load_dict_poz_from_sql(pnom)
+    dict_poz = None
+    if isinstance(pnom,dict):
+        dict_poz = pnom
+    if isinstance(pnom,list):
+        if pnom and isinstance(pnom[0],dict):
+            dict_poz = pnom
+    if dict_poz is None:
+        dict_poz = load_dict_poz_from_sql(pnom)
     if dict_poz == False:
+        return
+    if isinstance(dict_poz,list):
+        if update:
+            count = len(dict_poz)
+            i = 1
+            for item in dict_poz:
+                print(f'{i} from {count} update_local_graf:')
+                datat_bin = update_local_graf(self, True, item, False)
+                print(f"    Создан локальный график на {item['Пномер']}")
+                item['local_graf'] = datat_bin
+                i += 1
         return
     if self:
         self.pnom_kplan_select = dict_poz['Пномер']
@@ -6191,79 +6191,107 @@ def hide_free_columns(self,tbl):
 
 
 def oforml_table(self:mywindow,tbl, tbl_filtr:QtWidgets.QTableWidget= ''):
-    self.count_tbl_field = len(self.list_for_hat)
-    CQT.fill_wtabl(self.dict_tbls_kpl[self.current_kpl_table],tbl,min_width_col= int(4*0.8),
-                   height_row=self.val_masht*2, colorful_edit=False,auto_type= False,head_column=0,set_editeble_col_nomera={},hide_head_column=False)
-    for j in range(1,self.count_tbl_field):
-        CQT.set_color_text_header_wtab_horisontal_c(tbl, j, 11, 11, 11, self.val_masht*0.7, False)
-        for i in range(3, len(self.dict_tbls_kpl_info[self.current_kpl_table])):
-            CQT.font_cell_size_format(tbl, i - 1, j, self.val_masht)
-    CQT.list_from_wtabl_c(tbl)
-    for j in range(self.count_tbl_field, len(self.dict_tbls_kpl_info[self.current_kpl_table][0])):
-         if self.dict_tbls_kpl_info[self.current_kpl_table][1][j] == 1:
-             CQT.set_color_text_header_wtab_horisontal_c(tbl, j, 200, 11, 11, self.val_masht*0.8, True)
-         else:
-             CQT.set_color_text_header_wtab_horisontal_c(tbl, j, 11, 11, 11, self.val_masht*0.7, False)
-    for i in range(3,len(self.dict_tbls_kpl_info[self.current_kpl_table])):
-        fact= False
-        if 'факт_' in self.dict_tbls_kpl_info[self.current_kpl_table][i][0].lower():
-            fact= True
-        podr = self.dict_tbls_kpl_info[self.current_kpl_table][i][0].replace('факт_', '').replace('план_', '')
-        r = 233
-        g = 233
-        b = 233
-        if podr in self.Data_plan.DICT_PODR:
-            r, g, b = F.align_colors(self.Data_plan.DICT_PODR[podr]['Цвет'],level_percent= -5,saturation_percent=-10).split(";")
-        CQT.set_color_text_header_wtab_vertical_c(tbl, i - 1, r, g, b, self.val_masht * 0.8, True)
+
+    def increase_columns_width(tbl, step=1):
+        for col in range(tbl.columnCount()):
+            current_width = tbl.columnWidth(col)
+            tbl.setColumnWidth(col, current_width + step)
+
+
+    with CQT.table_updating(tbl):
+        self.count_tbl_field = len(self.list_for_hat)
+        CQT.fill_wtabl(self.dict_tbls_kpl[self.current_kpl_table],tbl,min_width_col= int(4*0.8),
+                       height_row=self.val_masht*2, colorful_edit=False,auto_type= False,head_column=0,
+                       set_editeble_col_nomera={},hide_head_column=False,styleSheet=CQT.MES_EDIT_CSS)
+
+        for j in range(1,self.count_tbl_field):
+            CQT.set_color_text_header_wtab_horisontal_c(tbl, j, 11, 11, 11, self.val_masht*0.7, False)
+            for i in range(3, len(self.dict_tbls_kpl_info[self.current_kpl_table])):
+                CQT.font_cell_size_format(tbl, i - 1, j, self.val_masht)
+
         for j in range(self.count_tbl_field, len(self.dict_tbls_kpl_info[self.current_kpl_table][0])):
-            if self.dict_tbls_kpl_info[self.current_kpl_table][i][j] != "":
-                #for item in self.dict_tbls_kpl_info[self.current_kpl_table][i][j]:
-                #CQT.add_color_wtab_c(tbl,i-1,j,int(r),int(g),int(b))
-                CQT.set_color_wtab_c(tbl,i-1,j,int(r),int(g),int(b))
-                CQT.font_cell_size_format(tbl,i-1,j,self.val_masht,bold=fact)
-                #CQT.set_font_color_wtab_c(tbl,i-1,j,22,22,22)
-    tbl.resizeColumnsToContents()
-    if self.kpl_mode == 0:
-        hide_free_columns(self,tbl)
+             if self.dict_tbls_kpl_info[self.current_kpl_table][1][j] == 1:
+                 CQT.set_color_text_header_wtab_horisontal_c(tbl, j, 200, 11, 11, self.val_masht*0.8, True)
+             else:
+                 CQT.set_color_text_header_wtab_horisontal_c(tbl, j, 11, 11, 11, self.val_masht*0.7, False)
+        for i in range(3,len(self.dict_tbls_kpl_info[self.current_kpl_table])):
+            fact= False
+            if 'факт_' in self.dict_tbls_kpl_info[self.current_kpl_table][i][0].lower():
+                fact= True
+            podr = self.dict_tbls_kpl_info[self.current_kpl_table][i][0].replace('факт_', '').replace('план_', '')
+            r = 233
+            g = 233
+            b = 233
+            if podr in self.Data_plan.DICT_PODR:
+                r, g, b = F.align_colors(self.Data_plan.DICT_PODR[podr]['Цвет'],level_percent= -5,saturation_percent=-10).split(";")
+                r_t, g_t, b_t = F.align_colors(self.Data_plan.DICT_PODR[podr]['Цвет'], level_percent=15,
+                                         saturation_percent=-30).split(";")
+            CQT.set_color_text_header_wtab_vertical_c(tbl, i - 1, r, g, b, self.val_masht * 0.8, True)
+            try:
+                fl_replaced_vals = bool([_ for  i, _ in  enumerate(self.dict_tbls_kpl_info[self.current_kpl_table][i]) if isinstance(_,list)
+                                     and [x for x in _ if x['_type_replace_by_days']]])
+            except:
+                CQT.msgbox(f'по позиции {self.dict_tbls_kpl_info[self.current_kpl_table][i][1]} нужно обновить гант (включив гант, в таблице КПЛ клик на эту позицию с шифтом)')
+                return
+            for j in range(self.count_tbl_field, len(self.dict_tbls_kpl_info[self.current_kpl_table][0])):
+                if self.dict_tbls_kpl_info[self.current_kpl_table][i][j] != "":
+                    val = None
+                    if fl_replaced_vals:
+                        if len(self.dict_tbls_kpl_info[self.current_kpl_table][i][j]) > 1 and 'По дню' in self.dict_tbls_kpl_info[self.current_kpl_table][i][j][1]:
+                            val = self.dict_tbls_kpl_info[self.current_kpl_table][i][j][1]['По дню']
+                    else:
+                        if len(self.dict_tbls_kpl_info[self.current_kpl_table][i][j]) == 1:
+                            val = self.dict_tbls_kpl_info[self.current_kpl_table][i][j][0]['Время_час']
+                    if val:
+                        CQT.set_color_wtab_c(tbl, i - 1, j, int(r), int(g), int(b))
+                    else:
+                        CQT.set_color_wtab_c(tbl, i - 1, j, int(r_t), int(g_t), int(b_t))
+                    #for item in self.dict_tbls_kpl_info[self.current_kpl_table][i][j]:
+                    #CQT.add_color_wtab_c(tbl,i-1,j,int(r),int(g),int(b))
+                    CQT.font_cell_size_format(tbl,i-1,j,self.val_masht,bold=fact)
+                    #CQT.set_font_color_wtab_c(tbl,i-1,j,22,22,22)
 
-    #self.ui.tbl_preview.setColumnWidth(0, self.val_masht*7.5)
 
-
-    for field in self.list_for_hat:
-        try:
-            tbl.horizontalHeader().blockSignals(True)
-            tbl.setColumnHidden(CQT.num_col_by_name_c(tbl, field), False)
-            tbl.horizontalHeader().blockSignals(False)
-        except:
-            pass
-    if tbl_filtr != '':
-        fields_hide = ['Пномер']
-        for field in fields_hide:
+        if self.kpl_mode == 0:
+            hide_free_columns(self,tbl)
+        increase_columns_width(tbl, 2)
+        #self.ui.tbl_preview.setColumnWidth(0, self.val_masht*7.5)
+    
+        for field in self.list_for_hat:
             try:
                 tbl.horizontalHeader().blockSignals(True)
-                tbl.setColumnHidden(CQT.num_col_by_name_c(tbl, field), True)
+                tbl.setColumnHidden(CQT.num_col_by_name_c(tbl, field), False)
                 tbl.horizontalHeader().blockSignals(False)
             except:
                 pass
-
-        fill_filtr_c(self, tbl_filtr, tbl,hidden_scroll=True)
-        tbl_filtr.setVerticalHeaderLabels(['план_факт_подр'])
-        tbl_filtr.setRowHeight(0, 25)
-        for j in range(1, len(self.dict_tbls_kpl_info[self.current_kpl_table][0])):
-            if self.dict_tbls_kpl_info[self.current_kpl_table][1][j] == 1:
-                CQT.set_color_text_header_wtab_horisontal_c(tbl_filtr, j, 200, 11, 11, self.val_masht * 0.5, False)
-            else:
-                CQT.set_color_text_header_wtab_horisontal_c(tbl_filtr, j, 11, 11, 11, self.val_masht * 0.5, False)
-        update_width_filtr(tbl,tbl_filtr)
-    else:
-        fields_hide = ['Этап','Пномер',"Проект","Поз.","Напр.",'Напр_д.']
-        for field in fields_hide:
-            try:
-                tbl.setColumnHidden(CQT.num_col_by_name_c(tbl, field), True)
-            except:
-                pass
-    tbl.setRowHidden(0, True)
-    tbl.setRowHidden(1, True)
+        if tbl_filtr != '':
+            fields_hide = ['Пномер']
+            for field in fields_hide:
+                try:
+                    tbl.horizontalHeader().blockSignals(True)
+                    tbl.setColumnHidden(CQT.num_col_by_name_c(tbl, field), True)
+                    tbl.horizontalHeader().blockSignals(False)
+                except:
+                    pass
+    
+            fill_filtr_c(self, tbl_filtr, tbl,hidden_scroll=True)
+            tbl_filtr.setVerticalHeaderLabels(['план_факт_подр'])
+            tbl_filtr.setRowHeight(0, 25)
+            for j in range(1, len(self.dict_tbls_kpl_info[self.current_kpl_table][0])):
+                if self.dict_tbls_kpl_info[self.current_kpl_table][1][j] == 1:
+                    CQT.set_color_text_header_wtab_horisontal_c(tbl_filtr, j, 200, 11, 11, self.val_masht * 0.5, False)
+                else:
+                    CQT.set_color_text_header_wtab_horisontal_c(tbl_filtr, j, 11, 11, 11, self.val_masht * 0.5, False)
+            update_width_filtr(tbl,tbl_filtr)
+        else:
+            fields_hide = ['Этап','Пномер',"Проект","Поз.","Напр.",'Напр_д.']
+            for field in fields_hide:
+                try:
+                    tbl.setColumnHidden(CQT.num_col_by_name_c(tbl, field), True)
+                except:
+                    pass
+        tbl.setRowHidden(0, True)
+        tbl.setRowHidden(1, True)
 
 
 def load_dict_poz_from_sql(pnom:int|list):
@@ -6284,11 +6312,6 @@ def load_dict_poz_from_sql(pnom:int|list):
              WHERE plan.Пномер in ({CSQ.prepare_list_to_tuple(list_nums)})""", rez_dict=True)
     if query == False or len(query) == 0:
         return False
-    for item in query:
-        if item['local_graf'] == '':
-            datat_bin = update_local_graf(None, True, int(item['Пномер']), False)
-            print(f"Создан локальный график на {item['Пномер']}")
-            item['local_graf'] = datat_bin
     if fl_single:
         return query[0]
     else:
@@ -6296,6 +6319,7 @@ def load_dict_poz_from_sql(pnom:int|list):
 
 @CQT.onerror
 def fill_gant_table(self: mywindow , tbl, tbl_filtr='', dict_form='', pnom=0):
+    CQT.save_scroll(self,tbl)
     list_for_hat = ['Этап', 'Пномер', 'Проект', 'Поз.', 'Напр.', 'Напр_д.']
 
     def generate_list(self, pnom_kplan_select, list_for_hat,
@@ -6349,8 +6373,8 @@ def fill_gant_table(self: mywindow , tbl, tbl_filtr='', dict_form='', pnom=0):
                         time_rab = ''
                         if list_vals != '':
                             time_rab = 0
-                            for val in list_vals:
-                                time_rab += round(val['Время_час'])
+                            for val_round_1 in list_vals:
+                                time_rab += round(val_round_1['Время_час'])
                         list_tbl[j].append(time_rab)
                         list_tbl_info[j].append(list_vals)
                     else:
@@ -6396,45 +6420,50 @@ def fill_gant_table(self: mywindow , tbl, tbl_filtr='', dict_form='', pnom=0):
                         if list_tbl[i_row][nf['Этап']] == field and list_tbl[i_row][nf['Пномер']] == kpl:
                             for j_clmn in range(6, len(list_tbl[0])):
                                 list_tbl[i_row][j_clmn] = ''
-                                for day in dict_replace_by_days_tmp[field].keys():
-                                    # print(f'        кол {j_clmn}')
-                                    if list_tbl[0][j_clmn].startswith(day):
-                                        val3 = round(dict_replace_by_days_tmp[field][day] / 60, 3)
-                                        val = round(val3, 1)
-                                        if val3 > 0:
-                                            podr_cut = "_".join(field.split("_")[1:])
-    
-                                            name_nach = DICT_PODR[podr_cut]['Имя_начала_этапа']
-                                            name_zav = DICT_PODR[podr_cut]['Имя_конца_этапа']
-                                            name_nach_f = DICT_PODR[podr_cut]['Имя_начала_этапа_факт']
-                                            name_zav_f = DICT_PODR[podr_cut]['Имя_конца_этапа_факт']
-                                            name_filed_hour = DICT_PODR[podr_cut]['Имя_поля'].split(';')[0]
-                                            date_nach = ''
-                                            date_zav = ''
-                                            if field.startswith('план'):
-                                                pass
-                                                date_nach = poz.row_dates_etap_plan[f'{podr_cut}.{name_nach}']
-                                                date_zav = poz.row_dates_etap_plan[f'{podr_cut}.{name_zav}']
-                                            if field.startswith('факт'):
-                                                pass
-                                                date_nach = poz.row_dates_etap_fact[f'{podr_cut}.{name_nach_f}']
-                                                date_zav = poz.row_dates_etap_fact[f'{podr_cut}.{name_zav_f}']
-                                            time_hour = ''
+                                date_from_tbl_wo_day = '\n'.join(list_tbl[0][j_clmn].split('\n')[:-1])
+
+                                if date_from_tbl_wo_day in dict_replace_by_days_tmp[field]:
+                                    day= date_from_tbl_wo_day
+                                    val_round_nch = round(dict_replace_by_days_tmp[field][day] / 60, 3)
+                                    val_round_1 = round(val_round_nch, 1)
+                                    if val_round_nch > 0:
+                                        podr_cut = "_".join(field.split("_")[1:])
+                                        name_nach = DICT_PODR[podr_cut]['Имя_начала_этапа']
+                                        name_zav = DICT_PODR[podr_cut]['Имя_конца_этапа']
+                                        name_nach_f = DICT_PODR[podr_cut]['Имя_начала_этапа_факт']
+                                        name_zav_f = DICT_PODR[podr_cut]['Имя_конца_этапа_факт']
+                                        name_filed_hour = DICT_PODR[podr_cut]['Имя_поля'].split(';')[0]
+                                        date_nach = ''
+                                        date_zav = ''
+                                        time_hour = ''
+                                        name_nz = ['','']
+                                        if field.startswith('план'):
                                             time_hour = poz.row_time_etap[f'{podr_cut}.{name_filed_hour}']
-                                            data_et = {"Время_час": time_hour,
-                                                       'Этап': f'{podr_cut}.{name_zav.lower().replace("нач", "").replace("зав", "")}',
-                                                       "Начало": date_nach,
-                                                       "Конец": date_zav,
-                                                       "Имя_нз": [f'{podr_cut}.{name_nach}', f'{podr_cut}.{name_zav}'],
-                                                       'По дню': val3
-                                                       }
-    
-                                            if list_tbl_info[i_row][j_clmn] == '':
-                                                list_tbl_info[i_row][j_clmn] = []
-                                            list_tbl_info[i_row][j_clmn].append(data_et)
-                                            list_tbl[i_row][j_clmn] = val
-                                        else:
-                                            list_tbl[i_row][j_clmn] = ''
+                                            date_nach = poz.row_dates_etap_plan[f'{podr_cut}.{name_nach}']
+                                            date_zav = poz.row_dates_etap_plan[f'{podr_cut}.{name_zav}']
+                                            name_nz = [f'{podr_cut}.{name_nach}', f'{podr_cut}.{name_zav}']
+                                        if field.startswith('факт'):
+                                            time_hour = round(sum([_/60 for _ in dict_replace_by_days_tmp[field].values()]),2)
+                                            date_nach = poz.row_dates_etap_fact[f'{podr_cut}.{name_nach_f}']
+                                            date_zav = poz.row_dates_etap_fact[f'{podr_cut}.{name_zav_f}']
+                                            name_nz = [f'{podr_cut}.{name_nach_f}', f'{podr_cut}.{name_zav_f}']
+
+
+                                        data_et = {"Время_час": time_hour,
+                                                   'Этап': f'{podr_cut}.{name_zav.lower().replace("нач", "").replace("зав", "")}',
+                                                   "Начало": date_nach,
+                                                   "Конец": date_zav,
+                                                   "Имя_нз": name_nz,
+                                                   'По дню': val_round_nch,
+                                                   '_type_replace_by_days': True
+                                                   }
+
+                                        if list_tbl_info[i_row][j_clmn] == '':
+                                            list_tbl_info[i_row][j_clmn] = []
+                                        list_tbl_info[i_row][j_clmn].append(data_et)
+                                        list_tbl[i_row][j_clmn] = val_round_1
+                                    else:
+                                        list_tbl[i_row][j_clmn] = ''
         st_row = 3
         st_col = 6
         set_rows_to_add = set(range(st_row))
@@ -6449,9 +6478,7 @@ def fill_gant_table(self: mywindow , tbl, tbl_filtr='', dict_form='', pnom=0):
         list_tbl_info = [val for _,val  in enumerate(list_tbl_info) if _ in set_rows_to_add]
         return list_tbl,list_tbl_info
 
-
-
-
+    #========end fnc====================================
     if dict_form == None  or dict_form == '' or dict_form == []:
         if self:
             if pnom == 0:
@@ -6498,6 +6525,7 @@ def fill_gant_table(self: mywindow , tbl, tbl_filtr='', dict_form='', pnom=0):
             return
         #print(self.current_kpl_table)
         oforml_table(self, tbl, tbl_filtr)
+        CQT.load_scoll(self,tbl)
     return True
 
 
@@ -9101,7 +9129,7 @@ rab_c.Вспомогательный,
 rab_c.poki, 
 etaps.name as etaps_name,
 use_in_estimate_plan as use_in_estimate_plan 
-     FROM rab_c INNER JOIN etaps ON etaps.s_num = rab_c.etaps_num'''
+     FROM rab_c INNER JOIN etaps ON etaps.s_num = rab_c.etaps_num WHERE rab_c.poki = {CFG.Config.place.poki};'''
     self.SPIS_RC = CSQ.custom_request_c(CFG.Config.project.db_users, """SELECT * FROM rab_c""")
     SPIS_RC = CSQ.custom_request_c(db_users, custom_request_c, hat_c=False,rez_dict=True, attach_dbs=CFG.Config.project.db_naryad)
     self.DICT_RC = F.deploy_dict_c(SPIS_RC,'Код')
