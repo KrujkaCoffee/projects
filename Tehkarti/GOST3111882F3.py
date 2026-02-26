@@ -3,6 +3,8 @@ import project_cust_38.Cust_Functions as F
 import os
 from PyQt5 import QtWidgets, QtCore, QtGui
 
+from project_cust_38 import Cust_config as CFG
+
 def showDialog(self, msg):
     msgBox = QtWidgets.QMessageBox()
     msgBox.setIcon(QtWidgets.QMessageBox.Information)
@@ -28,7 +30,9 @@ def vigruzit2(obj):
     sp = []
     sp.append(F.inscribe_c("ГОСТ 3.1118-82  ФОРМА 3  САПР  ", 65, ' ', ' ', 2))
     sp.append(F.inscribe_c("-" * 63, 65))
-    sp.append(':ООО Пауэрз:                      :                 :     :     :')
+    org_name = CFG.Config.place.Имя
+    # sp.append(':ООО Пауэрз:                      :                 :     :     :')
+    sp.append(f':ООО {org_name}:                      :                 :     :     :') #25.02.2026
     sp.append(F.inscribe_c("-" * 63, 65))
     sp.append(F.inscribe_c("", 5, prz=' ') + F.inscribe_c(n_dse.text(), 24) + 13 * " " + F.inscribe_c(n_tk.text(), 23))
     sp.append(F.inscribe_c("", 5, prz=' ') + F.inscribe_c("", 24) + 13 * " " + F.inscribe_c("", 23))
@@ -155,7 +159,9 @@ def hat_c1_km(sp,spisok_tk):
     n_tk, km, es = [x for x in spisok_tk[1][0].split('/')]
     sp.append(F.inscribe_c("ГОСТ 3.1118-82  ФОРМА 4  САПР  ", 65, ' ', ' ', 2))
     sp.append(F.inscribe_c("-" * 63, 65))
-    sp.append(':ООО Пауэрз:                ' + F.inscribe_c(n_tk, 25) + '     :     :')
+    org_name = CFG.Config.place.Имя #25.02.2026
+
+    sp.append(f':ООО {org_name}:                ' + F.inscribe_c(n_tk, 25) + '     :     :')
     sp.append(F.inscribe_c("-" * 63, 65))
     sp.append(F.inscribe_c("", 5, prz=' ') + F.inscribe_c(nnomer_dse, 24) + 13 * " " + F.inscribe_c(km, 23))
     sp.append(F.inscribe_c("", 5, prz=' ') + F.inscribe_c("", 24) + 13 * " " + F.inscribe_c("", 23))
@@ -178,10 +184,12 @@ def prostavit_num_stranic(sp,nach=0):
         n = int((len(sp)-nach) / 63)
     else:
         n = int(round((len(sp)-nach) / 63))
+    org_name = CFG.Config.place.Имя #25.02.2026
+
     if n == 1:
-        sp[2+nach] = ':ООО Пауэрз:                      :                 :     :  1  :'
+        sp[2+nach] = f':ООО {org_name}:                      :                 :     :  1  :'
     else:
-        sp[2+nach] = ':ООО Пауэрз:                      :                 ' + F.inscribe_c(str(n), 7) + '  1  :'
+        sp[2+nach] = f':ООО {org_name}:                      :                 ' + F.inscribe_c(str(n), 7) + '  1  :'
         n = 2
         for i in range(65+nach, len(sp), 63):
             sp[i] = ':                :                      :                 ' + F.inscribe_c(str(n), 7)
@@ -237,13 +245,15 @@ def vstavit_osn_nadp(sp, nach = 0, type_doc = "МК    "):
 def vstavit_shapku(sp, n_dse, n_tk, nach=0):
     flag = False
     i = nach+62
+    org_name = CFG.Config.place.Имя #25.02.2026
+
     while flag == False:
         if i >= len(sp) - 1:
             break
         sp.insert(i + 1, F.inscribe_c("ГОСТ 3.1118-82  ФОРМА 3Б  САПР  ", 65, ' ', ' ', 2))
         sp.insert(i + 2, F.inscribe_c("-" * 63, 65))
         sp.insert(i + 3,
-                  "ООО Пауэрз:" + F.inscribe_c(" " * 21, 23, ":", " ") + F.inscribe_c(" " * 16, 18, ":", " ")
+                  f"ООО {org_name}:" + F.inscribe_c(" " * 21, 23, ":", " ") + F.inscribe_c(" " * 16, 18, ":", " ")
                   + F.inscribe_c(" " * 5, 7))
         sp.insert(i + 4, F.inscribe_c("-" * 63, 65))
         sp.insert(i + 5, F.inscribe_c(" ", 5, ":", " ") + F.inscribe_c(" ", 14, ":", " ") + F.inscribe_c(n_dse, 23, ":", " ")

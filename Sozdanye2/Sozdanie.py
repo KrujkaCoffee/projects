@@ -2005,7 +2005,7 @@ class mywindow(QtWidgets.QMainWindow):
     @CQT.onerror
     def get_list_last_base_nar(self, nom_mk, nom_nar):
 
-        def get_last_oper(self, dse_id: int, oper_nom, res, list_predv_opers):
+        def get_last_oper(self, dse_id: int, oper_nom, res, list_predv_opers): #19.02.2026
             prev_osv = ''
             prev_zav = ''
             prev_oper_nom = ''
@@ -2015,39 +2015,51 @@ class mywindow(QtWidgets.QMainWindow):
             dse_id_prev = ''
             prev_oper_kod = ''
             ret = []
+            current_index = None
+            target_dse = None
+            fl = False
             for dse in res:
                 if dse['Номерпп'] == dse_id:
-                    prev_kol = dse['Количество']
-                    fl = False
                     for i in range(len(dse['Операции'])):
                         if dse['Операции'][i]['Опер_номер'] == oper_nom:
                             if i == 0:
-                                # print(f'{nom_nar} первая операция не проверяется на выполенние предыдущей')
                                 list_predv_opers = CMS.get_parent_dse(self, res, dse, list_predv_opers)
                                 return list_predv_opers
-                            oper = dse['Операции'][i - 1]
-                            cur_oper = dse['Операции'][i]
-                            if self.DICT_OPER[cur_oper['Опер_код']]['kontrol_opers'] and self.DICT_OPER[oper['Опер_код']]['kontrol_opers']:
-                                oper = dse['Операции'][i - 2]
-                            if self.DICT_OPER[oper['Опер_код']]['kontrol_opers']:
-                                return list_predv_opers
-                            prev_osv = oper.get('Освоено,шт.', 0)
-                            prev_zav = oper.get('Закрыто,шт.', 0)
-                            prev_oper_nom = oper['Опер_номер']
-                            prev_oper_name = oper['Опер_наименование']
-                            prev_oper_rc = oper['Опер_РЦ_код']
-                            prev_oper_kod = oper['Опер_код']
-                            fl = True
-                            break
-                    if fl == False:
-                        return fl
-                    list_predv_opers.append(
-                        {'dse_id': dse['Номерпп'], 'dse': f"{dse['Наименование']} {dse['Номенклатурный_номер']}",
-                         'prev_kol': prev_kol,
-                         'prev_osv': prev_osv,
-                         'prev_zav': prev_zav, 'prev_oper_nom': prev_oper_nom, 'prev_oper_name': prev_oper_name,
-                         'prev_oper_rc': prev_oper_rc, 'prev_oper_kod': prev_oper_kod})
+                            current_index = i
+                            target_dse = dse
+            if current_index is None or target_dse is None:
+                return False
+            n = current_index - 1
+            cur_oper = target_dse['Операции'][current_index]
+            current_oper_is_otk = self.DICT_OPER[cur_oper['Опер_код']]['kontrol_opers']
+            while n >= 0:
+                oper = target_dse['Операции'][n]
+                iter_oper_is_otk = self.DICT_OPER[oper['Опер_код']]['kontrol_opers']
+                is_skip_otk_operation = self.DICT_OPER[oper['Опер_код']]['skip_check_otk']
+                if iter_oper_is_otk:
+                    if current_oper_is_otk and len(list_predv_opers) == 0:
+                        n -= 1
+                        continue
                     return list_predv_opers
+                if current_oper_is_otk and is_skip_otk_operation:
+                    n -= 1
+                    continue
+                prev_osv = oper.get('Освоено,шт.', 0)
+                prev_zav = oper.get('Закрыто,шт.', 0)
+                prev_oper_nom = oper['Опер_номер']
+                prev_oper_name = oper['Опер_наименование']
+                prev_oper_rc = oper['Опер_РЦ_код']
+                prev_oper_kod = oper['Опер_код']
+                fl = True
+                break
+            if fl == False:
+                return fl
+            list_predv_opers.append(
+                {'dse_id': target_dse['Номерпп'], 'dse': f"{target_dse['Наименование']} {target_dse['Номенклатурный_номер']}",
+                 'prev_kol': target_dse['Количество'],
+                 'prev_osv': prev_osv,
+                 'prev_zav': prev_zav, 'prev_oper_nom': prev_oper_nom, 'prev_oper_name': prev_oper_name,
+                 'prev_oper_rc': prev_oper_rc, 'prev_oper_kod': prev_oper_kod})
             return list_predv_opers
 
         def get_last_base_oper_nar(self, dse_id: int, oper_nom, res, list_nar):

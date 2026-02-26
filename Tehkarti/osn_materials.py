@@ -60,7 +60,7 @@ def zagr_sortament(self):
         if sort == '10':
             self.ui.opt_but_nabivka.setChecked(True)
             mat_nabivka_load(self)
-    except:
+    except Exception as e:
         CQT.msgbox(f'ОШибка загрузки сортамента')
 
 def raschet_list(self,spis):
@@ -358,6 +358,9 @@ def mat_list_load(self):
     tree = self.ui.tree
     spis_dreva = CQT.list_from_tree_c(tree)
     tbl_oper_mat = self.ui.tbl_oper_mat
+    oper_mat_row = tbl_oper_mat.currentRow()
+    if oper_mat_row == -1: #20.02.2026
+        return
     nk_id = CQT.num_col_by_name_c(tbl_oper_mat, 'ID')
     oper = tbl_oper_mat.item(tbl_oper_mat.currentRow(), nk_id).text()
     if oper == None:

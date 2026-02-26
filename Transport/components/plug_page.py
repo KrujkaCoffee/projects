@@ -46,7 +46,7 @@ def paint_rail(select_destination):
         min_extended_width=400,
         leading=ft.FloatingActionButton(icon=DICT_BARS['leading']['icon'],
 
-                                        text=DICT_BARS['leading']['text'], on_click=lambda _: leading_click(_)
+                                        content=DICT_BARS['leading']['text'], on_click=lambda _: leading_click(_)
                                         ),
         group_alignment=-0.9,
         destinations=list_bars,

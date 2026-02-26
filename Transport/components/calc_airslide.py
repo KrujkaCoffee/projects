@@ -235,7 +235,7 @@ def gen_page(page):
             tbl_data = calc_airslide_back.make_history_tbl_data(e.page.data)
             tbl_history = CMF.generate_param_table(tbl_data, selectedRowsfnc=selectedRowsfnc, selectedRows=True)
 
-            _desktop_column_ref.current.clean()
+            _desktop_column_ref.current.controls.clear()
 
             def find_rez_table(e:ft.ControlEvent):
                 Data.Data_module.cust_data.filtr_seach_history = _header_filtr_text_field_ref.current.value
@@ -341,7 +341,7 @@ def paint_rail(select_destination):
         min_width=100,
         min_extended_width=400,
         leading=ft.FloatingActionButton(icon=leading_data['icon'],
-                                        text=leading_data['text'],
+                                        content=leading_data['text'],
                                         on_click=lambda _: go_home(_)),
         group_alignment=-0.9,
         destinations=list_bars,

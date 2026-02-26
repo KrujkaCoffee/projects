@@ -6,9 +6,8 @@ import project_cust_38.Cust_Functions as F
 import project_cust_38.Cust_emoji as Cust_emoji
 from typing import Any
 
-from components.ext_report_native_menu import build_save_reports_menu
-from components.ext_tech_report_excel import build_tech_report_xlsx
-from components.ext_tech_report_settings_dialog import open_tech_report_settings_dialog
+from components.tech_report_excel import build_tech_report_xlsx
+from components.tech_report_settings_dialog import open_tech_report_settings_dialog
 
 DICT_BARS = {"leading": {'text': 'Домой',
                          'icon': ft.Icons.HOME,
@@ -72,15 +71,15 @@ def show_msgbox_err(e):
         time_life=3
     )
 
-def apply_page_settings(page: ft.Page,MODULE:DTCLS.ModuleCfg):
+async def apply_page_settings(page: ft.Page,MODULE:DTCLS.ModuleCfg):
     Data: DTCLS.Data_page = page.data
     Data.Data_module = MODULE
     Data.Data_module.cust_data: calc_silencer_back.Cust_module_params = calc_silencer_back.Cust_module_params()
 
-    # --- загрузка пользовательских настроек tech-отчёта из client_storage (локально на стороне юзера) ---
     try:
         storage_key = f"tech_report_cfg::{MODULE.alias}"
-        stored = page.client_storage.get(storage_key)
+        client_storage = ft.SharedPreferences()
+        stored = await client_storage.get(storage_key)
         if isinstance(stored, str):
             try:
                 import json
@@ -95,59 +94,34 @@ def apply_page_settings(page: ft.Page,MODULE:DTCLS.ModuleCfg):
 
 
 def _client_storage_set_safe(page: ft.Page, key: str, value: Any) -> None:
-    """Best-effort запись в client_storage с поддержкой sync/async API в разных версиях Flet."""
-    try:
-        page.client_storage.set(key, value)
-        return
-    except Exception:
-        pass
-
     async def _do():
         try:
-            await page.client_storage.set_async(key, value)
-        except Exception:
+            client_storage = ft.SharedPreferences()
+            import json
+
+            stored = json.dumps(value)
+            await client_storage.set(key, stored)
+        except Exception as e:
+            print(e)
             pass
-
-    try:
-        if hasattr(page, "run_task"):
-            page.run_task(_do)
-        else:
-            import asyncio
-
-            asyncio.create_task(_do())
-    except Exception:
-        pass
+    page.run_task(_do)
 
 
 def _client_storage_remove_safe(page: ft.Page, key: str) -> None:
-    try:
-        page.client_storage.remove(key)
-        return
-    except Exception:
-        pass
-
     async def _do():
         try:
-            await page.client_storage.remove_async(key)
+            client_storage = ft.SharedPreferences()
+            await client_storage.remove(key)
         except Exception:
             pass
+    page.run_task(_do)
 
-    try:
-        if hasattr(page, "run_task"):
-            page.run_task(_do)
-        else:
-            import asyncio
-
-            asyncio.create_task(_do())
-    except Exception:
-        pass
 
 def _save_word(e: ft.ControlEvent):
     Data: DTCLS.Data_page = e.page.data
     cfg_module = Data.Data_module
     name = _header_input_panel_textfield_ref.current.value
 
-    # старую “заглушку” (Отчет не доделан) — убираем и реально сохраняем Word
     rezult_data_for_save = calc_silencer_back.generate_rezult_data_for_save(
         name, _input_tabe_ref.current, _output_tabe_ref.current
     )
@@ -185,10 +159,8 @@ def _tech_build(e: ft.ControlEvent):
     cfg_module = Data.Data_module
     name = (_header_input_panel_textfield_ref.current.value or "tech_report").strip()
 
-    # входные строки (для блока "Входные данные")
     input_rows = CMF.datatable_to_dicts(_input_tabe_ref.current)
 
-    # пересчёт (берём полный dict calculated + errors)
     calculated, errors, success = calc_silencer_back.prepare_calc_new_data(input_rows, Data)
     if calculated is None:
         show_msgbox_err(e)
@@ -227,10 +199,6 @@ def _tech_settings(e: ft.ControlEvent):
 
     def _on_save(new_cfg: dict):
         setattr(Data.Data_module.cust_data, "tech_report_cfg", new_cfg)
-
-        # Persist (локально у пользователя) если включено в диалоге.
-        # Ветка под сохранение в БД оставлена в конфиге (storage="db"),
-        # но пока всё равно пишем в local client_storage (fallback).
         try:
             storage_key = f"tech_report_cfg::{Data.Data_module.alias}"
             persist = bool(new_cfg.get("persist", True))
@@ -331,7 +299,6 @@ def gen_page(page):
                             alignment=0.1,  # куда позиционировать (0.0 – верх, 1.0 – низ)
                             duration=300  # анимация
                         )
-            print('CLICK')
             meta = e.control.data
             cell: CMF._Cell_data = meta['cell']
             row_data: CMF.Row_data = cell.parent_row
@@ -398,7 +365,7 @@ def gen_page(page):
             ft.VerticalDivider(width=2),
             ft.Column(
                 controls=[],
-                alignment=ft.MainAxisAlignment.START,  # прижать всё к верху
+                # alignment=ft.MainAxisAlignment.START,  # прижать всё к верху
                 horizontal_alignment=ft.CrossAxisAlignment.START,  # прижать влево
                 scroll=ft.ScrollMode.ALWAYS, expand=True,
                 ref=_output_column_tabels_ref
@@ -408,7 +375,7 @@ def gen_page(page):
             expand=True, ref=_desktop_row_ref)
 
 
-        save_control = build_save_reports_menu(
+        save_control = CMF.build_save_reports_menu(
             ref=_header_input_panel_btn_save_ref,
             width=150,
             height=50,
@@ -490,7 +457,7 @@ def gen_page(page):
             tbl_data = calc_silencer_back.make_history_tbl_data(e.page.data)
             tbl_history = CMF.generate_param_table(tbl_data, selectedRowsfnc=selectedRowsfnc, selectedRows=True)
 
-            _desktop_column_ref.current.clean()
+            _desktop_column_ref.current.controls.clear()
 
             def find_rez_table(e:ft.ControlEvent):
                 Data.Data_module.cust_data.filtr_seach_history = _header_filtr_text_field_ref.current.value

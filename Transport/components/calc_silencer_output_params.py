@@ -342,7 +342,7 @@ OUTPUT_PARAMS = {
        'group_name': 'Параметры потока в дроссельном блоке',
        'formula': {'expr': '=IF($E$17>9,IF(AND(O78<1,O78>$O$144),"Дозвуковая область","Сверхзвуковая область"),"")',
                    'cell': 'O84'}, 'accuracy': 4},
-    'stupeni_n1_2'
+    'stupenin1_2_n1'
     : {'view': True, 'header': '№ ступени N1', 'dimension': '', 'comment': 'Расчет геометрических параметров',
        'group_name': 'Расчет геометрических параметров',
        'formula': {'expr': 1, 'cell': 'O90'}, 'accuracy': 4},
@@ -360,7 +360,7 @@ OUTPUT_PARAMS = {
        'header': '\nМинимальные площади дроссельных решеток, требуемые для размещения отверстий Fтр, мм2 N1',
        'dimension': 'м2', 'comment': '', 'group_name': 'Расчет геометрических параметров',
        'formula': {'expr': '=5*O92/0.8', 'cell': 'O93'}, 'accuracy': 4},
-    'stupeni_n2_2'
+    'stupenin1_2_n2'
     : {'view': True, 'header': '№ ступени N2', 'dimension': '', 'comment': '',
        'group_name': 'Расчет геометрических параметров',
        'formula': {'expr': '=IF(O34=1,"",2)', 'cell': 'O94'}, 'accuracy': 4},
@@ -378,8 +378,8 @@ OUTPUT_PARAMS = {
        'header': '\nМинимальные площади дроссельных решеток, требуемые для размещения отверстий Fтр, мм2 N2',
        'dimension': 'м2', 'comment': '', 'group_name': 'Расчет геометрических параметров',
        'formula': {'expr': '=IF(O34=1,"",5*O96/0.8)', 'cell': 'O97'}, 'accuracy': 4},
-    'stupeni_n3_2'
-    : {'view': True, 'header': '№ ступени N3', 'dimension': '', 'comment': '',
+    'stupenin1_2_n3'
+    : {'view': True, 'header': '№ ступени N3', 'dimension': '', 'comment': '№ ступени N3',
        'group_name': 'Расчет геометрических параметров',
        'formula': {'expr': '=IF(O34<3,"",3)', 'cell': 'O98'}, 'accuracy': 4},
     'diametry_otverstij_mm_n3'
@@ -396,8 +396,8 @@ OUTPUT_PARAMS = {
        'header': '\nМинимальные площади дроссельных решеток, требуемые для размещения отверстий Fтр, мм2 N3',
        'dimension': 'м2', 'comment': '', 'group_name': 'Расчет геометрических параметров',
        'formula': {'expr': '=IF(O34<3,"",5*O100/0.8)', 'cell': 'O101'}, 'accuracy': 4},
-    'stupeni_n4_2'
-    : {'view': True, 'header': '№ ступени N4', 'dimension': '', 'comment': '',
+    'stupenin1_2_n4'
+    : {'view': True, 'header': '№ ступени N4', 'dimension': '', 'comment': '№ ступени N4',
        'group_name': 'Расчет геометрических параметров',
        'formula': {'expr': '=IF(O34<4,"",4)', 'cell': 'O102'}, 'accuracy': 4},
     'diametry_otverstij_mm_n4'
@@ -414,7 +414,7 @@ OUTPUT_PARAMS = {
        'header': '\nМинимальные площади дроссельных решеток, требуемые для размещения отверстий Fтр, мм2 N4',
        'dimension': 'м2', 'comment': '', 'group_name': 'Расчет геометрических параметров',
        'formula': {'expr': '=IF(O34<4,"",5*O104/0.8)', 'cell': 'O105'}, 'accuracy': 4},
-    'stupeni_n5_2'
+    'stupenin1_2_n5'
     : {'view': True, 'header': '№ ступени N5', 'dimension': '', 'comment': '',
        'group_name': 'Расчет геометрических параметров',
        'formula': {'expr': '=IF($O$34<5,"",5)', 'cell': 'O106'}, 'accuracy': 4},
@@ -432,7 +432,7 @@ OUTPUT_PARAMS = {
        'header': '\nМинимальные площади дроссельных решеток, требуемые для размещения отверстий Fтр, мм2 N5',
        'dimension': 'м2', 'comment': '', 'group_name': 'Расчет геометрических параметров',
        'formula': {'expr': '=IF($O$34<5,"",5*O108/0.8)', 'cell': 'O109'}, 'accuracy': 4},
-    'stupeni_n6_2'
+    'stupenin1_2_n6'
     : {'view': True, 'header': '№ ступени N6', 'dimension': '', 'comment': '',
        'group_name': 'Расчет геометрических параметров',
        'formula': {'expr': '=IF($O$34<6,"",6)', 'cell': 'O110'}, 'accuracy': 4},
@@ -450,7 +450,7 @@ OUTPUT_PARAMS = {
        'header': '\nМинимальные площади дроссельных решеток, требуемые для размещения отверстий Fтр, мм2 N6',
        'dimension': 'м2', 'comment': '', 'group_name': 'Расчет геометрических параметров',
        'formula': {'expr': '=IF($O$34<6,"",5*O112/0.8)', 'cell': 'O113'}, 'accuracy': 4},
-    'stupeni_n7_2'
+    'stupenin1_2_n7'
     : {'view': True, 'header': '№ ступени N7', 'dimension': '', 'comment': '',
        'group_name': 'Расчет геометрических параметров',
        'formula': {'expr': '=IF($O$34<7,"",7)', 'cell': 'O114'}, 'accuracy': 4},
@@ -468,7 +468,7 @@ OUTPUT_PARAMS = {
        'header': '\nМинимальные площади дроссельных решеток, требуемые для размещения отверстий Fтр, мм2 N7',
        'dimension': 'м2', 'comment': '', 'group_name': 'Расчет геометрических параметров',
        'formula': {'expr': '=IF($O$34<7,"",5*O116/0.8)', 'cell': 'O117'}, 'accuracy': 4},
-    'stupeni_n8_2'
+    'stupenin1_2_n8'
     : {'view': True, 'header': '№ ступени N8', 'dimension': '', 'comment': '',
        'group_name': 'Расчет геометрических параметров',
        'formula': {'expr': '=IF($O$34<8,"",8)', 'cell': 'O118'}, 'accuracy': 4},
@@ -486,7 +486,7 @@ OUTPUT_PARAMS = {
        'header': '\nМинимальные площади дроссельных решеток, требуемые для размещения отверстий Fтр, мм2 N8',
        'dimension': 'м2', 'comment': '', 'group_name': 'Расчет геометрических параметров',
        'formula': {'expr': '=IF($O$34<8,"",5*O120/0.8)', 'cell': 'O121'}, 'accuracy': 4},
-    'stupeni_n9_2'
+    'stupenin1_2_n9'
     : {'view': True, 'header': '№ ступени N9', 'dimension': '', 'comment': '',
        'group_name': 'Расчет геометрических параметров',
        'formula': {'expr': '=IF($O$34<9,"",9)', 'cell': 'O122'}, 'accuracy': 4},
@@ -504,7 +504,7 @@ OUTPUT_PARAMS = {
        'header': '\nМинимальные площади дроссельных решеток, требуемые для размещения отверстий Fтр, мм2 N9',
        'dimension': 'м2', 'comment': '', 'group_name': 'Расчет геометрических параметров',
        'formula': {'expr': '=IF($O$34<9,"",5*O124/0.8)', 'cell': 'O125'}, 'accuracy': 4},
-    'stupeni_n10_2'
+    'stupenin1_2_n10'
     : {'view': True, 'header': '№ ступени N10', 'dimension': '', 'comment': '',
        'group_name': 'Расчет геометрических параметров',
        'formula': {'expr': '=IF($O$34<10,"",10)', 'cell': 'O126'}, 'accuracy': 4},
@@ -1674,43 +1674,43 @@ ins = {'edinica_rashoda_imya': 'Промежуточные расчеты',
        'perepad_davlenij_n10': 'Параметры потока в дроссельном блоке',
        'gazodinamicheskaya_funkciya_rashoda_q_n10': 'Параметры потока в дроссельном блоке',
        'oblast_n10': 'Параметры потока в дроссельном блоке',
-       'stupeni_n1_2': 'Расчет геометрических параметров',
+       'stupenin1_2_n1': 'Расчет геометрических параметров',
        'diametry_otverstij_mm_n1': 'Расчет геометрических параметров',
        'prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n1': 'Расчет геометрических параметров',
        'minimalnye_ploschadi_drosselnyh_reshetok_trebuemye_dlya_razmescheniya_otverstij_ftr_mm2_n1': 'Расчет геометрических параметров',
-       'stupeni_n2_2': 'Расчет геометрических параметров',
+       'stupenin1_2_n2': 'Расчет геометрических параметров',
        'diametry_otverstij_mm_n2': 'Расчет геометрических параметров',
        'prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n2': 'Расчет геометрических параметров',
        'minimalnye_ploschadi_drosselnyh_reshetok_trebuemye_dlya_razmescheniya_otverstij_ftr_mm2_n2': 'Расчет геометрических параметров',
-       'stupeni_n3_2': 'Расчет геометрических параметров',
+       'stupenin1_2_n3': 'Расчет геометрических параметров',
        'diametry_otverstij_mm_n3': 'Расчет геометрических параметров',
        'prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n3': 'Расчет геометрических параметров',
        'minimalnye_ploschadi_drosselnyh_reshetok_trebuemye_dlya_razmescheniya_otverstij_ftr_mm2_n3': 'Расчет геометрических параметров',
-       'stupeni_n4_2': 'Расчет геометрических параметров',
+       'stupenin1_2_n4': 'Расчет геометрических параметров',
        'diametry_otverstij_mm_n4': 'Расчет геометрических параметров',
        'prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n4': 'Расчет геометрических параметров',
        'minimalnye_ploschadi_drosselnyh_reshetok_trebuemye_dlya_razmescheniya_otverstij_ftr_mm2_n4': 'Расчет геометрических параметров',
-       'stupeni_n5_2': 'Расчет геометрических параметров',
+       'stupenin1_2_n5': 'Расчет геометрических параметров',
        'diametry_otverstij_mm_n5': 'Расчет геометрических параметров',
        'prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n5': 'Расчет геометрических параметров',
        'minimalnye_ploschadi_drosselnyh_reshetok_trebuemye_dlya_razmescheniya_otverstij_ftr_mm2_n5': 'Расчет геометрических параметров',
-       'stupeni_n6_2': 'Расчет геометрических параметров',
+       'stupenin1_2_n6': 'Расчет геометрических параметров',
        'diametry_otverstij_mm_n6': 'Расчет геометрических параметров',
        'prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n6': 'Расчет геометрических параметров',
        'minimalnye_ploschadi_drosselnyh_reshetok_trebuemye_dlya_razmescheniya_otverstij_ftr_mm2_n6': 'Расчет геометрических параметров',
-       'stupeni_n7_2': 'Расчет геометрических параметров',
+       'stupenin1_2_n7': 'Расчет геометрических параметров',
        'diametry_otverstij_mm_n7': 'Расчет геометрических параметров',
        'prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n7': 'Расчет геометрических параметров',
        'minimalnye_ploschadi_drosselnyh_reshetok_trebuemye_dlya_razmescheniya_otverstij_ftr_mm2_n7': 'Расчет геометрических параметров',
-       'stupeni_n8_2': 'Расчет геометрических параметров',
+       'stupenin1_2_n8': 'Расчет геометрических параметров',
        'diametry_otverstij_mm_n8': 'Расчет геометрических параметров',
        'prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n8': 'Расчет геометрических параметров',
        'minimalnye_ploschadi_drosselnyh_reshetok_trebuemye_dlya_razmescheniya_otverstij_ftr_mm2_n8': 'Расчет геометрических параметров',
-       'stupeni_n9_2': 'Расчет геометрических параметров',
+       'stupenin1_2_n9': 'Расчет геометрических параметров',
        'diametry_otverstij_mm_n9': 'Расчет геометрических параметров',
        'prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n9': 'Расчет геометрических параметров',
        'minimalnye_ploschadi_drosselnyh_reshetok_trebuemye_dlya_razmescheniya_otverstij_ftr_mm2_n9': 'Расчет геометрических параметров',
-       'stupeni_n10_2': 'Расчет геометрических параметров',
+       'stupenin1_2_n10': 'Расчет геометрических параметров',
        'diametry_otverstij_mm_n10': 'Расчет геометрических параметров',
        'prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n10': 'Расчет геометрических параметров',
        'minimalnye_ploschadi_drosselnyh_reshetok_trebuemye_dlya_razmescheniya_otverstij_ftr_mm2_n10': 'Расчет геометрических параметров',

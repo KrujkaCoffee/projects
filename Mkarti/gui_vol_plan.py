@@ -130,6 +130,16 @@ def load_tbl_gant(self:mywindow):
         if not tbl.isRowHidden(row.i):
             kpl_nums.append(row.value('plan.Пномер'))
     list_of_tbls = CMS.load_dict_poz_from_sql(kpl_nums)
+
+    count = len(list_of_tbls)
+    i = 1
+    for item in list_of_tbls:
+        if item['local_graf'] == '':
+            print(f'{i} from {count} update_local_graf')
+            datat_bin = CMS.update_local_graf(None, True, int(item['Пномер']), False)
+            print(f"    Создан локальный график на {item['Пномер']}")
+            item['local_graf'] = datat_bin
+
     if not list_of_tbls:
         CQT.msgbox(f'Ошибка')
         return
@@ -143,13 +153,15 @@ def load_tbl_gant(self:mywindow):
 
 
 def show_svod(self):
-    if self.ui.fr_pl_gaf.isHidden():
-        self.ui.fr_pl_gaf.setHidden(False)
-        self.ui.fr_svod.setHidden(True)
-    else:
-        self.ui.fr_pl_gaf.setHidden(True)
-        self.ui.fr_svod.setHidden(False)
-        load_svod(self)
+    #if self.ui.fr_pl_gaf.isHidden():
+    #    self.ui.fr_pl_gaf.setHidden(False)
+    #    self.ui.fr_svod.setHidden(True)
+    #else:
+    #    self.ui.fr_pl_gaf.setHidden(True)
+    #    self.ui.fr_svod.setHidden(False)
+    self.ui.fr_svod.setHidden(False)
+    self.ui.tbl_pl_gaf_svod.setHidden(False)
+    load_svod(self)
 
 
 
@@ -190,7 +202,7 @@ def get_max_mosh_frow_tbl(self,i='',j=''):
 
 
 
-def oform_tbl_svod(self,rez_list:list =''):
+def oform_tbl_svod(self:mywindow,rez_list:list =''):
     tbls = self.ui.tbl_pl_gaf_svod
 
     if rez_list == '':
@@ -214,7 +226,7 @@ def oform_tbl_svod(self,rez_list:list =''):
                     CQT.set_font_color_wtab_c(tbls, i - 1, j, 244, 244, 244)
                     CQT.font_cell_size_format(tbls,i - 1, j, 0, True)
                     CQT.set_color_wtab_c(tbls, i - 1, j, 233, 33, 33)
-                    CQT.set_color_text_header_wtab_horisontal_c(tbls, j, 250, 3, 3, self.val_masht * 0.8, True)
+                    #CQT.set_color_text_header_wtab_horisontal_c(tbls, j, 250, 3, 3, self.val_masht * 0.8, True)
                 else:
                     podr = rez_list[i][0].replace('факт_', '').replace('план_', '')
                     r = 233
@@ -237,15 +249,16 @@ def oform_tbl_svod(self,rez_list:list =''):
 
 
     CMS.update_width_filtr(tbl, tbls)
-    fields_hide = ['Этап', 'Пномер', "Проект", "Поз.", "Напр.",'Напр_д.']
-    for field in fields_hide:
-        try:
-            tbls.setColumnHidden(CQT.num_col_by_name_c(tbls, field), True)
-        except:
-            pass
+
+    #fields_hide = ['Этап', 'Пномер', "Проект", "Поз.", "Напр.",'Напр_д.']
+    #for field in fields_hide:
+    #    try:
+    #        tbls.setColumnHidden(CQT.num_col_by_name_c(tbls, field), True)
+    #    except:
+    #        pass
 
 
-
+@CQT.onerror
 def dbl_clk_select_etap(self):
     self.current_kpl_table = 'tbl_pl_gaf'
     def get_down_to_local():
@@ -351,39 +364,73 @@ def get_max_mosh_from_db(self):
 
 @CQT.onerror
 def load_svod(self:mywindow):
+
     self.current_kpl_table = 'tbl_pl_gaf_svod'
     tbl = self.ui.tbl_pl_gaf
     tbls =  self.ui.tbl_pl_gaf_svod
+
     rez_list = [self.dict_tbls_kpl['tbl_pl_gaf'][0]]
-    set_etapov = set()
-    nk_etap = F.num_col_by_name_in_hat_c(self.dict_tbls_kpl['tbl_pl_gaf'],'Этап')
-    for i in range(3,len(self.dict_tbls_kpl['tbl_pl_gaf'])):
-        if not self.ui.tbl_pl_gaf.isRowHidden(i-1):
-            set_etapov.add(self.dict_tbls_kpl['tbl_pl_gaf'][i][nk_etap])
-    list_etapov = sorted(set_etapov)
-    for etap in list_etapov:
+    dict_info = {(_[0],_[1]):_ for _ in self.dict_tbls_kpl_info['tbl_pl_gaf'][3:]}
+    dict_etapov = dict()
+    dict_type_row = dict()
+
+    t = CQT.TableContext(tbl)
+    for row in t.rows():
+        if not row.is_hidden():
+            kpl = int(row.value('Пномер'))
+            etap = row.value('Этап')
+            data_list = dict_info[(etap,kpl)]
+            fl_replaced_vals = bool([_ for  i, _ in  enumerate(data_list) if isinstance(_,list)
+                                     and [x for x in _ if x['_type_replace_by_days']]])
+            dict_type_row[(etap,kpl)]= fl_replaced_vals
+            if etap not in dict_etapov:
+                dict_etapov[etap] = []
+            dict_etapov[etap].append(data_list)
+
+    templt_podr = []
+    for name, item in self.Data_plan.DICT_PODR.items():
+        templt_podr.append([f'план_{name}',item['Порядок']])
+        templt_podr.append([f'факт_{name}',item['Порядок']])
+
+    templt_podr = sorted(templt_podr,key=lambda x: x[0])
+    templt_podr = sorted(templt_podr,key=lambda x: x[1])
+
+
+    for etap,__ in templt_podr:
+        if etap not in dict_etapov:
+            continue
         tmp_row = copy.deepcopy(["" for _ in self.list_for_hat])
         tmp_row[0] = etap
-        for j in range(self.count_tbl_field,len(self.dict_tbls_kpl['tbl_pl_gaf'][0])):
+        dict_rows = dict_etapov[etap]
+
+        for j in range(self.count_tbl_field,len(self.dict_tbls_kpl_info['tbl_pl_gaf'][0])):
             summ_chas = 0
-            for i in range(3,len(self.dict_tbls_kpl['tbl_pl_gaf'])):
-                if self.dict_tbls_kpl['tbl_pl_gaf'][i][nk_etap] == etap:
-                    if self.dict_tbls_kpl['tbl_pl_gaf'][i][j] != '':
-                        summ_vol = 0
-                        for oper in self.dict_tbls_kpl_info['tbl_pl_gaf'][i][j]:
+            for row in dict_rows:
+                if row[j] != '':
+                    k = (row[0], row[1])
+                    replaced_vals_type_row = dict_type_row[k]
+                    summ_vol = 0
+                    if replaced_vals_type_row:
+                        if len(row[j])>1:
+                            summ_vol+= row[j][-1]['По дню']
+                    else:
+                        for oper in row[j]:
+                            if oper['_type_replace_by_days']:
+                                continue
                             vol = oper['Время_час']
                             summ_vol+=vol
-                        summ_chas += summ_vol
+                    summ_chas += summ_vol
             tmp_row.append(round(summ_chas))
         rez_list.append(tmp_row)
-    self.dict_tbls_kpl[self.current_kpl_table] = rez_list
+    self.dict_tbls_kpl_info[self.current_kpl_table] = rez_list
     CQT.fill_wtabl(rez_list, tbls, min_width_col= int( 4 * 0.8),
                    height_row=self.val_masht * 2, colorful_edit=False, auto_type=False, head_column=0,
                    set_editeble_col_nomera={}, hide_head_column=False)
 
     oform_tbl_svod(self,rez_list)
-
-
+    with CQT.table_updating(tbls):
+        CQT._load_tbl(tbl,tbls,True,len(dict_etapov))
+    self.ui.splitter_svod.setSizes([499, 0])
 def save_diapazon_month(self: mywindow):
     str_d = F.datetostr(self.ui.de_vol_pl.date().toPyDate()) + ';' + F.datetostr(self.ui.de_vol_pl_end.date().toPyDate())
     CMS.save_tmp_path('pl_diapazon_month',str_d)

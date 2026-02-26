@@ -4,6 +4,7 @@ import project_cust_38.Cust_Functions as F
 import components.plug_page as PLUG
 import components.calc_pneumo as MCP
 import components.calc_silencer as MCS
+import components.calc_blower_zigel as MCBZ
 import components.calc_airslide as MCA
 import components.calc_pneumatic_jet as MCPj
 import data_class as DTCLS
@@ -42,6 +43,13 @@ modules.sub_modules["modules"].add_submodule(DTCLS.ModuleCfg("silencer",
                               "ПО для расчета шумоглушителей",
                                                              ft.Icons.VIBRATION,
                               ''))
+modules.sub_modules["modules"].add_submodule(DTCLS.ModuleCfg(
+    "blower_zigel",
+    "/modules/blower_zigel",
+    "ПО для расчёта воздуходувки (метод Зигеля)",
+    ft.Icons.AIR,
+    ''
+))
 modules.sub_modules["modules"].add_submodule(DTCLS.ModuleCfg("vipoln",
                               "/modules/vipoln",
                               "Выполнение нарядов (планшетный вариант)",
@@ -116,7 +124,7 @@ def menubar():
             clc_settings()
             pg.update()
         try:
-            module_data
+            module_data: DTCLS.Module_cfg = select.data
             if not module_data is select.data:
                 module_data: DTCLS.ModuleCfg = select.data
         except:
@@ -174,7 +182,7 @@ def menubar():
     return ft.Row([menubar])
 
 
-def load_module(page: ft.Page):
+async def load_module(page: ft.Page):
     if page.route == ("/modules/pneumatic_transport_dev"):
         MCP.apply_page_settings(page,modules.get_module_by_route(page.route))
         return MCP.gen_page(page)
@@ -185,7 +193,10 @@ def load_module(page: ft.Page):
         MCPj.apply_page_settings(page,modules.get_module_by_route(page.route))
         return MCPj.gen_page(page)
     if page.route == ("/modules/silencer"):
-        MCS.apply_page_settings(page,modules.get_module_by_route(page.route))
+        await MCS.apply_page_settings(page,modules.get_module_by_route(page.route))
         return MCS.gen_page(page)
+    if page.route == ("/modules/blower_zigel"):
+        await MCBZ.apply_page_settings(page,modules.get_module_by_route(page.route))
+        return MCBZ.gen_page(page)
 
     return PLUG.gen_page(page)

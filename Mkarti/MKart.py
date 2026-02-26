@@ -748,12 +748,14 @@ class mywindow(QtWidgets.QMainWindow):
     @CQT.onerror
     def test_fnc(self,*args):
         #KPL.test_add_field_kpl()#30.01.2026 тест внесения в план дат
-        comp = KPL.Сomparison_fields_vs_db([
-            KPL.Сomparison_fields_vs_db_field('plan.Дата_внесения_в_план_месяца', 'plan',
-                                              'Дата_внесения_в_план_месяца'),
-            KPL.Сomparison_fields_vs_db_field('plan.Имя_внесения_в_план_месяца', 'plan', 'Имя_внесения_в_план_месяца')
-        ])
-        comp.reload_fields_from_db()
+        pnums = CSQ.custom_request_c(USRCNF.Config.project.db_kplan,f"""SELECT Пномер FROM plan WHERE Статус IN (1,
+                    2,
+                    3,
+                    7,
+                    8,
+                    9);""",one_column=True)
+        CMS.update_local_graf(self,update=True,fill_gant=False,pnom=pnums[1:])
+
         pass
 
     def _discard_create_mk_changes(self): #24.12.2025
@@ -1657,7 +1659,7 @@ class mywindow(QtWidgets.QMainWindow):
             IND.select_schema(self)
 
     def validate_main_tab(self, tab_bar, from_index, to_index): # 09.02.2026
-        if not USRCNF.Config.place.ИспПроверкуНаВнесенныйТипПланаОтделомТО or not CMS.is_user_profession('Инженер-программист'):# CMS.is_user_profession('Главный технолог')::
+        if not USRCNF.Config.place.ИспПроверкуНаВнесенныйТипПланаОтделомТО or not CMS.is_user_profession('Главный технолог'):# CMS.is_user_profession('Главный технолог')::
             return True
         not_available_tabs = (
             'Создание МК',
@@ -5117,7 +5119,7 @@ class mywindow(QtWidgets.QMainWindow):
     @CQT.onerror
     def calc_report_and_statistic(self, vid_napr, show_stat=True, show_opers=True, delete_mat_mode=False):
         napr_deyat = self.Data_plan.DICT_VID_PO_NAPR[vid_napr]['Направл']
-        napr = self.Data_plan.DICT_NAPR_DEYAT[napr_deyat]['Направление']
+        napr = self.Data_plan.DICT_NAPR_DEYAT[int(napr_deyat)]['Направление']
 
         koef_vneplana = self.Data_plan.DICT_NAPRAVLENIE[napr]['koef_vneplana']
         koef_pogr_norm = self.Data_plan.DICT_NAPRAVLENIE[napr]['koef_pogr_norm']

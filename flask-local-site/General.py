@@ -1,4 +1,4 @@
-import sys
+﻿import sys
 from pathlib import Path
 
 # Получаем абсолютный путь к родительскому каталогу текущего файла
@@ -46,9 +46,11 @@ list_projects = [{"way":"КЛ","nn":'0193-21'},{"way":"КТ","nn":'0134-721'},
 list_ways = sorted(list({x['way'] for x in list_projects}))
 
 #Z:\MES_setup\vbs\Setup.vbs
-INSTRUMENTS_MENU = [{'Наименование': 'Десктопное приложение МЕС',
-                     'Описание': 'Такая версия позволяет получить доступ к более богатому набору функций, '
-                                 'которые часто отсутствуют в мобильных приложениях.', 'Ссылка': r'http://mesinfo.powerz.ru:20011/hs/mes/open_local_path_dir/MES_setup/Setup.lnk'},
+INSTRUMENTS_MENU = [
+    {'Наименование': 'Десктопное приложение МЕС',
+                    'Подсказка': True,
+     'Описание': 'Такая версия позволяет получить доступ к более богатому набору функций, '
+                 'которые часто отсутствуют в мобильных приложениях.', 'Ссылка': r'http://mesinfo.powerz.ru:20011/hs/mes/open_local_path_dir/MES_setup/Setup.lnk'},
     {'Наименование': 'Выработка цеха', 'Описание': 'Выработка сборочного цеха', 'Ссылка': 'http://stat.powerz.ru/'},
     {'Наименование': 'Веб приложение МЕС', 'Описание': 'Модули обсчета и пр.', 'Ссылка': 'http://mesinfo.powerz.ru:20013/'},
 ]
@@ -795,14 +797,13 @@ if __name__ == "__main__":
         p = Thread(target=start_daemon_thread, args=(settings.TIME_CHECK_HTML,), daemon=True)
         p.start()
     if socket.gethostname() == "POW18-08": # для локальных werkzeug
-        app.run(debug=True, host='192.168.47.68', port=20000)  # a.a.fedorov
-    else:
-        if socket.gethostname() == "POW18-15": # для локальных werkzeug
-            app.run(debug=False, host='192.168.14.71', port=20001)#a.belyakov
-        else: # для прода waitres
-            from waitress import serve
-            import logging
-            logging.basicConfig(level=logging.INFO)
-            serve(app, host='0.0.0.0', port=20000, _quiet=False, threads=4)  # SRVmes 'http://mesinfo.powerz.ru:20000/'
-            print('mesinfo.powerz.ru')
+        app.run(debug=True, host='192.168.14.68', port=20000)  # a.a.fedorov
+    elif socket.gethostname() == "POW18-15": # для локальных werkzeug
+        app.run(debug=False, host='192.168.14.71', port=20001)#a.belyakov
+    else: # для прода waitres
+        from waitress import serve
+        import logging
+        logging.basicConfig(level=logging.INFO)
+        serve(app, host='mesinfo.powerz.ru', port=20000, _quiet=False, threads=4)  # SRVmes 'http://mesinfo.powerz.ru:20000/'
+        print('mesinfo.powerz.ru')
 

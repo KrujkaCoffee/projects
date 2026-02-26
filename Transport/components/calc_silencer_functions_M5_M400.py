@@ -652,7 +652,7 @@ def calc_oblast_n10(params):
     """
     return ((((("Дозвуковая область") if ((params['perepad_davlenij_n9']<1 and params['perepad_davlenij_n9']>params['kriticheskij_perepad_davlenij'])) else ("Сверхзвуковая область"))) if (params['kolichestvo_stupenej_drosselirovaniya_sht']>9) else (None)))
 
-def calc_stupeni_n1_2(params):
+def calc_stupenin1_2_n1(params):
     """
     Excel M90 / O90
     Формула (Excel): 1
@@ -680,7 +680,7 @@ def calc_minimalnye_ploschadi_drosselnyh_reshetok_trebuemye_dlya_razmescheniya_o
     """
     return (5*params['prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n1']/0.8)
 
-def calc_stupeni_n2_2(params):
+def calc_stupenin1_2_n2(params):
     """
     Excel M94 / O94
     Формула (Excel): =IF(O34=1,"",2)
@@ -699,7 +699,7 @@ def calc_prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n2(params):
     Excel M96 / O96
     Формула (Excel): =IF($O$34=1,"",O92*O47*$O$42*$O$38^-$O$34/(($O$42*$O$38^((O94-1)/2-$O$34))^O94*O51))
     """
-    return (((None) if (params['kolichestvo_stupenej_drosselirovaniya_j']==1) else (params['prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n1']*params['gazodinamicheskaya_funkciya_rashoda_q_n1']*params['otnositelnyj_perepad_davleniya_na_poslednej_reshetke']*params['gradient_skorosti_w']**-params['kolichestvo_stupenej_drosselirovaniya_j']/((params['otnositelnyj_perepad_davleniya_na_poslednej_reshetke']*params['gradient_skorosti_w']**((params['stupeni_n2_2']-1)/2-params['kolichestvo_stupenej_drosselirovaniya_j']))**params['stupeni_n2_2']*params['gazodinamicheskaya_funkciya_rashoda_q_n2']))))
+    return (((None) if (params['kolichestvo_stupenej_drosselirovaniya_j']==1) else (params['prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n1']*params['gazodinamicheskaya_funkciya_rashoda_q_n1']*params['otnositelnyj_perepad_davleniya_na_poslednej_reshetke']*params['gradient_skorosti_w']**-params['kolichestvo_stupenej_drosselirovaniya_j']/((params['otnositelnyj_perepad_davleniya_na_poslednej_reshetke']*params['gradient_skorosti_w']**((params['stupenin1_2_n2']-1)/2-params['kolichestvo_stupenej_drosselirovaniya_j']))**params['stupenin1_2_n2']*params['gazodinamicheskaya_funkciya_rashoda_q_n2']))))
 
 def calc_minimalnye_ploschadi_drosselnyh_reshetok_trebuemye_dlya_razmescheniya_otverstij_ftr_mm2_n2(params):
     """
@@ -708,7 +708,7 @@ def calc_minimalnye_ploschadi_drosselnyh_reshetok_trebuemye_dlya_razmescheniya_o
     """
     return (((None) if (params['kolichestvo_stupenej_drosselirovaniya_j']==1) else (5*params['prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n2']/0.8)))
 
-def calc_stupeni_n3_2(params):
+def calc_stupenin1_2_n3(params):
     """
     Excel M98 / O98
     Формула (Excel): =IF(O34<3,"",3)
@@ -727,7 +727,7 @@ def calc_prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n3(params):
     Excel M100 / O100
     Формула (Excel): =IF(O34<3,"",O92*O47*O42*O38^-O34/((O42*O38^((O98-1)/2-O34))^O98*O55))
     """
-    return (((None) if (params['kolichestvo_stupenej_drosselirovaniya_j']<3) else (params['prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n1']*params['gazodinamicheskaya_funkciya_rashoda_q_n1']*params['otnositelnyj_perepad_davleniya_na_poslednej_reshetke']*params['gradient_skorosti_w']**-params['kolichestvo_stupenej_drosselirovaniya_j']/((params['otnositelnyj_perepad_davleniya_na_poslednej_reshetke']*params['gradient_skorosti_w']**((params['stupeni_n3_2']-1)/2-params['kolichestvo_stupenej_drosselirovaniya_j']))**params['stupeni_n3_2']*params['gazodinamicheskaya_funkciya_rashoda_q_n3']))))
+    return (((None) if (params['kolichestvo_stupenej_drosselirovaniya_j']<3) else (params['prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n1']*params['gazodinamicheskaya_funkciya_rashoda_q_n1']*params['otnositelnyj_perepad_davleniya_na_poslednej_reshetke']*params['gradient_skorosti_w']**-params['kolichestvo_stupenej_drosselirovaniya_j']/((params['otnositelnyj_perepad_davleniya_na_poslednej_reshetke']*params['gradient_skorosti_w']**((params['stupenin1_2_n3']-1)/2-params['kolichestvo_stupenej_drosselirovaniya_j']))**params['stupenin1_2_n3']*params['gazodinamicheskaya_funkciya_rashoda_q_n3']))))
 
 def calc_minimalnye_ploschadi_drosselnyh_reshetok_trebuemye_dlya_razmescheniya_otverstij_ftr_mm2_n3(params):
     """
@@ -736,7 +736,7 @@ def calc_minimalnye_ploschadi_drosselnyh_reshetok_trebuemye_dlya_razmescheniya_o
     """
     return (((None) if (params['kolichestvo_stupenej_drosselirovaniya_j']<3) else (5*params['prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n3']/0.8)))
 
-def calc_stupeni_n4_2(params):
+def calc_stupenin1_2_n4(params):
     """
     Excel M102 / O102
     Формула (Excel): =IF(O34<4,"",4)
@@ -755,7 +755,7 @@ def calc_prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n4(params):
     Excel M104 / O104
     Формула (Excel): =IF(O34<4,"",O92*O47*O42*O38^-O34/((O42*O38^((O102-1)/2-O34))^O102*O59))
     """
-    return (((None) if (params['kolichestvo_stupenej_drosselirovaniya_j']<4) else (params['prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n1']*params['gazodinamicheskaya_funkciya_rashoda_q_n1']*params['otnositelnyj_perepad_davleniya_na_poslednej_reshetke']*params['gradient_skorosti_w']**-params['kolichestvo_stupenej_drosselirovaniya_j']/((params['otnositelnyj_perepad_davleniya_na_poslednej_reshetke']*params['gradient_skorosti_w']**((params['stupeni_n4_2']-1)/2-params['kolichestvo_stupenej_drosselirovaniya_j']))**params['stupeni_n4_2']*params['gazodinamicheskaya_funkciya_rashoda_q_n4']))))
+    return (((None) if (params['kolichestvo_stupenej_drosselirovaniya_j']<4) else (params['prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n1']*params['gazodinamicheskaya_funkciya_rashoda_q_n1']*params['otnositelnyj_perepad_davleniya_na_poslednej_reshetke']*params['gradient_skorosti_w']**-params['kolichestvo_stupenej_drosselirovaniya_j']/((params['otnositelnyj_perepad_davleniya_na_poslednej_reshetke']*params['gradient_skorosti_w']**((params['stupenin1_2_n4']-1)/2-params['kolichestvo_stupenej_drosselirovaniya_j']))**params['stupenin1_2_n4']*params['gazodinamicheskaya_funkciya_rashoda_q_n4']))))
 
 def calc_minimalnye_ploschadi_drosselnyh_reshetok_trebuemye_dlya_razmescheniya_otverstij_ftr_mm2_n4(params):
     """
@@ -764,7 +764,7 @@ def calc_minimalnye_ploschadi_drosselnyh_reshetok_trebuemye_dlya_razmescheniya_o
     """
     return (((None) if (params['kolichestvo_stupenej_drosselirovaniya_j']<4) else (5*params['prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n4']/0.8)))
 
-def calc_stupeni_n5_2(params):
+def calc_stupenin1_2_n5(params):
     """
     Excel M106 / O106
     Формула (Excel): =IF($O$34<5,"",5)
@@ -783,7 +783,7 @@ def calc_prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n5(params):
     Excel M108 / O108
     Формула (Excel): =IF(O34<5,"",$O$92*O47*$O$42*$O$38^-$O$34/(($O$42*$O$38^((O106-1)/2-$O$34))^O106*O63))
     """
-    return (((None) if (params['kolichestvo_stupenej_drosselirovaniya_j']<5) else (params['prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n1']*params['gazodinamicheskaya_funkciya_rashoda_q_n1']*params['otnositelnyj_perepad_davleniya_na_poslednej_reshetke']*params['gradient_skorosti_w']**-params['kolichestvo_stupenej_drosselirovaniya_j']/((params['otnositelnyj_perepad_davleniya_na_poslednej_reshetke']*params['gradient_skorosti_w']**((params['stupeni_n5_2']-1)/2-params['kolichestvo_stupenej_drosselirovaniya_j']))**params['stupeni_n5_2']*params['gazodinamicheskaya_funkciya_rashoda_q_n5']))))
+    return (((None) if (params['kolichestvo_stupenej_drosselirovaniya_j']<5) else (params['prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n1']*params['gazodinamicheskaya_funkciya_rashoda_q_n1']*params['otnositelnyj_perepad_davleniya_na_poslednej_reshetke']*params['gradient_skorosti_w']**-params['kolichestvo_stupenej_drosselirovaniya_j']/((params['otnositelnyj_perepad_davleniya_na_poslednej_reshetke']*params['gradient_skorosti_w']**((params['stupenin1_2_n5']-1)/2-params['kolichestvo_stupenej_drosselirovaniya_j']))**params['stupenin1_2_n5']*params['gazodinamicheskaya_funkciya_rashoda_q_n5']))))
 
 def calc_minimalnye_ploschadi_drosselnyh_reshetok_trebuemye_dlya_razmescheniya_otverstij_ftr_mm2_n5(params):
     """
@@ -792,7 +792,7 @@ def calc_minimalnye_ploschadi_drosselnyh_reshetok_trebuemye_dlya_razmescheniya_o
     """
     return (((None) if (params['kolichestvo_stupenej_drosselirovaniya_j']<5) else (5*params['prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n5']/0.8)))
 
-def calc_stupeni_n6_2(params):
+def calc_stupenin1_2_n6(params):
     """
     Excel M110 / O110
     Формула (Excel): =IF($O$34<6,"",6)
@@ -811,7 +811,7 @@ def calc_prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n6(params):
     Excel M112 / O112
     Формула (Excel): =IF(O34<6,"",$O$92*O47*$O$42*$O$38^-$O$34/(($O$42*$O$38^((O110-1)/2-$O$34))^O110*O67))
     """
-    return (((None) if (params['kolichestvo_stupenej_drosselirovaniya_j']<6) else (params['prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n1']*params['gazodinamicheskaya_funkciya_rashoda_q_n1']*params['otnositelnyj_perepad_davleniya_na_poslednej_reshetke']*params['gradient_skorosti_w']**-params['kolichestvo_stupenej_drosselirovaniya_j']/((params['otnositelnyj_perepad_davleniya_na_poslednej_reshetke']*params['gradient_skorosti_w']**((params['stupeni_n6_2']-1)/2-params['kolichestvo_stupenej_drosselirovaniya_j']))**params['stupeni_n6_2']*params['gazodinamicheskaya_funkciya_rashoda_q_n6']))))
+    return (((None) if (params['kolichestvo_stupenej_drosselirovaniya_j']<6) else (params['prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n1']*params['gazodinamicheskaya_funkciya_rashoda_q_n1']*params['otnositelnyj_perepad_davleniya_na_poslednej_reshetke']*params['gradient_skorosti_w']**-params['kolichestvo_stupenej_drosselirovaniya_j']/((params['otnositelnyj_perepad_davleniya_na_poslednej_reshetke']*params['gradient_skorosti_w']**((params['stupenin1_2_n6']-1)/2-params['kolichestvo_stupenej_drosselirovaniya_j']))**params['stupenin1_2_n6']*params['gazodinamicheskaya_funkciya_rashoda_q_n6']))))
 
 def calc_minimalnye_ploschadi_drosselnyh_reshetok_trebuemye_dlya_razmescheniya_otverstij_ftr_mm2_n6(params):
     """
@@ -820,7 +820,7 @@ def calc_minimalnye_ploschadi_drosselnyh_reshetok_trebuemye_dlya_razmescheniya_o
     """
     return (((None) if (params['kolichestvo_stupenej_drosselirovaniya_j']<6) else (5*params['prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n6']/0.8)))
 
-def calc_stupeni_n7_2(params):
+def calc_stupenin1_2_n7(params):
     """
     Excel M114 / O114
     Формула (Excel): =IF($O$34<7,"",7)
@@ -839,7 +839,7 @@ def calc_prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n7(params):
     Excel M116 / O116
     Формула (Excel): =IF(O34<7,"",$O$92*O47*$O$42*$O$38^-$O$34/(($O$42*$O$38^((O114-1)/2-$O$34))^O114*O71))
     """
-    return (((None) if (params['kolichestvo_stupenej_drosselirovaniya_j']<7) else (params['prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n1']*params['gazodinamicheskaya_funkciya_rashoda_q_n1']*params['otnositelnyj_perepad_davleniya_na_poslednej_reshetke']*params['gradient_skorosti_w']**-params['kolichestvo_stupenej_drosselirovaniya_j']/((params['otnositelnyj_perepad_davleniya_na_poslednej_reshetke']*params['gradient_skorosti_w']**((params['stupeni_n7_2']-1)/2-params['kolichestvo_stupenej_drosselirovaniya_j']))**params['stupeni_n7_2']*params['gazodinamicheskaya_funkciya_rashoda_q_n7']))))
+    return (((None) if (params['kolichestvo_stupenej_drosselirovaniya_j']<7) else (params['prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n1']*params['gazodinamicheskaya_funkciya_rashoda_q_n1']*params['otnositelnyj_perepad_davleniya_na_poslednej_reshetke']*params['gradient_skorosti_w']**-params['kolichestvo_stupenej_drosselirovaniya_j']/((params['otnositelnyj_perepad_davleniya_na_poslednej_reshetke']*params['gradient_skorosti_w']**((params['stupenin1_2_n7']-1)/2-params['kolichestvo_stupenej_drosselirovaniya_j']))**params['stupenin1_2_n7']*params['gazodinamicheskaya_funkciya_rashoda_q_n7']))))
 
 def calc_minimalnye_ploschadi_drosselnyh_reshetok_trebuemye_dlya_razmescheniya_otverstij_ftr_mm2_n7(params):
     """
@@ -848,7 +848,7 @@ def calc_minimalnye_ploschadi_drosselnyh_reshetok_trebuemye_dlya_razmescheniya_o
     """
     return (((None) if (params['kolichestvo_stupenej_drosselirovaniya_j']<7) else (5*params['prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n7']/0.8)))
 
-def calc_stupeni_n8_2(params):
+def calc_stupenin1_2_n8(params):
     """
     Excel M118 / O118
     Формула (Excel): =IF($O$34<8,"",8)
@@ -867,7 +867,7 @@ def calc_prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n8(params):
     Excel M120 / O120
     Формула (Excel): =IF(O34<8,"",$O$92*O47*$O$42*$O$38^-$O$34/(($O$42*$O$38^((O118-1)/2-$O$34))^O118*O75))
     """
-    return (((None) if (params['kolichestvo_stupenej_drosselirovaniya_j']<8) else (params['prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n1']*params['gazodinamicheskaya_funkciya_rashoda_q_n1']*params['otnositelnyj_perepad_davleniya_na_poslednej_reshetke']*params['gradient_skorosti_w']**-params['kolichestvo_stupenej_drosselirovaniya_j']/((params['otnositelnyj_perepad_davleniya_na_poslednej_reshetke']*params['gradient_skorosti_w']**((params['stupeni_n8_2']-1)/2-params['kolichestvo_stupenej_drosselirovaniya_j']))**params['stupeni_n8_2']*params['gazodinamicheskaya_funkciya_rashoda_q_n8']))))
+    return (((None) if (params['kolichestvo_stupenej_drosselirovaniya_j']<8) else (params['prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n1']*params['gazodinamicheskaya_funkciya_rashoda_q_n1']*params['otnositelnyj_perepad_davleniya_na_poslednej_reshetke']*params['gradient_skorosti_w']**-params['kolichestvo_stupenej_drosselirovaniya_j']/((params['otnositelnyj_perepad_davleniya_na_poslednej_reshetke']*params['gradient_skorosti_w']**((params['stupenin1_2_n8']-1)/2-params['kolichestvo_stupenej_drosselirovaniya_j']))**params['stupenin1_2_n8']*params['gazodinamicheskaya_funkciya_rashoda_q_n8']))))
 
 def calc_minimalnye_ploschadi_drosselnyh_reshetok_trebuemye_dlya_razmescheniya_otverstij_ftr_mm2_n8(params):
     """
@@ -876,7 +876,7 @@ def calc_minimalnye_ploschadi_drosselnyh_reshetok_trebuemye_dlya_razmescheniya_o
     """
     return (((None) if (params['kolichestvo_stupenej_drosselirovaniya_j']<8) else (5*params['prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n8']/0.8)))
 
-def calc_stupeni_n9_2(params):
+def calc_stupenin1_2_n9(params):
     """
     Excel M122 / O122
     Формула (Excel): =IF($O$34<9,"",9)
@@ -895,7 +895,7 @@ def calc_prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n9(params):
     Excel M124 / O124
     Формула (Excel): =IF(O34<9,"",$O$92*O47*$O$42*$O$38^-$O$34/(($O$42*$O$38^((O122-1)/2-$O$34))^O122*O79))
     """
-    return (((None) if (params['kolichestvo_stupenej_drosselirovaniya_j']<9) else (params['prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n1']*params['gazodinamicheskaya_funkciya_rashoda_q_n1']*params['otnositelnyj_perepad_davleniya_na_poslednej_reshetke']*params['gradient_skorosti_w']**-params['kolichestvo_stupenej_drosselirovaniya_j']/((params['otnositelnyj_perepad_davleniya_na_poslednej_reshetke']*params['gradient_skorosti_w']**((params['stupeni_n9_2']-1)/2-params['kolichestvo_stupenej_drosselirovaniya_j']))**params['stupeni_n9_2']*params['gazodinamicheskaya_funkciya_rashoda_q_n9']))))
+    return (((None) if (params['kolichestvo_stupenej_drosselirovaniya_j']<9) else (params['prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n1']*params['gazodinamicheskaya_funkciya_rashoda_q_n1']*params['otnositelnyj_perepad_davleniya_na_poslednej_reshetke']*params['gradient_skorosti_w']**-params['kolichestvo_stupenej_drosselirovaniya_j']/((params['otnositelnyj_perepad_davleniya_na_poslednej_reshetke']*params['gradient_skorosti_w']**((params['stupenin1_2_n9']-1)/2-params['kolichestvo_stupenej_drosselirovaniya_j']))**params['stupenin1_2_n9']*params['gazodinamicheskaya_funkciya_rashoda_q_n9']))))
 
 def calc_minimalnye_ploschadi_drosselnyh_reshetok_trebuemye_dlya_razmescheniya_otverstij_ftr_mm2_n9(params):
     """
@@ -904,7 +904,7 @@ def calc_minimalnye_ploschadi_drosselnyh_reshetok_trebuemye_dlya_razmescheniya_o
     """
     return (((None) if (params['kolichestvo_stupenej_drosselirovaniya_j']<9) else (5*params['prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n9']/0.8)))
 
-def calc_stupeni_n10_2(params):
+def calc_stupenin1_2_n10(params):
     """
     Excel M126 / O126
     Формула (Excel): =IF($O$34<10,"",10)
@@ -923,7 +923,7 @@ def calc_prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n10(params):
     Excel M128 / O128
     Формула (Excel): =IF(O34<10,"",$O$92*O47*$O$42*$O$38^-$O$34/(($O$42*$O$38^((O126-1)/2-$O$34))^O126*O83))
     """
-    return (((None) if (params['kolichestvo_stupenej_drosselirovaniya_j']<10) else (params['prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n1']*params['gazodinamicheskaya_funkciya_rashoda_q_n1']*params['otnositelnyj_perepad_davleniya_na_poslednej_reshetke']*params['gradient_skorosti_w']**-params['kolichestvo_stupenej_drosselirovaniya_j']/((params['otnositelnyj_perepad_davleniya_na_poslednej_reshetke']*params['gradient_skorosti_w']**((params['stupeni_n10_2']-1)/2-params['kolichestvo_stupenej_drosselirovaniya_j']))**params['stupeni_n10_2']*params['gazodinamicheskaya_funkciya_rashoda_q_n10']))))
+    return (((None) if (params['kolichestvo_stupenej_drosselirovaniya_j']<10) else (params['prohodnye_ploschadi_drosselnyh_reshetok_fi_mm2_n1']*params['gazodinamicheskaya_funkciya_rashoda_q_n1']*params['otnositelnyj_perepad_davleniya_na_poslednej_reshetke']*params['gradient_skorosti_w']**-params['kolichestvo_stupenej_drosselirovaniya_j']/((params['otnositelnyj_perepad_davleniya_na_poslednej_reshetke']*params['gradient_skorosti_w']**((params['stupenin1_2_n10']-1)/2-params['kolichestvo_stupenej_drosselirovaniya_j']))**params['stupenin1_2_n10']*params['gazodinamicheskaya_funkciya_rashoda_q_n10']))))
 
 def calc_minimalnye_ploschadi_drosselnyh_reshetok_trebuemye_dlya_razmescheniya_otverstij_ftr_mm2_n10(params):
     """
@@ -2853,7 +2853,7 @@ CALC_FUNCTIONS = OrderedDict([("edinica_rashoda_imya", {"fnc": calc_edinica_rash
 ("stupeni_n8", {"fnc": calc_stupeni_n8, "cell": "Excel O73"}),
 ("stupeni_n9", {"fnc": calc_stupeni_n9, "cell": "Excel O77"}),
 ("stupeni_n10", {"fnc": calc_stupeni_n10, "cell": "Excel O81"}),
-("stupeni_n1_2", {"fnc": calc_stupeni_n1_2, "cell": "Excel O90"}),
+("stupenin1_2_n1", {"fnc": calc_stupenin1_2_n1, "cell": "Excel O90"}),
 ("perimetr_m", {"fnc": calc_perimetr_m, "cell": "Excel O137"}),
 ("sk_ploschad_vyhodnogo_secheniya_korpusa_do_kryshki_kv_m", {"fnc": calc_sk_ploschad_vyhodnogo_secheniya_korpusa_do_kryshki_kv_m, "cell": "Excel O138"}),
 ("da_vnutrennij_diametr_vyhlopa_iz_korpusa_m", {"fnc": calc_da_vnutrennij_diametr_vyhlopa_iz_korpusa_m, "cell": "Excel O139"}),
@@ -2892,15 +2892,15 @@ CALC_FUNCTIONS = OrderedDict([("edinica_rashoda_imya", {"fnc": calc_edinica_rash
 ("kriticheskij_perepad_davlenij", {"fnc": calc_kriticheskij_perepad_davlenij, "cell": "Excel O144"}),
 ("k_pokazatel_adiabaty", {"fnc": calc_k_pokazatel_adiabaty, "cell": "Excel O255"}),
 ("k_koefficient_adiabaty", {"fnc": calc_k_koefficient_adiabaty, "cell": "Excel O275"}),
-("stupeni_n2_2", {"fnc": calc_stupeni_n2_2, "cell": "Excel O94"}),
-("stupeni_n3_2", {"fnc": calc_stupeni_n3_2, "cell": "Excel O98"}),
-("stupeni_n4_2", {"fnc": calc_stupeni_n4_2, "cell": "Excel O102"}),
-("stupeni_n5_2", {"fnc": calc_stupeni_n5_2, "cell": "Excel O106"}),
-("stupeni_n6_2", {"fnc": calc_stupeni_n6_2, "cell": "Excel O110"}),
-("stupeni_n7_2", {"fnc": calc_stupeni_n7_2, "cell": "Excel O114"}),
-("stupeni_n8_2", {"fnc": calc_stupeni_n8_2, "cell": "Excel O118"}),
-("stupeni_n9_2", {"fnc": calc_stupeni_n9_2, "cell": "Excel O122"}),
-("stupeni_n10_2", {"fnc": calc_stupeni_n10_2, "cell": "Excel O126"}),
+("stupenin1_2_n2", {"fnc": calc_stupenin1_2_n2, "cell": "Excel O94"}),
+("stupenin1_2_n3", {"fnc": calc_stupenin1_2_n3, "cell": "Excel O98"}),
+("stupenin1_2_n4", {"fnc": calc_stupenin1_2_n4, "cell": "Excel O102"}),
+("stupenin1_2_n5", {"fnc": calc_stupenin1_2_n5, "cell": "Excel O106"}),
+("stupenin1_2_n6", {"fnc": calc_stupenin1_2_n6, "cell": "Excel O110"}),
+("stupenin1_2_n7", {"fnc": calc_stupenin1_2_n7, "cell": "Excel O114"}),
+("stupenin1_2_n8", {"fnc": calc_stupenin1_2_n8, "cell": "Excel O118"}),
+("stupenin1_2_n9", {"fnc": calc_stupenin1_2_n9, "cell": "Excel O122"}),
+("stupenin1_2_n10", {"fnc": calc_stupenin1_2_n10, "cell": "Excel O126"}),
 ("stupeni_n2_3", {"fnc": calc_stupeni_n2_3, "cell": "Excel O187"}),
 ("stupeni_n3_3", {"fnc": calc_stupeni_n3_3, "cell": "Excel O194"}),
 ("sa_ploschad_secheniya_shumoglushitelya_m2", {"fnc": calc_sa_ploschad_secheniya_shumoglushitelya_m2, "cell": "Excel O136"}),

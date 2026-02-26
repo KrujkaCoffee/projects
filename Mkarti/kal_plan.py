@@ -2518,7 +2518,6 @@ def update_tabels(self: mywindow):
         self.ui.tabWidget.setCurrentIndex(self.START_TAB_IND)
 
     self.glob_kpl_pull_poz_dict = dict()
-    self.ui.splitter_4.setSizes([400, 0])
     self.ui.splitter_pl.setSizes([400, 0])
     self.ui.splitter_gant_local.setSizes([1040, 871])
     self.ui.fr_tree_fields.setHidden(True)
@@ -2527,9 +2526,13 @@ def update_tabels(self: mywindow):
     self.ui.fr_poz_from_exel.setHidden(True)
     self.ui.fr_gant_local_tbl.setHidden(False)
 
+def is_local_gant_hidden(self:mywindow)->bool:
+    if self.ui.splitter_pl.sizes()[1] == 0:
+        return True
+    return False
 
 def select_row(self: mywindow):
-    if self.ui.splitter_pl.sizes()[1] == 0:
+    if is_local_gant_hidden(self):
         return
     CMS.update_local_graf(self)
     GPL.fill_select_poz_kpl(self)
@@ -2628,7 +2631,6 @@ def plan_on_of_day_edit_frame(self: mywindow, *args):
 @CQT.onerror
 def btn_pull_poz_show(self: mywindow, *args):
     if self.kpl_mode_pull == 0:  # компоновщик выключен
-
         self.ui.fr_pull_poz.setHidden(False)
         self.ui.splitter_3.setSizes([168, 500])
         # компоновщик
@@ -2636,10 +2638,11 @@ def btn_pull_poz_show(self: mywindow, *args):
         self.ui.cmb_for_adapt.clear()
         self.ui.cmb_for_adapt.addItem('')
         self.ui.cmb_for_adapt.addItems(CMS.get_shablon_vidov(self.DICT_PROFESSIONS))
-
+        self.ui.btn_pl_mode.setHidden(True)
         self.kpl_mode_pull = 1  # объемный вылючен
     else:
         self.ui.fr_pull_poz.setHidden(True)
+        self.ui.btn_pl_mode.setHidden(False)
         self.kpl_mode_pull = 0
 
 
@@ -2678,20 +2681,21 @@ def btn_pl_mode(self):
         self.selected_napr = None
         self.selected_napr_koef = 1
         selected_napr = check_one_napr_filtr(self)
-        if not selected_napr:
-            if not CQT.msgboxgYN(f'В фильтре таблицы должно быть не более 1 направления для генерации графика мощности.\n Продолжить?'):
-                return
-        else:
-            self.selected_napr = selected_napr
-            self.selected_napr_koef = get_koef_selected_napr(self)
-
-        if count_rows() > 100:
-            if not CQT.msgboxgYN(f'В таблице более 100 строк, выгрузка займет достаточно много времени.\n Продолжить?'):
-                return
-
+        #if not selected_napr:
+        #    if not CQT.msgboxgYN(f'В фильтре таблицы должно быть не более 1 направления для генерации графика мощности.\n Продолжить?'):
+        #        return
+        #else:
+        #    self.selected_napr = selected_napr
+        #    self.selected_napr_koef = get_koef_selected_napr(self)
+        #
+        #if count_rows() > 100:
+        #    if not CQT.msgboxgYN(f'В таблице более 100 строк, выгрузка займет достаточно много времени.\n Продолжить?'):
+        #        return
+        #
         show_fr(self, graf=1)  # объемный включаем
         self.kpl_mode = 1  # объемный включен
         self.ui.fr_svod.setHidden(True)
+        self.ui.tbl_pl_gaf_svod.setHidden(True)
         VPL.load_tbl_gant(self)  # объемный загрузка
     else:
         load_gui(self)  # объемный выключить
@@ -4403,6 +4407,8 @@ def show_fr(self, fr='', graf=0):
     self.ui.btn_kal_pl_left.setHidden(True)
     self.ui.btn_kal_pl_right.setHidden(True)
     self.ui.fr_settings_pl.setHidden(True)
+    self.ui.btn_pull_poz_show.setHidden(False)
+    self.ui.btn_pl_mode.setHidden(False)
     if graf == 0:  # объемный выключаем
         self.ui.fr_pull_poz.setHidden(True)
         self.ui.fr_pl_graf.setHidden(True)
@@ -4415,16 +4421,18 @@ def show_fr(self, fr='', graf=0):
             self.ui.fr_pl_cal.setHidden(False)
             self.ui.fr_pl_add_poz.setHidden(False)
             self.ui.fr_pl_etap.setHidden(True)
+            self.ui.btn_pl_mode.setHidden(True)
         if fr == 'tbl_edit':
             self.ui.fr_pl_cal.setHidden(False)
             self.ui.fr_pl_add_poz.setHidden(False)
             self.ui.fr_pl_etap.setHidden(False)
+            self.ui.btn_pl_mode.setHidden(True)
     if graf == 1:  # объемный включаем
         self.ui.fr_pull_poz.setHidden(True)
         self.ui.fr_pl_graf.setHidden(False)
         self.ui.fr_pl_tables.setHidden(True)
         self.ui.fr_pl_gaf.setHidden(False)
-
+        self.ui.btn_pull_poz_show.setHidden(True)
 
 def check_db(self):
     if 'SRV' in self.db_kplan:
@@ -5234,7 +5242,7 @@ def load_table_db(self, hook_prog_bar=None):
     if CFG.Config.user_config.is_developer and debug:
         self.setHidden(False)
     hook_prog_bar.set(0)
-    hook_prog_bar.text("load_db")
+    hook_prog_bar.text("Загрузка данных")
 
     list_from_db, list_conf = load_db(self,use_groups=self.ui.chk_kpl_groups.isChecked())
     if list_from_db == False:
@@ -5496,24 +5504,24 @@ def show_tabel(self):
 
 
 @CQT.onerror
-def clck_tbl_pl_gaf(self, tbl):
-    self.current_kpl_table = 'tbl_preview'
-    list_tbl = CQT.list_from_wtabl_c(tbl, rez_dict=True)
-    row = list_tbl[tbl.currentRow()]
-    if 'Пномер' not in row or row['Пномер'] == '':
-        return
-    pnom = int(row['Пномер'])
-    CMS.update_local_graf(self, pnom=pnom)
-    pozition = CMS.Pozition(pnom, self.db_kplan, self.bd_naryad, self.db_resxml, self.db_users, '')
-    GPL.fill_select_poz_kpl(self, pozition.row)
-    CMS.on_section_resized(self)
+def clck_tbl_pl_gaf(self:mywindow, tbl):
+    if not is_local_gant_hidden(self):
+        self.current_kpl_table = 'tbl_preview'
+        t = CQT.TableContext(tbl)
+        row = t.get_current_row()
+        if 'Пномер' not in t.nf or row.value('Пномер') == '':
+            return
+        pnom = int(row.value('Пномер'))
+        CMS.update_local_graf(self, pnom=pnom)
+        pozition = CMS.Pozition(pnom, self.db_kplan, self.bd_naryad, self.db_resxml, self.db_users, '')
+        GPL.fill_select_poz_kpl(self, pozition.row)
+
     CQT.summ_selct_tbl(self, tbl)
 
 
 @CQT.onerror
 def clck_tbl_preview(self, tbl):
     self.current_kpl_table = 'tbl_preview'
-    CMS.on_section_resized(self)
     CQT.summ_selct_tbl(self, tbl)
     # GPL.load_info_select_block(self,tbl)
 

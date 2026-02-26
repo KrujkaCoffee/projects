@@ -79,12 +79,14 @@ def load_table(self):
 def load_table_zamech(self):
     load_table(self)
 
+@CQT.onerror
 def select_podrazd(self,text, row, col):
     tbl = self.ui.tbl_zamech_add_field
     kod_rc = ''
-    for key in self.DICT_RC.keys():
-        if self.DICT_RC[key]['Сокр_наим_СТО'] == text:
-            kod_rc = key
+    work_centers = get_main_work_centers()
+    for center in work_centers:
+        if center['Сокр_наим_СТО'] == text:
+            kod_rc = center['Код']
     tbl.item(row, col).setText(kod_rc)
     nk_kod = CQT.num_col_by_name_c(self.ui.tbl_zamech_add_field, 'Код')
     tbl.removeCellWidget(0,nk_kod)
@@ -98,8 +100,9 @@ def select_podrazd(self,text, row, col):
     CQT.add_combobox(self, tbl, 0, nk_kod, list_kod, True, select_kod)
     
 def select_kod(self, text, row, col):
-    nk_podr = CQT.num_col_by_name_c(self.ui.tbl_zamech_add_field,'Виновное_подразделение')
-    if self.ui.tbl_zamech_add_field.item(0,nk_podr).text() == '':
+    tbl = self.ui.tbl_zamech_add_field
+    nk_podr = CQT.num_col_by_name_c(tbl,'Виновное_подразделение')
+    if tbl.item(0,nk_podr).text() == '':
         CQT.msgbox(f'Не выбрано поразделение')
         tbl.item(row, col).setText('')
         tbl.cellWidget(row, col).setCurrentText('')
@@ -142,27 +145,18 @@ def select_kod_mat(self, text, row, col):
         CQT.msgbox('Код материала не найден')
     return
 
-def get_main_department_names(list_departments: list[dict]) -> dict[str, str]:
-    """Возвращает список основных подразделений
-        * list_departments: структура из таблицы DB_kplan.podrazdel
-    """
-    return {
-        item['Наименование']: item['Наименование_ЕРП']
-        for item in list_departments
-        if item['poki'] is None
-    }
+def get_main_work_centers() -> list[dict]:
+    query = """        SELECT Код, Имя, Сокр_наим_СТО, Наим_СТО FROM rab_c
+            WHERE SUBSTR(Код, -4) = '0000' AND Код != '070000'"""
+    return CSQ.custom_request_c(CFG.Config.project.db_users, query, rez_dict=True)
 
-
-
-
+@CQT.onerror
 def init_zamech_const(self):
     SL_OSHIBKI = CSQ.custom_request_c(self.bd_naryad,f"""SELECT * FROM kod_zamech""", rez_dict=True)
     self.SL_OSHIBKI = F.deploy_dict_c(SL_OSHIBKI,'Пномер')
-    exclude_podr = ['070000']
-    self.SET_PODRAZD = [
-        self.DICT_RC[_]['Сокр_наим_СТО']
-        for _ in self.DICT_RC.keys()
-        if _[-4:] == '0000' and _[-4:] not in exclude_podr]
+    work_centers = get_main_work_centers()
+    self.SET_PODRAZD = [center['Сокр_наим_СТО'] for center in work_centers]
+    self.DICT_PODRAZD = {elem['Сокр_наим_СТО']: elem['Наим_СТО'] for elem in work_centers}
     rez = CSQ.custom_request_c(self.bd_naryad,'''SELECT * FROM material_kod''',hat_c= False)
     if rez == False:
         CQT.msgbox(f'Нет данных {init_zamech_const}')
@@ -180,8 +174,7 @@ def load_table_add(self):
     CQT.fill_wtabl_old_c(self, rez, tbl, isp_hat_c=True, separ='',set_editeble_col_nomera=set_edit_column)
     tbl.setColumnHidden(CQT.num_col_by_name_c(tbl,'Пномер'), True)
     nk_vinov = F.num_col_by_name_in_hat_c(rez,'Виновное_подразделение')
-    departments = get_main_department_names(CMS.calc_dict_podr()) # 13.02.2026
-    CQT.add_combobox(self,tbl,0,nk_vinov,departments,True, select_podrazd)
+    CQT.add_combobox(self,tbl,0,nk_vinov,self.DICT_PODRAZD,True, select_podrazd)
     nk_kod = CQT.num_col_by_name_c(self.ui.tbl_zamech_add_field, 'Код')
     CQT.set_cell_editable(tbl,0,nk_kod,False)
     nk_mater = F.num_col_by_name_in_hat_c(rez, 'Фпотери_материала_марка')

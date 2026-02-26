@@ -158,16 +158,16 @@ CONSTANTS = {
 'ak_srednegeometricheskaya_chastota_gc_2000_93': -1.2, # Ячейка: O1049 Коммент:
 'ak_srednegeometricheskaya_chastota_gc_4000_93': -1, # Ячейка: O1050 Коммент:
 'ak_srednegeometricheskaya_chastota_gc_8000_93': 1.1, # Ячейка: O1051 Коммент:
-'ak_stupeni_1': 1,
-'ak_stupeni_2': 2,
-'ak_stupeni_3': 3,
-'ak_stupeni_4': 4,
-'ak_stupeni_5': 5,
-'ak_stupeni_6': 6,
-'ak_stupeni_7': 7,
-'ak_stupeni_8': 8,
-'ak_stupeni_9': 9,
-'ak_stupeni_10': 10,
+'ak_stupeni_n1': 1,
+'ak_stupeni_n2': 2,
+'ak_stupeni_n3': 3,
+'ak_stupeni_n4': 4,
+'ak_stupeni_n5': 5,
+'ak_stupeni_n6': 6,
+'ak_stupeni_n7': 7,
+'ak_stupeni_n8': 8,
+'ak_stupeni_n9': 9,
+'ak_stupeni_n10': 10,
 }
 def calc_ak_znachenie_klapana(p: dict):
 # Описание: Генерация шума в клапане# Ячейка: O4
@@ -4657,47 +4657,47 @@ def calc_do_9(p: dict):
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_105(p: dict):
 # Описание: # Ячейка: O1073
 # Формула: =-20*LOG10($O$2542*E28*O1064*$O$2562^0.5/(2*$O$7*$O$2552))
-	return -20*math.log10(p["ak_stupeni_1_2"]*31.5*p["do"]*p["ak_stupeni_1_4"]**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_1_3"]))
+	return -20*math.log10(p["ak_stupenipi_n1"]*31.5*p["do"]*p["ak_stupenims_n1"]**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n1"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_63_95(p: dict):
 # Описание: # Ячейка: O1074
 # Формула: =-20*LOG10($O$2542*E29*O1065*$O$2562^0.5/(2*$O$7*$O$2552))
-	return -20*math.log10(p["ak_stupeni_1_2"]*63*p["do_2"]*p["ak_stupeni_1_4"]**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_1_3"]))
+	return -20*math.log10(p["ak_stupenipi_n1"]*63*p["do_2"]*p["ak_stupenims_n1"]**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n1"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_125_95(p: dict):
 # Описание: # Ячейка: O1075
 # Формула: =-20*LOG10($O$2542*E30*O1066*$O$2562^0.5/(2*$O$7*$O$2552))
-	return -20*math.log10(p["ak_stupeni_1_2"]*125*p["do_3"]*p["ak_stupeni_1_4"]**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_1_3"]))
+	return -20*math.log10(p["ak_stupenipi_n1"]*125*p["do_3"]*p["ak_stupenims_n1"]**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n1"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_250_95(p: dict):
 # Описание: # Ячейка: O1076
 # Формула: =-20*LOG10($O$2542*E31*O1067*$O$2562^0.5/(2*$O$7*$O$2552))
-	return -20*math.log10(p["ak_stupeni_1_2"]*250*p["do_4"]*p["ak_stupeni_1_4"]**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_1_3"]))
+	return -20*math.log10(p["ak_stupenipi_n1"]*250*p["do_4"]*p["ak_stupenims_n1"]**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n1"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_500_95(p: dict):
 # Описание: # Ячейка: O1077
 # Формула: =-20*LOG10($O$2542*E32*O1068*$O$2562^0.5/(2*$O$7*$O$2552))
-	return -20*math.log10(p["ak_stupeni_1_2"]*500*p["do_5"]*p["ak_stupeni_1_4"]**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_1_3"]))
+	return -20*math.log10(p["ak_stupenipi_n1"]*500*p["do_5"]*p["ak_stupenims_n1"]**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n1"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_1000_95(p: dict):
 # Описание: # Ячейка: O1078
 # Формула: =-20*LOG10($O$2542*E33*O1069*$O$2562^0.5/(2*$O$7*$O$2552))
-	return -20*math.log10(p["ak_stupeni_1_2"]*1000*p["do_6"]*p["ak_stupeni_1_4"]**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_1_3"]))
+	return -20*math.log10(p["ak_stupenipi_n1"]*1000*p["do_6"]*p["ak_stupenims_n1"]**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n1"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_2000_95(p: dict):
 # Описание: # Ячейка: O1079
 # Формула: =-20*LOG10($O$2542*E34*O1070*$O$2562^0.5/(2*$O$7*$O$2552))
-	return -20*math.log10(p["ak_stupeni_1_2"]*2000*p["do_7"]*p["ak_stupeni_1_4"]**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_1_3"]))
+	return -20*math.log10(p["ak_stupenipi_n1"]*2000*p["do_7"]*p["ak_stupenims_n1"]**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n1"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_4000_95(p: dict):
 # Описание: # Ячейка: O1080
 # Формула: =-20*LOG10($O$2542*E35*O1071*$O$2562^0.5/(2*$O$7*$O$2552))
-	return -20*math.log10(p["ak_stupeni_1_2"]*4000*p["do_8"]*p["ak_stupeni_1_4"]**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_1_3"]))
+	return -20*math.log10(p["ak_stupenipi_n1"]*4000*p["do_8"]*p["ak_stupenims_n1"]**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n1"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_8000_95(p: dict):
 # Описание: # Ячейка: O1081
 # Формула: =-20*LOG10($O$2542*E36*O1072*$O$2562^0.5/(2*$O$7*$O$2552))
-	return -20*math.log10(p["ak_stupeni_1_2"]*8000*p["do_9"]*p["ak_stupeni_1_4"]**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_1_3"]))
+	return -20*math.log10(p["ak_stupenipi_n1"]*8000*p["do_9"]*p["ak_stupenims_n1"]**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n1"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_106(p: dict):
 # Описание: # Ячейка: O1082
@@ -4837,47 +4837,47 @@ def calc_do_18(p: dict):
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_108(p: dict):
 # Описание: # Ячейка: O1110
 # Формула: =IF($O$2552>=1,E28*O1101/$O$7,E28*O1101/($O$2552*$O$7))
-	return excel_if(p["ak_stupeni_1_3"]>=1,31.5*p["do_10"]/p["ak_kriticheskaya_skorost_m_s"],31.5*p["do_10"]/(p["ak_stupeni_1_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n1"]>=1,31.5*p["do_10"]/p["ak_kriticheskaya_skorost_m_s"],31.5*p["do_10"]/(p["ak_stupenilambda_n1"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_63_98(p: dict):
 # Описание: # Ячейка: O1111
 # Формула: =IF($O$2552>=1,E29*O1102/$O$7,E29*O1102/($O$2552*$O$7))
-	return excel_if(p["ak_stupeni_1_3"]>=1,63*p["do_11"]/p["ak_kriticheskaya_skorost_m_s"],63*p["do_11"]/(p["ak_stupeni_1_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n1"]>=1,63*p["do_11"]/p["ak_kriticheskaya_skorost_m_s"],63*p["do_11"]/(p["ak_stupenilambda_n1"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_125_98(p: dict):
 # Описание: # Ячейка: O1112
 # Формула: =IF($O$2552>=1,E30*O1103/$O$7,E30*O1103/($O$2552*$O$7))
-	return excel_if(p["ak_stupeni_1_3"]>=1,125*p["do_12"]/p["ak_kriticheskaya_skorost_m_s"],125*p["do_12"]/(p["ak_stupeni_1_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n1"]>=1,125*p["do_12"]/p["ak_kriticheskaya_skorost_m_s"],125*p["do_12"]/(p["ak_stupenilambda_n1"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_250_98(p: dict):
 # Описание: # Ячейка: O1113
 # Формула: =IF($O$2552>=1,E31*O1104/$O$7,E31*O1104/($O$2552*$O$7))
-	return excel_if(p["ak_stupeni_1_3"]>=1,250*p["do_13"]/p["ak_kriticheskaya_skorost_m_s"],250*p["do_13"]/(p["ak_stupeni_1_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n1"]>=1,250*p["do_13"]/p["ak_kriticheskaya_skorost_m_s"],250*p["do_13"]/(p["ak_stupenilambda_n1"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_500_98(p: dict):
 # Описание: # Ячейка: O1114
 # Формула: =IF($O$2552>=1,E32*O1105/$O$7,E32*O1105/($O$2552*$O$7))
-	return excel_if(p["ak_stupeni_1_3"]>=1,500*p["do_14"]/p["ak_kriticheskaya_skorost_m_s"],500*p["do_14"]/(p["ak_stupeni_1_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n1"]>=1,500*p["do_14"]/p["ak_kriticheskaya_skorost_m_s"],500*p["do_14"]/(p["ak_stupenilambda_n1"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_1000_98(p: dict):
 # Описание: # Ячейка: O1115
 # Формула: =IF($O$2552>=1,E33*O1106/$O$7,E33*O1106/($O$2552*$O$7))
-	return excel_if(p["ak_stupeni_1_3"]>=1,1000*p["do_15"]/p["ak_kriticheskaya_skorost_m_s"],1000*p["do_15"]/(p["ak_stupeni_1_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n1"]>=1,1000*p["do_15"]/p["ak_kriticheskaya_skorost_m_s"],1000*p["do_15"]/(p["ak_stupenilambda_n1"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_2000_98(p: dict):
 # Описание: # Ячейка: O1116
 # Формула: =IF($O$2552>=1,E34*O1107/$O$7,E34*O1107/($O$2552*$O$7))
-	return excel_if(p["ak_stupeni_1_3"]>=1,2000*p["do_16"]/p["ak_kriticheskaya_skorost_m_s"],2000*p["do_16"]/(p["ak_stupeni_1_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n1"]>=1,2000*p["do_16"]/p["ak_kriticheskaya_skorost_m_s"],2000*p["do_16"]/(p["ak_stupenilambda_n1"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_4000_98(p: dict):
 # Описание: # Ячейка: O1117
 # Формула: =IF($O$2552>=1,E35*O1108/$O$7,E35*O1108/($O$2552*$O$7))
-	return excel_if(p["ak_stupeni_1_3"]>=1,4000*p["do_17"]/p["ak_kriticheskaya_skorost_m_s"],4000*p["do_17"]/(p["ak_stupeni_1_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n1"]>=1,4000*p["do_17"]/p["ak_kriticheskaya_skorost_m_s"],4000*p["do_17"]/(p["ak_stupenilambda_n1"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_8000_98(p: dict):
 # Описание: # Ячейка: O1118
 # Формула: =IF($O$2552>=1,E36*O1109/$O$7,E36*O1109/($O$2552*$O$7))
-	return excel_if(p["ak_stupeni_1_3"]>=1,8000*p["do_18"]/p["ak_kriticheskaya_skorost_m_s"],8000*p["do_18"]/(p["ak_stupeni_1_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n1"]>=1,8000*p["do_18"]/p["ak_kriticheskaya_skorost_m_s"],8000*p["do_18"]/(p["ak_stupenilambda_n1"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_109(p: dict):
 # Описание: # Ячейка: O1119
@@ -4927,47 +4927,47 @@ def calc_ak_srednegeometricheskaya_chastota_gc_8000_99(p: dict):
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_110(p: dict):
 # Описание: # Ячейка: O1128
 # Формула: =$O$2592+O1119
-	return p["ak_stupeni_1_7"]+p["ak_srednegeometricheskaya_chastota_gc_31_5_109"]
+	return p["ak_stupenilwp_n1"]+p["ak_srednegeometricheskaya_chastota_gc_31_5_109"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_63_100(p: dict):
 # Описание: # Ячейка: O1129
 # Формула: =$O$2592+O1120
-	return p["ak_stupeni_1_7"]+p["ak_srednegeometricheskaya_chastota_gc_63_99"]
+	return p["ak_stupenilwp_n1"]+p["ak_srednegeometricheskaya_chastota_gc_63_99"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_125_100(p: dict):
 # Описание: # Ячейка: O1130
 # Формула: =$O$2592+O1121
-	return p["ak_stupeni_1_7"]+p["ak_srednegeometricheskaya_chastota_gc_125_99"]
+	return p["ak_stupenilwp_n1"]+p["ak_srednegeometricheskaya_chastota_gc_125_99"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_250_100(p: dict):
 # Описание: # Ячейка: O1131
 # Формула: =$O$2592+O1122
-	return p["ak_stupeni_1_7"]+p["ak_srednegeometricheskaya_chastota_gc_250_99"]
+	return p["ak_stupenilwp_n1"]+p["ak_srednegeometricheskaya_chastota_gc_250_99"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_500_100(p: dict):
 # Описание: # Ячейка: O1132
 # Формула: =$O$2592+O1123
-	return p["ak_stupeni_1_7"]+p["ak_srednegeometricheskaya_chastota_gc_500_99"]
+	return p["ak_stupenilwp_n1"]+p["ak_srednegeometricheskaya_chastota_gc_500_99"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_1000_100(p: dict):
 # Описание: # Ячейка: O1133
 # Формула: =$O$2592+O1124
-	return p["ak_stupeni_1_7"]+p["ak_srednegeometricheskaya_chastota_gc_1000_99"]
+	return p["ak_stupenilwp_n1"]+p["ak_srednegeometricheskaya_chastota_gc_1000_99"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_2000_100(p: dict):
 # Описание: # Ячейка: O1134
 # Формула: =$O$2592+O1125
-	return p["ak_stupeni_1_7"]+p["ak_srednegeometricheskaya_chastota_gc_2000_99"]
+	return p["ak_stupenilwp_n1"]+p["ak_srednegeometricheskaya_chastota_gc_2000_99"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_4000_100(p: dict):
 # Описание: # Ячейка: O1135
 # Формула: =$O$2592+O1126
-	return p["ak_stupeni_1_7"]+p["ak_srednegeometricheskaya_chastota_gc_4000_99"]
+	return p["ak_stupenilwp_n1"]+p["ak_srednegeometricheskaya_chastota_gc_4000_99"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_8000_100(p: dict):
 # Описание: # Ячейка: O1136
 # Формула: =$O$2592+O1127
-	return p["ak_stupeni_1_7"]+p["ak_srednegeometricheskaya_chastota_gc_8000_99"]
+	return p["ak_stupenilwp_n1"]+p["ak_srednegeometricheskaya_chastota_gc_8000_99"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_111(p: dict):
 # Описание: # Ячейка: O1138
@@ -5207,47 +5207,47 @@ def calc_do_27(p: dict):
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_115(p: dict):
 # Описание: # Ячейка: O1186
 # Формула: =-20*LOG10($O$2543*E28*O1177*$O$2563^0.5/(2*$O$7*$O$2553))
-	return -20*math.log10(p["ak_stupeni_2_2"]*31.5*p["do_19"]*p["ak_stupeni_2_4"]**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_2_3"]))
+	return -20*math.log10(p["ak_stupenipi_n2"]*31.5*p["do_19"]*p["ak_stupenims_n2"]**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n2"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_63_105(p: dict):
 # Описание: # Ячейка: O1187
 # Формула: =-20*LOG10($O$2543*E29*O1178*$O$2563^0.5/(2*$O$7*$O$2553))
-	return -20*math.log10(p["ak_stupeni_2_2"]*63*p["do_20"]*p["ak_stupeni_2_4"]**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_2_3"]))
+	return -20*math.log10(p["ak_stupenipi_n2"]*63*p["do_20"]*p["ak_stupenims_n2"]**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n2"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_125_105(p: dict):
 # Описание: # Ячейка: O1188
 # Формула: =-20*LOG10($O$2543*E30*O1179*$O$2563^0.5/(2*$O$7*$O$2553))
-	return -20*math.log10(p["ak_stupeni_2_2"]*125*p["do_21"]*p["ak_stupeni_2_4"]**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_2_3"]))
+	return -20*math.log10(p["ak_stupenipi_n2"]*125*p["do_21"]*p["ak_stupenims_n2"]**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n2"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_250_105(p: dict):
 # Описание: # Ячейка: O1189
 # Формула: =-20*LOG10($O$2543*E31*O1180*$O$2563^0.5/(2*$O$7*$O$2553))
-	return -20*math.log10(p["ak_stupeni_2_2"]*250*p["do_22"]*p["ak_stupeni_2_4"]**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_2_3"]))
+	return -20*math.log10(p["ak_stupenipi_n2"]*250*p["do_22"]*p["ak_stupenims_n2"]**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n2"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_500_105(p: dict):
 # Описание: # Ячейка: O1190
 # Формула: =-20*LOG10($O$2543*E32*O1181*$O$2563^0.5/(2*$O$7*$O$2553))
-	return -20*math.log10(p["ak_stupeni_2_2"]*500*p["do_23"]*p["ak_stupeni_2_4"]**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_2_3"]))
+	return -20*math.log10(p["ak_stupenipi_n2"]*500*p["do_23"]*p["ak_stupenims_n2"]**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n2"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_1000_105(p: dict):
 # Описание: # Ячейка: O1191
 # Формула: =-20*LOG10($O$2543*E33*O1182*$O$2563^0.5/(2*$O$7*$O$2553))
-	return -20*math.log10(p["ak_stupeni_2_2"]*1000*p["do_24"]*p["ak_stupeni_2_4"]**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_2_3"]))
+	return -20*math.log10(p["ak_stupenipi_n2"]*1000*p["do_24"]*p["ak_stupenims_n2"]**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n2"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_2000_105(p: dict):
 # Описание: # Ячейка: O1192
 # Формула: =-20*LOG10($O$2543*E34*O1183*$O$2563^0.5/(2*$O$7*$O$2553))
-	return -20*math.log10(p["ak_stupeni_2_2"]*2000*p["do_25"]*p["ak_stupeni_2_4"]**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_2_3"]))
+	return -20*math.log10(p["ak_stupenipi_n2"]*2000*p["do_25"]*p["ak_stupenims_n2"]**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n2"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_4000_105(p: dict):
 # Описание: # Ячейка: O1193
 # Формула: =-20*LOG10($O$2543*E35*O1184*$O$2563^0.5/(2*$O$7*$O$2553))
-	return -20*math.log10(p["ak_stupeni_2_2"]*4000*p["do_26"]*p["ak_stupeni_2_4"]**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_2_3"]))
+	return -20*math.log10(p["ak_stupenipi_n2"]*4000*p["do_26"]*p["ak_stupenims_n2"]**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n2"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_8000_105(p: dict):
 # Описание: # Ячейка: O1194
 # Формула: =-20*LOG10($O$2543*E36*O1185*$O$2563^0.5/(2*$O$7*$O$2553))
-	return -20*math.log10(p["ak_stupeni_2_2"]*8000*p["do_27"]*p["ak_stupeni_2_4"]**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_2_3"]))
+	return -20*math.log10(p["ak_stupenipi_n2"]*8000*p["do_27"]*p["ak_stupenims_n2"]**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n2"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_116(p: dict):
 # Описание: # Ячейка: O1195
@@ -5387,47 +5387,47 @@ def calc_do_36(p: dict):
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_118(p: dict):
 # Описание: # Ячейка: O1223
 # Формула: =IF($O$2553>=1,E28*O1214/$O$7,E28*O1214/($O$2553*$O$7))
-	return excel_if(p["ak_stupeni_2_3"]>=1,31.5*p["do_28"]/p["ak_kriticheskaya_skorost_m_s"],31.5*p["do_28"]/(p["ak_stupeni_2_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n2"]>=1,31.5*p["do_28"]/p["ak_kriticheskaya_skorost_m_s"],31.5*p["do_28"]/(p["ak_stupenilambda_n2"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_63_108(p: dict):
 # Описание: # Ячейка: O1224
 # Формула: =IF($O$2553>=1,E29*O1215/$O$7,E29*O1215/($O$2553*$O$7))
-	return excel_if(p["ak_stupeni_2_3"]>=1,63*p["do_29"]/p["ak_kriticheskaya_skorost_m_s"],63*p["do_29"]/(p["ak_stupeni_2_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n2"]>=1,63*p["do_29"]/p["ak_kriticheskaya_skorost_m_s"],63*p["do_29"]/(p["ak_stupenilambda_n2"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_125_108(p: dict):
 # Описание: # Ячейка: O1225
 # Формула: =IF($O$2553>=1,E30*O1216/$O$7,E30*O1216/($O$2553*$O$7))
-	return excel_if(p["ak_stupeni_2_3"]>=1,125*p["do_30"]/p["ak_kriticheskaya_skorost_m_s"],125*p["do_30"]/(p["ak_stupeni_2_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n2"]>=1,125*p["do_30"]/p["ak_kriticheskaya_skorost_m_s"],125*p["do_30"]/(p["ak_stupenilambda_n2"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_250_108(p: dict):
 # Описание: # Ячейка: O1226
 # Формула: =IF($O$2553>=1,E31*O1217/$O$7,E31*O1217/($O$2553*$O$7))
-	return excel_if(p["ak_stupeni_2_3"]>=1,250*p["do_31"]/p["ak_kriticheskaya_skorost_m_s"],250*p["do_31"]/(p["ak_stupeni_2_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n2"]>=1,250*p["do_31"]/p["ak_kriticheskaya_skorost_m_s"],250*p["do_31"]/(p["ak_stupenilambda_n2"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_500_108(p: dict):
 # Описание: # Ячейка: O1227
 # Формула: =IF($O$2553>=1,E32*O1218/$O$7,E32*O1218/($O$2553*$O$7))
-	return excel_if(p["ak_stupeni_2_3"]>=1,500*p["do_32"]/p["ak_kriticheskaya_skorost_m_s"],500*p["do_32"]/(p["ak_stupeni_2_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n2"]>=1,500*p["do_32"]/p["ak_kriticheskaya_skorost_m_s"],500*p["do_32"]/(p["ak_stupenilambda_n2"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_1000_108(p: dict):
 # Описание: # Ячейка: O1228
 # Формула: =IF($O$2553>=1,E33*O1219/$O$7,E33*O1219/($O$2553*$O$7))
-	return excel_if(p["ak_stupeni_2_3"]>=1,1000*p["do_33"]/p["ak_kriticheskaya_skorost_m_s"],1000*p["do_33"]/(p["ak_stupeni_2_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n2"]>=1,1000*p["do_33"]/p["ak_kriticheskaya_skorost_m_s"],1000*p["do_33"]/(p["ak_stupenilambda_n2"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_2000_108(p: dict):
 # Описание: # Ячейка: O1229
 # Формула: =IF($O$2553>=1,E34*O1220/$O$7,E34*O1220/($O$2553*$O$7))
-	return excel_if(p["ak_stupeni_2_3"]>=1,2000*p["do_34"]/p["ak_kriticheskaya_skorost_m_s"],2000*p["do_34"]/(p["ak_stupeni_2_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n2"]>=1,2000*p["do_34"]/p["ak_kriticheskaya_skorost_m_s"],2000*p["do_34"]/(p["ak_stupenilambda_n2"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_4000_108(p: dict):
 # Описание: # Ячейка: O1230
 # Формула: =IF($O$2553>=1,E35*O1221/$O$7,E35*O1221/($O$2553*$O$7))
-	return excel_if(p["ak_stupeni_2_3"]>=1,4000*p["do_35"]/p["ak_kriticheskaya_skorost_m_s"],4000*p["do_35"]/(p["ak_stupeni_2_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n2"]>=1,4000*p["do_35"]/p["ak_kriticheskaya_skorost_m_s"],4000*p["do_35"]/(p["ak_stupenilambda_n2"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_8000_108(p: dict):
 # Описание: # Ячейка: O1231
 # Формула: =IF($O$2553>=1,E36*O1222/$O$7,E36*O1222/($O$2553*$O$7))
-	return excel_if(p["ak_stupeni_2_3"]>=1,8000*p["do_36"]/p["ak_kriticheskaya_skorost_m_s"],8000*p["do_36"]/(p["ak_stupeni_2_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n2"]>=1,8000*p["do_36"]/p["ak_kriticheskaya_skorost_m_s"],8000*p["do_36"]/(p["ak_stupenilambda_n2"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_119(p: dict):
 # Описание: # Ячейка: O1232
@@ -5477,47 +5477,47 @@ def calc_ak_srednegeometricheskaya_chastota_gc_8000_109(p: dict):
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_120(p: dict):
 # Описание: # Ячейка: O1241
 # Формула: =$O$2593+O1232
-	return p["ak_stupeni_2_7"]+p["ak_srednegeometricheskaya_chastota_gc_31_5_119"]
+	return p["ak_stupenilwp_n2"]+p["ak_srednegeometricheskaya_chastota_gc_31_5_119"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_63_110(p: dict):
 # Описание: # Ячейка: O1242
 # Формула: =$O$2593+O1233
-	return p["ak_stupeni_2_7"]+p["ak_srednegeometricheskaya_chastota_gc_63_109"]
+	return p["ak_stupenilwp_n2"]+p["ak_srednegeometricheskaya_chastota_gc_63_109"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_125_110(p: dict):
 # Описание: # Ячейка: O1243
 # Формула: =$O$2593+O1234
-	return p["ak_stupeni_2_7"]+p["ak_srednegeometricheskaya_chastota_gc_125_109"]
+	return p["ak_stupenilwp_n2"]+p["ak_srednegeometricheskaya_chastota_gc_125_109"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_250_110(p: dict):
 # Описание: # Ячейка: O1244
 # Формула: =$O$2593+O1235
-	return p["ak_stupeni_2_7"]+p["ak_srednegeometricheskaya_chastota_gc_250_109"]
+	return p["ak_stupenilwp_n2"]+p["ak_srednegeometricheskaya_chastota_gc_250_109"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_500_110(p: dict):
 # Описание: # Ячейка: O1245
 # Формула: =$O$2593+O1236
-	return p["ak_stupeni_2_7"]+p["ak_srednegeometricheskaya_chastota_gc_500_109"]
+	return p["ak_stupenilwp_n2"]+p["ak_srednegeometricheskaya_chastota_gc_500_109"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_1000_110(p: dict):
 # Описание: # Ячейка: O1246
 # Формула: =$O$2593+O1237
-	return p["ak_stupeni_2_7"]+p["ak_srednegeometricheskaya_chastota_gc_1000_109"]
+	return p["ak_stupenilwp_n2"]+p["ak_srednegeometricheskaya_chastota_gc_1000_109"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_2000_110(p: dict):
 # Описание: # Ячейка: O1247
 # Формула: =$O$2593+O1238
-	return p["ak_stupeni_2_7"]+p["ak_srednegeometricheskaya_chastota_gc_2000_109"]
+	return p["ak_stupenilwp_n2"]+p["ak_srednegeometricheskaya_chastota_gc_2000_109"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_4000_110(p: dict):
 # Описание: # Ячейка: O1248
 # Формула: =$O$2593+O1239
-	return p["ak_stupeni_2_7"]+p["ak_srednegeometricheskaya_chastota_gc_4000_109"]
+	return p["ak_stupenilwp_n2"]+p["ak_srednegeometricheskaya_chastota_gc_4000_109"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_8000_110(p: dict):
 # Описание: # Ячейка: O1249
 # Формула: =$O$2593+O1240
-	return p["ak_stupeni_2_7"]+p["ak_srednegeometricheskaya_chastota_gc_8000_109"]
+	return p["ak_stupenilwp_n2"]+p["ak_srednegeometricheskaya_chastota_gc_8000_109"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_121(p: dict):
 # Описание: # Ячейка: O1251
@@ -5802,47 +5802,47 @@ def calc_do_45(p: dict):
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_126(p: dict):
 # Описание: # Ячейка: O1308
 # Формула: =-20*LOG10(O2544*E28*O1299*(O2564)^0.5/(2*O7*O2554))
-	return -20*math.log10(p["ak_stupeni_3_2"]*31.5*p["do_37"]*(p["ak_stupeni_3_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_3_3"]))
+	return -20*math.log10(p["ak_stupenipi_n3"]*31.5*p["do_37"]*(p["ak_stupenims_n3"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n3"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_63_116(p: dict):
 # Описание: # Ячейка: O1309
 # Формула: =-20*LOG10(O2544*E29*O1300*(O2564)^0.5/(2*O7*O2554))
-	return -20*math.log10(p["ak_stupeni_3_2"]*63*p["do_38"]*(p["ak_stupeni_3_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_3_3"]))
+	return -20*math.log10(p["ak_stupenipi_n3"]*63*p["do_38"]*(p["ak_stupenims_n3"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n3"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_125_116(p: dict):
 # Описание: # Ячейка: O1310
 # Формула: =-20*LOG10(O2544*E30*O1301*(O2564)^0.5/(2*O7*O2554))
-	return -20*math.log10(p["ak_stupeni_3_2"]*125*p["do_39"]*(p["ak_stupeni_3_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_3_3"]))
+	return -20*math.log10(p["ak_stupenipi_n3"]*125*p["do_39"]*(p["ak_stupenims_n3"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n3"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_250_116(p: dict):
 # Описание: # Ячейка: O1311
 # Формула: =-20*LOG10(O2544*E31*O1302*(O2564)^0.5/(2*O7*O2554))
-	return -20*math.log10(p["ak_stupeni_3_2"]*250*p["do_40"]*(p["ak_stupeni_3_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_3_3"]))
+	return -20*math.log10(p["ak_stupenipi_n3"]*250*p["do_40"]*(p["ak_stupenims_n3"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n3"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_500_116(p: dict):
 # Описание: # Ячейка: O1312
 # Формула: =-20*LOG10(O2544*E32*O1303*(O2564)^0.5/(2*O7*O2554))
-	return -20*math.log10(p["ak_stupeni_3_2"]*500*p["do_41"]*(p["ak_stupeni_3_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_3_3"]))
+	return -20*math.log10(p["ak_stupenipi_n3"]*500*p["do_41"]*(p["ak_stupenims_n3"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n3"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_1000_116(p: dict):
 # Описание: # Ячейка: O1313
 # Формула: =-20*LOG10(O2544*E33*O1304*(O2564)^0.5/(2*O7*O2554))
-	return -20*math.log10(p["ak_stupeni_3_2"]*1000*p["do_42"]*(p["ak_stupeni_3_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_3_3"]))
+	return -20*math.log10(p["ak_stupenipi_n3"]*1000*p["do_42"]*(p["ak_stupenims_n3"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n3"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_2000_116(p: dict):
 # Описание: # Ячейка: O1314
 # Формула: =-20*LOG10(O2544*E34*O1305*(O2564)^0.5/(2*O7*O2554))
-	return -20*math.log10(p["ak_stupeni_3_2"]*2000*p["do_43"]*(p["ak_stupeni_3_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_3_3"]))
+	return -20*math.log10(p["ak_stupenipi_n3"]*2000*p["do_43"]*(p["ak_stupenims_n3"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n3"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_4000_116(p: dict):
 # Описание: # Ячейка: O1315
 # Формула: =-20*LOG10(O2544*E35*O1306*(O2564)^0.5/(2*O7*O2554))
-	return -20*math.log10(p["ak_stupeni_3_2"]*4000*p["do_44"]*(p["ak_stupeni_3_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_3_3"]))
+	return -20*math.log10(p["ak_stupenipi_n3"]*4000*p["do_44"]*(p["ak_stupenims_n3"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n3"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_8000_116(p: dict):
 # Описание: # Ячейка: O1316
 # Формула: =-20*LOG10(O2544*E36*O1307*(O2564)^0.5/(2*O7*O2554))
-	return -20*math.log10(p["ak_stupeni_3_2"]*8000*p["do_45"]*(p["ak_stupeni_3_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_3_3"]))
+	return -20*math.log10(p["ak_stupenipi_n3"]*8000*p["do_45"]*(p["ak_stupenims_n3"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n3"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_127(p: dict):
 # Описание: # Ячейка: O1317
@@ -5982,47 +5982,47 @@ def calc_do_54(p: dict):
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_129(p: dict):
 # Описание: # Ячейка: O1345
 # Формула: =IF(O2554>=1,E28*O1336/O7,E28*O1336/(O2554*O7))
-	return excel_if(p["ak_stupeni_3_3"]>=1,31.5*p["do_46"]/p["ak_kriticheskaya_skorost_m_s"],31.5*p["do_46"]/(p["ak_stupeni_3_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n3"]>=1,31.5*p["do_46"]/p["ak_kriticheskaya_skorost_m_s"],31.5*p["do_46"]/(p["ak_stupenilambda_n3"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_63_119(p: dict):
 # Описание: # Ячейка: O1346
 # Формула: =IF(O2554>=1,E29*O1337/O7,E29*O1337/(O2554*O7))
-	return excel_if(p["ak_stupeni_3_3"]>=1,63*p["do_47"]/p["ak_kriticheskaya_skorost_m_s"],63*p["do_47"]/(p["ak_stupeni_3_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n3"]>=1,63*p["do_47"]/p["ak_kriticheskaya_skorost_m_s"],63*p["do_47"]/(p["ak_stupenilambda_n3"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_125_119(p: dict):
 # Описание: # Ячейка: O1347
 # Формула: =IF(O2554>=1,E30*O1338/O7,E30*O1338/(O2554*O7))
-	return excel_if(p["ak_stupeni_3_3"]>=1,125*p["do_48"]/p["ak_kriticheskaya_skorost_m_s"],125*p["do_48"]/(p["ak_stupeni_3_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n3"]>=1,125*p["do_48"]/p["ak_kriticheskaya_skorost_m_s"],125*p["do_48"]/(p["ak_stupenilambda_n3"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_250_119(p: dict):
 # Описание: # Ячейка: O1348
 # Формула: =IF(O2554>=1,E31*O1339/O7,E31*O1339/(O2554*O7))
-	return excel_if(p["ak_stupeni_3_3"]>=1,250*p["do_49"]/p["ak_kriticheskaya_skorost_m_s"],250*p["do_49"]/(p["ak_stupeni_3_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n3"]>=1,250*p["do_49"]/p["ak_kriticheskaya_skorost_m_s"],250*p["do_49"]/(p["ak_stupenilambda_n3"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_500_119(p: dict):
 # Описание: # Ячейка: O1349
 # Формула: =IF(O2554>=1,E32*O1340/O7,E32*O1340/(O2554*O7))
-	return excel_if(p["ak_stupeni_3_3"]>=1,500*p["do_50"]/p["ak_kriticheskaya_skorost_m_s"],500*p["do_50"]/(p["ak_stupeni_3_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n3"]>=1,500*p["do_50"]/p["ak_kriticheskaya_skorost_m_s"],500*p["do_50"]/(p["ak_stupenilambda_n3"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_1000_119(p: dict):
 # Описание: # Ячейка: O1350
 # Формула: =IF(O2554>=1,E33*O1341/O7,E33*O1341/(O2554*O7))
-	return excel_if(p["ak_stupeni_3_3"]>=1,1000*p["do_51"]/p["ak_kriticheskaya_skorost_m_s"],1000*p["do_51"]/(p["ak_stupeni_3_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n3"]>=1,1000*p["do_51"]/p["ak_kriticheskaya_skorost_m_s"],1000*p["do_51"]/(p["ak_stupenilambda_n3"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_2000_119(p: dict):
 # Описание: # Ячейка: O1351
 # Формула: =IF(O2554>=1,E34*O1342/O7,E34*O1342/(O2554*O7))
-	return excel_if(p["ak_stupeni_3_3"]>=1,2000*p["do_52"]/p["ak_kriticheskaya_skorost_m_s"],2000*p["do_52"]/(p["ak_stupeni_3_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n3"]>=1,2000*p["do_52"]/p["ak_kriticheskaya_skorost_m_s"],2000*p["do_52"]/(p["ak_stupenilambda_n3"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_4000_119(p: dict):
 # Описание: # Ячейка: O1352
 # Формула: =IF(O2554>=1,E35*O1343/O7,E35*O1343/(O2554*O7))
-	return excel_if(p["ak_stupeni_3_3"]>=1,4000*p["do_53"]/p["ak_kriticheskaya_skorost_m_s"],4000*p["do_53"]/(p["ak_stupeni_3_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n3"]>=1,4000*p["do_53"]/p["ak_kriticheskaya_skorost_m_s"],4000*p["do_53"]/(p["ak_stupenilambda_n3"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_8000_119(p: dict):
 # Описание: # Ячейка: O1353
 # Формула: =IF(O2554>=1,E36*O1344/O7,E36*O1344/(O2554*O7))
-	return excel_if(p["ak_stupeni_3_3"]>=1,8000*p["do_54"]/p["ak_kriticheskaya_skorost_m_s"],8000*p["do_54"]/(p["ak_stupeni_3_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n3"]>=1,8000*p["do_54"]/p["ak_kriticheskaya_skorost_m_s"],8000*p["do_54"]/(p["ak_stupenilambda_n3"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_130(p: dict):
 # Описание: # Ячейка: O1354
@@ -6072,47 +6072,47 @@ def calc_ak_srednegeometricheskaya_chastota_gc_8000_120(p: dict):
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_131(p: dict):
 # Описание: # Ячейка: O1363
 # Формула: =O2594+O1354
-	return p["ak_stupeni_3_7"]+p["ak_srednegeometricheskaya_chastota_gc_31_5_130"]
+	return p["ak_stupenilwp_n3"]+p["ak_srednegeometricheskaya_chastota_gc_31_5_130"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_63_121(p: dict):
 # Описание: # Ячейка: O1364
 # Формула: =O2594+O1355
-	return p["ak_stupeni_3_7"]+p["ak_srednegeometricheskaya_chastota_gc_63_120"]
+	return p["ak_stupenilwp_n3"]+p["ak_srednegeometricheskaya_chastota_gc_63_120"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_125_121(p: dict):
 # Описание: # Ячейка: O1365
 # Формула: =O2594+O1356
-	return p["ak_stupeni_3_7"]+p["ak_srednegeometricheskaya_chastota_gc_125_120"]
+	return p["ak_stupenilwp_n3"]+p["ak_srednegeometricheskaya_chastota_gc_125_120"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_250_121(p: dict):
 # Описание: # Ячейка: O1366
 # Формула: =O2594+O1357
-	return p["ak_stupeni_3_7"]+p["ak_srednegeometricheskaya_chastota_gc_250_120"]
+	return p["ak_stupenilwp_n3"]+p["ak_srednegeometricheskaya_chastota_gc_250_120"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_500_121(p: dict):
 # Описание: # Ячейка: O1367
 # Формула: =O2594+O1358
-	return p["ak_stupeni_3_7"]+p["ak_srednegeometricheskaya_chastota_gc_500_120"]
+	return p["ak_stupenilwp_n3"]+p["ak_srednegeometricheskaya_chastota_gc_500_120"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_1000_121(p: dict):
 # Описание: # Ячейка: O1368
 # Формула: =O2594+O1359
-	return p["ak_stupeni_3_7"]+p["ak_srednegeometricheskaya_chastota_gc_1000_120"]
+	return p["ak_stupenilwp_n3"]+p["ak_srednegeometricheskaya_chastota_gc_1000_120"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_2000_121(p: dict):
 # Описание: # Ячейка: O1369
 # Формула: =O2594+O1360
-	return p["ak_stupeni_3_7"]+p["ak_srednegeometricheskaya_chastota_gc_2000_120"]
+	return p["ak_stupenilwp_n3"]+p["ak_srednegeometricheskaya_chastota_gc_2000_120"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_4000_121(p: dict):
 # Описание: # Ячейка: O1370
 # Формула: =O2594+O1361
-	return p["ak_stupeni_3_7"]+p["ak_srednegeometricheskaya_chastota_gc_4000_120"]
+	return p["ak_stupenilwp_n3"]+p["ak_srednegeometricheskaya_chastota_gc_4000_120"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_8000_121(p: dict):
 # Описание: # Ячейка: O1371
 # Формула: =O2594+O1362
-	return p["ak_stupeni_3_7"]+p["ak_srednegeometricheskaya_chastota_gc_8000_120"]
+	return p["ak_stupenilwp_n3"]+p["ak_srednegeometricheskaya_chastota_gc_8000_120"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_132(p: dict):
 # Описание: # Ячейка: O1373
@@ -6442,47 +6442,47 @@ def calc_do_63(p: dict):
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_138(p: dict):
 # Описание: # Ячейка: O1439
 # Формула: =-20*LOG10(O2545*E28*O1430*(O2565)^0.5/(2*O7*O2555))
-	return -20*math.log10(p["ak_stupeni_4_2"]*31.5*p["do_55"]*(p["ak_stupeni_4_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_4_3"]))
+	return -20*math.log10(p["ak_stupenipi_n4"]*31.5*p["do_55"]*(p["ak_stupenims_n4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n4"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_63_128(p: dict):
 # Описание: # Ячейка: O1440
 # Формула: =-20*LOG10(O2545*E29*O1431*(O2565)^0.5/(2*O7*O2555))
-	return -20*math.log10(p["ak_stupeni_4_2"]*63*p["do_56"]*(p["ak_stupeni_4_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_4_3"]))
+	return -20*math.log10(p["ak_stupenipi_n4"]*63*p["do_56"]*(p["ak_stupenims_n4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n4"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_125_128(p: dict):
 # Описание: # Ячейка: O1441
 # Формула: =-20*LOG10(O2545*E30*O1432*(O2565)^0.5/(2*O7*O2555))
-	return -20*math.log10(p["ak_stupeni_4_2"]*125*p["do_57"]*(p["ak_stupeni_4_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_4_3"]))
+	return -20*math.log10(p["ak_stupenipi_n4"]*125*p["do_57"]*(p["ak_stupenims_n4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n4"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_250_128(p: dict):
 # Описание: # Ячейка: O1442
 # Формула: =-20*LOG10(O2545*E31*O1433*(O2565)^0.5/(2*O7*O2555))
-	return -20*math.log10(p["ak_stupeni_4_2"]*250*p["do_58"]*(p["ak_stupeni_4_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_4_3"]))
+	return -20*math.log10(p["ak_stupenipi_n4"]*250*p["do_58"]*(p["ak_stupenims_n4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n4"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_500_128(p: dict):
 # Описание: # Ячейка: O1443
 # Формула: =-20*LOG10(O2545*E32*O1434*(O2565)^0.5/(2*O7*O2555))
-	return -20*math.log10(p["ak_stupeni_4_2"]*500*p["do_59"]*(p["ak_stupeni_4_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_4_3"]))
+	return -20*math.log10(p["ak_stupenipi_n4"]*500*p["do_59"]*(p["ak_stupenims_n4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n4"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_1000_128(p: dict):
 # Описание: # Ячейка: O1444
 # Формула: =-20*LOG10(O2545*E33*O1435*(O2565)^0.5/(2*O7*O2555))
-	return -20*math.log10(p["ak_stupeni_4_2"]*1000*p["do_60"]*(p["ak_stupeni_4_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_4_3"]))
+	return -20*math.log10(p["ak_stupenipi_n4"]*1000*p["do_60"]*(p["ak_stupenims_n4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n4"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_2000_128(p: dict):
 # Описание: # Ячейка: O1445
 # Формула: =-20*LOG10(O2545*E34*O1436*(O2565)^0.5/(2*O7*O2555))
-	return -20*math.log10(p["ak_stupeni_4_2"]*2000*p["do_61"]*(p["ak_stupeni_4_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_4_3"]))
+	return -20*math.log10(p["ak_stupenipi_n4"]*2000*p["do_61"]*(p["ak_stupenims_n4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n4"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_4000_128(p: dict):
 # Описание: # Ячейка: O1446
 # Формула: =-20*LOG10(O2545*E35*O1437*(O2565)^0.5/(2*O7*O2555))
-	return -20*math.log10(p["ak_stupeni_4_2"]*4000*p["do_62"]*(p["ak_stupeni_4_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_4_3"]))
+	return -20*math.log10(p["ak_stupenipi_n4"]*4000*p["do_62"]*(p["ak_stupenims_n4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n4"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_8000_128(p: dict):
 # Описание: # Ячейка: O1447
 # Формула: =-20*LOG10(O2545*E36*O1438*(O2565)^0.5/(2*O7*O2555))
-	return -20*math.log10(p["ak_stupeni_4_2"]*8000*p["do_63"]*(p["ak_stupeni_4_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_4_3"]))
+	return -20*math.log10(p["ak_stupenipi_n4"]*8000*p["do_63"]*(p["ak_stupenims_n4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n4"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_139(p: dict):
 # Описание: # Ячейка: O1448
@@ -6622,47 +6622,47 @@ def calc_do_72(p: dict):
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_141(p: dict):
 # Описание: # Ячейка: O1476
 # Формула: =IF($O$2555>=1,E28*O1467/O7,E28*O1467/($O$2555*O7))
-	return excel_if(p["ak_stupeni_4_3"]>=1,31.5*p["do_64"]/p["ak_kriticheskaya_skorost_m_s"],31.5*p["do_64"]/(p["ak_stupeni_4_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n4"]>=1,31.5*p["do_64"]/p["ak_kriticheskaya_skorost_m_s"],31.5*p["do_64"]/(p["ak_stupenilambda_n4"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_63_131(p: dict):
 # Описание: # Ячейка: O1477
 # Формула: =IF($O$2555>=1,E29*O1468/O7,E29*O1468/($O$2555*O7))
-	return excel_if(p["ak_stupeni_4_3"]>=1,63*p["do_65"]/p["ak_kriticheskaya_skorost_m_s"],63*p["do_65"]/(p["ak_stupeni_4_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n4"]>=1,63*p["do_65"]/p["ak_kriticheskaya_skorost_m_s"],63*p["do_65"]/(p["ak_stupenilambda_n4"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_125_131(p: dict):
 # Описание: # Ячейка: O1478
 # Формула: =IF($O$2555>=1,E30*O1469/O7,E30*O1469/($O$2555*O7))
-	return excel_if(p["ak_stupeni_4_3"]>=1,125*p["do_66"]/p["ak_kriticheskaya_skorost_m_s"],125*p["do_66"]/(p["ak_stupeni_4_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n4"]>=1,125*p["do_66"]/p["ak_kriticheskaya_skorost_m_s"],125*p["do_66"]/(p["ak_stupenilambda_n4"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_250_131(p: dict):
 # Описание: # Ячейка: O1479
 # Формула: =IF($O$2555>=1,E31*O1470/O7,E31*O1470/($O$2555*O7))
-	return excel_if(p["ak_stupeni_4_3"]>=1,250*p["do_67"]/p["ak_kriticheskaya_skorost_m_s"],250*p["do_67"]/(p["ak_stupeni_4_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n4"]>=1,250*p["do_67"]/p["ak_kriticheskaya_skorost_m_s"],250*p["do_67"]/(p["ak_stupenilambda_n4"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_500_131(p: dict):
 # Описание: # Ячейка: O1480
 # Формула: =IF($O$2555>=1,E32*O1471/O7,E32*O1471/($O$2555*O7))
-	return excel_if(p["ak_stupeni_4_3"]>=1,500*p["do_68"]/p["ak_kriticheskaya_skorost_m_s"],500*p["do_68"]/(p["ak_stupeni_4_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n4"]>=1,500*p["do_68"]/p["ak_kriticheskaya_skorost_m_s"],500*p["do_68"]/(p["ak_stupenilambda_n4"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_1000_131(p: dict):
 # Описание: # Ячейка: O1481
 # Формула: =IF($O$2555>=1,E33*O1472/O7,E33*O1472/($O$2555*O7))
-	return excel_if(p["ak_stupeni_4_3"]>=1,1000*p["do_69"]/p["ak_kriticheskaya_skorost_m_s"],1000*p["do_69"]/(p["ak_stupeni_4_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n4"]>=1,1000*p["do_69"]/p["ak_kriticheskaya_skorost_m_s"],1000*p["do_69"]/(p["ak_stupenilambda_n4"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_2000_131(p: dict):
 # Описание: # Ячейка: O1482
 # Формула: =IF($O$2555>=1,E34*O1473/O7,E34*O1473/($O$2555*O7))
-	return excel_if(p["ak_stupeni_4_3"]>=1,2000*p["do_70"]/p["ak_kriticheskaya_skorost_m_s"],2000*p["do_70"]/(p["ak_stupeni_4_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n4"]>=1,2000*p["do_70"]/p["ak_kriticheskaya_skorost_m_s"],2000*p["do_70"]/(p["ak_stupenilambda_n4"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_4000_131(p: dict):
 # Описание: # Ячейка: O1483
 # Формула: =IF($O$2555>=1,E35*O1474/O7,E35*O1474/($O$2555*O7))
-	return excel_if(p["ak_stupeni_4_3"]>=1,4000*p["do_71"]/p["ak_kriticheskaya_skorost_m_s"],4000*p["do_71"]/(p["ak_stupeni_4_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n4"]>=1,4000*p["do_71"]/p["ak_kriticheskaya_skorost_m_s"],4000*p["do_71"]/(p["ak_stupenilambda_n4"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_8000_131(p: dict):
 # Описание: # Ячейка: O1484
 # Формула: =IF($O$2555>=1,E36*O1475/O7,E36*O1475/($O$2555*O7))
-	return excel_if(p["ak_stupeni_4_3"]>=1,8000*p["do_72"]/p["ak_kriticheskaya_skorost_m_s"],8000*p["do_72"]/(p["ak_stupeni_4_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n4"]>=1,8000*p["do_72"]/p["ak_kriticheskaya_skorost_m_s"],8000*p["do_72"]/(p["ak_stupenilambda_n4"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_142(p: dict):
 # Описание: # Ячейка: O1485
@@ -6712,47 +6712,47 @@ def calc_ak_srednegeometricheskaya_chastota_gc_8000_132(p: dict):
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_143(p: dict):
 # Описание: # Ячейка: O1494
 # Формула: =O2595+O1485
-	return p["ak_stupeni_4_7"]+p["ak_srednegeometricheskaya_chastota_gc_31_5_142"]
+	return p["ak_stupenilwp_n4"]+p["ak_srednegeometricheskaya_chastota_gc_31_5_142"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_63_133(p: dict):
 # Описание: # Ячейка: O1495
 # Формула: =O2595+O1486
-	return p["ak_stupeni_4_7"]+p["ak_srednegeometricheskaya_chastota_gc_63_132"]
+	return p["ak_stupenilwp_n4"]+p["ak_srednegeometricheskaya_chastota_gc_63_132"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_125_133(p: dict):
 # Описание: # Ячейка: O1496
 # Формула: =O2595+O1487
-	return p["ak_stupeni_4_7"]+p["ak_srednegeometricheskaya_chastota_gc_125_132"]
+	return p["ak_stupenilwp_n4"]+p["ak_srednegeometricheskaya_chastota_gc_125_132"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_250_133(p: dict):
 # Описание: # Ячейка: O1497
 # Формула: =O2595+O1488
-	return p["ak_stupeni_4_7"]+p["ak_srednegeometricheskaya_chastota_gc_250_132"]
+	return p["ak_stupenilwp_n4"]+p["ak_srednegeometricheskaya_chastota_gc_250_132"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_500_133(p: dict):
 # Описание: # Ячейка: O1498
 # Формула: =O2595+O1489
-	return p["ak_stupeni_4_7"]+p["ak_srednegeometricheskaya_chastota_gc_500_132"]
+	return p["ak_stupenilwp_n4"]+p["ak_srednegeometricheskaya_chastota_gc_500_132"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_1000_133(p: dict):
 # Описание: # Ячейка: O1499
 # Формула: =O2595+O1490
-	return p["ak_stupeni_4_7"]+p["ak_srednegeometricheskaya_chastota_gc_1000_132"]
+	return p["ak_stupenilwp_n4"]+p["ak_srednegeometricheskaya_chastota_gc_1000_132"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_2000_133(p: dict):
 # Описание: # Ячейка: O1500
 # Формула: =O2595+O1491
-	return p["ak_stupeni_4_7"]+p["ak_srednegeometricheskaya_chastota_gc_2000_132"]
+	return p["ak_stupenilwp_n4"]+p["ak_srednegeometricheskaya_chastota_gc_2000_132"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_4000_133(p: dict):
 # Описание: # Ячейка: O1501
 # Формула: =O2595+O1492
-	return p["ak_stupeni_4_7"]+p["ak_srednegeometricheskaya_chastota_gc_4000_132"]
+	return p["ak_stupenilwp_n4"]+p["ak_srednegeometricheskaya_chastota_gc_4000_132"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_8000_133(p: dict):
 # Описание: # Ячейка: O1502
 # Формула: =O2595+O1493
-	return p["ak_stupeni_4_7"]+p["ak_srednegeometricheskaya_chastota_gc_8000_132"]
+	return p["ak_stupenilwp_n4"]+p["ak_srednegeometricheskaya_chastota_gc_8000_132"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_144(p: dict):
 # Описание: # Ячейка: O1504
@@ -7127,47 +7127,47 @@ def calc_do_81(p: dict):
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_151(p: dict):
 # Описание: # Ячейка: O1579
 # Формула: =-20*LOG10(O2546*E28*O1570*(O2566)^0.5/(2*O7*O2556))
-	return -20*math.log10(p["ak_stupeni_5_2"]*31.5*p["do_73"]*(p["ak_stupeni_5_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_5_3"]))
+	return -20*math.log10(p["ak_stupenipi_n5"]*31.5*p["do_73"]*(p["ak_stupenims_n5"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n5"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_63_141(p: dict):
 # Описание: # Ячейка: O1580
 # Формула: =-20*LOG10(O2546*E29*O1571*(O2566)^0.5/(2*O7*O2556))
-	return -20*math.log10(p["ak_stupeni_5_2"]*63*p["do_74"]*(p["ak_stupeni_5_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_5_3"]))
+	return -20*math.log10(p["ak_stupenipi_n5"]*63*p["do_74"]*(p["ak_stupenims_n5"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n5"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_125_141(p: dict):
 # Описание: # Ячейка: O1581
 # Формула: =-20*LOG10(O2546*E30*O1572*(O2566)^0.5/(2*O7*O2556))
-	return -20*math.log10(p["ak_stupeni_5_2"]*125*p["do_75"]*(p["ak_stupeni_5_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_5_3"]))
+	return -20*math.log10(p["ak_stupenipi_n5"]*125*p["do_75"]*(p["ak_stupenims_n5"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n5"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_250_141(p: dict):
 # Описание: # Ячейка: O1582
 # Формула: =-20*LOG10(O2546*E31*O1573*(O2566)^0.5/(2*O7*O2556))
-	return -20*math.log10(p["ak_stupeni_5_2"]*250*p["do_76"]*(p["ak_stupeni_5_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_5_3"]))
+	return -20*math.log10(p["ak_stupenipi_n5"]*250*p["do_76"]*(p["ak_stupenims_n5"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n5"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_500_141(p: dict):
 # Описание: # Ячейка: O1583
 # Формула: =-20*LOG10(O2546*E32*O1574*(O2566)^0.5/(2*O7*O2556))
-	return -20*math.log10(p["ak_stupeni_5_2"]*500*p["do_77"]*(p["ak_stupeni_5_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_5_3"]))
+	return -20*math.log10(p["ak_stupenipi_n5"]*500*p["do_77"]*(p["ak_stupenims_n5"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n5"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_1000_141(p: dict):
 # Описание: # Ячейка: O1584
 # Формула: =-20*LOG10(O2546*E33*O1575*(O2566)^0.5/(2*O7*O2556))
-	return -20*math.log10(p["ak_stupeni_5_2"]*1000*p["do_78"]*(p["ak_stupeni_5_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_5_3"]))
+	return -20*math.log10(p["ak_stupenipi_n5"]*1000*p["do_78"]*(p["ak_stupenims_n5"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n5"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_2000_141(p: dict):
 # Описание: # Ячейка: O1585
 # Формула: =-20*LOG10(O2546*E34*O1576*(O2566)^0.5/(2*O7*O2556))
-	return -20*math.log10(p["ak_stupeni_5_2"]*2000*p["do_79"]*(p["ak_stupeni_5_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_5_3"]))
+	return -20*math.log10(p["ak_stupenipi_n5"]*2000*p["do_79"]*(p["ak_stupenims_n5"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n5"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_4000_141(p: dict):
 # Описание: # Ячейка: O1586
 # Формула: =-20*LOG10(O2546*E35*O1577*(O2566)^0.5/(2*O7*O2556))
-	return -20*math.log10(p["ak_stupeni_5_2"]*4000*p["do_80"]*(p["ak_stupeni_5_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_5_3"]))
+	return -20*math.log10(p["ak_stupenipi_n5"]*4000*p["do_80"]*(p["ak_stupenims_n5"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n5"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_8000_141(p: dict):
 # Описание: # Ячейка: O1587
 # Формула: =-20*LOG10(O2546*E36*O1578*(O2566)^0.5/(2*O7*O2556))
-	return -20*math.log10(p["ak_stupeni_5_2"]*8000*p["do_81"]*(p["ak_stupeni_5_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_5_3"]))
+	return -20*math.log10(p["ak_stupenipi_n5"]*8000*p["do_81"]*(p["ak_stupenims_n5"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n5"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_152(p: dict):
 # Описание: # Ячейка: O1588
@@ -7307,47 +7307,47 @@ def calc_do_90(p: dict):
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_154(p: dict):
 # Описание: # Ячейка: O1616
 # Формула: =IF(O2556>=1,E28*O1607/O7,E28*O1607/(O2556*O7))
-	return excel_if(p["ak_stupeni_5_3"]>=1,31.5*p["do_82"]/p["ak_kriticheskaya_skorost_m_s"],31.5*p["do_82"]/(p["ak_stupeni_5_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n5"]>=1,31.5*p["do_82"]/p["ak_kriticheskaya_skorost_m_s"],31.5*p["do_82"]/(p["ak_stupenilambda_n5"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_63_144(p: dict):
 # Описание: # Ячейка: O1617
 # Формула: =IF(O2556>=1,E29*O1608/O7,E29*O1608/(O2556*O7))
-	return excel_if(p["ak_stupeni_5_3"]>=1,63*p["do_83"]/p["ak_kriticheskaya_skorost_m_s"],63*p["do_83"]/(p["ak_stupeni_5_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n5"]>=1,63*p["do_83"]/p["ak_kriticheskaya_skorost_m_s"],63*p["do_83"]/(p["ak_stupenilambda_n5"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_125_144(p: dict):
 # Описание: # Ячейка: O1618
 # Формула: =IF(O2556>=1,E30*O1609/O7,E30*O1609/(O2556*O7))
-	return excel_if(p["ak_stupeni_5_3"]>=1,125*p["do_84"]/p["ak_kriticheskaya_skorost_m_s"],125*p["do_84"]/(p["ak_stupeni_5_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n5"]>=1,125*p["do_84"]/p["ak_kriticheskaya_skorost_m_s"],125*p["do_84"]/(p["ak_stupenilambda_n5"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_250_144(p: dict):
 # Описание: # Ячейка: O1619
 # Формула: =IF(O2556>=1,E31*O1610/O7,E31*O1610/(O2556*O7))
-	return excel_if(p["ak_stupeni_5_3"]>=1,250*p["do_85"]/p["ak_kriticheskaya_skorost_m_s"],250*p["do_85"]/(p["ak_stupeni_5_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n5"]>=1,250*p["do_85"]/p["ak_kriticheskaya_skorost_m_s"],250*p["do_85"]/(p["ak_stupenilambda_n5"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_500_144(p: dict):
 # Описание: # Ячейка: O1620
 # Формула: =IF(O2556>=1,E32*O1611/O7,E32*O1611/(O2556*O7))
-	return excel_if(p["ak_stupeni_5_3"]>=1,500*p["do_86"]/p["ak_kriticheskaya_skorost_m_s"],500*p["do_86"]/(p["ak_stupeni_5_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n5"]>=1,500*p["do_86"]/p["ak_kriticheskaya_skorost_m_s"],500*p["do_86"]/(p["ak_stupenilambda_n5"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_1000_144(p: dict):
 # Описание: # Ячейка: O1621
 # Формула: =IF(O2556>=1,E33*O1612/O7,E33*O1612/(O2556*O7))
-	return excel_if(p["ak_stupeni_5_3"]>=1,1000*p["do_87"]/p["ak_kriticheskaya_skorost_m_s"],1000*p["do_87"]/(p["ak_stupeni_5_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n5"]>=1,1000*p["do_87"]/p["ak_kriticheskaya_skorost_m_s"],1000*p["do_87"]/(p["ak_stupenilambda_n5"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_2000_144(p: dict):
 # Описание: # Ячейка: O1622
 # Формула: =IF(O2556>=1,E34*O1613/O7,E34*O1613/(O2556*O7))
-	return excel_if(p["ak_stupeni_5_3"]>=1,2000*p["do_88"]/p["ak_kriticheskaya_skorost_m_s"],2000*p["do_88"]/(p["ak_stupeni_5_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n5"]>=1,2000*p["do_88"]/p["ak_kriticheskaya_skorost_m_s"],2000*p["do_88"]/(p["ak_stupenilambda_n5"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_4000_144(p: dict):
 # Описание: # Ячейка: O1623
 # Формула: =IF(O2556>=1,E35*O1614/O7,E35*O1614/(O2556*O7))
-	return excel_if(p["ak_stupeni_5_3"]>=1,4000*p["do_89"]/p["ak_kriticheskaya_skorost_m_s"],4000*p["do_89"]/(p["ak_stupeni_5_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n5"]>=1,4000*p["do_89"]/p["ak_kriticheskaya_skorost_m_s"],4000*p["do_89"]/(p["ak_stupenilambda_n5"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_8000_144(p: dict):
 # Описание: # Ячейка: O1624
 # Формула: =IF(O2556>=1,E36*O1615/O7,E36*O1615/(O2556*O7))
-	return excel_if(p["ak_stupeni_5_3"]>=1,8000*p["do_90"]/p["ak_kriticheskaya_skorost_m_s"],8000*p["do_90"]/(p["ak_stupeni_5_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n5"]>=1,8000*p["do_90"]/p["ak_kriticheskaya_skorost_m_s"],8000*p["do_90"]/(p["ak_stupenilambda_n5"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_155(p: dict):
 # Описание: # Ячейка: O1625
@@ -7397,47 +7397,47 @@ def calc_ak_srednegeometricheskaya_chastota_gc_8000_145(p: dict):
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_156(p: dict):
 # Описание: # Ячейка: O1634
 # Формула: =O2596+O1625
-	return p["ak_stupeni_5_7"]+p["ak_srednegeometricheskaya_chastota_gc_31_5_155"]
+	return p["ak_stupenilwp_n5"]+p["ak_srednegeometricheskaya_chastota_gc_31_5_155"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_63_146(p: dict):
 # Описание: # Ячейка: O1635
 # Формула: =O2596+O1626
-	return p["ak_stupeni_5_7"]+p["ak_srednegeometricheskaya_chastota_gc_63_145"]
+	return p["ak_stupenilwp_n5"]+p["ak_srednegeometricheskaya_chastota_gc_63_145"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_125_146(p: dict):
 # Описание: # Ячейка: O1636
 # Формула: =O2596+O1627
-	return p["ak_stupeni_5_7"]+p["ak_srednegeometricheskaya_chastota_gc_125_145"]
+	return p["ak_stupenilwp_n5"]+p["ak_srednegeometricheskaya_chastota_gc_125_145"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_250_146(p: dict):
 # Описание: # Ячейка: O1637
 # Формула: =O2596+O1628
-	return p["ak_stupeni_5_7"]+p["ak_srednegeometricheskaya_chastota_gc_250_145"]
+	return p["ak_stupenilwp_n5"]+p["ak_srednegeometricheskaya_chastota_gc_250_145"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_500_146(p: dict):
 # Описание: # Ячейка: O1638
 # Формула: =O2596+O1629
-	return p["ak_stupeni_5_7"]+p["ak_srednegeometricheskaya_chastota_gc_500_145"]
+	return p["ak_stupenilwp_n5"]+p["ak_srednegeometricheskaya_chastota_gc_500_145"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_1000_146(p: dict):
 # Описание: # Ячейка: O1639
 # Формула: =O2596+O1630
-	return p["ak_stupeni_5_7"]+p["ak_srednegeometricheskaya_chastota_gc_1000_145"]
+	return p["ak_stupenilwp_n5"]+p["ak_srednegeometricheskaya_chastota_gc_1000_145"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_2000_146(p: dict):
 # Описание: # Ячейка: O1640
 # Формула: =O2596+O1631
-	return p["ak_stupeni_5_7"]+p["ak_srednegeometricheskaya_chastota_gc_2000_145"]
+	return p["ak_stupenilwp_n5"]+p["ak_srednegeometricheskaya_chastota_gc_2000_145"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_4000_146(p: dict):
 # Описание: # Ячейка: O1641
 # Формула: =O2596+O1632
-	return p["ak_stupeni_5_7"]+p["ak_srednegeometricheskaya_chastota_gc_4000_145"]
+	return p["ak_stupenilwp_n5"]+p["ak_srednegeometricheskaya_chastota_gc_4000_145"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_8000_146(p: dict):
 # Описание: # Ячейка: O1642
 # Формула: =O2596+O1633
-	return p["ak_stupeni_5_7"]+p["ak_srednegeometricheskaya_chastota_gc_8000_145"]
+	return p["ak_stupenilwp_n5"]+p["ak_srednegeometricheskaya_chastota_gc_8000_145"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_157(p: dict):
 # Описание: # Ячейка: O1644
@@ -7857,47 +7857,47 @@ def calc_do_99(p: dict):
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_165(p: dict):
 # Описание: # Ячейка: O1728
 # Формула: =-20*LOG10($O$2547*E28*O1719*($O$2567)^0.5/(2*$O$7*$O$2557))
-	return -20*math.log10(p["ak_stupeni_6_2"]*31.5*p["do_91"]*(p["ak_stupeni_6_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_6_3"]))
+	return -20*math.log10(p["ak_stupenipi_n6"]*31.5*p["do_91"]*(p["ak_stupenims_n6"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n6"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_63_155(p: dict):
 # Описание: # Ячейка: O1729
 # Формула: =-20*LOG10($O$2547*E29*O1720*($O$2567)^0.5/(2*$O$7*$O$2557))
-	return -20*math.log10(p["ak_stupeni_6_2"]*63*p["do_92"]*(p["ak_stupeni_6_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_6_3"]))
+	return -20*math.log10(p["ak_stupenipi_n6"]*63*p["do_92"]*(p["ak_stupenims_n6"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n6"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_125_155(p: dict):
 # Описание: # Ячейка: O1730
 # Формула: =-20*LOG10($O$2547*E30*O1721*($O$2567)^0.5/(2*$O$7*$O$2557))
-	return -20*math.log10(p["ak_stupeni_6_2"]*125*p["do_93"]*(p["ak_stupeni_6_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_6_3"]))
+	return -20*math.log10(p["ak_stupenipi_n6"]*125*p["do_93"]*(p["ak_stupenims_n6"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n6"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_250_155(p: dict):
 # Описание: # Ячейка: O1731
 # Формула: =-20*LOG10($O$2547*E31*O1722*($O$2567)^0.5/(2*$O$7*$O$2557))
-	return -20*math.log10(p["ak_stupeni_6_2"]*250*p["do_94"]*(p["ak_stupeni_6_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_6_3"]))
+	return -20*math.log10(p["ak_stupenipi_n6"]*250*p["do_94"]*(p["ak_stupenims_n6"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n6"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_500_155(p: dict):
 # Описание: # Ячейка: O1732
 # Формула: =-20*LOG10($O$2547*E32*O1723*($O$2567)^0.5/(2*$O$7*$O$2557))
-	return -20*math.log10(p["ak_stupeni_6_2"]*500*p["do_95"]*(p["ak_stupeni_6_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_6_3"]))
+	return -20*math.log10(p["ak_stupenipi_n6"]*500*p["do_95"]*(p["ak_stupenims_n6"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n6"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_1000_155(p: dict):
 # Описание: # Ячейка: O1733
 # Формула: =-20*LOG10($O$2547*E33*O1724*($O$2567)^0.5/(2*$O$7*$O$2557))
-	return -20*math.log10(p["ak_stupeni_6_2"]*1000*p["do_96"]*(p["ak_stupeni_6_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_6_3"]))
+	return -20*math.log10(p["ak_stupenipi_n6"]*1000*p["do_96"]*(p["ak_stupenims_n6"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n6"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_2000_155(p: dict):
 # Описание: # Ячейка: O1734
 # Формула: =-20*LOG10($O$2547*E34*O1725*($O$2567)^0.5/(2*$O$7*$O$2557))
-	return -20*math.log10(p["ak_stupeni_6_2"]*2000*p["do_97"]*(p["ak_stupeni_6_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_6_3"]))
+	return -20*math.log10(p["ak_stupenipi_n6"]*2000*p["do_97"]*(p["ak_stupenims_n6"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n6"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_4000_155(p: dict):
 # Описание: # Ячейка: O1735
 # Формула: =-20*LOG10($O$2547*E35*O1726*($O$2567)^0.5/(2*$O$7*$O$2557))
-	return -20*math.log10(p["ak_stupeni_6_2"]*4000*p["do_98"]*(p["ak_stupeni_6_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_6_3"]))
+	return -20*math.log10(p["ak_stupenipi_n6"]*4000*p["do_98"]*(p["ak_stupenims_n6"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n6"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_8000_155(p: dict):
 # Описание: # Ячейка: O1736
 # Формула: =-20*LOG10($O$2547*E36*O1727*($O$2567)^0.5/(2*$O$7*$O$2557))
-	return -20*math.log10(p["ak_stupeni_6_2"]*8000*p["do_99"]*(p["ak_stupeni_6_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_6_3"]))
+	return -20*math.log10(p["ak_stupenipi_n6"]*8000*p["do_99"]*(p["ak_stupenims_n6"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n6"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_166(p: dict):
 # Описание: # Ячейка: O1737
@@ -8037,47 +8037,47 @@ def calc_do_108(p: dict):
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_168(p: dict):
 # Описание: # Ячейка: O1765
 # Формула: =IF($O$2557>=1,E28*O1756/$O$7,E28*O1756/($O$2557*$O$7))
-	return excel_if(p["ak_stupeni_6_3"]>=1,31.5*p["do_100"]/p["ak_kriticheskaya_skorost_m_s"],31.5*p["do_100"]/(p["ak_stupeni_6_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n6"]>=1,31.5*p["do_100"]/p["ak_kriticheskaya_skorost_m_s"],31.5*p["do_100"]/(p["ak_stupenilambda_n6"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_63_158(p: dict):
 # Описание: # Ячейка: O1766
 # Формула: =IF($O$2557>=1,E29*O1757/$O$7,E29*O1757/($O$2557*$O$7))
-	return excel_if(p["ak_stupeni_6_3"]>=1,63*p["do_101"]/p["ak_kriticheskaya_skorost_m_s"],63*p["do_101"]/(p["ak_stupeni_6_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n6"]>=1,63*p["do_101"]/p["ak_kriticheskaya_skorost_m_s"],63*p["do_101"]/(p["ak_stupenilambda_n6"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_125_158(p: dict):
 # Описание: # Ячейка: O1767
 # Формула: =IF($O$2557>=1,E30*O1758/$O$7,E30*O1758/($O$2557*$O$7))
-	return excel_if(p["ak_stupeni_6_3"]>=1,125*p["do_102"]/p["ak_kriticheskaya_skorost_m_s"],125*p["do_102"]/(p["ak_stupeni_6_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n6"]>=1,125*p["do_102"]/p["ak_kriticheskaya_skorost_m_s"],125*p["do_102"]/(p["ak_stupenilambda_n6"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_250_158(p: dict):
 # Описание: # Ячейка: O1768
 # Формула: =IF($O$2557>=1,E31*O1759/$O$7,E31*O1759/($O$2557*$O$7))
-	return excel_if(p["ak_stupeni_6_3"]>=1,250*p["do_103"]/p["ak_kriticheskaya_skorost_m_s"],250*p["do_103"]/(p["ak_stupeni_6_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n6"]>=1,250*p["do_103"]/p["ak_kriticheskaya_skorost_m_s"],250*p["do_103"]/(p["ak_stupenilambda_n6"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_500_158(p: dict):
 # Описание: # Ячейка: O1769
 # Формула: =IF($O$2557>=1,E32*O1760/$O$7,E32*O1760/($O$2557*$O$7))
-	return excel_if(p["ak_stupeni_6_3"]>=1,500*p["do_104"]/p["ak_kriticheskaya_skorost_m_s"],500*p["do_104"]/(p["ak_stupeni_6_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n6"]>=1,500*p["do_104"]/p["ak_kriticheskaya_skorost_m_s"],500*p["do_104"]/(p["ak_stupenilambda_n6"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_1000_158(p: dict):
 # Описание: # Ячейка: O1770
 # Формула: =IF($O$2557>=1,E33*O1761/$O$7,E33*O1761/($O$2557*$O$7))
-	return excel_if(p["ak_stupeni_6_3"]>=1,1000*p["do_105"]/p["ak_kriticheskaya_skorost_m_s"],1000*p["do_105"]/(p["ak_stupeni_6_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n6"]>=1,1000*p["do_105"]/p["ak_kriticheskaya_skorost_m_s"],1000*p["do_105"]/(p["ak_stupenilambda_n6"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_2000_158(p: dict):
 # Описание: # Ячейка: O1771
 # Формула: =IF($O$2557>=1,E34*O1762/$O$7,E34*O1762/($O$2557*$O$7))
-	return excel_if(p["ak_stupeni_6_3"]>=1,2000*p["do_106"]/p["ak_kriticheskaya_skorost_m_s"],2000*p["do_106"]/(p["ak_stupeni_6_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n6"]>=1,2000*p["do_106"]/p["ak_kriticheskaya_skorost_m_s"],2000*p["do_106"]/(p["ak_stupenilambda_n6"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_4000_158(p: dict):
 # Описание: # Ячейка: O1772
 # Формула: =IF($O$2557>=1,E35*O1763/$O$7,E35*O1763/($O$2557*$O$7))
-	return excel_if(p["ak_stupeni_6_3"]>=1,4000*p["do_107"]/p["ak_kriticheskaya_skorost_m_s"],4000*p["do_107"]/(p["ak_stupeni_6_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n6"]>=1,4000*p["do_107"]/p["ak_kriticheskaya_skorost_m_s"],4000*p["do_107"]/(p["ak_stupenilambda_n6"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_8000_158(p: dict):
 # Описание: # Ячейка: O1773
 # Формула: =IF($O$2557>=1,E36*O1764/$O$7,E36*O1764/($O$2557*$O$7))
-	return excel_if(p["ak_stupeni_6_3"]>=1,8000*p["do_108"]/p["ak_kriticheskaya_skorost_m_s"],8000*p["do_108"]/(p["ak_stupeni_6_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n6"]>=1,8000*p["do_108"]/p["ak_kriticheskaya_skorost_m_s"],8000*p["do_108"]/(p["ak_stupenilambda_n6"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_169(p: dict):
 # Описание: # Ячейка: O1774
@@ -8127,47 +8127,47 @@ def calc_ak_srednegeometricheskaya_chastota_gc_8000_159(p: dict):
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_170(p: dict):
 # Описание: # Ячейка: O1783
 # Формула: =$O$2597+O1774
-	return p["ak_stupeni_6_7"]+p["ak_srednegeometricheskaya_chastota_gc_31_5_169"]
+	return p["ak_stupenilwp_n6"]+p["ak_srednegeometricheskaya_chastota_gc_31_5_169"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_63_160(p: dict):
 # Описание: # Ячейка: O1784
 # Формула: =$O$2597+O1775
-	return p["ak_stupeni_6_7"]+p["ak_srednegeometricheskaya_chastota_gc_63_159"]
+	return p["ak_stupenilwp_n6"]+p["ak_srednegeometricheskaya_chastota_gc_63_159"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_125_160(p: dict):
 # Описание: # Ячейка: O1785
 # Формула: =$O$2597+O1776
-	return p["ak_stupeni_6_7"]+p["ak_srednegeometricheskaya_chastota_gc_125_159"]
+	return p["ak_stupenilwp_n6"]+p["ak_srednegeometricheskaya_chastota_gc_125_159"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_250_160(p: dict):
 # Описание: # Ячейка: O1786
 # Формула: =$O$2597+O1777
-	return p["ak_stupeni_6_7"]+p["ak_srednegeometricheskaya_chastota_gc_250_159"]
+	return p["ak_stupenilwp_n6"]+p["ak_srednegeometricheskaya_chastota_gc_250_159"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_500_160(p: dict):
 # Описание: # Ячейка: O1787
 # Формула: =$O$2597+O1778
-	return p["ak_stupeni_6_7"]+p["ak_srednegeometricheskaya_chastota_gc_500_159"]
+	return p["ak_stupenilwp_n6"]+p["ak_srednegeometricheskaya_chastota_gc_500_159"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_1000_160(p: dict):
 # Описание: # Ячейка: O1788
 # Формула: =$O$2597+O1779
-	return p["ak_stupeni_6_7"]+p["ak_srednegeometricheskaya_chastota_gc_1000_159"]
+	return p["ak_stupenilwp_n6"]+p["ak_srednegeometricheskaya_chastota_gc_1000_159"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_2000_160(p: dict):
 # Описание: # Ячейка: O1789
 # Формула: =$O$2597+O1780
-	return p["ak_stupeni_6_7"]+p["ak_srednegeometricheskaya_chastota_gc_2000_159"]
+	return p["ak_stupenilwp_n6"]+p["ak_srednegeometricheskaya_chastota_gc_2000_159"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_4000_160(p: dict):
 # Описание: # Ячейка: O1790
 # Формула: =$O$2597+O1781
-	return p["ak_stupeni_6_7"]+p["ak_srednegeometricheskaya_chastota_gc_4000_159"]
+	return p["ak_stupenilwp_n6"]+p["ak_srednegeometricheskaya_chastota_gc_4000_159"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_8000_160(p: dict):
 # Описание: # Ячейка: O1791
 # Формула: =$O$2597+O1782
-	return p["ak_stupeni_6_7"]+p["ak_srednegeometricheskaya_chastota_gc_8000_159"]
+	return p["ak_stupenilwp_n6"]+p["ak_srednegeometricheskaya_chastota_gc_8000_159"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_171(p: dict):
 # Описание: # Ячейка: O1793
@@ -8632,47 +8632,47 @@ def calc_do_117(p: dict):
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_180(p: dict):
 # Описание: # Ячейка: O1886
 # Формула: =-20*LOG10($O$2548*E28*O1877*($O$2568)^0.5/(2*$O$7*$O$2558))
-	return -20*math.log10(p["ak_stupeni_7_2"]*31.5*p["do_109"]*(p["ak_stupeni_7_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_7_3"]))
+	return -20*math.log10(p["ak_stupenipi_n7"]*31.5*p["do_109"]*(p["ak_stupenims_n7"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n7"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_63_170(p: dict):
 # Описание: # Ячейка: O1887
 # Формула: =-20*LOG10($O$2548*E29*O1878*($O$2568)^0.5/(2*$O$7*$O$2558))
-	return -20*math.log10(p["ak_stupeni_7_2"]*63*p["do_110"]*(p["ak_stupeni_7_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_7_3"]))
+	return -20*math.log10(p["ak_stupenipi_n7"]*63*p["do_110"]*(p["ak_stupenims_n7"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n7"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_125_170(p: dict):
 # Описание: # Ячейка: O1888
 # Формула: =-20*LOG10($O$2548*E30*O1879*($O$2568)^0.5/(2*$O$7*$O$2558))
-	return -20*math.log10(p["ak_stupeni_7_2"]*125*p["do_111"]*(p["ak_stupeni_7_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_7_3"]))
+	return -20*math.log10(p["ak_stupenipi_n7"]*125*p["do_111"]*(p["ak_stupenims_n7"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n7"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_250_170(p: dict):
 # Описание: # Ячейка: O1889
 # Формула: =-20*LOG10($O$2548*E31*O1880*($O$2568)^0.5/(2*$O$7*$O$2558))
-	return -20*math.log10(p["ak_stupeni_7_2"]*250*p["do_112"]*(p["ak_stupeni_7_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_7_3"]))
+	return -20*math.log10(p["ak_stupenipi_n7"]*250*p["do_112"]*(p["ak_stupenims_n7"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n7"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_500_170(p: dict):
 # Описание: # Ячейка: O1890
 # Формула: =-20*LOG10($O$2548*E32*O1881*($O$2568)^0.5/(2*$O$7*$O$2558))
-	return -20*math.log10(p["ak_stupeni_7_2"]*500*p["do_113"]*(p["ak_stupeni_7_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_7_3"]))
+	return -20*math.log10(p["ak_stupenipi_n7"]*500*p["do_113"]*(p["ak_stupenims_n7"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n7"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_1000_170(p: dict):
 # Описание: # Ячейка: O1891
 # Формула: =-20*LOG10($O$2548*E33*O1882*($O$2568)^0.5/(2*$O$7*$O$2558))
-	return -20*math.log10(p["ak_stupeni_7_2"]*1000*p["do_114"]*(p["ak_stupeni_7_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_7_3"]))
+	return -20*math.log10(p["ak_stupenipi_n7"]*1000*p["do_114"]*(p["ak_stupenims_n7"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n7"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_2000_170(p: dict):
 # Описание: # Ячейка: O1892
 # Формула: =-20*LOG10($O$2548*E34*O1883*($O$2568)^0.5/(2*$O$7*$O$2558))
-	return -20*math.log10(p["ak_stupeni_7_2"]*2000*p["do_115"]*(p["ak_stupeni_7_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_7_3"]))
+	return -20*math.log10(p["ak_stupenipi_n7"]*2000*p["do_115"]*(p["ak_stupenims_n7"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n7"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_4000_170(p: dict):
 # Описание: # Ячейка: O1893
 # Формула: =-20*LOG10($O$2548*E35*O1884*($O$2568)^0.5/(2*$O$7*$O$2558))
-	return -20*math.log10(p["ak_stupeni_7_2"]*4000*p["do_116"]*(p["ak_stupeni_7_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_7_3"]))
+	return -20*math.log10(p["ak_stupenipi_n7"]*4000*p["do_116"]*(p["ak_stupenims_n7"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n7"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_8000_170(p: dict):
 # Описание: # Ячейка: O1894
 # Формула: =-20*LOG10($O$2548*E36*O1885*($O$2568)^0.5/(2*$O$7*$O$2558))
-	return -20*math.log10(p["ak_stupeni_7_2"]*8000*p["do_117"]*(p["ak_stupeni_7_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_7_3"]))
+	return -20*math.log10(p["ak_stupenipi_n7"]*8000*p["do_117"]*(p["ak_stupenims_n7"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n7"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_181(p: dict):
 # Описание: # Ячейка: O1895
@@ -8812,47 +8812,47 @@ def calc_do_126(p: dict):
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_183(p: dict):
 # Описание: # Ячейка: O1923
 # Формула: =IF($O$2558>=1,E28*O1914/$O$7,E28*O1914/($O$2558*$O$7))
-	return excel_if(p["ak_stupeni_7_3"]>=1,31.5*p["do_118"]/p["ak_kriticheskaya_skorost_m_s"],31.5*p["do_118"]/(p["ak_stupeni_7_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n7"]>=1,31.5*p["do_118"]/p["ak_kriticheskaya_skorost_m_s"],31.5*p["do_118"]/(p["ak_stupenilambda_n7"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_63_173(p: dict):
 # Описание: # Ячейка: O1924
 # Формула: =IF($O$2558>=1,E29*O1915/$O$7,E29*O1915/($O$2558*$O$7))
-	return excel_if(p["ak_stupeni_7_3"]>=1,63*p["do_119"]/p["ak_kriticheskaya_skorost_m_s"],63*p["do_119"]/(p["ak_stupeni_7_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n7"]>=1,63*p["do_119"]/p["ak_kriticheskaya_skorost_m_s"],63*p["do_119"]/(p["ak_stupenilambda_n7"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_125_173(p: dict):
 # Описание: # Ячейка: O1925
 # Формула: =IF($O$2558>=1,E30*O1916/$O$7,E30*O1916/($O$2558*$O$7))
-	return excel_if(p["ak_stupeni_7_3"]>=1,125*p["do_120"]/p["ak_kriticheskaya_skorost_m_s"],125*p["do_120"]/(p["ak_stupeni_7_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n7"]>=1,125*p["do_120"]/p["ak_kriticheskaya_skorost_m_s"],125*p["do_120"]/(p["ak_stupenilambda_n7"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_250_173(p: dict):
 # Описание: # Ячейка: O1926
 # Формула: =IF($O$2558>=1,E31*O1917/$O$7,E31*O1917/($O$2558*$O$7))
-	return excel_if(p["ak_stupeni_7_3"]>=1,250*p["do_121"]/p["ak_kriticheskaya_skorost_m_s"],250*p["do_121"]/(p["ak_stupeni_7_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n7"]>=1,250*p["do_121"]/p["ak_kriticheskaya_skorost_m_s"],250*p["do_121"]/(p["ak_stupenilambda_n7"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_500_173(p: dict):
 # Описание: # Ячейка: O1927
 # Формула: =IF($O$2558>=1,E32*O1918/$O$7,E32*O1918/($O$2558*$O$7))
-	return excel_if(p["ak_stupeni_7_3"]>=1,500*p["do_122"]/p["ak_kriticheskaya_skorost_m_s"],500*p["do_122"]/(p["ak_stupeni_7_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n7"]>=1,500*p["do_122"]/p["ak_kriticheskaya_skorost_m_s"],500*p["do_122"]/(p["ak_stupenilambda_n7"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_1000_173(p: dict):
 # Описание: # Ячейка: O1928
 # Формула: =IF($O$2558>=1,E33*O1919/$O$7,E33*O1919/($O$2558*$O$7))
-	return excel_if(p["ak_stupeni_7_3"]>=1,1000*p["do_123"]/p["ak_kriticheskaya_skorost_m_s"],1000*p["do_123"]/(p["ak_stupeni_7_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n7"]>=1,1000*p["do_123"]/p["ak_kriticheskaya_skorost_m_s"],1000*p["do_123"]/(p["ak_stupenilambda_n7"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_2000_173(p: dict):
 # Описание: # Ячейка: O1929
 # Формула: =IF($O$2558>=1,E34*O1920/$O$7,E34*O1920/($O$2558*$O$7))
-	return excel_if(p["ak_stupeni_7_3"]>=1,2000*p["do_124"]/p["ak_kriticheskaya_skorost_m_s"],2000*p["do_124"]/(p["ak_stupeni_7_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n7"]>=1,2000*p["do_124"]/p["ak_kriticheskaya_skorost_m_s"],2000*p["do_124"]/(p["ak_stupenilambda_n7"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_4000_173(p: dict):
 # Описание: # Ячейка: O1930
 # Формула: =IF($O$2558>=1,E35*O1921/$O$7,E35*O1921/($O$2558*$O$7))
-	return excel_if(p["ak_stupeni_7_3"]>=1,4000*p["do_125"]/p["ak_kriticheskaya_skorost_m_s"],4000*p["do_125"]/(p["ak_stupeni_7_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n7"]>=1,4000*p["do_125"]/p["ak_kriticheskaya_skorost_m_s"],4000*p["do_125"]/(p["ak_stupenilambda_n7"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_8000_173(p: dict):
 # Описание: # Ячейка: O1931
 # Формула: =IF($O$2558>=1,E36*O1922/$O$7,E36*O1922/($O$2558*$O$7))
-	return excel_if(p["ak_stupeni_7_3"]>=1,8000*p["do_126"]/p["ak_kriticheskaya_skorost_m_s"],8000*p["do_126"]/(p["ak_stupeni_7_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n7"]>=1,8000*p["do_126"]/p["ak_kriticheskaya_skorost_m_s"],8000*p["do_126"]/(p["ak_stupenilambda_n7"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_184(p: dict):
 # Описание: # Ячейка: O1932
@@ -8902,47 +8902,47 @@ def calc_ak_srednegeometricheskaya_chastota_gc_8000_174(p: dict):
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_185(p: dict):
 # Описание: # Ячейка: O1941
 # Формула: =$O$2598+O1932
-	return p["ak_stupeni_7_7"]+p["ak_srednegeometricheskaya_chastota_gc_31_5_184"]
+	return p["ak_stupenilwp_n7"]+p["ak_srednegeometricheskaya_chastota_gc_31_5_184"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_63_175(p: dict):
 # Описание: # Ячейка: O1942
 # Формула: =$O$2598+O1933
-	return p["ak_stupeni_7_7"]+p["ak_srednegeometricheskaya_chastota_gc_63_174"]
+	return p["ak_stupenilwp_n7"]+p["ak_srednegeometricheskaya_chastota_gc_63_174"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_125_175(p: dict):
 # Описание: # Ячейка: O1943
 # Формула: =$O$2598+O1934
-	return p["ak_stupeni_7_7"]+p["ak_srednegeometricheskaya_chastota_gc_125_174"]
+	return p["ak_stupenilwp_n7"]+p["ak_srednegeometricheskaya_chastota_gc_125_174"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_250_175(p: dict):
 # Описание: # Ячейка: O1944
 # Формула: =$O$2598+O1935
-	return p["ak_stupeni_7_7"]+p["ak_srednegeometricheskaya_chastota_gc_250_174"]
+	return p["ak_stupenilwp_n7"]+p["ak_srednegeometricheskaya_chastota_gc_250_174"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_500_175(p: dict):
 # Описание: # Ячейка: O1945
 # Формула: =$O$2598+O1936
-	return p["ak_stupeni_7_7"]+p["ak_srednegeometricheskaya_chastota_gc_500_174"]
+	return p["ak_stupenilwp_n7"]+p["ak_srednegeometricheskaya_chastota_gc_500_174"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_1000_175(p: dict):
 # Описание: # Ячейка: O1946
 # Формула: =$O$2598+O1937
-	return p["ak_stupeni_7_7"]+p["ak_srednegeometricheskaya_chastota_gc_1000_174"]
+	return p["ak_stupenilwp_n7"]+p["ak_srednegeometricheskaya_chastota_gc_1000_174"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_2000_175(p: dict):
 # Описание: # Ячейка: O1947
 # Формула: =$O$2598+O1938
-	return p["ak_stupeni_7_7"]+p["ak_srednegeometricheskaya_chastota_gc_2000_174"]
+	return p["ak_stupenilwp_n7"]+p["ak_srednegeometricheskaya_chastota_gc_2000_174"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_4000_175(p: dict):
 # Описание: # Ячейка: O1948
 # Формула: =$O$2598+O1939
-	return p["ak_stupeni_7_7"]+p["ak_srednegeometricheskaya_chastota_gc_4000_174"]
+	return p["ak_stupenilwp_n7"]+p["ak_srednegeometricheskaya_chastota_gc_4000_174"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_8000_175(p: dict):
 # Описание: # Ячейка: O1949
 # Формула: =$O$2598+O1940
-	return p["ak_stupeni_7_7"]+p["ak_srednegeometricheskaya_chastota_gc_8000_174"]
+	return p["ak_stupenilwp_n7"]+p["ak_srednegeometricheskaya_chastota_gc_8000_174"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_186(p: dict):
 # Описание: # Ячейка: O1951
@@ -9452,47 +9452,47 @@ def calc_do_135(p: dict):
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_196(p: dict):
 # Описание: # Ячейка: O2053
 # Формула: =-20*LOG10($O$2549*E28*O2044*($O$2569)^0.5/(2*$O$7*$O$2559))
-	return -20*math.log10(p["ak_stupeni_8_2"]*31.5*p["do_127"]*(p["ak_stupeni_8_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_8_3"]))
+	return -20*math.log10(p["ak_stupenipi_n8"]*31.5*p["do_127"]*(p["ak_stupenims_n8"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n8"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_63_186(p: dict):
 # Описание: # Ячейка: O2054
 # Формула: =-20*LOG10($O$2549*E29*O2045*($O$2569)^0.5/(2*$O$7*$O$2559))
-	return -20*math.log10(p["ak_stupeni_8_2"]*63*p["do_128"]*(p["ak_stupeni_8_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_8_3"]))
+	return -20*math.log10(p["ak_stupenipi_n8"]*63*p["do_128"]*(p["ak_stupenims_n8"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n8"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_125_186(p: dict):
 # Описание: # Ячейка: O2055
 # Формула: =-20*LOG10($O$2549*E30*O2046*($O$2569)^0.5/(2*$O$7*$O$2559))
-	return -20*math.log10(p["ak_stupeni_8_2"]*125*p["do_129"]*(p["ak_stupeni_8_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_8_3"]))
+	return -20*math.log10(p["ak_stupenipi_n8"]*125*p["do_129"]*(p["ak_stupenims_n8"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n8"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_250_186(p: dict):
 # Описание: # Ячейка: O2056
 # Формула: =-20*LOG10($O$2549*E31*O2047*($O$2569)^0.5/(2*$O$7*$O$2559))
-	return -20*math.log10(p["ak_stupeni_8_2"]*250*p["do_130"]*(p["ak_stupeni_8_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_8_3"]))
+	return -20*math.log10(p["ak_stupenipi_n8"]*250*p["do_130"]*(p["ak_stupenims_n8"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n8"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_500_186(p: dict):
 # Описание: # Ячейка: O2057
 # Формула: =-20*LOG10($O$2549*E32*O2048*($O$2569)^0.5/(2*$O$7*$O$2559))
-	return -20*math.log10(p["ak_stupeni_8_2"]*500*p["do_131"]*(p["ak_stupeni_8_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_8_3"]))
+	return -20*math.log10(p["ak_stupenipi_n8"]*500*p["do_131"]*(p["ak_stupenims_n8"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n8"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_1000_186(p: dict):
 # Описание: # Ячейка: O2058
 # Формула: =-20*LOG10($O$2549*E33*O2049*($O$2569)^0.5/(2*$O$7*$O$2559))
-	return -20*math.log10(p["ak_stupeni_8_2"]*1000*p["do_132"]*(p["ak_stupeni_8_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_8_3"]))
+	return -20*math.log10(p["ak_stupenipi_n8"]*1000*p["do_132"]*(p["ak_stupenims_n8"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n8"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_2000_186(p: dict):
 # Описание: # Ячейка: O2059
 # Формула: =-20*LOG10($O$2549*E34*O2050*($O$2569)^0.5/(2*$O$7*$O$2559))
-	return -20*math.log10(p["ak_stupeni_8_2"]*2000*p["do_133"]*(p["ak_stupeni_8_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_8_3"]))
+	return -20*math.log10(p["ak_stupenipi_n8"]*2000*p["do_133"]*(p["ak_stupenims_n8"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n8"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_4000_186(p: dict):
 # Описание: # Ячейка: O2060
 # Формула: =-20*LOG10($O$2549*E35*O2051*($O$2569)^0.5/(2*$O$7*$O$2559))
-	return -20*math.log10(p["ak_stupeni_8_2"]*4000*p["do_134"]*(p["ak_stupeni_8_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_8_3"]))
+	return -20*math.log10(p["ak_stupenipi_n8"]*4000*p["do_134"]*(p["ak_stupenims_n8"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n8"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_8000_186(p: dict):
 # Описание: # Ячейка: O2061
 # Формула: =-20*LOG10($O$2549*E36*O2052*($O$2569)^0.5/(2*$O$7*$O$2559))
-	return -20*math.log10(p["ak_stupeni_8_2"]*8000*p["do_135"]*(p["ak_stupeni_8_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_8_3"]))
+	return -20*math.log10(p["ak_stupenipi_n8"]*8000*p["do_135"]*(p["ak_stupenims_n8"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n8"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_197(p: dict):
 # Описание: # Ячейка: O2062
@@ -9632,47 +9632,47 @@ def calc_do_144(p: dict):
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_199(p: dict):
 # Описание: # Ячейка: O2090
 # Формула: =IF($O$2559>=1,E28*O2081/$O$7,E28*O2081/($O$2559*$O$7))
-	return excel_if(p["ak_stupeni_8_3"]>=1,31.5*p["do_136"]/p["ak_kriticheskaya_skorost_m_s"],31.5*p["do_136"]/(p["ak_stupeni_8_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n8"]>=1,31.5*p["do_136"]/p["ak_kriticheskaya_skorost_m_s"],31.5*p["do_136"]/(p["ak_stupenilambda_n8"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_63_189(p: dict):
 # Описание: # Ячейка: O2091
 # Формула: =IF($O$2559>=1,E29*O2082/$O$7,E29*O2082/($O$2559*$O$7))
-	return excel_if(p["ak_stupeni_8_3"]>=1,63*p["do_137"]/p["ak_kriticheskaya_skorost_m_s"],63*p["do_137"]/(p["ak_stupeni_8_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n8"]>=1,63*p["do_137"]/p["ak_kriticheskaya_skorost_m_s"],63*p["do_137"]/(p["ak_stupenilambda_n8"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_125_189(p: dict):
 # Описание: # Ячейка: O2092
 # Формула: =IF($O$2559>=1,E30*O2083/$O$7,E30*O2083/($O$2559*$O$7))
-	return excel_if(p["ak_stupeni_8_3"]>=1,125*p["do_138"]/p["ak_kriticheskaya_skorost_m_s"],125*p["do_138"]/(p["ak_stupeni_8_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n8"]>=1,125*p["do_138"]/p["ak_kriticheskaya_skorost_m_s"],125*p["do_138"]/(p["ak_stupenilambda_n8"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_250_189(p: dict):
 # Описание: # Ячейка: O2093
 # Формула: =IF($O$2559>=1,E31*O2084/$O$7,E31*O2084/($O$2559*$O$7))
-	return excel_if(p["ak_stupeni_8_3"]>=1,250*p["do_139"]/p["ak_kriticheskaya_skorost_m_s"],250*p["do_139"]/(p["ak_stupeni_8_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n8"]>=1,250*p["do_139"]/p["ak_kriticheskaya_skorost_m_s"],250*p["do_139"]/(p["ak_stupenilambda_n8"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_500_189(p: dict):
 # Описание: # Ячейка: O2094
 # Формула: =IF($O$2559>=1,E32*O2085/$O$7,E32*O2085/($O$2559*$O$7))
-	return excel_if(p["ak_stupeni_8_3"]>=1,500*p["do_140"]/p["ak_kriticheskaya_skorost_m_s"],500*p["do_140"]/(p["ak_stupeni_8_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n8"]>=1,500*p["do_140"]/p["ak_kriticheskaya_skorost_m_s"],500*p["do_140"]/(p["ak_stupenilambda_n8"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_1000_189(p: dict):
 # Описание: # Ячейка: O2095
 # Формула: =IF($O$2559>=1,E33*O2086/$O$7,E33*O2086/($O$2559*$O$7))
-	return excel_if(p["ak_stupeni_8_3"]>=1,1000*p["do_141"]/p["ak_kriticheskaya_skorost_m_s"],1000*p["do_141"]/(p["ak_stupeni_8_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n8"]>=1,1000*p["do_141"]/p["ak_kriticheskaya_skorost_m_s"],1000*p["do_141"]/(p["ak_stupenilambda_n8"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_2000_189(p: dict):
 # Описание: # Ячейка: O2096
 # Формула: =IF($O$2559>=1,E34*O2087/$O$7,E34*O2087/($O$2559*$O$7))
-	return excel_if(p["ak_stupeni_8_3"]>=1,2000*p["do_142"]/p["ak_kriticheskaya_skorost_m_s"],2000*p["do_142"]/(p["ak_stupeni_8_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n8"]>=1,2000*p["do_142"]/p["ak_kriticheskaya_skorost_m_s"],2000*p["do_142"]/(p["ak_stupenilambda_n8"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_4000_189(p: dict):
 # Описание: # Ячейка: O2097
 # Формула: =IF($O$2559>=1,E35*O2088/$O$7,E35*O2088/($O$2559*$O$7))
-	return excel_if(p["ak_stupeni_8_3"]>=1,4000*p["do_143"]/p["ak_kriticheskaya_skorost_m_s"],4000*p["do_143"]/(p["ak_stupeni_8_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n8"]>=1,4000*p["do_143"]/p["ak_kriticheskaya_skorost_m_s"],4000*p["do_143"]/(p["ak_stupenilambda_n8"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_8000_189(p: dict):
 # Описание: # Ячейка: O2098
 # Формула: =IF($O$2559>=1,E36*O2089/$O$7,E36*O2089/($O$2559*$O$7))
-	return excel_if(p["ak_stupeni_8_3"]>=1,8000*p["do_144"]/p["ak_kriticheskaya_skorost_m_s"],8000*p["do_144"]/(p["ak_stupeni_8_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n8"]>=1,8000*p["do_144"]/p["ak_kriticheskaya_skorost_m_s"],8000*p["do_144"]/(p["ak_stupenilambda_n8"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_200(p: dict):
 # Описание: # Ячейка: O2099
@@ -9722,47 +9722,47 @@ def calc_ak_srednegeometricheskaya_chastota_gc_8000_190(p: dict):
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_201(p: dict):
 # Описание: # Ячейка: O2108
 # Формула: =$O$2599+O2099
-	return p["ak_stupeni_8_7"]+p["ak_srednegeometricheskaya_chastota_gc_31_5_200"]
+	return p["ak_stupenilwp_n8"]+p["ak_srednegeometricheskaya_chastota_gc_31_5_200"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_63_191(p: dict):
 # Описание: # Ячейка: O2109
 # Формула: =$O$2599+O2100
-	return p["ak_stupeni_8_7"]+p["ak_srednegeometricheskaya_chastota_gc_63_190"]
+	return p["ak_stupenilwp_n8"]+p["ak_srednegeometricheskaya_chastota_gc_63_190"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_125_191(p: dict):
 # Описание: # Ячейка: O2110
 # Формула: =$O$2599+O2101
-	return p["ak_stupeni_8_7"]+p["ak_srednegeometricheskaya_chastota_gc_125_190"]
+	return p["ak_stupenilwp_n8"]+p["ak_srednegeometricheskaya_chastota_gc_125_190"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_250_191(p: dict):
 # Описание: # Ячейка: O2111
 # Формула: =$O$2599+O2102
-	return p["ak_stupeni_8_7"]+p["ak_srednegeometricheskaya_chastota_gc_250_190"]
+	return p["ak_stupenilwp_n8"]+p["ak_srednegeometricheskaya_chastota_gc_250_190"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_500_191(p: dict):
 # Описание: # Ячейка: O2112
 # Формула: =$O$2599+O2103
-	return p["ak_stupeni_8_7"]+p["ak_srednegeometricheskaya_chastota_gc_500_190"]
+	return p["ak_stupenilwp_n8"]+p["ak_srednegeometricheskaya_chastota_gc_500_190"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_1000_191(p: dict):
 # Описание: # Ячейка: O2113
 # Формула: =$O$2599+O2104
-	return p["ak_stupeni_8_7"]+p["ak_srednegeometricheskaya_chastota_gc_1000_190"]
+	return p["ak_stupenilwp_n8"]+p["ak_srednegeometricheskaya_chastota_gc_1000_190"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_2000_191(p: dict):
 # Описание: # Ячейка: O2114
 # Формула: =$O$2599+O2105
-	return p["ak_stupeni_8_7"]+p["ak_srednegeometricheskaya_chastota_gc_2000_190"]
+	return p["ak_stupenilwp_n8"]+p["ak_srednegeometricheskaya_chastota_gc_2000_190"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_4000_191(p: dict):
 # Описание: # Ячейка: O2115
 # Формула: =$O$2599+O2106
-	return p["ak_stupeni_8_7"]+p["ak_srednegeometricheskaya_chastota_gc_4000_190"]
+	return p["ak_stupenilwp_n8"]+p["ak_srednegeometricheskaya_chastota_gc_4000_190"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_8000_191(p: dict):
 # Описание: # Ячейка: O2116
 # Формула: =$O$2599+O2107
-	return p["ak_stupeni_8_7"]+p["ak_srednegeometricheskaya_chastota_gc_8000_190"]
+	return p["ak_stupenilwp_n8"]+p["ak_srednegeometricheskaya_chastota_gc_8000_190"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_202(p: dict):
 # Описание: # Ячейка: O2118
@@ -10317,47 +10317,47 @@ def calc_do_153(p: dict):
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_213(p: dict):
 # Описание: # Ячейка: O2229
 # Формула: =-20*LOG10($O$2550*E28*O2220*($O$2570)^0.5/(2*$O$7*$O$2560))
-	return -20*math.log10(p["ak_stupeni_9_2"]*31.5*p["do_145"]*(p["ak_stupeni_9_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_9_3"]))
+	return -20*math.log10(p["ak_stupenipi_n9"]*31.5*p["do_145"]*(p["ak_stupenims_n9"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n9"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_63_203(p: dict):
 # Описание: # Ячейка: O2230
 # Формула: =-20*LOG10($O$2550*E29*O2221*($O$2570)^0.5/(2*$O$7*$O$2560))
-	return -20*math.log10(p["ak_stupeni_9_2"]*63*p["do_146"]*(p["ak_stupeni_9_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_9_3"]))
+	return -20*math.log10(p["ak_stupenipi_n9"]*63*p["do_146"]*(p["ak_stupenims_n9"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n9"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_125_203(p: dict):
 # Описание: # Ячейка: O2231
 # Формула: =-20*LOG10($O$2550*E30*O2222*($O$2570)^0.5/(2*$O$7*$O$2560))
-	return -20*math.log10(p["ak_stupeni_9_2"]*125*p["do_147"]*(p["ak_stupeni_9_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_9_3"]))
+	return -20*math.log10(p["ak_stupenipi_n9"]*125*p["do_147"]*(p["ak_stupenims_n9"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n9"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_250_203(p: dict):
 # Описание: # Ячейка: O2232
 # Формула: =-20*LOG10($O$2550*E31*O2223*($O$2570)^0.5/(2*$O$7*$O$2560))
-	return -20*math.log10(p["ak_stupeni_9_2"]*250*p["do_148"]*(p["ak_stupeni_9_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_9_3"]))
+	return -20*math.log10(p["ak_stupenipi_n9"]*250*p["do_148"]*(p["ak_stupenims_n9"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n9"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_500_203(p: dict):
 # Описание: # Ячейка: O2233
 # Формула: =-20*LOG10($O$2550*E32*O2224*($O$2570)^0.5/(2*$O$7*$O$2560))
-	return -20*math.log10(p["ak_stupeni_9_2"]*500*p["do_149"]*(p["ak_stupeni_9_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_9_3"]))
+	return -20*math.log10(p["ak_stupenipi_n9"]*500*p["do_149"]*(p["ak_stupenims_n9"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n9"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_1000_203(p: dict):
 # Описание: # Ячейка: O2234
 # Формула: =-20*LOG10($O$2550*E33*O2225*($O$2570)^0.5/(2*$O$7*$O$2560))
-	return -20*math.log10(p["ak_stupeni_9_2"]*1000*p["do_150"]*(p["ak_stupeni_9_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_9_3"]))
+	return -20*math.log10(p["ak_stupenipi_n9"]*1000*p["do_150"]*(p["ak_stupenims_n9"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n9"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_2000_203(p: dict):
 # Описание: # Ячейка: O2235
 # Формула: =-20*LOG10($O$2550*E34*O2226*($O$2570)^0.5/(2*$O$7*$O$2560))
-	return -20*math.log10(p["ak_stupeni_9_2"]*2000*p["do_151"]*(p["ak_stupeni_9_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_9_3"]))
+	return -20*math.log10(p["ak_stupenipi_n9"]*2000*p["do_151"]*(p["ak_stupenims_n9"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n9"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_4000_203(p: dict):
 # Описание: # Ячейка: O2236
 # Формула: =-20*LOG10($O$2550*E35*O2227*($O$2570)^0.5/(2*$O$7*$O$2560))
-	return -20*math.log10(p["ak_stupeni_9_2"]*4000*p["do_152"]*(p["ak_stupeni_9_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_9_3"]))
+	return -20*math.log10(p["ak_stupenipi_n9"]*4000*p["do_152"]*(p["ak_stupenims_n9"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n9"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_8000_203(p: dict):
 # Описание: # Ячейка: O2237
 # Формула: =-20*LOG10($O$2550*E36*O2228*($O$2570)^0.5/(2*$O$7*$O$2560))
-	return -20*math.log10(p["ak_stupeni_9_2"]*8000*p["do_153"]*(p["ak_stupeni_9_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_9_3"]))
+	return -20*math.log10(p["ak_stupenipi_n9"]*8000*p["do_153"]*(p["ak_stupenims_n9"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n9"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_214(p: dict):
 # Описание: # Ячейка: O2238
@@ -10497,47 +10497,47 @@ def calc_do_162(p: dict):
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_216(p: dict):
 # Описание: # Ячейка: O2266
 # Формула: =IF($O$2560>=1,E28*O2257/$O$7,E28*O2257/($O$2560*$O$7))
-	return excel_if(p["ak_stupeni_9_3"]>=1,31.5*p["do_154"]/p["ak_kriticheskaya_skorost_m_s"],31.5*p["do_154"]/(p["ak_stupeni_9_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n9"]>=1,31.5*p["do_154"]/p["ak_kriticheskaya_skorost_m_s"],31.5*p["do_154"]/(p["ak_stupenilambda_n9"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_63_206(p: dict):
 # Описание: # Ячейка: O2267
 # Формула: =IF($O$2560>=1,E29*O2258/$O$7,E29*O2258/($O$2560*$O$7))
-	return excel_if(p["ak_stupeni_9_3"]>=1,63*p["do_155"]/p["ak_kriticheskaya_skorost_m_s"],63*p["do_155"]/(p["ak_stupeni_9_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n9"]>=1,63*p["do_155"]/p["ak_kriticheskaya_skorost_m_s"],63*p["do_155"]/(p["ak_stupenilambda_n9"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_125_206(p: dict):
 # Описание: # Ячейка: O2268
 # Формула: =IF($O$2560>=1,E30*O2259/$O$7,E30*O2259/($O$2560*$O$7))
-	return excel_if(p["ak_stupeni_9_3"]>=1,125*p["do_156"]/p["ak_kriticheskaya_skorost_m_s"],125*p["do_156"]/(p["ak_stupeni_9_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n9"]>=1,125*p["do_156"]/p["ak_kriticheskaya_skorost_m_s"],125*p["do_156"]/(p["ak_stupenilambda_n9"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_250_206(p: dict):
 # Описание: # Ячейка: O2269
 # Формула: =IF($O$2560>=1,E31*O2260/$O$7,E31*O2260/($O$2560*$O$7))
-	return excel_if(p["ak_stupeni_9_3"]>=1,250*p["do_157"]/p["ak_kriticheskaya_skorost_m_s"],250*p["do_157"]/(p["ak_stupeni_9_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n9"]>=1,250*p["do_157"]/p["ak_kriticheskaya_skorost_m_s"],250*p["do_157"]/(p["ak_stupenilambda_n9"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_500_206(p: dict):
 # Описание: # Ячейка: O2270
 # Формула: =IF($O$2560>=1,E32*O2261/$O$7,E32*O2261/($O$2560*$O$7))
-	return excel_if(p["ak_stupeni_9_3"]>=1,500*p["do_158"]/p["ak_kriticheskaya_skorost_m_s"],500*p["do_158"]/(p["ak_stupeni_9_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n9"]>=1,500*p["do_158"]/p["ak_kriticheskaya_skorost_m_s"],500*p["do_158"]/(p["ak_stupenilambda_n9"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_1000_206(p: dict):
 # Описание: # Ячейка: O2271
 # Формула: =IF($O$2560>=1,E33*O2262/$O$7,E33*O2262/($O$2560*$O$7))
-	return excel_if(p["ak_stupeni_9_3"]>=1,1000*p["do_159"]/p["ak_kriticheskaya_skorost_m_s"],1000*p["do_159"]/(p["ak_stupeni_9_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n9"]>=1,1000*p["do_159"]/p["ak_kriticheskaya_skorost_m_s"],1000*p["do_159"]/(p["ak_stupenilambda_n9"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_2000_206(p: dict):
 # Описание: # Ячейка: O2272
 # Формула: =IF($O$2560>=1,E34*O2263/$O$7,E34*O2263/($O$2560*$O$7))
-	return excel_if(p["ak_stupeni_9_3"]>=1,2000*p["do_160"]/p["ak_kriticheskaya_skorost_m_s"],2000*p["do_160"]/(p["ak_stupeni_9_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n9"]>=1,2000*p["do_160"]/p["ak_kriticheskaya_skorost_m_s"],2000*p["do_160"]/(p["ak_stupenilambda_n9"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_4000_206(p: dict):
 # Описание: # Ячейка: O2273
 # Формула: =IF($O$2560>=1,E35*O2264/$O$7,E35*O2264/($O$2560*$O$7))
-	return excel_if(p["ak_stupeni_9_3"]>=1,4000*p["do_161"]/p["ak_kriticheskaya_skorost_m_s"],4000*p["do_161"]/(p["ak_stupeni_9_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n9"]>=1,4000*p["do_161"]/p["ak_kriticheskaya_skorost_m_s"],4000*p["do_161"]/(p["ak_stupenilambda_n9"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_8000_206(p: dict):
 # Описание: # Ячейка: O2274
 # Формула: =IF($O$2560>=1,E36*O2265/$O$7,E36*O2265/($O$2560*$O$7))
-	return excel_if(p["ak_stupeni_9_3"]>=1,8000*p["do_162"]/p["ak_kriticheskaya_skorost_m_s"],8000*p["do_162"]/(p["ak_stupeni_9_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n9"]>=1,8000*p["do_162"]/p["ak_kriticheskaya_skorost_m_s"],8000*p["do_162"]/(p["ak_stupenilambda_n9"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_217(p: dict):
 # Описание: # Ячейка: O2275
@@ -10587,47 +10587,47 @@ def calc_ak_srednegeometricheskaya_chastota_gc_8000_207(p: dict):
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_218(p: dict):
 # Описание: # Ячейка: O2284
 # Формула: =$O$2600+O2275
-	return p["ak_stupeni_9_7"]+p["ak_srednegeometricheskaya_chastota_gc_31_5_217"]
+	return p["ak_stupenilwp_n9"]+p["ak_srednegeometricheskaya_chastota_gc_31_5_217"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_63_208(p: dict):
 # Описание: # Ячейка: O2285
 # Формула: =$O$2600+O2276
-	return p["ak_stupeni_9_7"]+p["ak_srednegeometricheskaya_chastota_gc_63_207"]
+	return p["ak_stupenilwp_n9"]+p["ak_srednegeometricheskaya_chastota_gc_63_207"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_125_208(p: dict):
 # Описание: # Ячейка: O2286
 # Формула: =$O$2600+O2277
-	return p["ak_stupeni_9_7"]+p["ak_srednegeometricheskaya_chastota_gc_125_207"]
+	return p["ak_stupenilwp_n9"]+p["ak_srednegeometricheskaya_chastota_gc_125_207"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_250_208(p: dict):
 # Описание: # Ячейка: O2287
 # Формула: =$O$2600+O2278
-	return p["ak_stupeni_9_7"]+p["ak_srednegeometricheskaya_chastota_gc_250_207"]
+	return p["ak_stupenilwp_n9"]+p["ak_srednegeometricheskaya_chastota_gc_250_207"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_500_208(p: dict):
 # Описание: # Ячейка: O2288
 # Формула: =$O$2600+O2279
-	return p["ak_stupeni_9_7"]+p["ak_srednegeometricheskaya_chastota_gc_500_207"]
+	return p["ak_stupenilwp_n9"]+p["ak_srednegeometricheskaya_chastota_gc_500_207"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_1000_208(p: dict):
 # Описание: # Ячейка: O2289
 # Формула: =$O$2600+O2280
-	return p["ak_stupeni_9_7"]+p["ak_srednegeometricheskaya_chastota_gc_1000_207"]
+	return p["ak_stupenilwp_n9"]+p["ak_srednegeometricheskaya_chastota_gc_1000_207"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_2000_208(p: dict):
 # Описание: # Ячейка: O2290
 # Формула: =$O$2600+O2281
-	return p["ak_stupeni_9_7"]+p["ak_srednegeometricheskaya_chastota_gc_2000_207"]
+	return p["ak_stupenilwp_n9"]+p["ak_srednegeometricheskaya_chastota_gc_2000_207"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_4000_208(p: dict):
 # Описание: # Ячейка: O2291
 # Формула: =$O$2600+O2282
-	return p["ak_stupeni_9_7"]+p["ak_srednegeometricheskaya_chastota_gc_4000_207"]
+	return p["ak_stupenilwp_n9"]+p["ak_srednegeometricheskaya_chastota_gc_4000_207"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_8000_208(p: dict):
 # Описание: # Ячейка: O2292
 # Формула: =$O$2600+O2283
-	return p["ak_stupeni_9_7"]+p["ak_srednegeometricheskaya_chastota_gc_8000_207"]
+	return p["ak_stupenilwp_n9"]+p["ak_srednegeometricheskaya_chastota_gc_8000_207"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_219(p: dict):
 # Описание: # Ячейка: O2294
@@ -11227,47 +11227,47 @@ def calc_do_171(p: dict):
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_231(p: dict):
 # Описание: # Ячейка: O2414
 # Формула: =-20*LOG10($O$2551*E28*O2405*($O$2571)^0.5/(2*$O$7*$O$2561))
-	return -20*math.log10(p["ak_stupeni_10_2"]*31.5*p["do_163"]*(p["ak_stupeni_10_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_10_3"]))
+	return -20*math.log10(p["ak_stupenipi_n10"]*31.5*p["do_163"]*(p["ak_stupenims_n10"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n10"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_63_221(p: dict):
 # Описание: # Ячейка: O2415
 # Формула: =-20*LOG10($O$2551*E29*O2406*($O$2571)^0.5/(2*$O$7*$O$2561))
-	return -20*math.log10(p["ak_stupeni_10_2"]*63*p["do_164"]*(p["ak_stupeni_10_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_10_3"]))
+	return -20*math.log10(p["ak_stupenipi_n10"]*63*p["do_164"]*(p["ak_stupenims_n10"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n10"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_125_221(p: dict):
 # Описание: # Ячейка: O2416
 # Формула: =-20*LOG10($O$2551*E30*O2407*($O$2571)^0.5/(2*$O$7*$O$2561))
-	return -20*math.log10(p["ak_stupeni_10_2"]*125*p["do_165"]*(p["ak_stupeni_10_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_10_3"]))
+	return -20*math.log10(p["ak_stupenipi_n10"]*125*p["do_165"]*(p["ak_stupenims_n10"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n10"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_250_221(p: dict):
 # Описание: # Ячейка: O2417
 # Формула: =-20*LOG10($O$2551*E31*O2408*($O$2571)^0.5/(2*$O$7*$O$2561))
-	return -20*math.log10(p["ak_stupeni_10_2"]*250*p["do_166"]*(p["ak_stupeni_10_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_10_3"]))
+	return -20*math.log10(p["ak_stupenipi_n10"]*250*p["do_166"]*(p["ak_stupenims_n10"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n10"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_500_221(p: dict):
 # Описание: # Ячейка: O2418
 # Формула: =-20*LOG10($O$2551*E32*O2409*($O$2571)^0.5/(2*$O$7*$O$2561))
-	return -20*math.log10(p["ak_stupeni_10_2"]*500*p["do_167"]*(p["ak_stupeni_10_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_10_3"]))
+	return -20*math.log10(p["ak_stupenipi_n10"]*500*p["do_167"]*(p["ak_stupenims_n10"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n10"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_1000_221(p: dict):
 # Описание: # Ячейка: O2419
 # Формула: =-20*LOG10($O$2551*E33*O2410*($O$2571)^0.5/(2*$O$7*$O$2561))
-	return -20*math.log10(p["ak_stupeni_10_2"]*1000*p["do_168"]*(p["ak_stupeni_10_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_10_3"]))
+	return -20*math.log10(p["ak_stupenipi_n10"]*1000*p["do_168"]*(p["ak_stupenims_n10"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n10"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_2000_221(p: dict):
 # Описание: # Ячейка: O2420
 # Формула: =-20*LOG10($O$2551*E34*O2411*($O$2571)^0.5/(2*$O$7*$O$2561))
-	return -20*math.log10(p["ak_stupeni_10_2"]*2000*p["do_169"]*(p["ak_stupeni_10_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_10_3"]))
+	return -20*math.log10(p["ak_stupenipi_n10"]*2000*p["do_169"]*(p["ak_stupenims_n10"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n10"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_4000_221(p: dict):
 # Описание: # Ячейка: O2421
 # Формула: =-20*LOG10($O$2551*E35*O2412*($O$2571)^0.5/(2*$O$7*$O$2561))
-	return -20*math.log10(p["ak_stupeni_10_2"]*4000*p["do_170"]*(p["ak_stupeni_10_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_10_3"]))
+	return -20*math.log10(p["ak_stupenipi_n10"]*4000*p["do_170"]*(p["ak_stupenims_n10"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n10"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_8000_221(p: dict):
 # Описание: # Ячейка: O2422
 # Формула: =-20*LOG10($O$2551*E36*O2413*($O$2571)^0.5/(2*$O$7*$O$2561))
-	return -20*math.log10(p["ak_stupeni_10_2"]*8000*p["do_171"]*(p["ak_stupeni_10_4"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupeni_10_3"]))
+	return -20*math.log10(p["ak_stupenipi_n10"]*8000*p["do_171"]*(p["ak_stupenims_n10"])**0.5/(2*p["ak_kriticheskaya_skorost_m_s"]*p["ak_stupenilambda_n10"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_232(p: dict):
 # Описание: # Ячейка: O2423
@@ -11407,47 +11407,47 @@ def calc_do_180(p: dict):
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_234(p: dict):
 # Описание: # Ячейка: O2451
 # Формула: =IF($O$2561>=1,E28*O2442/$O$7,E28*O2442/($O$2561*$O$7))
-	return excel_if(p["ak_stupeni_10_3"]>=1,31.5*p["do_172"]/p["ak_kriticheskaya_skorost_m_s"],31.5*p["do_172"]/(p["ak_stupeni_10_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n10"]>=1,31.5*p["do_172"]/p["ak_kriticheskaya_skorost_m_s"],31.5*p["do_172"]/(p["ak_stupenilambda_n10"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_63_224(p: dict):
 # Описание: # Ячейка: O2452
 # Формула: =IF($O$2561>=1,E29*O2443/$O$7,E29*O2443/($O$2561*$O$7))
-	return excel_if(p["ak_stupeni_10_3"]>=1,63*p["do_173"]/p["ak_kriticheskaya_skorost_m_s"],63*p["do_173"]/(p["ak_stupeni_10_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n10"]>=1,63*p["do_173"]/p["ak_kriticheskaya_skorost_m_s"],63*p["do_173"]/(p["ak_stupenilambda_n10"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_125_224(p: dict):
 # Описание: # Ячейка: O2453
 # Формула: =IF($O$2561>=1,E30*O2444/$O$7,E30*O2444/($O$2561*$O$7))
-	return excel_if(p["ak_stupeni_10_3"]>=1,125*p["do_174"]/p["ak_kriticheskaya_skorost_m_s"],125*p["do_174"]/(p["ak_stupeni_10_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n10"]>=1,125*p["do_174"]/p["ak_kriticheskaya_skorost_m_s"],125*p["do_174"]/(p["ak_stupenilambda_n10"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_250_224(p: dict):
 # Описание: # Ячейка: O2454
 # Формула: =IF($O$2561>=1,E31*O2445/$O$7,E31*O2445/($O$2561*$O$7))
-	return excel_if(p["ak_stupeni_10_3"]>=1,250*p["do_175"]/p["ak_kriticheskaya_skorost_m_s"],250*p["do_175"]/(p["ak_stupeni_10_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n10"]>=1,250*p["do_175"]/p["ak_kriticheskaya_skorost_m_s"],250*p["do_175"]/(p["ak_stupenilambda_n10"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_500_224(p: dict):
 # Описание: # Ячейка: O2455
 # Формула: =IF($O$2561>=1,E32*O2446/$O$7,E32*O2446/($O$2561*$O$7))
-	return excel_if(p["ak_stupeni_10_3"]>=1,500*p["do_176"]/p["ak_kriticheskaya_skorost_m_s"],500*p["do_176"]/(p["ak_stupeni_10_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n10"]>=1,500*p["do_176"]/p["ak_kriticheskaya_skorost_m_s"],500*p["do_176"]/(p["ak_stupenilambda_n10"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_1000_224(p: dict):
 # Описание: # Ячейка: O2456
 # Формула: =IF($O$2561>=1,E33*O2447/$O$7,E33*O2447/($O$2561*$O$7))
-	return excel_if(p["ak_stupeni_10_3"]>=1,1000*p["do_177"]/p["ak_kriticheskaya_skorost_m_s"],1000*p["do_177"]/(p["ak_stupeni_10_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n10"]>=1,1000*p["do_177"]/p["ak_kriticheskaya_skorost_m_s"],1000*p["do_177"]/(p["ak_stupenilambda_n10"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_2000_224(p: dict):
 # Описание: # Ячейка: O2457
 # Формула: =IF($O$2561>=1,E34*O2448/$O$7,E34*O2448/($O$2561*$O$7))
-	return excel_if(p["ak_stupeni_10_3"]>=1,2000*p["do_178"]/p["ak_kriticheskaya_skorost_m_s"],2000*p["do_178"]/(p["ak_stupeni_10_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n10"]>=1,2000*p["do_178"]/p["ak_kriticheskaya_skorost_m_s"],2000*p["do_178"]/(p["ak_stupenilambda_n10"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_4000_224(p: dict):
 # Описание: # Ячейка: O2458
 # Формула: =IF($O$2561>=1,E35*O2449/$O$7,E35*O2449/($O$2561*$O$7))
-	return excel_if(p["ak_stupeni_10_3"]>=1,4000*p["do_179"]/p["ak_kriticheskaya_skorost_m_s"],4000*p["do_179"]/(p["ak_stupeni_10_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n10"]>=1,4000*p["do_179"]/p["ak_kriticheskaya_skorost_m_s"],4000*p["do_179"]/(p["ak_stupenilambda_n10"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_8000_224(p: dict):
 # Описание: # Ячейка: O2459
 # Формула: =IF($O$2561>=1,E36*O2450/$O$7,E36*O2450/($O$2561*$O$7))
-	return excel_if(p["ak_stupeni_10_3"]>=1,8000*p["do_180"]/p["ak_kriticheskaya_skorost_m_s"],8000*p["do_180"]/(p["ak_stupeni_10_3"]*p["ak_kriticheskaya_skorost_m_s"]))
+	return excel_if(p["ak_stupenilambda_n10"]>=1,8000*p["do_180"]/p["ak_kriticheskaya_skorost_m_s"],8000*p["do_180"]/(p["ak_stupenilambda_n10"]*p["ak_kriticheskaya_skorost_m_s"]))
 
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_235(p: dict):
 # Описание: # Ячейка: O2460
@@ -11497,47 +11497,47 @@ def calc_ak_srednegeometricheskaya_chastota_gc_8000_225(p: dict):
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_236(p: dict):
 # Описание: # Ячейка: O2469
 # Формула: =$O$2601+O2460
-	return p["ak_stupeni_10_7"]+p["ak_srednegeometricheskaya_chastota_gc_31_5_235"]
+	return p["ak_stupenilwp_n10"]+p["ak_srednegeometricheskaya_chastota_gc_31_5_235"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_63_226(p: dict):
 # Описание: # Ячейка: O2470
 # Формула: =$O$2601+O2461
-	return p["ak_stupeni_10_7"]+p["ak_srednegeometricheskaya_chastota_gc_63_225"]
+	return p["ak_stupenilwp_n10"]+p["ak_srednegeometricheskaya_chastota_gc_63_225"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_125_226(p: dict):
 # Описание: # Ячейка: O2471
 # Формула: =$O$2601+O2462
-	return p["ak_stupeni_10_7"]+p["ak_srednegeometricheskaya_chastota_gc_125_225"]
+	return p["ak_stupenilwp_n10"]+p["ak_srednegeometricheskaya_chastota_gc_125_225"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_250_226(p: dict):
 # Описание: # Ячейка: O2472
 # Формула: =$O$2601+O2463
-	return p["ak_stupeni_10_7"]+p["ak_srednegeometricheskaya_chastota_gc_250_225"]
+	return p["ak_stupenilwp_n10"]+p["ak_srednegeometricheskaya_chastota_gc_250_225"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_500_226(p: dict):
 # Описание: # Ячейка: O2473
 # Формула: =$O$2601+O2464
-	return p["ak_stupeni_10_7"]+p["ak_srednegeometricheskaya_chastota_gc_500_225"]
+	return p["ak_stupenilwp_n10"]+p["ak_srednegeometricheskaya_chastota_gc_500_225"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_1000_226(p: dict):
 # Описание: # Ячейка: O2474
 # Формула: =$O$2601+O2465
-	return p["ak_stupeni_10_7"]+p["ak_srednegeometricheskaya_chastota_gc_1000_225"]
+	return p["ak_stupenilwp_n10"]+p["ak_srednegeometricheskaya_chastota_gc_1000_225"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_2000_226(p: dict):
 # Описание: # Ячейка: O2475
 # Формула: =$O$2601+O2466
-	return p["ak_stupeni_10_7"]+p["ak_srednegeometricheskaya_chastota_gc_2000_225"]
+	return p["ak_stupenilwp_n10"]+p["ak_srednegeometricheskaya_chastota_gc_2000_225"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_4000_226(p: dict):
 # Описание: # Ячейка: O2476
 # Формула: =$O$2601+O2467
-	return p["ak_stupeni_10_7"]+p["ak_srednegeometricheskaya_chastota_gc_4000_225"]
+	return p["ak_stupenilwp_n10"]+p["ak_srednegeometricheskaya_chastota_gc_4000_225"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_8000_226(p: dict):
 # Описание: # Ячейка: O2477
 # Формула: =$O$2601+O2468
-	return p["ak_stupeni_10_7"]+p["ak_srednegeometricheskaya_chastota_gc_8000_225"]
+	return p["ak_stupenilwp_n10"]+p["ak_srednegeometricheskaya_chastota_gc_8000_225"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_237(p: dict):
 # Описание: # Ячейка: O2478
@@ -11907,252 +11907,252 @@ def calc_ak_stupeni_10_2(p: dict):
 def calc_ak_stupeni_1_3(p: dict):
 # Описание: # Ячейка: O2552
 # Формула: =(($O$11+1)/($O$11-1)*(1-O2542^(($O$11-1)/$O$11)))^0.5
-	return ((p["ak_koefficient_adiabaty"]+1)/(p["ak_koefficient_adiabaty"]-1)*(1-p["ak_stupeni_1_2"]**((p["ak_koefficient_adiabaty"]-1)/p["ak_koefficient_adiabaty"])))**0.5
+	return ((p["ak_koefficient_adiabaty"]+1)/(p["ak_koefficient_adiabaty"]-1)*(1-p["ak_stupenipi_n1"]**((p["ak_koefficient_adiabaty"]-1)/p["ak_koefficient_adiabaty"])))**0.5
 
 def calc_ak_stupeni_2_3(p: dict):
 # Описание: # Ячейка: O2553
 # Формула: =IF(O2533="","",(($O$11+1)/($O$11-1)*(1-O2543^(($O$11-1)/$O$11)))^0.5)
-	return excel_if(p["ak_stupeni_2"]is None, None, lambda: ((p["ak_koefficient_adiabaty"]+1)/(p["ak_koefficient_adiabaty"]-1)*(1-p["ak_stupeni_2_2"]**((p["ak_koefficient_adiabaty"]-1)/p["ak_koefficient_adiabaty"])))**0.5)
+	return excel_if(p["ak_stupeni_n2"]is None, None, lambda: ((p["ak_koefficient_adiabaty"]+1)/(p["ak_koefficient_adiabaty"]-1)*(1-p["ak_stupenipi_n2"]**((p["ak_koefficient_adiabaty"]-1)/p["ak_koefficient_adiabaty"])))**0.5)
 
 def calc_ak_stupeni_3_3(p: dict):
 # Описание: # Ячейка: O2554
 # Формула: =IF(O2534="","",(($O$11+1)/($O$11-1)*(1-O2544^(($O$11-1)/$O$11)))^0.5)
-	return excel_if(p["ak_stupeni_3"]is None, None, lambda: ((p["ak_koefficient_adiabaty"]+1)/(p["ak_koefficient_adiabaty"]-1)*(1-p["ak_stupeni_3_2"]**((p["ak_koefficient_adiabaty"]-1)/p["ak_koefficient_adiabaty"])))**0.5)
+	return excel_if(p["ak_stupeni_n3"]is None, None, lambda: ((p["ak_koefficient_adiabaty"]+1)/(p["ak_koefficient_adiabaty"]-1)*(1-p["ak_stupenipi_n3"]**((p["ak_koefficient_adiabaty"]-1)/p["ak_koefficient_adiabaty"])))**0.5)
 
 def calc_ak_stupeni_4_3(p: dict):
 # Описание: # Ячейка: O2555
 # Формула: =IF(O2535="","",(($O$11+1)/($O$11-1)*(1-O2545^(($O$11-1)/$O$11)))^0.5)
-	return excel_if(p["ak_stupeni_4"]is None, None, lambda: ((p["ak_koefficient_adiabaty"]+1)/(p["ak_koefficient_adiabaty"]-1)*(1-p["ak_stupeni_4_2"]**((p["ak_koefficient_adiabaty"]-1)/p["ak_koefficient_adiabaty"])))**0.5)
+	return excel_if(p["ak_stupeni_n4"]is None, None, lambda: ((p["ak_koefficient_adiabaty"]+1)/(p["ak_koefficient_adiabaty"]-1)*(1-p["ak_stupenipi_n4"]**((p["ak_koefficient_adiabaty"]-1)/p["ak_koefficient_adiabaty"])))**0.5)
 
 def calc_ak_stupeni_5_3(p: dict):
 # Описание: # Ячейка: O2556
 # Формула: =IF(O2536="","",(($O$11+1)/($O$11-1)*(1-O2546^(($O$11-1)/$O$11)))^0.5)
-	return excel_if(p["ak_stupeni_5"]is None, None, lambda: ((p["ak_koefficient_adiabaty"]+1)/(p["ak_koefficient_adiabaty"]-1)*(1-p["ak_stupeni_5_2"]**((p["ak_koefficient_adiabaty"]-1)/p["ak_koefficient_adiabaty"])))**0.5)
+	return excel_if(p["ak_stupeni_n5"]is None, None, lambda: ((p["ak_koefficient_adiabaty"]+1)/(p["ak_koefficient_adiabaty"]-1)*(1-p["ak_stupenipi_n5"]**((p["ak_koefficient_adiabaty"]-1)/p["ak_koefficient_adiabaty"])))**0.5)
 
 def calc_ak_stupeni_6_3(p: dict):
 # Описание: # Ячейка: O2557
 # Формула: =IF(O2537="","",(($O$11+1)/($O$11-1)*(1-O2547^(($O$11-1)/$O$11)))^0.5)
-	return excel_if(p["ak_stupeni_6"]is None, None, lambda: ((p["ak_koefficient_adiabaty"]+1)/(p["ak_koefficient_adiabaty"]-1)*(1-p["ak_stupeni_6_2"]**((p["ak_koefficient_adiabaty"]-1)/p["ak_koefficient_adiabaty"])))**0.5)
+	return excel_if(p["ak_stupeni_n6"]is None, None, lambda: ((p["ak_koefficient_adiabaty"]+1)/(p["ak_koefficient_adiabaty"]-1)*(1-p["ak_stupenipi_n6"]**((p["ak_koefficient_adiabaty"]-1)/p["ak_koefficient_adiabaty"])))**0.5)
 
 def calc_ak_stupeni_7_3(p: dict):
 # Описание: # Ячейка: O2558
 # Формула: =IF(O2538="","",(($O$11+1)/($O$11-1)*(1-O2548^(($O$11-1)/$O$11)))^0.5)
-	return excel_if(p["ak_stupeni_7"]is None, None, lambda: ((p["ak_koefficient_adiabaty"]+1)/(p["ak_koefficient_adiabaty"]-1)*(1-p["ak_stupeni_7_2"]**((p["ak_koefficient_adiabaty"]-1)/p["ak_koefficient_adiabaty"])))**0.5)
+	return excel_if(p["ak_stupeni_n7"]is None, None, lambda: ((p["ak_koefficient_adiabaty"]+1)/(p["ak_koefficient_adiabaty"]-1)*(1-p["ak_stupenipi_n7"]**((p["ak_koefficient_adiabaty"]-1)/p["ak_koefficient_adiabaty"])))**0.5)
 
 def calc_ak_stupeni_8_3(p: dict):
 # Описание: # Ячейка: O2559
 # Формула: =IF(O2539="","",(($O$11+1)/($O$11-1)*(1-O2549^(($O$11-1)/$O$11)))^0.5)
-	return excel_if(p["ak_stupeni_8"]is None, None, lambda: ((p["ak_koefficient_adiabaty"]+1)/(p["ak_koefficient_adiabaty"]-1)*(1-p["ak_stupeni_8_2"]**((p["ak_koefficient_adiabaty"]-1)/p["ak_koefficient_adiabaty"])))**0.5)
+	return excel_if(p["ak_stupeni_n8"]is None, None, lambda: ((p["ak_koefficient_adiabaty"]+1)/(p["ak_koefficient_adiabaty"]-1)*(1-p["ak_stupenipi_n8"]**((p["ak_koefficient_adiabaty"]-1)/p["ak_koefficient_adiabaty"])))**0.5)
 
 def calc_ak_stupeni_9_3(p: dict):
 # Описание: # Ячейка: O2560
 # Формула: =IF(O2540="","",(($O$11+1)/($O$11-1)*(1-O2550^(($O$11-1)/$O$11)))^0.5)
-	return excel_if(p["ak_stupeni_9"]is None, None, lambda: ((p["ak_koefficient_adiabaty"]+1)/(p["ak_koefficient_adiabaty"]-1)*(1-p["ak_stupeni_9_2"]**((p["ak_koefficient_adiabaty"]-1)/p["ak_koefficient_adiabaty"])))**0.5)
+	return excel_if(p["ak_stupeni_n9"]is None, None, lambda: ((p["ak_koefficient_adiabaty"]+1)/(p["ak_koefficient_adiabaty"]-1)*(1-p["ak_stupenipi_n9"]**((p["ak_koefficient_adiabaty"]-1)/p["ak_koefficient_adiabaty"])))**0.5)
 
 def calc_ak_stupeni_10_3(p: dict):
 # Описание: # Ячейка: O2561
 # Формула: =IF(O2541="","",(($O$11+1)/($O$11-1)*(1-O2551^(($O$11-1)/$O$11)))^0.5)
-	return excel_if(p["ak_stupeni_10"]is None, None, lambda: ((p["ak_koefficient_adiabaty"]+1)/(p["ak_koefficient_adiabaty"]-1)*(1-p["ak_stupeni_10_2"]**((p["ak_koefficient_adiabaty"]-1)/p["ak_koefficient_adiabaty"])))**0.5)
+	return excel_if(p["ak_stupeni_n10"]is None, None, lambda: ((p["ak_koefficient_adiabaty"]+1)/(p["ak_koefficient_adiabaty"]-1)*(1-p["ak_stupenipi_n10"]**((p["ak_koefficient_adiabaty"]-1)/p["ak_koefficient_adiabaty"])))**0.5)
 
 def calc_ak_stupeni_1_4(p: dict):
 # Описание: # Ячейка: O2562
 # Формула: =(2/($O$11-1)*(O2542^(-($O$11-1)/$O$11)-1))^0.5
-	return (2/(p["ak_koefficient_adiabaty"]-1)*(p["ak_stupeni_1_2"]**(-(p["ak_koefficient_adiabaty"]-1)/p["ak_koefficient_adiabaty"])-1))**0.5
+	return (2/(p["ak_koefficient_adiabaty"]-1)*(p["ak_stupenipi_n1"]**(-(p["ak_koefficient_adiabaty"]-1)/p["ak_koefficient_adiabaty"])-1))**0.5
 
 def calc_ak_stupeni_2_4(p: dict):
 # Описание: # Ячейка: O2563
 # Формула: =IF(O2533="","",(2/($O$11-1)*(O2543^(-($O$11-1)/$O$11)-1))^0.5)
-	return excel_if(p["ak_stupeni_2"]is None, None, lambda: (2/(p["ak_koefficient_adiabaty"]-1)*(p["ak_stupeni_2_2"]**(-(p["ak_koefficient_adiabaty"]-1)/p["ak_koefficient_adiabaty"])-1))**0.5)
+	return excel_if(p["ak_stupeni_n2"]is None, None, lambda: (2/(p["ak_koefficient_adiabaty"]-1)*(p["ak_stupenipi_n2"]**(-(p["ak_koefficient_adiabaty"]-1)/p["ak_koefficient_adiabaty"])-1))**0.5)
 
 def calc_ak_stupeni_3_4(p: dict):
 # Описание: # Ячейка: O2564
 # Формула: =IF(O2534="","",(2/($O$11-1)*(O2544^(-($O$11-1)/$O$11)-1))^0.5)
-	return excel_if(p["ak_stupeni_3"]is None, None, lambda: (2/(p["ak_koefficient_adiabaty"]-1)*(p["ak_stupeni_3_2"]**(-(p["ak_koefficient_adiabaty"]-1)/p["ak_koefficient_adiabaty"])-1))**0.5)
+	return excel_if(p["ak_stupeni_n3"]is None, None, lambda: (2/(p["ak_koefficient_adiabaty"]-1)*(p["ak_stupenipi_n3"]**(-(p["ak_koefficient_adiabaty"]-1)/p["ak_koefficient_adiabaty"])-1))**0.5)
 
 def calc_ak_stupeni_4_4(p: dict):
 # Описание: # Ячейка: O2565
 # Формула: =IF(O2535="","",(2/($O$11-1)*(O2545^(-($O$11-1)/$O$11)-1))^0.5)
-	return excel_if(p["ak_stupeni_4"]is None, None, lambda: (2/(p["ak_koefficient_adiabaty"]-1)*(p["ak_stupeni_4_2"]**(-(p["ak_koefficient_adiabaty"]-1)/p["ak_koefficient_adiabaty"])-1))**0.5)
+	return excel_if(p["ak_stupeni_n4"]is None, None, lambda: (2/(p["ak_koefficient_adiabaty"]-1)*(p["ak_stupenipi_n4"]**(-(p["ak_koefficient_adiabaty"]-1)/p["ak_koefficient_adiabaty"])-1))**0.5)
 
 def calc_ak_stupeni_5_4(p: dict):
 # Описание: # Ячейка: O2566
 # Формула: =IF(O2536="","",(2/($O$11-1)*(O2546^(-($O$11-1)/$O$11)-1))^0.5)
-	return excel_if(p["ak_stupeni_5"]is None, None, lambda: (2/(p["ak_koefficient_adiabaty"]-1)*(p["ak_stupeni_5_2"]**(-(p["ak_koefficient_adiabaty"]-1)/p["ak_koefficient_adiabaty"])-1))**0.5)
+	return excel_if(p["ak_stupeni_n5"]is None, None, lambda: (2/(p["ak_koefficient_adiabaty"]-1)*(p["ak_stupenipi_n5"]**(-(p["ak_koefficient_adiabaty"]-1)/p["ak_koefficient_adiabaty"])-1))**0.5)
 
 def calc_ak_stupeni_6_4(p: dict):
 # Описание: # Ячейка: O2567
 # Формула: =IF(O2537="","",(2/($O$11-1)*(O2547^(-($O$11-1)/$O$11)-1))^0.5)
-	return excel_if(p["ak_stupeni_6"]is None, None, lambda: (2/(p["ak_koefficient_adiabaty"]-1)*(p["ak_stupeni_6_2"]**(-(p["ak_koefficient_adiabaty"]-1)/p["ak_koefficient_adiabaty"])-1))**0.5)
+	return excel_if(p["ak_stupeni_n6"]is None, None, lambda: (2/(p["ak_koefficient_adiabaty"]-1)*(p["ak_stupenipi_n6"]**(-(p["ak_koefficient_adiabaty"]-1)/p["ak_koefficient_adiabaty"])-1))**0.5)
 
 def calc_ak_stupeni_7_4(p: dict):
 # Описание: # Ячейка: O2568
 # Формула: =IF(O2538="","",(2/($O$11-1)*(O2548^(-($O$11-1)/$O$11)-1))^0.5)
-	return excel_if(p["ak_stupeni_7"]is None, None, lambda: (2/(p["ak_koefficient_adiabaty"]-1)*(p["ak_stupeni_7_2"]**(-(p["ak_koefficient_adiabaty"]-1)/p["ak_koefficient_adiabaty"])-1))**0.5)
+	return excel_if(p["ak_stupeni_n7"]is None, None, lambda: (2/(p["ak_koefficient_adiabaty"]-1)*(p["ak_stupenipi_n7"]**(-(p["ak_koefficient_adiabaty"]-1)/p["ak_koefficient_adiabaty"])-1))**0.5)
 
 def calc_ak_stupeni_8_4(p: dict):
 # Описание: # Ячейка: O2569
 # Формула: =IF(O2539="","",(2/($O$11-1)*(O2549^(-($O$11-1)/$O$11)-1))^0.5)
-	return excel_if(p["ak_stupeni_8"]is None, None, lambda: (2/(p["ak_koefficient_adiabaty"]-1)*(p["ak_stupeni_8_2"]**(-(p["ak_koefficient_adiabaty"]-1)/p["ak_koefficient_adiabaty"])-1))**0.5)
+	return excel_if(p["ak_stupeni_n8"]is None, None, lambda: (2/(p["ak_koefficient_adiabaty"]-1)*(p["ak_stupenipi_n8"]**(-(p["ak_koefficient_adiabaty"]-1)/p["ak_koefficient_adiabaty"])-1))**0.5)
 
 def calc_ak_stupeni_9_4(p: dict):
 # Описание: # Ячейка: O2570
 # Формула: =IF(O2540="","",(2/($O$11-1)*(O2550^(-($O$11-1)/$O$11)-1))^0.5)
-	return excel_if(p["ak_stupeni_9"]is None, None, lambda: (2/(p["ak_koefficient_adiabaty"]-1)*(p["ak_stupeni_9_2"]**(-(p["ak_koefficient_adiabaty"]-1)/p["ak_koefficient_adiabaty"])-1))**0.5)
+	return excel_if(p["ak_stupeni_n9"]is None, None, lambda: (2/(p["ak_koefficient_adiabaty"]-1)*(p["ak_stupenipi_n9"]**(-(p["ak_koefficient_adiabaty"]-1)/p["ak_koefficient_adiabaty"])-1))**0.5)
 
 def calc_ak_stupeni_10_4(p: dict):
 # Описание: # Ячейка: O2571
 # Формула: =IF(O2541="","",(2/($O$11-1)*(O2551^(-($O$11-1)/$O$11)-1))^0.5)
-	return excel_if(p["ak_stupeni_10"]is None, None, lambda: (2/(p["ak_koefficient_adiabaty"]-1)*(p["ak_stupeni_10_2"]**(-(p["ak_koefficient_adiabaty"]-1)/p["ak_koefficient_adiabaty"])-1))**0.5)
+	return excel_if(p["ak_stupeni_n10"]is None, None, lambda: (2/(p["ak_koefficient_adiabaty"]-1)*(p["ak_stupenipi_n10"]**(-(p["ak_koefficient_adiabaty"]-1)/p["ak_koefficient_adiabaty"])-1))**0.5)
 
 def calc_ak_stupeni_1_5(p: dict):
 # Описание: # Ячейка: O2572
 # Формула: =IF(O2562<=0.8^0.5,8*10^-5*O2562^3,IF(AND(O2562>(0.8)^0.5,O2562<=20^0.2),10^(-4)*O2562^5,IF(O2562>20^0.2,2*10^-3)))
-	return excel_if(p["ak_stupeni_1_4"]<=0.8**0.5,8*10**-5*p["ak_stupeni_1_4"]**3,excel_if(excel_and(p["ak_stupeni_1_4"]>(0.8)**0.5,p["ak_stupeni_1_4"]<=20**0.2),10**(-4)*p["ak_stupeni_1_4"]**5,excel_if(p["ak_stupeni_1_4"]>20**0.2,2*10**-3)))
+	return excel_if(p["ak_stupenims_n1"]<=0.8**0.5,8*10**-5*p["ak_stupenims_n1"]**3,excel_if(excel_and(p["ak_stupenims_n1"]>(0.8)**0.5,p["ak_stupenims_n1"]<=20**0.2),10**(-4)*p["ak_stupenims_n1"]**5,excel_if(p["ak_stupenims_n1"]>20**0.2,2*10**-3)))
 
 def calc_ak_stupeni_2_5(p: dict):
 # Описание: # Ячейка: O2573
 # Формула: =IF(O2533="","",IF(O2563<=0.8^0.5,8*10^-5*O2563^3,IF(AND(O2563>(0.8)^0.5,O2563<=20^0.2),10^(-4)*O2563^5,IF(O2563>20^0.2,2*10^-3))))
-	return excel_if(p["ak_stupeni_2"]is None, None, lambda: excel_if(p["ak_stupeni_2_4"]<=0.8**0.5,8*10**-5*p["ak_stupeni_2_4"]**3,excel_if(excel_and(p["ak_stupeni_2_4"]>(0.8)**0.5,p["ak_stupeni_2_4"]<=20**0.2),10**(-4)*p["ak_stupeni_2_4"]**5,excel_if(p["ak_stupeni_2_4"]>20**0.2,2*10**-3))))
+	return excel_if(p["ak_stupeni_n2"]is None, None, lambda: excel_if(p["ak_stupenims_n2"]<=0.8**0.5,8*10**-5*p["ak_stupenims_n2"]**3,excel_if(excel_and(p["ak_stupenims_n2"]>(0.8)**0.5,p["ak_stupenims_n2"]<=20**0.2),10**(-4)*p["ak_stupenims_n2"]**5,excel_if(p["ak_stupenims_n2"]>20**0.2,2*10**-3))))
 
 def calc_ak_stupeni_3_5(p: dict):
 # Описание: # Ячейка: O2574
 # Формула: =IF(O2534="","",IF(O2564<=0.8^0.5,8*10^-5*O2564^3,IF(AND(O2564>(0.8)^0.5,O2564<=20^0.2),10^(-4)*O2564^5,IF(O2564>20^0.2,2*10^-3))))
-	return excel_if(p["ak_stupeni_3"]is None, None, lambda: excel_if(p["ak_stupeni_3_4"]<=0.8**0.5,8*10**-5*p["ak_stupeni_3_4"]**3,excel_if(excel_and(p["ak_stupeni_3_4"]>(0.8)**0.5,p["ak_stupeni_3_4"]<=20**0.2),10**(-4)*p["ak_stupeni_3_4"]**5,excel_if(p["ak_stupeni_3_4"]>20**0.2,2*10**-3))))
+	return excel_if(p["ak_stupeni_n3"]is None, None, lambda: excel_if(p["ak_stupenims_n3"]<=0.8**0.5,8*10**-5*p["ak_stupenims_n3"]**3,excel_if(excel_and(p["ak_stupenims_n3"]>(0.8)**0.5,p["ak_stupenims_n3"]<=20**0.2),10**(-4)*p["ak_stupenims_n3"]**5,excel_if(p["ak_stupenims_n3"]>20**0.2,2*10**-3))))
 
 def calc_ak_stupeni_4_5(p: dict):
 # Описание: # Ячейка: O2575
 # Формула: =IF(O2535="","",IF(O2565<=0.8^0.5,8*10^-5*O2565^3,IF(AND(O2565>(0.8)^0.5,O2565<=20^0.2),10^(-4)*O2565^5,IF(O2565>20^0.2,2*10^-3))))
-	return excel_if(p["ak_stupeni_4"]is None, None, lambda: excel_if(p["ak_stupeni_4_4"]<=0.8**0.5,8*10**-5*p["ak_stupeni_4_4"]**3,excel_if(excel_and(p["ak_stupeni_4_4"]>(0.8)**0.5,p["ak_stupeni_4_4"]<=20**0.2),10**(-4)*p["ak_stupeni_4_4"]**5,excel_if(p["ak_stupeni_4_4"]>20**0.2,2*10**-3))))
+	return excel_if(p["ak_stupeni_n4"]is None, None, lambda: excel_if(p["ak_stupenims_n4"]<=0.8**0.5,8*10**-5*p["ak_stupenims_n4"]**3,excel_if(excel_and(p["ak_stupenims_n4"]>(0.8)**0.5,p["ak_stupenims_n4"]<=20**0.2),10**(-4)*p["ak_stupenims_n4"]**5,excel_if(p["ak_stupenims_n4"]>20**0.2,2*10**-3))))
 
 def calc_ak_stupeni_5_5(p: dict):
 # Описание: # Ячейка: O2576
 # Формула: =IF(O2536="","",IF(O2566<=0.8^0.5,8*10^-5*O2566^3,IF(AND(O2566>(0.8)^0.5,O2566<=20^0.2),10^(-4)*O2566^5,IF(O2566>20^0.2,2*10^-3))))
-	return excel_if(p["ak_stupeni_5"]is None, None, lambda: excel_if(p["ak_stupeni_5_4"]<=0.8**0.5,8*10**-5*p["ak_stupeni_5_4"]**3,excel_if(excel_and(p["ak_stupeni_5_4"]>(0.8)**0.5,p["ak_stupeni_5_4"]<=20**0.2),10**(-4)*p["ak_stupeni_5_4"]**5,excel_if(p["ak_stupeni_5_4"]>20**0.2,2*10**-3))))
+	return excel_if(p["ak_stupeni_n5"]is None, None, lambda: excel_if(p["ak_stupenims_n5"]<=0.8**0.5,8*10**-5*p["ak_stupenims_n5"]**3,excel_if(excel_and(p["ak_stupenims_n5"]>(0.8)**0.5,p["ak_stupenims_n5"]<=20**0.2),10**(-4)*p["ak_stupenims_n5"]**5,excel_if(p["ak_stupenims_n5"]>20**0.2,2*10**-3))))
 
 def calc_ak_stupeni_6_5(p: dict):
 # Описание: # Ячейка: O2577
 # Формула: =IF(O2537="","",IF(O2567<=0.8^0.5,8*10^-5*O2567^3,IF(AND(O2567>(0.8)^0.5,O2567<=20^0.2),10^(-4)*O2567^5,IF(O2567>20^0.2,2*10^-3))))
-	return excel_if(p["ak_stupeni_6"]is None, None, lambda: excel_if(p["ak_stupeni_6_4"]<=0.8**0.5,8*10**-5*p["ak_stupeni_6_4"]**3,excel_if(excel_and(p["ak_stupeni_6_4"]>(0.8)**0.5,p["ak_stupeni_6_4"]<=20**0.2),10**(-4)*p["ak_stupeni_6_4"]**5,excel_if(p["ak_stupeni_6_4"]>20**0.2,2*10**-3))))
+	return excel_if(p["ak_stupeni_n6"]is None, None, lambda: excel_if(p["ak_stupenims_n6"]<=0.8**0.5,8*10**-5*p["ak_stupenims_n6"]**3,excel_if(excel_and(p["ak_stupenims_n6"]>(0.8)**0.5,p["ak_stupenims_n6"]<=20**0.2),10**(-4)*p["ak_stupenims_n6"]**5,excel_if(p["ak_stupenims_n6"]>20**0.2,2*10**-3))))
 
 def calc_ak_stupeni_7_5(p: dict):
 # Описание: # Ячейка: O2578
 # Формула: =IF(O2538="","",IF(O2568<=0.8^0.5,8*10^-5*O2568^3,IF(AND(O2568>(0.8)^0.5,O2568<=20^0.2),10^(-4)*O2568^5,IF(O2568>20^0.2,2*10^-3))))
-	return excel_if(p["ak_stupeni_7"]is None, None, lambda: excel_if(p["ak_stupeni_7_4"]<=0.8**0.5,8*10**-5*p["ak_stupeni_7_4"]**3,excel_if(excel_and(p["ak_stupeni_7_4"]>(0.8)**0.5,p["ak_stupeni_7_4"]<=20**0.2),10**(-4)*p["ak_stupeni_7_4"]**5,excel_if(p["ak_stupeni_7_4"]>20**0.2,2*10**-3))))
+	return excel_if(p["ak_stupeni_n7"]is None, None, lambda: excel_if(p["ak_stupenims_n7"]<=0.8**0.5,8*10**-5*p["ak_stupenims_n7"]**3,excel_if(excel_and(p["ak_stupenims_n7"]>(0.8)**0.5,p["ak_stupenims_n7"]<=20**0.2),10**(-4)*p["ak_stupenims_n7"]**5,excel_if(p["ak_stupenims_n7"]>20**0.2,2*10**-3))))
 
 def calc_ak_stupeni_8_5(p: dict):
 # Описание: # Ячейка: O2579
 # Формула: =IF(O2539="","",IF(O2569<=0.8^0.5,8*10^-5*O2569^3,IF(AND(O2569>(0.8)^0.5,O2569<=20^0.2),10^(-4)*O2569^5,IF(O2569>20^0.2,2*10^-3))))
-	return excel_if(p["ak_stupeni_8"]is None, None, lambda: excel_if(p["ak_stupeni_8_4"]<=0.8**0.5,8*10**-5*p["ak_stupeni_8_4"]**3,excel_if(excel_and(p["ak_stupeni_8_4"]>(0.8)**0.5,p["ak_stupeni_8_4"]<=20**0.2),10**(-4)*p["ak_stupeni_8_4"]**5,excel_if(p["ak_stupeni_8_4"]>20**0.2,2*10**-3))))
+	return excel_if(p["ak_stupeni_n8"]is None, None, lambda: excel_if(p["ak_stupenims_n8"]<=0.8**0.5,8*10**-5*p["ak_stupenims_n8"]**3,excel_if(excel_and(p["ak_stupenims_n8"]>(0.8)**0.5,p["ak_stupenims_n8"]<=20**0.2),10**(-4)*p["ak_stupenims_n8"]**5,excel_if(p["ak_stupenims_n8"]>20**0.2,2*10**-3))))
 
 def calc_ak_stupeni_9_5(p: dict):
 # Описание: # Ячейка: O2580
 # Формула: =IF(O2540="","",IF(O2570<=0.8^0.5,8*10^-5*O2570^3,IF(AND(O2570>(0.8)^0.5,O2570<=20^0.2),10^(-4)*O2570^5,IF(O2570>20^0.2,2*10^-3))))
-	return excel_if(p["ak_stupeni_9"]is None, None, lambda: excel_if(p["ak_stupeni_9_4"]<=0.8**0.5,8*10**-5*p["ak_stupeni_9_4"]**3,excel_if(excel_and(p["ak_stupeni_9_4"]>(0.8)**0.5,p["ak_stupeni_9_4"]<=20**0.2),10**(-4)*p["ak_stupeni_9_4"]**5,excel_if(p["ak_stupeni_9_4"]>20**0.2,2*10**-3))))
+	return excel_if(p["ak_stupeni_n9"]is None, None, lambda: excel_if(p["ak_stupenims_n9"]<=0.8**0.5,8*10**-5*p["ak_stupenims_n9"]**3,excel_if(excel_and(p["ak_stupenims_n9"]>(0.8)**0.5,p["ak_stupenims_n9"]<=20**0.2),10**(-4)*p["ak_stupenims_n9"]**5,excel_if(p["ak_stupenims_n9"]>20**0.2,2*10**-3))))
 
 def calc_ak_stupeni_10_5(p: dict):
 # Описание: # Ячейка: O2581
 # Формула: =IF(O2541="","",IF(O2571<=0.8^0.5,8*10^-5*O2571^3,IF(AND(O2571>(0.8)^0.5,O2571<=20^0.2),10^(-4)*O2571^5,IF(O2571>20^0.2,2*10^-3))))
-	return excel_if(p["ak_stupeni_10"]is None, None, lambda: excel_if(p["ak_stupeni_10_4"]<=0.8**0.5,8*10**-5*p["ak_stupeni_10_4"]**3,excel_if(excel_and(p["ak_stupeni_10_4"]>(0.8)**0.5,p["ak_stupeni_10_4"]<=20**0.2),10**(-4)*p["ak_stupeni_10_4"]**5,excel_if(p["ak_stupeni_10_4"]>20**0.2,2*10**-3))))
+	return excel_if(p["ak_stupeni_n10"]is None, None, lambda: excel_if(p["ak_stupenims_n10"]<=0.8**0.5,8*10**-5*p["ak_stupenims_n10"]**3,excel_if(excel_and(p["ak_stupenims_n10"]>(0.8)**0.5,p["ak_stupenims_n10"]<=20**0.2),10**(-4)*p["ak_stupenims_n10"]**5,excel_if(p["ak_stupenims_n10"]>20**0.2,2*10**-3))))
 
 def calc_ak_stupeni_1_6(p: dict):
 # Описание: # Ячейка: O2582
 # Формула: =0.5*(O2572*$O$5*$O$7^2*O2552^2)
-	return 0.5*(p["ak_stupeni_1_5"]*p["ak_rashod_sredy_g_kg_s"]*p["ak_kriticheskaya_skorost_m_s"]**2*p["ak_stupeni_1_3"]**2)
+	return 0.5*(p["ak_stupenikm_n1"]*p["ak_rashod_sredy_g_kg_s"]*p["ak_kriticheskaya_skorost_m_s"]**2*p["ak_stupenilambda_n1"]**2)
 
 def calc_ak_stupeni_2_6(p: dict):
 # Описание: # Ячейка: O2583
 # Формула: =IF(O2533="","",0.5*(O2573*O5*O7^2*O2553^2))
-	return excel_if(p["ak_stupeni_2"]is None, None, lambda: 0.5*(p["ak_stupeni_2_5"]*p["ak_rashod_sredy_g_kg_s"]*p["ak_kriticheskaya_skorost_m_s"]**2*p["ak_stupeni_2_3"]**2))
+	return excel_if(p["ak_stupeni_n2"]is None, None, lambda: 0.5*(p["ak_stupenikm_n2"]*p["ak_rashod_sredy_g_kg_s"]*p["ak_kriticheskaya_skorost_m_s"]**2*p["ak_stupenilambda_n2"]**2))
 
 def calc_ak_stupeni_3_6(p: dict):
 # Описание: # Ячейка: O2584
 # Формула: =IF(O2534="","",0.5*(O2574*O5*O7^2*O2554^2))
-	return excel_if(p["ak_stupeni_3"]is None, None, lambda: 0.5*(p["ak_stupeni_3_5"]*p["ak_rashod_sredy_g_kg_s"]*p["ak_kriticheskaya_skorost_m_s"]**2*p["ak_stupeni_3_3"]**2))
+	return excel_if(p["ak_stupeni_n3"]is None, None, lambda: 0.5*(p["ak_stupenikm_n3"]*p["ak_rashod_sredy_g_kg_s"]*p["ak_kriticheskaya_skorost_m_s"]**2*p["ak_stupenilambda_n3"]**2))
 
 def calc_ak_stupeni_4_6(p: dict):
 # Описание: # Ячейка: O2585
 # Формула: =IF(O12>3,0.5*(O2575*O5*O7^2*O2555^2),None)
-	return excel_if(p["ak_kolichestvo_stupenej_drosselirovaniya"]>3,0.5*(p["ak_stupeni_4_5"]*p["ak_rashod_sredy_g_kg_s"]*p["ak_kriticheskaya_skorost_m_s"]**2*p["ak_stupeni_4_3"]**2),None)
+	return excel_if(p["ak_kolichestvo_stupenej_drosselirovaniya"]>3,0.5*(p["ak_stupenikm_n4"]*p["ak_rashod_sredy_g_kg_s"]*p["ak_kriticheskaya_skorost_m_s"]**2*p["ak_stupenilambda_n4"]**2),None)
 
 def calc_ak_stupeni_5_6(p: dict):
 # Описание: # Ячейка: O2586
 # Формула: =IF($O$12>4,0.5*(O2576*$O$5*$O$7^2*O2556^2),None)
-	return excel_if(p["ak_kolichestvo_stupenej_drosselirovaniya"]>4,0.5*(p["ak_stupeni_5_5"]*p["ak_rashod_sredy_g_kg_s"]*p["ak_kriticheskaya_skorost_m_s"]**2*p["ak_stupeni_5_3"]**2),None)
+	return excel_if(p["ak_kolichestvo_stupenej_drosselirovaniya"]>4,0.5*(p["ak_stupenikm_n5"]*p["ak_rashod_sredy_g_kg_s"]*p["ak_kriticheskaya_skorost_m_s"]**2*p["ak_stupenilambda_n5"]**2),None)
 
 def calc_ak_stupeni_6_6(p: dict):
 # Описание: # Ячейка: O2587
 # Формула: =IF($O$12>5,0.5*(O2577*$O$5*$O$7^2*O2557^2),None)
-	return excel_if(p["ak_kolichestvo_stupenej_drosselirovaniya"]>5,0.5*(p["ak_stupeni_6_5"]*p["ak_rashod_sredy_g_kg_s"]*p["ak_kriticheskaya_skorost_m_s"]**2*p["ak_stupeni_6_3"]**2),None)
+	return excel_if(p["ak_kolichestvo_stupenej_drosselirovaniya"]>5,0.5*(p["ak_stupenikm_n6"]*p["ak_rashod_sredy_g_kg_s"]*p["ak_kriticheskaya_skorost_m_s"]**2*p["ak_stupenilambda_n6"]**2),None)
 
 def calc_ak_stupeni_7_6(p: dict):
 # Описание: # Ячейка: O2588
 # Формула: =IF($O$12>6,0.5*(O2578*$O$5*$O$7^2*O2558^2),None)
-	return excel_if(p["ak_kolichestvo_stupenej_drosselirovaniya"]>6,0.5*(p["ak_stupeni_7_5"]*p["ak_rashod_sredy_g_kg_s"]*p["ak_kriticheskaya_skorost_m_s"]**2*p["ak_stupeni_7_3"]**2),None)
+	return excel_if(p["ak_kolichestvo_stupenej_drosselirovaniya"]>6,0.5*(p["ak_stupenikm_n7"]*p["ak_rashod_sredy_g_kg_s"]*p["ak_kriticheskaya_skorost_m_s"]**2*p["ak_stupenilambda_n7"]**2),None)
 
 def calc_ak_stupeni_8_6(p: dict):
 # Описание: # Ячейка: O2589
 # Формула: =IF($O$12>7,0.5*(O2579*$O$5*$O$7^2*O2559^2),None)
-	return excel_if(p["ak_kolichestvo_stupenej_drosselirovaniya"]>7,0.5*(p["ak_stupeni_8_5"]*p["ak_rashod_sredy_g_kg_s"]*p["ak_kriticheskaya_skorost_m_s"]**2*p["ak_stupeni_8_3"]**2),None)
+	return excel_if(p["ak_kolichestvo_stupenej_drosselirovaniya"]>7,0.5*(p["ak_stupenikm_n8"]*p["ak_rashod_sredy_g_kg_s"]*p["ak_kriticheskaya_skorost_m_s"]**2*p["ak_stupenilambda_n8"]**2),None)
 
 def calc_ak_stupeni_9_6(p: dict):
 # Описание: # Ячейка: O2590
 # Формула: =IF($O$12>8,0.5*(O2580*$O$5*$O$7^2*O2560^2),None)
-	return excel_if(p["ak_kolichestvo_stupenej_drosselirovaniya"]>8,0.5*(p["ak_stupeni_9_5"]*p["ak_rashod_sredy_g_kg_s"]*p["ak_kriticheskaya_skorost_m_s"]**2*p["ak_stupeni_9_3"]**2),None)
+	return excel_if(p["ak_kolichestvo_stupenej_drosselirovaniya"]>8,0.5*(p["ak_stupenikm_n9"]*p["ak_rashod_sredy_g_kg_s"]*p["ak_kriticheskaya_skorost_m_s"]**2*p["ak_stupenilambda_n9"]**2),None)
 
 def calc_ak_stupeni_10_6(p: dict):
 # Описание: # Ячейка: O2591
 # Формула: =IF($O$12>9,0.5*(O2581*$O$5*$O$7^2*O2561^2),None)
-	return excel_if(p["ak_kolichestvo_stupenej_drosselirovaniya"]>9,0.5*(p["ak_stupeni_10_5"]*p["ak_rashod_sredy_g_kg_s"]*p["ak_kriticheskaya_skorost_m_s"]**2*p["ak_stupeni_10_3"]**2),None)
+	return excel_if(p["ak_kolichestvo_stupenej_drosselirovaniya"]>9,0.5*(p["ak_stupenikm_n10"]*p["ak_rashod_sredy_g_kg_s"]*p["ak_kriticheskaya_skorost_m_s"]**2*p["ak_stupenilambda_n10"]**2),None)
 
 def calc_ak_stupeni_1_7(p: dict):
 # Описание: # Ячейка: O2592
 # Формула: =10*LOG10(O2582/10^(-12))
-	return 10*math.log10(p["ak_stupeni_1_6"]/10**(-12))
+	return 10*math.log10(p["ak_stupeniwp_n1"]/10**(-12))
 
 def calc_ak_stupeni_2_7(p: dict):
 # Описание: # Ячейка: O2593
 # Формула: =IF(O2533="","",10*LOG10(O2583/10^(-12)))
-	return excel_if(p["ak_stupeni_2"]is None, None, lambda: 10*math.log10(p["ak_stupeni_2_6"]/10**(-12)))
+	return excel_if(p["ak_stupeni_n2"]is None, None, lambda: 10*math.log10(p["ak_stupeniwp_n2"]/10**(-12)))
 
 def calc_ak_stupeni_3_7(p: dict):
 # Описание: # Ячейка: O2594
 # Формула: =IF(O2534="","",10*LOG10(O2584/10^(-12)))
-	return excel_if(p["ak_stupeni_3"]is None, None, lambda: 10*math.log10(p["ak_stupeni_3_6"]/10**(-12)))
+	return excel_if(p["ak_stupeni_n3"]is None, None, lambda: 10*math.log10(p["ak_stupeniwp_n3"]/10**(-12)))
 
 def calc_ak_stupeni_4_7(p: dict):
 # Описание: # Ячейка: O2595
 # Формула: =IF(O12>3,10*LOG10(O2585/10^(-12)),None)
-	return excel_if(p["ak_kolichestvo_stupenej_drosselirovaniya"]>3,10*math.log10(p["ak_stupeni_4_6"]/10**(-12)),None)
+	return excel_if(p["ak_kolichestvo_stupenej_drosselirovaniya"]>3,10*math.log10(p["ak_stupeniwp_n4"]/10**(-12)),None)
 
 def calc_ak_stupeni_5_7(p: dict):
 # Описание: # Ячейка: O2596
 # Формула: =IF($O$12>4,10*LOG10(O2586/10^(-12)),None)
-	return excel_if(p["ak_kolichestvo_stupenej_drosselirovaniya"]>4,10*math.log10(p["ak_stupeni_5_6"]/10**(-12)),None)
+	return excel_if(p["ak_kolichestvo_stupenej_drosselirovaniya"]>4,10*math.log10(p["ak_stupeniwp_n5"]/10**(-12)),None)
 
 def calc_ak_stupeni_6_7(p: dict):
 # Описание: # Ячейка: O2597
 # Формула: =IF($O$12>5,10*LOG10(O2587/10^(-12)),None)
-	return excel_if(p["ak_kolichestvo_stupenej_drosselirovaniya"]>5,10*math.log10(p["ak_stupeni_6_6"]/10**(-12)),None)
+	return excel_if(p["ak_kolichestvo_stupenej_drosselirovaniya"]>5,10*math.log10(p["ak_stupeniwp_n6"]/10**(-12)),None)
 
 def calc_ak_stupeni_7_7(p: dict):
 # Описание: # Ячейка: O2598
 # Формула: =IF($O$12>6,10*LOG10(O2588/10^(-12)),None)
-	return excel_if(p["ak_kolichestvo_stupenej_drosselirovaniya"]>6,10*math.log10(p["ak_stupeni_7_6"]/10**(-12)),None)
+	return excel_if(p["ak_kolichestvo_stupenej_drosselirovaniya"]>6,10*math.log10(p["ak_stupeniwp_n7"]/10**(-12)),None)
 
 def calc_ak_stupeni_8_7(p: dict):
 # Описание: # Ячейка: O2599
 # Формула: =IF($O$12>7,10*LOG10(O2589/10^(-12)),None)
-	return excel_if(p["ak_kolichestvo_stupenej_drosselirovaniya"]>7,10*math.log10(p["ak_stupeni_8_6"]/10**(-12)),None)
+	return excel_if(p["ak_kolichestvo_stupenej_drosselirovaniya"]>7,10*math.log10(p["ak_stupeniwp_n8"]/10**(-12)),None)
 
 def calc_ak_stupeni_9_7(p: dict):
 # Описание: # Ячейка: O2600
 # Формула: =IF($O$12>8,10*LOG10(O2590/10^(-12)),None)
-	return excel_if(p["ak_kolichestvo_stupenej_drosselirovaniya"]>8,10*math.log10(p["ak_stupeni_9_6"]/10**(-12)),None)
+	return excel_if(p["ak_kolichestvo_stupenej_drosselirovaniya"]>8,10*math.log10(p["ak_stupeniwp_n9"]/10**(-12)),None)
 
 def calc_ak_stupeni_10_7(p: dict):
 # Описание: # Ячейка: O2601
 # Формула: =IF($O$12>9,10*LOG10(O2591/10^(-12)),None)
-	return excel_if(p["ak_kolichestvo_stupenej_drosselirovaniya"]>9,10*math.log10(p["ak_stupeni_10_6"]/10**(-12)),None)
+	return excel_if(p["ak_kolichestvo_stupenej_drosselirovaniya"]>9,10*math.log10(p["ak_stupeniwp_n10"]/10**(-12)),None)
 
 CALC_FUNCTIONS_AKUSTIC = OrderedDict([
 ('lp_steam_discharge_sound_power_level_db', {'fnc': calc_lp_steam_discharge_sound_power_level_db, 'cell': ''}),
@@ -12218,7 +12218,7 @@ CALC_FUNCTIONS_AKUSTIC = OrderedDict([
 ('do_47', {'fnc': calc_do_47, 'cell': 'O1337'}),
 ('do_101', {'fnc': calc_do_101, 'cell': 'O1757'}),
 ('do_71', {'fnc': calc_do_71, 'cell': 'O1474'}),
-('ak_stupeni_3_2', {'fnc': calc_ak_stupeni_3_2, 'cell': 'O2544'}),
+('ak_stupenipi_n3', {'fnc': calc_ak_stupeni_3_2, 'cell': 'O2544'}),
 ('do_29', {'fnc': calc_do_29, 'cell': 'O1215'}),
 ('do_46', {'fnc': calc_do_46, 'cell': 'O1336'}),
 ('ak_srednegeometricheskaya_chastota_gc_1000_28', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_1000_28, 'cell': 'O370'}),
@@ -12289,7 +12289,7 @@ CALC_FUNCTIONS_AKUSTIC = OrderedDict([
 ('ak_srednegeometricheskaya_chastota_gc_31_5_2', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_31_5_2, 'cell': 'O88'}),
 ('do_67', {'fnc': calc_do_67, 'cell': 'O1470'}),
 ('do_85', {'fnc': calc_do_85, 'cell': 'O1610'}),
-('ak_stupeni_1_2', {'fnc': calc_ak_stupeni_1_2, 'cell': 'O2542'}),
+('ak_stupenipi_n1', {'fnc': calc_ak_stupeni_1_2, 'cell': 'O2542'}),
 ('do_7', {'fnc': calc_do_7, 'cell': 'O1070'}),
 ('ak_srednegeometricheskaya_chastota_gc_63_22', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_63_22, 'cell': 'O306'}),
 ('do_4', {'fnc': calc_do_4, 'cell': 'O1067'}),
@@ -12328,7 +12328,7 @@ CALC_FUNCTIONS_AKUSTIC = OrderedDict([
 ('ak_srednegeometricheskaya_chastota_gc_250_77', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_250_77, 'cell': 'O885'}),
 ('ak_srednegeometricheskaya_chastota_gc_63_19', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_63_19, 'cell': 'O276'}),
 ('ak_srednegeometricheskaya_chastota_gc_2000_19', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_2000_19, 'cell': 'O281'}),
-('ak_stupeni_2_2', {'fnc': calc_ak_stupeni_2_2, 'cell': 'O2543'}),
+('ak_stupenipi_n2', {'fnc': calc_ak_stupeni_2_2, 'cell': 'O2543'}),
 ('ak_ploschad_zanyataya_plastinami_m2', {'fnc': calc_ak_ploschad_zanyataya_plastinami_m2, 'cell': 'O773'}),
 ('ak_srednegeometricheskaya_chastota_gc_63_2', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_63_2, 'cell': 'O89'}),
 ('ak_srednegeometricheskaya_chastota_gc_8000_19', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_8000_19, 'cell': 'O283'}),
@@ -12507,8 +12507,8 @@ CALC_FUNCTIONS_AKUSTIC = OrderedDict([
 ('do_63', {'fnc': calc_do_63, 'cell': 'O1438'}),
 ('do_58', {'fnc': calc_do_58, 'cell': 'O1433'}),
 ('do_76', {'fnc': calc_do_76, 'cell': 'O1573'}),
-('ak_stupeni_1_3', {'fnc': calc_ak_stupeni_1_3, 'cell': 'O2552'}),
-('ak_stupeni_1_4', {'fnc': calc_ak_stupeni_1_4, 'cell': 'O2562'}),
+('ak_stupenilambda_n1', {'fnc': calc_ak_stupeni_1_3, 'cell': 'O2552'}),
+('ak_stupenims_n1', {'fnc': calc_ak_stupeni_1_4, 'cell': 'O2562'}),
 ('ak_srednegeometricheskaya_chastota_gc_63_23', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_63_23, 'cell': 'O316'}),
 ('do_169', {'fnc': calc_do_169, 'cell': 'O2411'}),
 ('ak_srednegeometricheskaya_chastota_gc_4000_26', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_4000_26, 'cell': 'O352'}),
@@ -12578,22 +12578,22 @@ CALC_FUNCTIONS_AKUSTIC = OrderedDict([
 ('do_116', {'fnc': calc_do_116, 'cell': 'O1884'}),
 ('do_146', {'fnc': calc_do_146, 'cell': 'O2221'}),
 ('do_153', {'fnc': calc_do_153, 'cell': 'O2228'}),
-('ak_stupeni_5', {'fnc': calc_ak_stupeni_5, 'cell': 'O2536'}),
-('ak_stupeni_8', {'fnc': calc_ak_stupeni_8, 'cell': 'O2539'}),
-('ak_stupeni_8_2', {'fnc': calc_ak_stupeni_8_2, 'cell': 'O2549'}),
-('ak_stupeni_4_2', {'fnc': calc_ak_stupeni_4_2, 'cell': 'O2545'}),
-('ak_stupeni_9', {'fnc': calc_ak_stupeni_9, 'cell': 'O2540'}),
-('ak_stupeni_9_2', {'fnc': calc_ak_stupeni_9_2, 'cell': 'O2550'}),
-('ak_stupeni_3', {'fnc': calc_ak_stupeni_3, 'cell': 'O2534'}),
-('ak_stupeni_6', {'fnc': calc_ak_stupeni_6, 'cell': 'O2537'}),
-('ak_stupeni_10_2', {'fnc': calc_ak_stupeni_10_2, 'cell': 'O2551'}),
-('ak_stupeni_10', {'fnc': calc_ak_stupeni_10, 'cell': 'O2541'}),
-('ak_stupeni_6_2', {'fnc': calc_ak_stupeni_6_2, 'cell': 'O2547'}),
-('ak_stupeni_7_2', {'fnc': calc_ak_stupeni_7_2, 'cell': 'O2548'}),
-('ak_stupeni_5_2', {'fnc': calc_ak_stupeni_5_2, 'cell': 'O2546'}),
-('ak_stupeni_2', {'fnc': calc_ak_stupeni_2, 'cell': 'O2533'}),
-('ak_stupeni_4', {'fnc': calc_ak_stupeni_4, 'cell': 'O2535'}),
-('ak_stupeni_7', {'fnc': calc_ak_stupeni_7, 'cell': 'O2538'}),
+('ak_stupeni_n5', {'fnc': calc_ak_stupeni_5, 'cell': 'O2536'}),
+('ak_stupeni_n8', {'fnc': calc_ak_stupeni_8, 'cell': 'O2539'}),
+('ak_stupenipi_n8', {'fnc': calc_ak_stupeni_8_2, 'cell': 'O2549'}),
+('ak_stupenipi_n4', {'fnc': calc_ak_stupeni_4_2, 'cell': 'O2545'}),
+('ak_stupeni_n9', {'fnc': calc_ak_stupeni_9, 'cell': 'O2540'}),
+('ak_stupenipi_n9', {'fnc': calc_ak_stupeni_9_2, 'cell': 'O2550'}),
+('ak_stupeni_n3', {'fnc': calc_ak_stupeni_3, 'cell': 'O2534'}),
+('ak_stupeni_n6', {'fnc': calc_ak_stupeni_6, 'cell': 'O2537'}),
+('ak_stupenipi_n10', {'fnc': calc_ak_stupeni_10_2, 'cell': 'O2551'}),
+('ak_stupeni_n10', {'fnc': calc_ak_stupeni_10, 'cell': 'O2541'}),
+('ak_stupenipi_n6', {'fnc': calc_ak_stupeni_6_2, 'cell': 'O2547'}),
+('ak_stupenipi_n7', {'fnc': calc_ak_stupeni_7_2, 'cell': 'O2548'}),
+('ak_stupenipi_n5', {'fnc': calc_ak_stupeni_5_2, 'cell': 'O2546'}),
+('ak_stupeni_n2', {'fnc': calc_ak_stupeni_2, 'cell': 'O2533'}),
+('ak_stupeni_n4', {'fnc': calc_ak_stupeni_4, 'cell': 'O2535'}),
+('ak_stupeni_n7', {'fnc': calc_ak_stupeni_7, 'cell': 'O2538'}),
 ('ak_srednegeometricheskaya_chastota_gc_31_5_51', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_31_5_51, 'cell': 'O505'}),
 ('ak_srednegeometricheskaya_chastota_gc_8000_23', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_8000_23, 'cell': 'O323'}),
 ('do_132', {'fnc': calc_do_132, 'cell': 'O2049'}),
@@ -12684,7 +12684,7 @@ CALC_FUNCTIONS_AKUSTIC = OrderedDict([
 ('ak_srednegeometricheskaya_chastota_gc_8000_95', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_8000_95, 'cell': 'O1081'}),
 ('ak_srednegeometricheskaya_chastota_gc_31_5_105', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_31_5_105, 'cell': 'O1073'}),
 ('ak_srednegeometricheskaya_chastota_gc_2000_95', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_2000_95, 'cell': 'O1079'}),
-('ak_stupeni_1_5', {'fnc': calc_ak_stupeni_1_5, 'cell': 'O2572'}),
+('ak_stupenikm_n1', {'fnc': calc_ak_stupeni_1_5, 'cell': 'O2572'}),
 ('ak_srednegeometricheskaya_chastota_gc_500_95', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_500_95, 'cell': 'O1077'}),
 ('ak_srednegeometricheskaya_chastota_gc_125_95', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_125_95, 'cell': 'O1075'}),
 ('ak_srednegeometricheskaya_chastota_gc_63_95', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_63_95, 'cell': 'O1074'}),
@@ -12719,24 +12719,24 @@ CALC_FUNCTIONS_AKUSTIC = OrderedDict([
 ('ak_srednegeometricheskaya_chastota_gc_125_42', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_125_42, 'cell': 'O517'}),
 ('ak_srednegeometricheskaya_chastota_gc_8000_33', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_8000_33, 'cell': 'O423'}),
 ('ak_srednegeometricheskaya_chastota_gc_500_42', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_500_42, 'cell': 'O519'}),
-('ak_stupeni_8_3', {'fnc': calc_ak_stupeni_8_3, 'cell': 'O2559'}),
-('ak_stupeni_8_4', {'fnc': calc_ak_stupeni_8_4, 'cell': 'O2569'}),
-('ak_stupeni_9_3', {'fnc': calc_ak_stupeni_9_3, 'cell': 'O2560'}),
-('ak_stupeni_9_4', {'fnc': calc_ak_stupeni_9_4, 'cell': 'O2570'}),
-('ak_stupeni_3_4', {'fnc': calc_ak_stupeni_3_4, 'cell': 'O2564'}),
-('ak_stupeni_3_3', {'fnc': calc_ak_stupeni_3_3, 'cell': 'O2554'}),
-('ak_stupeni_10_4', {'fnc': calc_ak_stupeni_10_4, 'cell': 'O2571'}),
-('ak_stupeni_10_3', {'fnc': calc_ak_stupeni_10_3, 'cell': 'O2561'}),
-('ak_stupeni_6_4', {'fnc': calc_ak_stupeni_6_4, 'cell': 'O2567'}),
-('ak_stupeni_6_3', {'fnc': calc_ak_stupeni_6_3, 'cell': 'O2557'}),
-('ak_stupeni_5_4', {'fnc': calc_ak_stupeni_5_4, 'cell': 'O2566'}),
-('ak_stupeni_5_3', {'fnc': calc_ak_stupeni_5_3, 'cell': 'O2556'}),
-('ak_stupeni_2_4', {'fnc': calc_ak_stupeni_2_4, 'cell': 'O2563'}),
-('ak_stupeni_2_3', {'fnc': calc_ak_stupeni_2_3, 'cell': 'O2553'}),
-('ak_stupeni_4_4', {'fnc': calc_ak_stupeni_4_4, 'cell': 'O2565'}),
-('ak_stupeni_4_3', {'fnc': calc_ak_stupeni_4_3, 'cell': 'O2555'}),
-('ak_stupeni_7_4', {'fnc': calc_ak_stupeni_7_4, 'cell': 'O2568'}),
-('ak_stupeni_7_3', {'fnc': calc_ak_stupeni_7_3, 'cell': 'O2558'}),
+('ak_stupenilambda_n8', {'fnc': calc_ak_stupeni_8_3, 'cell': 'O2559'}),
+('ak_stupenims_n8', {'fnc': calc_ak_stupeni_8_4, 'cell': 'O2569'}),
+('ak_stupenilambda_n9', {'fnc': calc_ak_stupeni_9_3, 'cell': 'O2560'}),
+('ak_stupenims_n9', {'fnc': calc_ak_stupeni_9_4, 'cell': 'O2570'}),
+('ak_stupenims_n3', {'fnc': calc_ak_stupeni_3_4, 'cell': 'O2564'}),
+('ak_stupenilambda_n3', {'fnc': calc_ak_stupeni_3_3, 'cell': 'O2554'}),
+('ak_stupenims_n10', {'fnc': calc_ak_stupeni_10_4, 'cell': 'O2571'}),
+('ak_stupenilambda_n10', {'fnc': calc_ak_stupeni_10_3, 'cell': 'O2561'}),
+('ak_stupenims_n6', {'fnc': calc_ak_stupeni_6_4, 'cell': 'O2567'}),
+('ak_stupenilambda_n6', {'fnc': calc_ak_stupeni_6_3, 'cell': 'O2557'}),
+('ak_stupenims_n5', {'fnc': calc_ak_stupeni_5_4, 'cell': 'O2566'}),
+('ak_stupenilambda_n5', {'fnc': calc_ak_stupeni_5_3, 'cell': 'O2556'}),
+('ak_stupenims_n2', {'fnc': calc_ak_stupeni_2_4, 'cell': 'O2563'}),
+('ak_stupenilambda_n2', {'fnc': calc_ak_stupeni_2_3, 'cell': 'O2553'}),
+('ak_stupenims_n4', {'fnc': calc_ak_stupeni_4_4, 'cell': 'O2565'}),
+('ak_stupenilambda_n4', {'fnc': calc_ak_stupeni_4_3, 'cell': 'O2555'}),
+('ak_stupenims_n7', {'fnc': calc_ak_stupeni_7_4, 'cell': 'O2568'}),
+('ak_stupenilambda_n7', {'fnc': calc_ak_stupeni_7_3, 'cell': 'O2558'}),
 ('ak_srednegeometricheskaya_chastota_gc_31_5_52', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_31_5_52, 'cell': 'O515'}),
 ('ak_srednegeometricheskaya_chastota_gc_8000_24', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_8000_24, 'cell': 'O333'}),
 ('ak_srednegeometricheskaya_chastota_gc_500_33', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_500_33, 'cell': 'O419'}),
@@ -12777,7 +12777,7 @@ CALC_FUNCTIONS_AKUSTIC = OrderedDict([
 ('ak_srednegeometricheskaya_chastota_gc_8000_96', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_8000_96, 'cell': 'O1090'}),
 ('ak_srednegeometricheskaya_chastota_gc_31_5_106', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_31_5_106, 'cell': 'O1082'}),
 ('ak_srednegeometricheskaya_chastota_gc_2000_96', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_2000_96, 'cell': 'O1088'}),
-('ak_stupeni_1_6', {'fnc': calc_ak_stupeni_1_6, 'cell': 'O2582'}),
+('ak_stupeniwp_n1', {'fnc': calc_ak_stupeni_1_6, 'cell': 'O2582'}),
 ('ak_srednegeometricheskaya_chastota_gc_500_96', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_500_96, 'cell': 'O1086'}),
 ('ak_srednegeometricheskaya_chastota_gc_125_96', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_125_96, 'cell': 'O1084'}),
 ('ak_srednegeometricheskaya_chastota_gc_63_96', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_63_96, 'cell': 'O1083'}),
@@ -12813,7 +12813,7 @@ CALC_FUNCTIONS_AKUSTIC = OrderedDict([
 ('ak_srednegeometricheskaya_chastota_gc_125_186', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_125_186, 'cell': 'O2055'}),
 ('ak_srednegeometricheskaya_chastota_gc_250_186', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_250_186, 'cell': 'O2056'}),
 ('ak_srednegeometricheskaya_chastota_gc_63_186', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_63_186, 'cell': 'O2054'}),
-('ak_stupeni_8_5', {'fnc': calc_ak_stupeni_8_5, 'cell': 'O2579'}),
+('ak_stupenikm_n8', {'fnc': calc_ak_stupeni_8_5, 'cell': 'O2579'}),
 ('ak_srednegeometricheskaya_chastota_gc_2000_186', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_2000_186, 'cell': 'O2059'}),
 ('ak_srednegeometricheskaya_chastota_gc_63_206', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_63_206, 'cell': 'O2267'}),
 ('ak_srednegeometricheskaya_chastota_gc_125_206', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_125_206, 'cell': 'O2268'}),
@@ -12828,13 +12828,13 @@ CALC_FUNCTIONS_AKUSTIC = OrderedDict([
 ('ak_srednegeometricheskaya_chastota_gc_500_203', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_500_203, 'cell': 'O2233'}),
 ('ak_srednegeometricheskaya_chastota_gc_8000_203', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_8000_203, 'cell': 'O2237'}),
 ('ak_srednegeometricheskaya_chastota_gc_31_5_213', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_31_5_213, 'cell': 'O2229'}),
-('ak_stupeni_9_5', {'fnc': calc_ak_stupeni_9_5, 'cell': 'O2580'}),
+('ak_stupenikm_n9', {'fnc': calc_ak_stupeni_9_5, 'cell': 'O2580'}),
 ('ak_srednegeometricheskaya_chastota_gc_125_203', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_125_203, 'cell': 'O2231'}),
 ('ak_srednegeometricheskaya_chastota_gc_250_203', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_250_203, 'cell': 'O2232'}),
 ('ak_srednegeometricheskaya_chastota_gc_4000_203', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_4000_203, 'cell': 'O2236'}),
 ('ak_srednegeometricheskaya_chastota_gc_63_203', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_63_203, 'cell': 'O2230'}),
 ('ak_srednegeometricheskaya_chastota_gc_2000_203', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_2000_203, 'cell': 'O2235'}),
-('ak_stupeni_3_5', {'fnc': calc_ak_stupeni_3_5, 'cell': 'O2574'}),
+('ak_stupenikm_n3', {'fnc': calc_ak_stupeni_3_5, 'cell': 'O2574'}),
 ('ak_srednegeometricheskaya_chastota_gc_8000_119', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_8000_119, 'cell': 'O1353'}),
 ('ak_srednegeometricheskaya_chastota_gc_2000_116', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_2000_116, 'cell': 'O1314'}),
 ('ak_srednegeometricheskaya_chastota_gc_500_119', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_500_119, 'cell': 'O1349'}),
@@ -12853,7 +12853,7 @@ CALC_FUNCTIONS_AKUSTIC = OrderedDict([
 ('ak_srednegeometricheskaya_chastota_gc_250_116', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_250_116, 'cell': 'O1311'}),
 ('ak_srednegeometricheskaya_chastota_gc_125_119', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_125_119, 'cell': 'O1347'}),
 ('ak_srednegeometricheskaya_chastota_gc_250_119', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_250_119, 'cell': 'O1348'}),
-('ak_stupeni_10_5', {'fnc': calc_ak_stupeni_10_5, 'cell': 'O2581'}),
+('ak_stupenikm_n10', {'fnc': calc_ak_stupeni_10_5, 'cell': 'O2581'}),
 ('ak_srednegeometricheskaya_chastota_gc_2000_221', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_2000_221, 'cell': 'O2420'}),
 ('ak_srednegeometricheskaya_chastota_gc_8000_221', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_8000_221, 'cell': 'O2422'}),
 ('ak_srednegeometricheskaya_chastota_gc_125_224', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_125_224, 'cell': 'O2453'}),
@@ -12872,7 +12872,7 @@ CALC_FUNCTIONS_AKUSTIC = OrderedDict([
 ('ak_srednegeometricheskaya_chastota_gc_31_5_231', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_31_5_231, 'cell': 'O2414'}),
 ('ak_srednegeometricheskaya_chastota_gc_1000_224', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_1000_224, 'cell': 'O2456'}),
 ('ak_srednegeometricheskaya_chastota_gc_250_221', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_250_221, 'cell': 'O2417'}),
-('ak_stupeni_6_5', {'fnc': calc_ak_stupeni_6_5, 'cell': 'O2577'}),
+('ak_stupenikm_n6', {'fnc': calc_ak_stupeni_6_5, 'cell': 'O2577'}),
 ('ak_srednegeometricheskaya_chastota_gc_8000_158', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_8000_158, 'cell': 'O1773'}),
 ('ak_srednegeometricheskaya_chastota_gc_1000_155', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_1000_155, 'cell': 'O1733'}),
 ('ak_srednegeometricheskaya_chastota_gc_2000_158', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_2000_158, 'cell': 'O1771'}),
@@ -12891,7 +12891,7 @@ CALC_FUNCTIONS_AKUSTIC = OrderedDict([
 ('ak_srednegeometricheskaya_chastota_gc_63_155', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_63_155, 'cell': 'O1729'}),
 ('ak_srednegeometricheskaya_chastota_gc_2000_155', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_2000_155, 'cell': 'O1734'}),
 ('ak_srednegeometricheskaya_chastota_gc_250_155', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_250_155, 'cell': 'O1731'}),
-('ak_stupeni_5_5', {'fnc': calc_ak_stupeni_5_5, 'cell': 'O2576'}),
+('ak_stupenikm_n5', {'fnc': calc_ak_stupeni_5_5, 'cell': 'O2576'}),
 ('ak_srednegeometricheskaya_chastota_gc_8000_144', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_8000_144, 'cell': 'O1624'}),
 ('ak_srednegeometricheskaya_chastota_gc_125_141', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_125_141, 'cell': 'O1581'}),
 ('ak_srednegeometricheskaya_chastota_gc_31_5_151', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_31_5_151, 'cell': 'O1579'}),
@@ -12910,7 +12910,7 @@ CALC_FUNCTIONS_AKUSTIC = OrderedDict([
 ('ak_srednegeometricheskaya_chastota_gc_4000_144', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_4000_144, 'cell': 'O1623'}),
 ('ak_srednegeometricheskaya_chastota_gc_1000_144', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_1000_144, 'cell': 'O1621'}),
 ('ak_srednegeometricheskaya_chastota_gc_250_141', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_250_141, 'cell': 'O1582'}),
-('ak_stupeni_2_5', {'fnc': calc_ak_stupeni_2_5, 'cell': 'O2573'}),
+('ak_stupenikm_n2', {'fnc': calc_ak_stupeni_2_5, 'cell': 'O2573'}),
 ('ak_srednegeometricheskaya_chastota_gc_4000_108', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_4000_108, 'cell': 'O1230'}),
 ('ak_srednegeometricheskaya_chastota_gc_63_105', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_63_105, 'cell': 'O1187'}),
 ('ak_srednegeometricheskaya_chastota_gc_8000_108', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_8000_108, 'cell': 'O1231'}),
@@ -12929,7 +12929,7 @@ CALC_FUNCTIONS_AKUSTIC = OrderedDict([
 ('ak_srednegeometricheskaya_chastota_gc_125_108', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_125_108, 'cell': 'O1225'}),
 ('ak_srednegeometricheskaya_chastota_gc_500_108', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_500_108, 'cell': 'O1227'}),
 ('ak_srednegeometricheskaya_chastota_gc_500_105', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_500_105, 'cell': 'O1190'}),
-('ak_stupeni_4_5', {'fnc': calc_ak_stupeni_4_5, 'cell': 'O2575'}),
+('ak_stupenikm_n4', {'fnc': calc_ak_stupeni_4_5, 'cell': 'O2575'}),
 ('ak_srednegeometricheskaya_chastota_gc_1000_128', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_1000_128, 'cell': 'O1444'}),
 ('ak_srednegeometricheskaya_chastota_gc_250_131', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_250_131, 'cell': 'O1479'}),
 ('ak_srednegeometricheskaya_chastota_gc_4000_128', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_4000_128, 'cell': 'O1446'}),
@@ -12948,7 +12948,7 @@ CALC_FUNCTIONS_AKUSTIC = OrderedDict([
 ('ak_srednegeometricheskaya_chastota_gc_500_131', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_500_131, 'cell': 'O1480'}),
 ('ak_srednegeometricheskaya_chastota_gc_31_5_141', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_31_5_141, 'cell': 'O1476'}),
 ('ak_srednegeometricheskaya_chastota_gc_2000_128', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_2000_128, 'cell': 'O1445'}),
-('ak_stupeni_7_5', {'fnc': calc_ak_stupeni_7_5, 'cell': 'O2578'}),
+('ak_stupenikm_n7', {'fnc': calc_ak_stupeni_7_5, 'cell': 'O2578'}),
 ('ak_srednegeometricheskaya_chastota_gc_4000_173', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_4000_173, 'cell': 'O1930'}),
 ('ak_srednegeometricheskaya_chastota_gc_8000_173', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_8000_173, 'cell': 'O1931'}),
 ('ak_srednegeometricheskaya_chastota_gc_125_173', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_125_173, 'cell': 'O1925'}),
@@ -12988,7 +12988,7 @@ CALC_FUNCTIONS_AKUSTIC = OrderedDict([
 ('ak_srednegeometricheskaya_chastota_gc_31_5_6', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_31_5_6, 'cell': 'O128'}),
 ('ak_koefficient_treniya', {'fnc': calc_ak_koefficient_treniya, 'cell': 'O931'}),
 ('ak_r_dg', {'fnc': calc_ak_r_dg, 'cell': 'O932'}),
-('ak_stupeni_1_7', {'fnc': calc_ak_stupeni_1_7, 'cell': 'O2592'}),
+('ak_stupenilwp_n1', {'fnc': calc_ak_stupeni_1_7, 'cell': 'O2592'}),
 ('ak_srednegeometricheskaya_chastota_gc_125_71', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_125_71, 'cell': 'O830'}),
 ('ak_srednegeometricheskaya_chastota_gc_63_70', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_63_70, 'cell': 'O820'}),
 ('ak_srednegeometricheskaya_chastota_gc_31_5_82', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_31_5_82, 'cell': 'O837'}),
@@ -13017,7 +13017,7 @@ CALC_FUNCTIONS_AKUSTIC = OrderedDict([
 ('ak_srednegeometricheskaya_chastota_gc_125_187', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_125_187, 'cell': 'O2064'}),
 ('ak_srednegeometricheskaya_chastota_gc_250_187', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_250_187, 'cell': 'O2065'}),
 ('ak_srednegeometricheskaya_chastota_gc_63_187', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_63_187, 'cell': 'O2063'}),
-('ak_stupeni_8_6', {'fnc': calc_ak_stupeni_8_6, 'cell': 'O2589'}),
+('ak_stupeniwp_n8', {'fnc': calc_ak_stupeni_8_6, 'cell': 'O2589'}),
 ('ak_srednegeometricheskaya_chastota_gc_2000_187', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_2000_187, 'cell': 'O2068'}),
 ('ak_srednegeometricheskaya_chastota_gc_63_207', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_63_207, 'cell': 'O2276'}),
 ('ak_srednegeometricheskaya_chastota_gc_125_207', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_125_207, 'cell': 'O2277'}),
@@ -13032,13 +13032,13 @@ CALC_FUNCTIONS_AKUSTIC = OrderedDict([
 ('ak_srednegeometricheskaya_chastota_gc_500_204', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_500_204, 'cell': 'O2242'}),
 ('ak_srednegeometricheskaya_chastota_gc_8000_204', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_8000_204, 'cell': 'O2246'}),
 ('ak_srednegeometricheskaya_chastota_gc_31_5_214', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_31_5_214, 'cell': 'O2238'}),
-('ak_stupeni_9_6', {'fnc': calc_ak_stupeni_9_6, 'cell': 'O2590'}),
+('ak_stupeniwp_n9', {'fnc': calc_ak_stupeni_9_6, 'cell': 'O2590'}),
 ('ak_srednegeometricheskaya_chastota_gc_125_204', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_125_204, 'cell': 'O2240'}),
 ('ak_srednegeometricheskaya_chastota_gc_250_204', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_250_204, 'cell': 'O2241'}),
 ('ak_srednegeometricheskaya_chastota_gc_4000_204', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_4000_204, 'cell': 'O2245'}),
 ('ak_srednegeometricheskaya_chastota_gc_63_204', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_63_204, 'cell': 'O2239'}),
 ('ak_srednegeometricheskaya_chastota_gc_2000_204', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_2000_204, 'cell': 'O2244'}),
-('ak_stupeni_3_6', {'fnc': calc_ak_stupeni_3_6, 'cell': 'O2584'}),
+('ak_stupeniwp_n3', {'fnc': calc_ak_stupeni_3_6, 'cell': 'O2584'}),
 ('ak_srednegeometricheskaya_chastota_gc_8000_120', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_8000_120, 'cell': 'O1362'}),
 ('ak_srednegeometricheskaya_chastota_gc_2000_117', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_2000_117, 'cell': 'O1323'}),
 ('ak_srednegeometricheskaya_chastota_gc_500_120', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_500_120, 'cell': 'O1358'}),
@@ -13057,7 +13057,7 @@ CALC_FUNCTIONS_AKUSTIC = OrderedDict([
 ('ak_srednegeometricheskaya_chastota_gc_250_117', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_250_117, 'cell': 'O1320'}),
 ('ak_srednegeometricheskaya_chastota_gc_125_120', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_125_120, 'cell': 'O1356'}),
 ('ak_srednegeometricheskaya_chastota_gc_250_120', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_250_120, 'cell': 'O1357'}),
-('ak_stupeni_10_6', {'fnc': calc_ak_stupeni_10_6, 'cell': 'O2591'}),
+('ak_stupeniwp_n10', {'fnc': calc_ak_stupeni_10_6, 'cell': 'O2591'}),
 ('ak_srednegeometricheskaya_chastota_gc_2000_222', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_2000_222, 'cell': 'O2429'}),
 ('ak_srednegeometricheskaya_chastota_gc_8000_222', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_8000_222, 'cell': 'O2431'}),
 ('ak_srednegeometricheskaya_chastota_gc_125_225', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_125_225, 'cell': 'O2462'}),
@@ -13076,7 +13076,7 @@ CALC_FUNCTIONS_AKUSTIC = OrderedDict([
 ('ak_srednegeometricheskaya_chastota_gc_31_5_232', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_31_5_232, 'cell': 'O2423'}),
 ('ak_srednegeometricheskaya_chastota_gc_1000_225', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_1000_225, 'cell': 'O2465'}),
 ('ak_srednegeometricheskaya_chastota_gc_250_222', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_250_222, 'cell': 'O2426'}),
-('ak_stupeni_6_6', {'fnc': calc_ak_stupeni_6_6, 'cell': 'O2587'}),
+('ak_stupeniwp_n6', {'fnc': calc_ak_stupeni_6_6, 'cell': 'O2587'}),
 ('ak_srednegeometricheskaya_chastota_gc_8000_159', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_8000_159, 'cell': 'O1782'}),
 ('ak_srednegeometricheskaya_chastota_gc_1000_156', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_1000_156, 'cell': 'O1742'}),
 ('ak_srednegeometricheskaya_chastota_gc_2000_159', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_2000_159, 'cell': 'O1780'}),
@@ -13095,7 +13095,7 @@ CALC_FUNCTIONS_AKUSTIC = OrderedDict([
 ('ak_srednegeometricheskaya_chastota_gc_63_156', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_63_156, 'cell': 'O1738'}),
 ('ak_srednegeometricheskaya_chastota_gc_2000_156', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_2000_156, 'cell': 'O1743'}),
 ('ak_srednegeometricheskaya_chastota_gc_250_156', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_250_156, 'cell': 'O1740'}),
-('ak_stupeni_5_6', {'fnc': calc_ak_stupeni_5_6, 'cell': 'O2586'}),
+('ak_stupeniwp_n5', {'fnc': calc_ak_stupeni_5_6, 'cell': 'O2586'}),
 ('ak_srednegeometricheskaya_chastota_gc_8000_145', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_8000_145, 'cell': 'O1633'}),
 ('ak_srednegeometricheskaya_chastota_gc_125_142', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_125_142, 'cell': 'O1590'}),
 ('ak_srednegeometricheskaya_chastota_gc_31_5_152', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_31_5_152, 'cell': 'O1588'}),
@@ -13114,7 +13114,7 @@ CALC_FUNCTIONS_AKUSTIC = OrderedDict([
 ('ak_srednegeometricheskaya_chastota_gc_4000_145', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_4000_145, 'cell': 'O1632'}),
 ('ak_srednegeometricheskaya_chastota_gc_1000_145', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_1000_145, 'cell': 'O1630'}),
 ('ak_srednegeometricheskaya_chastota_gc_250_142', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_250_142, 'cell': 'O1591'}),
-('ak_stupeni_2_6', {'fnc': calc_ak_stupeni_2_6, 'cell': 'O2583'}),
+('ak_stupeniwp_n2', {'fnc': calc_ak_stupeni_2_6, 'cell': 'O2583'}),
 ('ak_srednegeometricheskaya_chastota_gc_4000_109', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_4000_109, 'cell': 'O1239'}),
 ('ak_srednegeometricheskaya_chastota_gc_63_106', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_63_106, 'cell': 'O1196'}),
 ('ak_srednegeometricheskaya_chastota_gc_8000_109', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_8000_109, 'cell': 'O1240'}),
@@ -13133,7 +13133,7 @@ CALC_FUNCTIONS_AKUSTIC = OrderedDict([
 ('ak_srednegeometricheskaya_chastota_gc_125_109', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_125_109, 'cell': 'O1234'}),
 ('ak_srednegeometricheskaya_chastota_gc_500_109', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_500_109, 'cell': 'O1236'}),
 ('ak_srednegeometricheskaya_chastota_gc_500_106', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_500_106, 'cell': 'O1199'}),
-('ak_stupeni_4_6', {'fnc': calc_ak_stupeni_4_6, 'cell': 'O2585'}),
+('ak_stupeniwp_n4', {'fnc': calc_ak_stupeni_4_6, 'cell': 'O2585'}),
 ('ak_srednegeometricheskaya_chastota_gc_1000_129', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_1000_129, 'cell': 'O1453'}),
 ('ak_srednegeometricheskaya_chastota_gc_250_132', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_250_132, 'cell': 'O1488'}),
 ('ak_srednegeometricheskaya_chastota_gc_4000_129', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_4000_129, 'cell': 'O1455'}),
@@ -13152,7 +13152,7 @@ CALC_FUNCTIONS_AKUSTIC = OrderedDict([
 ('ak_srednegeometricheskaya_chastota_gc_500_132', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_500_132, 'cell': 'O1489'}),
 ('ak_srednegeometricheskaya_chastota_gc_31_5_142', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_31_5_142, 'cell': 'O1485'}),
 ('ak_srednegeometricheskaya_chastota_gc_2000_129', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_2000_129, 'cell': 'O1454'}),
-('ak_stupeni_7_6', {'fnc': calc_ak_stupeni_7_6, 'cell': 'O2588'}),
+('ak_stupeniwp_n7', {'fnc': calc_ak_stupeni_7_6, 'cell': 'O2588'}),
 ('ak_srednegeometricheskaya_chastota_gc_4000_174', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_4000_174, 'cell': 'O1939'}),
 ('ak_srednegeometricheskaya_chastota_gc_8000_174', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_8000_174, 'cell': 'O1940'}),
 ('ak_srednegeometricheskaya_chastota_gc_125_174', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_125_174, 'cell': 'O1934'}),
@@ -13195,15 +13195,15 @@ CALC_FUNCTIONS_AKUSTIC = OrderedDict([
 ('ak_srednegeometricheskaya_chastota_gc_63_72', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_63_72, 'cell': 'O838'}),
 ('ak_srednegeometricheskaya_chastota_gc_31_5_83', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_31_5_83, 'cell': 'O846'}),
 ('ak_polosa_a', {'fnc': calc_ak_polosa_a, 'cell': 'O29'}),
-('ak_stupeni_8_7', {'fnc': calc_ak_stupeni_8_7, 'cell': 'O2599'}),
-('ak_stupeni_9_7', {'fnc': calc_ak_stupeni_9_7, 'cell': 'O2600'}),
-('ak_stupeni_3_7', {'fnc': calc_ak_stupeni_3_7, 'cell': 'O2594'}),
-('ak_stupeni_10_7', {'fnc': calc_ak_stupeni_10_7, 'cell': 'O2601'}),
-('ak_stupeni_6_7', {'fnc': calc_ak_stupeni_6_7, 'cell': 'O2597'}),
-('ak_stupeni_5_7', {'fnc': calc_ak_stupeni_5_7, 'cell': 'O2596'}),
-('ak_stupeni_2_7', {'fnc': calc_ak_stupeni_2_7, 'cell': 'O2593'}),
-('ak_stupeni_4_7', {'fnc': calc_ak_stupeni_4_7, 'cell': 'O2595'}),
-('ak_stupeni_7_7', {'fnc': calc_ak_stupeni_7_7, 'cell': 'O2598'}),
+('ak_stupenilwp_n8', {'fnc': calc_ak_stupeni_8_7, 'cell': 'O2599'}),
+('ak_stupenilwp_n9', {'fnc': calc_ak_stupeni_9_7, 'cell': 'O2600'}),
+('ak_stupenilwp_n3', {'fnc': calc_ak_stupeni_3_7, 'cell': 'O2594'}),
+('ak_stupenilwp_n10', {'fnc': calc_ak_stupeni_10_7, 'cell': 'O2601'}),
+('ak_stupenilwp_n6', {'fnc': calc_ak_stupeni_6_7, 'cell': 'O2597'}),
+('ak_stupenilwp_n5', {'fnc': calc_ak_stupeni_5_7, 'cell': 'O2596'}),
+('ak_stupenilwp_n2', {'fnc': calc_ak_stupeni_2_7, 'cell': 'O2593'}),
+('ak_stupenilwp_n4', {'fnc': calc_ak_stupeni_4_7, 'cell': 'O2595'}),
+('ak_stupenilwp_n7', {'fnc': calc_ak_stupeni_7_7, 'cell': 'O2598'}),
 ('ak_srednegeometricheskaya_chastota_gc_1000_231', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_1000_231, 'cell': 'O2528'}),
 ('ak_srednegeometricheskaya_chastota_gc_500_231', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_500_231, 'cell': 'O2527'}),
 ('ak_srednegeometricheskaya_chastota_gc_8000_231', {'fnc': calc_ak_srednegeometricheskaya_chastota_gc_8000_231, 'cell': 'O2531'}),

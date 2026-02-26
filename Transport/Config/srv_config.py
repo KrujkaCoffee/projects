@@ -1,6 +1,6 @@
 import socket
 from os import path
-PORT = 20013
+PORT = 20014
 if socket.gethostname() == 'POW18-15':#"POW-ING22":
     HOST = '192.168.14.71'# AG local
     DIR_ROOT = r'C:\Python\gui_flet_mes'  # AG local

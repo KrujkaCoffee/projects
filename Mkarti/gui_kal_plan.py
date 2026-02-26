@@ -64,6 +64,18 @@ def max_mosh(self:mywindow, day, podr:str):
         return 'err'
 
 def load_info_select_block(self,tbl,r = '',c = '',clear=False):
+    from datetime import datetime
+
+    def format_date(val: str) -> str:
+        if not val:
+            return ''
+        date = F.dateStrToStr(val,format_out="%d.%m.%Y",onerror= None)
+        if date:
+            return date
+        return val  # если формат не распознан
+
+
+
     if clear:
         CQT.statusbar_text(self, '')
         tbl.setToolTip('')
@@ -78,24 +90,52 @@ def load_info_select_block(self,tbl,r = '',c = '',clear=False):
             tbl.setToolTip('')
     except:
         return
-    list = copy.deepcopy(self.dict_tbls_kpl_info[KPL.calc_current_ifo_tbl_name(self)][r+1][c])
+
+    list_inf = []
     info = ''
-    if type(list) == type([]):
-        tmp = []
-        for item in list:
-            item.pop("Имя_нз",list)
-            tmp.append(str(item))
-        info = ('\n'.join(tmp))
-        tbl.setToolTip(info)
+    if c >= 6:
+        row_inf = self.dict_tbls_kpl_info[KPL.calc_current_ifo_tbl_name(self)][r + 1][c]
+        try:
+            if len(row_inf)>0:
+                list_inf = [copy.deepcopy(row_inf)[-1]]
+        except:
+            pass
+
+        if isinstance(list_inf, list):
+            blocks = []
+
+            for item in list_inf:
+                item = item.copy()
+                item.pop("Имя_нз", None)
+
+                stage = item.get("Этап", "")
+                lines = [f"Этап: {stage}"]
+
+                start = format_date(item.get("Начало"))
+                end = format_date(item.get("Конец"))
+                if start or end:
+                    lines.append(f"Период: {start} — {end}")
+
+                if "Время_час" in item:
+                    lines.append(f"Время: {round(item['Время_час'], 2)} ч.")
+
+                if "По дню" in item:
+                    lines.append(f"В день: {round(item['По дню'], 2)} ч.")
+
+                blocks.append("\n".join(lines))
+
+            info = "\n\n".join(blocks)
+            tbl.setToolTip(info)
+
     mosh = ''
     try:
         day = self.dict_tbls_kpl_info[KPL.calc_current_ifo_tbl_name(self)][0][c]
         podr = self.dict_tbls_kpl_info[KPL.calc_current_ifo_tbl_name(self)][r+1][0]
-        mosh = f'Максимальная мощность по {self.selected_napr} : {max_mosh(self,day,podr)} н-час.'
+        mosh = f'Макс. мощность по {self.selected_napr} : {max_mosh(self,day,podr)} н-час.'
     except:
         pass
     CQT.statusbar_text(self,
-                       f'{self.glob_kpl_summ_selct_tbl} |  {info} | {mosh}' )
+                       f'{self.glob_kpl_summ_selct_tbl}    |    {info}    |    {mosh}' )
 
 def get_ref_and_nomen_from_tbl_poz(self,m,exel_mode=False):
     poz= None
@@ -1652,34 +1692,61 @@ def set_dates_etaps(self:mywindow,by_sbork = False):
         dict_groups[group]['part_of_summ'] = dict_groups[group]['time'] / summ_time
     days_from_user = (end_date - start_date).days -1
     if by_sbork and len(SB_GROUP):
+        sb_start_date = copy.deepcopy(start_date)
+        sb_end_date = copy.deepcopy(end_date)
         part_before_sb = 0
         part_after_sb = 0
         count_before = 1
         count_after = 0
-        if SB_GROUP[0] in dict_groups:
+        num_gr_sbork = SB_GROUP[0]
+        if num_gr_sbork in dict_groups:
             for key in dict_groups.keys():
-                if key < SB_GROUP[0]:
+                if key < num_gr_sbork:
                     part_before_sb +=  dict_groups[key]['part_of_summ']
                     count_before +=1
-                if key> SB_GROUP[0]:
+                if key> num_gr_sbork:
                     part_after_sb +=   dict_groups[key]['part_of_summ']
                     count_after += 1
-            part_sb = dict_groups[SB_GROUP[0]]['part_of_summ']
-            days_before_sb = F.round_up(part_before_sb/part_sb*days_from_user*5/7)+count_before
-            days_after_sb = F.round_up(part_after_sb/part_sb*days_from_user*5/7)+count_after
+            part_sb = dict_groups[num_gr_sbork]['part_of_summ']
+            days_before_sb = F.round_up((part_before_sb/part_sb*days_from_user+count_before)*7/5)
+            days_after_sb = F.round_up((part_after_sb/part_sb*days_from_user+count_after)*7/5)
             start_date = F.date_add_days(start_date,-days_before_sb,'','')
             end_date = F.date_add_days(end_date, days_after_sb, '', '')
         else:
             CQT.msgbox(f'Сборки не обнаружено')
             return
+        delta = (end_date - start_date).days
 
-    delta = (end_date - start_date).days*5/7
-    prev_date = F.datetostr(start_date,"%Y-%m-%d")
-    for group in dict_groups.keys():
-        dict_groups[group]['days'] = F.round_up(dict_groups[group]['part_of_summ'] * delta)
-        dict_groups[group]['start'] = prev_date
-        dict_groups[group]['end'] = F.date_add_days(prev_date,dict_groups[group]['days'],"%Y-%m-%d","%Y-%m-%d")
-        prev_date = F.date_add_days(dict_groups[group]['end'],1,"%Y-%m-%d","%Y-%m-%d")
+        gr_sbork = dict_groups[num_gr_sbork]
+        gr_sbork['days'] = (sb_end_date - sb_start_date).days+1
+        gr_sbork['start'] = F.datetostr(sb_start_date,"%Y-%m-%d")
+        gr_sbork['end'] = F.datetostr(sb_end_date,"%Y-%m-%d")
+
+        tmp_day = F.date_add_days(gr_sbork['start'], -1, "%Y-%m-%d", "%Y-%m-%d")
+        for num_gr in range(num_gr_sbork-1,0,-1):
+            if num_gr in dict_groups:
+                gr = dict_groups[num_gr]
+                gr['end'] = tmp_day
+                gr['days'] = F.round_up(gr['part_of_summ'] * delta)
+                gr['start'] = F.date_add_days(tmp_day, -gr['days'], "%Y-%m-%d", "%Y-%m-%d")
+                tmp_day = F.date_add_days(gr['start'], -1, "%Y-%m-%d", "%Y-%m-%d")
+
+        tmp_day = F.date_add_days(gr_sbork['end'], 1, "%Y-%m-%d", "%Y-%m-%d")
+        for num_gr in range(num_gr_sbork+1, max(list(dict_groups.keys()))+1):
+            if num_gr in dict_groups:
+                gr = dict_groups[num_gr]
+                gr['days'] = F.round_up(gr['part_of_summ'] * delta)
+                gr['start'] = tmp_day
+                gr['end'] = F.date_add_days(gr['start'], gr['days'], "%Y-%m-%d", "%Y-%m-%d")
+                tmp_day = F.date_add_days(gr['end'], 1, "%Y-%m-%d", "%Y-%m-%d")
+    else:
+        delta = (end_date - start_date).days
+        prev_date = F.datetostr(start_date,"%Y-%m-%d")
+        for group in dict_groups.keys():
+            dict_groups[group]['days'] = F.round_up(dict_groups[group]['part_of_summ'] * delta)
+            dict_groups[group]['start'] = prev_date
+            dict_groups[group]['end'] = F.date_add_days(prev_date,dict_groups[group]['days'],"%Y-%m-%d","%Y-%m-%d")
+            prev_date = F.date_add_days(dict_groups[group]['end'],1,"%Y-%m-%d","%Y-%m-%d")
 
 
     new_poz_row_etap = copy.deepcopy(poz.row_dates_etap_plan)

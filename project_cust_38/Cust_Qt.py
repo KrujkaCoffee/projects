@@ -298,12 +298,22 @@ class DataTypes:
             return datetime.strptime(start, date_format), datetime.strptime(stop, date_format)
         return None, None
 
+def grp_period_key(field: str) -> str:
+    GROUP_PERIOD_PREFIX = '__grp_period__'
+    return f'{GROUP_PERIOD_PREFIX}{field}'
+
+
+def out_format_key(field: str) -> str:
+    OUT_FORMAT_PREFIX = '__out_fmt__'
+    return f'{OUT_FORMAT_PREFIX}{field}'
+
 
 class Grouper:
     def __init__(self, data: list[dict], group_columns: list[str], sum_columns: list[str], header_types: dict[str, DataTypes.BaseType],
                  additional_params) -> None:
         self.data = data
         self.groups = {}
+        self.data_types = DataTypes()
         self.group_columns = group_columns
         self.sum_columns = sum_columns
         self.header_types = header_types
@@ -311,12 +321,69 @@ class Grouper:
         self.parse(data, group_columns, sum_columns, header_types)
 
     def parse(self, data, group_columns, sum_columns, header_types):
+        """Группировка."""
         for row in data:
-            unique_key = tuple(row[key] for key in group_columns)
+            prepared_row = self._prepare_group_row(row, group_columns)
+            unique_key = tuple(prepared_row.get(key) for key in group_columns)
             if unique_key in self.groups:
-                self.groups[unique_key].aggregate_row(row)
+                self.groups[unique_key].aggregate_row(prepared_row)
             else:
-                self.groups[unique_key] = Group(row, group_columns, sum_columns, header_types, self.additional_params)
+                self.groups[unique_key] = Group(prepared_row, group_columns, sum_columns, header_types, self.additional_params)
+
+    def _prepare_group_row(self, row: dict, group_columns: list[str]) -> dict:
+        """Подготовка значений для групповых колонок и разбиение дат по периоду."""
+        if not group_columns:
+            return row
+        row = row.copy()
+        for field in group_columns:
+            if field not in row:
+                continue
+            data_type = self.header_types.get(field)
+            if not data_type or data_type.alias not in ('date', 'datetime'):
+                continue
+
+            raw_val = row.get(field)
+            if raw_val is None or str(raw_val).strip() == '':
+                continue
+
+            period = None
+            fmt = ''
+            if isinstance(self.additional_params, dict):
+                period = self.additional_params.get(grp_period_key(field))
+                fmt = self.additional_params.get(out_format_key(field)) or ''
+
+            if period == 'По полной дате':
+                period = None
+
+            if period is None and not str(fmt).strip():
+                continue
+
+            dt = self.data_types.is_date(raw_val)
+            if not dt:
+                continue
+
+            # нормализация даты под период
+            default_fmt = Group.FORMATS.get(data_type.alias, '%d.%m.%Y')
+            if period == 'Год':
+                dt = dt.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+                default_fmt = '%Y'
+            elif period == 'Месяц':
+                dt = dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                default_fmt = '%m.%Y'
+            elif period == 'День':
+                dt = dt.replace(hour=0, minute=0, second=0, microsecond=0)
+                default_fmt = '%d.%m.%Y'
+            elif period == 'Час':
+                dt = dt.replace(minute=0, second=0, microsecond=0)
+                default_fmt = '%d.%m.%Y %H:00'
+
+            fmt_to_use = str(fmt).strip() if str(fmt).strip() else default_fmt
+            try:
+                row[field] = dt.strftime(fmt_to_use)
+            except Exception:
+                row[field] = dt.strftime(default_fmt)
+
+        return row
 
     def prepare_item(self, item: dict):
         result_item = {}
@@ -490,13 +557,20 @@ class DataParser:
         self.header = hat
         self.body = self.clear_data(data)
         self.current_groups = None
+        self.dump_groups = None
 
     def make_fields_data_for_table(self, exclude_aggregated: bool = False, sum_cols = None, group_cols = None):
         if sum_cols is None or group_cols is None:
             sum_cols = self.dump_groups.sum_columns
             group_cols = self.dump_groups.group_columns
         return [
-            {'Поля': head, 'Тип': data_type.alias, 'ВидСуммы': 'Первое', 'Видимость': ''}
+            {
+                'Поля': head,
+                'Тип': data_type.alias,
+                'ВидСуммы': 'Первое',
+                'Формат вывода': '',
+                'Видимость': ''
+            }
             for head, data_type in self.header_types.items()
             if exclude_aggregated
                and head not in sum_cols
@@ -551,8 +625,8 @@ class DataParser:
     def group_by_columns(self, group_by: list[str], sum_columns: list[str],
                          additional_params: dict[str, bool]) -> Grouper:
         header = self.header
-        group_by = set(header).intersection(group_by)
-        sum_columns = set(header).intersection(sum_columns)
+        group_by = [col for col in group_by if col in header]
+        sum_columns = [col for col in sum_columns if col in header]
         self.dump_groups = Grouper(self.body, group_by, sum_columns, self.header_types, additional_params)
         return self.dump_groups
 
@@ -696,8 +770,36 @@ class HistoryStack:
                 fill_filtr_c(self.window, self.data_filter_table, self.data_table)
                 self.fill_tbl_fields(stack_element.fields_data, stack_element.visible_columns)
                 if stack_element.group_elems:
-                    processed_groups = [{'Поля': group} for group in stack_element.group_elems]
+                    processed_groups = []
+                    for group in stack_element.group_elems:
+                        period = getattr(self.window, '_group_periods', {}).get(group, 'По полной дате')
+                        fmt_pat = getattr(self.window, '_out_formats', {}).get(group, '')
+                        type_alias = ''
+                        try:
+                            type_alias = self.window.data_parser.header_types.get(group).alias
+                        except Exception:
+                            pass
+                        fmt_label = ''
+                        if fmt_pat and hasattr(self.window, '_label_for_pattern'):
+                            fmt_label = self.window._label_for_pattern(type_alias, fmt_pat)
+                        processed_groups.append({'Поля': group, 'Период': period, 'Формат вывода': fmt_label})
                     fill_wtabl(processed_groups, self.group_table)
+                    try:
+                        col_field = num_col_by_name_c(self.group_table, 'Поля')
+                        if col_field is not None:
+                            for r in range(self.group_table.rowCount()):
+                                f = self.group_table.item(r, col_field).text()
+                                t = ''
+                                try:
+                                    t = self.window.data_parser.header_types.get(f).alias
+                                except Exception:
+                                    pass
+                                if hasattr(self.window, '_ensure_group_period_widget'):
+                                    self.window._ensure_group_period_widget(self.group_table, r, f, t)
+                                if hasattr(self.window, '_ensure_out_format_widget'):
+                                    self.window._ensure_out_format_widget(self.group_table, r, f, t)
+                    except Exception:
+                        pass
                 else:
                     self.group_table.setRowCount(0)
                 if stack_element.sum_elems:
@@ -705,6 +807,19 @@ class HistoryStack:
                     fill_wtabl(processed_sum, self.sum_table)
                     if self.decor_field_tbl:
                         self.decor_field_tbl(self.sum_table)
+                    try:
+                        col_field = num_col_by_name_c(self.sum_table, 'Поля')
+                        if col_field is not None and hasattr(self.window, '_ensure_out_format_widget'):
+                            for r in range(self.sum_table.rowCount()):
+                                f = self.sum_table.item(r, col_field).text()
+                                t = ''
+                                try:
+                                    t = self.window.data_parser.header_types.get(f).alias
+                                except Exception:
+                                    pass
+                                self.window._ensure_out_format_widget(self.sum_table, r, f, t)
+                    except Exception:
+                        pass
                 else:
                     self.sum_table.setRowCount(0)
                 if isinstance(stack_element.grouper, Grouper):
@@ -3889,6 +4004,9 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
         self.ui = Ui_Dialog()
         self.ui.setupUi(self)
         self.hide_widgets()
+
+        self._out_formats: dict[str, str] = {}
+        self._group_periods: dict[str, str] = {}
         self.ui.btn_add_res_field.clicked.connect(self.on_click_add_sum_fields)
         self.ui.btn_add_gr_field.clicked.connect(self.on_click_add_group_field)
         self.ui.btn_del_gr_field.clicked.connect(lambda *_: self.on_click_drop_field(self.ui.tbl_add_gr_field))
@@ -4162,14 +4280,323 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
                 result.append(tbl.item(row, col_field).text())
         return result
 
+    _DATE_FORMATS = [
+        ('Стандарт', ''),
+        ('ДД.ММ.ГГГГ', '%d.%m.%Y'),
+        ('ГГГГ-ММ-ДД', '%Y-%m-%d'),
+        ('ДД/ММ/ГГГГ', '%d/%m/%Y'),
+        ('ДД-ММ-ГГГГ', '%d-%m-%Y'),
+        ('ГГГГ.MM.DD', '%Y.%m.%d'),
+        ('ММ.ГГГГ', '%m.%Y'),
+        ('ГГГГ-ММ', '%Y-%m'),
+        ('ГГГГ', '%Y'),
+    ]
+    _DATETIME_FORMATS = [
+        ('Стандарт', ''),
+        ('ДД.ММ.ГГГГ ЧЧ:ММ:СС', '%d.%m.%Y %H:%M:%S'),
+        ('ДД.ММ.ГГГГ ЧЧ:ММ:СС.мкс', '%d.%m.%Y %H:%M:%S.%f'),
+        ('ДД.ММ.ГГГГ ЧЧ:ММ', '%d.%m.%Y %H:%M'),
+        ('ДД.ММ.ГГГГ ЧЧ:00', '%d.%m.%Y %H:00'),
+        ('ДД.ММ.ГГГГ', '%d.%m.%Y'),
+        ('ММ.ГГГГ', '%m.%Y'),
+        ('ГГГГ-ММ', '%Y-%m'),
+        ('ГГГГ', '%Y'),
+        ('ГГГГ-ММ-ДД ЧЧ:ММ:СС', '%Y-%m-%d %H:%M:%S'),
+        ('ГГГГ-ММ-ДД ЧЧ:ММ', '%Y-%m-%d %H:%M'),
+        ('ISO 8601', '%Y-%m-%dT%H:%M:%S'),
+        ('ЧЧ:ММ:СС', '%H:%M:%S'),
+        ('ЧЧ:ММ', '%H:%M'),
+    ]
+    _GROUP_PERIODS = ['По полной дате', 'Год', 'Месяц', 'День', 'Час']
+
+    def _default_group_format_pattern(self, type_alias: str, period: str | None) -> str:
+        """Форматы дат по человекочитаемому алиасу"""
+        if period == 'Год':
+            return '%Y'
+        if period == 'Месяц':
+            return '%m.%Y'
+        if period == 'День':
+            return '%d.%m.%Y'
+        if period == 'Час':
+            return '%d.%m.%Y %H:00'
+        if type_alias == 'datetime':
+            return self._default_format_pattern('datetime')
+        return self._default_format_pattern('date')
+
+    def _get_group_period_from_tbl(self, tbl: QtWidgets.QTableWidget, row: int) -> str | None:
+        col_period = num_col_by_name_c(tbl, 'Период')
+        if col_period is None:
+            return None
+        cmb: QtWidgets.QComboBox = tbl.cellWidget(row, col_period)
+        if isinstance(cmb, QtWidgets.QComboBox):
+            return cmb.currentText()
+        item = tbl.item(row, col_period)
+        return item.text() if item else None
+
+    def _any_custom_output_formats(self) -> bool:
+        """Есть ли хотя бы один пользовательский (не дефолтный) формат."""
+        return bool(self._out_formats)
+
+    def _update_output_format_column_visibility(self, force_show: bool | None = None):
+        """Автоскрытие колонки 'Формат вывода' в tbl_fields, если она не используется."""
+        tbl = self.ui.tbl_fields
+        col_fmt = num_col_by_name_c(tbl, 'Формат вывода')
+        if col_fmt is None:
+            return
+        if force_show is True:
+            tbl.setColumnHidden(col_fmt, False)
+            return
+        if force_show is False:
+            tbl.setColumnHidden(col_fmt, True)
+            return
+
+        if self._any_custom_output_formats():
+            tbl.setColumnHidden(col_fmt, False)
+            return
+
+        cur_row = tbl.currentRow()
+        col_field = num_col_by_name_c(tbl, 'Поля')
+        col_type = num_col_by_name_c(tbl, 'Тип')
+        if cur_row != -1 and col_field is not None:
+            field_item = tbl.item(cur_row, col_field)
+            type_item = tbl.item(cur_row, col_type) if col_type is not None else None
+            type_alias = (type_item.text() if type_item else (self._field_type_alias(field_item.text()) if field_item else '')) if field_item else ''
+            if type_alias in ('date', 'datetime'):
+                tbl.setColumnHidden(col_fmt, False)
+                return
+
+        tbl.setColumnHidden(col_fmt, True)
+
+    def _on_tbl_fields_current_cell_changed(self, row: int, col: int, prev_row: int, prev_col: int):
+        self._update_output_format_column_visibility()
+
+    def _format_variants(self, type_alias: str):
+        if type_alias == 'date':
+            return self._DATE_FORMATS
+        if type_alias == 'datetime':
+            return self._DATETIME_FORMATS
+        return []
+
+    def _default_format_pattern(self, type_alias: str) -> str:
+        variants = self._format_variants(type_alias)
+        return variants[0][1] if variants else ''
+
+    def _label_for_pattern(self, type_alias: str, pattern: str) -> str:
+        for label, pat in self._format_variants(type_alias):
+            if pat == pattern:
+                return label
+        return pattern or ''
+
+    def _pattern_for_label(self, type_alias: str, label: str) -> str:
+        for lb, pat in self._format_variants(type_alias):
+            if lb == label:
+                return pat
+        # если пользователь ввёл сам strftime-строку
+        if isinstance(label, str) and '%' in label:
+            return label
+        return ''
+
+    def _field_type_alias(self, field: str) -> str:
+        try:
+            return self.data_parser.header_types.get(field).alias
+        except Exception:
+            return ''
+
+    def on_cmb_out_format_changed(self, cur_tbl, pattern, row, col, *args):
+        """pattern приходит из combo.itemData (UserRole)."""
+        if pattern is None:
+            pattern = ''
+        col_field = num_col_by_name_c(cur_tbl, 'Поля')
+        if col_field is None:
+            return
+        item_field = cur_tbl.item(row, col_field)
+        if not item_field:
+            return
+        field = item_field.text()
+        type_alias = self._field_type_alias(field)
+        if type_alias not in ('date', 'datetime'):
+            return
+
+        default_pat = self._default_format_pattern(type_alias)
+        if cur_tbl is self.ui.tbl_add_gr_field:
+            period = self._get_group_period_from_tbl(cur_tbl, row)
+            default_pat = self._default_group_format_pattern(type_alias, period)
+
+        pat = str(pattern).strip()
+        if not pat or pat == default_pat:
+            self._out_formats.pop(field, None)
+        else:
+            self._out_formats[field] = pat
+
+    def on_cmb_group_period_changed(self, cur_tbl, text, row, col, *args):
+        col_field = num_col_by_name_c(cur_tbl, 'Поля')
+        if col_field is None:
+            return
+        item_field = cur_tbl.item(row, col_field)
+        if not item_field:
+            return
+        field = item_field.text()
+        type_alias = self._field_type_alias(field)
+
+        if text in ('Год', 'Месяц', 'День', 'Час'):
+            self._group_periods[field] = text
+        else:
+            self._group_periods.pop(field, None)
+
+        if cur_tbl is self.ui.tbl_add_gr_field and type_alias in ('date', 'datetime') and field not in self._out_formats:
+            col_fmt = num_col_by_name_c(cur_tbl, 'Формат вывода')
+            if col_fmt is None:
+                return
+            default_pat = self._default_group_format_pattern(type_alias, text)
+            label = self._label_for_pattern(type_alias, default_pat)
+            cmb: QtWidgets.QComboBox = cur_tbl.cellWidget(row, col_fmt)
+            if isinstance(cmb, QtWidgets.QComboBox):
+                idx = cmb.findData(default_pat)
+                if idx != -1:
+                    cmb.setCurrentIndex(idx)
+                elif label:
+                    cmb.setCurrentText(label)
+            item = cur_tbl.item(row, col_fmt)
+            if item is not None and label:
+                item.setText(label)
+
+    def _ensure_out_format_widget(self, tbl: QtWidgets.QTableWidget, row: int, field: str, type_alias: str):
+        col_fmt = num_col_by_name_c(tbl, 'Формат вывода')
+        if col_fmt is None:
+            return
+        variants = self._format_variants(type_alias)
+        if not variants:
+            return
+        pattern = self._out_formats.get(field, self._default_format_pattern(type_alias))
+        label = self._label_for_pattern(type_alias, pattern)
+        item = tbl.item(row, col_fmt)
+        if item is not None:
+            item.setText(label)
+        labels = [lb for lb, _ in variants]
+        pats = [pat for _, pat in variants]
+        add_combobox(
+            self=tbl,
+            table=tbl,
+            i=row,
+            j=col_fmt,
+            list=labels,
+            list_tooltips=pats,
+            list_data=pats,
+            return_data=True,
+            first_void=False,
+            conn_func=self.on_cmb_out_format_changed,
+            current_text=None
+        )
+        # восстановим выбранное
+        cmb: QtWidgets.QComboBox = tbl.cellWidget(row, col_fmt)
+        if isinstance(cmb, QtWidgets.QComboBox):
+            if label:
+                cmb.setCurrentText(label)
+
+    def _ensure_group_period_widget(self, tbl: QtWidgets.QTableWidget, row: int, field: str, type_alias: str):
+        col_period = num_col_by_name_c(tbl, 'Период')
+        if col_period is None:
+            return
+        if type_alias not in ('date', 'datetime'):
+            return
+        current = self._group_periods.get(field, 'По полной дате')
+        item = tbl.item(row, col_period)
+        if item is not None:
+            item.setText(current)
+        add_combobox(
+            self=tbl,
+            table=tbl,
+            i=row,
+            j=col_period,
+            list=self._GROUP_PERIODS,
+            first_void=False,
+            conn_func=self.on_cmb_group_period_changed,
+            current_text=None
+        )
+        cmb: QtWidgets.QComboBox = tbl.cellWidget(row, col_period)
+        if isinstance(cmb, QtWidgets.QComboBox):
+            cmb.setCurrentText(current)
+
+    def unpack_group_period_params(self) -> dict[str, str]:
+        tbl = self.ui.tbl_add_gr_field
+        params: dict[str, str] = {}
+        col_field = num_col_by_name_c(tbl, 'Поля')
+        col_period = num_col_by_name_c(tbl, 'Период')
+        if col_field is None or col_period is None:
+            return params
+        for row in range(tbl.rowCount()):
+            item_field = tbl.item(row, col_field)
+            if not item_field:
+                continue
+            field = item_field.text()
+            cmb: QtWidgets.QComboBox = tbl.cellWidget(row, col_period)
+            val = None
+            if isinstance(cmb, QtWidgets.QComboBox):
+                val = cmb.currentText()
+            else:
+                item = tbl.item(row, col_period)
+                val = item.text() if item else ''
+            if val in ('Год', 'Месяц', 'День', 'Час'):
+                params[grp_period_key(field)] = val
+        return params
+
+    def unpack_output_format_params(self) -> dict[str, str]:
+        """Собирает форматы вывода из tbl_fields, tbl_add_gr_field, tbl_add_res_field."""
+        params: dict[str, str] = {}
+
+        def take_from(tbl: QtWidgets.QTableWidget):
+            col_field = num_col_by_name_c(tbl, 'Поля')
+            col_fmt = num_col_by_name_c(tbl, 'Формат вывода')
+            if col_field is None or col_fmt is None:
+                return
+            for row in range(tbl.rowCount()):
+                item_field = tbl.item(row, col_field)
+                if not item_field:
+                    continue
+                field = item_field.text()
+                type_alias = self._field_type_alias(field)
+                if type_alias not in ('date', 'datetime'):
+                    continue
+                cmb: QtWidgets.QComboBox = tbl.cellWidget(row, col_fmt)
+                if isinstance(cmb, QtWidgets.QComboBox):
+                    pattern = cmb.currentData()
+                    if pattern is None:
+                        pattern = ''
+                else:
+                    item = tbl.item(row, col_fmt)
+                    pattern = self._pattern_for_label(type_alias, item.text() if item else '')
+                pattern = str(pattern).strip()
+                if not pattern:
+                    # пусто — значит используем дефолт
+                    continue
+
+                default_pat = self._default_format_pattern(type_alias)
+                if tbl is self.ui.tbl_add_gr_field:
+                    period = self._get_group_period_from_tbl(tbl, row)
+                    default_pat = self._default_group_format_pattern(type_alias, period)
+
+                # сохраняем только если это не дефолт для данного контекста
+                if pattern != default_pat:
+                    params[out_format_key(field)] = pattern
+                    self._out_formats[field] = pattern
+                else:
+                    # сброс на дефолт
+                    self._out_formats.pop(field, None)
+        take_from(self.ui.tbl_fields)
+        take_from(self.ui.tbl_add_gr_field)
+        take_from(self.ui.tbl_add_res_field)
+        return params
+
     @onerror
     def on_click_group_by(self, *args):
-        row_groups = [group[0] for group in list_from_wtabl_c(self.ui.tbl_add_gr_field) if group]
-        row_sums = [g_sum[0] for g_sum in list_from_wtabl_c(self.ui.tbl_add_res_field) if g_sum]
+        row_groups = self.unpack_fields(self.ui.tbl_add_gr_field)
+        row_sums = self.unpack_fields(self.ui.tbl_add_res_field)
         if not row_groups and not row_sums:
             self.fill_main_tbl(self.stack.current_data.data)
         else:
             additional_fields_params = self.unpack_additional_params()
+            additional_fields_params.update(self.unpack_group_period_params())
+            additional_fields_params.update(self.unpack_output_format_params())
             actual_data = list_from_wtabl_c(self.ui.tbl, only_visible=True, rez_dict=True)
             self.data_parser = DataParser(actual_data, additional_fields_params)
             groups = self.data_parser.group_by_columns(row_groups, row_sums, additional_fields_params)
@@ -4187,8 +4614,10 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
         sum_cols = list(groups.sum_columns)
         group_cols = list(groups.group_columns)
         header = [tbl.horizontalHeaderItem(col).text() for col in range(tbl.columnCount())]
-        cleaning_sum_cols = set(header).intersection(sum_cols)
-        cleaning_gr_cols = set(header).intersection(group_cols)
+        cleaning_gr_cols = [col for col in group_cols if col in header]
+        cleaning_sum_cols = [col for col in sum_cols if col in header]
+        cleaning_gr_set = set(cleaning_gr_cols)
+        cleaning_sum_set = set(cleaning_sum_cols)
         for row_idx in range(tbl.rowCount()):
             unique_key = tuple(tbl.item(row_idx, num_col_by_name_c(tbl, col)).text() for col in cleaning_gr_cols)
             is_mutable_row = False
@@ -4199,7 +4628,7 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
                 header_name = tbl.horizontalHeaderItem(col_idx).text()
                 item = tbl.item(row_idx, col_idx)
                 font = item.font()
-                if header_name in cleaning_gr_cols or header_name in cleaning_sum_cols:
+                if header_name in cleaning_gr_set or header_name in cleaning_sum_set:
                     font.setItalic(True)
                     font.setUnderline(True)
                 font.setBold(is_mutable_row)
@@ -4237,17 +4666,36 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
         fill_filtr_c(self, self.ui.tbl_filtr, tbl)
 
     def on_click_add_group_field(self, *args):
+        """Обработка клика добавления поля-группы"""
         cur_tbl = self.ui.tbl_add_gr_field
         tbl_fields = self.ui.tbl_fields
         cur_row = tbl_fields.currentRow()
         if cur_row == -1:
             return
+        self.unpack_output_format_params()
         prev_tbl_items = list_from_wtabl_c(cur_tbl, rez_dict=True)
         cur_item = get_dict_line_form_tbl(tbl_fields, cur_row)
 
-        prev_tbl_items.append({'Поля': cur_item.get('Поля')})
+        field = cur_item.get('Поля')
+        type_alias = cur_item.get('Тип') or self._field_type_alias(field)
+        default_alias = ''
+        if type_alias in ('date', 'datetime'):
+            default_alias = 'По полной дате'
+        period = self._group_periods.get(field, default_alias)
+        fmt_pattern = self._out_formats.get(field, '')
+        fmt_label = self._label_for_pattern(type_alias, fmt_pattern)
+
+        prev_tbl_items.append({'Поля': field, 'Период': period, 'Формат вывода': fmt_label})
         tbl_fields.removeRow(cur_row)
-        fill_wtabl(prev_tbl_items, cur_tbl)
+        fill_wtabl(prev_tbl_items, cur_tbl, min_width_col=62)
+
+        col_field = num_col_by_name_c(cur_tbl, 'Поля')
+        if col_field is not None:
+            for r in range(cur_tbl.rowCount()):
+                f = cur_tbl.item(r, col_field).text()
+                t = self._field_type_alias(f)
+                self._ensure_group_period_widget(cur_tbl, r, f, t)
+                self._ensure_out_format_widget(cur_tbl, r, f, t)
 
     @onerror
     def on_click_drop_field(self, cur_tbl):
@@ -4255,6 +4703,29 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
         cur_row = cur_tbl.currentRow()
         if cur_row == -1:
             return
+
+        try:
+            field_name = valt(cur_tbl, 'Поля', cur_row)
+            col_period = num_col_by_name_c(cur_tbl, 'Период')
+            if col_period is not None:
+                cmb: QtWidgets.QComboBox = cur_tbl.cellWidget(cur_row, col_period)
+                txt = cmb.currentText() if isinstance(cmb, QtWidgets.QComboBox) else (cur_tbl.item(cur_row, col_period).text() if cur_tbl.item(cur_row, col_period) else '')
+                if txt in ('Год', 'Месяц', 'День', 'Час'):
+                    self._group_periods[field_name] = txt
+                else:
+                    self._group_periods.pop(field_name, None)
+            col_fmt = num_col_by_name_c(cur_tbl, 'Формат вывода')
+            if col_fmt is not None:
+                cmbf: QtWidgets.QComboBox = cur_tbl.cellWidget(cur_row, col_fmt)
+                pat = cmbf.currentData() if isinstance(cmbf, QtWidgets.QComboBox) else None
+                if not pat:
+                    type_alias = self._field_type_alias(field_name)
+                    it = cur_tbl.item(cur_row, col_fmt)
+                    pat = self._pattern_for_label(type_alias, it.text() if it else '')
+                if pat:
+                    self._out_formats[field_name] = str(pat)
+        except Exception:
+            pass
         col_field = num_col_by_name_c(tbl_field, 'Поля')
         if col_field is not None:
             new_field = valt(cur_tbl, 'Поля', cur_row)
@@ -4273,17 +4744,36 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
         cur_row = tbl_fields.currentRow()
         if cur_row == -1:
             return
+        self.unpack_output_format_params()
         lst_prev_values = list_from_wtabl_c(cur_tbl, rez_dict=True)
         col_field = num_col_by_name_c(tbl_fields, 'Поля')
         col_cur_sum = num_col_by_name_c(tbl_fields, 'ВидСуммы')
         col_cur_type = num_col_by_name_c(tbl_fields, 'Тип')
+        col_fmt = num_col_by_name_c(tbl_fields, 'Формат вывода')
         if col_field is not None and col_cur_sum is not None and col_cur_type is not None:
             field = tbl_fields.item(cur_row, col_field).text()
             data_type_alias = tbl_fields.item(cur_row, col_cur_type).text()
             cur_sum = tbl_fields.item(cur_row, col_cur_sum).text()
-            lst_prev_values.append({'Поля': field, 'Тип': data_type_alias, 'ВидСуммы': cur_sum})
+            fmt_pattern = self._out_formats.get(field, self._default_format_pattern(data_type_alias))
+            fmt_label = self._label_for_pattern(data_type_alias, fmt_pattern)
+            if col_fmt is not None:
+                cmb: QtWidgets.QComboBox = tbl_fields.cellWidget(cur_row, col_fmt)
+                if isinstance(cmb, QtWidgets.QComboBox):
+                    p = cmb.currentData()
+                    if p:
+                        fmt_pattern = str(p)
+                        self._out_formats[field] = fmt_pattern
+                        fmt_label = self._label_for_pattern(data_type_alias, fmt_pattern)
+
+            lst_prev_values.append({'Поля': field, 'Тип': data_type_alias, 'ВидСуммы': cur_sum, 'Формат вывода': fmt_label})
             fill_wtabl(lst_prev_values, cur_tbl)
             self.decor_field_tbl(cur_tbl)
+            col_field_sum = num_col_by_name_c(cur_tbl, 'Поля')
+            if col_field_sum is not None:
+                for r in range(cur_tbl.rowCount()):
+                    f = cur_tbl.item(r, col_field_sum).text()
+                    t = self._field_type_alias(f)
+                    self._ensure_out_format_widget(cur_tbl, r, f, t)
             tbl_fields.removeRow(cur_row)
 
     def decor_field_tbl(self, cur_tbl: QtWidgets.QTableWidget):
@@ -4332,9 +4822,16 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
             tbl = self.ui.tbl
             data = list_from_wtabl_c(tbl, rez_dict=True)
             self.data_parser = DataParser(data)
+            self.data_parser.group_by_columns([], [], {})
             self.ui.fr_groups.setVisible(True)
             fields = [
-                {'Поля': head, 'Тип': data_type.alias, 'ВидСуммы': 'Первое', 'Видимость': ''}
+                {
+                    'Поля': head,
+                    'Тип': data_type.alias,
+                    'ВидСуммы': 'Первое',
+                    'Формат вывода': '',
+                    'Видимость': ''
+                }
                 for head, data_type in self.data_parser.header_types.items()
             ]
             self.fill_tbl_fields(fields, self.data_parser.header_types.keys())
@@ -4410,6 +4907,7 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
         fill_wtabl(fields, tbl_fields, min_width_col=120, sortingEnabled=True) # 17.09.25
         col_type, col_visible = num_col_by_name_c(tbl_fields, 'Тип'), num_col_by_name_c(tbl_fields, 'Видимость')
         col_field = num_col_by_name_c(tbl_fields, 'Поля')
+        col_fmt = num_col_by_name_c(tbl_fields, 'Формат вывода')
         if col_type is not None and col_visible is not None and col_field is not None:
             for row in range(tbl_fields.rowCount()):
                 cur_field = tbl_fields.item(row, col_field).text()
@@ -4418,6 +4916,11 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
                 item_type = tbl_fields.item(row, col_type)
                 cur_data_type = self.data_parser.data_types[item_type.text()]
                 tbl_fields.item(row, col_type).setBackground(QColor(*cur_data_type.rgba))
+
+                if col_fmt is not None:
+                    type_alias = item_type.text()
+                    if type_alias in ('date', 'datetime'):
+                        self._ensure_out_format_widget(tbl_fields, row, cur_field, type_alias)
 
     @onerror
     def save_as_excel(self, tbl, dir=None, file_name=None, r1=0, c1=0, r2=None, c2=None):

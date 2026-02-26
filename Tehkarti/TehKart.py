@@ -231,7 +231,6 @@ class mywindow(QtWidgets.QMainWindow):
         self.db_kplan = F.bdcfg('DB_kplan')
         self.putf_magaz = F.bdcfg('mag')
         self.PUT_K_TMP = F.put_po_umolch() + os.sep + "tmptehkart"
-        self.SET_RUS_WORDS = F.load_file_pickle('summary.pickle')
         self.path_cash_poki = os.path.join(F.scfg('cash'), str(self.place.poki))
 
         F.test_path()
@@ -526,7 +525,7 @@ class mywindow(QtWidgets.QMainWindow):
         action_unlock_tk = self.ui.action_unlock_tk
         action_unlock_tk.triggered.connect(self.unlock_tk)
 
-        self.view_lock_tk_action = QtWidgets.QAction() #29.01.2026
+        self.view_lock_tk_action = QtWidgets.QAction()
         self.view_lock_tk_action.setText('Техкарты в работе')
         self.view_lock_tk_action.triggered.connect(self.view_lock_tk_table)
         self.ui.menu.addAction(self.view_lock_tk_action)
@@ -559,6 +558,11 @@ class mywindow(QtWidgets.QMainWindow):
 
 
         #II.fill_table(self)
+
+    @property
+    def SET_RUS_WORDS(self):
+        return F.load_file_pickle('summary.pickle')
+
     def set_glob_tk_title(self,val:str):
         self.glob_tk_title = val
         self.ui.lbl_glob_tk_title.setText(self.glob_tk_title)
@@ -1484,7 +1488,7 @@ class mywindow(QtWidgets.QMainWindow):
                     flag = True
                 if sp_tree[i][20] == '1'and sp_tree[i][0] == 'Резка(ЧПУ)' and sp_tree[i][4] == '010101':
                     if sp_tree[i][15] != '':
-                        new_name = f'{F.clear_row_for_file_name_c(self.dse_nn)}.dxf' #29.01.2026 незафиксированная
+                        new_name = f'{F.clear_row_for_file_name_c(self.dse_nn)}.dxf'
                         file = self.operation_docs.storage.get_dxf(sp_tree[i][15], self.dse_nn, new_name=new_name) # 08.12.25
                         if file == None or file == False:
                             nom_op = sp_tree[i][2]
@@ -1498,7 +1502,6 @@ class mywindow(QtWidgets.QMainWindow):
                             CQT.msgbox('DXF не корректный, не распознать.')
                         break
         # ===============================================
-        # ++29.01.2026
     @CQT.onerror
     def on_click_close_lock_tk_table(self, label, row, *args, **kwargs):
         try:
@@ -1604,7 +1607,6 @@ class mywindow(QtWidgets.QMainWindow):
             return
         chk.clicked.connect(lambda *args: refill_tbl(tbl, chk))
         return dialog.exec()
-        # --29.01.2026
 
     @CQT.onerror
     def obnov_dse(self,conn = '', cur = '', *args):
@@ -3576,6 +3578,7 @@ class mywindow(QtWidgets.QMainWindow):
 class mywindow2(QtWidgets.QDialog):  # диалоговое окно
     @CQT.onerror
     def __init__(self, pself:mywindow,  parent=None, item_o="", p1=0, p2=0):
+        self._disposed = False
         self.item_o = item_o
         self.p1 = p1
         self.p2 = p2
@@ -3834,7 +3837,6 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
                     CQT.msgbox(self.ui2.lbl_prim.text(),'Я понял',icon=QtWidgets.QMessageBox.Warning)
             self.toggle_access_main_widgets(self.ui2.tab_vib.columnCount() != 0)
 
-
         if self.pself.chbox_edit_combos:
             self.ui2.chbox_edit_combos.setChecked(True)
         else:
@@ -3913,7 +3915,7 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
                 tab_v.item(tab_v.currentRow(), nk_db_edizm).text())
             tab_mat.item(tab_mat.currentRow(), nk_tblm_norma).setText(
                 '0')
-            self.hide()
+            self.close()
             osn_mat.zagr_sortament(self.pself)
             #application.ui.tabW_mat.setCurrentIndex(1)
             self.pself.ui.tbl_resch_mater.setFocus()
@@ -3944,7 +3946,7 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
                 else:
                     cellinfo = QtWidgets.QTableWidgetItem(tab_v.item(tab_v.currentRow(), 0).text())
                     tab_doc.setItem(tab_doc.currentRow(), 0, cellinfo)
-                self.hide()
+                self.close()
         if self.item_o == "Док_тк":
             tab_v = self.ui2.tab_vib
             if tab_v.hasFocus() == False:
@@ -3956,7 +3958,7 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
                 else:
                     cellinfo = QtWidgets.QTableWidgetItem(tab_v.item(tab_v.currentRow(), 0).text())
                     tab_doc.setItem(tab_doc.currentRow(), 0, cellinfo)
-                self.hide()
+                self.close()
         if self.item_o == "Профессия":
             tab_v = self.ui2.tab_vib
             if tab_v.hasFocus() == False:
@@ -3968,7 +3970,7 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
                 else:
                     cellinfo = QtWidgets.QTableWidgetItem(tab_v.item(tab_v.currentRow(), 0).text())
                     tab_op.setItem(tab_op.currentRow(), 7, cellinfo)
-                self.hide()
+                self.close()
         if self.item_o == "Оборудование":
             tab_v = self.ui2.tab_vib
             if tab_v.hasFocus() == False:
@@ -3980,7 +3982,7 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
                 else:
                     cellinfo = QtWidgets.QTableWidgetItem(tab_v.item(tab_v.currentRow(), 1).text())
                     tab_op.setItem(tab_op.currentRow(), 4, cellinfo)
-                self.hide()
+                self.close()
         if self.item_o == "Раб_ц":
             tab_v = self.ui2.tab_vib
             if tab_v.hasFocus() == False:
@@ -3992,7 +3994,7 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
                 else:
                     cellinfo = QtWidgets.QTableWidgetItem(tab_v.item(tab_v.currentRow(), 0).text())
                     tab_op.setItem(tab_op.currentRow(), 3, cellinfo)
-                self.hide()
+                self.close()
         if self.item_o == "Материал":
             tab_v = self.ui2.tab_vib
             if tab_v.hasFocus():
@@ -4032,7 +4034,7 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
                 strok = self.ui2.lineEdit.text().strip().replace('\n', ' ')
                 strok = F.clear_row_for_separ_c(strok)
                 strok = F.capital_letter_c(strok)
-                self.hide()
+                self.close()
                 cellinfo = QtWidgets.QTableWidgetItem(strok)
                 cu.setItem(cu.currentRow(), 0, cellinfo)
                 cu.item(self.p1, 0).setText(strok)
@@ -4209,7 +4211,7 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
                 self.pself.obnovit_param_tablic()
                 if '*' not in self.pself.glob_tk_title:
                     self.pself.set_glob_tk_title(self.pself.glob_tk_title + '*')
-                self.hide()
+                self.close()
         return
 
     @CQT.onerror
@@ -4575,6 +4577,42 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
                     return F.valm(spis_op[i][2])
         return tpz
 
+    def dispose(self):
+        """корректное уничтожение окна."""
+        if self._disposed:
+            return
+        self._disposed = True
+        try:
+            self.disconnect()
+        except Exception:
+            pass
+        tbl = self.ui2.tab_vib
+        try:
+            tbl.setUpdatesEnabled(False)
+            tbl.blockSignals(True)
+            for r in range(tbl.rowCount()):
+                for c in range(tbl.columnCount()):
+                    w = tbl.cellWidget(r, c)
+                    if w is not None:
+                        tbl.removeCellWidget(r, c)
+                        w.deleteLater()
+
+            tbl.clearContents()
+            tbl.setRowCount(0)
+            tbl.setColumnCount(0)
+
+            tbl.blockSignals(False)
+            tbl.setUpdatesEnabled(True)
+        except Exception:
+            pass
+        self.close()
+        self.deleteLater()
+
+    def closeEvent(self, e):
+        if not self._disposed:
+            self.dispose()
+        e.accept()
+
 
 
 
@@ -4597,7 +4635,6 @@ app.setStyle(S[1])
 application = mywindow()
 from project_cust_38.widget_spy import install_pyqt_event_hook
 install_pyqt_event_hook(app)
-
 #=============================================================
 versia = application.versia
 if F.is_frozen()== False:

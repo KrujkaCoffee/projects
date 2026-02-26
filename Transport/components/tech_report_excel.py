@@ -106,23 +106,17 @@ def _strip_freq_suffix(header: str) -> str:
 
 @dataclass(frozen=True)
 class TechReportCfg:
-    """Конфиг тех-отчёта. Все поля опциональные; отсутствующие берутся из дефолтов."""
+    """Конфиг тех-отчёта."""
     fields: Optional[Dict[str, bool]] = None
     groups: Optional[Dict[str, bool]] = None
 
     transpose_enabled: bool = True
-    # режим распознавания серий:
-    # - "auto"   : суффиксные серии + частотные серии
-    # - "suffix" : только <base>_<tag><idx>
-    # - "freq"   : только серии по частоте (Гц/Hz) из header/comment
-    # (поддерживаем legacy "header_n" как alias для freq)
     transpose_mode: str = "auto"
     transpose_tags: Optional[List[str]] = None
     transpose_groups: Optional[Dict[str, bool]] = None
     transpose_bases: Optional[List[str]] = None
     suffix_regex: str = r"^(?P<base>.+)_(?P<tag>[A-Za-z]+)(?P<idx>\d+)$"
 
-    # debug
     debug_sheet: bool = False
 
 
@@ -322,7 +316,7 @@ def build_tech_report_xlsx(
 
     suffix_re = re.compile(cfg.suffix_regex)
 
-    _default_tags = ["n", "out", "k", "m"]
+    _default_tags = ["n", "out", "k"]
     allowed_tags = set(t.lower() for t in (cfg.transpose_tags or _default_tags))
     allowed_bases = set(str(b) for b in cfg.transpose_bases) if cfg.transpose_bases is not None else None
 
@@ -375,16 +369,6 @@ def build_tech_report_xlsx(
                         continue
                     base_used = base
                     base_header_used = base_header
-                    if base_used in freq_series and fval in freq_series[base_used] and freq_series[base_used][fval] != k:
-                        n = 2
-                        while True:
-                            cand = f"{base}__{n}"
-                            if cand not in freq_series:
-                                base_used = cand
-                                base_header_used = f"{base_header} [{n}]"
-                                break
-                            n += 1
-
                     freq_series.setdefault(base_used, {})[fval] = k
                     freq_base_header[base_used] = base_header_used
                     freq_base_dim.setdefault(base_used, str(meta_k.get("dimension", "") or ""))
@@ -452,7 +436,7 @@ def build_tech_report_xlsx(
             idxs = sorted({idx for bm in base_map.values() for idx in bm.keys()})
 
             ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
-            set_cell(row, 1, f"Серии: _{tag}{{N}}", font=bold, fill=header_fill)
+            set_cell(row, 1, f"_{tag}{{N}}", font=bold, fill=header_fill)
             row += 1
 
             set_cell(row, 1, "Параметр", font=bold, fill=header_fill, align=Alignment(horizontal="center"), border_=border)
@@ -551,7 +535,6 @@ def build_tech_report_xlsx(
 
         row += 1
 
-    # --- autosize columns (sheet1 only) ---
     for col in range(1, ws.max_column + 1):
         max_len = 0
         for r in range(1, ws.max_row + 1):
@@ -611,3 +594,21 @@ def build_tech_report_xlsx(
         return False
 
     return path
+
+
+def sort_key_params(name: str, params: dict):
+    trail_int_re = re.compile(r"(?:_|^)(\d+)$")
+    meta = params.get(name, {}) or {}
+    h = str(meta.get("header", name))
+    c = str(meta.get("comment") or "")
+    base_h = _strip_freq_suffix(h).lower()
+    f = _extract_freq(h, c)
+    m = trail_int_re.search(str(name))
+    idx = int(m.group(1)) if m else None
+    return (
+        base_h,
+        0 if f is not None else 1,
+        f if f is not None else 0.0,
+        idx if idx is not None else 10**18,
+        str(name).lower(),
+    )

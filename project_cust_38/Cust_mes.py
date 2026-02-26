@@ -318,20 +318,32 @@ class Emploee_spread_db():
 
     def update_fiz_users(self):
         text = """
-        ВЫБРАТЬ
+                ВЫБРАТЬ
             ФизическиеЛица.Фамилия КАК Фамилия,
             ФизическиеЛица.Имя КАК Имя,
             ФизическиеЛица.Отчество КАК Отчество,
             ПРЕДСТАВЛЕНИЕ(ФизическиеЛица.Пол.Ссылка) КАК Пол,
             ФизическиеЛица.ПометкаУдаления КАК ПометкаУдаления,
-            ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ФизическиеЛица.Родитель.Ссылка))  КАК Родитель_key,
+            ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ФизическиеЛица.Родитель.Ссылка)) КАК Родитель_key,
             ФизическиеЛица.ЭтоГруппа КАК ЭтоГруппа,
-            Наименование КАК Наименование,
-            ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ФизическиеЛица.Ссылка)) КАК ФизическоеЛицо_Key
+            ФизическиеЛица.Наименование КАК Наименование,
+            ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ФизическиеЛица.Ссылка)) КАК ФизическоеЛицо_Key,
+            Пользователи.ПБ24_id_bitrix КАК id_bitrix,
+            СведенияОПользователях.ПользовательОС КАК computer_name
         ИЗ
             Справочник.ФизическиеЛица КАК ФизическиеЛица
+                ЛЕВОЕ СОЕДИНЕНИЕ Справочник.Пользователи КАК Пользователи
+                    ПРАВОЕ СОЕДИНЕНИЕ РегистрСведений.СведенияОПользователях КАК СведенияОПользователях
+                    ПО (СведенияОПользователях.Пользователь = Пользователи.Ссылка)
+                ПО (Пользователи.ФизическоеЛицо = ФизическиеЛица.Ссылка)
+                    И (Пользователи.ПометкаУдаления = ЛОЖЬ)
+                    И (Пользователи.Недействителен = ЛОЖЬ)
         ГДЕ
             ФизическиеЛица.ПометкаУдаления = ЛОЖЬ
+            И ФизическиеЛица.ЭтоГруппа = ЛОЖЬ
+        
+        УПОРЯДОЧИТЬ ПО
+            Фамилия
         """
         succ, data_1C = APIERP.get_wet_request(text)
         if succ != 200:
@@ -6190,7 +6202,7 @@ def hide_free_columns(self,tbl):
     tbl.resizeColumnsToContents()
 
 
-def oforml_table(self:mywindow,tbl, tbl_filtr:QtWidgets.QTableWidget= ''):
+def oforml_table(self:mywindow,tbl, tbl_filtr:QtWidgets.QTableWidget= '')->bool:
 
     def increase_columns_width(tbl, step=1):
         for col in range(tbl.columnCount()):
@@ -6232,7 +6244,7 @@ def oforml_table(self:mywindow,tbl, tbl_filtr:QtWidgets.QTableWidget= ''):
                                      and [x for x in _ if x['_type_replace_by_days']]])
             except:
                 CQT.msgbox(f'по позиции {self.dict_tbls_kpl_info[self.current_kpl_table][i][1]} нужно обновить гант (включив гант, в таблице КПЛ клик на эту позицию с шифтом)')
-                return
+                return False
             for j in range(self.count_tbl_field, len(self.dict_tbls_kpl_info[self.current_kpl_table][0])):
                 if self.dict_tbls_kpl_info[self.current_kpl_table][i][j] != "":
                     val = None
@@ -6292,7 +6304,7 @@ def oforml_table(self:mywindow,tbl, tbl_filtr:QtWidgets.QTableWidget= ''):
                     pass
         tbl.setRowHidden(0, True)
         tbl.setRowHidden(1, True)
-
+    return True
 
 def load_dict_poz_from_sql(pnom:int|list):
     fl_single = False
@@ -6524,7 +6536,8 @@ def fill_gant_table(self: mywindow , tbl, tbl_filtr='', dict_form='', pnom=0):
         if self.dict_tbls_kpl_info[self.current_kpl_table] == None:
             return
         #print(self.current_kpl_table)
-        oforml_table(self, tbl, tbl_filtr)
+        if not oforml_table(self, tbl, tbl_filtr):
+            return False
         CQT.load_scoll(self,tbl)
     return True
 
@@ -6582,6 +6595,7 @@ def add_action_config_save_tbl_filtrs(self,self_ui):
     if not hasattr(self_ui, 'menu'):
         print(f'Err add_action_config_save_tbl_filtrs no menu attr')
         quit()
+    
     self_ui.menu.addSeparator()
     self_ui.menu.addAction(self_ui.action_user_config)
     self_ui.action_user_config.triggered.connect(lambda _: CFG.Config.user_config.gui_load(self))

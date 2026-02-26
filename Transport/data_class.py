@@ -10,6 +10,7 @@ import project_cust_38.Cust_SQLite as CSQ
 import components.common_funcs as CMF
 from typing import Any
 import project_cust_38.Cust_Functions as F
+from middleware import current_win_user
 
 """
 Роль	Описание / Назначение
@@ -81,9 +82,22 @@ class Client_config():
         self.color_scheme_seed:str = color_scheme_seed
         self.db_flet:str = db_flet
         self.db_users = MESCNF.Config.project.db_users
-        data_bio_client = CSQ.custom_request_c(self.db_users,
-                       f"""SELECT Пномер, ФИО,Должность,Подразделение FROM employee 
-                        WHERE computer_name == '{self.hostname}' ORDER BY Пномер DESC LIMIT 1;""",rez_dict=True, one=True)
+        self.login = current_win_user.get() or None
+        if self.login:
+            print('Поиск пользователя по WINDOWS AUTH LOGIN')
+            data_bio_client = CSQ.custom_request_c(
+                self.db_users,
+                f"""
+                    SELECT e.Пномер, e.ФИО, e.Должность, e.Подразделение 
+                    FROM employee AS e
+                        INNER JOIN ФизическиеЛица ON ФизическиеЛица.ФизическоеЛицо_Key = e.ID_ФизЛица
+                    WHERE SUBSTR(ФизическиеЛица.login, 3) = "{self.login}" ORDER BY Пномер DESC LIMIT 1
+                """, rez_dict=True, one=True)
+        else:
+            print('Поиск пользователя по HOSTNAME')
+            data_bio_client = CSQ.custom_request_c(self.db_users,
+                           f"""SELECT Пномер, ФИО,Должность,Подразделение FROM employee 
+                            WHERE computer_name == '{self.hostname}';""",rez_dict=True, one=True)
         print(f'data_bio_client = {data_bio_client} for self.hostname ={self.hostname}')
         if not data_bio_client:
             print(f'data_bio_client = None')
@@ -96,7 +110,10 @@ class Client_config():
     def _update_user_param(self,name_param:str,val:int|float|str):
         if isinstance(val, str):
             val = "'" + val + "'"
-        CSQ.custom_request_c(self.db_flet,f"""UPDATE user_config SET {name_param} = {val} WHERE ip = '{self.ip}';""")
+        where = f'ip = {self.ip}'
+        if self.login:
+            where = f'login = "{self.login}"'
+        CSQ.custom_request_c(self.db_flet,f"""UPDATE user_config SET {name_param} = {val} WHERE {where};""")
 
     def update_user_theme_mode(self,dark=False):
         self._update_user_param('theme_mode_dark', int(dark))
@@ -107,6 +124,7 @@ class Client_config():
 class Client_data():
     def __init__(self,page:ft.Page):
         self.ip = None
+        self.login = current_win_user.get()
         self.platform = None
         self.window_size = (None, None)
         self.user_agent = None
@@ -125,12 +143,16 @@ class Client_data():
             self.user_config:Client_config|None = None
 
     def _load_user_config_data(self):
-        conf = CSQ.custom_request_c(self.db_flet, f"""SELECT * FROM user_config WHERE ip = '{self.ip}';""",
+        where = f'ip = {self.ip}'
+        if self.login:
+            where = f'login = "{self.login}"'
+        return CSQ.custom_request_c(self.db_flet, f"""SELECT * FROM user_config WHERE {where};""",
                                     rez_dict=True)
-        return conf
+
     def get_user_config(self):
         conf =  self._load_user_config_data()
-        if not self.ip:
+        if not self.ip and not self.login:
+            print('NOT FINED IP AND LOGIN')
             return
         if not conf:
             if not self.add_new_user():
@@ -164,17 +186,17 @@ class Client_data():
     def update_theme_mode(self,ThemeMode:ft.ThemeMode):
         self.user_config.update_user_theme_mode(ThemeMode == ft.ThemeMode.DARK)
 
-
-
     def add_new_user(self):
-        hostname = self.get_hostname().split('.')[0]
-        if hostname == '192':
-            return False
-        add_row = [self.ip,hostname]
-        rez = CSQ.custom_request_c(self.db_flet,"""INSERT INTO user_config (ip,hostname) VALUES (?,?);""",list_of_lists_c=[add_row])
+        hostname = None
+        try:
+            hostname = self.get_hostname().split('.')[0]
+        except Exception as e:
+            print(e)
+        # if hostname == '192':
+        #     return False
+        add_row = [self.ip, hostname, self.login]
+        rez = CSQ.custom_request_c(self.db_flet,"""INSERT INTO user_config (ip,hostname,login) VALUES (?,?, ?);""",list_of_lists_c=[add_row])
         return rez
-
-
 
     def get_hostname(self):
         name = CMF.ip_to_hostname(self.ip)
@@ -199,9 +221,6 @@ class StatusBar:
         self._refStatusBarText.current.value = self._text
 
 
-
-
-
 class ModuleCfg:
     _dict_routes = dict()
     def __init__(self, alias:str|None='genesis', route:str|None=None, name:str='', icon:ft.Icons|None=None, tooltip:str='', sub_module:Optional[
@@ -223,6 +242,7 @@ class ModuleCfg:
             self.sub_modules[sub_module.alias] = sub_module
         ModuleCfg._dict_routes[route] = self
         self.settingsRef:None|ft.Ref[ft.Column] = None
+
     def set_status_bar(self,refContainer,refStatusBarText):
         self.status_bar = StatusBar(refContainer, refStatusBarText)
 

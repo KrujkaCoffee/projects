@@ -9,7 +9,7 @@ import flet as ft
 
 
 @dataclass(frozen=True)
-class _Item:
+class GroupItem:
     key: str
     group: str
     header: str
@@ -18,20 +18,19 @@ class _Item:
 
 
 @dataclass
-class _SeriesInfo:
+class SeriesInfo:
     base: str
     header: str
     tags: set[str]
-    idxs: set[float]  # для suffix: N; для freq: частоты
+    idxs: set[float]
 
 
-_DEFAULT_SUFFIX_REGEX = r"^(?P<base>.+)_(?P<tag>[A-Za-z]+)_?(?P<idx>\d+)(?P<rest>(?:_\d+)*)$"
+DEFAULT_SUFFIX_REGEX = r"^(?P<base>.+)_(?P<tag>[A-Za-z]+)_?(?P<idx>\d+)(?P<rest>(?:_\d+)*)$"
 
-# Частота (Гц/Hz) может быть в header или comment
-_FREQ_RE = re.compile(r"(?i)(?:гц|hz)\s*(?P<a>\d+(?:[.,]\d+)?)|(?P<b>\d+(?:[.,]\d+)?)\s*(?:гц|hz)")
+FREQ_RE = re.compile(r"(?i)(?:гц|hz)\s*(?P<a>\d+(?:[.,]\d+)?)|(?P<b>\d+(?:[.,]\d+)?)\s*(?:гц|hz)")
 
 
-def _default_visible(meta: dict) -> bool:
+def default_visible(meta: dict) -> bool:
     view = meta.get("view", True)
     if isinstance(view, bool):
         return view
@@ -40,7 +39,7 @@ def _default_visible(meta: dict) -> bool:
     return True
 
 
-def _normalize_tags(raw: Any) -> List[str]:
+def normalize_tags(raw: Any) -> List[str]:
     if raw is None:
         return ["n"]
     if isinstance(raw, str):
@@ -61,7 +60,7 @@ def _slug_base(s: str) -> str:
 
 def _extract_freq(header: str, comment: str) -> Optional[float]:
     for s in (header or "", comment or ""):
-        m = _FREQ_RE.search(str(s))
+        m = FREQ_RE.search(str(s))
         if not m:
             continue
         raw = m.group("a") or m.group("b")
@@ -95,28 +94,21 @@ def _scan_series(
     output_params: Dict[str, dict],
     suffix_regex: str,
     transpose_mode: str,
-) -> Tuple[List[str], Dict[str, List[_SeriesInfo]]]:
-    """
-    Парсинг OUTPUT_PARAMS для вкладки «Транспонирование».
-
-    transpose_mode:
-      - "auto"   : suffix + freq
-      - "suffix" : только suffix_regex
-      - "freq"   : только частоты (Гц/Hz) из header/comment
-    """
+) -> Tuple[List[str], Dict[str, List[SeriesInfo]]]:
+    """Парсинг OUTPUT_PARAMS для вкладки «Транспонирование»."""
     mode = (transpose_mode or "auto").strip().lower()
     if mode not in ("auto", "suffix", "freq"):
         mode = "auto"
 
-    suffix_re = re.compile((suffix_regex or _DEFAULT_SUFFIX_REGEX).strip())
+    suffix_re = re.compile((suffix_regex or DEFAULT_SUFFIX_REGEX).strip())
 
-    tmp: Dict[str, Dict[str, _SeriesInfo]] = {}  # group -> base -> info
+    tmp: Dict[str, Dict[str, SeriesInfo]] = {}
 
     def _add(*, group: str, base: str, header: str, tag: str, idx: float):
         gmap = tmp.setdefault(group, {})
         info = gmap.get(base)
         if info is None:
-            info = _SeriesInfo(base=base, header=header, tags=set(), idxs=set())
+            info = SeriesInfo(base=base, header=header, tags=set(), idxs=set())
             gmap[base] = info
         info.tags.add(tag)
         info.idxs.add(float(idx))
@@ -149,7 +141,7 @@ def _scan_series(
                 _add(group=group, base=base, header=base_header, tag="freq", idx=f)
 
     group_names = sorted(tmp.keys(), key=lambda s: s.lower())
-    series_by_group: Dict[str, List[_SeriesInfo]] = {}
+    series_by_group: Dict[str, List[SeriesInfo]] = {}
     for g in group_names:
         infos = list(tmp[g].values())
         infos.sort(key=lambda x: (x.header.lower(), x.base.lower()))
@@ -173,11 +165,11 @@ def open_tech_report_settings_dialog(
     cfg_groups: Dict[str, Any] = cfg.get("groups") if isinstance(cfg.get("groups"), dict) else {}
 
     transpose_enabled_init = bool(cfg.get("transpose_enabled", True))
-    transpose_tags_init = _normalize_tags(cfg.get("transpose_tags"))
-    suffix_regex_init = str(cfg.get("suffix_regex") or _DEFAULT_SUFFIX_REGEX).strip()
+    transpose_tags_init = normalize_tags(cfg.get("transpose_tags"))
+    suffix_regex_init = str(cfg.get("suffix_regex") or DEFAULT_SUFFIX_REGEX).strip()
 
     transpose_mode_init = str(cfg.get("transpose_mode") or "auto").strip().lower()
-    if transpose_mode_init == "header_n":  # legacy alias
+    if transpose_mode_init == "header_n":
         transpose_mode_init = "freq"
     if transpose_mode_init not in ("auto", "suffix", "freq"):
         transpose_mode_init = "auto"
@@ -195,7 +187,7 @@ def open_tech_report_settings_dialog(
     else:
         cfg_t_bases = None
 
-    items: List[_Item] = []
+    items: list[GroupItem] = []
     for key, meta in (output_params or {}).items():
         if not isinstance(meta, dict):
             meta = {}
@@ -203,18 +195,18 @@ def open_tech_report_settings_dialog(
         header = str(meta.get("header") or key)
         dim = str(meta.get("dimension") or "")
         items.append(
-            _Item(
+            GroupItem(
                 key=str(key),
                 group=group,
                 header=header,
                 dim=dim,
-                default_visible=_default_visible(meta),
+                default_visible=default_visible(meta),
             )
         )
 
     items.sort(key=lambda it: (it.group.lower(), it.header.lower()))
     group_names = sorted({it.group for it in items}, key=lambda s: s.lower())
-    group_to_items: Dict[str, List[_Item]] = {g: [] for g in group_names}
+    group_to_items: Dict[str, List[GroupItem]] = {g: [] for g in group_names}
     for it in items:
         group_to_items[it.group].append(it)
 
@@ -226,7 +218,6 @@ def open_tech_report_settings_dialog(
     for g in group_names:
         group_state[g] = bool(cfg_groups.get(g, True))
 
-    # ---------- series scan (depends on mode) ----------
     series_group_names, series_by_group = _scan_series(output_params, suffix_regex_init, transpose_mode_init)
 
     def _calc_all_bases() -> List[str]:
@@ -252,7 +243,6 @@ def open_tech_report_settings_dialog(
         for b in all_bases_set:
             transpose_base_state[b] = b in allowed
 
-    # ---------------- controls ----------------
     search_tf = ft.TextField(
         label="Поиск",
         hint_text="по имени / ключу параметра",
@@ -263,7 +253,6 @@ def open_tech_report_settings_dialog(
 
     transpose_enabled_sw = ft.Switch(label="Включить транспонирование серий", value=transpose_enabled_init)
 
-    # режим транспонирования (две/три опции для пользователя)
     transpose_mode_rg = ft.RadioGroup(
         value=transpose_mode_init,
         content=ft.Row(
@@ -290,46 +279,38 @@ def open_tech_report_settings_dialog(
         label="Regex суффикса — только для суффиксного режима",
         value=suffix_regex_init,
         dense=True,
-        helper="Дефолт: <base>_<tag><idx>  (пример: pressure_n1)",
     )
 
     fields_body_ref = ft.Ref[ft.Column]()
     transpose_body_ref = ft.Ref[ft.Column]()
 
-    # action controls (to disable during save)
     progress_ring = ft.ProgressRing(width=18, height=18, visible=False)
     btn_cancel = ft.TextButton("Отмена")
     btn_save = ft.FilledButton("Сохранить")
 
     _closing = {"busy": False}
 
-    # ---- cfg builder ----
     def _build_cfg() -> Dict[str, Any]:
-        """ВАЖНО: делаем merge, чтобы не затирать ранее сохранённые ключи (num_prefixes и т.п.)."""
         out: Dict[str, Any] = dict(cfg)
 
-        # fields overrides: пишем только отличия от дефолта
         fields_overrides: Dict[str, bool] = {}
         for it in items:
             cur = bool(field_state.get(it.key, True))
             if cur != bool(it.default_visible):
                 fields_overrides[it.key] = cur
 
-        # groups overrides: дефолт True
         groups_overrides: Dict[str, bool] = {}
         for g in group_names:
             cur = bool(group_state.get(g, True))
             if cur is not True:
                 groups_overrides[g] = cur
 
-        # transpose: groups overrides (по умолчанию True)
         t_groups_overrides: Dict[str, bool] = {}
         for g in series_group_names:
             cur = bool(transpose_group_state.get(g, True))
             if cur is not True:
                 t_groups_overrides[g] = cur
 
-        # transpose: bases allow-list
         enabled_bases = sorted([b for b, v in transpose_base_state.items() if bool(v)], key=lambda s: s.lower())
         if not all_bases_set:
             transpose_bases_out = None
@@ -337,18 +318,17 @@ def open_tech_report_settings_dialog(
             if set(enabled_bases) == set(all_bases_set):
                 transpose_bases_out = None
             else:
-                transpose_bases_out = enabled_bases  # может быть [] => "ничего"
+                transpose_bases_out = enabled_bases
 
         out["fields"] = fields_overrides
         out["groups"] = groups_overrides
         out["transpose_enabled"] = bool(transpose_enabled_sw.value)
         out["transpose_mode"] = str(transpose_mode_rg.value or "auto")
-        out["transpose_tags"] = _normalize_tags(transpose_tags_tf.value)
-        out["suffix_regex"] = (suffix_regex_tf.value or _DEFAULT_SUFFIX_REGEX).strip()
+        out["transpose_tags"] = normalize_tags(transpose_tags_tf.value)
+        out["suffix_regex"] = (suffix_regex_tf.value or DEFAULT_SUFFIX_REGEX).strip()
         out["debug_sheet"] = bool(debug_sheet_sw.value)
         out["persist"] = bool(persist_sw.value)
 
-        # optional transpose filters
         if t_groups_overrides:
             out["transpose_groups"] = t_groups_overrides
         else:
@@ -361,11 +341,6 @@ def open_tech_report_settings_dialog(
 
         return out
 
-    # ---- fields UI (perf) ----
-    # Ключевая идея: НЕ пересоздавать тысячи контролов на каждый символ в поиске.
-    # 1) Список групп строим один раз (только шапки) и лениво подгружаем поля при раскрытии группы.
-    # 2) Поиск — с debounce; при активном поиске показываем плоский список результатов.
-
     fields_dynamic_ref = ft.Ref[ft.Column]()
 
     group_cb_by_name: Dict[str, ft.Checkbox] = {}
@@ -374,7 +349,6 @@ def open_tech_report_settings_dialog(
     group_block_by_name: Dict[str, ft.Column] = {}
     group_expand_btn_by_name: Dict[str, ft.IconButton] = {}
 
-    # кешируем только уже построенные поля (группа могла ещё не раскрыться)
     field_cb_by_key: Dict[str, ft.Checkbox] = {}
 
     _group_built: Dict[str, bool] = {g: False for g in group_names}
@@ -442,15 +416,14 @@ def open_tech_report_settings_dialog(
     bulk_buttons = ft.Row(
         controls=[
             ft.FilledButton("Все", on_click=lambda _e: _bulk_apply_all(True)),
-            ft.OutlinedButton("Ничего", on_click=lambda _e: _bulk_apply_none()),
+            ft.OutlinedButton("Снять все галки", on_click=lambda _e: _bulk_apply_none()),
             ft.TextButton("Сброс", on_click=lambda _e: _bulk_apply_reset()),
         ],
         spacing=10,
     )
 
     fields_hint = ft.Text(
-        "Подсказка: дефолтная видимость берётся из OUTPUT_PARAMS[key]['view'] (если задано).\n"
-        "Галочка группы выключает группу целиком в отчёте.",
+        "Галочка группы выключает группу целиком в Технологическом отчёте.",
         size=12,
         opacity=0.8,
     )
@@ -550,28 +523,10 @@ def open_tech_report_settings_dialog(
             except Exception:
                 pass
 
-        if hasattr(page, "run_task"):
-            try:
-                page.run_task(_task())
-            except Exception:
-                col.controls = _build_group_children_sync(g)
-                _group_built[g] = True
-                _group_building.discard(g)
-                try:
-                    col.update()
-                except Exception:
-                    pass
-        else:
-            col.controls = _build_group_children_sync(g)
-            _group_built[g] = True
-            _group_building.discard(g)
-            try:
-                col.update()
-            except Exception:
-                pass
+        page.run_task(_task)
 
-    def _build_group_blocks() -> List[ft.Control]:
-        blocks: List[ft.Control] = []
+    def _build_group_blocks() -> list[ft.Control]:
+        blocks: list[ft.Control] = []
         for g in group_names:
             g_items_cnt = len(group_to_items.get(g, []))
 
@@ -668,15 +623,9 @@ def open_tech_report_settings_dialog(
     def _on_search_change(_e: ft.ControlEvent):
         _search_seq["n"] += 1
         seq = _search_seq["n"]
-        if hasattr(page, "run_task"):
-            try:
-                page.run_task(_debounced_search(seq))
-                return
-            except Exception:
-                pass
+        page.run_task(_debounced_search, seq)
         _apply_search_now()
 
-    # ---- transpose rendering ----
     _transpose_rendered = {"done": False}
 
     def _render_transpose():
@@ -687,9 +636,7 @@ def open_tech_report_settings_dialog(
 
         tiles.append(
             ft.Text(
-                "Транспонирование серий — сворачиваем множество параметров в одну строку и раскладываем по колонкам.\n"
-                "• Суффиксный режим: <base>_<tag><idx>\n"
-                "• Частотный режим: частота (Гц/Hz) из header/comment\n",
+                "Транспонирование серий",
                 size=12,
                 opacity=0.85,
             )
@@ -830,14 +777,8 @@ def open_tech_report_settings_dialog(
                     except Exception:
                         pass
 
-                if hasattr(page, "run_task"):
-                    try:
-                        page.run_task(_task())
-                        return
-                    except Exception:
-                        pass
+                page.run_task(_task)
 
-                # fallback sync
                 rows_sync: List[ft.Control] = []
                 for info in series_by_group.get(g, []):
                     cb = ft.Checkbox(
@@ -906,24 +847,6 @@ def open_tech_report_settings_dialog(
                     )
                 )
 
-        tiles.append(
-            ft.ExpansionTile(
-                title=ft.Text("Служебные настройки (не обязательно)", weight=ft.FontWeight.W_600),
-                maintain_state=True,
-                expanded=False,
-                controls=[
-                    ft.Text(
-                        "Теги/regex применяются только для суффиксного режима. "
-                        "Для частотного режима частота берётся из header/comment.",
-                        size=12,
-                        opacity=0.75,
-                    ),
-                    transpose_tags_tf,
-                    suffix_regex_tf,
-                ],
-            )
-        )
-
         transpose_body_ref.current.controls = tiles
         transpose_body_ref.current.update()
 
@@ -949,28 +872,20 @@ def open_tech_report_settings_dialog(
                 return
             _render_transpose()
 
-        if hasattr(page, "run_task"):
-            try:
-                page.run_task(_task())
-                return
-            except Exception:
-                pass
+        page.run_task(_task)
         _render_transpose()
 
-    # перескан серий при смене режима (чтобы не было "выключилось после сохранения")
     def _rescan_and_rerender():
         nonlocal series_group_names, series_by_group, all_bases, all_bases_set
-        series_group_names, series_by_group = _scan_series(output_params, suffix_regex_tf.value or _DEFAULT_SUFFIX_REGEX, transpose_mode_rg.value)
+        series_group_names, series_by_group = _scan_series(output_params, suffix_regex_tf.value or DEFAULT_SUFFIX_REGEX, transpose_mode_rg.value)
         all_bases = _calc_all_bases()
         all_bases_set = set(all_bases)
 
-        # дополняем состояния (не теряем текущие значения по старым ключам)
         for g in series_group_names:
             transpose_group_state.setdefault(g, True)
         for b in all_bases_set:
             transpose_base_state.setdefault(b, True)
 
-        # чистим то, чего больше нет
         for g in list(transpose_group_state.keys()):
             if g not in series_group_names:
                 transpose_group_state.pop(g, None)
@@ -986,7 +901,6 @@ def open_tech_report_settings_dialog(
 
     transpose_mode_rg.on_change = _on_mode_change
 
-    # ---- dialog close ----
     def _close(save: bool):
         if _closing["busy"]:
             return
@@ -1004,19 +918,11 @@ def open_tech_report_settings_dialog(
             if save:
                 on_save(_build_cfg())
         finally:
-            try:
-                if hasattr(page, "close"):
-                    page.close(dlg)
-                else:
-                    dlg.open = False
-                    dlg.update()
-            except Exception:
-                pass
+            page.pop_dialog()
 
     btn_cancel.on_click = lambda _e: _close(False)
     btn_save.on_click = lambda _e: _close(True)
 
-    # ---- tabs layout (Flet 0.80+) ----
     fields_tab = ft.Container(
         content=ft.Column(ref=fields_body_ref, controls=[], scroll=ft.ScrollMode.AUTO, expand=True),
         expand=True,
@@ -1065,18 +971,8 @@ def open_tech_report_settings_dialog(
         actions_alignment=ft.MainAxisAlignment.END,
         actions=[progress_ring, btn_cancel, btn_save],
     )
+    page.show_dialog(dlg)
 
-    # open
-    try:
-        page.show_dialog(dlg)
-    except Exception:
-        page.dialog = dlg
-        dlg.open = True
-        page.update()
-
-    # -----------------
-    # initial mount (after dialog open)
-    # -----------------
     search_tf.on_change = _on_search_change
 
     def _mount_fields_tab():
@@ -1099,7 +995,7 @@ def open_tech_report_settings_dialog(
             return
         transpose_body_ref.current.controls = [
             ft.Text(
-                "Откройте вкладку «Транспонирование», чтобы загрузить список серий (ленивая загрузка).",
+                "Откройте вкладку «Транспонирование», чтобы загрузить список серий.",
                 size=12,
                 opacity=0.75,
             )
@@ -1114,12 +1010,4 @@ def open_tech_report_settings_dialog(
         _mount_fields_tab()
         _mount_transpose_placeholder()
 
-    if hasattr(page, "run_task"):
-        try:
-            page.run_task(_post_open_init())
-        except Exception:
-            _mount_fields_tab()
-            _mount_transpose_placeholder()
-    else:
-        _mount_fields_tab()
-        _mount_transpose_placeholder()
+    page.run_task(_post_open_init)

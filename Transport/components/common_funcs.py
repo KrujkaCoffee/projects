@@ -471,16 +471,11 @@ class   Table_data():
 
 
     def toggle_group(self,name:str|None=None):
-        """Переключает раскрытие группы.
-        Если таблица отрисована через Table_view с lazy_groups, делегируем управление ей
-        (это позволяет вставлять/убирать строки вместо массового visible).
-        """
+        """Переключение раскрытие группы"""
         if (self.table_view is not None and hasattr(self.table_view, 'toggle_group_ui') and getattr(self.table_view, 'lazy_groups', False)):
-            # UI-таблица сама решает, как эффективно раскрывать группы
             self.table_view.toggle_group_ui(name)
             return
 
-        # Фолбэк: старое поведение через visible
         if self._is_all_rows_ih_group_visible(name):
             self.hide_group(name)
         else:
@@ -600,19 +595,15 @@ class   Table_data():
         self.rows.insert(0,row)
         self.name = table_name
 
-    # --- Новый метод ---
     def set_all_cells_disabled(self, disabled: bool = True):
-        """
-        Делает все ячейки таблицы доступными / недоступными
-        через Row_data.set_cell_disabled().
-        """
+        """назначить disable/enable всей группе input """
 
         if not self.rows:
             return
 
-        for row in self.rows:   # проходим по Row_data
+        for row in self.rows:
             for cell in row.cells:
-                if cell.params_field.editable: # все ячейки внутри Row_data
+                if cell.params_field.editable:
                     row.set_cell_disabled(cell.params_field.name, disabled)
                     fl_pass = False
                     if cell.control_ref and cell.control_ref.current:
@@ -624,21 +615,16 @@ class   Table_data():
                             row.set_cell_text_color(cell.params_field.name,ft.Colors.SECONDARY)
                         else:
                             row.set_cell_text_color(cell.params_field.name,ft.Colors.ON_SURFACE)
-        # --- Новый метод ---
 
     def sync_ui_to_data(self,field_name):
-        """
-        Копирует значения из UI (DataTable) в модель Table_data.
-        Использует control_ref каждой ячейки (_Cell_data).
-        """
+        """Копирует значения из UI (DataTable) в модель Table_data."""
         DTCLS.Data_page.Data_module.status_bar.set_text()
         if not self.rows:
             return
-        for row in self.rows:  # Row_data
-            for cell in row.cells:  # _Cell_data
+        for row in self.rows:
+            for cell in row.cells:
                 if cell.control_ref and cell.control_ref.current and cell.params_field.name == field_name:
                     ctrl = cell.control_ref.current
-                    # Определяем значение в зависимости от типа контрола
                     if hasattr(ctrl, "value"):
                         val = ctrl.value
                     elif hasattr(ctrl, "text"):
@@ -661,7 +647,6 @@ class   Table_data():
         result = {}
         for row in self.rows:
             row_dict = row.dict_cells()
-            # ищем уникальное поле
             unique_cells = [c for c in row.cells if c.params_field and c.params_field.unique]
             if not unique_cells:
                 raise ValueError("В строке нет уникального поля (unique=True)")
@@ -720,6 +705,7 @@ class Table_view(ft.DataTable):
             fnc_on_click = None,
             lazy_groups: bool = False,
             single_group_expand: bool = False,
+            group_header_controls: dict | None = None,
 
 
     ):
@@ -727,7 +713,7 @@ class Table_view(ft.DataTable):
         self.table_data:Table_data = table_input_data
         self.lazy_groups: bool = bool(lazy_groups)
         self.single_group_expand: bool = bool(single_group_expand)
-        # Ленивая логика раскрытия групп (решение 1) + режим "только одна раскрытая" (решение 2)
+        self.group_header_controls: dict = group_header_controls if isinstance(group_header_controls, dict) else {}
         self._expanded_groups: set[str] = set()
         self._group_order: list[str] = []
         self._group_rows_data: dict[str, list[Row_data]] = {}
@@ -793,6 +779,13 @@ class Table_view(ft.DataTable):
             left_padding = 16
             if row_data.table_header:
                 left_padding /=2
+            grp_controls = None
+            try:
+                grp_controls = self.group_header_controls.get(getattr(row_data, 'group_name', None))
+                if not isinstance(grp_controls, dict):
+                    grp_controls = None
+            except Exception:
+                grp_controls = None
             for cell_data in row_data.cells:
                 field = cell_data.params_field
                 visible = True
@@ -838,6 +831,35 @@ class Table_view(ft.DataTable):
                     list_cells.append(merged_cell)
                     content_outed = True
                 else:
+                    # Доп. контролы в строке-заголовке группы (например, switch в отдельной колонке)
+                    if (grp_controls is not None) and (not field.hidden) and (field.name in grp_controls):
+                        spec = grp_controls.get(field.name)
+                        try:
+                            ctrl = spec(row_data) if callable(spec) else spec
+                        except Exception:
+                            ctrl = None
+                        if ctrl is not None:
+                            empty_cell = ft.DataCell(
+                                content=ft.Container(
+                                    content=ctrl,
+                                    height=row_height,
+                                    bgcolor=ft.Colors.TRANSPARENT,
+                                    padding=ft.padding.all(0),
+                                    alignment=ft.Alignment.CENTER,
+                                    border=ft.border.only(
+                                        ft.BorderSide(1, ft.Colors.TRANSPARENT),
+                                        ft.BorderSide(1, ft.Colors.TRANSPARENT),
+                                        ft.BorderSide(1, ft.Colors.TRANSPARENT),
+                                        ft.BorderSide(1, ft.Colors.TRANSPARENT),
+                                    ),
+                                    expand=False,
+                                    width=field.width,
+                                ),
+                                visible=True,
+                            )
+                            list_cells.append(empty_cell)
+                            continue
+
                     # Пустые ячейки с прозрачным фоном
                     expand = True
                     width = 0
@@ -958,7 +980,6 @@ class Table_view(ft.DataTable):
                 data=data,
             )
 
-        # Сохраняем, чтобы использовать при раскрытии групп (без повторного копипаста кода)
         self._build_data_row = _build_data_row
 
         def _build_subheader_row(row_data: Row_data) -> ft.DataRow:
@@ -2059,3 +2080,67 @@ def dialog_save_file(e: ft.ControlEvent, pathf: str):
     print(pathf)
     e.page.run_task(launch_url, page=e.page, url=download_url)
     # e.page.launch_url(download_url)
+
+
+
+def build_save_reports_menu(
+    *,
+    ref: ft.Ref | None = None,
+    width: int = 200,
+    height: int = 50,
+    radius: int = 1,
+    on_word=None,
+    on_excel=None,
+    on_tech_build=None,
+    on_tech_settings=None,
+):
+    """Нативное меню сохранения:"""
+
+    def _safe_call(cb, e):
+        if cb:
+            cb(e)
+
+    tech_submenu = ft.SubmenuButton(
+        leading=ft.Icon(ft.Icons.FACT_CHECK),
+        content=ft.Text("Технологический отчёт"),
+        controls=[
+            ft.MenuItemButton(
+                leading=ft.Icon(ft.Icons.PLAY_ARROW),
+                content=ft.Text("Сформировать"),
+                on_click=lambda e: _safe_call(on_tech_build, e),
+            ),
+            ft.MenuItemButton(
+                leading=ft.Icon(ft.Icons.SETTINGS),
+                content=ft.Text("Настройки…"),
+                on_click=lambda e: _safe_call(on_tech_settings, e),
+            ),
+        ],
+    )
+
+    save_menu = ft.SubmenuButton(
+        ref=ref,
+        # width=width,
+        height=height,
+        leading=ft.Icon(ft.Icons.SAVE_AS),
+        content=ft.Text("Сохранить"),
+        trailing=ft.Icon(ft.Icons.KEYBOARD_ARROW_DOWN),
+        style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=radius)),
+        menu_style=ft.MenuStyle(alignment=ft.Alignment.TOP_LEFT),
+        alignment_offset=ft.Offset(width, 0),
+        controls=[
+            ft.MenuItemButton(
+                leading=ft.Icon(ft.Icons.DESCRIPTION),
+                content=ft.Text("Word (шаблон)"),
+                on_click=lambda e: _safe_call(on_word, e),
+            ),
+            ft.MenuItemButton(
+                leading=ft.Icon(ft.Icons.GRID_ON),
+                content=ft.Text("Excel"),
+                on_click=lambda e: _safe_call(on_excel, e),
+            ),
+            ft.MenuItemButton(),
+            tech_submenu,
+        ],
+    )
+
+    return save_menu

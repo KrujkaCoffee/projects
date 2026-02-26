@@ -11,13 +11,15 @@ import project_cust_38.Cust_Excel as CEX
 import project_cust_38.Cust_emoji as Cust_emoji
 import project_cust_38.Cust_SQLite as CSQ
 import Config.srv_config as SRVCFG
-from components import calc_silencer_input_params
-from components import calc_acoustic_input_params
-from components import calc_silencer_output_params
-from components import calc_acoustic_output_params
-# from components.calc_silencer_output_params import GROUPS, OUTPUT_PARAMS
-import components.calc_silencer_functions_M5_M400 as silencer_functions
-import components.calc_acoustic_functions as acoustic_functions
+from components import (
+    calc_silencer_input_params,
+    calc_acoustic_input_params,
+    calc_silencer_output_params,
+    calc_acoustic_output_params
+)
+from components import calc_silencer_functions_M5_M400 as silencer_functions
+from components import calc_acoustic_functions as acoustic_functions
+from components.tech_report_excel import sort_key_params
 
 import components.common_funcs as CMF
 from components.common_funcs import Table_data
@@ -226,7 +228,7 @@ def make_res_tbl(data: dict, ref_out=None, fnc_cell_click=None) -> CMF.Table_dat
 
         if not group_items:
             continue
-
+        group_items.sort(key=lambda kv: sort_key_params(kv[0], OUTPUT_PARAMS))
         new_tbl_output.add_group(F.get_time_shtamp_c(), group)
 
         for name, val in group_items:

@@ -1,3 +1,4 @@
+import mimetypes
 import logging
 
 import Config.srv_config as SRVCFG
@@ -7,12 +8,13 @@ import socket
 import data_class as DTCLS
 import components.modules as modules
 import components.settings as SETGS
+from middleware import IISWindowsUserMiddleware
 
 from typing import cast
 
-ver = 0.01
+ver = 0.02
 
-FLET_PATH = ''  # or 'ui/path'
+FLET_PATH = ''
 FLET_PORT = SRVCFG.PORT
 FLET_HOST = SRVCFG.HOST
 
@@ -20,14 +22,14 @@ IN_BROUSER = SRVCFG.IN_BROUSER
 
 name_title = "MES app"
 name = "Веб приложение МЕС"
-import mimetypes
+
 mimetypes.add_type("application/javascript", ".js")
 mimetypes.add_type("application/javascript", ".mjs")
 mimetypes.add_type("application/wasm", ".wasm")
+
 logging.basicConfig(level=logging.INFO)
-def main(page: ft.Page):
 
-
+async def main(page: ft.Page):
     DTCLS.Data_page.page = page
     DTCLS.Data_page.reload()
     page.data = cast(DTCLS.Data_page, DTCLS.Data_page)
@@ -45,18 +47,16 @@ def main(page: ft.Page):
     # if not F.existence_file_c(img_path):
     #    quit()
     # page.favicon = img_path
-    def on_range_change(e):
-        route_change(e.page)
-    def route_change(e):
+
+    async def on_range_change(e):
         if isinstance(e, ft.Page):
             page = e
         else:
             page = e.page
-        #print("Route change:", e.route)
         page.views.clear()
 
         if e.route.startswith('/modules'):
-            controls = modules.load_module(page)
+            controls = await modules.load_module(page)
             if DTCLS.Data_page.Data_module.status_bar:
                 DTCLS.Data_page.Data_module.status_bar.set_text()
 
@@ -98,34 +98,24 @@ def main(page: ft.Page):
     Data.Data_user.apply_theme_mode(page)
     Data.Data_user.apply_theme(page)
 
-    # page.theme_mode = ft.ThemeMode.LIGHT
-    page.on_error = lambda e: print("Page error:", e.data)
+    page.on_error = lambda e: logging.info("Page error:", e.data)
 
-    # route_change(page)
-
-    #page.spacing = 100
     page.expand = True
 
-    #print(f"Initial route: {page.route}")
-
-    def update_size(e):
-        ...
-        # Для веба: используем контейнер с expand=True
-        # width = page.client_storage.get("window_width", 800)
-        # height = page.client_storage.get("window_height", 600)
-        # Data.Data_vars.width = width
-        # Data.Data_vars.height = height
+    async def update_size(e):
+        local_storage = ft.SharedPreferences()
+        width = await local_storage.get("window_width")
+        height = await local_storage.get("window_height")
+        Data.Data_vars.width = width or 800
+        Data.Data_vars.height = height or 600
 
     page.on_resize = update_size
     page.on_route_change = on_range_change
-    route_change(page)
-
-
-    # await page.push_route(page.route)
+    await on_range_change(page)
+    await page.push_route("/")
 
 
 if __name__ == "__main__":
-
     if socket.gethostname() == 'POW18-15':  # a.belyakov
         PATHF_IT_PLAN = fr'C:\Python\Reiting_users\plan_it_form_b24(gen by reiting).pickle'
         if IN_BROUSER:
@@ -138,16 +128,14 @@ if __name__ == "__main__":
         PATHF_IT_PLAN = fr'C:\srv_mes\srv_mes\plan_it_form_b24(gen by reiting).pickle'
         print(f'http://{FLET_HOST}:{FLET_PORT}')
         print(f'http://mesinfo.powerz.ru:{FLET_PORT}') # SRVmes 'http://mesinfo.powerz.ru:20000/'
-        app = ft.run(name=FLET_PATH, main=main, view=ft.AppView.WEB_BROWSER, port=FLET_PORT,
+        learn_app = ft.run(name=FLET_PATH, main=main, view=ft.AppView.WEB_BROWSER, port=FLET_PORT,
                host='localhost')
+        app = IISWindowsUserMiddleware(learn_app)
+
     else:
         PATHF_IT_PLAN = fr'C:\srv_mes\srv_mes\plan_it_form_b24(gen by reiting).pickle'
         print(f'http://{FLET_HOST}:{FLET_PORT}')
         print(f'http://mesinfo.powerz.ru:{FLET_PORT}') # SRVmes 'http://mesinfo.powerz.ru:20000/'
-        app = ft.run(name=FLET_PATH, main=main, view=ft.AppView.WEB_BROWSER, port=FLET_PORT,
+        learn_app = ft.run(name=FLET_PATH, main=main, view=ft.AppView.WEB_BROWSER, port=FLET_PORT,
                host='0.0.0.0', export_asgi_app=True)
-PATHF_IT_PLAN = fr'C:\srv_mes\srv_mes\plan_it_form_b24(gen by reiting).pickle'
-print(f'http://{FLET_HOST}:{FLET_PORT}')
-print(f'http://mesinfo.powerz.ru:{FLET_PORT}') # SRVmes 'http://mesinfo.powerz.ru:20000/'
-app = ft.run(name=FLET_PATH, main=main, view=ft.AppView.WEB_BROWSER, port=FLET_PORT,
-       host='localhost', export_asgi_app=True)
+        app = IISWindowsUserMiddleware(learn_app)
