@@ -29,7 +29,7 @@ import project_cust_38.Cust_docs as CDOCS
 import project_cust_38.Cust_storage as CSTORE
 from project_cust_38 import Cust_progressBar as CPB
 import copy
-from datetime import timedelta
+from datetime import timedelta, date,time
 from dateutil.relativedelta import relativedelta
 import subprocess
 import winreg
@@ -62,6 +62,70 @@ def is_user_profession(prof_name: str, dict_employee: dict = None) -> bool: #09.
         return False
     prof = dict_employee[user]['Должность']
     return prof == prof_name
+
+
+class _ImportDb():
+    def parce_row_dict(self,item:dict):
+        attrs = F.get_all_attrs_with_properties(self)
+        for key,val in item.items():
+            fix_key = str(key).replace(".", "_")
+            if fix_key not in attrs:
+                print(f'class {self.__class__.__name__} ImportDbRow attr not declared :{fix_key}' )
+            exec(f'self.{fix_key} = val')
+
+
+class Shift():
+    def __init__(self,num,start:str,end:str):
+        self.num:int = num
+        self.start:datetime.time = F.strtotime(start,"%H:%M")
+        self.end:datetime.time = F.strtotime(end,"%H:%M")
+        self.minutes_vol = Shift.minutes_between(self.start,self.end)
+
+    @staticmethod
+    def minutes_between(t1: time, t2: time) -> int:
+        d = date.today()
+
+        dt1 = datetime.datetime.combine(d, t1)
+        dt2 = datetime.datetime.combine(d, t2)
+
+        if dt2 < dt1:
+            dt2 += timedelta(days=1)
+
+        delta = dt2 - dt1
+        return int(delta.total_seconds() // 60)
+
+class Production_shifts():
+    def __init__(self,user_mes_id:int,db_users:str):
+        self.user_mes_id = user_mes_id
+        self.db_users = db_users
+        self.sm_1:Shift|None = None
+        self.sm_2:Shift|None = None
+        self.sm_3:Shift|None = None
+        self._calc_sm_time()
+
+    def _calc_sm_time(self):
+        rez = CSQ.custom_request_c(self.db_users, f"""SELECT * FROM rab_mesta 
+        WHERE {self.user_mes_id} = ФИО_1 or {self.user_mes_id} = ФИО_2 or
+        {self.user_mes_id} = ФИО_3""", rez_dict=True, one=True)
+        if rez:
+            self.sm_1 = Shift(1,rez['Время_начала_1'],rez['Время_конца_1'])
+            self.sm_2 = Shift(2,rez['Время_начала_2'],rez['Время_конца_2'])
+            self.sm_3 = Shift(3,rez['Время_начала_3'],rez['Время_конца_3'])
+
+    def _what_is_shift(self)->Shift:
+        now = F.now("").time()
+        if self.sm_1.start <= now and self.sm_1.end >= now:
+            return self.sm_1
+        if self.sm_2.start <= now and self.sm_2.end >= now:
+            return self.sm_2
+        if self.sm_3.start <= now and self.sm_3.end >= now:
+            return self.sm_3
+
+    def minutes_till_end(self)->float:
+        sm = self._what_is_shift()
+        now = F.now("").time()
+        diff = Shift.minutes_between(now, sm.end)
+        return diff
 
 
 class Tabels_erp():
@@ -2773,8 +2837,37 @@ class Marshrut_cards():
             print(f'Marshrut_cards.get_etap_by_num_operation ошибка при поиске этапа: {e}')
         return None,None, f'Не найден этап для {num_pp} с номером операции {oper_num}'
 
+class _Naryad_base():
+    def calc_dict_empl(self,db_users:str)->list[dict]:
+        return F.deploy_dict_c(CSQ.custom_request_c(db_users, custom_request_c=f"""SELECT * FROM employee WHERE Пномер IN( SELECT Пномер FROM (SELECT
+            	MAX(Пномер) as Пномер,
+            	ФИО
+            FROM
+            	employee
+            GROUP BY
+            	ФИО
+            HAVING COUNT(*) >= 1 )) order by ФИО;""", rez_dict=True), 'ФИО')
 
-class Naryads():
+    def calc_dict_dolgn_etap(self,db_naryad:str)->list[dict]:
+        return F.deploy_dict_c(
+            CSQ.custom_request_c(db_naryad, f"""SELECT * FROM dolgn_etap""", rez_dict=True),
+                                                                            'Должность')
+
+class Naryad_list(_Naryad_base):
+    def __init__(self,set_nums):
+        self.db_naryad = CFG.Config.project.db_naryad
+        self.db_users = CFG.Config.project.db_users
+        self._dict_dolgn_etap = self.calc_dict_dolgn_etap(self.db_naryad)
+        self._dict_empl = self.calc_dict_empl(self.db_users)
+
+        data  = CSQ.custom_request_c(self.db_naryad,f'''SELECT naryad.*, mk.Дата as ДатаМК FROM naryad JOIN mk ON mk.Пномер = naryad.Номер_мк 
+            WHERE naryad.Пномер in ({CSQ.prepare_list_to_tuple(set_nums)});''',rez_dict=True)
+
+        self.naryads:list[Naryads] = [Naryads(_,self.db_naryad,self._dict_dolgn_etap,self.db_users,self._dict_dolgn_etap) for _ in data]
+
+
+
+class Naryads(_Naryad_base):
     def __init__(self,p_nom_or_row,db_naryad=None,dict_dolgn_etap=None,db_users=None,dict_empl=None):
         self.params = []
         self.db = db_naryad
@@ -2842,16 +2935,9 @@ class Naryads():
         self.params = self._get_strukt_params()
         if db_users != None:
             if dict_dolgn_etap == None:
-                dict_dolgn_etap =F.deploy_dict_c(CSQ.custom_request_c(db_naryad,f"""SELECT * FROM dolgn_etap""",rez_dict=True),'Должность')
+                dict_dolgn_etap = self.calc_dict_dolgn_etap(self.db)
             if dict_empl == None:
-                dict_empl =F.deploy_dict_c(CSQ.custom_request_c(db_users,query = f"""SELECT * FROM employee WHERE Пномер IN( SELECT Пномер FROM (SELECT
-    	MAX(Пномер) as Пномер,
-    	ФИО
-    FROM
-    	employee
-    GROUP BY
-    	ФИО
-    HAVING COUNT(*) >= 1 )) order by ФИО;""",rez_dict=True),'ФИО')
+                dict_empl = self.calc_dict_empl(db_users)
             if self.ДатаМК is None: #07.07.25
                 print('[Cust_mes.Naryads.__init__] не задано поле ДатаМК')
                 row = CSQ.custom_request_c(db_naryad,f'''SELECT mk.Дата as ДатаМК FROM naryad JOIN mk ON mk.Пномер = naryad.Номер_мк 
@@ -3256,7 +3342,475 @@ class Naryads():
                      "{previos_month_str}" WHERE Пномер in ({CSQ.prepare_list_to_tuple(list(nar_to_block))})""")
 
 
+class Group_nar(_ImportDb):
+    ALIASES = {'id': 'N', 'name': 'Название', 'date': 'Дата', 'summ': 'Сумма мин.'}
 
+    def __init__(self, item: dict):
+        self.parent: Groups_nar | None = None
+        self.id: int | None = None
+        self.name: str | None = None
+        self.date: str | None = None
+        self.summ: float | None = None
+        self.user_ref: str | None = None
+        self.parce_row_dict(item)
+
+    def split_by_group(self, fragment:Fragment_jur)->bool:
+
+        def proportional_fragment(norm_dict: dict, total_seconds: int) -> dict:
+            """
+            norm_dict = {id: norm_time_seconds}
+            return = {id: new_fragment_seconds}
+            """
+            if not norm_dict or total_seconds <= 0:
+                return {}
+
+            ids = list(norm_dict.keys())
+            norms = [norm_dict[i] for i in ids]
+
+            S = sum(norms)
+            n = len(norms)
+
+            if S == 0:
+                return {i: 0 for i in ids}
+            # учитываем секунды разрыва между нарядами
+            work_seconds = total_seconds - (n - 1)
+
+            if work_seconds < n:
+                raise ValueError("слишком маленький интервал для количества нарядов")
+
+            # идеальное распределение
+            raw = [x * work_seconds / S for x in norms]
+
+            # базовое округление вниз
+            base = [int(F.round_down(x)) for x in raw]
+            base = [1 if x<1 else x for x in base]
+            # дробные хвосты
+            frac = [r - b for r, b in zip(raw, base)]
+
+            current_sum = sum(base)
+            remainder = work_seconds - current_sum
+
+            # индексы по убыванию дробной части
+            idx_sorted = sorted(range(n), key=lambda i: frac[i], reverse=True)
+
+            # распределяем остаток
+            for k in range(max(0, remainder)):
+                base[idx_sorted[k]] += 1
+
+            return {ids[i]: base[i] for i in range(n)}
+
+        _dict_emploee_full = dict_emploee_full(CFG.Config.project.db_users)
+
+        set_nars_num = self.load_s_nums_nar()
+        if fragment.parent.nom_nar not in set_nars_num:
+            CQT.msgbox(f'Группа "{self.name}" не содержит наряд №{fragment.parent.nom_nar}')
+            return False
+        needed_seconds = 2*len(set_nars_num)
+        fragment_count_seconds = fragment.count_seconds
+        if fragment_count_seconds < needed_seconds:
+            CQT.msgbox(f'Группа "{self.name}" трeбует бОльшую длительность наряда ({needed_seconds} < {fragment_count_seconds})')
+            return False
+
+        dict_new_seconds = dict()
+        nars_obj = Naryad_list(set_nars_num)
+        for nar in nars_obj.naryads:
+            if nar.is_closed():
+                continue
+            dict_new_seconds[nar.Пномер] = nar.Норма_времени
+
+        dict_new_seconds = proportional_fragment(dict_new_seconds,fragment_count_seconds)
+        print(f'old_time: {fragment.start_date} - {fragment.end_date}')
+        fragment.calc_new_end(dict_new_seconds[fragment.parent.nom_nar])
+        #fragment.save_new_dates()
+        print(f'new_time: {fragment.start_date} - {fragment.end_date}')
+        new_start = F.date_add_seconds(fragment.end_date,1)
+
+        DICT_OPER_NAME = None
+
+        for nar_obj in nars_obj.naryads:
+            if nar_obj.Пномер == fragment.parent.nom_nar:
+                continue
+            new_seconds = dict_new_seconds[nar_obj.Пномер]
+            new_end = F.date_add_seconds(new_start,new_seconds)
+
+            jur_obj = Jurnal_nar(self.parent.db, user=fragment.user, nom_nar=nar_obj.Пномер)
+
+            start_row_num = jur_obj.add_new_row(
+                DICT_EMPL_FULL=_dict_emploee_full,
+                lbl_abstract_text='',
+                date_time=new_start,
+                primech=f'Автовставка по гр.id{self.id}'
+            )
+            jur_obj.refresh()
+            jur_obj.set_selected_fragment(start_row_num)
+            is_idle = nar_obj.Задание == 'ПРОСТОЙ'
+            if not jur_obj.add_new_row(_dict_emploee_full, '', new_end, fragment.end_state, f'Автовставка по гр. id{self.id}',
+                                       is_idle):
+                return
+            print(f'nar {nar_obj.Пномер} new_time: {jur_obj.fragment.start_date} - {new_end}')
+            new_start = F.date_add_seconds(new_end,1)
+
+            if fragment.end_state == 'Завершен':
+                if DICT_OPER_NAME is None:
+                    DICT_OPER_NAME = F.deploy_dict_c(CSQ.custom_request_c(CFG.Config.project.db_naryad,
+                                                        f"""SELECT * FROM operacii""", rez_dict=True),
+                                                 'name')
+                glob_otk_kontrol = is_otk_nar(nar.Операции, DICT_OPER_NAME)
+
+                ending_oform_zav_nar(nar_obj, jur_obj, glob_otk_kontrol, fragment.user)
+
+
+
+
+    def remove_nar(self, list_s_num_nar: list):
+        self.parent._dele_nar_gr(list_s_num_nar)
+
+    def gen_template(self) -> dict:
+        return {'id': self.id, 'date': self.date, 'summ': self.summ, 'name': self.name}
+
+    def _update_date(self):
+        CSQ.custom_request_c(self.parent.db, f"""UPDATE groups SET (date) = (?) WHERE id = {self.id}""",
+                             list_of_lists_c=[F.now()])
+
+    def _update_sum_time(self):
+        summ = self.calc_summ_time()
+        if summ is None:
+            return
+        CSQ.custom_request_c(self.parent.db, f"""UPDATE groups SET (summ) = (?) WHERE id = {self.id}""",
+                             list_of_lists_c=[summ])
+        print(f'_update_sum_time gr:{self.name} - {summ}')
+        self.summ = summ
+
+    def add_nars(self, list_nars: list) -> bool:
+        if not self.parent._dele_nar_gr(list_nars):
+            return False
+        res = CSQ.custom_request_c(self.parent.db, f"""INSERT INTO naryad_groups (id_nar,fio,id_group)
+                VALUES (?,?,?)""", list_of_lists_c=[[_, self.parent.user_fio, self.id] for _ in list_nars])
+
+        if not res:
+            CQT.msgbox(f'Ошибка заполнения', app_self=self.app_self)
+            return False
+        self._update_sum_time()
+        self._update_date()
+        return True
+
+    def calc_summ_time(self) -> float|None:
+        res = CSQ.custom_request_c(self.parent.db, f"""SELECT 
+                     sum(naryad.Норма_времени) as summ 
+                    FROM naryad_groups
+                    INNER JOIN naryad ON naryad.Пномер == naryad_groups.id_nar 
+                 WHERE id_group = {self.id};""", rez_dict=True, one=True)
+        if res['summ'] is None:
+            return None
+        return round(res['summ'],2)
+
+    def load_s_nums_nar(self) -> set:
+        res = CSQ.custom_request_c(self.parent.db, f"""SELECT 
+                      id_nar  
+                    FROM naryad_groups
+                 WHERE id_group = {self.id};""", rez_dict=True)
+        return set([_['id_nar'] for _ in res])
+
+    def load_nars(self) -> list[dict]:
+        res = CSQ.custom_request_c(self.parent.db, f"""SELECT 
+                naryad.Пномер, 
+                naryad.Дата, 
+                naryad.Номер_мк, 
+                CASE 
+                    WHEN знпр.№ERP IS NOT NULL 
+                    THEN знпр.№ERP 
+                    ELSE пл_оуп.№ERP  
+                END AS "Номер_заказа", 
+                CASE WHEN знпр.№проекта IS NOT NULL 
+                   THEN знпр.№проекта 
+                   ELSE пл_оуп.№проекта 
+                END AS Номер_проекта,
+                naryad.ФИО, 
+                naryad.ФИО2, 
+                naryad.Норма_времени AS "Норматив время", 
+                naryad.Примечание, 
+                naryad.Внеплан,
+                mk.Приоритет, 
+                naryad.Распред_ФИО, 
+                plan.Позиция as "Позиция",
+                пл_оуп.Номенклатура_ЕРП as "Номенклатура_ЕРП"
+            FROM naryad_groups 
+            INNER JOIN naryad ON naryad.Пномер == naryad_groups.id_nar 
+            INNER JOIN mk ON mk.Пномер = naryad.Номер_мк 
+            LEFT JOIN plan ON mk.НомКплан = plan.Пномер
+            LEFT JOIN пл_оуп ON mk.НомКплан = пл_оуп.НомПл
+            LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП
+
+         WHERE id_group = {self.id};""", rez_dict=True, attach_dbs=CFG.Config.project.db_kplan)
+        return res
+
+
+class Groups_nar():
+
+    def __init__(self,db:str,app_self,user:Emploee_usr):
+        self.db:str = db
+        self.app_self:str = app_self
+        self.user_fio:str = user.ФИО
+        self.user_ref:str = user.ID_ФизЛица
+        self.list_gruops: list[Group_nar] = []
+        self._load_groups()
+
+    def _load_groups(self):
+        res = CSQ.custom_request_c(self.db,
+                                   f"""SELECT * FROM groups WHERE user_ref = "{self.user_ref}";""", rez_dict=True)
+        self.list_gruops = []
+        for item in res:
+            item['parent'] = self
+            self.list_gruops.append(Group_nar(item))
+
+    def _check_new_name(self, name) -> bool:
+        if name in [_.name for _ in self.list_gruops]:
+            return False
+        return True
+
+    def gen_template(self):
+        return [_.gen_template() for _ in self.list_gruops]
+
+    def create_new_gr(self, name) -> Group_nar | None:
+        if not self._check_new_name(name):
+            CQT.msgbox(f'Группа с таким именем уже существует', app_self=self.app_self)
+            return
+        res = CSQ.custom_request_c(self.db, f"""INSERT INTO groups (name,user_ref)
+              VALUES (?,?) RETURNING id """, list_of_lists_c=[name, self.user_ref], returning=True, rez_dict=True,
+                                   one=True)
+        new_id = res['id']
+        self._load_groups()
+        return self.find_gr(new_id)
+
+    def find_gr(self, id: int) -> Group_nar | None:
+        for gr in self.list_gruops:
+            if gr.id == id:
+                return gr
+
+    def _delete_gr_with_one_nar(self):
+        list_nars_for_del = []
+        list_gr_for_del = []
+        res = CSQ.custom_request_c(self.db,
+                                   f"""
+                                   SELECT *  FROM (SELECT count(naryad_groups.id_nar) as count_g, groups.name, groups.id as gid
+              FROM naryad_groups 
+                   inner join groups on groups.id == naryad_groups.id_group 
+              where groups.user_ref == "{self.user_ref}"
+              group by groups.id) INNER JOIN naryad_groups on naryad_groups.id_group = gid  WHERE count_g = 1;
+                                              """, rez_dict=True)
+        for item in res:
+            gr_id = item['gid']
+            list_gr_for_del.append(gr_id)
+
+        res = CSQ.custom_request_c(self.db,
+                                   f"""
+                                          SELECT DISTINCT  groups.id as gid
+                    FROM naryad_groups 
+                    right join groups on groups.id == naryad_groups.id_group 
+                    WHERE naryad_groups.id_nar is null and groups.user_ref == "{self.user_ref}" and groups.date != "";
+                                         """, rez_dict=True)
+        for item in res:
+            gr_id = item['gid']
+            list_gr_for_del.append(gr_id)
+
+        if not self.delete_gr(list_gr_for_del):
+            return False
+        return True
+
+    def _dele_nar_gr(self, list_nar, call__delete=True):
+        list_gr = CSQ.custom_request_c(self.db, f"""select DiSTINCT id_group FROM naryad_groups WHERE 
+             id_nar in ({CSQ.prepare_list_to_tuple(list_nar)}) and fio == "{self.user_fio}"; """, rez_dict=True)
+
+        res = CSQ.custom_request_c(self.db, f"""DELETE FROM naryad_groups WHERE 
+             id_nar in ({CSQ.prepare_list_to_tuple(list_nar)}) and fio == "{self.user_fio}"; """)
+        if not res:
+            CQT.msgbox(f'Ошибка очистки нарядов группы', app_self=self.app_self)
+            return False
+        print(f'dele_nar_gr {list_nar}')
+
+        for item in list_gr:
+            gr = self.find_gr(item['id_group'])
+            gr._update_sum_time()
+
+        if call__delete:
+            self._delete_gr_with_one_nar()
+        return True
+
+    def _dele_gr(self, list_id_gr):
+        if not list_id_gr:
+            return
+        res = CSQ.custom_request_c(self.db, f"""DELETE FROM groups WHERE 
+             id in ({CSQ.prepare_list_to_tuple(list_id_gr)}) and user_ref == "{self.user_ref}"; """)
+        if not res:
+            CQT.msgbox(f'Ошибка очистки группы', app_self=self.app_self)
+            return False
+        print(f'dele_gr {list_id_gr}')
+        return True
+
+    def delete_gr(self, list_id_gr):
+        set_nars_for_del = set()
+        for gr_num in list_id_gr:
+            gr = self.find_gr(gr_num)
+            set_nars_for_del.update(gr.load_s_nums_nar())
+        if not self._dele_gr(list_id_gr):
+            return False
+        if not self._dele_nar_gr(list(set_nars_for_del), call__delete=False):
+            return False
+        return True
+
+
+class Fragment_jur:
+    __slots__ = (
+        'parent',
+        'rows',
+        'user',
+        'start_index',
+
+        'row_start',
+        'row_end',
+
+        'start_s_num',
+        'end_s_num',
+
+        'start_date',
+        'end_date',
+
+        'end_state',
+        'start_primech',
+        'end_primech',
+    )
+
+    def __init__(self, parent, rows: list, user: str, start_index: int):
+
+        if rows is None or len(rows) == 0:
+            raise ValueError('rows empty')
+
+        if start_index < 0 or start_index >= len(rows):
+            raise ValueError('start_index out of range')
+
+        self.parent: Jurnal_nar = parent
+        self.rows:list = rows
+        self.user:str = user
+        self.start_index:int = start_index
+
+        self.row_start:dict|None = None
+        self.row_end:dict|None = None
+
+        self.start_s_num:int|None = None
+        self.end_s_num:int|None = None
+
+        self.start_date:str|None = None
+        self.end_date:str|None = None
+
+        self.start_primech:str|None = None
+        self.end_primech:str|None = None
+
+        self.end_state:str|None = None
+
+
+        self.__detect_fragment()
+
+    def __repr__(self):
+
+        def fmt_date(v):
+            return str(v) if v is not None else "None"
+
+        start = f"{self.start_s_num}@{fmt_date(self.start_date)}"
+        end = "OPEN" if self.end_s_num is None else f"{self.end_s_num}@{fmt_date(self.end_date)}"
+
+        minutes = None
+        try:
+            if self.start_date and self.end_date:
+                minutes = int(
+                    (F.strtodate(self.end_date) - F.strtodate(self.start_date))
+                    .total_seconds() / 60
+                )
+        except Exception:
+            pass
+
+        return (
+            f"{self.__class__.__name__}("
+            f"nar={self.parent.nom_nar if self.parent else None}, "
+            f"user='{self.user}', "
+            f"start={start}, "
+            f"end={end}, "
+            f"state='{self.end_state}', "
+            f"minutes={minutes}"
+            f")"
+        )
+
+    def __detect_fragment(self):
+
+        row = self.rows[self.start_index]
+
+        if row['Статус'] != 'Начат':
+            raise ValueError('fragment must start with status Начат')
+
+        if self.user and row['ФИО'] != self.user:
+            raise ValueError('fragment user mismatch')
+
+        self.row_start = row
+        self.start_s_num = row['Пномер']
+        self.start_date = row['Дата']
+        self.start_primech = row['Примечание']
+
+        for i in range(self.start_index + 1, len(self.rows)):
+
+            r = self.rows[i]
+
+            if r['Номер_наряда'] != row['Номер_наряда']:
+                break
+
+            if r['Статус'] != 'Начат':
+
+                if self.user and r['ФИО'] != self.user:
+                    continue
+
+                self.row_end = r
+                self.end_s_num = r['Пномер']
+                self.end_date = r['Дата']
+                self.end_state = r['Статус']
+                self.end_primech = row['Примечание']
+                break
+
+    def is_closed(self):
+        return self.row_end is not None
+
+    @property
+    def count_seconds(self):
+        if self.start_date is None or self.end_date is None:
+            return 0
+        try:
+            return int(
+                (F.strtodate(self.end_date) -
+                 F.strtodate(self.start_date)).total_seconds()
+            )
+        except Exception:
+            return 0
+
+    def calc_new_end(self,seconds:int):
+        self.end_date = F.date_add_seconds(self.start_date,seconds)
+
+    def save_new_dates(self):
+        CSQ.custom_request_c(self.parent.db_nar,f"""UPDATE jurnal SET Дата = "{self.start_date}" WHERE Пномер = {self.start_s_num};""")
+        CSQ.custom_request_c(self.parent.db_nar,f"""UPDATE jurnal SET Дата = "{self.end_date}" WHERE Пномер = {self.end_s_num};""")
+
+    def duration_minutes(self):
+
+        if self.start_date is None or self.end_date is None:
+            return None
+
+        d1 = F.strtodate(self.start_date)
+        d2 = F.strtodate(self.end_date)
+
+        return (d2 - d1).total_seconds() / 60
+
+    def contains_row(self, s_num: int):
+
+        if self.row_end is None:
+            return s_num == self.start_s_num
+
+        return self.start_s_num <= s_num <= self.end_s_num
 
 class Jurnal_nar():
     PODITOG_NORM_FOR_IDLE = 0.001  # 30.05.2025 По задаче (100054819)
@@ -3315,6 +3869,8 @@ class Jurnal_nar():
         self.selected_fragment_end_state = None
         self.selected_fragment_end_row_obj_nom = None
         self.selected_fragment_dict_row_start = None
+        self.fragment:Fragment_jur|None = None
+
         self.err_zhuranl = False
         if self.user != None:
             for row in self.rows:
@@ -3324,6 +3880,12 @@ class Jurnal_nar():
             if self.rows and self.selected_fragment_dict_row_start == None:
                 self.err_zhuranl = True
                 CQT.msgbox(f'для наряда {self.nom_nar} в журнале {self.user} не обнаружено `Начало работ` необходима правка журнала')
+
+    def _create_fragment(self, start_index: int):
+        try:
+            self.fragment = Fragment_jur(self, self.rows, self.user, start_index)
+        except Exception:
+            self.fragment = None
 
 
     def clear_mark_confirm(self):  # 10.04.25
@@ -3343,12 +3905,26 @@ class Jurnal_nar():
 
 
     def next_fragment(self):
+        if self.fragment is None:
+            return False
+
+        start_date = self.fragment.start_date
+
         for row in self.rows:
-            if row['Статус'] == 'Начат' and F.strtodate(row['Дата']) > F.strtodate(self.selected_fragment_start_date):
+
+            if row['Статус'] == 'Начат' and F.strtodate(row['Дата']) > F.strtodate(start_date):
+                self.set_selected_fragment(row['Пномер'])
+                return True
+
+        return False
+
+    def select_last_fragment(self):
+        for i in range(len(self.rows) - 1, -1, -1):
+            row = self.rows[i]
+            if row['Статус'] == 'Начат':
                 self.set_selected_fragment(row['Пномер'])
                 return True
         return False
-
 
     def get_s_num_start(self, s_num_end:int):
         rez = None
@@ -3369,21 +3945,24 @@ class Jurnal_nar():
     def set_selected_fragment(self, s_num_start:int):
         if isinstance(s_num_start, str) and F.is_numeric(s_num_start):
             s_num_start = int(s_num_start)
+
         rez = None
+        start_index = None
+
         for i, row in enumerate(self.rows):
-            if row['Пномер'] == s_num_start and row['Статус'] == 'Начат'and row['ФИО'] == self.user:
-        #custom_request_c = f'''SELECT Номер_наряда, Пномер, Дата FROM jurnal WHERE ФИО == "{self.user}" AND
-        #                    Статус == "Начат" and  Пномер == {s_num_start}'''
-        #rez = CSQ.custom_request_c(self.db_nar, custom_request_c, hat_c=False)
-                rez = [row['Номер_наряда'],row['Пномер'],row['Дата']]
+
+            if row['Пномер'] == s_num_start and row['Статус'] == 'Начат' and row['ФИО'] == self.user:
+                rez = [row['Номер_наряда'], row['Пномер'], row['Дата']]
+                start_index = i
+
                 self.selected_fragment_start_row_obj_nom = i
                 self.selected_fragment_dict_row_start = row
+
                 break
-        if rez == None or rez == False:
+
+        if rez is None:
             return
-        if len(rez) == 0:
-            return
-        #self.__init__(self.db_nar,rez[0][0],self.user)
+
         self.nom_nar = rez[0]
         self.selected_fragment_start_s_num = rez[1]
         self.selected_fragment_start_date = rez[2]
@@ -3393,21 +3972,21 @@ class Jurnal_nar():
         self.selected_fragment_end_state = None
         self.selected_fragment_end_row_obj_nom = None
 
-        #custom_request_c = f'''SELECT Номер_наряда, Пномер, Дата FROM jurnal WHERE ФИО == "{self.user}" AND
-        #                            Статус != "Начат" and  Дата > {self.selected_fragment_start_date} LIMIT = 1'''
-        rez = None
-        for i, row in enumerate(self.rows):
-            if i> self.selected_fragment_start_row_obj_nom and row['Номер_наряда'] == self.nom_nar and row['Статус'] != 'Начат' and F.strtodate(row['Дата'])  > F.strtodate(self.selected_fragment_start_date):
-                rez = [row['Номер_наряда'],row['Пномер'],row['Дата']]
-                self.selected_fragment_end_row_obj_nom = i
-                self.selected_fragment_end_state = row['Статус']
+        # создание нового объекта фрагмента
+        self._create_fragment(start_index)
 
-                break
-        #rez = CSQ.custom_request_c(self.db_nar, custom_request_c, hat_c=False)
-        if rez != None and len(rez) > 0:
+        # если fragment создан — используем его
+        if self.fragment and self.fragment.row_end:
 
-            self.selected_fragment_end_s_num = rez[1]
-            self.selected_fragment_end_date = rez[2]
+            self.selected_fragment_end_s_num = self.fragment.end_s_num
+            self.selected_fragment_end_date = self.fragment.end_date
+            self.selected_fragment_end_state = self.fragment.end_state
+
+            for i, row in enumerate(self.rows):
+                if row['Пномер'] == self.fragment.end_s_num:
+                    self.selected_fragment_end_row_obj_nom = i
+                    break
+
 
     def load_data_trdz_for_erp(self,parent_self,s_num_kpl,db_kpl,nom_nar,db_usres,db_resxml):
         data_etaps = CSQ.custom_request_c(self.db_nar,f"""SELECT Минут_выгружено_ЕРП, Файл_выгрузки_ЕРП 
@@ -3600,7 +4179,8 @@ class Jurnal_nar():
         #rez = CSQ.custom_request_c(self.db_nar, custom_request_c, hat_c=False)
         rez =  ['','','']
         for i, row in enumerate(self.rows):
-            if (row['Подытог'] == 0 and row['Статус'] == 'Начат'and row['ФИО'] == self.user) or (row['Статус'] == 'Начат'and row['ФИО'] == self.user and i == len(self.rows)-1):
+            if ((row['Подытог'] == 0 and row['Статус'] == 'Начат'and row['ФИО'] == self.user) or
+                    (row['Статус'] == 'Начат'and row['ФИО'] == self.user and i == len(self.rows)-1)):
                 rez = [row['Номер_наряда'],row['Пномер'],row['Дата']]
                 if set_as_fragment:
                     self.set_selected_fragment(row['Пномер'])
@@ -3771,7 +4351,7 @@ class Jurnal_nar():
             end = F.datetostr(end)
         return start ,end
 
-    def add_new_row(self,DICT_EMPL_FULL,lbl_abstract_text,date_time=None,state='Начат',primech='', is_idle = False):
+    def add_new_row(self,DICT_EMPL_FULL,lbl_abstract_text,date_time=None,state='Начат',primech='', is_idle = False)->int:
         if date_time == None:
             date_time = F.now()
         minutes = 0
@@ -9595,9 +10175,11 @@ def fill_summ_tbl(self, tbls:QtWidgets.QTableWidget, tbl:QtWidgets.QTableWidget,
 
 
 
-def fill_filtr_c(self, tblf:QtWidgets.QTableWidget, tbl:QtWidgets.QTableWidget, spis_znach='', hidden_scroll=True):
+def fill_filtr_c(self, tblf:QtWidgets.QTableWidget, tbl:QtWidgets.QTableWidget, spis_znach='', hidden_scroll=True,
+                 combo_dict:dict|None = None,
+                 check_box_dict:dict|None = None, ):
     CQT.fill_filtr_c(self, tblf, tbl, spis_znach=spis_znach,
-                     hidden_scroll=hidden_scroll)
+                     hidden_scroll=hidden_scroll,combo_dict=combo_dict,check_box_dict=check_box_dict)
 
 
 def set_val_filtr_c(tblf:QtWidgets.QTableWidget, val, name_column):
@@ -12003,7 +12585,133 @@ def apply_gui_groups(self: mywindow):
     tbl.setUpdatesEnabled(True)
     tbl.blockSignals(False)
     tbl.viewport().update()
-    
+
+#===========vipoln===========================================================================
+def ____________VIPOLN___________________________________():
+    pass
+def is_otk_nar(str_operations: str,DICT_OPER_NAME:dict=None):
+    if DICT_OPER_NAME is None:
+        DICT_OPER_NAME = F.deploy_dict_c(CSQ.custom_request_c(CFG.Config.project.db_naryad,
+                                                          f"""SELECT * FROM operacii""", rez_dict=True),
+                                     'name')
+    fl_open_fr_otk = False
+    list_opers = str_operations.split('|')
+    for oper in list_opers:
+        name = oper.split('$')[-1]
+        if name in DICT_OPER_NAME and DICT_OPER_NAME[name]['kontrol_opers']:
+            fl_open_fr_otk = True
+            break
+    return fl_open_fr_otk
+
+def processing_fix_of_brak(jur_obj, zadanie, nom_nar):
+    try:
+        if "Исправление" in zadanie and 'Акт №' in zadanie:
+            fact_vr = jur_obj.get_summ_poditog()
+            tmp = zadanie.split('Акт №')
+            act = tmp[-1].split()[0]
+            if F.is_numeric(act):
+                custom_request_c = f'''UPDATE act SET Наряд_исправления == {nom_nar}, 
+                Время_исправления == {fact_vr} WHERE Пномер == {int(act)}'''
+                CSQ.custom_request_c(CFG.Config.project.db_act, custom_request_c)
+    except:
+        CQT.msgbox('Ошибка занесения отметки в акты о браке')
+        return
+
+def auto_podtv(glob_fio, nar_obj: CMS.Naryads):
+    if nar_obj.count_users() == 2:
+        if nar_obj.Фвремя != '' and nar_obj.Фвремя2 != '':
+            custom_request_c = (f'UPDATE naryad SET Подтвержд_вып = 1, Подтвержд_вып_дата = "{F.now()}",'
+                                f' Подтвержд_вып_фио = "{glob_fio}" WHERE Пномер == {nar_obj.Пномер}')
+            CSQ.custom_request_c(CFG.Config.project.db_naryad, custom_request_c)
+    else:
+        custom_request_c = (f'UPDATE naryad SET Подтвержд_вып = 1, Подтвержд_вып_дата = "{F.now()}",'
+                            f' Подтвержд_вып_фио = "{glob_fio}" WHERE Пномер == {nar_obj.Пномер}')
+        CSQ.custom_request_c(CFG.Config.project.db_naryad, custom_request_c)
+
+
+def check_otk_after_proizv(nom_mk:int,rc_proizv:str ='',kod_oper:set =''):
+    list_nar = CSQ.custom_request_c(CFG.Config.project.db_naryad,f"""SELECT * FROM naryad 
+                    WHERE naryad.Номер_мк == {nom_mk};""",rez_dict=True)
+
+    res = load_res(nom_mk)
+
+    def get_list_opers_proizv_otk(self,res,rc_proizv):
+        rez = []
+        for dse in res:
+            kolvo = dse['Количество']
+            if len(dse['Операции']) <=1:
+                continue
+            for i,oper in enumerate(dse['Операции']):
+                if i == 0:
+                    continue
+                pev_oper = dse["Операции"][i-1]
+                tmp_dict = {'dse_id':dse['Номерпп'],
+                                'dse_name': f"{dse['Наименование']} {dse['Номенклатурный_номер']}" ,
+                                'count_dse':kolvo,
+                                'close_dse':0,
+                                'nom_op':oper['Опер_номер'],
+                                'name_op': oper['Опер_наименование']
+                                }
+                if kod_oper:
+                    if oper['Опер_РЦ_код'][:3] == '060' and pev_oper['Опер_код'] in kod_oper:
+                        rez.append(tmp_dict)
+                else:
+                    if oper['Опер_РЦ_код'][:3] == '060' and pev_oper['Опер_РЦ_код'][:4] == rc_proizv:
+                        rez.append(tmp_dict)
+        return rez
+
+    list_opers_otk = get_list_opers_proizv_otk('',res,rc_proizv)
+    for item in list_nar:
+        nar = Naryads(item)
+        for elem in nar.params:
+            for i, line in enumerate(list_opers_otk):
+                if elem['ДСЕ_ID'] == line['dse_id'] and elem['Операции_номер'] == line['nom_op']:
+                    list_opers_otk[i]['close_dse'] += elem['Опер_колво']
+
+    list_untapped_opers =[]
+    for item in list_opers_otk:
+        if item['count_dse'] > item['close_dse']:
+            list_untapped_opers.append(f"{item['dse_name']} {item['count_dse']-item['close_dse']} из шт."
+                                       f" {item['count_dse']}, операция {item['nom_op']} {item['name_op']}")
+    if len(list_untapped_opers)>0:
+        return '\n'.join([_ for _ in list_untapped_opers])
+    return False
+
+def processing_finish_sign_otk(glob_fio, nom_mk, nom_kpl, nom_nar, nar_obj):
+    msg = check_otk_after_proizv(nom_mk, kod_oper={'7135', '6011',
+                                                          '0136'})  # Пассивирование Окрашивание Дробеструйная
+    if not msg:
+        custom_request_c = f'''UPDATE пл_отк  SET (Контр_покрытие_ФИО, Контр_покрытие_дата) = (?,?) 
+                    WHERE НомПл == ?;'''
+        param = [glob_fio, F.now(), nom_kpl]  # 15.07.25
+        CSQ.custom_request_c(CFG.Config.project.db_kplan, custom_request_c, list_of_lists_c=param)
+
+        try:
+            sender = B24.B24Sender()
+            msg_rows = f'По {nar_obj.mk.Номер_заказа} {nar_obj.mk.Номер_проекта} MK №{nar_obj.mk.Пномер} контроль\n ' \
+                       f'после Пассивирование/Окрашивание/Дробеструйная успешно пройден {glob_fio} по наряду {nom_nar}'  # 15.07.25
+            sender.send_msg_by_action('Отгрузка на склад', msg_rows)
+        except:
+            pass
+
+def ending_oform_zav_nar(nar_obj, jur_obj, glob_otk_kontrol: bool, glob_fio):
+    if nar_obj.АвтоПодтвержд or glob_otk_kontrol:
+        auto_podtv(glob_fio, nar_obj)
+
+    if glob_otk_kontrol:
+        nar_obj.get_mk()
+        nom_kpl = nar_obj.mk.НомКплан
+        type_mk = nar_obj.mk.Тип
+        nom_mk = nar_obj.Номер_мк
+        nom_nar = nar_obj.Пномер
+        zadanie = nar_obj.Задание
+        if type_mk == 1:  # Тип Плановая
+            processing_finish_sign_otk(glob_fio, nom_mk, nom_kpl, nom_nar, nar_obj)
+
+        processing_fix_of_brak(jur_obj, zadanie, nom_nar)
+def ____________VIPOLN_END__________________________________():
+    pass
+#===============================================
 @CQT.onerror
 def make_dict_etaps_from_erp(m:ERP.OrdersComposit, ref_key_py:str):
     dict_etaps = dict()

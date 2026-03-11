@@ -109,7 +109,7 @@ async def main(page: ft.Page):
         Data.Data_vars.width = width or 800
         Data.Data_vars.height = height or 600
 
-    page.on_resize = update_size
+    # page.on_resize = update_size
     page.on_route_change = on_range_change
     await on_range_change(page)
     await page.push_route("/")

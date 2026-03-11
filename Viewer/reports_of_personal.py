@@ -24,6 +24,12 @@ from typing import  TYPE_CHECKING
 if TYPE_CHECKING:
     from Viewer import mywindow
 
+#CFG.Config.user_config.set_not_dev()
+
+
+TEST_USERS_MODE = True #можно зайти под любым юзером
+
+
 class Base_get_data():
     def parse_data(self,data:dict):
         for key in data.keys():
@@ -50,6 +56,10 @@ class Report_date():
     @staticmethod
     def into_ru_notation(date:str|datetime.datetime|datetime.date):
         return F.dateStrToStr(date,format_out="%d.%m.%Y")
+
+    def clear(self):
+        self.date = None
+
     def to_db(self)->str:
         return str(self)
     def ru_notation(self):
@@ -77,6 +87,7 @@ class Rule(Base_get_data):
         self.description:str = ''
         self.ref_creator:str = ''
         self.id_chat_24:str = ''
+        self.enabled:bool|None = None
         if data:
             self.parse_data(data)
         if self.period:
@@ -84,7 +95,9 @@ class Rule(Base_get_data):
         if self.start_date and not isinstance(self.start_date, Report_date):
             self.start_date = Report_date(self.start_date)
         self.state:Status|None = None
-        self.is_early:bool = self.start_date.date > F.now('')
+        self.is_early:bool = False
+        if self.start_date.date:
+            self.is_early = self.start_date.date > F.now('')
 
     def __str__(self):
         return f'{self.name} ({self.count_by_period} в {self.period.date_time_liter}) с {self.start_date}'
@@ -102,11 +115,12 @@ class Rule(Base_get_data):
         count_passed = 0
         count_approved = 0
         start_date_period, end_date_period = F.start_end_dates_c(vid=self.period.date_time_liter,format_out='')
-        for doc in DTCLS.module_repots_of_personal.current_user_events.list_events:
+        for doc in DTCLS.module_repots_of_personal.selected_user_events.list_events:
             if doc.rule != self:
                 continue
             if doc.date.date >= start_date_period and doc.date.date <= end_date_period:
-                count_passed += 1
+                if not doc.is_canceled():
+                    count_passed += 1
                 if doc.date_approval.date:
                     count_approved += 1
         if count_approved == self.count_by_period:
@@ -130,7 +144,10 @@ class Rule(Base_get_data):
             types_str = f', {";".join([_h.name for _h in self.doc_types])}'
         if short:
             return f'{self.name}{types_str}'
-        msg = f'{self.name}: {self.count_by_period} раз в {self.period.name}{types_str}'
+        onoff = ''
+        if not self.enabled:
+            onoff = f'|{CEMOJ.EmojiMain.СтатусыПроизводства.error.symbol}'
+        msg = f'{self.name}: {self.count_by_period} раз в {self.period.name}{types_str}{onoff}'
         return msg
 
     def str_doc_types(self):
@@ -151,6 +168,7 @@ class Rule(Base_get_data):
         start_date: Report_date | None = self.start_date
         description: str  = self.description
         chat:str = self.id_chat_24
+        enabled:bool = self.enabled
 
 
         tmp =   [
@@ -163,6 +181,7 @@ class Rule(Base_get_data):
             {'Параметр':'Дата начала', 'Значение': start_date, 'Name':'start_date'},
             {'Параметр':'Описание', 'Значение': description, 'Name':'description'},
             {'Параметр':'Вывод в Б24 чат №', 'Значение': chat, 'Name':'id_chat_24'},
+            {'Параметр':'Активно', 'Значение': int(enabled), 'Name':'enabled'},
         ]
         return tmp
 class Rules():
@@ -180,7 +199,8 @@ class Rules():
     def generate_diagramm(self, events: Events, list_rules: list[Rule]) -> list[dict]:
         sc = Schedule()
         for rule in list_rules:
-            sc.add_rule(rule)
+            if rule.enabled:
+                sc.add_rule(rule)
         for event in events.list_events:
             sc.apply_event(event)
         sc.recalc_states()
@@ -211,6 +231,7 @@ class Rules():
             edited_rule['start_date'],
             edited_rule['description'],
             edited_rule['id_chat_24'],
+            edited_rule['enabled'],
         ]
 
         returning = CSQ.custom_request_c(CFG.Config.project.db_users,
@@ -221,7 +242,8 @@ class Rules():
                                   count_by_period,
                                   start_date,
                                   description,
-                                  id_chat_24
+                                  id_chat_24,
+                                  enabled
                               )
                         =  ({CSQ.questions_for_mask(edit_data)}) WHERE id = {id_rule};
                 """, list_of_lists_c=edit_data)
@@ -273,6 +295,7 @@ class Rules():
             new_rule['description'],
             DTCLS.module_repots_of_personal.creator_user.ID_ФизЛица,
             new_rule['id_chat_24'],
+            new_rule['enabled'],
         ]
 
         returning = CSQ.custom_request_c(CFG.Config.project.db_users,
@@ -285,7 +308,8 @@ class Rules():
                                   start_date,
                                   description,
                                   ref_creator,
-                                  id_chat_24
+                                  id_chat_24,
+                                  enabled
                               )
                         VALUES ({CSQ.questions_for_mask(insert_data)}) RETURNING id ;
                 """, list_of_lists_c=insert_data)
@@ -319,7 +343,10 @@ class Rules():
                                                       FROM user_report_rule_doc_types;""", rez_dict=True)
         self._dict_doctypes = doc_types_rules_data
 
-    def load_rules(self):
+    def load_rules(self,owner_filtr = False):
+        where = ''
+        if owner_filtr:
+            where = f' WHERE ref_creator = "{CFG.Config.user_config.User.ID_ФизЛица}"'
         list_rules = CSQ.custom_request_c(CFG.Config.project.db_users,
                                           f"""SELECT id,
                ref_user,
@@ -329,8 +356,9 @@ class Rules():
                start_date,
                description,
                ref_creator,
-               id_chat_24
-          FROM user_report_rules;
+               id_chat_24,
+               enabled
+          FROM user_report_rules{where};
         """, rez_dict=True)
         rules = [Rule(_) for _ in list_rules]
 
@@ -360,7 +388,7 @@ class Rules():
                 return rule
 
     def find(self, ref_user: str, creator_ref: str | None = None,
-             date_end: datetime.date | None = None) -> list[Rule]:
+             date_end: datetime.date | None = None,disabled:bool=True) -> list[Rule]:
         res = []
         if self.rules is None:
             return res
@@ -375,7 +403,9 @@ class Rules():
             if fl_add and date_end:
                 if rule.start_date.date > date_end:
                     fl_add = False
-
+            if fl_add and not disabled:
+                if not rule.enabled:
+                    fl_add = False
             if fl_add:
                 res.append(rule)
         return res
@@ -403,6 +433,7 @@ class Schedule():
         while start_tmp <= end_date_period:
             end_tmp = F.date_add_period(start_tmp, '', period_liter, '')
             end_date = F.date_add_days(end_tmp, -1, '', '')
+            end_date = F.start_end_dates_c(end_date,format_in='',vid='d',format_out='')[1]
             sc_elem = Schedule_elem(rule,
                                     start_tmp,
                                     end_date
@@ -534,7 +565,7 @@ class Schedule_elem():
             count_passed = False
             count_approved = False
             for doc in self.docs:
-                if doc.event.date.date:
+                if doc.event.date.date and not doc.event.is_canceled():
                     count_passed += 1
                 if doc.event.date_approval.date:
                     count_approved += 1
@@ -647,6 +678,7 @@ class Event(Base_get_data):
             self.get_rule()
             self.get_user()
 
+
     def __str__(self):
         appr = f''
         if self.date_approval:
@@ -661,7 +693,6 @@ class Event(Base_get_data):
     def date(self,val):
         self._date = Report_date(val)
 
-
     @property
     def date_approval(self):
         return self._date_approval
@@ -670,7 +701,10 @@ class Event(Base_get_data):
     def date_approval(self,val):
         self._date_approval = Report_date(val)
 
-
+    def is_canceled(self):
+        if self._date_approval.date is None and self.msg_approval:
+            return True
+        return False
 
     @staticmethod
     def get_template():
@@ -687,6 +721,12 @@ class Event(Base_get_data):
             {'Параметр':'Примечание','Значение':self.message},
                 ]
 
+    def set_canseled(self,msg:str):
+        self.date_approval.clear()
+        self.msg_approval = msg
+        self.save()
+
+
     def set_approved(self,msg:str):
         self.date_approval = F.now('')
         self.msg_approval = msg
@@ -699,6 +739,8 @@ class Event(Base_get_data):
         return rule
 
     def get_user(self):
+        if self.rule is None:
+            raise ValueError(f'self.rule is None')
         if not hasattr(self,'rule'):
             self.get_rule()
         user = CMS.Emploee_usr(self.rule.ref_user,CFG.Config.project.db_users)
@@ -709,7 +751,8 @@ class Event(Base_get_data):
     def gen_path(self,ext) -> str:
         if not self.date:
             raise ValueError(f'{self.date} is not date')
-        path = f'{F.sep().join([Events.DIR_REPOZ_FILES,self.user.ФИО,self.rule.name,self.date.to_db()])}{ext}'
+        norm_rule_name = F.clean_and_normalize_path_part(self.rule.name)
+        path = f'{F.sep().join([Events.DIR_REPOZ_FILES,self.user.ФИО,norm_rule_name,self.date.to_db()])}{ext}'
         return path
 
     def save(self):
@@ -738,7 +781,7 @@ class Event(Base_get_data):
         if edit:
             msg = f'Изменен документ'
         CMS.send_tbl_b24_by_action(
-            f'{msg} по \n{self.rule.name}\n{F.now("%d.%m.%Y %H:%M")} {DTCLS.module_repots_of_personal.current_user.ФИО}',
+            f'{msg} по \n{self.rule.name}\n{F.now("%d.%m.%Y %H:%M")} {DTCLS.module_repots_of_personal.selected_user.ФИО}',
             'Отчетность пользователей',
             self.get_template_b24(),chat_id=id_chat_24)
 class Regime():
@@ -795,7 +838,7 @@ class Events():
         if not F.existence_file_c(self.DIR_REPOZ_FILES):
             CQT.msgbox(f'Нет доступа к Директории с файлами. Обратитесь к администратору')
             raise PermissionError
-        DTCLS.module_repots_of_personal.current_user_events = self
+        DTCLS.module_repots_of_personal.selected_user_events = self
 
     def load_event(self,id:int)->Event:
         event = CSQ.custom_request_c(CFG.Config.project.db_users, f"""SELECT 
@@ -813,7 +856,13 @@ class Events():
                 """, rez_dict=True,one=True)
 
         return Event(event)
-    def load_events(self,ref_user:str):
+    def load_events(self,ref_user:str,disabled:bool=False,filter_by_owner:bool=False):
+        where = ''
+        if not disabled:
+            where = f'and user_report_rules.enabled = 1'
+        where_owner = ''
+        if filter_by_owner:
+            where_owner = f'and user_report_rules.ref_creator = "{CFG.Config.user_config.User.ID_ФизЛица}"'
         events = CSQ.custom_request_c(CFG.Config.project.db_users, f"""SELECT 
                     user_report_events.id,
                    user_report_events.rule_doc_id,
@@ -825,7 +874,7 @@ class Events():
                    FROM user_report_events
                     INNER JOIN user_report_rule_doc_types ON user_report_rule_doc_types.id = user_report_events.rule_doc_id
                 INNER JOIN user_report_rules ON user_report_rules.id = user_report_rule_doc_types.rule_id
-               WHERE user_report_rules.ref_user = "{ref_user}";
+               WHERE user_report_rules.ref_user = "{ref_user}" {where} {where_owner};
         """, rez_dict=True)
 
         self.list_events = [Event(_) for _ in events]
@@ -844,7 +893,7 @@ class Events():
             'Утвержден':_.date_approval,
             'Замечание':_.msg_approval,
 
-        } for _ in self.list_events]
+        } for _ in self.list_events if _.rule.enabled]
 
     def _copy_file(self,event:Event)->str|None:
         link = event.client_link
@@ -857,6 +906,7 @@ class Events():
             CQT.msgbox(f'Error copy files')
             return
         return new_path
+
 
 
     def add_new_event(self,rule_doc_id,link,message)->Event|None:
@@ -890,17 +940,42 @@ def init_dates_reports(date_start:datetime.datetime,date_end:datetime.datetime):
     DTCLS.module_repots_of_personal.date_start_report = date_start
     DTCLS.module_repots_of_personal.date_end_report = date_end
 
+def apply_selected_user():
+    uid_user = DTCLS.app_self.ui.cmb_addit_sort_c_report.currentData(CQT.Qt.UserRole)
+    DTCLS.module_repots_of_personal.selected_user = None
+    if uid_user is None:
+        CQT.blink_obj_c(DTCLS.app_self,1,DTCLS.app_self.ui.cmb_addit_sort_c_report,f'Не выбран пользователь',)
+        return
+    DTCLS.module_repots_of_personal.selected_user = CMS.Emploee_usr(uid_user, CFG.Config.project.db_users)
+
 def ______________INPUT___________________():
     pass
 
 def ______________MUTUAL___________________():
     pass
 
-def fill_cmb_users_with_rules(cmb:CQT.QtWidgets.QComboBox):
-    list_users_refs = [_.ref_user for _ in  DTCLS.module_repots_of_personal.user_report_rules.rules]
-    list_names = [f"{DTCLS.app_self.DICT_EMPLOEE_FULL_WITH_DEL_BY_REF[_]['ФИО']}({DTCLS.app_self.DICT_EMPLOEE_FULL_WITH_DEL_BY_REF[_]['Должность']})"
+def fill_cmb_users_with_rules(cmb:CQT.QtWidgets.QComboBox,filtr_by_current_user:bool = False,filtr_by_owner_user:bool = False):
+    list_users_refs = []
+    seen = set()
+    for _ in DTCLS.module_repots_of_personal.user_report_rules.rules:
+        pair = (_.ref_user, _.ref_creator)
+        if pair not in seen:
+            seen.add(pair)
+            list_users_refs.append({'user': _.ref_user, 'owner': _.ref_creator})
+
+    if filtr_by_current_user and not TEST_USERS_MODE:
+        list_users_refs = [_
+                           for _ in list_users_refs if _['user'] == CFG.Config.user_config.User.ID_ФизЛица]
+    if filtr_by_owner_user and not TEST_USERS_MODE:
+        list_users_refs = [_
+                           for _ in list_users_refs if _['owner'] == CFG.Config.user_config.User.ID_ФизЛица]
+    list_list_names = [ [ _['user'],
+        f"{DTCLS.app_self.DICT_EMPLOEE_FULL_WITH_DEL_BY_REF[_['user']]['ФИО']}({DTCLS.app_self.DICT_EMPLOEE_FULL_WITH_DEL_BY_REF[_['user']]['Должность']})"]
                   for _ in list_users_refs]
-    CQT.fill_list_combobx(DTCLS.app_self,cmb,list_names,list_data=list_users_refs,first_void=True)
+
+    list_list_names = sorted(list_list_names,key=lambda x: x[1])
+
+    CQT.fill_list_combobx(DTCLS.app_self,cmb,[_[1] for _ in list_list_names],list_data=[_[0] for _ in list_list_names],first_void=True)
 
 def clck_user():
     tbl = DTCLS.app_self.ui.tbl_report_c
@@ -908,11 +983,15 @@ def clck_user():
     if not row:
         return
     if DTCLS.module_repots_of_personal.regime == Regimes.settings:
+        fl_show_disabled_rules = True
         tbl_details = DTCLS.app_self.ui.tbl_report_add
         tbl_details_f = DTCLS.app_self.ui.tbl_report_add_filtr
         events = Events()
-        events.load_events(row['ID_ФизЛица'])
-        fill_details_by_user(row['ID_ФизЛица'],tbl_details,tbl_details_f)
+        filter_by_owner = True
+        if TEST_USERS_MODE:
+            filter_by_owner = False
+        events.load_events(row['ID_ФизЛица'],fl_show_disabled_rules,filter_by_owner)
+        fill_details_by_user(row['ID_ФизЛица'],tbl_details,tbl_details_f,fl_show_disabled_rules)
 
 
 def dbl_clck_user():
@@ -948,7 +1027,10 @@ def load_pers_rules():
                    } for k, _ in DTCLS.app_self.DICT_EMPLOEE_FULL.items()
                   if _['Компания'] == CFG.Config.place.Имя]
     obj_rules =  Rules()
-    obj_rules.load_rules()
+    owner_filtr = True
+    if TEST_USERS_MODE:
+        owner_filtr = False
+    obj_rules.load_rules(owner_filtr=owner_filtr)
 
     for usr in list_empl:
         msg  = calc_msg_rules(usr['ID_ФизЛица'])
@@ -967,19 +1049,20 @@ def clck_tbl_report_add():
         tbl = ui.tbl_report_add
         row = CQT.get_dict_line_form_tbl(tbl)
         ref_creator = row['ref_creator']
-        if ref_creator == DTCLS.module_repots_of_personal.creator_user.ID_ФизЛица:
-            ui.bnt_glsv_edit_rule.setEnabled(True)
-        else:
-            ui.bnt_glsv_edit_rule.setEnabled(False)
+        if not TEST_USERS_MODE:
+            if ref_creator == DTCLS.module_repots_of_personal.creator_user.ID_ФизЛица:
+                ui.bnt_glsv_edit_rule.setEnabled(True)
+            else:
+                ui.bnt_glsv_edit_rule.setEnabled(False)
 
 
-def fill_details_by_user(uid:str,tbl_details,tbl_details_f):
+def fill_details_by_user(uid:str,tbl_details,tbl_details_f,show_disabled_rules:bool=False):
 
     tbl_report_add_summ =  DTCLS.app_self.ui.tbl_report_add_summ
 
     tbl_report_add_summ.setHidden(True)
 
-    rules = DTCLS.module_repots_of_personal.user_report_rules.find(uid)
+    rules = DTCLS.module_repots_of_personal.user_report_rules.find(uid,disabled=show_disabled_rules)
     CQT.clear_tbl(tbl_details)
     for rule in rules:
         rule.calc_status()
@@ -988,6 +1071,7 @@ def fill_details_by_user(uid:str,tbl_details,tbl_details_f):
         'early':_.is_early,
         'Название':_.name,
         'ref_creator':_.ref_creator,
+        'Активно': '' if F.valm(_.enabled) else CEMOJ.EmojiMain.СтатусыПроизводства.error.symbol,
         'Создатель':_.creator_fio(),
         'Период':_.period.name,
         'Частота':_.count_by_period,
@@ -1005,8 +1089,8 @@ def fill_details_by_user(uid:str,tbl_details,tbl_details_f):
     CQT.fill_wtabl(templ,tbl_details,ogr_maxshir_kol=500,styleSheet=CQT.MES_CSS)
     t = CQT.TableContext(tbl_details)
     for row in t.rows():
-        if F.is_bool(row.value('early')):
-            CQT.set_font_color_wtab_c(t.tbl,row.i,row.nf['Дата начала'],122,55,55)
+        if F.boolm(row.value('early')):
+            CQT.set_font_color_wtab_c(t.tbl,row.i,row.nf['Дата начала'],*CMS.Color_tbl(10).rgb)
 
     if tbl_details.rowCount():
         tbl_details.hideColumn(t.nf['id'])
@@ -1043,15 +1127,16 @@ def fill_events_by_user(uid:str):
     t = CQT.TableContext(tbl)
 
     def fnc_show_file(lbl, app_self, i, j):
-        row = t.current_row()
+        row = t.get_row(i)
         link = row.value('link')
         run_doc(link)
+
 
     if tbl.rowCount():
         dev = CFG.Config.user_config.is_developer
         if not dev:
-            tbl_rules.hideColumn(t.nf['id'])
-            tbl_rules.hideColumn(t.nf['link'])
+            tbl.hideColumn(t.nf['id'])
+            tbl.hideColumn(t.nf['link'])
 
     for row in t.rows():
         if row.value('link'):
@@ -1069,14 +1154,19 @@ def load_pers_events():
     DTCLS.app_self.ui.bnt_glsv_append.setHidden(False)
     DTCLS.app_self.ui.bnt_glsv_add_rule.setHidden(True)
     DTCLS.app_self.ui.bnt_glsv_edit_rule.setHidden(True)
-    apply_current_user()
+    apply_selected_user()
     recalc_and_fill_tbls()
 def recalc_and_fill_tbls():
     DTM = DTCLS.module_repots_of_personal
     tbl_details = DTCLS.app_self.ui.tbl_report_c
     tbl_details_f = DTCLS.app_self.ui.tbl_report_c_filtr
-    fill_events_by_user(DTM.current_user.ID_ФизЛица)
-    fill_details_by_user(DTM.current_user.ID_ФизЛица,tbl_details,tbl_details_f)
+    if DTM.selected_user is None:
+        return
+    fill_events_by_user(DTM.selected_user.ID_ФизЛица)
+    fill_details_by_user(DTM.selected_user.ID_ФизЛица, tbl_details, tbl_details_f)
+
+
+
 
 
 @CQT.onerror
@@ -1099,22 +1189,40 @@ def load_pers_report():
     ui.fr_addition_tbl.setHidden(True)
     start_te = ui.le_start_of_period.text()
     end_te = ui.le_end_of_period.text()
-    apply_current_user()
+    apply_selected_user()
     events = Events()
-    events.load_events(DTM.current_user.ID_ФизЛица)
-
+    filter_by_owner = True
+    if TEST_USERS_MODE:
+        filter_by_owner = False
+    events.load_events(DTM.selected_user.ID_ФизЛица,filter_by_owner=filter_by_owner)
+    creator_ref = None
+    if filter_by_owner:
+        creator_ref = CFG.Config.user_config.User.ID_ФизЛица
     rules = DTM.user_report_rules
-    list_rules = rules.find(DTM.current_user.ID_ФизЛица,date_end=DTM.date_end_report)
+    list_rules = rules.find(DTM.selected_user.ID_ФизЛица, date_end=DTM.date_end_report,creator_ref=creator_ref)
 
     diagramm = rules.generate_diagramm(events,list_rules)
-    with CQT.table_updating(tbl):
+    t_main = CQT.TableContext(tbl)
+    with CQT.table_updating(t_main):
+
         CQT.fill_wtabl(diagramm,tbl,styleSheet=CQT.MES_EDIT_CSS)
-        t_main = CQT.TableContext(tbl)
-        def fnc_show_file(lbl,app_self,i,j,tbl):
-            t = CQT.TableContext(tbl)
+        t_main.reload()
+        def fnc_show_file(lbl,app_self,i,j,t:CQT.TableContext):
             row = t.get_row(i)
             link = row.value('Документ')
             run_doc(link)
+
+        def fnc_not_allowed(lbl:CQT.InteractiveLabelInstance,app_self,i,j,tbl:CQT.QtWidgets.QTableWidget):
+            t = CQT.TableContext(tbl)
+            row = t.get_row(i)
+            id = int(row.value('event_id'))
+            event = Events().load_event(id)
+            msg = row.value('Замечание').strip()
+            event.set_canseled(msg)
+            row.set_editable('Замечание',False)
+            lbl.remove()
+            load_pers_report()
+
         def fnc_approve(lbl:CQT.InteractiveLabelInstance,app_self,i,j,tbl:CQT.QtWidgets.QTableWidget):
             t = CQT.TableContext(tbl)
             row = t.get_row(i)
@@ -1125,6 +1233,7 @@ def load_pers_report():
             row.set_editable('Замечание',False)
             row.set_value('Утвержден',event.date_approval.ru_notation())
             lbl.remove()
+            load_pers_report()
 
         for row_main in t_main.rows():
             tbl_sub = row_main.get_sub_table('Документы')
@@ -1138,24 +1247,29 @@ def load_pers_report():
                                                          parent_self=DTCLS.app_self,grab_style_from_cell=True)
                         widg.add_button(CEMOJ.EmojiMain.ПоказателиМетрики.eye.symbol, 'Открыть',
                                         fnc_show_file,
-                                        cell_val=tbl_sub, )
+                                        cell_val=t, )
                         if row_main.value('ref_creator') == DTM.creator_user.ID_ФизЛица:
 
-                            if not row.value('Утвержден'):
+                            if not row.value('Утвержден') and not row.value('Замечание'):
                                 widg = CQT.add_interactive_label(tbl_sub, row.i, t.nf['Утвержден'],
                                                                  '',
                                                                  parent_self=DTCLS.app_self,grab_style_from_cell=True)
-                                widg.add_button(CEMOJ.EmojiMain.СтатусыПроизводства.success_tin.symbol, 'Утвердить',
+                                btn = widg.add_button(CEMOJ.EmojiMain.СтатусыПроизводства.success_tin.symbol, 'Утвердить',
                                                 fnc_approve,
+                                                cell_val=tbl_sub)
+                                btn.setStyleSheet(f"color: rgb({CMS.Color_tbl(100).str_rgb()};")
+                                widg.add_button(CEMOJ.EmojiMain.СтатусыПроизводства.not_allowed.symbol, 'Отклонить',
+                                                fnc_not_allowed,
                                                 cell_val=tbl_sub)
                                 row.set_editable('Замечание',True)
                     t.hide('event_id')
+        t_main.restore_selected_cell()
 
-    if diagramm:
-        t_main.hide('rule_id')
-        t_main.hide('period_priority')
-        t_main.hide('ref_creator')
-        t_main.hide('state')
+        if diagramm:
+            t_main.hide('rule_id')
+            t_main.hide('period_priority')
+            t_main.hide('ref_creator')
+            t_main.hide('state')
 
     CMS.fill_filtr_c(DTCLS.app_self,tblf,tbl)
 
@@ -1164,17 +1278,13 @@ def __END_INPUT___________________():
     pass
 
 def run_doc(link:str):
+    if link is None:
+        CQT.msgbox(f'Ошибка получения пути')
+        return
     ext = F.keep_extention_c(link)
     file_data = F.file_into_blob(link)
     tmp_win_dir = F.save_tmp_win_dir_file(file_data, extention=ext)
     F.run_file_c(tmp_win_dir)
-
-def apply_current_user():
-    uid_user = DTCLS.app_self.ui.cmb_addit_sort_c_report.currentData(CQT.Qt.UserRole)
-    if uid_user is None:
-        CQT.blink_obj_c(DTCLS.app_self,1,DTCLS.app_self.ui.cmb_addit_sort_c_report,f'Не выбран пользователь',)
-        return
-    DTCLS.module_repots_of_personal.current_user = CMS.Emploee_usr(uid_user,CFG.Config.project.db_users)
 
 def add_rule():
     tbl = DTCLS.app_self.ui.tbl_report_c
@@ -1217,9 +1327,10 @@ def edit_rule():
     if id_rule is None:
         return
     rule = DTCLS.module_repots_of_personal.user_report_rules.get_rule(id_rule)
-    if rule.ref_creator != DTCLS.module_repots_of_personal.creator_user.ID_ФизЛица:
-        CQT.msgbox(f'Нет доступа')
-        return
+    if not TEST_USERS_MODE:
+        if rule.ref_creator != DTCLS.module_repots_of_personal.creator_user.ID_ФизЛица:
+            CQT.msgbox(f'Нет доступа')
+            return
     handling_rule(row['ID_ФизЛица'], id_rule)
 
 
@@ -1233,7 +1344,9 @@ def add_event():
         id_rule = int(row_sub['id'])
     if id_rule is None:
         return
-
+    if F.valm(row_sub['early']):
+        CQT.msgbox(f'Дата начала еще не наступила')
+        return
     rule = DTCLS.module_repots_of_personal.user_report_rules.get_rule(id_rule)
 
     dict_event = event_handler(rule)
@@ -1245,9 +1358,9 @@ def add_event():
         CQT.msgbox(f'Ошибка обработки данных (rule_doc_id is None)')
         return
 
-    event = DTCLS.module_repots_of_personal.current_user_events.add_new_event(rule_doc_id,
-                           dict_event['link'],
-                           dict_event['message'])
+    event = DTCLS.module_repots_of_personal.selected_user_events.add_new_event(rule_doc_id,
+                                                                               dict_event['link'],
+                                                                               dict_event['message'])
     if event is None:
         return
     if event.rule.id_chat_24:
@@ -1381,6 +1494,7 @@ def show_form(user_id:str,id_rule:int|None =None):
         msg = f'Новое правило'
         rule = Rule()
         rule.ref_user = user_id
+        rule.enabled = True
 
     else:
         rule = DTCLS.module_repots_of_personal.user_report_rules.get_rule(id_rule)
@@ -1396,8 +1510,10 @@ def show_form(user_id:str,id_rule:int|None =None):
                     if val == '':
                         CQT.msgbox(f'В строке {row.i+1} не указано значение' )
                         return
+                if row.value('Параметр') in ('Название', 'Пользователь', 'Период'):
                     if Rules.SEP in val:
                         CQT.msgbox(f'Недопустимый символ "{Rules.SEP}" в строке {row.i+1}')
+                        return
                 if row.value('Параметр') == 'Кол-во за период':
                     if val == '' or val == 0:
                         CQT.msgbox(f'В строке {row.i + 1} не указано значение')
@@ -1420,6 +1536,12 @@ def show_form(user_id:str,id_rule:int|None =None):
             else:
                 val = str(period.id)
             tbl.item(r,c).setText(val)
+
+        def fnc_toggle_enable(tbl:CQT.QtWidgets.QTableWidget,val:bool,i,j):
+            str_val = str(int( val))
+            tbl.item(i,j).setText(str_val)
+            print(f'toggle set {str_val} in cell')
+
 
         nf_val = 1
         for i  in range(tbl.rowCount()):
@@ -1615,6 +1737,13 @@ def show_form(user_id:str,id_rule:int|None =None):
             if row['Name'] == 'id_chat_24':
                 CQT.set_cell_editable(tbl, i, nf_val, True)
 
+            if row['Name'] == 'enabled':
+                if fl_new:
+                    tbl.setRowHidden(i,True)
+                else:
+                    is_enable = F.valm(tbl.item(i,nf_val).text())
+                    CQT.add_check_box_switcher(tbl,i,nf_val,val=is_enable,conn_func_checked_row_col=fnc_toggle_enable)
+
         nf = CQT.nums_col_by_name_dict(tbl)
         dev = False
         if CFG.Config.user_config.is_developer:
@@ -1638,11 +1767,11 @@ def show_form(user_id:str,id_rule:int|None =None):
         return
 
 
-
     if fl_new:
         rule = Rules().new_rule(rezult)
     else:
         rule = DTCLS.module_repots_of_personal.user_report_rules.edit_rule(rezult)
+    clck_user()
     return
 
 

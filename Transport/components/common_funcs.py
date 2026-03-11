@@ -1514,7 +1514,7 @@ def generate_param_table(
                     padding=ft.padding.all(6),  # Отступы со всех сторон
                     border=border,
                     expand=True,  # 🔑 растянуть по высоте строки
-                    alignment=ft.alignment.center_left,  # чтобы текст красиво встал
+                    alignment=ft.Alignment.CENTER_LEFT,  # чтобы текст красиво встал
                     width=width,
                     height=height)
 
@@ -2130,14 +2130,14 @@ def build_save_reports_menu(
         controls=[
             ft.MenuItemButton(
                 leading=ft.Icon(ft.Icons.DESCRIPTION),
-                content=ft.Text("Word (шаблон)"),
+                content=ft.Text("Word"),
                 on_click=lambda e: _safe_call(on_word, e),
             ),
-            ft.MenuItemButton(
-                leading=ft.Icon(ft.Icons.GRID_ON),
-                content=ft.Text("Excel"),
-                on_click=lambda e: _safe_call(on_excel, e),
-            ),
+            # ft.MenuItemButton(
+            #     leading=ft.Icon(ft.Icons.GRID_ON),
+            #     content=ft.Text("Excel"),
+            #     on_click=lambda e: _safe_call(on_excel, e),
+            # ),
             ft.MenuItemButton(),
             tech_submenu,
         ],

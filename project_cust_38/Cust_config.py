@@ -222,6 +222,7 @@ class ProjectConfig(VerticalConfig['ProjectConfig']):
     db_nomen: str = Desc() #10.11.25
     db_dse: str = Desc()
     db_flet: str = Desc()
+    db_act: str = Desc()
     ERB_BASE_URL: str = Desc()
     tk_temp_folder: str = Desc()
     mk_temp_folder: str = Desc()
@@ -240,25 +241,54 @@ class AppConfig(HorizontalConfig):
 
 class User_emploee():
     def __init__(self, fio: str, user_db: str):
+        fields = f"""
+employee.ФИО as ФИО,
+employee.Пномер as Пномер,
+employee.Должность as Должность,
+employee.Статус as Статус,
+employee.Подразделение as Подразделение,
+employee.Режим as Режим,
+employee.Компания as Компания,
+employee.ID_ФизЛица as ID_ФизЛица,
+employee.ВидЗанятости as ВидЗанятости,
+employee.ДатаИзмененияДолжности as ДатаИзмененияДолжности,
+ФизическиеЛица.Фамилия as Фамилия,
+ФизическиеЛица.Имя as Имя,
+ФизическиеЛица.Отчество as Отчество,
+ФизическиеЛица.Пол as Пол,
+ФизическиеЛица.login as login,
+ФизическиеЛица.id_bitrix as id_bitrix
+"""
         if F.is_unique_identifier(fio):
-            data = CSQ.custom_request_c(user_db, f"""SELECT * FROM employee WHERE ID_ФизЛица == "{fio}";""",
+            data = CSQ.custom_request_c(user_db, f"""SELECT {fields}
+             FROM employee 
+            LEFT JOIN ФизическиеЛица ON ФизическиеЛица.ФизическоеЛицо_Key = employee.ID_ФизЛица
+            WHERE employee.ID_ФизЛица == "{fio}";""",
                                         rez_dict=True)
         else:
-            data = CSQ.custom_request_c(user_db, f"""SELECT * FROM employee WHERE ФИО == "{fio}";""", rez_dict=True)
+            data = CSQ.custom_request_c(user_db, f"""SELECT {fields} FROM employee 
+             LEFT JOIN ФизическиеЛица ON ФизическиеЛица.ФизическоеЛицо_Key = employee.ID_ФизЛица
+            WHERE employee.ФИО == "{fio}";""", rez_dict=True)
         if len(data) == 0:
             raise Exception('не найден ФИО в БД')
         self.user_db = user_db
-        self.ФИО = None
-
-        self.Пномер = None
-        self.Должность = None
-        self.Статус = None
-        self.Подразделение = None
-        self.Режим = None
-        self.Компания = None
-        self.ID_ФизЛица = None
-        self.ВидЗанятости = None
-        self.ДатаИзмененияДолжности = None
+        self.ФИО:str|None = None
+        self.ФИОк:str|None = None
+        self.Пномер:int|None = None
+        self.Должность:str|None = None
+        self.Статус:str|None = None
+        self.Подразделение:str|None = None
+        self.Режим:str|None = None
+        self.Компания:str|None = None
+        self.ID_ФизЛица:str|None = None
+        self.ВидЗанятости:str|None = None
+        self.Фамилия:str|None = None
+        self.Имя:str|None = None
+        self.Отчество:str|None = None
+        self.ДатаИзмененияДолжности:str|None = None
+        self.Пол:str|None = None
+        self.login:str|None = None
+        self.id_bitrix:int|None = None
         self.history = []
 
         truth_record = None
@@ -271,7 +301,11 @@ class User_emploee():
 
         for key in truth_record.keys():
             exec(f'self.{key.replace(".", "_")} = record[key]')
-
+        #fix=============
+        if self.login:
+            self.login = self.login.split(F.sep())[-1]
+        self.ФИОк = f'{self.Фамилия} {self.Имя[0]}.{self.Отчество[0]}.'
+        #================
         for item in data:
             self.history.append(item)
 
@@ -307,6 +341,25 @@ def tmp_dir():
     if F.existence_file_c(os.sep.join([F.put_po_umolch() ,'mes_tmp' , ima_module])) == False:
         F.create_dir_c(os.sep.join([F.put_po_umolch() ,'mes_tmp' , ima_module]))
     return os.sep.join([F.put_po_umolch() ,'mes_tmp' , ima_module])
+
+
+class Erp_base():
+    def __init__(self,name:str,db_users:str):
+        self.s_num:int|None = None
+        self.name:str|None = None
+        self.КластерСерверов:str|None = None
+        
+        data = CSQ.custom_request_c(db_users,f"""
+    SELECT s_num,
+       name,
+       КластерСерверов
+  FROM bases_ERP WHERE name = "{name}";
+""",rez_dict=True,one=True)
+        if data:
+            for key in data.keys():
+                exec(f'self.{key.replace(".", "_")} = data[key]')
+            
+
 
 def save_tmp_stukt(data,name):
     puth_name = tmp_dir() + os.sep + name + '.pickle'
@@ -347,6 +400,7 @@ class System_changes():
         'КонструкторРС':{'КонструкторРС',},
         'Сайт':{'Сайт',},
         'ВебПриложение':{'ВебПриложение',},
+        'АРМ_складского_работника':{'АРМ_складского_работника',},
 
     }
     DICT_TYPES = { 'Мелкие улучшения':CEMOJ.EmojiMain.ОперацииПроизводства.assembly.symbol,
@@ -370,14 +424,14 @@ class System_changes():
 
     def show_hot(self):
         self.get_news_b24()
-        if self.show_news():
+        if self.show_news(no_empty_msg=True):
             self.save_cache()
             
     @staticmethod
     def show(window):
         obj = System_changes(window)
         obj.get_news_b24(False)
-        obj.show_news()
+        obj.show_news(no_empty_msg=False)
 
     @classmethod
     def add_action_config(cls, window, self_ui):
@@ -446,7 +500,7 @@ class System_changes():
         self.news = news
         return news
 
-    def show_news(self):
+    def show_news(self,no_empty_msg:bool=True):
         def func_oform(tbl:QtWidgets.QTableWidget):
 
             nf = CQT.nums_col_by_name_dict(tbl)
@@ -475,6 +529,8 @@ class System_changes():
                                          
                                          )
             return True
+        if not no_empty_msg:
+            CQT.msgbox(f'Изменений пока нет')
         return False
 
 
@@ -490,9 +546,11 @@ class System_changes():
         F.delete_file_c(self.PFILE)
 
 
-class User_config(metaclass=SingletonMeta):
+class User_config(metaclass=SingletonMeta): # noqa
     def __init__(self, common_config: ProjectConfig = None):
         self.common_config = common_config #18.07.25
+        self.window_app = None 
+        self.cust_windowTitle:str|None = None
         orgnizations = CSQ.custom_request_c(ProjectConfig().db_naryad, f"""SELECT Имя FROM places""",
                                             hat_c=False, one_column=True)
         orgnizations.insert(0, '')
@@ -546,6 +604,7 @@ class User_config(metaclass=SingletonMeta):
         self.__data_config_sample = data_config_sample
         self.reset_tbl_filtrs = None
         self.ERP_base_name = None
+        self.ERP_base:Erp_base|None = None
         self.css_theme = None
         self.Organization = None
         self.User:User_emploee|None = None
@@ -556,6 +615,19 @@ class User_config(metaclass=SingletonMeta):
             self.User = User_emploee(F.user_full_namre(),self.common_config.db_users)
         except:
             pass
+
+    def __setattr__(self, key, value):
+        super().__setattr__(key, value)
+        if value is None:
+            return
+        if key in ('User','cust_windowTitle','window_app'):
+            self.update_window_title()
+
+    def init_employee(self, fio_or_ref: str):
+        self.User = User_emploee(fio_or_ref, self.common_config.db_users) #10.03.2026
+
+    def clear_employee(self):
+        self.User = None
 
     @property
     def is_developer(self): #18.07.25
@@ -568,7 +640,7 @@ class User_config(metaclass=SingletonMeta):
 
     def load_config(self=None):
         app_args = F.parse_args(sys.argv)
-        data = load_tmp_stukt('user_config', {})
+        data = load_tmp_stukt('user_config', copy.deepcopy(self.__data_config_sample)) #02.03.2026
         if app_args:
             for k,v in app_args.items():
                 if k in data and 'Значение' in data[k]:
@@ -586,6 +658,8 @@ class User_config(metaclass=SingletonMeta):
             dic['list'] = str(dic['list'])
             exec(f'self.{param} = {dic}')
         self._data_config = data_config
+        if self.ERP_base_name is not None:
+            self.ERP_base = Erp_base(self.ERP_base_name['Значение'],self.common_config.db_users)
 
     def save_config(self, new_tbl: dict):
         data_config = copy.deepcopy(self.__data_config_sample)
@@ -600,26 +674,52 @@ class User_config(metaclass=SingletonMeta):
         tbl = F.list_of_lists_to_list_of_dicts(tbl)
         return tbl
 
-    def load_user_config(self, window):
+    def update_window_title(self):
+        if self.window_app is None:
+            return
+        erp_tool_tip = f'База 1С: "{self.ERP_base_name["Значение"]}"'
+        login = user_str = ''
+        if self.User: #10.03.2026
+            if self.User.login:
+                login = f'/{self.User.login}'
+            user_str = f" {self.User.ФИО}{login}"
+        cust_windowTitle = ''
+        if self.cust_windowTitle:
+            cust_windowTitle = f'{50*' '}{self.cust_windowTitle}'
+        self.window_app.name_module = (f'Приложение "{self.window_app.NAME_MODULE_BASE}":'
+                              f' {user_str}'
+                              f' ({self.Organization["Значение"]})    {erp_tool_tip}{cust_windowTitle}')
+        self.set_tooltip(self.window_app)
+
+    def load_user_config(self, window,addit_obj=None):
+        
         self.load_config()
         window.APP_ARGS = Config.app_args
-        window.USER_CONFIG = self
+        self.window_app = window
+        
         window.ERP_base_name = f'{self.ERP_base_name["Значение"]}'
-        erp_tool_tip = f'База 1С: {self.ERP_base_name["Значение"]}'
-        window.name_module = f'Приложение "{window.NAME_MODULE_BASE}": {f" {F.user_full_namre()}({F.curr_user_c()})"}({self.Organization["Значение"]})-{erp_tool_tip}'
+        window.USER_CONFIG: User_config = self
         CQT.load_css(window)
-        self.set_tooltip(window)
-        window.place = Config.place
+
+        window.place:Place = Config.place
+        window.project:ProjectConfig = Config.project
+
+
         self.check_system_change_info(window)
+        if addit_obj:
+            addit_obj.APP_ARGS: dict = Config.app_args
+            addit_obj.USER_CONFIG: User_config = self
+            addit_obj.place: Place = Config.place
+            addit_obj.project: ProjectConfig = Config.project
 
 
     def check_system_change_info(self,window):
         if not Config.app.is_ui:
             return
-        System_changes.add_action_config(window, window.ui)
-        
-        system_changes = System_changes(window)
-        system_changes.show_hot()
+        if not hasattr(window.ui, 'action_system_changes'):
+            System_changes.add_action_config(window, window.ui)
+            system_changes = System_changes(window)
+            system_changes.show_hot()
         
 
 
@@ -748,6 +848,7 @@ class Place(metaclass=SingletonMeta):
     auto_change_state_kplan: int = None #18.09.2025  100060322  Дмитрий Никандров09:43, как только выстроим цепочку работы с конструкторами, технологами мы сопоставим статусы и донесем до вас.
     autoload_fact_kpl_onoff: int = None #26.09.2025 100060640  тобы в ганте увидеть, что начались работы
     apply_ratio_on_calc_plan_norm: int = None #27.01.2026 100065475 выключение/выключение коэффициентов для подгрузки норм позиции
+    ref_top_storage: str = None #17.02.2026 основной склад
 
 
     def __init__(self, organization_name: str | None = None) -> None:
@@ -767,6 +868,9 @@ class Place(metaclass=SingletonMeta):
         db_naryad = ProjectConfig().db_naryad
         row = CSQ.custom_request_c(db_naryad, f"""SELECT * FROM places WHERE Имя = "{organization_name}";""", one=True,
                                    rez_dict=True)
+        if not row:
+            F.win_msgbox(f'Ошибка',f'Организация "{organization_name}" не обнаружена')
+            raise ValueError('')
         self.КодыНарядов = CodeNaryad(row['poki'], db_naryad)
         self.evaluation_department = Evaluation_department_podrazdel_for_reports(row['evaluation_department_podrazdel_for_reports'],ProjectConfig().db_kplan)
 

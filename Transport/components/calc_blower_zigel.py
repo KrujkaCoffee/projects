@@ -237,7 +237,7 @@ def gen_page(page: ft.Page | DummyEvent):
                 ft.VerticalDivider(width=2),
                 ft.Column(
                     controls=[],
-                    alignment=ft.MainAxisAlignment.START,
+                    # alignment=ft.MainAxisAlignment.START,
                     horizontal_alignment=ft.CrossAxisAlignment.START,
                     scroll=ft.ScrollMode.ALWAYS,
                     expand=True,

@@ -32,8 +32,8 @@ class PyQtEventHook(QObject):
             self.user = F.user_name()
             self.app_name = F.name_of_executable_file_c()
             profile = self.get_employee(self.user)
-            if not profile or not isinstance(profile, dict):
-                return
+            if not profile or not isinstance(profile, dict): #10.02.2026
+                profile = {}
             self.department = profile.get('Подразделение', '')
             self.profession = profile.get('Должность', '')
         except Exception as e:

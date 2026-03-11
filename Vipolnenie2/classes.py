@@ -15,6 +15,8 @@ class Naryad_info():
         self.parent:mywindow = parent_self
         self._nom_nar:int|None = None
         self.nom_nar:int|str|None = row_data['Пномер']
+        self.group:str|None = row_data['Группа']
+        self.group_id:str|None = row_data['_id']
         self.sozdan:None|str = row_data['Дата']
         self.proj:None|str = row_data['Номер_проекта']
         self.zp:None|str = row_data['Номер_заказа']
@@ -54,6 +56,7 @@ class Naryad_info():
         tbl = self.parent.ui.tbl_descr_nar
         data = [
             {"Параметр":'Наряд', 'Значение':self.nom_nar},
+            {"Параметр":'Группа', 'Значение':self.group},
             {"Параметр":'Создан', 'Значение':self.sozdan},
             {"Параметр":'Проект', 'Значение':self.proj},
             {"Параметр":'Заказ', 'Значение':self.zp},
@@ -64,13 +67,7 @@ class Naryad_info():
         ]
         with CQT.table_updating(tbl):
             CQT.fill_wtabl(data,tbl,set_editeble_col_nomera={},hide_head_column=True,hide_head_rows=True,
-                           styleSheet=CQT.MES_CSS,ogr_maxshir_kol=500)
-            for i in range(tbl.rowCount()):
-                for j in range(tbl.columnCount()):
-                    CQT.font_cell_size_format(tbl,i,j,15)
-            tbl.resizeColumnsToContents()
-
-
+                           styleSheet=CQT.MES_CSS,ogr_maxshir_kol=500,font_size=12)
 
 
         linked_text = self.parent.unpack_links_to_documents(task_text=self.zadanie, label=self.parent.ui.textBrowser_zadanie)

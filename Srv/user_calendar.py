@@ -552,9 +552,12 @@ def reload_tbl_empl_old(ima_table_empl, LIST_DICT_EMPLOYEE_FULL, res, dict_rab_v
 
 #++12.11.25
 def get_current_state_employee(fio: str, prof: str, ref_key: str):
+    where_prof = ''
+    if prof:
+        where_prof = f"AND Должность = {prof!r}"
     return CSQ.custom_request_c(put_db, f"""
         SELECT * FROM employee 
-        WHERE ФИО = {fio!r} AND Должность = {prof!r} AND ID_ФизЛица = {ref_key!r}
+        WHERE ФИО = {fio!r} {where_prof} AND ID_ФизЛица = {ref_key!r}
         ORDER BY Пномер DESC LIMIT 1;
     """, rez_dict=True, one=True)
 
@@ -740,8 +743,7 @@ def reload_tbl_employee(ima_table_empl, LIST_DICT_EMPLOYEE_FULL, res, dict_rab_v
 ГДЕ
     (ВЫРАЗИТЬ(ТабельУчетаРабочегоВремениДанныеОВремени.Ссылка.Комментарий КАК СТРОКА(20))) = "Фактическая явка"
     И ТабельУчетаРабочегоВремениДанныеОВремени.Ссылка.ПериодРегистрации = {ПериодРегистрации}
-    И ДанныеДляПодбора.Начало <= {ПериодРегистрации}
-    И ДанныеДляПодбора.Окончание >= {ПериодРегистрации_конец}
+    И {ПериодРегистрации} BETWEEN ДанныеДляПодбора.Начало И ДанныеДляПодбора.Окончание
 
 СГРУППИРОВАТЬ ПО
     ТабельУчетаРабочегоВремениДанныеОВремени.Сотрудник.Наименование,
@@ -789,6 +791,7 @@ def reload_tbl_employee(ima_table_empl, LIST_DICT_EMPLOYEE_FULL, res, dict_rab_v
         else:
             current_state = get_current_state_employee(fio, prof, phys_ref)
             cache_employee[employee_key] = current_state
+            prof = current_state['Должность'] if not prof else prof
         if current_state == False:
             print(f'[reload_tbl_employee]Прогрузка {ima_table_empl} была прервана из-за некорректного ответа БД')
             return

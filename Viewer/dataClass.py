@@ -44,9 +44,9 @@ class data_repots_of_personal(SingletonMeta):
     user_report_periods: list[dict] | None = load_user_report_periods()
     user_report_doc_types: list[dict] | None = load_user_report_doc_types()
     user_report_rules: Rules | None = None
-    current_user: Emploee_usr | None = None
+    selected_user: Emploee_usr | None = None
     creator_user: Emploee_usr | None = None
-    current_user_events: Events | None = None
+    selected_user_events: Events | None = None
     regime: Regime | None = None
     date_start_report:datetime.datetime| None = None
     date_end_report:datetime.datetime| None = None

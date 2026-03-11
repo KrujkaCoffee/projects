@@ -854,7 +854,7 @@ class Fcns():
 
 @dataclass
 class Data_1с:
-    DEBUG = '31.10.2025'
+    DEBUG = '11.12.2025'
     if  F.now("%d.%m.%Y") != DEBUG:
         code,  nomen_names  = APIERP.get_wet_request(f'''ВЫБРАТЬ
             ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(Номенклатура.Ссылка)) КАК Ref,
@@ -1584,3 +1584,17 @@ def update_drawback_journal(deal_id: int | str, data: dict,
     return None, list_err
 
 
+def eval_1c_nd_price_calculation_v1(ref:str, RefKeyND:str, tch:list[dict])->tuple[int,list[dict],list[str]]:
+    def calc_ref_ND(tch:list[ddict]):
+        dict_ND = dict()
+        for row in tch:
+            pass
+
+
+    list_err = []
+    if RefKeyND is None:
+        RefKeyND = calc_ref_ND(tch)
+    return 200,[],list_err
+
+
+    return 500,[],['Непредвиденная ошибка']

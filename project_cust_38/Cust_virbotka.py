@@ -126,8 +126,7 @@ def list_per_month_new_c(db,nach,konec,db_kplan,db_users,podrazdelenie,organizat
                 ПО ДанныеДляПодбора.Сотрудник = ТабельУчетаРабочегоВремениДанныеОВремени.Сотрудник 
         ГДЕ
             ТабельУчетаРабочегоВремениДанныеОВремени.Ссылка.ПериодРегистрации = {beginning_month_str}
-            И ДанныеДляПодбора.Начало <= {start_month_datetime_str}
-            И ДанныеДляПодбора.Окончание >= {finish_month_datetime_str}
+            И {start_month_datetime_str} BETWEEN ДанныеДляПодбора.Начало И ДанныеДляПодбора.Окончание
             И Подразделение.Наименование = "{podrazdelenie}"
             И ДанныеДляПодбора.Филиал.Наименование = "{organization}"
         СГРУППИРОВАТЬ ПО

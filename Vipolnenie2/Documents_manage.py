@@ -160,7 +160,13 @@ def print_out_naryad(nar_info:CLSS.Naryad_info):
                                 fio2=nar_info.fio2,
                                 zadanie=nar_info.zadanie
                                 ))
-    if not F.existence_file_c(doc.pathf):
+    if F.existence_file_c(doc.pathf): # 03.03.2026
+        if CQT.msgboxgYN('Наряд уже был распечатан ранее. Обновить?'):
+            try:
+                doc.generate()
+            except PermissionError as e:
+                return CQT.msgbox('Ошибка. Документ, который вы хотите перезаписать открыт. \nЗапись невозможна!')
+    else:
         doc.generate()
     doc.open()
 

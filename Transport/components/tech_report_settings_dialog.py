@@ -266,7 +266,7 @@ def open_tech_report_settings_dialog(
         ),
     )
 
-    debug_sheet_sw = ft.Switch(label="Лист DEBUG (ссылки на значения)", value=debug_sheet_init)
+    debug_sheet_sw = ft.Switch(label="Создать дополнительный лист результатов (Ссылки на все результаты одной колонкой)", value=debug_sheet_init)
     persist_sw = ft.Switch(label="Сохранять настройки на этом устройстве", value=persist_init)
 
     transpose_tags_tf = ft.TextField(
@@ -643,8 +643,8 @@ def open_tech_report_settings_dialog(
         )
 
         tiles.append(transpose_enabled_sw)
-        tiles.append(ft.Text("Метод транспонирования:", size=12, opacity=0.85))
-        tiles.append(transpose_mode_rg)
+        # tiles.append(ft.Text("Метод транспонирования:", size=12, opacity=0.85))
+        # tiles.append(transpose_mode_rg)
         tiles.append(ft.Row([debug_sheet_sw, persist_sw], wrap=True, spacing=12))
 
         if not series_group_names:

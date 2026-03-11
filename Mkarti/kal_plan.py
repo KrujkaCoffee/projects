@@ -693,8 +693,14 @@ def pl_cr_dir_poz(self: mywindow, *args):
     num_kpl = row['plan.Пномер']
     poz = CMS.Pozition(int(num_kpl), self.db_kplan, self.bd_naryad, self.db_resxml, self.db_users, self)
     poz.load_kpl_table('пл_оуп')
-    np = poz.dict_tables['пл_оуп']['№проекта']
-    py = poz.dict_tables['пл_оуп']['№ERP']
+    np = poz.dict_tables['пл_оуп']['№проекта'].strip()
+    if np == '':
+        CQT.msgbox(f'Не указан №проекта')
+        return
+    py = poz.dict_tables['пл_оуп']['№ERP'].strip()
+    if py == '':
+        CQT.msgbox(f'Не указан №ERP')
+        return
     year_py = poz.dict_tables['пл_оуп']['Год']
     if py == '-' or py == f'{self.place.doc_prefix}00-000000' :
         CQT.msgbox(f'номер {self.place.doc_prefix} не корректный')

@@ -1,10 +1,9 @@
 import pathlib
 import re
+import os
 
 from PyQt5 import QtWidgets, QtCore, QtGui
 from PyQt5.QtWinExtras import QtWin
-import os
-import user_mange as userm
 import project_cust_38.Cust_Qt as CQT
 CQT.convert_UI_into_PY_c()
 from mydesign import Ui_MainWindow  # импорт нашего сгенерированного файла
@@ -14,17 +13,21 @@ import project_cust_38.Cust_Functions as F
 import project_cust_38.Cust_SQLite as CSQ
 import project_cust_38.Cust_mes as CMS
 import project_cust_38.Cust_QtGui as CGUI
+from project_cust_38 import user_mange as userm
+
+import groups_manage as GRM
 from datetime import timedelta
 from datetime import datetime as DT
 from project_cust_38.report_ci import virabotka_sotr
 import project_cust_38.Cust_b24 as B24
 cfg = config.Config(r'Config\CFG.cfg')  # файл конфига, находится п папке конфиг
 import copy
-F.test_path()
-import kpl_vipoln as KPLVIP
+
 import project_cust_38.Cust_config as USRCNF
 import classes as CLSS
+from functools import partial
 import  project_cust_38.Cust_emoji as CEMOJ
+from app_dataclasses import data_app as DTCLS
 class mywindow(QtWidgets.QMainWindow):
     def __init__(self):
         super(mywindow, self).__init__()
@@ -35,17 +38,30 @@ class mywindow(QtWidgets.QMainWindow):
         self.name_module = f'{self.NAME_MODULE_BASE}'
         self.USER_CONFIG: USRCNF.User_config = None
         self.place: USRCNF.Place = None
-
-        USRCNF.Config.user_config.load_user_config(self)
+        USRCNF.Config.user_config.load_user_config(self,DTCLS)
         CQT.load_icons(self, 24)
+        DTCLS.app_self = self
         CQT.connect_to_resize(self, CMS.tmp_dir())
         CMS.add_action_config_save_tbl_filtrs(self, self.ui)
-
+        dic = CMS.dict_emploee(USRCNF.Config.project.db_users)
+        self.auth_manager = userm.UserManager(
+            window=self,
+            combo_fio=self.ui.cmb_fio,
+            combo_prof=self.ui.cmb_dolgn,
+            input_password=self.ui.le_parol,
+            input_password_reset1=self.ui.le_Nparol,
+            input_password_reset2=self.ui.le_Nparol2,
+            employee_by_fio=dic,
+            on_success_login=self.on_success_login,
+            on_logout=self.clear_widgets,
+            btn_login=self.ui.btn_login,
+            btn_logout=self.ui.btn_logout,
+        )
         # ===========================================connects
         # ==================BTN
-        self.ui.btn_login.clicked.connect(lambda _, x=self: userm.log_in(x))
-        self.ui.btn_logout.clicked.connect(lambda _, x=self: userm.logout(x))
-        self.ui.btn_nachat.clicked.connect(self.nachat_nar)
+        self.ui.btn_login.clicked.connect(lambda _, x=self: self.auth_manager.log_in())
+        self.ui.btn_logout.clicked.connect(lambda _, x=self: self.auth_manager.logout())
+        self.ui.btn_nachat.clicked.connect(self.start_nar)
         self.ui.btn_pauza.clicked.connect(self.pauza_nar)
         self.ui.btn_zaconch.clicked.connect(self.zaversh_nar)
         self.ui.btn_otkr_kd.clicked.connect(self.otkrit_docs)
@@ -53,8 +69,20 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.btn_add_type_brak.clicked.connect(self.add_type_brak)
         self.ui.btn_del_type_brak.clicked.connect(self.del_type_brak)
         self.ui.btn_print_nar.clicked.connect(self.print_nar)
+        self.ui.btn_print_nar_settings.clicked.connect(self.on_click_btn_print_nar_settings)
+        self.ui.btn_group_manage.clicked.connect(partial(GRM.btn_group_manage,self))
+        if F.user_name() not in ('a.belyakov','s.kozyrkov','m.moyamsin'):
+            self.ui.btn_group_manage.setHidden(True)
+        self.ui.bnt_group_cancel.clicked.connect(partial(GRM.bnt_group_cancel,self))
+        self.ui.bnt_group_ok.clicked.connect(partial(GRM.bnt_group_ok,self))
+        self.ui.bnt_gr_group_remove.clicked.connect(partial(GRM.bnt_group_remove,self))
+        self.ui.bnt_gr_nar_remove.clicked.connect(partial(GRM.bnt_nar_remove,self))
+        self.ui.btn_crash_header.clicked.connect(partial(GRM.btn_crash_header,self))
+        self.ui.btn_test_apply_gr.clicked.connect(partial(GRM.btn_test_apply_gr,self))
+        if not DTCLS.USER_CONFIG.is_developer:
+            self.ui.btn_test_apply_gr.setHidden(True)
         #===================COMBOBOX
-        self.ui.cmb_dolgn.activated[int].connect(lambda _, x = self: userm.load_po_dolg(x))
+        self.ui.cmb_dolgn.activated[int].connect(lambda _, x = self: self.auth_manager.load_po_dolg())
         self.ui.cmb_fio.activated[int].connect(self.check_selected_user)
         self.ui.cmb_zamechain.activated[int].connect(self.vibor_zamech)
         self.ui.cmb_abstract.activated[int].connect(self.vibor_fio_abstract)
@@ -74,21 +102,24 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.tbl_naryadi.clicked.connect(self.tbl_naryadi_click)
         self.ui.tbl_chert.cellDoubleClicked[int, int].connect(self.otkrit_kd)
         self.ui.tbl_td.cellDoubleClicked[int, int].connect(self.otkrit_td)
+        self.ui.tbl_nar_in_groups.cellDoubleClicked[int, int].connect(partial(GRM.tbl_nar_in_groupsDoubleClicked))
         self.ui.tbl_naryadi_view_kompl.clicked.connect(self.tbl_komplektovka_view_click)
+        self.ui.tbl_edit_gr_groups.clicked.connect(partial(GRM.tbl_edit_gr_groups_click))
         # =======tabs
         self.ui.tabWidget_2.currentChanged[int].connect(self.tab2_clcik)
         self.ui.tabWidget.currentChanged[int].connect(self.tab_clcik)
         self.ui.tabWidget_3.currentChanged[int].connect(self.tab_clcik3)
         self.ui.tabWidget_docs.currentChanged[int].connect(self.tbl_prosmotr_docs)
+        self.ui.tabw_groups.currentChanged[int].connect(partial(GRM.tab_gr_click))
         # ========le
         self.ui.le_basa.textChanged.connect(self.calc_user_score)
         self.ui.le_premia.textChanged.connect(self.calc_user_score)
         self.ui.le_brak.textChanged.connect(self.calc_user_score)
 
         #======ACTIONS
-        self.ui.action_noviy_user.triggered.connect(lambda _, x = self: userm.reg_new_user(x))
-        self.ui.action_change_pass.triggered.connect(lambda _, x = self: userm.change_user_pass(x))
-        self.ui.action_reset_parol.triggered.connect(lambda _, x=self: userm.reset_user_pass(x))
+        self.ui.action_noviy_user.triggered.connect(lambda _, x = self: self.auth_manager.reg_new_user())
+        self.ui.action_change_pass.triggered.connect(lambda _, x = self: self.auth_manager.change_user_pass())
+        self.ui.action_reset_parol.triggered.connect(lambda _, x=self: self.auth_manager.reset_user_pass())
         self.ui.peresilniy.triggered.connect(self.create_peresilniy)
         self.ui.ved_komplekt.triggered.connect(self.create_ved_komplekt)
         self.ui.zayav_pererabotchik.triggered.connect(self.create_zayav_pererab)
@@ -107,11 +138,11 @@ class mywindow(QtWidgets.QMainWindow):
         self.check_lock_db(CMS.dict_etapi(self, self.db_naryd,""),"","")
         CSQ.close_bd(conn,cur)
         conn,cur = CSQ.connect_bd(self.bd_users)
-        self.check_lock_db(userm.load_users(self,conn=conn, cur = cur), conn,cur)
+        self.load_users()
         self.check_lock_db(CMS.dict_professions(self, self.bd_users, conn=conn), conn,cur)
         CSQ.close_bd(conn,cur)
         self.DICT_EMPL_FULL = CMS.dict_emploee_full(self.bd_users,self=self)
-        userm.load_po_dolg(self)
+        self.auth_manager.load_po_dolg()
 
         DICT_OPER = CSQ.custom_request_c(self.db_naryd, f"""SELECT * FROM operacii""", rez_dict=True)
         self.DICT_OPER = F.deploy_dict_c(DICT_OPER, 'kod')
@@ -138,6 +169,8 @@ class mywindow(QtWidgets.QMainWindow):
                                                 f'  Для КТ и ЛК - srv-docs.powerz.ru'
                                                 f'  Для КЛ и ТППР - srv-docs-pkb.powerz.ru')
         CQT.load_css(self)
+        GRM.clear()
+        self.start_up()
         # ====ВРЕМЕННО
         self.ui.cmb_dolgn.setCurrentIndex(4)
         #self.proverka_zakritiya_naryadov_po_jurnaly()
@@ -146,6 +179,115 @@ class mywindow(QtWidgets.QMainWindow):
         #userm.log_in(self)
         #self.ui.btn_nekomplect.setEnabled(False)
         #self.update_poditogs()
+
+    def on_success_login(self):
+        DTCLS.production_shift = CMS.Production_shifts(DTCLS.USER_CONFIG.User.Пномер,
+                                                       DTCLS.USER_CONFIG.common_config.db_users)
+        self.zapoln_tabl_naryadov()
+        self.lbl_tek_narayd(USRCNF.Config.user_config.User.ФИО)
+        self.fill_cmb_abstract()
+
+
+    def clear_widgets(self):
+        self.ui.cmb_fio.setCurrentText('')
+        self.glob_login = ''
+        self.ui.le_Nparol.setVisible(False)
+        self.ui.le_Nparol2.setVisible(False)
+        CQT.clear_tbl(self.ui.tbl_naryadi)
+        CQT.clear_tbl(self.ui.tbl_history)
+        CQT.clear_tbl(self.ui.tbl_chert)
+        CQT.clear_tbl(self.ui.tbl_naryadi_view_kompl)
+        CQT.clear_tbl(self.ui.tbl_stat)
+        CQT.clear_tbl(self.ui.tbl_stat_filtr)
+        CQT.clear_tbl(self.ui.tbl_stat_filtr_last)
+        CQT.clear_tbl(self.ui.tbl_stat_last)
+        CQT.clear_tbl(self.ui.tbl_descr_nar)
+        self.ui.textBrowser_zadanie.setText('')
+        self.ui.te_zamechain.setText('')
+        self.ui.label_12.setText('План работы')
+        self.ui.le_basa.setText('')
+        self.ui.le_premia.setText('')
+        self.ui.le_brak.setText('')
+        self.ui.le_nom_nar_prost.setText('')
+
+        self.ui.lbl_ostalos.setText('')
+        self.ui.lbl_tek_nar.setText('')
+        self.ui.tabWidget_2.setCurrentIndex(0)
+        self.ui.tabWidget.setCurrentIndex(0)
+        self.setStatusTip('')
+        DTCLS.table_nar = None
+        GRM.clear()
+
+    def load_users(self, conn='', cur=''):
+        """Загрузить список сотрудников в листбокс"""
+        poki = USRCNF.Config.place.poki
+        org_name = USRCNF.Config.place.Имя
+        self.DICT_EMPLOEE = dict()
+        self.SPIS_EMPLOEE = CSQ.custom_request_c(
+            self.bd_users,
+            f"""SELECT ФИО, Должность FROM employee WHERE Пномер > 2 AND Статус != 'Увольнение' AND Компания = {org_name!r};""",
+            hat_c=False
+        )
+        if self.SPIS_EMPLOEE == False:
+            return False
+        spis_black_list = F.load_file(F.scfg('Riba') + F.sep() + 'black_list_itr.txt')
+        if spis_black_list == False:
+            spis_black_list = ['']
+            F.save_file(F.scfg('Riba') + F.sep() + 'black_list_itr.txt', spis_black_list)
+        spis_itr = CSQ.custom_request_c(self.bd_users, f'select имя from professions where poki = {poki} AND Вкл = 1',
+                                        one_column=True, hat_c=True)
+        self.ui.cmb_dolgn.addItem('')
+        # self.ui.cmb_fio.addItem('')
+        set_dolgn = set()
+        for rab in self.SPIS_EMPLOEE:
+            fio = rab[0]
+            dolg = rab[1]
+            self.DICT_EMPLOEE[fio] = dolg
+            flag = True
+            for frase in spis_black_list:
+                if frase in fio:
+                    flag = False
+            if dolg in spis_itr and flag == True:
+                set_dolgn.add(dolg)
+        spis_dolgn = sorted(list(set_dolgn))
+        for dolgn in spis_dolgn:
+            self.ui.cmb_dolgn.addItem(dolgn)
+
+        spis_pauz = CSQ.custom_request_c(USRCNF.Config.project.db_naryad, f''' 
+                SELECT s_num,
+                       name,
+                       comment,
+                       poki
+                  FROM reason_pause_nar where poki = {USRCNF.Config.place.poki};
+                ''', rez_dict=True)
+        self.ui.cmb_zamechain.clear()
+        self.ui.cmb_zamechain.addItem('')
+        CQT.fill_list_combobx(self, self.ui.cmb_zamechain, [_['name'] for _ in spis_pauz],
+                              list_tooltip=[_['comment'] for _ in spis_pauz], first_void=True)
+        self.ui.cmb_zamechain.setCurrentIndex(0)
+        self.auth_manager.toggle_btn_login()
+
+    @CQT.onerror
+    def fill_cmb_abstract(self,*args,**kwargs):
+        ima = CMS.name_by_empl_c(self.ui.cmb_fio.currentText())
+        if self.DICT_EMPL_FULL[ima]['Режим'] == 'Абстракт':
+            list_fio = []
+            for fio in self.DICT_EMPLOEE.keys():
+                if self.DICT_EMPL_FULL[fio]['Режим'] != 'Абстракт' :
+                    list_fio.append(fio)
+            list_fio = sorted(list_fio)
+            self.ui.cmb_abstract.addItem('')
+            self.ui.cmb_abstract.addItems(list_fio)
+
+            self.ui.gb_abstrakt.setVisible(True)
+        else:
+
+            self.ui.gb_abstrakt.setVisible(False)
+
+    def start_up(self):
+        if USRCNF.User_config.is_developer:
+            # self.auth_manager.log_in(autouser='Демичев Николай Юрьевич')
+            ...
 
     @CQT.onerror
     def check_selected_user(self, *args):
@@ -200,7 +342,7 @@ class mywindow(QtWidgets.QMainWindow):
         if self.ui.le_parol.hasFocus():
             if e.key() == 16777220:
                 self.ui.btn_login.setFocus()
-                userm.log_in(self)
+                self.auth_manager.log_in()
 
     def app_icons(self):
         self.ui.btn_login.setIcon(QtGui.QIcon(QtWidgets.QApplication.style().standardIcon(QtWidgets.QStyle.SP_DialogYesButton)))
@@ -211,15 +353,15 @@ class mywindow(QtWidgets.QMainWindow):
 
         self.ui.btn_nachat.setIcon(
             QtGui.QIcon(QtWidgets.QApplication.style().standardIcon(QtWidgets.QStyle.SP_MediaPlay)))
-        self.ui.btn_nachat.setIconSize(QtCore.QSize(64, 64))
+        self.ui.btn_nachat.setIconSize(QtCore.QSize(32, 32))
 
         self.ui.btn_pauza.setIcon(
             QtGui.QIcon(QtWidgets.QApplication.style().standardIcon(QtWidgets.QStyle.SP_MediaPause)))
-        self.ui.btn_pauza.setIconSize(QtCore.QSize(64, 64))
+        self.ui.btn_pauza.setIconSize(QtCore.QSize(32, 32))
 
         self.ui.btn_zaconch.setIcon(
             QtGui.QIcon(QtWidgets.QApplication.style().standardIcon(QtWidgets.QStyle.SP_MediaStop)))
-        self.ui.btn_zaconch.setIconSize(QtCore.QSize(64, 64))
+        self.ui.btn_zaconch.setIconSize(QtCore.QSize(32, 32))
 
         self.ui.btn_logout.setIcon(
             QtGui.QIcon(QtWidgets.QApplication.style().standardIcon(QtWidgets.QStyle.SP_DialogNoButton)))
@@ -282,7 +424,7 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.lbl_fiomaster_for_otk.clear()
 
         if name == 'Доступные наряды':
-            CQT.set_color_of_obj_c(self.ui.lbl_ostalos)
+
             self.ui.lbl_ostalos.setText('')
         if name == 'Управление нарядом':
             tbl = self.ui.tbl_naryadi
@@ -798,11 +940,9 @@ class mywindow(QtWidgets.QMainWindow):
             font.setPointSize(size)
             self.ui.lbl_ostalos.setFont(font)
         if raznica < 0:
-            CQT.set_color_of_obj_c(self.ui.lbl_ostalos,111,221,111)
             self.ui.lbl_ostalos.setText(f'По №{str(nom_nar)} дефицит нормы {F.miutes_to_time(abs(raznica))} (Трудов {raznica_tdz} мин.)  НЕ ЗАКРЫВАЙ наряд, не доделав до конца работу. иначе за простой придется отчитываться.')
             set_lbl_font_size(12)
         else:
-            CQT.set_color_of_obj_c(self.ui.lbl_ostalos)
             self.ui.lbl_ostalos.setText(f'По №{str(nom_nar)} осталось {F.miutes_to_time(raznica)} (Трудов {raznica_tdz}  мин.)')
             set_lbl_font_size(14)
 
@@ -849,10 +989,24 @@ class mywindow(QtWidgets.QMainWindow):
 
         tab.setCurrentIndex(CQT.number_table_by_name_c(tab, 'Управление нарядом'))
 
+    @CQT.onerror #03.03.2026
+    def on_click_btn_print_nar_settings(self, *args, **kwargs):
+        import task_printer as TSKPRNT
+        TSKPRNT.configure_print_task_fields(self, mk=self.nar_info.mk)
+
+
     @CQT.onerror
-    def print_nar(self,*args,**kwargs):
-        #CQT.msgbox(f'{CEMOJ.EmojiMain.ОборудованиеИнструменты.tool.symbol} В разработке!')
+    def print_nar(self, *args, **kwargs):  #03.03.2026
+        import task_printer as TSKPRNT
         from Documents_manage import print_out_naryad
+        cfg_path = TSKPRNT.default_fields_config_path()
+        fields = TSKPRNT.load_selected_fields(cfg_path) or TSKPRNT.default_selected_field_ids()
+        zadanie_for_print = TSKPRNT.compose_task_for_print(
+            self.nar_info,
+            selected_field_ids=fields,
+            fallback_to_saved=True,
+        )
+        self.nar_info.zadanie = zadanie_for_print or ""
         print_out_naryad(self.nar_info)
 
     @CQT.onerror
@@ -1049,15 +1203,7 @@ class mywindow(QtWidgets.QMainWindow):
             for item in list_data:
                 self.ui.cmb_brak_type1.addItem(item['name'],item['s_num'])
 
-        def is_otk_nar(self,str_operations:str):
-            fl_open_fr_otk = False
-            list_opers = str_operations.split('|')
-            for oper in list_opers:
-                name = oper.split('$')[-1]
-                if name in self.DICT_OPER_NAME and self.DICT_OPER_NAME[name]['kontrol_opers']:
-                    fl_open_fr_otk = True
-                    break
-            return fl_open_fr_otk
+
 
         self.ui.fr_fio_for_otk.setHidden(True)
         tab = self.ui.tabWidget_2
@@ -1070,7 +1216,8 @@ class mywindow(QtWidgets.QMainWindow):
             return
         nk_nar = CQT.num_col_by_name_c(tbl, 'Пномер')
         if tbl.item(r,nk_nar).text() == '-':
-            self.load_prostoy_nar()
+            #self.load_prostoy_nar() 05.03.2026 это зачем? если они создаются с номером через кнопку
+            tab.setCurrentIndex(CQT.number_table_by_name_c(tab, 'Доступные наряды'))
             return
         nom_nar = int(tbl.item(r,nk_nar).text())
         nar_obj = CMS.Naryads(nom_nar,self.db_naryd,self.DICT_DOLGN_ETAP,self.bd_users,self.DICT_EMPLOEE_FULL_WITH_DEL)
@@ -1086,10 +1233,8 @@ class mywindow(QtWidgets.QMainWindow):
             CSQ.close_bd(conn,cur)
             pass
 
-
         row_data = self.calc_nar_info()
-
-        self.glob_otk_kontrol = is_otk_nar(self,row_data['Операции'])
+        self.glob_otk_kontrol = CMS.is_otk_nar(row_data['Операции'],self.DICT_OPER_NAME)
         CQT.clear_tbl(self.ui.tbl_list_brak)
         self.list_otk_brak = copy.copy(self.glob_list_otk_brak)
 
@@ -1128,9 +1273,6 @@ class mywindow(QtWidgets.QMainWindow):
             self.ui.btn_nachat.setText('Начать')
         tab.setCurrentIndex(CQT.number_table_by_name_c(tab, 'Управление нарядом'))
 
-    def on_select_dolgn_cmb(self, *args):
-        ...
-
     @CQT.onerror
     def transform_current_user_for_sql(self):
         """
@@ -1154,18 +1296,20 @@ class mywindow(QtWidgets.QMainWindow):
 
     @CQT.onerror
     def zapoln_tabl_naryadov(self,*args):
-
+        tbl = self.ui.tbl_naryadi
         if self.glob_login == "":
 
             CQT.msgbox('Необходимо войти')
             return
 
         user = self.transform_current_user_for_sql()
+        ref_user = DTCLS.USER_CONFIG.User.ID_ФизЛица
         postfix = '((mk.Статус != "Закрыта" AND mk.Дата_завершения == "") OR (mk.Пномер = 0)) AND'
         if 'shift' in CQT.get_key_modifiers(self):
             postfix = ''
         custom_request_c = f'''
             SELECT 
+                COALESCE( groups.name, "") as Группа,
                 naryad.Пномер, 
                 naryad.Дата, 
                 naryad.Номер_мк, 
@@ -1199,7 +1343,9 @@ class mywindow(QtWidgets.QMainWindow):
                 CASE WHEN знпр.№проекта IS NOT NULL 
                    THEN знпр.№проекта 
                    ELSE пл_оуп.№проекта 
-                END AS Номер_проекта
+                END AS Номер_проекта,
+                COALESCE( groups.id, "") as _id,
+                COALESCE( groups.summ, "") as _gr_summ
             FROM naryad 
             INNER JOIN mk ON mk.Пномер = naryad.Номер_мк 
             LEFT JOIN plan ON mk.НомКплан = plan.Пномер
@@ -1207,6 +1353,8 @@ class mywindow(QtWidgets.QMainWindow):
             LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП
             INNER JOIN коды_веплана_для_наряда ON коды_веплана_для_наряда.code = naryad.Внеплан
             INNER JOIN zagot ON zagot.Ном_МК = naryad.Номер_мк 
+            LEFT JOIN naryad_groups ON  (naryad_groups.id_nar = naryad.Пномер AND naryad_groups.fio IN ({user}))
+            LEFT JOIN groups ON (groups.id == naryad_groups.id_group AND groups.user_ref == "{ref_user}")
             WHERE коды_веплана_для_наряда.poki = {self.place.poki} AND {postfix}  naryad.Подтвержд_вып_дата == "" AND
                          ((naryad.ФИО IN ({user}) AND naryad.Фвремя == "") 
                         OR (naryad.ФИО2 IN ({user}) AND naryad.Фвремя2 == ""));'''
@@ -1221,7 +1369,11 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.label_12.setText(f'План работ для на {F.now()}')
         if len(rez)>0:
             rez = F.sort_by_column_c(rez,'Приоритет',type_compare='numeric')
+
+        DTCLS.table_nar = copy.deepcopy(rez)
+
         rez.insert(0,{
+                        'Группа': '',
                       'Пномер':'-',
                       'Дата':'-',
                       'Номер_мк':'-',
@@ -1247,38 +1399,38 @@ class mywindow(QtWidgets.QMainWindow):
                       'Прим_резка':'',
                       'ФИО_для_ОТК':'',
                       'Операции':'',
-                      'Распред_ФИО':''})
-        CQT.fill_wtabl(rez, self.ui.tbl_naryadi,auto_type=False)
-
-        hide_fields = {'Норматив время','Компл_номер_тара','Компл_адрес'}
-        for column_name in hide_fields:
-            self.ui.tbl_naryadi.setColumnHidden(CQT.num_col_by_name_c(self.ui.tbl_naryadi, column_name), True)
-
-        CQT.add_btn(self.ui.tbl_naryadi, 0, 1, 'СОЗДАТЬ', True, self.create_prostoi_nar, '')
-        spis_prost = list(self.DICT_TYPE_PROSTOI.keys())
-
-        CQT.add_combobox('',self.ui.tbl_naryadi, 0, 5, spis_prost, False,self.select_type_prost)
-        self.ui.tbl_naryadi.setColumnHidden(CQT.num_col_by_name_c(self.ui.tbl_naryadi, 'Задание'), True)
-        self.ui.tbl_naryadi.setColumnHidden(CQT.num_col_by_name_c(self.ui.tbl_naryadi, 'Дата'), False)
-        self.ui.tbl_naryadi.setColumnHidden(CQT.num_col_by_name_c(self.ui.tbl_naryadi, 'Виды_работ'), True)
-        self.ui.tbl_naryadi.setColumnHidden(CQT.num_col_by_name_c(self.ui.tbl_naryadi, 'Опер_время'), True)
-        self.ui.tbl_naryadi.setColumnHidden(CQT.num_col_by_name_c(self.ui.tbl_naryadi, 'ФИО_для_ОТК'), True)
-        self.ui.tbl_naryadi.setColumnHidden(CQT.num_col_by_name_c(self.ui.tbl_naryadi, 'Операции'), True)
-        self.lbl_tek_narayd(CMS.name_by_empl_c(self.glob_login))
-        self.ui.cmb_nom_nar_prost.clear()
-        self.ui.cmb_nom_nar_prost.addItem('')
-        self.ui.cmb_nom_nar_prost.addItems([ str(_['Пномер']) for _ in rez if _['Задание'] != 'ПРОСТОЙ'])
-        #F.sleep(3)
-        tbl = self.ui.tbl_naryadi
-        nf_prim = CQT.num_col_by_name_c(tbl,'Примечание')
-
+                      'Распред_ФИО':'',
+                        '_id':'',
+                        '_gr_summ':'',
+        })
+        CQT.fill_wtabl(rez, tbl,auto_type=False,font_size=12)
+        t = CQT.TableContext(tbl)
         clr = CMS.Color_tbl(10)
-        with CQT.table_updating(tbl):
-            for i in range(tbl.rowCount()):
-                if 'Повт.Приёмка' in tbl.item(i,nf_prim).text():
-                    CQT.set_color_wtab_c(tbl,i,nf_prim,clr.r,clr.g,clr.b)
-                for j in range(tbl.columnCount()):
-                    CQT.font_cell_size_format(tbl,i,j,12)
+        gr_emoj = CEMOJ.EmojiMain.ДокументыДанные.folder.symbol
+        with CQT.table_updating(t):
+            hide_fields = {'Норматив время','Компл_номер_тара','Компл_адрес','Задание','Виды_работ',
+                           'Опер_время','ФИО_для_ОТК','Операции','_id','_gr_summ'}
+            for column_name in hide_fields:
+                t.hide(column_name)
+
+            CQT.add_btn(tbl, 0, t.nf['Дата'], 'СОЗДАТЬ', True, self.create_prostoi_nar, '')
+            spis_prost = list(self.DICT_TYPE_PROSTOI.keys())
+
+            CQT.add_combobox('',tbl, 0, t.nf['ФИО2'], spis_prost, False,self.select_type_prost)
+
+            self.lbl_tek_narayd(CMS.name_by_empl_c(self.glob_login))
+            self.ui.cmb_nom_nar_prost.clear()
+            self.ui.cmb_nom_nar_prost.addItem('')
+            self.ui.cmb_nom_nar_prost.addItems([ str(_['Пномер']) for _ in rez if _['Задание'] != 'ПРОСТОЙ'])
+            fl_gr_found = False
+            for row in t.rows():
+                if 'Повт.Приёмка' in row.value('Примечание'):
+                    row.set_color_font(*clr.rgb)
+                if row.value('_id'):
+                    row.set_value('Группа', f'{gr_emoj}({round(F.valm(row.value("_gr_summ")),2)}) {row.value("Группа")}' )
+                    fl_gr_found = True
+            if not fl_gr_found:
+                t.hide('Группа')
             tbl.resizeColumnsToContents()
 
 
@@ -1294,9 +1446,11 @@ class mywindow(QtWidgets.QMainWindow):
             koef = self.DICT_TYPE_PROSTOI[text]['Коэффициент_наряда']
         self.ui.tbl_naryadi.item(0,CQT.num_col_by_name_c(self.ui.tbl_naryadi,'Коэфф_сложности')).setText(str(koef))
         self.ui.fr_add_info_prost.setVisible(True)
+        self.ui.fr_add_info_prost.setFixedHeight(120)
 
     def create_prostoi_nar(self,row,col):
-        primech = self.ui.tbl_naryadi.cellWidget(self.ui.tbl_naryadi.currentRow(),5).currentText()
+        comment_column = CQT.num_col_by_name_c(self.ui.tbl_naryadi, 'ФИО2')
+        primech = self.ui.tbl_naryadi.cellWidget(row,comment_column).currentText() #10.03.2026
         if primech == '':
             CQT.blink_obj_c(self,2,self.ui.tbl_naryadi,'Не указана причина простоя')
             return False
@@ -1327,72 +1481,9 @@ class mywindow(QtWidgets.QMainWindow):
         nar_obj = CMS.Naryads(db_naryad=self.db_naryd, p_nom_or_row=nom_nar,
                               dict_empl=self.DICT_EMPL_FULL,
                               dict_dolgn_etap=self.DICT_DOLGN_ETAP)
-        nick = self.get_free_abstract_fio_place(nom_nar, self.glob_fio) # 15.07.25 Если имя уже числиться в наряде отдаст имя
+        nick = self.get_free_abstract_fio_place(nom_nar, self.glob_fio) # 15.07.25 Если имя уже числится в наряде отдаст имя
         return getattr(nar_obj, nick)                                   # 15.07.25 Иначе отдаст имя абстракта
     #--- 15.07.25
-    @CQT.onerror
-    def nachat_nar(self,*args):
-        if not CMS.check_actual_parol(self.glob_fio):
-            CQT.msgbox(f'Нужно обновить пароль через меню "Параметры"')
-            return
-
-        if self.nar_info is None:
-            CQT.msgbox(f'Наряд не выбран')
-            return
-        nom_nar = self.nar_info.nom_nar
-        if not CMS.check_execution_previous_operations(self,nom_nar):
-            CQT.msgbox(f'по наряду {nom_nar} не выполнены требования маршрута, '
-                       f'работа наряда ЗАБЛОКИРОВАНА\n\nОбратиться к мастеру.')
-            return
-
-        now = F.now()
-        primech = self.ui.te_zamechain.toPlainText()
-        if not self.check_abstrakt(primech):
-            return
-        jur_obj = CMS.Jurnal_nar(self.db_naryd, user=self.glob_fio) #23.04.25 Глобальный объект журнала
-        tek = jur_obj.get_ontime_naruad()
-        if tek == False or tek ==  (False,False,False):
-            CQT.msgbox(f'БД занята попробуй позже')
-            return
-        if tek[0] != '':
-            CQT.msgbox('Нельзя начать несколько нарядов одновременно')
-            return
-        if self.check_zav_nar(nom_nar, CMS.name_by_empl_c(self.glob_login)):
-            CQT.msgbox(f'Наряд {nom_nar} уже завершен ранее')
-            return
-        tab = self.ui.tabWidget_2
-        if self.check_dostupnosti_nar(nom_nar) == False:
-            tab.setCurrentIndex(CQT.number_table_by_name_c(tab, 'Доступные наряды'))
-            CQT.msgbox('Наряд недоступен')
-            return
-        # ++ 15.07.25 по задаче 100056733
-        user = self.glob_fio
-        if self.glob_otk_kontrol:
-            user = self.get_current_abstract_name(nom_nar)
-            jur_obj = CMS.Jurnal_nar(self.db_naryd, user=user, nom_nar=nom_nar)
-            tek_abstract = jur_obj.get_ontime_naruad()
-            if tek_abstract[0]:
-                return CQT.msgbox(f'Наряд: {nom_nar} уже начат!')
-            if self.check_zav_nar(nom_nar, user):
-                return CQT.msgbox(f'Наряд {nom_nar} уже завершен ранее')
-
-        jur_obj = CMS.Jurnal_nar(self.db_naryd, user=user, nom_nar=nom_nar) #23.04.25 Объект журнала по наряду
-        # -- 15.07.25 по задаче 100056733
-        rez = jur_obj.add_new_row(
-            DICT_EMPL_FULL=self.DICT_EMPL_FULL,
-            lbl_abstract_text='',
-            date_time=now,
-            primech=primech
-        )  # 21.04.25
-        if not rez:
-            CQT.msgbox(f'Не удачно попробуй чуть позже')
-            F.sleep(2)
-            return
-        if not self.glob_otk_kontrol:
-            self.replace_abstract_name(nom_nar, self.glob_fio) # 15.07.25 по задаче 100056733
-        self.clear_naryad_bar()
-        CQT.msgbox('Наряд успешно запущен')
-        self.load_naruad(self.ui.tbl_naryadi.currentRow(), 1)
 
     def get_free_abstract_fio_place(self, nom_nar: int, fio: str) -> str | None:  # 21.04.25
         """
@@ -1443,14 +1534,87 @@ class mywindow(QtWidgets.QMainWindow):
                 CQT.msgbox(f'{primech} не в БД имен')
                 return False
         return True
+    @CQT.onerror
+    def start_nar(self, *args):
+        if not CMS.check_actual_parol(self.glob_fio):
+            CQT.msgbox(f'Нужно обновить пароль через меню "Параметры"')
+            return
+
+        if self.nar_info is None:
+            CQT.msgbox(f'Наряд не выбран')
+            return
+        nom_nar = self.nar_info.nom_nar
+        if not CMS.check_execution_previous_operations(self,nom_nar):
+            CQT.msgbox(f'по наряду {nom_nar} не выполнены требования маршрута, '
+                       f'работа наряда ЗАБЛОКИРОВАНА\n\nОбратиться к мастеру.')
+            return
+
+        if self.nar_info.group_id:
+            DTCLS.gr_groups_nar = CMS.Groups_nar(DTCLS.USER_CONFIG.common_config.db_naryad, DTCLS.app_self,
+                                                     DTCLS.USER_CONFIG.User)
+            gr = DTCLS.gr_groups_nar.find_gr(int(self.nar_info.group_id))
+
+            if not CQT.msgboxgYN(f'Наряд состоит в группе "{gr.name}".\nВ обработку попадут'
+                                 f' наряды №№:\n{", ".join([str(_) for _ in gr.load_s_nums_nar()])}',app_self=self,
+                                 btn0_name='ОК',
+                                 btn1_name='Отмена'):
+                return
+
+        now = F.now()
+        primech = self.ui.te_zamechain.toPlainText()
+        if not self.check_abstrakt(primech):
+            return
+        jur_obj = CMS.Jurnal_nar(self.db_naryd, user=self.glob_fio) #23.04.25 Глобальный объект журнала
+        tek = jur_obj.get_ontime_naruad()
+        if tek == False or tek ==  (False,False,False):
+            CQT.msgbox(f'БД занята попробуй позже')
+            return
+        if tek[0] != '':
+            CQT.msgbox('Нельзя начать несколько нарядов одновременно')
+            return
+        if self.check_zav_nar(nom_nar, CMS.name_by_empl_c(self.glob_login)):
+            CQT.msgbox(f'Наряд {nom_nar} уже завершен ранее')
+            return
+        tab = self.ui.tabWidget_2
+        if self.check_dostupnosti_nar(nom_nar) == False:
+            tab.setCurrentIndex(CQT.number_table_by_name_c(tab, 'Доступные наряды'))
+            CQT.msgbox('Наряд недоступен')
+            return
+        # ++ 15.07.25 по задаче 100056733
+        user = self.glob_fio
+        if self.glob_otk_kontrol:
+            user = self.get_current_abstract_name(nom_nar)
+            jur_obj = CMS.Jurnal_nar(self.db_naryd, user=user, nom_nar=nom_nar)
+            tek_abstract = jur_obj.get_ontime_naruad()
+            if tek_abstract[0]:
+                return CQT.msgbox(f'Наряд: {nom_nar} уже начат!')
+            if self.check_zav_nar(nom_nar, user):
+                return CQT.msgbox(f'Наряд {nom_nar} уже завершен ранее')
+
+        jur_obj = CMS.Jurnal_nar(self.db_naryd, user=user, nom_nar=nom_nar) #23.04.25 Объект журнала по наряду
+        # -- 15.07.25 по задаче 100056733
+        rez = jur_obj.add_new_row(
+            DICT_EMPL_FULL=self.DICT_EMPL_FULL,
+            lbl_abstract_text='',
+            date_time=now,
+            primech=primech
+        )  # 21.04.25
+        if not rez:
+            CQT.msgbox(f'Не удачно попробуй чуть позже')
+            F.sleep(2)
+            return
+        if not self.glob_otk_kontrol:
+            self.replace_abstract_name(nom_nar, self.glob_fio) # 15.07.25 по задаче 100056733
+        self.clear_naryad_bar()
+        CQT.msgbox('Наряд успешно запущен')
+        self.load_naruad(self.ui.tbl_naryadi.currentRow(), 1)
 
     @CQT.onerror
     def stop_nar(self, vid_stop):
-
         def apply_brak(self, nom_nar, msg_into_b24=True):
             usr_1 = ''
             usr_2 = ''
-            list_empl_braks = CQT.list_from_wtabl_c(self.ui.tbl_empl_brak,rez_dict=True)
+            list_empl_braks = CQT.list_from_wtabl_c(self.ui.tbl_empl_brak, rez_dict=True)
             coun_select_empl_brak = 0
             for item in list_empl_braks:
                 if item['Чек'] == '1':
@@ -1460,98 +1624,113 @@ class mywindow(QtWidgets.QMainWindow):
                         if usr_2 == '':
                             usr_2 = item['ФИО']
 
-                    coun_select_empl_brak+=1
+                    coun_select_empl_brak += 1
             if coun_select_empl_brak > 2:
                 CQT.msgbox(f'Можно выбрать не более двух ответственных за брак')
                 return False
             if usr_1 == '' and usr_2 == '':
                 CQT.msgbox(f'Не выбран ответственный за брак')
                 return False
-            #if self.ui.lbl_fio_for_otk.text() != '':
+            # if self.ui.lbl_fio_for_otk.text() != '':
             #    usr_1, usr_2 = self.ui.lbl_fio_for_otk.text().split('|')
 
             prim = self.ui.te_zamechain.toPlainText().strip().replace('\n', 'LF')
             row = [F.now(), self.ui.lbl_abstract.text(), nom_nar, prim,
                    usr_1, usr_2]
             num_brak = CSQ.custom_request_c(self.bd_naryad,
-                                 f"""INSERT INTO brak (date,empl,nom_nar,msg,usr_1,usr_2) VALUES ({CSQ.questions_for_mask(row)}) RETURNING s_num""",
-                                 list_of_lists_c=row, one=True, rez_dict=True)['s_num'] # 10.11.25
+                                            f"""INSERT INTO brak (date,empl,nom_nar,msg,usr_1,usr_2) VALUES ({CSQ.questions_for_mask(row)}) RETURNING s_num""",
+                                            list_of_lists_c=row, one=True, rez_dict=True)['s_num']  # 10.11.25
             # num_brak = CSQ.custom_request_c(self.bd_naryad, f"""SELECT s_num FROM brak ORDER BY s_num DESC LIMIT 1""",
             rows_list_brak = []
             for item in self.list_otk_brak[1:]:
                 item.append(num_brak)
                 rows_list_brak.append(copy.copy(item))
 
-
             CSQ.custom_request_c(self.bd_naryad,
                                  f"""INSERT INTO list_brak (group_1,group_2,group_3,neisprav,count_dse,num_list_brak)
-                                  VALUES ({CSQ.questions_for_mask(rows_list_brak[0])})""",
+                                      VALUES ({CSQ.questions_for_mask(rows_list_brak[0])})""",
                                  list_of_lists_c=rows_list_brak)
 
             if msg_into_b24:
                 try:
                     hat = copy.copy(self.list_otk_brak[0])
                     hat[3] = "Неисправимый"
-                    hat[3] = "Кол-во ДСЕ"
+                    hat[4] = "Кол-во ДСЕ"
                     hat.append("№ МЕС")
                     sender = B24.B24Sender()
-                    msg_rows = [f'    {i+1}.'+ " | ".join([str(it) for it in _]) for i, _ in enumerate(self.list_otk_brak[1:])]
-                    msg_rows.insert(0,f'      '+" | ".join(hat))
+                    msg_rows = [f'    {i + 1}.' + " | ".join([str(it) for it in _]) for i, _ in
+                                enumerate(self.list_otk_brak[1:])]
+                    msg_rows.insert(0, f'      ' + " | ".join(hat))
                     txt_rows = "\n".join(msg_rows)
-                    result_msg = f'{F.now()} на {usr_1} {usr_2}\nпо наряду {nom_nar}, зарегистрирован брак ({prim.replace("LF"," ")}):\n'+ txt_rows
+                    result_msg = f'{F.now()} на {usr_1} {usr_2}\nпо наряду {nom_nar}, зарегистрирован брак ({prim.replace("LF", " ")}):\n' + txt_rows
                     sender.send_msg_by_action('Только брак', result_msg)
                 except:
                     print(f'Не удалось вывести в Б24 сообщение')
                     pass
 
-        def auto_podtv(nar_obj:CMS.Naryads):
-            if nar_obj.count_users() == 2:
-                if nar_obj.Фвремя != '' and nar_obj.Фвремя2 != '':
-                    custom_request_c = (f'UPDATE naryad SET Подтвержд_вып = 1, Подтвержд_вып_дата = "{F.now()}",'
-                                        f' Подтвержд_вып_фио = "{self.glob_fio}" WHERE Пномер == {nar_obj.Пномер}')
-                    CSQ.custom_request_c(self.db_naryd, custom_request_c)
-            else:
-                custom_request_c = (f'UPDATE naryad SET Подтвержд_вып = 1, Подтвержд_вып_дата = "{F.now()}",'
-                                    f' Подтвержд_вып_фио = "{self.glob_fio}" WHERE Пномер == {nar_obj.Пномер}')
-                CSQ.custom_request_c(self.db_naryd, custom_request_c)
+            return True
 
 
-        #===============================================================================
-        if vid_stop == 'Приостановлен':
-            if CQT.get_key_modifiers(self) == [] and self.glob_otk_kontrol:
-                if len(self.list_otk_brak) <= 1:
-                    CQT.msgbox(f'Список браков пуст')
-                    return
 
-            if 'shift' in  CQT.get_key_modifiers(self) and self.glob_otk_kontrol:
-                if len(self.list_otk_brak) > 1:
-                    CQT.msgbox(f'Список браков НЕ пуст')
-                    return
+        # ===============================================================================
         if self.nar_info is None:
             CQT.msgbox(f'не выбран наряд')
             return
+
+        db_nar = USRCNF.Config.project.db_naryad
         nom_nar = self.nar_info.nom_nar
-        nar_obj = CMS.Naryads(nom_nar,USRCNF.Config.project.db_naryad,
-                              self.DICT_DOLGN_ETAP,USRCNF.Config.project.db_users,self.DICT_EMPL_FULL)
+        group_id = self.nar_info.group_id
+        nar_obj = CMS.Naryads(nom_nar, db_nar,
+                              self.DICT_DOLGN_ETAP, USRCNF.Config.project.db_users, self.DICT_EMPL_FULL)
+        lbl_abstract = self.ui.lbl_abstract.text()
+        zadanie = self.ui.textBrowser_zadanie.toPlainText().replace('\n', 'LF')
+        primech = self.ui.te_zamechain.toPlainText().strip()
+        nom_mk = self.nar_info.mk
+
+        if vid_stop == 'Приостановлен':
+            if primech == '' or len(primech) < 4:
+                if self.glob_otk_kontrol:
+                    self.ui.te_zamechain.setText('Несоответствие требованиям КД в результате контроля ОТК')
+                    primech = self.ui.te_zamechain.toPlainText().strip()
+                else:
+                    CQT.blink_obj_c(self, 2, self.ui.te_zamechain, 'Не указана причина паузы')
+                    return
+
+            if self.glob_otk_kontrol:
+                mods = CQT.get_key_modifiers(self)
+                if mods == []:
+                    if len(self.list_otk_brak) <= 1:
+                        CQT.msgbox(f'Список браков пуст')
+                        return
+                    if not self.check_abstrakt(primech):
+                        return
+                    if not apply_brak(self, nom_nar):
+                        return
+                if 'shift' in mods:
+                    if len(self.list_otk_brak) > 1:
+                        CQT.msgbox(f'Список браков НЕ пуст')
+                        return
 
         if vid_stop == 'Завершен':
             if not CMS.check_id_peresil(self, nom_nar, self.ui.le_id_peresil.text(), kod_oper=2):
                 return
+            if not self.check_abstrakt(primech):
+                return
         # ++ 15.07.25 по задаче 100056733
-        lbl_abstract = self.ui.lbl_abstract.text()
+
         try:
             if self.glob_otk_kontrol:
                 lbl_abstract = self.glob_fio
                 abstract_name = self.get_current_abstract_name(nom_nar)
-                #self.ui.lbl_nom_nar.setText(str(nom_nar)) ПРОВЕРИТЬ
-                jur_obj = CMS.Jurnal_nar(self.db_naryd, user=abstract_name, nom_nar=nom_nar)
+                # self.ui.lbl_nom_nar.setText(str(nom_nar)) ПРОВЕРИТЬ
+                jur_obj = CMS.Jurnal_nar(db_nar, user=abstract_name, nom_nar=nom_nar)
             else:
-                jur_obj = CMS.Jurnal_nar(self.db_naryd, user=self.glob_fio)
-        # -- 15.07.25 по задаче 100056733
+                jur_obj = CMS.Jurnal_nar(db_nar, user=self.glob_fio)
+            # -- 15.07.25 по задаче 100056733
             nomer_naryada, pnomer, data_nach = jur_obj.get_ontime_naruad(True)
             if nomer_naryada == False:
                 return
-            if str(nomer_naryada) != self.nar_info:
+            if str(nomer_naryada) != str(nom_nar):
                 CQT.msgbox('Выбран не запущенный наряд')
                 return False, False
             pnomer_nach = str(pnomer)
@@ -1562,25 +1741,12 @@ class mywindow(QtWidgets.QMainWindow):
         if pnomer_nach == False:
             return
 
-        #=======check==============
-        zadanie = self.ui.textBrowser_zadanie.toPlainText().replace('\n','LF')
-        primech = self.ui.te_zamechain.toPlainText().strip()
+        # =======check==============
 
-
-        if vid_stop == 'Приостановлен':
-            if primech == '' or len(primech) < 4:
-                if self.glob_otk_kontrol:
-                    self.ui.te_zamechain.setText('Несоответствие требованиям КД в результате контроля ОТК')
-                    primech = self.ui.te_zamechain.toPlainText().strip()
-                else:
-                    CQT.blink_obj_c(self,2,self.ui.te_zamechain,'Не указана причина паузы')
-                    return
-
-        tab = self.ui.tabWidget_2
         if self.check_dostupnosti_nar(nom_nar) == False:
+            tab = self.ui.tabWidget_2
             tab.setCurrentIndex(CQT.number_table_by_name_c(tab, 'Доступные наряды'))
             self.zapoln_tabl_naryadov()
-
             CQT.msgbox('Наряд недоступен')
             return
         last_status_nar = jur_obj.get_last_status_nar()
@@ -1588,86 +1754,27 @@ class mywindow(QtWidgets.QMainWindow):
             CQT.msgbox('Статус наряда не позволяет выполнить действие')
             return
 
-
-        if vid_stop == 'Завершен':
-            if not self.check_abstrakt(primech):
-                return
-        now = F.now()
-        #nar_obj = CMS.Naryads(jur_obj.nom_nar ,self.db_naryd)
-        #poditog, poditog_norm = jur_obj._calc_poditog(vid_stop, now,nar_obj)
-
-        #if vid_stop == 'Завершен':
-        #    if poditog <= 1:
-        #        CQT.msgbox(f'Прошло слишком мало времени после запуска')
-        #        return
-
-        if vid_stop == 'Приостановлен':
-            if CQT.get_key_modifiers(self) == [] and self.glob_otk_kontrol:
-                if not self.check_abstrakt(primech):
-                    return
-                rez = apply_brak(self, nom_nar)
-                if rez == False:
-                    return
-
-        nom_mk = self.nar_info.mk
+        #======================================
 
         is_idle = zadanie == 'ПРОСТОЙ'
-        if not jur_obj.add_new_row(self.DICT_EMPL_FULL,lbl_abstract,now,vid_stop,primech, is_idle): #15.05.25
+        if not jur_obj.add_new_row(self.DICT_EMPL_FULL, lbl_abstract, F.now(), vid_stop, primech, is_idle):  # 15.05.25
             return
 
+        # ======================================
 
         if vid_stop == 'Завершен':
-            confirm = False
-            if nar_obj.АвтоПодтвержд:
-                confirm = True
 
-            if self.glob_otk_kontrol:
+            CMS.ending_oform_zav_nar(nar_obj, jur_obj, self.glob_otk_kontrol, self.glob_fio)
 
-                nar_obj.get_mk()
-
-                nom_kpl = nar_obj.mk.НомКплан
-                type_mk = nar_obj.mk.Тип
-                if type_mk == 1:  # Тип Плановая
-                    msg = KPLVIP.check_otk_after_proizv(self, nom_mk, kod_oper={'7135', '6011',
-                                                                                '0136'})  # Пассивирование Окрашивание Дробеструйная
-                    if not msg:
-                        custom_request_c = f'''UPDATE пл_отк  SET (Контр_покрытие_ФИО, Контр_покрытие_дата) = (?,?) 
-                                WHERE НомПл == ?;'''
-                        param = [self.glob_fio, F.now(), nom_kpl] # 15.07.25
-                        CSQ.custom_request_c(self.db_kplan, custom_request_c, list_of_lists_c=param)
-                        try:
-                            sender = B24.B24Sender()
-                            msg_rows = f'По {nar_obj.mk.Номер_заказа} {nar_obj.mk.Номер_проекта} MK №{nar_obj.mk.Пномер} контроль\n ' \
-                                       f'после Пассивирование/Окрашивание/Дробеструйная успешно пройден {self.glob_fio} по наряду {nom_nar}' #15.07.25
-                            sender.send_msg_by_action('Отгрузка на склад', msg_rows)
-                        except:
-                            pass
-                confirm = True
-
-            if confirm:
-                auto_podtv(nar_obj)
-
-            try:
-                if "Исправление" in zadanie and 'Акт №' in zadanie:
-                    fact_vr = self.get_summ_poditog()
-                    tmp = zadanie.split('Акт №')
-                    act = tmp[-1].split()[0]
-                    if F.is_numeric(act):
-                        custom_request_c = f'''UPDATE act SET Наряд_исправления == {nom_nar}, Время_исправления == {fact_vr} WHERE Пномер == {int(act)}'''
-                        CSQ.custom_request_c(self.db_act,custom_request_c)
-            except:
-                CQT.msgbox('Ошибка занесения отметки в акты о браке')
-                return
-
-            self.zapoln_tabl_naryadov()
+        #==============группировка=====================================
+        if group_id:
+            GRM.apply_group_event(int(group_id),int(nom_nar))
+        # ======================================
+        self.zapoln_tabl_naryadov()
 
         self.clear_naryad_bar()
 
         CQT.msgbox(f'Наряд успешно {vid_stop}')
-        #F.sleep(1)
-        #=================================================
-        #self.add_opoveshenie(vid_stop,nom_nar,nom_mk, self.glob_login.replace(',',' '),F.clear_row_for_file_name_c(primech))
-
 
 
     @CQT.onerror
@@ -1689,19 +1796,21 @@ class mywindow(QtWidgets.QMainWindow):
 
     @CQT.onerror
     def lbl_tek_narayd(self,fio):
-        self.ui.lbl_tek_nar.setText('')
-        #rez = self.tekush_naruad(fio)
+        lbl_tek_nar = ""
+
         jur_obj = CMS.Jurnal_nar(self.db_naryd, user=self.glob_fio)
         rez = jur_obj.get_ontime_naruad()
         if rez == False or rez == (False,False,False):
-            return
+            lbl_tek_nar = "-"
         if rez == None:
-            return
+            lbl_tek_nar = "-"
         if rez[0] == '':
-            self.ui.lbl_tek_nar.setText('')
+            lbl_tek_nar = "-"
         else:
-            self.ui.lbl_tek_nar.setText(str(rez[0]))
+            lbl_tek_nar = str(rez[0])
 
+        DTCLS.USER_CONFIG.cust_windowTitle = f'Текущий наряд: {lbl_tek_nar}'
+        self.ui.lbl_tek_nar.setText(lbl_tek_nar)
 
     @CQT.onerror
     def tekush_naruad(self,fio):
@@ -1735,6 +1844,6 @@ versia = application.versia
 if CMS.kontrol_ver(versia,"Выполнение2") == False:
     sys.exit()
 # =========================================================
-application.show()
+application.showMaximized()
 sys.exit(app.exec())
 #pyinstaller.exe --onefile --icon=Apathae.ico --noconsole Module.py

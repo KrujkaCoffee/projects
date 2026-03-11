@@ -100,6 +100,75 @@ class data_send_drawback_journal(BaseModel): # noqa
 
 
 
+class AuthModel(BaseModel):
+    fio: str
+    password: str
+    update_date: bool = True
+
+@app.post("/authenticate") #06.03.2026
+def authenticate(body: AuthModel):
+    from project_cust_38 import Cust_mes as CMS
+    if not F.existence_file_c(api_srv_config.PASSWORD_STORAGE):
+        raise HTTPException(status_code=500, detail='Не найден файл паролей')
+    passwords = F.load_file_pickle(api_srv_config.PASSWORD_STORAGE)
+    for i in range(len(passwords)):
+        log = passwords[i][0]
+        par = passwords[i][1]
+        if CMS.shifr(body.fio.strip()) in log.strip():
+            form_hash = CMS.shifr(body.password)
+            return par == form_hash
+    return None
+
+@app.post("/register")
+def register(body: AuthModel) -> str:
+    from project_cust_38 import Cust_mes as CMS
+    if not F.existence_file_c(api_srv_config.PASSWORD_STORAGE):
+        F.save_file_pickle(api_srv_config.PASSWORD_STORAGE, [['', '', F.now('')]])
+    rez = authenticate(body)
+    if rez is not None:
+        return "Пользователь уже зарегистрирован"
+    current_year = F.date(vid='yyyy')
+    passwords = F.load_file_pickle(api_srv_config.PASSWORD_STORAGE)
+    passwords.append([CMS.shifr(body.fio), CMS.shifr(current_year),F.now('')])
+    F.save_file_pickle(api_srv_config.PASSWORD_STORAGE, passwords)
+    return f"Новый пользователь зарегистрирован: \n {body.fio} \n {current_year}"
+
+@app.post("/change-password")
+def change_password(body: AuthModel) -> bool:
+    from project_cust_38 import Cust_mes as CMS
+    passwords = F.load_file_pickle(api_srv_config.PASSWORD_STORAGE)
+    now = F.now('')
+    for i in range(len(passwords)):
+        if passwords[i][0] == CMS.shifr(body.fio):
+            passwords[i][1] = CMS.shifr(body.password)
+            if len(passwords[i]) == 2:
+                passwords[i].append(now)
+            else:
+                passwords[i][2] = now if body.update_date else ''
+            break
+    F.save_file_pickle(api_srv_config.PASSWORD_STORAGE, passwords)
+    F.save_file_pickle(api_srv_config.PASSWORD_STORAGE + f'_back_{F.now("%Y%m%d")}', passwords)
+    return True
+
+@app.post("/check-actual-password")
+def check_actual_password(body: AuthModel) -> bool:
+    from project_cust_38 import Cust_mes as CMS
+    if not body.fio:
+        return True
+    if not F.existence_file_c(api_srv_config.PASSWORD_STORAGE):
+        raise HTTPException(status_code=500, detail='Не найден файл паролей')
+    passwords = F.load_file_pickle(api_srv_config.PASSWORD_STORAGE)
+    for i in range(len(passwords)):
+        if CMS.shifr(body.fio.strip()) in passwords[i][0].strip():
+            if len(passwords[i]) == 2:
+                return False
+            try:
+                if F.add_months(passwords[i][2], 1) < F.now(''):
+                    return False
+            except:
+                return False
+            return True
+    return True
 
 def eval_1c_test_v1(data):
     return 'ok'

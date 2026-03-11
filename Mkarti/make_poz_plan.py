@@ -260,6 +260,8 @@ def reselect_month(self: mywindow, *args):
         return
     Month_plan.month = month
     self.ui.lbl_current_moth_pl.setText(Month_plan.month)
+    CQT.clear_tbl(self.ui.tbl_cld_plan_summ)
+    CQT.clear_tbl(self.ui.tbl_pull_poz)
     pass
 
 

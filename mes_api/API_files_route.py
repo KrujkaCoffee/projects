@@ -18,7 +18,6 @@ from project_cust_38 import Cust_Functions as F
 
 
 
-# router = APIRouter(prefix='/files', tags=['files'])
 router = APIRouter(prefix='/files', tags=['files'])
 
 ZIP_SIZE_KEY = 'ZIP_SIZE_PATH'

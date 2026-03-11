@@ -106,10 +106,9 @@ class Data:
     type_workers = m.get_response('Catalog_ВидыРаботСотрудников',
                                                f"""?$filter=DeletionMark eq false &$select=Ref_Key, Description""")
     if type_workers is None:
-       F.win_msgbox('Упс!','Не удалось установить соединение с сервром ERP')
+       F.win_msgbox('Упс!','Сервер 1С ERP не отвечает.\nОбратитесь к администратору 1С')
     else:
         DICT_TRDZ = F.deploy_dict_c(type_workers, "Ref_Key")
-
 
 class mywindow(QtWidgets.QMainWindow):
     def __init__(self):
@@ -220,7 +219,6 @@ class mywindow(QtWidgets.QMainWindow):
                                             f"""SELECT Пномер, Номер_заказа || "$" || Номер_проекта as NPPY FROM mk""",
                                             rez_dict=True)
         self.DICT_MK = F.deploy_dict_c(self.DICT_MK, 'NPPY')
-        self.LIST_ZAMECH = self.load_remarks()
         self.DICT_KOD_VP = F.deploy_dict_c(
             CSQ.custom_request_c(self.bd_naryad, f"""SELECT * FROM kod_zamech_vp""", rez_dict=True),
             'Имя')
@@ -302,8 +300,9 @@ class mywindow(QtWidgets.QMainWindow):
         # ============DB
         # ====ВРЕМЕННО
         #self.tmp_func()
-
-
+    @property
+    def LIST_ZAMECH(self): #10.02.2026
+        return self.load_remarks()
 
     @CQT.onerror
     def action_tmp(self,*args):

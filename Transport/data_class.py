@@ -110,7 +110,7 @@ class Client_config():
     def _update_user_param(self,name_param:str,val:int|float|str):
         if isinstance(val, str):
             val = "'" + val + "'"
-        where = f'ip = {self.ip}'
+        where = f'ip = "{self.ip}"'
         if self.login:
             where = f'login = "{self.login}"'
         CSQ.custom_request_c(self.db_flet,f"""UPDATE user_config SET {name_param} = {val} WHERE {where};""")
@@ -134,7 +134,10 @@ class Client_data():
 
         if page:
             print(f'==== INIT Client_data {page.client_ip} =======')
-            self.ip =  page.client_ip
+            ip4 = str(page.client_ip).split(':')[0]
+            if len(ip4) < 1:
+                ip4 = str(page.client_ip)
+            self.ip = ip4
             self.platform =  page.platform
             self.window_size =  (page.width,   page.height)
             self.user_agent =  page.client_user_agent or "неопределен"
@@ -143,7 +146,7 @@ class Client_data():
             self.user_config:Client_config|None = None
 
     def _load_user_config_data(self):
-        where = f'ip = {self.ip}'
+        where = f'ip = "{self.ip}"'
         if self.login:
             where = f'login = "{self.login}"'
         return CSQ.custom_request_c(self.db_flet, f"""SELECT * FROM user_config WHERE {where};""",

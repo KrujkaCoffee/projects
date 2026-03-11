@@ -136,8 +136,8 @@ def _save_word(e: ft.ControlEvent):
         show_msgbox_err(e)
         return
 
-    if not calc_silencer_back.save_in_db(e, name):
-        return
+    # if not calc_silencer_back.save_in_db(e, name):
+    #     return
 
     CMF.dialog_save_file(e, rez)
 
@@ -165,7 +165,6 @@ def _tech_build(e: ft.ControlEvent):
     if calculated is None:
         show_msgbox_err(e)
         return
-
     cfg = getattr(cfg_module.cust_data, "tech_report_cfg", None) or {}
 
     path = build_tech_report_xlsx(

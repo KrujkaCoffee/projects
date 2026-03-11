@@ -5,7 +5,7 @@ import collections
 from PyQt5 import QtWidgets, QtGui, QtCore
 from PyQt5.QtWinExtras import QtWin
 import os
-import user_mange as userm
+from project_cust_38 import user_mange as userm
 # import subprocess
 import project_cust_38.Cust_Qt as CQT
 import copy as CPY
@@ -54,13 +54,26 @@ class mywindow(QtWidgets.QMainWindow):
         CQT.load_icons(self, 24)
         # ===========================================connects
         # ==================BTN
+        dic = CMS.dict_emploee(CFG.Config.project.db_users)
+        self.auth_manager = userm.UserManager(
+            window=self,
+            combo_fio=self.ui.lbx_spis_sotr,
+            input_password=self.ui.le_parol,
+            input_password_reset1=self.ui.le_Nparol,
+            input_password_reset2=self.ui.le_Nparol2,
+            employee_by_fio=dic,
+            on_success_login=self.on_success_login,
+            on_logout=self.clear_widgets,
+            btn_login=self.ui.btn_login,
+            btn_logout=self.ui.btn_logout,
+        )
         if 'btn':
             self.ui.btn_create_comp.clicked.connect(lambda: MTXCMP.create_comp(self))
             self.ui.btn_info_comp.clicked.connect(lambda: MTXCMP.show_info_comp(self))
             self.ui.btn_reset_changes_competence.clicked.connect(lambda: MTXCMP.reset_changes_competence(self))
             self.ui.btn_apply_changes_competence.clicked.connect(lambda: MTXCMP.apply_changes_competence(self))
-            self.ui.btn_login.clicked.connect(lambda _, x=self: userm.log_in(x))
-            self.ui.btn_logout.clicked.connect(lambda _, x=self: userm.logout(x))
+            self.ui.btn_login.clicked.connect(lambda *args: self.auth_manager.log_in())
+            self.ui.btn_logout.clicked.connect(lambda *args: self.auth_manager.logout())
             self.ui.btn_create_nar.clicked.connect(self.create_naryd)
             self.ui.btn_select_all.clicked.connect(self.select_all_dse)
             self.ui.btn_invers.clicked.connect(self.select_invers_dse)
@@ -160,7 +173,7 @@ class mywindow(QtWidgets.QMainWindow):
         # ==================TABS
         if 'tab':
             self.ui.tabWidget_2.currentChanged[int].connect(self.tab2_clcik)
-            self.ui.tabWidget.currentChanged[int].connect(self.tab_clcik)
+            self.ui.tabWidget.currentChanged[int].connect(self.tab_click)
             self.ui.tab_prosm_nar.currentChanged[int].connect(self.tab_prosm_nar)
             self.ui.tabWidget.setTabEnabled(CQT.number_table_by_name_c(self.ui.tabWidget,'Контроль проектов'),False)
         # ===================CHECKBOX
@@ -243,12 +256,12 @@ class mywindow(QtWidgets.QMainWindow):
         self.DICT_NAPR_DEYAT_NAME = F.deploy_dict_c(self.NAPR_DEYAT, 'Имя')
         self.DICT_NAPR_DEYAT_PSDNAME = F.deploy_dict_c(self.NAPR_DEYAT, 'Псевдоним')
         # ======ACTIONS
-        self.ui.action_noviy_user.triggered.connect(lambda _, x=self: userm.reg_new_user(x))
-        self.ui.action_change_pass.triggered.connect(lambda _, x=self: userm.change_user_pass(x))
+        self.ui.action_noviy_user.triggered.connect(lambda _, x=self: self.auth_manager.reg_new_user())
+        self.ui.action_change_pass.triggered.connect(lambda _, x=self: self.auth_manager.change_user_pass())
         self.ui.action_load_csv.triggered.connect(self.load_csv)
         # self.ui.action_peresilniy.triggered.connect(self.create_peresilniy)
         self.ui.action_open_zayavky.triggered.connect(self.open_zayavk)
-        self.ui.action_reset_pass.triggered.connect(lambda _, x=self: userm.reset_user_pass(x))
+        self.ui.action_reset_pass.triggered.connect(lambda _, x=self: self.auth_manager.reset_user_pass())
 
         # =======loads
 
@@ -257,7 +270,7 @@ class mywindow(QtWidgets.QMainWindow):
         CMS.dict_emploee_full(self.bd_users, self=self)
 
 
-        userm.load_users(self, self.DICT_EMPLOEE_FULL, self.LIST_DOLGN_ETAP, self.DICT_DOLGN_ETAP)
+        self.load_users()
 
 
         self.ui.fr_vibor_assoc_prost.setHidden(True)
@@ -352,6 +365,72 @@ class mywindow(QtWidgets.QMainWindow):
         # =====================временно
         # OFFself.write_date_podtv()
         self.fix_error()
+
+    def load_users(self):
+        """Загрузить список сотрудников в листбокс"""
+        cmb = self.ui.lbx_spis_sotr
+        dict_dolgn_etap = {'$'.join([_['Должность'], _['Подразделение'], _['Производство']]): _ for _ in
+                           self.LIST_DOLGN_ETAP}
+
+        cmb.addItem('')
+
+        for fio, vals in self.DICT_EMPLOEE_FULL.items():
+            ref = vals['ID_ФизЛица']
+            dolg = vals['Должность']
+            podr = vals['Подразделение']
+            is_multi_user = self.DICT_DOLGN_ETAP.get(dolg, {}).get('multi_auth')
+            company = vals['Компания']
+            if company != CFG.Config.place.Имя and not is_multi_user:
+                continue
+            dpc = '$'.join([dolg, podr, company])
+            if dpc in dict_dolgn_etap and dict_dolgn_etap[dpc]['login_sozdanie']:
+                cmb.addItem(fio + ' ' + dolg)
+                cmb.setItemData(cmb.count() - 1, ref, CQT.Qt.UserRole)
+
+        self.auth_manager.load_user_choice()
+
+    def clear_widgets(self):
+        self.glob_login = ''
+        self.glob_ref_user = None
+        self.setWindowTitle("Создание нарядов")
+        self.ui.le_Nparol.setVisible(False)
+        self.ui.le_Nparol2.setVisible(False)
+
+        CQT.clear_tbl(self.ui.tbl_komplektovka)
+        CQT.clear_tbl(self.ui.tbl_komplektovka_view)
+        CQT.clear_tbl(self.ui.tbl_brak)
+        CQT.clear_tbl(self.ui.tbl_dse)
+        CQT.clear_tbl(self.ui.tableWidget_vibor_mk)
+        CQT.clear_tbl(self.ui.tbl_prosmotr_nar)
+        CQT.clear_tbl(self.ui.tbl_prosmotr_nar_jurnal)
+        CQT.clear_tbl(self.ui.tbl_dse)
+        CQT.clear_tbl(self.ui.tbl_filtr_dse)
+        CQT.clear_tbl(self.ui.tbl_select_marsh)
+        self.ui.lbl_curr_mk.clear()
+        self.ui.lbl_tmp_time.clear()
+        # self.ui.lbl_ima_rc.clear()
+        # self.ui.lbl_tmp_time_potenc.clear()
+
+        self.ui.lbl_kompl_info.clear()
+        self.ui.lineEdit_cr_nar_kolvo.clear()
+        self.ui.plainTextEdit_opovesh.clear()
+        self.ui.lineEdit_cr_nar_nom_proect.clear()
+        self.ui.lineEdit_cr_nar_nomerPU.clear()
+        self.ui.lineEdit_cr_nar_norma.clear()
+        self.ui.le_parol.clear()
+        self.ui.lbx_spis_sotr.setCurrentIndex(0)
+        self.ui.plainTextEdit_zadanie.clear()
+        # self.ui.tableWidget_spispk_nar_dla_korrect.clear()
+        self.ui.tabWidget_2.setCurrentIndex(0)
+        self.ui.tabWidget.setCurrentIndex(0)
+        self.glob_nom_mk = 0
+
+    def on_success_login(self):
+        self.SPIS_DOST_OPER = []
+        for i in range(len(self.SPIS_OPER)):
+            if CFG.Config.user_config.User.ФИО in self.SPIS_OPER[i][1]:
+                self.SPIS_DOST_OPER.append(self.SPIS_OPER[i][0])
+        self.zapoln_tabl_mk()
 
     # +++ 16.06.25
     @CQT.onerror
@@ -634,7 +713,7 @@ class mywindow(QtWidgets.QMainWindow):
                 MARSH.fill_tbl_select_marsh(self)
         if self.ui.le_parol.hasFocus():
             if key_val == 16777220:
-                userm.log_in(self)
+                self.auth_manager.log_in()
         if self.ui.tbl_filtr_komplektovka.hasFocus():
             if key_val == 16777220:
                 CMS.apply_filtr_c(self, self.ui.tbl_filtr_komplektovka, self.ui.tbl_komplektovka)
@@ -767,14 +846,14 @@ class mywindow(QtWidgets.QMainWindow):
 
     @CQT.onerror
     @CQT.progress_decorator
-    def tab_clcik(self, nom, hook_prog_bar, *args):
+    def tab_click(self, nom, hook_prog_bar, *args):
         hook_prog_bar.set(10)
         hook_prog_bar.text('Обработка')
         if CMS.kontrol_ver(self.versia, self.NAME_MODULE_BASE) == False:
             sys.exit()
-        if not CMS.check_actual_parol(self.glob_ima):
+        if not self.auth_manager.check_actual_password(self.glob_ima):
             CQT.msgbox(f'Нужно обновить пароль через меню "Параметры"')
-            userm.logout(self)
+            self.auth_manager.logout()
         name = self.ui.tabWidget.tabText(nom)
         if name == 'Комплектование':
             self.load_table_komplekt()

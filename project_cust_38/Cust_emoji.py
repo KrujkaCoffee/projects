@@ -95,6 +95,11 @@ class ПерсоналРоли:
 
 class ДокументыДанные:
     """Категория документов и данных"""
+    select_from_list: ClassVar[EmojiItem] = EmojiItem('⏷', 'select_from_list', 'filter', 'Выбор из списка')
+    receiving: ClassVar[EmojiItem] = EmojiItem('📥', 'receiving', 'documents', 'Получение')
+    revers: ClassVar[EmojiItem] = EmojiItem('⇄', 'revers', 'documents', 'Реверес')
+    extradition: ClassVar[EmojiItem] = EmojiItem('📤', 'extradition', 'documents', 'Выдача')
+    shipment: ClassVar[EmojiItem] = EmojiItem('🚚', 'shipment', 'documents', 'Отгрузка')
     document: ClassVar[EmojiItem] = EmojiItem('📄', 'document', 'documents', 'Документ')
     pushpin: ClassVar[EmojiItem] = EmojiItem('📍', 'pushpin', 'documents', 'булавка')
     pushpin2: ClassVar[EmojiItem] = EmojiItem('📌', 'pushpin2', 'documents', 'кнопка')

@@ -27,8 +27,6 @@ import operator
 import project_cust_38.Cust_Excel as CEX
 import urllib
 
-from isapi.samples.redirector_with_filter import Filter
-from project_cust_38.Cust_Functions import num_col_by_name_in_hat_c
 
 if __name__ == '__main__':
     exit()
@@ -39,10 +37,54 @@ from datetime import datetime
 from dateutil import parser
 from functools import partial
 
+ERP_EDIT_CSS = """
+        QTableWidget {
+            border: none; /* Убираем общий бордер */
+            gridline-color: transparent;
+            font-family: Arial, sans-serif; /* Устанавливаем шрифт Arial для всей таблицы */
+            font-size: 10pt; /* Размер шрифта */
+        }
+        
+        QTableWidget::item {
+
+        }
+
+        QTableWidget::item:selected {
+            background-color: rgb(254,242,199); /* Цвет выделенной ячейки */
+            border: 0px solid rgb(250,204,31); /* Темный контур для выделенной ячейки */
+            color: rgb(40,40,40);
+        }
+
+        QTableWidget::item:selected:focus {
+            background-color: rgb(243,230,143); /* Светло-желтый цвет для выделенной строки */
+             border: 1px solid rgb(250,204,31); /* Темный контур для выделенной ячейки */
+             color: rgb(40,40,40);
+        }
+        
+        QHeaderView::section {
+            background-color: rgb(242,242,242); /* Цвет фона заголовков */
+            color: rgb(77,77,77); /* Цвет текста заголовков */
+            font-family: Arial, sans-serif; /* Устанавливаем шрифт Arial для всей таблицы */
+            font-size: 10pt; /* Размер шрифта */
+            border: 1px solid rgb(204,204,204);
+            outline: 1px solid white; /* Белый контур вокруг ячеек */
+            font-weight: normal; /* Отключаем жирное начертание */
+        }
+
+        QHeaderView::section:focus {
+            font-weight: normal !important; /* Убедитесь, что шрифт не станет жирным при фокусировке */
+        }
+    
+        QHeaderView::section:selected {
+            font-weight: normal !important; /* Убедитесь, что шрифт не станет жирным при выделении */
+        }
+                    """
 ERP_CSS = """
         QTableWidget {
             border: none; /* Убираем общий бордер */
             gridline-color: transparent;
+            font-family: Arial, sans-serif; /* Устанавливаем шрифт Arial для всей таблицы */
+            font-size: 10pt; /* Размер шрифта */
         }
         
         QTableWidget::item {
@@ -68,10 +110,22 @@ ERP_CSS = """
         }
         
         QHeaderView::section {
-    background-color: rgb(242,242,242); /* Цвет фона заголовков */
-    color: black; /* Цвет текста заголовков */
-    border: 1px solid rgb(204,204,204);
-}
+        background-color: rgb(242,242,242); /* Цвет фона заголовков */
+        color: rgb(77,77,77); /* Цвет текста заголовков */
+        font-family: Arial, sans-serif; /* Устанавливаем шрифт Arial для всей таблицы */
+        font-size: 10pt; /* Размер шрифта */
+        border: 1px solid rgb(204,204,204);
+        outline: 1px solid white; /* Белый контур вокруг ячеек */
+        font-weight: normal; /* Отключаем жирное начертание */
+        }
+
+        QHeaderView::section:focus {
+            font-weight: normal !important; /* Убедитесь, что шрифт не станет жирным при фокусировке */
+        }
+    
+        QHeaderView::section:selected {
+            font-weight: normal !important; /* Убедитесь, что шрифт не станет жирным при выделении */
+        }
                     """
 WHATS_NEW_CSS = """
     QTableWidget {
@@ -112,7 +166,6 @@ WHATS_NEW_CSS = """
     font-weight: bold;
     }
     """
-
 MES_CSS = """
     QTableWidget {
     border: none;
@@ -183,7 +236,6 @@ MES_CSS = """
     color: rgb(140,140,140);
     }
     """
-
 MES_EDIT_CSS = """
 
     QTableWidget {
@@ -278,10 +330,39 @@ class DataTypes:
         'datetime': DateTimeType
     }
 
+    BASE_DATE_FORMATS = ( # 11.03.2026
+        '%y-%m-%d', # Формат маршруток
+        '%d.%m.%Y %H:%M:%S',
+        '%d.%m.%Y %H:%M:%S.%f',
+        '%d.%m.%Y %H:%M',
+        '%d.%m.%Y %H:00',
+        '%d.%m.%Y',
+        '%Y-%m-%d %H:%M:%S',
+        '%Y-%m-%d %H:%M',
+        '%Y-%m-%dT%H:%M:%S',
+        '%H:%M:%S',
+        '%H:%M',
+        '%Y/%m/%d',
+        '%Y/%m/%d %H:%M:%S',
+        '%d-%m-%Y',
+        '%m/%d/%Y',
+        '%m-%d-%Y',
+        '%B %d, %Y',
+        '%b %d, %Y',
+        '%d %B %Y',
+        '%d %b %Y',
+    )
+
     def __getitem__(self, item):
         return self.types_params.get(item, self.BaseType)
 
     def is_date(self, value: Any) -> datetime | None:
+        for date_format in self.BASE_DATE_FORMATS:
+            try:
+                converted_date = datetime.strptime(value, date_format)
+                return converted_date
+            except ValueError:
+                continue
         try:
             date = parser.parse(value)
             if date.year > 1900 and date.year < 2100:
@@ -1015,6 +1096,13 @@ class FontDelegate(QtWidgets.QStyledItemDelegate):
             editor.setFont(font)
         return editor
 
+class _TableEventFilter(QtCore.QObject):
+    def __init__(self, context, parent=None):
+        super().__init__(parent)
+        self._context = context
+
+    def eventFilter(self, obj, event):
+        return self._context._handle_event(obj, event)
 
 class TableContext:
     def __init__(self, tbl:QtWidgets.QTableWidget):
@@ -1024,12 +1112,43 @@ class TableContext:
         self._selected_column:int|None = None
         self._load()
         self.save_coord()
-        
+    
+    def _init_events(self):
+        # ----------------------------
+        # загрузка курсора безопасно
+        # ----------------------------
+        def _load_cursor( path: str):
+            if os.path.exists(path):
+                pix = QtGui.QPixmap(path)
+                if not pix.isNull():
+                    return QtGui.QCursor(pix)
+            return QtGui.QCursor(QtCore.Qt.ArrowCursor)
+
+
+        # --- ивенты ---
+        self._column_events: dict[int, dict] = {}
+        base_path = F.path_to_execut_file_c()  # уже с конечным sep
+        cur_dir = os.path.join(base_path, "cur")
+
+        self.double_click_cursor = _load_cursor(os.path.join(cur_dir, "dbl_clc"))
+        self.right_click_cursor = _load_cursor(os.path.join(cur_dir, "pkm"))
+        self.double_and_context_cursor = _load_cursor(os.path.join(cur_dir, "dbl_and_pkm"))
+
+
+        self.tbl.setMouseTracking(True)
+        self._event_filter = _TableEventFilter(self, self.tbl)
+        self.tbl.viewport().installEventFilter(self._event_filter)
+
+
     def _load(self):
         self.nf:dict[str, int] = nums_col_by_name_dict(self.tbl)
+        self.nft:dict[str, int] = nums_col_by_name_dict(self.tbl,forced_text=True)
         self._row_count:int = self.tbl.rowCount()
         self._previous_row:int|None = None
         self._previous_column:int|None = None
+    
+    def width(self,name:str)->int:
+        return self.tbl.columnWidth(self.nf[name])
     
     def reload(self):
         self._load() 
@@ -1046,7 +1165,7 @@ class TableContext:
         self._previous_row: int | None = previous_row
         self._previous_column: int | None = previous_column
         
-    def rows(self):
+    def rows(self)->Iterable[TableRow]:
         for i in range(self._row_count):
             yield TableRow(self, i)
 
@@ -1077,9 +1196,13 @@ class TableContext:
             else:
                 item.setData(QtCore.Qt.DisplayRole, new_val)
     
-    def current_row(self):
+    def current_row(self)->TableRow:
         return TableRow(self,self.tbl.currentRow())
     
+    def current_column_name(self)->str:
+        c = self.tbl.currentColumn()
+        return name_col_by_num(self.tbl,c)
+
     def find_row(self,rules:dict,first=False)->list[TableRow]|TableRow:
         list_res = []
         for row in self.rows():
@@ -1098,6 +1221,11 @@ class TableContext:
     def get_row(self, i)->TableRow:
         return TableRow(self, i)
 
+    def get_selected_rows(self) -> list[TableRow]:
+        rows = {item.row() for item in self.tbl.selectedItems()}
+        return [TableRow(self,item) for item in rows]
+
+
     def get_current_row(self) -> TableRow:
         return TableRow(self, self.tbl.currentRow())
     
@@ -1105,6 +1233,230 @@ class TableContext:
     def hide(self,name:str, val:bool=True):
         if self.tbl.columnCount():
             self.tbl.setColumnHidden(self.nf[name],val)
+
+    # ----------------------------------------------------------
+    # регистрация событий для колонки
+    # ----------------------------------------------------------
+    def add_column_events(
+            self,
+            column_name: str,
+            *,
+            double_click: bool = False,
+            context_menu: bool = False,
+            on_double_click=None,
+            on_context_menu=None,
+            parent_self=None,
+    ):
+        """
+
+        :param column_name:
+        :param double_click:
+        :param context_menu:
+        :param on_double_click: def tbl_cellDoubleClicked(t:CQT.TableContext,i:int,clmn_name:str):
+        :param on_context_menu: fncContextMenu(self: mywindow, tbl: QtWidgets.QTableWidget, row: int, col: int,
+                                                                    menu_builder: CQT.ContextMenuBuilder):
+                                    menu_builder.add_submenu(f"{emoji.symbol} График")
+                                    menu_builder.add_menu(f'{emoji.symbol} По персоналу', fnc)
+        :return:
+        """
+
+        col = self.nf[column_name]
+        if not hasattr(self,'_column_events'):
+            self._init_events()
+        self._column_events[col] = {
+            "double": double_click,
+            "context": context_menu,
+            "on_double": on_double_click,
+            "on_context": on_context_menu,
+            'parent_self':parent_self
+        }
+
+
+
+    # ----------------------------------------------------------
+    # event filter
+    # ----------------------------------------------------------
+    def _open_context_menu_event(
+            self,
+            event: QtGui.QContextMenuEvent,
+            handler,
+            parent_self,
+    ):
+        # флаг защиты
+        if not hasattr(self.tbl, "_context_menu_enabled"):
+            self.tbl._context_menu_enabled = True
+
+        if not self.tbl._context_menu_enabled:
+            return
+
+        # получаем элемент под курсором
+        item = self.tbl.itemAt(event.pos())
+        if not item:
+            return
+
+        row = item.row()
+        col = item.column()
+
+        # создаём меню
+        menu = QtWidgets.QMenu(self.tbl)
+        menu.setAttribute(QtCore.Qt.WA_DeleteOnClose)
+
+        builder = ContextMenuBuilder(menu)
+
+        # вызываем зарегистрированный обработчик
+        handler(
+            parent_self if parent_self else self,
+            self.tbl,
+            row,
+            col,
+            builder
+        )
+
+        if builder.has_items():
+            # блокируем повторный вызов
+            self.tbl._context_menu_enabled = False
+
+            def on_menu_destroyed():
+                QtCore.QTimer.singleShot(
+                    300,
+                    lambda: setattr(self.tbl, "_context_menu_enabled", True)
+                )
+
+            menu.destroyed.connect(on_menu_destroyed)
+
+            # показываем меню
+            menu.exec_(event.globalPos())
+        else:
+            menu.deleteLater()
+
+    def _handle_event(self, obj, event):
+        try:
+            viewport = self.tbl.viewport()
+        except:
+            return False
+        if obj is not viewport:
+            return False
+
+        if event.type() == QtCore.QEvent.MouseMove:
+            index = self.tbl.indexAt(event.pos())
+            if not index.isValid():
+                self.tbl.unsetCursor()
+                return False
+
+            col = index.column()
+            conf = self._column_events.get(col)
+
+            if not conf:
+                self.tbl.unsetCursor()
+                return False
+
+            if conf["double"] and conf["context"]:
+                self.tbl.setCursor(self.double_and_context_cursor)
+            elif conf["double"]:
+                self.tbl.setCursor(self.double_click_cursor)
+            elif conf["context"]:
+                self.tbl.setCursor(self.right_click_cursor)
+            else:
+                self.tbl.unsetCursor()
+
+            return False
+
+        elif event.type() == QtCore.QEvent.Leave:
+            self.tbl.unsetCursor()
+            return False
+
+        elif event.type() == QtCore.QEvent.MouseButtonDblClick:
+            index = self.tbl.indexAt(event.pos())
+            if index.isValid():
+                conf = self._column_events.get(index.column())
+                if conf and conf["double"]:
+                    parent_self = conf['parent_self']
+                    handler = conf.get("on_double")
+                    if handler:
+                        if parent_self:
+                            handler(self, index.row(), name_col_by_num(self.tbl,index.column()),parent_self)
+                        else:
+                            handler(self, index.row(), name_col_by_num(self.tbl,index.column()))
+                    return True
+            return False
+
+        elif event.type() == QtCore.QEvent.ContextMenu:
+            index = self.tbl.indexAt(event.pos())
+            if index.isValid():
+                conf = self._column_events.get(index.column())
+                if conf and conf["context"]:
+                    parent_self = conf['parent_self']
+                    handler = conf.get("on_context")
+                    if handler:
+                        self._open_context_menu_event(
+                            event,
+                            handler,
+                            parent_self
+                        )
+                    return True
+            return False
+
+        return False
+
+    # ----------------------------------------------------------
+    # регистрация событий на изменение размера таблицы
+    # ----------------------------------------------------------
+    def add_geometry_events(
+            self,
+            on_resize=None,
+            on_width_change=None,
+            on_height_change=None,
+    ):
+        """
+        Позволяет привязать обработчики к изменению размеров таблицы.
+
+        :param on_resize: вызывается при любом изменении геометрии таблицы (QResizeEvent)
+                          def on_resize(context: TableContext, width:int, height:int)
+        :param on_width_change: вызывается только при изменении ширины
+                          def on_width_change(context: TableContext, new_width:int)
+        :param on_height_change: вызывается только при изменении высоты
+                          def on_height_change(context: TableContext, new_height:int)
+        """
+        if not hasattr(self, '_geometry_events'):
+            self._geometry_events = {
+                "on_resize": None,
+                "on_width_change": None,
+                "on_height_change": None,
+                "_last_size": self.tbl.size()
+            }
+
+        self._geometry_events["on_resize"] = on_resize
+        self._geometry_events["on_width_change"] = on_width_change
+        self._geometry_events["on_height_change"] = on_height_change
+
+        # Устанавливаем фильтр событий, если ещё не установлен
+        if not hasattr(self, '_geometry_event_filter'):
+            class _GeomEventFilter(QtCore.QObject):
+                def __init__(self, context: TableContext):
+                    super().__init__()
+                    self.context = context
+
+                def eventFilter(self, obj, event):
+                    if event.type() == QtCore.QEvent.Resize:
+                        old_size = self.context._geometry_events.get("_last_size", QtCore.QSize(0, 0))
+                        new_size = event.size()
+                        self.context._geometry_events["_last_size"] = new_size
+
+                        w_changed = new_size.width() != old_size.width()
+                        h_changed = new_size.height() != old_size.height()
+
+                        if self.context._geometry_events["on_resize"]:
+                            self.context._geometry_events["on_resize"](self.context, new_size.width(),
+                                                                       new_size.height())
+                        if w_changed and self.context._geometry_events["on_width_change"]:
+                            self.context._geometry_events["on_width_change"](self.context, new_size.width())
+                        if h_changed and self.context._geometry_events["on_height_change"]:
+                            self.context._geometry_events["on_height_change"](self.context, new_size.height())
+                    return False
+
+            self._geometry_event_filter = _GeomEventFilter(self)
+            self.tbl.installEventFilter(self._geometry_event_filter)
+
 
 class TableRow:
     def __init__(self, ctx: TableContext, row_index: int):
@@ -1129,9 +1481,55 @@ class TableRow:
         vals = [f"{col}={self.value(col)}" for col in first_cols]
         return f"Row {self.row_number}: " + ", ".join(vals)
 
+    @property
+    def no_selection(self)->bool:
+        return self.i == -1
+
+    def set_current(self,name:str)->bool:
+        item = self.item(name)
+        if item:
+            self.tbl.setCurrentCell(self.i, self.nf[name])
+            self.tbl.selectRow(self.i)
+            return True
+        return False
+
     def is_hidden(self)->bool:
         return self.tbl.isRowHidden(self.i)
 
+    def set_color_background(self,r:int,g:int,b:int,a:int=255,col_name=None):
+        if col_name is None:
+            for k, j in self.nf.items():
+                set_color_wtab_c(self.tbl,self.i,j,r,g,b,a)
+        else:
+            set_color_wtab_c(self.tbl, self.i, self.nf[col_name], r, g, b, a)
+
+    def set_font_format(self, size: int = 0, bold: bool = False,underline: bool = False,italic: bool = False,col_name=None):
+        if col_name is None:
+            self.tbl.blockSignals(True)
+            for k, j in self.nf.items():
+                item = self.item(k)
+                font = item.font()
+                if size:
+                    font.setPointSize(int(size))
+
+                font.setBold(bold)
+                font.setUnderline(underline)
+                font.setItalic(italic)
+                item.setFont(font)
+            self.tbl.blockSignals(False)
+            self.tbl.setItemDelegate(FontDelegate(self.tbl))
+        else:
+            font_cell_size_format(self.tbl,self.i,self.nf[col_name],size,bold,underline, italic)
+
+
+
+
+    def set_color_font(self,r:int,g:int,b:int,col_name=None):
+        if col_name is None:
+            for k, j in self.nf.items():
+                set_font_color_wtab_c(self.tbl,self.i,j,r,g,b)
+        else:
+            set_font_color_wtab_c(self.tbl, self.i, self.nf[col_name], r, g, b)
 
     def hide(self,val:bool=True):
         self.tbl.setRowHidden(self.i,val)
@@ -1143,20 +1541,24 @@ class TableRow:
         j = self._col_index(col_name)
         return self.tbl.item(self.i, j)
 
-    def widget(self, col_name: str) -> QtWidgets.QTableWidgetItem | None:
+    def widget(self, col_name: str) -> QtWidgets.QTableWidget | None:
         j = self._col_index(col_name)
         return self.tbl.cellWidget(self.i, j)
 
 
 
-    def value(self, col_name: str,sub_table = False):
+    def value(self, col_name: str,sub_table = False, as_table_context = False,get_cust_content=False)->TableContext|object|str|int|float|None:
         item = self.item(col_name)
         if item is None:
             return None
         if sub_table:
             wid = self.get_sub_table(col_name)
             if wid:
+                if as_table_context:
+                    return TableContext(wid)
                 return wid
+        if get_cust_content:
+            return getCustData(item)
         return item.text()
 
     def get_sub_table(self, col_name: str)->QtWidgets.QTableWidget|bool:
@@ -1261,6 +1663,115 @@ class Check_box_switcher(QtWidgets.QCheckBox):
 
     handle_pos = QtCore.pyqtProperty(float, fget=get_handle_pos, fset=set_handle_pos)
 
+class Cust_plane_edit():
+    """
+    pline = CMS.Cust_plane_edit(ui.pte_start)
+    text = GEN.load_plane_text()
+    pline.set_text(text)
+    pline.event_text_edit(GEN.save_plane_text)
+    """
+    def __init__(self, ple:QtWidgets.QPlainTextEdit):
+        self._fnc_on_lost_focus:object|None = None
+        self.ple:QtWidgets.QPlainTextEdit = ple
+
+    def set_text(self,text:str):
+        self.ple.setPlainText(text)
+
+    def event_text_edit(self, fnc_text_changed, interval_sec:float|int=3):
+        self.timer_save = QtCore.QTimer(self.ple)
+        self.timer_save.setSingleShot(True)
+        self.timer_save.setInterval(interval_sec * 1000)
+        self.ple.textChanged.connect(self._on_text_changed)
+        self.timer_save.timeout.connect(self._text_changed)
+        self._fnc_on_lost_focus = fnc_text_changed
+
+    def _text_changed(self):
+        self._fnc_on_lost_focus()
+        self.ple.document().setModified(False)
+
+    def _on_text_changed(self):
+        self.timer_save.start()
+
+class Cust_progress_bar:
+    """
+    pbar = CMS.Cust_progress_bar(ui.progressBar)
+
+    pbar.set_value(35)
+    pbar.set_color(0, 170, 0)
+    pbar.set_format()                 # по умолчанию %p%
+    pbar.set_format("%v из %m")       # свой формат
+    """
+
+    def __init__(self, pbar: QtWidgets.QProgressBar):
+        self.pbar: QtWidgets.QProgressBar = pbar
+        self._rgb: tuple[int, int, int] = (0, 170, 255)
+
+        self.pbar.setTextVisible(True)
+        self.set_format()
+        self._apply_style()
+
+    def set_value(self, value: int):
+        """
+        Устанавливает значение прогресса
+        """
+        self.pbar.setValue(int(value))
+
+    def set_text_style(self, size: int, bold: bool):
+        """
+        Устанавливает размер текста и жирность
+        size — размер шрифта в pt
+        bold — True / False
+        """
+        font = self.pbar.font()
+        font.setPointSize(int(size))
+        font.setBold(bool(bold))
+        self.pbar.setFont(font)
+
+
+    def _invert_color(self) -> tuple[int, int, int]:
+        r, g, b = self._rgb
+        return 255 - r, 255 - g, 255 - b
+
+    def set_color(self, r: int, g: int, b: int):
+        """
+        Устанавливает цвет прогресса (RGB)
+        """
+        self._rgb = (int(r), int(g), int(b))
+        self._apply_style()
+
+    def set_format(self, text_format: str = "%p%"):
+        """
+        Устанавливает текстовую маску
+        %p% — процент
+        %v — текущее значение
+        %m — максимум
+        """
+        self.pbar.setFormat(text_format)
+
+    def set_range(self, minimum: int, maximum: int):
+        """
+        Установка диапазона
+        """
+        self.pbar.setRange(int(minimum), int(maximum))
+
+    def _apply_style(self):
+        r, g, b = self._rgb
+        tr, tg, tb = self._invert_color()
+
+        self.pbar.setStyleSheet(f"""
+            QProgressBar {{
+                border: 1px solid #999;
+                border-radius: 4px;
+                text-align: center;
+                color: rgb({tr}, {tg}, {tb});
+            }}
+            QProgressBar::chunk {{
+                background-color: rgb({r}, {g}, {b});
+                border-radius: 3px;
+            }}
+        """)
+
+
 def progress_decorator(fn):
     """
     При старте обернутой функции появляется окно загрузки
@@ -1298,9 +1809,10 @@ def progress_decorator(fn):
 
     def startLoading(*args, **kwargs):
         nonlocal loading_bar, hook_prog_bar, parent, stylesheets
-        if args[0] and isinstance(args[0], QtWidgets.QMainWindow):
-            parent = args[0]
-            stylesheets = parent.styleSheet()
+        if args:
+            if args[0] and isinstance(args[0], QtWidgets.QMainWindow):
+                parent = args[0]
+                stylesheets = parent.styleSheet()
 
         loading_bar = LoadingBar(stylesheets)
         loading_bar.show()
@@ -1404,7 +1916,21 @@ def is_cell_editable(table: QTableWidget, row: int, column: int) -> bool:
 def valt(obj:object,name_col:str,row:int):
     nk = num_col_by_name_c(obj,name_col)
     return obj.item(row,nk).text()
-    
+
+
+def object_name_by_index_tab(obj: QTabWidget, index: int):
+    if 0 <= index < obj.count():
+        page = obj.widget(index)
+        if page:
+            return page.objectName()
+    return None
+
+def number_tab_by_object_name(obj: QTabWidget, name: str):
+    for i in range(obj.count()):
+        page = obj.widget(i)
+        if page and page.objectName() == name:
+            return i
+    return -1
 
 
 def number_table_by_name_c(obj:QTabWidget,ima:str):
@@ -1665,21 +2191,53 @@ def select_cell(tbl,i,j):
     except:
         pass
 
-def nums_col_by_name_dict(table: QtWidgets.QTableWidget) -> dict[str, int]:
+def nums_col_by_name_dict(table: QtWidgets.QTableWidget,
+    forced_text: bool = False) -> dict[str, int]:
     """
     Возвращает словарь {имя_колонки: её индекс} для QTableWidget.
     """
-    header = table.horizontalHeader()
+
+    def _to_plain_text(value) -> str:
+        if value is None:
+            return ""
+
+        if isinstance(value, QtCore.QDate):
+            return value.toString("yyyy-MM-dd")
+
+        if isinstance(value, QtCore.QDateTime):
+            return value.toString("yyyy-MM-dd HH:mm:ss")
+
+        if isinstance(value, QtCore.QTime):
+            return value.toString("HH:mm:ss")
+
+        return str(value)
+
+    """
+        Возвращает словарь {имя_колонки: индекс}.
+
+        forced_text:
+            True  — использовать только визуальный текст заголовка
+            False — сначала UserRole, потом text()
+        """
     columns = {}
+
     for col in range(table.columnCount()):
         item = table.horizontalHeaderItem(col)
-        if item is not None:
+
+        if item is None:
+            columns[f"col_{col}"] = col
+            continue
+
+        if forced_text:
+            name = item.text()
+        else:
             name = item.data(QtCore.Qt.UserRole)
             if not name:
                 name = item.text()
-            columns[name] = col
-        else:
-            columns[f"col_{col}"] = col  # если у колонки нет заголовка
+
+        name = _to_plain_text(name)
+        columns[name] = col
+
     return columns
 
 
@@ -1700,7 +2258,7 @@ def num_col_by_name_c(obj, ima, not_found_val=None):
     if obj.metaObject().className() == 'QTableWidget':
         for i in range(obj.columnCount()):
             if obj.horizontalHeaderItem(i) != None:
-                if obj.horizontalHeaderItem(i).text() == ima:
+                if obj.horizontalHeaderItem(i).text() == ima or obj.horizontalHeaderItem(i).data(QtCore.Qt.UserRole) == ima:
                     return i
 
         # QTreeView: доступ через модель и headerData()
@@ -2055,14 +2613,22 @@ def table_updating(tbl: QtWidgets.QTableWidget|TableContext):
     if isinstance(tbl,TableContext):
         tbl = tbl.tbl
 
+    header_h = tbl.horizontalHeader()
+    header_v = tbl.verticalHeader()
+
     """временно блокирует сигналы таблицы и ставит флаг _updating_table"""
     is_outer_freeze = is_table_updating(tbl)
     if not is_outer_freeze:
+        tbl.setProperty('_updating_table', True)
+
         tbl.blockSignals(True)
+        header_h.blockSignals(True)
+        header_v.blockSignals(True)
+
         tbl.setUpdatesEnabled(False)
         tbl.setVisible(False)
+
         save_selection(tbl)
-        tbl.setProperty('_updating_table', True)
         #print(f'Установлен фриз {tbl.objectName()}')
     else:
         #print(f'Не установлен фриз {tbl.objectName()}')
@@ -2074,13 +2640,18 @@ def table_updating(tbl: QtWidgets.QTableWidget|TableContext):
             #print(f'Не снят фриз {tbl.objectName()}')
             pass
         else:
-            tbl.setProperty('_updating_table', False)
+
             restore_selection(tbl)
             tbl.setUpdatesEnabled(True)
             tbl.setVisible(True)
-            tbl.blockSignals(False)
+
             QApplication.processEvents()
-            tbl.repaint()
+
+            tbl.blockSignals(False)
+            header_h.blockSignals(False)
+            header_v.blockSignals(False)
+
+            tbl.setProperty('_updating_table', False)
             #print(f'Снят фриз {tbl.objectName()}')
 
 def set_table_colorful_edit(tbl: QtWidgets.QTableWidget,val:bool=True):
@@ -2090,11 +2661,15 @@ def is_table_colorful_edit(tbl: QtWidgets.QTableWidget) -> bool:
     """возвращает True, если таблица автоподкрашивается при редактировании"""
     return bool(tbl.property('_colorful_edit'))
 
-def is_table_updating(tbl: QtWidgets.QTableWidget) -> bool:
+def is_table_updating(tbl: QtWidgets.QTableWidget|QtWidgets.QHeaderView) -> bool:
+    if isinstance(tbl, QtWidgets.QHeaderView):
+        tbl = tbl.parent()
+    if not isinstance(tbl, QtWidgets.QTableWidget):
+        return False
     """возвращает True, если таблица сейчас обновляется"""
-    return bool(tbl.property('_updating_table'))
+    return bool(tbl.property('_updating_table') or False)
 
-def setCustData(item:QTableWidgetItem|QTableWidget,data):
+def setCustData(item:QTableWidgetItem|QTableWidget,data,replace_text=True):
     if isinstance(item, QTableWidget):
         item.setProperty('_custData', data)
 
@@ -2112,15 +2687,16 @@ def setCustData(item:QTableWidgetItem|QTableWidget,data):
                 value = getattr(data, tooltip_attr)
                 item.setToolTip(value)
 
-            candidates = ["name"]
+            if replace_text:
+                candidates = ["name"]
 
-            name_attr = next((name for name in candidates if hasattr(data, name)), None)
+                name_attr = next((name for name in candidates if hasattr(data, name)), None)
 
-            if name_attr:
-                value = getattr(data, name_attr)
-                item.setText(value)
-            else:
-                item.setText(str(data))
+                if name_attr:
+                    value = getattr(data, name_attr)
+                    item.setText(value)
+                else:
+                    item.setText(str(data))
 
 
 
@@ -2477,6 +3053,9 @@ def add_combobox(self = '', table = '', i=0, j=0, list=[], first_void=True,  con
                 combo.setItemData(index, list_data[iter_combo], QtCore.Qt.UserRole)
             if item == current_text:
                 fl = True
+    old_widget = table.cellWidget(i, j)
+    if old_widget:
+        old_widget.deleteLater()
     table.setCellWidget(i, j, combo)
     if first_void:
         combo.setCurrentIndex(0)
@@ -2552,10 +3131,14 @@ def add_label_link(object_tbl, i,j, file, name,conn_func_label_link=None,parent_
         else:
             lbl.linkActivated.connect(lambda : conn_func_label_link(lnk, i,j,name,file))
     
-def add_btn(item, i, j, text='', val=True, conn_func_checked_row_col = '', self = '',img_path='',height = '',fontsize='',cell_val=None):
+def add_btn(item:QTableWidget, i, j, text='', val=True, conn_func_checked_row_col = '', self = '',img_path='',height = '',fontsize='',
+            cell_val=None,checkable:bool= False,initial_state:bool=False):
     btn = QtWidgets.QPushButton()
     btn.setEnabled(val)
     btn.setText(text)
+    btn.setCheckable(checkable)
+    if checkable:
+        btn.setChecked(initial_state)
     if height != '':
         btn.setFixedHeight(height)
     if img_path != '':
@@ -2566,6 +3149,7 @@ def add_btn(item, i, j, text='', val=True, conn_func_checked_row_col = '', self 
             btn.setIconSize(QtCore.QSize(btn.height(), btn.height()))
             btn.setToolTip(btn.text())
             btn.setText('')
+    btn.setFont(item.font())
     if fontsize != '':
         font = btn.font()
         font.setPointSize(int(fontsize))
@@ -2581,7 +3165,25 @@ def add_btn(item, i, j, text='', val=True, conn_func_checked_row_col = '', self 
                 btn.clicked.connect(lambda checked, row=i, col=j: conn_func_checked_row_col(self,row,col,cell_val))
             else:
                 btn.clicked.connect(lambda checked, row=i, col=j: conn_func_checked_row_col(self, row, col))
+    # Убираем отступы
+    btn.setStyleSheet("text-align: left; margin:0px; padding:0px; padding-left: 3px; border:none;")
+    btn.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+
     item.setCellWidget(i, j, btn)
+
+    # Функция для авто растяжения кнопки
+    def resize_btn(*args):
+        w = item.cellWidget(i, j)
+        if w:
+            w.resize(item.columnWidth(j), item.rowHeight(i))
+
+    # Подключаем к изменениям ширины и высоты
+    item.horizontalHeader().sectionResized.connect(lambda *args: resize_btn())
+    item.verticalHeader().sectionResized.connect(lambda *args: resize_btn())
+
+    # И сразу подстраиваем
+    resize_btn()
+    return btn
 
 class ClickedLabel(QtWidgets.QLabel):
     clicked = QtCore.pyqtSignal()
@@ -2773,7 +3375,7 @@ def fill_wtabl(dict_or_list, object, set_editeble_col_nomera={}, ogr_maxshir_kol
                list_column_widths:list=[],save_column_sort_hh: bool = False, StretchLastRow=False,tbl_vidget:tuple|None=None,count_unhide_rows=5,
                selectionBehavior="SelectItems",count_rows_cell_max=1, load_links=False, conn_func_label_link=None,
                styleSheet=None,parent_self=None,sortingEnabled=False,selectionMode="ExtendedSelection",
-               fncContextMenu=None,aliases_header:dict=None):
+               fncContextMenu=None,aliases_header:dict=None,dict_or_list_user_data=None,font_size:int|None=None):
 
 #16.07.25
     """
@@ -2807,6 +3409,7 @@ def fill_wtabl(dict_or_list, object, set_editeble_col_nomera={}, ogr_maxshir_kol
         fncContextMenu(self:mywindow,tbl:QtWidgets.QTableWidget,row:int,col:int,menu_builder:CQT.ContextMenuBuilder)
     aliases_header :
             Названия для пользователя
+    dict_or_list_user_data: data for user_role (CQT.setCustData)
     :return:
     """
 
@@ -2832,14 +3435,21 @@ def fill_wtabl(dict_or_list, object, set_editeble_col_nomera={}, ogr_maxshir_kol
 
     if type(dict_or_list) == type(dict()):
         list_of_data = F.dict_of_dicts_to_list_of_lists(dict_or_list)
+        if dict_or_list_user_data:
+            list_user_data = F.dict_of_dicts_to_list_of_lists(dict_or_list_user_data)
     if type(dict_or_list) == type(['']):
         if type(dict_or_list[0]) == type(dict()):
-            list_of_data = F.list_of_dicts_to_list_of_lists(dict_or_list)  
+            list_of_data = F.list_of_dicts_to_list_of_lists(dict_or_list)
+            if dict_or_list_user_data:
+                list_user_data = F.list_of_dicts_to_list_of_lists(dict_or_list_user_data)
         else:
             if not isinstance(dict_or_list[0],list):
                 dict_or_list = [[_] for _ in dict_or_list]
+                if dict_or_list_user_data:
+                    dict_or_list_user_data = [[_] for _ in dict_or_list_user_data]
             list_of_data = dict_or_list
-            
+            list_user_data = dict_or_list_user_data
+
     if set_editeble_col_nomera != '*':
         for _ in set_editeble_col_nomera:
             if type(_) != int:
@@ -2911,7 +3521,11 @@ def fill_wtabl(dict_or_list, object, set_editeble_col_nomera={}, ogr_maxshir_kol
                 cellinfo.setFlags(QtCore.Qt.ItemIsSelectable | QtCore.Qt.ItemIsEnabled)
             object_tbl.setItem(i-start_fill, j, cellinfo)
             
-                        
+            if font_size:
+                font = cellinfo.font()
+                font.setPointSize(font_size)
+                cellinfo.setFont(font)
+
             if load_links:
                 if not conn_func_label_link:
                     conn_func_label_link = lbl_linkActivated
@@ -2970,6 +3584,10 @@ def fill_wtabl(dict_or_list, object, set_editeble_col_nomera={}, ogr_maxshir_kol
                            StretchLastRow=StretchLastRow,tbl_vidget=(i-1,j),count_unhide_rows=count_unhide_rows,
                            selectionBehavior=selectionBehavior,count_rows_cell_max=count_rows_cell_max,
                            load_links=load_links,aliases_header=aliases_header)
+
+            if dict_or_list_user_data is not None:
+                setCustData(cellinfo,list_user_data[i][j],replace_text=False)
+
     object_tbl.horizontalHeader().setMinimumSectionSize(1)
     object_tbl.horizontalHeader().setDefaultSectionSize(20)
     object_tbl.verticalHeader().setMinimumSectionSize(1)
@@ -3055,7 +3673,7 @@ def fill_wtabl(dict_or_list, object, set_editeble_col_nomera={}, ogr_maxshir_kol
 
 
 
-def add_context_menu(object_tbl:QtWidgets.QTableWidget,parent_self,fncContextMenu):
+def add_context_menu(object_tbl:QtWidgets.QTableWidget,parent_self,fncContextMenu,num_col:int|None=None):
     object_tbl.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
 
     # Флаг для предотвращения повторного вызова меню
@@ -3072,7 +3690,9 @@ def add_context_menu(object_tbl:QtWidgets.QTableWidget,parent_self,fncContextMen
             return
 
         row, col = item.row(), item.column()
-
+        if num_col:
+            if not col == num_col:
+                return
         # Создаем меню
         menu = QMenu(object_tbl)
         menu.setAttribute(QtCore.Qt.WA_DeleteOnClose)
@@ -3724,13 +4344,15 @@ def summ_selct_tbl(self,tbl):
 def onerror(funcd):
     def wrapper( *args, **kwargs):
         ver = '-'
+        app_self = None
         try:
             sig = inspect.signature(funcd)
             params = list(sig.parameters.keys())
             if params and params[0] == "self":
                 if args and hasattr(args[0], "__dict__"):
+                    app_self = args[0]
                     try:
-                        ver = args[0].versia
+                        ver = app_self.versia
                     except:
                         pass
 
@@ -3789,7 +4411,7 @@ def onerror(funcd):
                 str(traceback.extract_tb(exc_traceback))
             ]
             add_error_line_in_debug_reestr(line)
-            msgbox(txt, time_life=10, icon=QtWidgets.QMessageBox.Critical)
+            msgbox(txt, time_life=10, icon=QtWidgets.QMessageBox.Critical,app_self=app_self,fontsize=8)
     return wrapper
 
 def add_error_line_in_debug_reestr(line: list):
@@ -3810,11 +4432,11 @@ def add_err_to_debug(list, path):
 
 
 def msgboxgYN(msg, btn0_name="Да", btn1_name="Нет", func_theme = '', icon = QtWidgets.QMessageBox.Question,fontsize=14,icon_str=None,
-              title: str = "Внимание!"): # 24.12.2025
+              title: str = "Внимание!",app_self=None): # 24.12.2025
     """icon = NoIcon, Question, Information, Warning, Critical """
     if icon_str != None:
         icon = eval(f'QtWidgets.QMessageBox.{icon_str}')
-    msgBox = QtWidgets.QMessageBox()
+    msgBox = QtWidgets.QMessageBox(app_self)
     # self.modal = 1
     msgBox.setIcon(icon)
     font = msgBox.font()
@@ -3824,7 +4446,11 @@ def msgboxgYN(msg, btn0_name="Да", btn1_name="Нет", func_theme = '', icon =
     msgBox.setWindowTitle(title)
     # msgBox.setStandardButtons(QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.Cancel)
     buttonoptionA = msgBox.addButton(btn0_name, QtWidgets.QMessageBox.YesRole)
+    buttonoptionA.setFixedSize(90, 30)
+    buttonoptionA.setFont(font)
     buttonoptionB = msgBox.addButton(btn1_name, QtWidgets.QMessageBox.AcceptRole)
+    buttonoptionB.setFixedSize(90, 30)
+    buttonoptionB.setFont(font)
     msgBox.setWindowModality(QtCore.Qt.ApplicationModal)
     # msgBox.setWindowFlags(QtCore.Qt.WindowStaysOnTopHint)
     # msgBox.setFocus()
@@ -3855,12 +4481,12 @@ def msgboxgYN(msg, btn0_name="Да", btn1_name="Нет", func_theme = '', icon =
 
 
 
-def msgbox(msg, btn0_name="OK", func_theme = '', time_life = 0, icon = QtWidgets.QMessageBox.Information,fontsize=14,icon_str=None):
+def msgbox(msg, btn0_name="OK", func_theme = '', time_life = 0, icon = QtWidgets.QMessageBox.Information,fontsize=14,icon_str=None,stylesheet=None,app_self=None):
     """icon = NoIcon, Question, Information, Warning, Critical """
     if icon_str != None:
         icon = eval(f'QtWidgets.QMessageBox.{icon_str}')
     try:
-        msgBox = QtWidgets.QMessageBox()
+        msgBox = QtWidgets.QMessageBox(app_self)
         msgBox.setIcon(icon)
         msgBox.setText(msg)
         font = msgBox.font()
@@ -3872,18 +4498,24 @@ def msgbox(msg, btn0_name="OK", func_theme = '', time_life = 0, icon = QtWidgets
         msgBox.setWindowModality(QtCore.Qt.ApplicationModal)
 
         buttonoptionA = msgBox.addButton(btn0_name, QtWidgets.QMessageBox.YesRole)
+
+        buttonoptionA.setFixedSize(90,30)
+        buttonoptionA.setFont(font)
         if time_life>0:
             QtCore.QTimer.singleShot(round(time_life*1000), lambda: msgBox.done(0))
 
         config_theme_path = F.sep().join([F.path_to_execut_file_c(), 'css', 'current_theme_name.txt'])
-        if F.existence_file_c(config_theme_path):
-            theme = F.load_file(config_theme_path)
-            apply_css_theme(msgBox, theme)
+        if stylesheet:
+            msgBox.setStyleSheet(stylesheet)
+
         else:
-            msgBox.setStyleSheet(None)
+            if F.existence_file_c(config_theme_path):
+                theme = F.load_file(config_theme_path)
+                apply_css_theme(msgBox, theme)
+            else:
+                msgBox.setStyleSheet(None)
 
         returnValue = msgBox.exec()
-        
 
         #msgBox.exec_()
         if func_theme != '':
@@ -3924,8 +4556,7 @@ def _load_tbl(tbl:QtWidgets.QTableWidget,tblf:QtWidgets.QTableWidget,hidden_scro
             break
     if non_zero_height == 0:
         non_zero_height = 24
-    tblf.setRowHeight(0, non_zero_height)
-    tblf.setFixedHeight(non_zero_height *count_rows+ tblf.horizontalHeader().height() + 1)
+
     if hidden_scrol:
         tblf.verticalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Stretch)
 
@@ -3934,7 +4565,8 @@ def _load_tbl(tbl:QtWidgets.QTableWidget,tblf:QtWidgets.QTableWidget,hidden_scro
         tblf.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         tbl.horizontalHeader().sectionResized.connect(tblf.setColumnWidth)
         tblf.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.Fixed)
-
+    tblf.setRowHeight(0, non_zero_height)
+    tblf.setFixedHeight(non_zero_height * count_rows + tblf.horizontalHeader().height() + 1)
     tblf.verticalHeader().setFixedWidth(tbl.verticalHeader().width())
 
 @progress_decorator
@@ -5120,6 +5752,8 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
                         }
                 """
         self.ui.cmb_action.setStyleSheet(css_cmb)
+        if not self.print_hat:
+            self.ui.tbl.horizontalHeader().setHidden(True)
 
     def keyReleaseEvent(self, e):
         if self.ui.tbl_filtr.hasFocus():
@@ -5163,6 +5797,14 @@ def msgboxg_get_table(self, msg, dict_or_list, btn0_name="Ввод", btn1_name="
             2	    MultiSelection	            Множественный выбор (Ctrl+ЛКМ, но без Shift)
             3	    ExtendedSelection	        Расширенный выбор (как в проводнике — работает Shift и Ctrl)
             4	    ContiguousSelection	        Только смежные элементы (работает Shift, но не Ctrl)
+    :param  not_standart_close
+            def fnc_check_select(btn, dialog, t, p):
+                if btn.text() == 'smth':
+                        ...
+                        dialog.accept()
+                    else:
+                        dialog.reject()
+
     """
     self.__ansver_Dialog_tbl = None
     dialog_tbl = Dialog_tbl(self,msg, dict_or_list, btn0_name, btn1_name, func_validate,
@@ -5211,101 +5853,321 @@ def msgboxg_get_table_ok_inf(self, msg, dict_or_list, btn0_name="OK", btn1_name=
     returnValue = dialog_tbl.exec()
     return
 
-def get_data_dialog_choose(parent,
-                            msg: str,
-                            btn0_name: str = "Ввод",
-                            btn1_name: str = "Отмена",
-                            func_validate=None,
-                            disable_btn0=False,
-                            disable_btn1=False,
-                            WindowTitle='Выбор даты',
-                            style_icon='SP_MessageBoxInformation',
-                            start_date=None,
-                            range_dates: bool = False,
-                            format_dates:str|None = None,
-                            not_standart_close=False,
-                            info_point_size: int = 12,
-                            on_confirm: callable = None):
 
+def get_data_dialog_choose(parent,
+                           msg: str,
+                           btn0_name: str = "Ввод",
+                           btn1_name: str = "Отмена",
+                           func_validate=None,
+                           disable_btn0=False,
+                           disable_btn1=False,
+                           WindowTitle='Выбор даты',
+                           style_icon='SP_MessageBoxInformation',
+                           start_date=None,
+                           end_date=None,
+                           range_dates: bool = False,
+                           format_dates: str | None = None,
+                           not_standart_close=False,
+                           info_point_size: int = 12,
+                           on_confirm: callable = None):
     dialog = QtWidgets.QDialog(parent)
     dialog.setWindowTitle(WindowTitle)
     dialog.setModal(True)
 
-    layout = QtWidgets.QVBoxLayout(dialog)
+    main_layout = QtWidgets.QVBoxLayout(dialog)
+    main_layout.setSpacing(10)
 
+    # ---- сообщение ----
     label = QtWidgets.QLabel(msg)
     font = label.font()
-    font.setPointSize(info_point_size)  #
+    font.setPointSize(info_point_size)
     label.setFont(font)
     label.setWordWrap(True)
-    layout.addWidget(label)
+    main_layout.addWidget(label)
 
-    calendar = QtWidgets.QCalendarWidget()
-    font = calendar.font()
-    font.setPointSize(info_point_size)  #
-    calendar.setFont(font)
-
+    # ---- начальная дата ----
     if start_date:
-        if isinstance(start_date, (QtCore.QDate, )):
+        if isinstance(start_date, QtCore.QDate):
             d = start_date
         else:
             d = QtCore.QDate(start_date.year, start_date.month, start_date.day)
     else:
         d = QtCore.QDate.currentDate()
 
-    calendar.setSelectedDate(d)
-    calendar.setCurrentPage(d.year(), d.month())
-
-    if range_dates:
-        calendar.setSelectionMode(QtWidgets.QCalendarWidget.SelectionMode.RangeSelection)
+    # ---- конечная дата ----
+    if end_date:
+        if isinstance(end_date, QtCore.QDate):
+            e = end_date
+        else:
+            e = QtCore.QDate(end_date.year, end_date.month, end_date.day)
     else:
-        calendar.setSelectionMode(QtWidgets.QCalendarWidget.SelectionMode.SingleSelection)
+        e = QtCore.QDate.currentDate()
 
-    layout.addWidget(calendar)
+    # =========================================================
+    # SINGLE DATE
+    # =========================================================
+    if not range_dates:
 
-    font = QtGui.QFont()
-    font.setPointSize(12)
+        calendar = QtWidgets.QCalendarWidget()
+        font = calendar.font()
+        font.setPointSize(info_point_size)
+        calendar.setFont(font)
+
+        calendar.setSelectionMode(QtWidgets.QCalendarWidget.SingleSelection)
+        calendar.setSelectedDate(d)
+        calendar.setCurrentPage(d.year(), d.month())
+
+        main_layout.addWidget(calendar)
+
+        def build_range():
+            s = calendar.selectedDate().toPyDate()
+            if format_dates:
+                s = s.strftime(format_dates)
+            return {"date_from": s, "date_to": s}
+
+    # =========================================================
+    # RANGE MODE (2 календаря + панель месяцев с кнопками)
+    # =========================================================
+    else:
+
+        cal_from = QtWidgets.QCalendarWidget()
+        cal_to = QtWidgets.QCalendarWidget()
+
+        for cal in (cal_from, cal_to):
+            f = cal.font()
+            f.setPointSize(info_point_size)
+            cal.setFont(f)
+            cal.setSelectionMode(QtWidgets.QCalendarWidget.SingleSelection)
+
+        cal_from.setSelectedDate(d)
+        cal_from.setCurrentPage(d.year(), d.month())
+
+        cal_to.setSelectedDate(e)
+        cal_to.setCurrentPage(e.year(), e.month())
+
+        active_calendar = cal_from
+
+        # --- Создаём заголовки для календарей ---
+        from_header = QtWidgets.QLabel("Начальная дата")
+        from_header.setAlignment(QtCore.Qt.AlignCenter)
+        font_header = from_header.font()
+        font_header.setPointSize(info_point_size)
+        font_header.setBold(True)
+        from_header.setFont(font_header)
+
+        to_header = QtWidgets.QLabel("Конечная дата")
+        to_header.setAlignment(QtCore.Qt.AlignCenter)
+        to_header.setFont(font_header)
+
+        # --- Контейнеры для календарей с заголовками ---
+        from_container = QtWidgets.QWidget()
+        from_layout = QtWidgets.QVBoxLayout(from_container)
+        from_layout.setContentsMargins(0, 0, 0, 0)
+        from_layout.setSpacing(5)
+        from_layout.addWidget(from_header)
+        from_layout.addWidget(cal_from)
+
+        to_container = QtWidgets.QWidget()
+        to_layout = QtWidgets.QVBoxLayout(to_container)
+        to_layout.setContentsMargins(0, 0, 0, 0)
+        to_layout.setSpacing(5)
+        to_layout.addWidget(to_header)
+        to_layout.addWidget(cal_to)
+
+        # --- Функция обновления подсветки заголовков ---
+        def update_headers_highlight():
+            # Стиль для активного заголовка
+            active_style = """
+                QLabel {
+                    color: #2c3e50;
+                    font-weight: bold;
+                    background-color: #e8f0fe;
+                    padding: 4px;
+                    border-radius: 3px;
+                }
+            """
+            # Стиль для неактивного заголовка (тусклый)
+            inactive_style = """
+                QLabel {
+                    color: #7f8c8d;
+                    font-weight: normal;
+                    background-color: #f5f5f5;
+                    padding: 4px;
+                    border-radius: 3px;
+                }
+            """
+
+            if active_calendar == cal_from:
+                from_header.setStyleSheet(active_style)
+                to_header.setStyleSheet(inactive_style)
+            else:
+                from_header.setStyleSheet(inactive_style)
+                to_header.setStyleSheet(active_style)
+
+        def set_active_from():
+            nonlocal active_calendar
+            active_calendar = cal_from
+            update_headers_highlight()
+            update_month_selection(active_calendar.yearShown(), active_calendar.monthShown())
+
+        def set_active_to():
+            nonlocal active_calendar
+            active_calendar = cal_to
+            update_headers_highlight()
+            update_month_selection(active_calendar.yearShown(), active_calendar.monthShown())
+
+        cal_from.clicked.connect(set_active_from)
+        cal_to.clicked.connect(set_active_to)
+
+        # --- контроль диапазона ---
+        def validate_range():
+            d1 = cal_from.selectedDate()
+            d2 = cal_to.selectedDate()
+            if d2 < d1:
+                cal_to.setSelectedDate(d1)
+
+        cal_from.selectionChanged.connect(validate_range)
+
+        # --- панель месяцев с кнопками ---
+        month_widget = QtWidgets.QWidget()
+        month_widget.setFixedWidth(120)
+        month_grid = QtWidgets.QGridLayout(month_widget)
+        month_grid.setSpacing(3)
+        month_grid.setContentsMargins(0, 0, 0, 0)
+
+        months_short = ["Янв", "Фев", "Мар", "Апр", "Май", "Июн",
+                        "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек"]
+
+        month_buttons = []
+
+        for i, month_name in enumerate(months_short):
+            btn = QtWidgets.QPushButton(month_name)
+            btn.setCheckable(True)
+            btn.setAutoExclusive(False)
+            font = btn.font()
+            font.setPointSize(info_point_size)
+            btn.setFont(font)
+
+            row = i % 6
+            col = i // 6
+            month_grid.addWidget(btn, row, col)
+
+            btn.month_number = i + 1
+
+            def make_handler(month_num):
+                def handler():
+                    change_month(month_num)
+
+                return handler
+
+            btn.clicked.connect(make_handler(i + 1))
+
+            month_buttons.append(btn)
+
+        def change_month(month_num):
+            year = active_calendar.yearShown()
+            active_calendar.setCurrentPage(year, month_num)
+
+        def update_month_selection(year, month):
+            for btn in month_buttons:
+                btn.setChecked(btn.month_number == month)
+
+        # --- выбор года ---
+        year_spin = QtWidgets.QSpinBox()
+        year_spin.setRange(1970, 2100)
+        year_spin.setValue(d.year())
+        year_spin.setAlignment(QtCore.Qt.AlignCenter)
+        font = year_spin.font()
+        font.setPointSize(info_point_size)
+        year_spin.setFont(font)
+
+        def change_year(val):
+            month = active_calendar.monthShown()
+            active_calendar.setCurrentPage(val, month)
+
+        year_spin.valueChanged.connect(change_year)
+
+        # --- синхронизация года и подсветки месяца ---
+        def sync_year_month(y, m):
+            year_spin.blockSignals(True)
+            year_spin.setValue(y)
+            year_spin.blockSignals(False)
+            update_month_selection(y, m)
+
+        cal_from.currentPageChanged.connect(sync_year_month)
+        cal_to.currentPageChanged.connect(sync_year_month)
+
+        # --- кнопка сегодня ---
+        btn_today = QtWidgets.QPushButton("Сегодня")
+        font = btn_today.font()
+        font.setPointSize(info_point_size)
+        btn_today.setFont(font)
+
+        def set_today():
+            today = QtCore.QDate.currentDate()
+            active_calendar.setSelectedDate(today)
+            active_calendar.setCurrentPage(today.year(), today.month())
+
+        btn_today.clicked.connect(set_today)
+
+        # --- компоновка левой панели ---
+        left_panel = QtWidgets.QVBoxLayout()
+        left_panel.setSpacing(8)
+        left_panel.addWidget(year_spin)
+        left_panel.addWidget(month_widget)
+        left_panel.addWidget(btn_today)
+        left_panel.addStretch()
+
+        # --- основная горизонтальная компоновка ---
+        calendars_layout = QtWidgets.QHBoxLayout()
+        calendars_layout.setSpacing(10)
+        calendars_layout.addLayout(left_panel)
+        calendars_layout.addWidget(from_container)
+        calendars_layout.addWidget(to_container)
+
+        main_layout.addLayout(calendars_layout)
+
+        # Инициализируем подсветку месяцев и заголовков
+        update_month_selection(d.year(), d.month())
+        update_headers_highlight()
+
+        def build_range():
+            d1 = cal_from.selectedDate().toPyDate()
+            d2 = cal_to.selectedDate().toPyDate()
+
+            if d2 < d1:
+                d1, d2 = d2, d1
+
+            if format_dates:
+                d1 = d1.strftime(format_dates)
+                d2 = d2.strftime(format_dates)
+
+            return {"date_from": d1, "date_to": d2}
+
+    # =========================================================
+    # КНОПКИ
+    # =========================================================
+    font_btn = QtGui.QFont()
+    font_btn.setPointSize(12)
 
     hbox = QtWidgets.QHBoxLayout()
     hbox.addStretch(1)
 
     btn_ok = QtWidgets.QPushButton(btn0_name)
-    btn_ok.setFont(font)
+    btn_ok.setFont(font_btn)
     btn_ok.setEnabled(not disable_btn0)
 
     btn_cancel = QtWidgets.QPushButton(btn1_name)
-    btn_cancel.setFont(font)
+    btn_cancel.setFont(font_btn)
     btn_cancel.setEnabled(not disable_btn1)
 
     hbox.addWidget(btn_ok)
     hbox.addWidget(btn_cancel)
-    layout.addLayout(hbox)
+    main_layout.addLayout(hbox)
 
-    def build_range():
-        if not range_dates:
-            s = calendar.selectedDate()
-            s = QtCore.QDate.toPyDate(s)
-            if format_dates:
-                s = s.strftime(format_dates)
-            return {"date_from": s, "date_to": s}
-
-        r = calendar.selectedDateRange()
-        if not r or r.isEmpty():
-            s = calendar.selectedDate()
-            s = QtCore.QDate.toPyDate(s)
-            if format_dates:
-                s = s.strftime(format_dates)
-
-            return {"date_from": s, "date_to": s}
-
-        d1 = QtCore.QDate.toPyDate(r.first())
-        d2 = QtCore.QDate.toPyDate(r.last())
-
-        if format_dates:
-            d1 = d1.strftime(format_dates)
-            d2 = d2.strftime(format_dates)
-        return {"date_from": d1, "date_to": d2}
-
+    # =========================================================
+    # ACCEPT
+    # =========================================================
     def accept_dialog():
         data = build_range()
 
@@ -5314,9 +6176,9 @@ def get_data_dialog_choose(parent,
                 return
 
         if func_validate:
-            rez, data = func_validate("", data)
+            rez, data2 = func_validate("", data)
             dialog.done(1)
-            return rez, data
+            return rez, data2
 
         dialog.done(1)
 
@@ -5333,6 +6195,8 @@ def get_data_dialog_choose(parent,
 
     btn_ok.clicked.connect(accept_dialog)
     btn_cancel.clicked.connect(lambda: dialog.done(0))
+
+    dialog.adjustSize()
 
     ret = dialog.exec()
 
@@ -6041,48 +6905,205 @@ def fill_summ_tbl(self, tbls:QtWidgets.QTableWidget, tbl:QtWidgets.QTableWidget,
 
 @onerror
 def fill_filtr_c(self, tblf:QtWidgets.QTableWidget, tbl:QtWidgets.QTableWidget, spis_znach='', hidden_scroll=False,
-                 USER_CONFIG_reset_tbl_filtrs_forsed_off = False ):
-
+                 USER_CONFIG_reset_tbl_filtrs_forsed_off = False,combo_dict:dict|None = None,
+                 check_box_dict:dict|None = None ):
     tblf.blockSignals(True)
-    # hat_c = {_:"" for _ in CQT.get_dict_line_form_tbl(tbl,0).keys()}
-    hat_c = {tbl.horizontalHeaderItem(col).text(): "" for col in range(tbl.columnCount())}
 
-    fl_auto_apply_filtr= False
+    col_count = tbl.columnCount()
+    hat_c = {
+        tbl.horizontalHeaderItem(col).text(): ""
+        for col in range(col_count)
+    }
 
-    if spis_znach != '' and len(spis_znach) > 0:
-        if type(spis_znach) == type(list()) and isinstance(hat_c, list):
-            if len(spis_znach[0]) != len(hat_c[0]):
+    fl_auto_apply_filtr = False
+
+    # --- если переданы значения ---
+    if spis_znach and len(spis_znach) > 0:
+
+        hat_len = len(hat_c)
+
+        if isinstance(spis_znach, list):
+            first_row = spis_znach[0]
+
+            if len(first_row) != hat_len:
                 print('fill_filtr_c не совпадение длин')
+                tblf.blockSignals(False)
                 return
-            for i, key in enumerate(hat_c.keys()):
-                hat_c[key] = spis_znach[0][i]
-        if type(spis_znach) == type(list()) and isinstance(hat_c, dict):
-            if len(spis_znach[0]) != len(hat_c):
-                print('fill_filtr_c не совпадение длин')
-                return
-            for i, key in enumerate(hat_c.keys()):
-                hat_c[key] = spis_znach[0][i]
 
-        if type(spis_znach) == type(dict()):
+            for key, value in zip(hat_c.keys(), first_row):
+                hat_c[key] = value
 
+        elif isinstance(spis_znach, dict):
             for key in spis_znach:
                 if key in hat_c:
                     hat_c[key] = spis_znach[key]
+
+    # --- если значения НЕ переданы ---
     else:
-        if 'USER_CONFIG' in self.__dict__ and self.USER_CONFIG.reset_tbl_filtrs['Значение'] == '0' and not USER_CONFIG_reset_tbl_filtrs_forsed_off:
-            hat_c = get_spis_znach_for_filtr(self,tblf,tbl)
+        if (
+                'USER_CONFIG' in self.__dict__
+                and self.USER_CONFIG.reset_tbl_filtrs['Значение'] == '0'
+                and not USER_CONFIG_reset_tbl_filtrs_forsed_off
+        ):
+            hat_c = get_spis_znach_for_filtr(self, tblf, tbl)
         else:
             for j in range(tblf.columnCount()):
-                tblf.item(0,j).setText('')
+                item = tblf.item(0, j)
+                if item:
+                    item.setText('')
+
         fl_auto_apply_filtr = True
-    ed = {_ for _ in range(len(hat_c))}
-    fill_wtabl([hat_c], tblf, set_editeble_col_nomera=ed, auto_type=False)
+
+    ed = set(range(len(hat_c)))
+    combobox_columns = {}
+
+    fill_wtabl(
+        [hat_c],
+        tblf,
+        set_editeble_col_nomera=ed,
+        auto_type=False
+    )
+
+    for j in range(tbl.columnCount()):
+        user_role_data = tbl.horizontalHeaderItem(j).data(QtCore.Qt.UserRole)
+        if user_role_data:
+            tblf.horizontalHeaderItem(j).setData(QtCore.Qt.UserRole,user_role_data)
+
+
+
     ConnectFilterKeyEvents(self, tbl, tblf)
+
     with QSignalBlocker(tblf.horizontalHeader()):
         tblf.setStyleSheet(tbl.styleSheet())
         with QSignalBlocker(tbl.horizontalHeader()):
             _load_tbl(tbl, tblf, hidden_scroll)
-    # tblf.setRowHeight(0, tblf.height() - 35)
+
+
+    def fnc_check_box_select(lbl:InteractiveLabelInstance,row:int,clmn:int,add_data:dict):
+        list_data: list[str] = add_data['list_data']
+        list_text: list[str] = add_data['list_text']
+        col_index: int = add_data['col_index']
+        tbl_data = []
+        for i, _ in enumerate(list_text):
+            tbl_data.append({"Выбор":"",'Значение':_,'_data':list_data[i]})
+        def fnc_select_rows(btn, dialog, tbl_select):
+            result_list = []
+            if btn.text() == 'Применить':
+                t = TableContext(tbl_select)
+                fl_all = True
+                for row in t.rows():
+                    chk:QtWidgets.QCheckBox = row.widget('Выбор')
+                    if chk.isChecked():
+                        result_list.append(row.value('_data'))
+                    else:
+                        fl_all = False
+                if fl_all:
+                    result = ''
+                else:
+                    if result_list:
+                        result =  '|'.join([str(_) for _ in result_list])
+                    else:
+                        result = ''
+                tblf.item(0, col_index).setText(result)
+                lbl.set_text(result)
+                apply_filtr_c(self, tblf, tbl, False)
+                dialog.accept()
+            else:
+                dialog.reject()
+
+        def func_oform_tbl(tbl_select):
+            def fnc_context(self, tbl: QtWidgets.QTableWidget, row: int, col: int,
+                            menu_builder: CQT.ContextMenuBuilder):
+                def fnc_select_all(*args):
+                    for row in t.rows():
+                        chk: QtWidgets.QCheckBox = row.widget('Выбор')
+                        chk.setChecked(True)
+
+                def fnc_revers_all(*args):
+                    for row in t.rows():
+                        chk: QtWidgets.QCheckBox = row.widget('Выбор')
+                        chk.setChecked(not chk.isChecked())
+
+                # menu_builder.add_submenu(f"{emoji.symbol} График")
+                menu_builder.add_menu(f'{CEMOJ.EmojiMain.СтатусыПроизводства.success_tin.symbol * 2}\tВыбрать все',
+                                      fnc_select_all)
+                menu_builder.add_menu(f'{CEMOJ.EmojiMain.ДокументыДанные.revers.symbol}\tРеверс', fnc_revers_all)
+
+            t = TableContext(tbl_select)
+            list_selected_data =[]
+            if tblf.item(0,col_index).text():
+                list_selected_data = tblf.item(0,col_index).text().split('|')
+            for row in t.rows():
+                val = row.value('_data') in list_selected_data or not list_selected_data
+                add_check_box(t.tbl,row.i,row.nf['Выбор'],val=val)
+            t.hide('_data')
+            t.add_column_events('Выбор',context_menu=True,on_context_menu=fnc_context)
+
+
+        selected_vals = msgboxg_get_table(self,'Выбор фильтра',tbl_data,'Применить',print_hat=True,
+                                          styleSheet=MES_CSS,
+                                          not_standart_close=True,func_btn0=fnc_select_rows,func_oform_tbl=func_oform_tbl)
+
+    def fnc_combo_select(app_self, text:str,row:int,column:int):
+        tblf.item(row,column).setText(text)
+        apply_filtr_c(app_self,tblf,tbl,False)
+
+    if check_box_dict is not None:
+
+        import project_cust_38.Cust_emoji as CEMOJ
+
+        for col_name, list_text in check_box_dict.items():
+            col_index = num_col_by_name_c(tblf,col_name)
+            if col_index is None:
+                continue
+            if list_text is None :
+                set_tmp = set()
+                t = TableContext(tbl)
+                for row in t.rows():
+                    set_tmp.add(row.value(col_name))
+                list_text = sorted(list(set_tmp))
+            list_data = []
+            for _ in list_text:
+                val = _
+                if _ == '':
+                    val = '!*'
+                list_data.append(val)
+            widget = add_interactive_label(tblf, row=0, column=col_index,
+                                               text=tblf.item(0,col_index).text(),
+                                           mark_not_changed_item=False,
+                                           grab_style_from_cell=True)
+            btn = widget.add_button(
+                txt_button=CEMOJ.ДокументыДанные.select_from_list.symbol,
+                on_clicked=fnc_check_box_select,
+                cell_val={'list_data':list_data, 'list_text':list_text, 'col_index':col_index},
+                tooltip='Выбор из списка'
+            )
+
+    if combo_dict is not None:
+        for col_name, list_text in combo_dict.items():
+            col_index = num_col_by_name_c(tblf,col_name)
+            if col_index is None:
+                continue
+            if list_text is None:
+                set_tmp = set()
+                t = TableContext(tbl)
+                for row in t.rows():
+                    val = row.value(col_name)
+                    set_tmp.add(val)
+                list_text = sorted(list(set_tmp))
+                list_text.insert(0,'Сброс')
+            list_data = []
+            for _ in list_text:
+                val = _
+                if _ == '':
+                    val = '!*'
+                if _ == 'Сброс':
+                    val = ''
+                list_data.append(val)
+            add_combobox(self,tblf,0,col_index, list_data=list_data, first_void=False,
+                         conn_func= fnc_combo_select,list = list_text,return_data=True)
+
+
     key_shortcut_msg = (
         f'\n{"-" * 26}\n'
         '↑(Стрелка вверх) ↓(Стрелка вниз) — Вернуть прдыдущий фильтр\n'
@@ -6323,6 +7344,7 @@ def on_section_resized_tree(header, idx, old, new):
     on_section_resized('', qt_tmp_dir(), header)
 @onerror
 def on_section_resized(self, tmp_dir:str, widget_obj=None, *args):
+
     def allowed_to_post(obj):
         for tt in (QtWidgets.QTableWidget,
                    QtWidgets.QTreeWidget,
@@ -6341,6 +7363,8 @@ def on_section_resized(self, tmp_dir:str, widget_obj=None, *args):
         return
 
     if allowed_to_post(widget_obj):
+        if is_table_updating(widget_obj):
+            return
         if isinstance(widget_obj, QtWidgets.QDockWidget):
             widget_obj:QtWidgets.QDockWidget
             if not self.dockWidgetArea(widget_obj):
@@ -6387,6 +7411,7 @@ def on_section_resized(self, tmp_dir:str, widget_obj=None, *args):
             if isinstance(obj_name, str):
                 putf = tmp_dir + F.sep() + obj_name + "_column_widths.txt"
                 F.save_file(putf, spis_width)
+                
                 #print(f'{obj_name} save {spis_width}')
             else:
                 print('Ошибка on_section_resized типа фокуса')
@@ -6505,13 +7530,14 @@ def adjust_last_column_width(table: QtWidgets.QTableWidget, *args):
         w = header.sectionSize(col)
         if w > 0:
             used += w
-
+    last_col_width = header.sectionSize(visible_cols[-1])
     free_width = table_width - used
     if free_width < 0:
         free_width = 0
 
-    # растягиваем последнюю видимую колонку
-    header.resizeSection(last_col, free_width)
+    if free_width > last_col_width:
+        # растягиваем последнюю видимую колонку
+        header.resizeSection(last_col, free_width)
 
 
 
@@ -6536,7 +7562,10 @@ def load_column_widths(self='', tbl=None, tmp_dir='', adjust_last_column:bool=Tr
             else:
                 if tbl.columnCount() == len(spis_width):
                     for i in range(tbl.columnCount()):
-                        tbl.setColumnWidth(i, int(spis_width[i]))
+                        width = int(spis_width[i])
+                        if width == 0:
+                            width = 2
+                        tbl.setColumnWidth(i,width )
 
                 if isinstance(tbl, QtWidgets.QTableWidget) and adjust_last_column:
                     adjust_last_column_width(tbl)
@@ -7290,9 +8319,11 @@ class InteractiveLabelInstance(QtCore.QObject):
                  min_label_px: int = 40,
                  btn_width=20,
                  mark_not_changed_item: bool = True,
-                 parent_self: typing.Any = None
+                 parent_self: typing.Any = None,
+                 autoupdate_column_size: bool = True
         ) -> None:
         super().__init__()
+        self.autoupdate_column_size = autoupdate_column_size
         self.mark_not_changed_item = mark_not_changed_item
         self.parent_self = parent_self
         self.table = table
@@ -7331,19 +8362,20 @@ class InteractiveLabelInstance(QtCore.QObject):
         self._update_label_text()
         self._update_sizes()
         self.destroyed_tasks = []
-        if isinstance(table, QtWidgets.QTableWidget): # 01.10.25
-            vh = self.table.verticalHeader()
-            hh = self.table.horizontalHeader()
-            try:
-                vh.sectionResized.connect(self._on_row_section_resized)
-                self.destroyed_tasks.append((vh.sectionResized, self._on_row_section_resized))
-            except Exception:
-                pass
-            try:
-                hh.sectionResized.connect(self._on_column_section_resized)
-                self.destroyed_tasks.append((hh.sectionResized, self._on_column_section_resized))
-            except Exception:
-                pass
+        if autoupdate_column_size: #26.02.2026
+            if isinstance(table, QtWidgets.QTableWidget): # 01.10.25
+                vh = self.table.verticalHeader()
+                hh = self.table.horizontalHeader()
+                try:
+                    vh.sectionResized.connect(self._on_row_section_resized)
+                    self.destroyed_tasks.append((vh.sectionResized, self._on_row_section_resized))
+                except Exception:
+                    pass
+                try:
+                    hh.sectionResized.connect(self._on_column_section_resized)
+                    self.destroyed_tasks.append((hh.sectionResized, self._on_column_section_resized))
+                except Exception:
+                    pass
         palette = self.container.palette()
         qcolor = palette.color(self.container.backgroundRole())
         self._apply_label_bg_style(qcolor)
@@ -7365,7 +8397,8 @@ class InteractiveLabelInstance(QtCore.QObject):
         if isinstance(self.table, QtWidgets.QTreeWidget):
             self.cell_item.setForeground(self.column, brush)
             self.cell_item.setBackground(self.column, brush_b)
-            self.table.setItemWidget(item, self.column, self.container)
+            self.table.setItemWidget(self.cell_item, self.column, self.container)
+
         if isinstance(self.table, QtWidgets.QTableWidget):
             self.cell_item.setForeground(brush)
             self.cell_item.setBackground(brush_b)
@@ -7478,9 +8511,10 @@ class InteractiveLabelInstance(QtCore.QObject):
             self.table.setColumnWidth(self.column, desired_total)
 
     def _update_sizes(self):
-        self._update_button_sizes()
-        self._update_label_text()
-        self._update_column_width_if_needed()
+        if self.autoupdate_column_size: #26.02.2026
+            self._update_button_sizes()
+            self._update_label_text()
+            self._update_column_width_if_needed()
 
     def _on_row_section_resized(self, logicalIndex, oldSize, newSize):
         if logicalIndex == self.row:

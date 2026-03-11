@@ -249,6 +249,32 @@ def post_block_to_erp(self:mywindow,hook_prog_bar=None,*args):
     hook_prog_bar.close()
     CQT.msgbox(f'Успешно',time_life=0.5)
     pass
+
+
+def find_mes_key(self, file_and_data_for_update_mes_db: tuple): #05.03.2026
+    list_etaps_for_del = []
+    fl_naid_key_row_for_delete = False
+    m = ODAT.OrdersComposit(self.ERP_base_name)
+    for py_data in file_and_data_for_update_mes_db[0].values():
+        Ref_Key_py = py_data['Ref_Key_py']
+        for etap_name, val_etap in py_data['Этапы'].items():
+            resp = m.get_response('Document_ЭтапПроизводства2_2', f"""?$filter=Number eq '{etap_name}' 
+             and Распоряжение_Key eq guid'{Ref_Key_py}' &$select=Ref_Key, Статус, Трудозатраты/LineNumber, Трудозатраты/НомерЧертежа, 
+         Трудозатраты/ДатаВыполнения, Трудозатраты/ВидРабот_Key, Трудозатраты/Количество, Трудозатраты/Исполнитель""")
+            if resp:
+                etap_Ref= resp[0]['Ref_Key']
+            else:
+                CQT.msgbox(f'Этап {etap_name} не найден в ЕРП')
+                return
+            set_trdz_form_erp = {_['НомерЧертежа'] for _ in resp[0]['Трудозатраты']}
+            for item in val_etap['Традозатраты']:
+                list_etaps_for_del.append({'etap_Ref': etap_Ref,'etap_name':etap_name,'НомерЧертежа':item['Ключ_мес']})
+                if item['Ключ_мес'] in set_trdz_form_erp:
+                    fl_naid_key_row_for_delete =True
+                    break
+    return fl_naid_key_row_for_delete, list_etaps_for_del
+
+
 @CQT.progress_decorator
 @CQT.onerror
 def del_block_to_erp(self:mywindow,hook_prog_bar=None,*args):
@@ -270,12 +296,6 @@ def del_block_to_erp(self:mywindow,hook_prog_bar=None,*args):
     if  row == {}:
         CQT.msgbox(f'Не выбран блок журнала')
         return
-    if row['Дата выгрузки в ЕРП'] == '':
-        CQT.msgbox(f'Еще не выгружено')
-        return
-    if row['БД'] != '' and row['БД'] != self.USER_CONFIG.ERP_base_name['Значение']:
-        CQT.msgbox(f'БД ЕРП не совпадает с БД загрузки Трудов')
-        return
 
     fio = self.global_arm_oper_user_fio
     s_num_jur = int(row['Пномер_жур'])
@@ -294,26 +314,26 @@ def del_block_to_erp(self:mywindow,hook_prog_bar=None,*args):
     file_and_data_for_update_mes_db = jur_obj.load_data_trdz_for_erp(self,s_num_kpl,self.db_kplan,s_num_nar,self.bd_users,self.db_resxml)
     if file_and_data_for_update_mes_db == None:
         return
-    fl_naid_key_row_for_delete = False
-    list_etaps_for_del = []
-    m = ODAT.OrdersComposit(self.ERP_base_name)
-    for py_data in file_and_data_for_update_mes_db[0].values():
-        Ref_Key_py = py_data['Ref_Key_py']
-        for etap_name, val_etap in py_data['Этапы'].items():
-            resp = m.get_response('Document_ЭтапПроизводства2_2', f"""?$filter=Number eq '{etap_name}' 
-             and Распоряжение_Key eq guid'{Ref_Key_py}' &$select=Ref_Key, Статус, Трудозатраты/LineNumber, Трудозатраты/НомерЧертежа, 
-         Трудозатраты/ДатаВыполнения, Трудозатраты/ВидРабот_Key, Трудозатраты/Количество, Трудозатраты/Исполнитель""")
-            if resp:
-                etap_Ref= resp[0]['Ref_Key']
-            else:
-                CQT.msgbox(f'Этап {etap_name} не найден в ЕРП')
-                return
-            set_trdz_form_erp = {_['НомерЧертежа'] for _ in resp[0]['Трудозатраты']}
-            for item in val_etap['Традозатраты']:
-                list_etaps_for_del.append({'etap_Ref': etap_Ref,'etap_name':etap_name,'НомерЧертежа':item['Ключ_мес']})
-                if item['Ключ_мес'] in set_trdz_form_erp:
-                    fl_naid_key_row_for_delete =True
-                    break
+    if file_and_data_for_update_mes_db[0] is None: #05.03.2026
+        new_labor_expenditures = jur_obj.create_data_trdz_for_erp(self, s_num_kpl, self.db_kplan, s_num_nar,
+                                                                             self.bd_users, self.db_resxml,
+                                                                             self.DICT_PROFESSIONS,
+                                                                             DICT_VID_RABOT=self.Data.DICT_VID_RABOT)
+        fl_naid_key_row_for_delete, list_etaps_for_del = find_mes_key(self, new_labor_expenditures)
+        if not fl_naid_key_row_for_delete:
+            return CQT.msgbox('Отметки данного журнала отсутствуют в ERP/MES')
+        if not CQT.msgboxgYN('В МЕС не найдена отметка выгрузки в ERP.\nУдалить запись из трудозатрат в ERP по номеру журнала?'):
+            return
+    else:
+        if row['Дата выгрузки в ЕРП'] == '':
+            CQT.msgbox(f'Еще не выгружено')
+            return
+
+        if row['БД'] != '' and row['БД'] != self.USER_CONFIG.ERP_base_name['Значение']:
+            CQT.msgbox(f'БД ЕРП не совпадает с БД загрузки Трудов')
+            return
+        fl_naid_key_row_for_delete, list_etaps_for_del = find_mes_key(self, file_and_data_for_update_mes_db)
+
 
     if not fl_naid_key_row_for_delete:
         if not CQT.msgboxgYN(f'В ЕРП не найдены записи для удаления.\n'
@@ -618,8 +638,11 @@ def btn_start_etap_erp(self:mywindow, *args):
         CQT.msgbox(f'Не выбрана строка')
         return
     ref_key = row['Ref_Key']
-    name_obj = row['Номер']
-    code, state = APIERP.patch_state_doc_znpr(ref_key,name_obj,{"Статус": "Начат","ФактическоеНачалоЭтапа":F.now("%d.%m.%Y %H:%M:%S")},erp_base_name=self.ERP_base_name)
+    name_obj = row['Номер'] # 05.03.2026
+    body = {"Статус": "Начат"}
+    if row['ФактНачало'] == '0001-01-01':
+        body["ФактическоеНачалоЭтапа"] = F.now("%d.%m.%Y %H:%M:%S")
+    code, state = APIERP.patch_state_doc_znpr(ref_key,name_obj, body, erp_base_name=self.ERP_base_name)
     if code != 200:
         CQT.msgbox(state)
         return
@@ -664,7 +687,7 @@ def viev_etaps_name_itemSelectionChanged(self:mywindow,*args):
     if row == {}:
         CQT.msgbox(f'Не выбран этап')
         return
-    if row['Статус'] in ("Формируется","Сформирован","КВыполнению"):
+    if row['Статус'] in ("Формируется","Сформирован","КВыполнению","Завершен"):
         self.ui.btn_start_etap_erp.setEnabled(True)
     else:
         self.ui.btn_start_etap_erp.setEnabled(False)

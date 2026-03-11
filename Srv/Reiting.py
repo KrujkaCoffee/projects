@@ -3,6 +3,7 @@ import builtins
 import ipaddress
 import subprocess
 import socket
+import copy
 
 if socket.gethostname() == 'SRV-MES':#"POW-ING22":
     logging.basicConfig(filename=r'C:\srv_mes\srv_mes\db_logs\Reiting.log', level=logging.INFO, force=True, encoding='utf-8')
@@ -28,7 +29,6 @@ if __name__ != '__main__':
 import requests
 import project_cust_38.Cust_Functions as F
 import time
-import copy
 import project_cust_38.report_ci as reports
 import project_cust_38.Cust_SQLite as CSQ
 import project_cust_38.Cust_Qt as CQT
@@ -162,8 +162,15 @@ class DbCacheCleaner:
 # -- 28.10.25
 
 
-# ++ 25.01.26
+# ++ 02.02.26
 class AutoBreaks:
+    class NaryadInfo(typing.NamedTuple):
+        naryad_id: int
+        fio: str
+        ref: str
+        is_idle: bool
+        interval: int | float
+
     def get_dict_worker_breaks_by_worker_ref(self):
         query_schedules = """
                           SELECT employee_phys_ref, period, schedule, error_margin
@@ -187,6 +194,48 @@ class AutoBreaks:
         b = datetime.strptime(t2, fmt)
         return int((a - b).total_seconds() // 60)
 
+    def prepare_date(self):
+        ago = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+        result = CMS.get_start_stop_journal_pairs(between_start_datetime=ago)
+        dict_employee = CMS.dict_emploee_full(USRCNF.Config.project.db_users)
+
+        idle_codes = CSQ.custom_request_c(
+            USRCNF.Config.project.db_naryad,
+            f'SELECT code FROM коды_веплана_для_наряда WHERE name = "Простой"',
+            one_column=True,
+            hat_c=False
+        )
+        naryads = []
+        for segment_journal in result:
+            fio_segment = segment_journal['ФИО']
+            pk_naryad = segment_journal['Номер_наряда']
+            interval = segment_journal['duration_min']
+            limit_minutes = 15 * 60
+            if interval > limit_minutes:
+                print(f'Наряд #{pk_naryad} был проигнорирован т.к. интервал отрезка равен {interval}')
+                continue
+            if fio_segment not in dict_employee:
+                continue
+            profile = dict_employee[fio_segment]
+            phys_ref = profile['ID_ФизЛица']
+
+            code_vneplan = CSQ.custom_request_c(
+                USRCNF.Config.project.db_naryad,
+                f'SELECT Внеплан FROM naryad WHERE Пномер = {pk_naryad}',
+                one_column=True,
+                one=True,
+                hat_c=False
+            )
+            is_idle = code_vneplan in idle_codes
+            yield AutoBreaks.NaryadInfo(
+                naryad_id=pk_naryad,
+                is_idle=is_idle,
+                fio=fio_segment,
+                ref=phys_ref,
+                interval=interval
+            )
+        return naryads
+
     def run(self):
         """
         Создание перерывов в нарядах
@@ -201,138 +250,138 @@ class AutoBreaks:
             например наряд начался в 6:53 окончился в 14:35, сдвигаем концовку до 14:30
         """
 
-        ago = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
-        result = CMS.get_start_stop_journal_pairs(between_start_datetime=ago)
+        schedules_by_user_ref = self.get_dict_worker_breaks_by_worker_ref()
         dict_employee = CMS.dict_emploee_full(USRCNF.Config.project.db_users)
 
-        idle_codes = CSQ.custom_request_c(
-            USRCNF.Config.project.db_naryad,
-            f'SELECT code FROM коды_веплана_для_наряда WHERE name = "Простой"',
-            one_column=True,
-            hat_c=False
-        )
+        naryads = self.prepare_date()
         messages = []
-        schedules = self.get_dict_worker_breaks_by_worker_ref()
-        self.replaced_pk = {}
-        for segment_journal in result:
-            fio_segment = segment_journal['ФИО']
-            pk_naryad = segment_journal['Номер_наряда']
 
-            end_status = segment_journal['end_status']
-            interval = segment_journal['duration_min']
-            start_datetime_str = segment_journal['start_dt']
-            end_datetime_str = segment_journal['end_dt']
-
-            limit_minutes = 15 * 60
-            if interval > limit_minutes:
-                print(f'Наряд #{pk_naryad} был проигнорирован т.к. интервал отрезка равен {interval}')
+        for item in naryads:
+            if item.ref not in schedules_by_user_ref:
                 continue
-            if fio_segment not in dict_employee:
-                continue
-            profile = dict_employee[fio_segment]
-            phys_ref = profile['ID_ФизЛица']
-
-            worker_schedules = schedules.get(phys_ref, [])
-            if not worker_schedules: continue
-
-            start_datetime = datetime.strptime(segment_journal['start_dt'], '%Y-%m-%d %H:%M:%S')
-            start_date_str = datetime.strftime(start_datetime, '%Y-%m-%d')
-            end_datetime = datetime.strptime(segment_journal['end_dt'], '%Y-%m-%d %H:%M:%S')
-            end_date_str = datetime.strftime(end_datetime, '%Y-%m-%d')
-
-            for schedule in worker_schedules:
-                start_journal_pk = self.find_last_key(segment_journal['start_pnomer'])
-                end_journal_pk = self.find_last_key(segment_journal['end_pnomer'])
-                start_period_hour, end_period_hour = schedule['schedule'].split('-')
-                if abs(self.minutes_diff_hhmm(start_period_hour, end_period_hour)) >= interval:
-                    continue
-
-                error_margin = schedule.get('error_margin') and 0
-                start_period_datetime = datetime.strptime(f"{start_date_str} {start_period_hour}:00", '%Y-%m-%d %H:%M:%S')
-                start_period_datetime_with_margin = start_period_datetime + timedelta(minutes=error_margin)
-                end_period_datetime = datetime.strptime(f"{end_date_str} {end_period_hour}:00", '%Y-%m-%d %H:%M:%S')
-                end_period_datetime_with_margin = end_period_datetime - timedelta(minutes=error_margin)
-
-                # Старт до перерыва и находится в промежутке между стартом(с учетом margin) и концом отрезка
-                start_before_condition = start_datetime < start_period_datetime_with_margin and start_period_datetime_with_margin < end_datetime and end_datetime > end_period_datetime_with_margin
-                # Старт после начала перерыва(с учетом margin), не превышающий конец отрезка
-                start_after_condition = start_datetime > start_period_datetime_with_margin and start_datetime < end_period_datetime_with_margin
-
-                start_before_and_end_after_condition = start_datetime < start_period_datetime_with_margin and start_period_datetime_with_margin < end_datetime and end_datetime < end_period_datetime_with_margin
-
-                code_vneplan = CSQ.custom_request_c(
-                    USRCNF.Config.project.db_naryad,
-                    f'SELECT Внеплан FROM naryad WHERE Пномер = {pk_naryad}',
-                    one_column=True,
-                    one=True,
-                    hat_c=False
+            schedules = copy.deepcopy(schedules_by_user_ref[item.ref])
+            used_dates: set[str] = set()
+            while schedules:
+                schedule = schedules.pop(0)
+                journals = CMS.get_start_stop_journal_pairs(
+                    num_naryad=item.naryad_id,
+                    ex_fio=item.fio,
+                    between_start_datetime=(datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
                 )
-                is_idle = code_vneplan in idle_codes
-                template = {'Наряд': pk_naryad}
-                # if start_datetime < start_period_datetime_with_margin and start_period_datetime_with_margin < end_datetime:
-                if start_before_condition:
-                    journal = CMS.Jurnal_nar(USRCNF.Config.project.db_naryad, pk_naryad, user=fio_segment)
-                    journal.set_selected_fragment(start_journal_pk)
-                    schedule_start_datetime_str = f"{start_date_str} {start_period_hour}:00"
-                    schedule_end_datetime_str = f"{end_date_str} {end_period_hour}:00"
-                    pk_stop_by_scedule = journal.add_new_row(dict_employee, "", f"{start_date_str} {start_period_hour}:00", state='Приостановлен', primech='Перерыв начало', is_idle=is_idle)
-                    journal = CMS.Jurnal_nar(USRCNF.Config.project.db_naryad, pk_naryad, fio_segment)
-                    journal.set_selected_fragment(pk_stop_by_scedule)
-                    pk_start_by_schedule = journal.add_new_row(dict_employee, "", f"{end_date_str} {end_period_hour}:00", state='Начат', primech='Перерыв конец', is_idle=is_idle)
 
-                    row = journal.drop_row(end_journal_pk)
-                    old_comment = row['Примечание']
+                fio_segment = item.fio
+                pk_naryad = item.naryad_id
+                start_period_hour, end_period_hour = schedule['schedule'].split('-')
+                error_margin = schedule.get('error_margin') and 0
 
-                    journal = CMS.Jurnal_nar(USRCNF.Config.project.db_naryad, pk_naryad, fio_segment)
-                    journal.set_selected_fragment(pk_start_by_schedule)
-                    new_end_pk = journal.add_new_row(dict_employee, "", end_datetime_str, end_status,
-                                        primech=old_comment,
-                                        is_idle=is_idle)
-                    self.replaced_pk[end_journal_pk] = new_end_pk
+                for segment_journal in journals:
+                    end_status = segment_journal['end_status']
+                    interval = segment_journal['duration_min']
+                    start_datetime_str = segment_journal['start_dt']
+                    end_datetime_str = segment_journal['end_dt']
+                    used_dates.update((start_datetime_str, end_datetime_str))
+                    limit_minutes = 15 * 60
+                    if interval > limit_minutes:
+                        print(f'Наряд #{pk_naryad} был проигнорирован т.к. интервал отрезка равен {interval}')
+                        continue
 
-                    msg = f'Наряд {pk_naryad} создание перерывов Пауза - {schedule_start_datetime_str}; Начало - {schedule_end_datetime_str}'
-                    messages.append({**template, 'Инфо': msg})
-                    print(msg)
-                if start_after_condition:
-                    journal = CMS.Jurnal_nar(USRCNF.Config.project.db_naryad, pk_naryad, user=fio_segment)
-                    new_row_start = journal.drop_row(start_journal_pk)
-                    journal = CMS.Jurnal_nar(USRCNF.Config.project.db_naryad, pk_naryad, user=fio_segment)
+                    start_datetime = datetime.strptime(start_datetime_str, '%Y-%m-%d %H:%M:%S')
+                    start_date_str = datetime.strftime(start_datetime, '%Y-%m-%d')
 
-                    new_schedule_start_datetime_str = f"{start_date_str} {end_period_hour}:00"
-                    pk_start_by_schedule = journal.add_new_row(dict_employee, "", new_schedule_start_datetime_str, state='Начат', primech=' [Автоматические перерыва]Перенесено время старта', is_idle=is_idle)
-                    self.replaced_pk[start_journal_pk] = pk_start_by_schedule
+                    end_datetime = datetime.strptime(end_datetime_str, '%Y-%m-%d %H:%M:%S')
+                    end_date_str = datetime.strftime(end_datetime, '%Y-%m-%d')
+                    start_journal_pk = segment_journal['start_pnomer']
+                    end_journal_pk = segment_journal['end_pnomer']
+                    if abs(self.minutes_diff_hhmm(start_period_hour, end_period_hour)) >= interval:
+                        continue
 
-                    new_row_end = journal.drop_row(end_journal_pk)
-                    old_comment = new_row_end['Примечание']
+                    start_period_datetime = datetime.strptime(f"{start_date_str} {start_period_hour}:00", '%Y-%m-%d %H:%M:%S')
+                    start_period_datetime_with_margin = start_period_datetime + timedelta(minutes=error_margin)
+                    end_period_datetime = datetime.strptime(f"{end_date_str} {end_period_hour}:00", '%Y-%m-%d %H:%M:%S')
+                    end_period_datetime_with_margin = end_period_datetime - timedelta(minutes=error_margin)
 
+                    # Старт до перерыва и находится в промежутке между стартом(с учетом margin) и концом отрезка
+                    start_before_condition = start_datetime < start_period_datetime_with_margin and start_period_datetime_with_margin < end_datetime and end_datetime > end_period_datetime_with_margin
+                    # Старт после начала перерыва(с учетом margin), не превышающий конец отрезка
+                    start_after_condition = start_datetime > start_period_datetime_with_margin and start_datetime < end_period_datetime_with_margin
 
-                    journal = CMS.Jurnal_nar(USRCNF.Config.project.db_naryad, pk_naryad, fio_segment)
-                    journal.set_selected_fragment(pk_start_by_schedule)
-                    new_end_pk = journal.add_new_row(dict_employee, "", end_datetime_str, end_status,
-                                        primech=old_comment,
-                                        is_idle=is_idle)
-                    self.replaced_pk[end_journal_pk] = new_end_pk
+                    start_before_and_end_after_condition = start_datetime < start_period_datetime_with_margin and start_period_datetime_with_margin < end_datetime and end_datetime < end_period_datetime_with_margin
+                    if start_before_condition == False and start_after_condition == False and start_before_and_end_after_condition == False:
+                        continue
+                    template = {'Наряд': pk_naryad}
+                    if start_before_condition:
+                        journal = CMS.Jurnal_nar(USRCNF.Config.project.db_naryad, pk_naryad, user=fio_segment)
+                        journal.set_selected_fragment(start_journal_pk)
 
-                    msg = f'Наряд {pk_naryad} сдвиг старта было: {start_datetime_str}; стало: {new_schedule_start_datetime_str}'
-                    messages.append({**template, 'Инфо': msg})
-                    print(msg)
+                        schedule_start_datetime_str = f"{start_date_str} {start_period_hour}:00"
+                        if schedule_start_datetime_str in used_dates:
+                            schedule_start_datetime_str = f"{start_date_str} {start_period_hour}:15"
+                        schedule_end_datetime_str = f"{end_date_str} {end_period_hour}:00"
+                        if schedule_end_datetime_str in used_dates:
+                            schedule_end_datetime_str = f"{end_date_str} {end_period_hour}:15"
 
-                if start_before_and_end_after_condition:
-                    journal = CMS.Jurnal_nar(USRCNF.Config.project.db_naryad, pk_naryad, user=fio_segment)
-                    new_row_end = journal.drop_row(end_journal_pk)
-                    old_comment = new_row_end['Примечание']
+                        pk_stop_by_scedule = journal.add_new_row(dict_employee, "", schedule_start_datetime_str, state='Приостановлен', primech='Перерыв начало', is_idle=item.is_idle)
+                        used_dates.add(schedule_start_datetime_str)
+                        journal.refresh()
+                        journal.set_selected_fragment(pk_stop_by_scedule)
+                        pk_start_by_schedule = journal.add_new_row(dict_employee, "", schedule_end_datetime_str, state='Начат', primech='Перерыв конец', is_idle=item.is_idle)
+                        used_dates.add(schedule_end_datetime_str)
 
-                    new_schedule_end_datetime_str = f"{end_date_str} {start_period_hour}:00"
-                    journal = CMS.Jurnal_nar(USRCNF.Config.project.db_naryad, pk_naryad, user=fio_segment)
-                    journal.set_selected_fragment(start_journal_pk)
-                    new_end_pk = journal.add_new_row(dict_employee, "", new_schedule_end_datetime_str, end_status,
-                                        primech=old_comment,
-                                        is_idle=is_idle)
-                    self.replaced_pk[end_journal_pk] = new_end_pk
+                        journal.refresh()
+                        journal.set_selected_fragment(pk_start_by_schedule)
+                        journal.update_row(
+                            dict_employee,
+                            "",
+                            journal_id=end_journal_pk,
+                            date_time=end_datetime_str,
+                            is_idle=item.is_idle,
+                            state=end_status
+                        )
+                        msg = f'Наряд {pk_naryad} создание перерывов Пауза - {schedule_start_datetime_str}; Начало - {schedule_end_datetime_str}'
+                        messages.append({**template, 'Инфо': msg})
+                        print(msg)
+                    if start_after_condition:
+                        new_schedule_start_datetime_str = f"{start_date_str} {end_period_hour}:00"
+                        if new_schedule_start_datetime_str in used_dates:
+                            new_schedule_start_datetime_str = f"{start_date_str} {end_period_hour}:15"
+                        journal = CMS.Jurnal_nar(USRCNF.Config.project.db_naryad, pk_naryad, user=fio_segment)
+                        journal.update_row(
+                            dict_employee,
+                            lbl_abstract_text="",
+                            journal_id=start_journal_pk,
+                            is_idle=item.is_idle,
+                            date_time=new_schedule_start_datetime_str,
+                        )
+                        used_dates.add(new_schedule_start_datetime_str)
+                        journal.refresh()
+                        journal.set_selected_fragment(start_journal_pk)
+                        journal.update_row(
+                            dict_employee,
+                            lbl_abstract_text="",
+                            journal_id=end_journal_pk,
+                            is_idle=item.is_idle,
+                            state=end_status,
+                            date_time=end_datetime_str
+                        )
 
-                    msg = f'Наряд {pk_naryad} сдвиг концовки было: {end_datetime_str}; стало: {new_schedule_end_datetime_str}'
-                    messages.append({**template, 'Инфо': msg})
-                    print(msg)
+                        msg = f'Наряд {pk_naryad} сдвиг старта было: {start_datetime_str}; стало: {new_schedule_start_datetime_str}'
+                        messages.append({**template, 'Инфо': msg})
+                        print(msg)
+                    if start_before_and_end_after_condition:
+                        journal = CMS.Jurnal_nar(USRCNF.Config.project.db_naryad, pk_naryad, user=fio_segment)
+                        new_schedule_end_datetime_str = f"{end_date_str} {start_period_hour}:00"
+                        if new_schedule_end_datetime_str in used_dates:
+                            new_schedule_end_datetime_str = f"{end_date_str} {start_period_hour}:15"
+                        journal.update_row(
+                            dict_employee,
+                            is_idle=item.is_idle,
+                            lbl_abstract_text="",
+                            journal_id=end_journal_pk,
+                            date_time=new_schedule_end_datetime_str,
+                        )
+                        msg = f'Наряд {pk_naryad} сдвиг концовки было: {end_datetime_str}; стало: {new_schedule_end_datetime_str}'
+                        messages.append({**template, 'Инфо': msg})
+                        print(msg)
         if messages:
             sender = CB24.B24Sender()
             sender.send_msg_table_by_action(
@@ -340,12 +389,8 @@ class AutoBreaks:
                 title='Автоматически перерывы',
                 tbl=messages)
 
-    def find_last_key(self, journal_pk: int):
-        while journal_pk in self.replaced_pk:
-            journal_pk = self.replaced_pk[journal_pk]
-        return journal_pk
 
-# -- 25.01.26
+# -- 02.02.26
 
 
 

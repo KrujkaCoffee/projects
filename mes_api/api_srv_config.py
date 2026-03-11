@@ -1,8 +1,9 @@
-﻿import socket
+import socket
+import os
 PORT = 20011
 IS_PROD= False
 if socket.gethostname() == 'POW18-15':#"POW-ING22":
-    HOST = '192.168.18.91'# AG local
+    HOST = '192.168.14.71'# AG local
     DIR_BUDGETS = r'C:\1c\Бюджеты\бюджеты'  # AG local
     PREFIX_DOWNLOAD_PATH = fr'C:\Python\gui_flet_mes\Modules_data'
     PREFIX_OPEN_LOCAL_DIR = fr'\\srv-fs\Disk_Z'
@@ -13,10 +14,9 @@ else:
     PREFIX_OPEN_LOCAL_DIR = fr'\\srv-fs\Disk_Z'
     IS_PROD =True
 # file server
+SHARED_FOLDER = r'C:\srv_mes\shared' #10.03.2026
+PASSWORD_STORAGE = os.path.join(SHARED_FOLDER, 'authenticate', 'Riba.pickle')
+
 FILES_PYTHON_INTERPRETER_PATH = r"C:\srv_mes\srv_mes\interpreter\python.zip"
 DIRECTORY_TO_ARCHIVE = r"C:\srv_mes\srv_mes\project_cust_38"
 ARCHIVE_NAME = "project_cust_38.zip"
-
-# SSL CERTS
-SSL_CRT_PATH = "C:\srv_mes\srv_mes\ssl_cert\certificate.crt"
-SSL_PRIVATE_KEY_PATH = "C:\srv_mes\srv_mes\ssl_cert\private.key"

@@ -189,7 +189,7 @@ class mywindow(QtWidgets.QMainWindow):
             is_dirty=self._mk_dirty.is_dirty,
             discard=self._discard_create_mk_changes,
             from_tabs={"Создание МК"},
-            allowed_tabs={"Номенклатура", "Брак"},
+            allowed_tabs={"Номенклатура", "Брак", "Просмотр структуры"},
             message="Вы покидаете вкладку «Создание МК» не сохранив данные.\nПри подтверждении данные будут очищены\nВы уверены что хотите покинуть вкладку?",
             title="Несохраненные данные",
             sub_tubs={self.ui.tabWidget_2},

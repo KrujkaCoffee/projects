@@ -113,10 +113,15 @@ class Resourse_mk():
             WindowTitle="Выбор этапов для операций"
         )
         if not resp: return
+        CMS.dict_rc(self, USRCNF.Config.project.db_users) # 27.02.2026
+        department_by_stage_name = {item['etaps_name']: item['Наим_ЕРП'] for _, item in self.DICT_RC.items()}
         for item in resp:
             dse_pk = int(item['ПномерДсе'])
             oper_pk = int(item['ПномерОперации'])
-            res[dse_pk]['Операции'][oper_pk]['Этап'] = item['Этап']
+            stage = item['Этап']
+            department = department_by_stage_name.get(stage)
+            res[dse_pk]['Операции'][oper_pk]['Этап'] = stage
+            res[dse_pk]['Операции'][oper_pk]['Опер_наименование_подразделения'] = department
         return res
 
     @CQT.onerror

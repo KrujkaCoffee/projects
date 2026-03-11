@@ -292,7 +292,7 @@ class FileStorage(BaseStorage):
             put_file_tmp = os.path.join(destination_dir, new_name)
             if docs_manager.is_docs_reference(filename):
                 content = docs_manager.load_docs_file(filename, nn)
-                put_file_tmp = os.path.join(destination_dir,content.filename) #17.11.25 fix filename
+                put_file_tmp = os.path.join(destination_dir, new_name) #17.11.25 fix filename
                 F.save_binary_convert_to_file(content.binary_content, put_file_tmp)
             else:
                 if not self.get_file_by_name(filename, put_file_tmp):

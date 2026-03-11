@@ -256,7 +256,7 @@ def get_wet_request(text: str, refs: Refs_wet | None = None, lazy_method_huours=
         if data_cach:
             delta = (F.now('') - F.strtodate(data_cach['date'])).seconds
             if F.strtodate(data_cach['date']) > date_limit_half:
-                print(f'wet_req end pc {(F.now('') - start).total_seconds()}')
+                print(f'wet_req end PC {(F.now('') - start).total_seconds()}')
                 return 200, data_cach['data']
 
         date_limit = F.date_add_time(now_date, hours=-lazy_method_huours)
@@ -271,7 +271,7 @@ def get_wet_request(text: str, refs: Refs_wet | None = None, lazy_method_huours=
             fl_naid_lazy = data[0]['s_num']
             file_hash_lazy = data[0]['hash_file']
             if F.strtodate(data[0]['resp_date']) >= date_limit:
-                print(f'wet_req end db {(F.now('') - start).total_seconds()}')
+                print(f'wet_req end DB {(F.now('') - start).total_seconds()}')
                 return 200, F.from_binary_pickle(data[0]['file'])
 
     try:

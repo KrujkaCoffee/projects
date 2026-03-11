@@ -456,11 +456,7 @@ def nomen_namee_by_code_array(body: NomenCodesArray):
     except Exception as e:
         logging.error('[Revit-api ошибка]', e)
     return []
-# app = FastAPI()
-# app.include_router(router)
 
 if __name__ == '__main__':
-
-
     import uvicorn
     uvicorn.run("app:app", reload=True, host='pow18-08', port=8000)

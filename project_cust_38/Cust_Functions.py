@@ -23,7 +23,9 @@ import json #18.08.25
 import hashlib
 import inspect
 from functools import wraps
-
+import uuid
+import win32com #27.02.2026
+import winreg
 try:
     print(f'import config try...')
     import config
@@ -46,6 +48,57 @@ except:
 
 if __name__ == 's__main__':
     exit()
+
+# ++27.02.2026
+
+def find_via_exe_name(app_name: str):
+    path = os.path.join(os.environ.get("PROGRAMDATA", ""), r"Microsoft\Windows\Start Menu\Programs")
+    start_menu_1c = pathlib.Path(path)
+    shell = win32com.client.Dispatch("WScript.Shell")
+
+    def resolve_lnk(lnk_path: pathlib.Path):
+        s = shell.CreateShortcut(str(lnk_path))
+        return s.TargetPath, s.Arguments, s.WorkingDirectory
+
+    for lnk in start_menu_1c.rglob("*.lnk"):
+        target, args, workdir = resolve_lnk(lnk)
+        if target.endswith(app_name):
+            return target
+
+def find_via_format_assoc(formats: tuple[str]):
+    def _reg_get(root, subkey):
+        try:
+            access = winreg.KEY_READ
+            with winreg.OpenKey(root, subkey, 0, access) as k:
+                val, _ = winreg.QueryValueEx(k, "")
+                return val
+        except OSError:
+            return None
+
+    def _extract_exe(cmd: str | None):
+        if not cmd:
+            return None
+        cmd = cmd.strip()
+        if cmd.startswith('"'):
+            end = cmd.find('"', 1)
+            return cmd[1:end] if end != -1 else None
+        return cmd.split(" ", 1)[0]
+    try:
+        for form in formats:
+            progid = _reg_get(winreg.HKEY_CLASSES_ROOT, form)
+            cmd = _reg_get(winreg.HKEY_CLASSES_ROOT, fr"{progid}\shell\open\command")
+            return _extract_exe(cmd)
+    except Exception as e:
+        print(e)
+
+def get_1c_executor_path():
+    variant_1 = find_via_format_assoc(('.v8l', '.v8i'))
+    if variant_1:
+        return variant_1
+    print('[find_via_format_assoc] неудачный поиск 1cestart.exe')
+    return find_via_exe_name("1cestart.exe")
+
+# --27.02.2026
 
 # ++ 11.08.25
 def check_network_drive_connection(network_drive: str = 'Z:', network_path: str = r"\\powerz\share\ProdSoft"):
@@ -302,6 +355,90 @@ class StatisticDecorator:
         pool.submit(self.task, start, data_for_task, args, kwargs)
         return result
 # --18.08.25
+
+class Cust_path:
+    def __init__(self, path: str):
+        self.original = path
+        self.path_str = self._normalize(path)
+        self.path = pathlib.Path(self.path_str)
+
+    def as_raw_literal(self) -> str:
+        return f'"{str(self.path)}"' 
+    
+    @staticmethod
+    def _normalize(path: str) -> str:
+        """
+        Превращает '\\\\1cv8\\\\common\\\\1cestart.exe'
+        в '1cv8\\common\\1cestart.exe'
+        и убирает двойные слеши.
+        """
+        if not path:
+            return ""
+
+        # убираем экранирование типа '\\\\'
+        cleaned = path.replace('\\\\', '\\')
+
+        # нормализуем разделители под текущую ОС
+        cleaned = os.path.normpath(cleaned)
+
+        return cleaned
+
+    def exists(self) -> bool:
+        return self.path.exists()
+
+    def create(self, is_file: bool = False) -> None:
+        """
+        Создаёт каталог или файл.
+        Если is_file=True — создаётся файл.
+        Если False — создаётся папка.
+        """
+        if self.exists():
+            return
+
+        if is_file:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.path.touch(exist_ok=True)
+        else:
+            self.path.mkdir(parents=True, exist_ok=True)
+
+    @property
+    def is_file(self) -> bool:
+        return self.path.is_file()
+
+    @property
+    def is_dir(self) -> bool:
+        return self.path.is_dir()
+
+    @property
+    def extension(self) -> str:
+        """
+        Возвращает расширение с точкой (.exe)
+        """
+        return self.path.suffix
+
+    @property
+    def name(self) -> str:
+        """
+        Имя с расширением
+        """
+        return self.path.name
+
+    @property
+    def stem(self) -> str:
+        """
+        Имя без расширения
+        """
+        return self.path.stem
+
+    @property
+    def parent(self) -> pathlib.Path:
+        return self.path.parent
+
+    def __str__(self):
+        return str(self.path)
+
+    def __repr__(self):
+        return f"Cust_path('{self.path}')"
 
 def path_to_execut_file_c(end_sep = True):
     is_subprocess = not getattr(sys.modules['__main__'], '__file__', False) # 21.11.25
@@ -1197,7 +1334,7 @@ def user_name():
 def computer_name():
     return os.environ.get('COMPUTERNAME')
 
-def now(format="%Y-%m-%d %H:%M:%S"):
+def now(format="%Y-%m-%d %H:%M:%S")->datetime.datetime|str:
     """ use format = '' for return DT.today()"""
     if format == '':
         return DT.today()
@@ -1216,6 +1353,9 @@ def strtodate(str, format="%Y-%m-%d %H:%M:%S"):#"%d.%m.%Y"   "%Y-%m-%dT%H:%M:%S"
         if len(str) < 11:
             str += ' 00:00:00'
     return DT.strptime(str, format)
+
+def strtotime(str, format="%H:%M:%S")->datetime.time:#"%d.%m.%Y"   "%Y-%m-%dT%H:%M:%S"
+    return DT.strptime(str, format).time()
 
 
 def date_to_datetime(
@@ -1314,6 +1454,16 @@ def shtamp_from_date(date: str, format="%Y-%m-%d %H:%M:%S"):
     if format == '':
         return DT.timestamp(date)
     return DT.timestamp(strtodate(date, format))
+
+def date_add_seconds(date:str|datetime.datetime,seconds:int, format="%Y-%m-%d %H:%M:%S"):
+    fl_str = False
+    if isinstance(date,str):
+        date = strtodate(date,format)
+        fl_str = True
+    d2 = date + timedelta(seconds=int(seconds))
+    if fl_str:
+        return datetostr(d2,format)
+    return d2
 
 
 def date_add_time(date, time: str = '', format_time="%H:%M", hours: int = 0, minutes: int = 0):
@@ -1788,34 +1938,61 @@ def deploy_dict_old(list_dicts: list, name_key_column: str):
                 rez[dic[name_key_column]] = val
     return rez
 
+
 def deploy_dict_c(
-            list_dicts: list[dict],
-            name_key_column: str,
-            keep_key: bool = False
-            )->dict:
-    '''список словарей в словарь словарей по ключу. ключ не вкладывается на 2 уровень'''
+        list_dicts: list[dict],
+        name_key_column: str | tuple,
+        keep_key: bool = False
+) -> dict[dict]:
+    '''список словарей в словарь словарей по ключу. ключ не вкладывается на 2 уровень
+
+    Args:
+        list_dicts: список словарей для преобразования
+        name_key_column: ключ или кортеж ключей для составного ключа
+        keep_key: сохранять ли ключ(и) в результирующих словарях
+
+    Returns:
+        словарь словарей с составным ключом
+    '''
     if not list_dicts:
         return {}
+
     result = {}
     for dic in list_dicts:
         if not isinstance(dic, dict):
             continue
-    
-        if name_key_column not in dic:
-            continue
-    
-        main_key = dic[name_key_column]
-    
-        if keep_key:
-            other_items = dic.copy()
+
+        # Проверяем наличие всех ключей для составного ключа
+        if isinstance(name_key_column, tuple):
+            # Для составного ключа проверяем наличие всех ключей
+            if not all(key in dic for key in name_key_column):
+                continue
+
+            # Создаем составной ключ как кортеж значений
+            main_key = tuple(dic[key] for key in name_key_column)
+
+            if keep_key:
+                other_items = dic.copy()
+            else:
+                # Исключаем все ключи, входящие в составной ключ
+                other_items = {k: v for k, v in dic.items() if k not in name_key_column}
         else:
-            other_items = {k: v for k, v in dic.items() if k != name_key_column}
-    
+            # Обработка простого ключа (без изменений)
+            if name_key_column not in dic:
+                continue
+
+            main_key = dic[name_key_column]
+
+            if keep_key:
+                other_items = dic.copy()
+            else:
+                other_items = {k: v for k, v in dic.items() if k != name_key_column}
+
         if not keep_key and len(other_items) == 1:
             result[main_key] = next(iter(other_items.values()))
         else:
             result[main_key] = other_items
-    
+
     return result
 
 def get_key_index_dict(dictionary, target_key):
@@ -1851,7 +2028,7 @@ def insert_key_to_dicts(list_of_dicts, insert_index, new_key, default_value=None
                 new_dict[new_key] = default_value
             new_dict[key] = value
         # Если insert_index находится после всех элементов
-        if insert_index >= len(original_dict):
+        if insert_index >= len(original_dict) or insert_index == -1:
             new_dict[new_key] = default_value
         modified_list.append(new_dict)
     return modified_list
@@ -2578,6 +2755,11 @@ def replace_forbidden_symbols_for_1c_sql(string: str) -> str: #27.08.25
         string = string.replace(_from, _to)
     return string
 
+def uuid_to_1c_ref(guid_str: str) -> str:
+    parts = guid_str.lower().split("-")
+    p1, p2, p3, p4, p5 = parts
+    return p4 + p5 + p3 + p2 + p1
+
 # 29.08.25
 def restore_uuid_from_client_1C_reference(client_ref: str) -> str | None:
     """
@@ -2597,6 +2779,7 @@ def restore_uuid_from_client_1C_reference(client_ref: str) -> str | None:
     p1 = s[20:24]
     p0 = s[24:32]
     return f"{p0}-{p1}-{p2}-{p3}-{p4}"
+
 
 
 def to_pep8_name(input_string: str) -> str:

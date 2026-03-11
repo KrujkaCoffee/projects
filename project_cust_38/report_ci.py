@@ -42,18 +42,7 @@ try:
     import plotly.graph_objects as go
 except:
     print(f'!!! ERROR IMPORT  MODULE plotly')
-try:
-    import grafics as GR
-except:
-    print(f'!!! ERROR IMPORT  MODULE grafics')
-try:
-    import gant_ploty as gp
-except:
-    print(f'!!! ERROR IMPORT  MODULE gant_ploty')
-try:
-    import arm_pr_oper
-except:
-    print(f'!!! ERROR IMPORT  MODULE arm_pr_oper')
+
 
     
 
@@ -2922,6 +2911,9 @@ def create_gant(self, *args):
         return fig
 
     def fig_gr_vnepl_rab(self, spis, napravl=''):
+        gp = check_import_modyle('gant_ploty')
+        if gp is None:
+            import gant_ploty as gp
         # ['Месяц', 'Внеплан, н-см.', 'Сумм св_швов, м.', 'Брак производственный', 'Ошибка нормирования и технологии', 'Доработка КД', 'Обучение', 'Работы на внешней площадке', 'Ошибка планирования нарядов', 'Отсутвие заказа на производство', 'Доработка оборудования(исправление чужого брака)', 'Цеховая оснастка', 'Простой']
         month = [_[0] for _ in spis[1:]]
         DICT_FORM = {'Месяц': ["", " "],
@@ -4270,6 +4262,9 @@ def jurnal_rabot(self, data_nach, data_kon, *args): #28.01.2026
 
 @CQT.onerror
 def plan_rabot_preload(self, nach, konec, podrazd):
+    gp = check_import_modyle('gant_ploty')
+    if gp is None:
+        import gant_ploty as gp
     list_tables = CSQ.get_list_of_tables_c(self.bd_users)
     max_date = 'mtdz_2000_06_01'
     for table in list_tables:
@@ -4296,8 +4291,17 @@ def plan_rabot_preload(self, nach, konec, podrazd):
     return rez_spis
 
 
+def check_import_modyle(name: str) -> object:
+    import sys
+    return next((mod for mod_name, mod in sys.modules.items() if name == mod_name.split('.')[-1]), None)
+
+
+
 @CQT.onerror
 def ponedelniy_grafik_vir_otgr(self, data_nach, data_kon, etap, *args):
+    GR = check_import_modyle('grafics')
+    if GR is None:
+        import grafics as GR
     KOEFF_TKANI = 1
     self.debug = []
     tmp_data = F.strtodate(data_nach)
@@ -5762,7 +5766,7 @@ def vneplan_po_napravl(self, data_nach, data_kon, vid, etap='Сборка+сва
         return
         # F.save_file('vneplan_data.txt',summ_list_vneplan)
     if generate_graf:
-        # fig = GR.test()
+
         list_delete = []
         for column in range(1, len(rez[0])):
             delete_ = True
@@ -5781,6 +5785,9 @@ def vneplan_po_napravl(self, data_nach, data_kon, vid, etap='Сборка+сва
 
 
 def plan_fact_mes(self, data_nach, data_kon, vid, *args):
+    GR = check_import_modyle('grafics')
+    if GR is None:
+        import grafics as GR
     def clac_fio_for_pfanal(self, fio, summ_ves_vir_vneplan, time):
         if fio != '' and fio in self.DICT_EMPLOEE:
             prof = self.DICT_EMPLOEE[fio]
@@ -7085,6 +7092,9 @@ def clck_otch(self: mywindow, *args):
         CQT.set_color_wtab_c(self.ui.tbl_report_c, row, nk_prim, 245, 245, 245)
 
     if self.vid_report_c == "Трудозатраты":
+        arm_pr_oper = check_import_modyle('arm_pr_oper')
+        if arm_pr_oper is None:
+            import arm_pr_oper
         arm_pr_oper.fill_tbl_report_add(self)
 
     if self.vid_report_c == "Отчетность персонала":

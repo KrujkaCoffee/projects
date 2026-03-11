@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'C:\Python\Mkarti\dialog.ui'
+# Form implementation generated from reading ui file 'C:\Python\Terminal_vip_new\dialog.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.10
 #
@@ -40,6 +40,14 @@ class Ui_Dialog(object):
         self.fr_figures.setFrameShape(QtWidgets.QFrame.StyledPanel)
         self.fr_figures.setFrameShadow(QtWidgets.QFrame.Raised)
         self.fr_figures.setObjectName("fr_figures")
+        self.verticalLayout_6 = QtWidgets.QVBoxLayout(self.fr_figures)
+        self.verticalLayout_6.setContentsMargins(0, 0, 0, 0)
+        self.verticalLayout_6.setSpacing(3)
+        self.verticalLayout_6.setObjectName("verticalLayout_6")
+        self.lbl_img = QtWidgets.QLabel(self.fr_figures)
+        self.lbl_img.setText("")
+        self.lbl_img.setObjectName("lbl_img")
+        self.verticalLayout_6.addWidget(self.lbl_img)
         self.fr_groups = QtWidgets.QFrame(self.splitter_3)
         self.fr_groups.setMinimumSize(QtCore.QSize(0, 200))
         self.fr_groups.setFrameShape(QtWidgets.QFrame.StyledPanel)

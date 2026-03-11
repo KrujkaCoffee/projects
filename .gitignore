@@ -22,3 +22,7 @@ css/*
 .pickle
 notes
 *.pickle
+*.db
+*.vbs
+*.bat
+*.txt

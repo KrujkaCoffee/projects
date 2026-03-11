@@ -320,6 +320,12 @@ def auto_pick_yellow_inputs(input_vals: dict, overwrite: bool = True) -> tuple[d
             + (f" ({u0_note})" if u0_note else "")
         )
         ok = True
+    accuracy = {item['name']: item.get('accuracy') or 2 for item in INPUT_PARAMS}
+    picked = {
+        k: round(v, accuracy.get(k, 2)) if isinstance(v, float)  else v
+        for k, v in picked.items()
+    }
+
     return picked, note, ok
 
 
@@ -1416,6 +1422,7 @@ def save_in_db(e: ft.ControlEvent, name: str):
         return False
 
 def clean_unicode(string):
+    if not isinstance(string, str): return ''
     return ''.join(symbol for symbol in string if not (0x2790 <= ord(symbol) <= 0x27BF))
 
 def save_word(list_dict_rez_input: list, list_dict_rez_output: list, name: str, dir_save: str, name_module: str) -> str | bool:
