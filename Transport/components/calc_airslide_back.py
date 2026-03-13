@@ -1,4 +1,5 @@
 ﻿import os
+import pathlib
 
 import components.common_funcs as CMF
 from components.common_funcs import Table_data
@@ -452,6 +453,7 @@ def save_exel(list_dict_rez_input: list, list_dict_rez_output: list, name: str, 
     name_file = f'{name}.docx'
     template_path = os.path.join(SRVCFG.DOCX_TEMPLATES_PATH, 'report.docx')
     path = os.path.join(dir_save, name_file)
+    pathlib.Path(dir_save).mkdir(parents=True, exist_ok=True)
     rez = CEX.make_docx_report(name_module, list_dict_rez_input, list_dict_rez_output, output_docx_path=path,
                            template_name=template_path)
     # rez = CEX.zap_spis(rez_spis, folder, name_file, '1', 1, 1, return_putf=True)

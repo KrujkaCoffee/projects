@@ -5,6 +5,7 @@ import components.plug_page as PLUG
 import components.calc_pneumo as MCP
 import components.calc_silencer as MCS
 import components.calc_blower_zigel as MCBZ
+import components.calc_pneumo_pkn as MCPPKN
 import components.calc_airslide as MCA
 import components.calc_pneumatic_jet as MCPj
 import data_class as DTCLS
@@ -26,6 +27,12 @@ modules.sub_modules["modules"].add_submodule(DTCLS.ModuleCfg("pneumatic_transpor
                               "ПО для расчета пневмотранспорта",
                                                              ft.Icons.AIR,
                               'Задача № 100050625'))
+
+modules.sub_modules["modules"].add_submodule(DTCLS.ModuleCfg("pneumatic_transport_pkn",
+                              "/modules/pneumatic_transport_pkn",
+                              "ПО для расчета пневмотранспорта ПКН",
+                                                             ft.Icons.AIR,
+                              'Новый отдельный расчет по методике ПКН'))
 
 
 modules.sub_modules["modules"].add_submodule(DTCLS.ModuleCfg("airslide",
@@ -186,6 +193,9 @@ async def load_module(page: ft.Page):
     if page.route == ("/modules/pneumatic_transport_dev"):
         MCP.apply_page_settings(page,modules.get_module_by_route(page.route))
         return MCP.gen_page(page)
+    if page.route == ("/modules/pneumatic_transport_pkn"):
+        await MCPPKN.apply_page_settings(page,modules.get_module_by_route(page.route))
+        return await MCPPKN.gen_page(page)
     if page.route == ("/modules/airslide"):
         MCA.apply_page_settings(page,modules.get_module_by_route(page.route))
         return MCA.gen_page(page)

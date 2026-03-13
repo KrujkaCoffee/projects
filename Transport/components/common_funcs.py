@@ -2077,7 +2077,6 @@ def dialog_save_file(e: ft.ControlEvent, pathf: str):
     port_api = Data.Data_vars.DOWNLOAD_TEMP_FILE
     download_url = '/'.join(
         ['http:/', f"{Data.Data_srv.ip}:{port_api}", 'hs/mes/download-temp', Data.Data_module.alias, file_name])
-    print(pathf)
     e.page.run_task(launch_url, page=e.page, url=download_url)
     # e.page.launch_url(download_url)
 

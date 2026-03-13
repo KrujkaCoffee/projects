@@ -10,7 +10,7 @@ import project_cust_38.Cust_SQLite as CSQ
 import components.common_funcs as CMF
 from typing import Any
 import project_cust_38.Cust_Functions as F
-from middleware import current_win_user
+from middleware import current_auth_user as current_win_user
 
 """
 Роль	Описание / Назначение
@@ -74,7 +74,15 @@ class Bio_client():
 
 
 class Client_config():
-    def __init__(self,        db_flet:str,         ip:str,        hostname:str,    theme_mode_dark:bool|int,    color_scheme_seed:str    ):
+    def __init__(
+            self,
+            db_flet:str,
+            ip:str,
+            hostname:str,
+            theme_mode_dark:bool|int,
+            color_scheme_seed:str   ,
+            login: str
+    ):
         print(f'==== INIT Client_config {ip} =======')
         self.ip:str = ip
         self.hostname:str = hostname
@@ -82,7 +90,7 @@ class Client_config():
         self.color_scheme_seed:str = color_scheme_seed
         self.db_flet:str = db_flet
         self.db_users = MESCNF.Config.project.db_users
-        self.login = current_win_user.get() or None
+        self.login = login
         if self.login:
             print('Поиск пользователя по WINDOWS AUTH LOGIN')
             data_bio_client = CSQ.custom_request_c(
@@ -124,7 +132,7 @@ class Client_config():
 class Client_data():
     def __init__(self,page:ft.Page):
         self.ip = None
-        self.login = current_win_user.get()
+        self.login = page.session.store.get("auth_login")
         self.platform = None
         self.window_size = (None, None)
         self.user_agent = None
@@ -172,7 +180,8 @@ class Client_data():
                                         conf[0]['ip'],
                                        conf[0]['hostname'],
                                        conf[0]['theme_mode_dark'],
-                                       conf[0]['color_scheme_seed'])
+                                       conf[0]['color_scheme_seed'],
+                                         self.login)
 
     def apply_theme_mode(self,page):
         if self.user_config.theme_mode_dark:

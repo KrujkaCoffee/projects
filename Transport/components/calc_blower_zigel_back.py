@@ -1251,6 +1251,8 @@ def calc_new_data(input_data: dict) -> tuple[dict, list[dict], bool]:
         return out, errs, False
     return out, [], True
 
+def validate_result(result: dict[str, float | int]):
+    ...
 
 def generate_rez_tbl(e: ft.ControlEvent, tbl: ft.DataTable, ref_out, fnc_cell_click=None) -> bool | None:
     """Генерация таблицы результатов."""

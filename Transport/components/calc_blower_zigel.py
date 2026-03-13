@@ -91,8 +91,8 @@ def save_word(e: ft.ControlEvent):
         show_msgbox_err(e)
         return
     else:
-        if not blower_back.save_in_db(e, name):
-            return
+        # if not blower_back.save_in_db(e, name):
+        #     return
         CMF.dialog_save_file(e, rez)
         return
 

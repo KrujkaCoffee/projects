@@ -1,70 +1,105 @@
+from __future__ import annotations
+
 import contextvars
+from http.cookies import SimpleCookie
+from urllib.parse import quote
 
-import flet as ft
+from auth_backend import SESSION_COOKIE_NAME, SESSIONS
 
-import win32api
-import win32security
-
-
-current_win_user = contextvars.ContextVar("win_user", default="")
+current_auth_user = contextvars.ContextVar("auth_user", default=None)
 
 
-def user_from_iis_token_handle(token_handle_hex: str) -> str:
-    """token_handle_hex берём из заголовка X-IIS-WindowsAuthToken."""
-    token_handle_hex = (token_handle_hex or "").strip()
-    if token_handle_hex.lower().startswith("0x"):
-        token_handle_hex = token_handle_hex[2:]
-
-    h = int(token_handle_hex, 16)
-    try:
-        sid = win32security.GetTokenInformation(h, win32security.TokenUser)[0]
-        user, domain, _ = win32security.LookupAccountSid(None, sid)
-        return f"{domain}\\{user}"
-    finally:
-        win32api.CloseHandle(h)
-
-
-class IISWindowsUserMiddleware:
-    """ASGI middleware: на каждом HTTP/WS запросе читает X-IIS-WindowsAuthToken
-    и сохраняет user в contextvar на время обработки соединения.
-    """
-    def __init__(self, app):
+class SessionAuthMiddleware:
+    def __init__(self, app, login_path: str = "/auth/login", public_prefixes: tuple[str, ...] = ("/auth",)):
         self.app = app
+        self.login_path = login_path
+        self.public_prefixes = public_prefixes
 
     async def __call__(self, scope, receive, send):
-        headers = {}
-        for k, v in scope.get("headers", []):
-            headers[k.decode("latin1").lower()] = v.decode("latin1")
+        scope_type = scope.get("type")
+        if scope_type not in {"http", "websocket", "lifespan"}:
+            await self.app(scope, receive, send)
+            return
 
-        token = headers.get("x-iis-windowsauthtoken", "")
-        user = ""
-        if token:
-            try:
-                user = user_from_iis_token_handle(token)
-            except Exception:
-                user = ""
+        if scope_type == "lifespan":
+            await self.app(scope, receive, send)
+            return
 
-        ctx = current_win_user.set(user)
+        path = scope.get("path", "") or "/"
+
+        if self._is_public_path(path):
+            await self.app(scope, receive, send)
+            return
+
+        sid = self._parse_cookie(scope, SESSION_COOKIE_NAME)
+        user = SESSIONS.get(sid)
+
+        if not user:
+            if scope_type == "websocket":
+                await send({"type": "websocket.close", "code": 1008})
+                return
+
+            method = (scope.get("method") or "GET").upper()
+            if method in {"GET", "HEAD"}:
+                next_url = self._build_next_url(scope)
+                location = f"{self.login_path}?next={quote(next_url, safe='/?:=&')}"
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": 302,
+                        "headers": [(b"location", location.encode("utf-8"))],
+                    }
+                )
+                await send({"type": "http.response.body", "body": b""})
+                return
+
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 401,
+                    "headers": [(b"content-type", b"text/plain; charset=utf-8")],
+                }
+            )
+            await send({"type": "http.response.body", "body": b"Authentication required"})
+            return
+
+        scope.setdefault("state", {})
+        scope["state"]["auth_user"] = user
+        scope["state"]["auth_sid"] = sid
+
+        ctx = current_auth_user.set(user)
         try:
             await self.app(scope, receive, send)
         finally:
-            current_win_user.reset(ctx)
+            current_auth_user.reset(ctx)
 
+    def _is_public_path(self, path: str) -> bool:
+        for prefix in self.public_prefixes:
+            normalized = prefix.rstrip("/")
+            if path == normalized or path.startswith(normalized + "/"):
+                return True
+        return False
 
+    @staticmethod
+    def _parse_cookie(scope, name: str) -> str | None:
+        raw_cookie = None
+        for key, value in scope.get("headers", []):
+            if key == b"cookie":
+                raw_cookie = value.decode("utf-8", "ignore")
+                break
 
-if __name__ == "__main__":
-    async def main(page: ft.Page):
-        user = current_win_user.get() or "unknown"
+        if not raw_cookie:
+            return None
 
-        page.session.set("win_user", user)
+        cookie = SimpleCookie()
+        cookie.load(raw_cookie)
+        morsel = cookie.get(name)
+        return morsel.value if morsel else None
 
-        page.add(
-            ft.Text(f"Windows user: {user}")
-        )
-    _inner = ft.app(main, export_asgi_app=True, host='localhost', port=6000)
-    app = IISWindowsUserMiddleware(_inner)
-
-    # ft.run(main)
-    # ft.app(target=main,
-    #        host='localhost',
-    #        )
+    @staticmethod
+    def _build_next_url(scope) -> str:
+        path = scope.get("path", "/") or "/"
+        query_string = scope.get("query_string", b"").decode("utf-8", "ignore")
+        if query_string:
+            return f"{path}?{query_string}"
+        return path
