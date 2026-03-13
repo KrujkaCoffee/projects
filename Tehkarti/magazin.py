@@ -200,6 +200,7 @@ def magazin_primenit(self):
     CSQ.close_bd(conn)
     spis = []
     front_spis = []
+    table_data = []
     for k in range(len(list_check)):
         for i in range(1, len(query)):
             if query[i][0] == list_check[k]:
@@ -211,6 +212,11 @@ def magazin_primenit(self):
                         front_spis.append(tab * ur + j[:len_msg] + '...')
                     else:
                         front_spis.append(tab * ur + j)
+                    ##
+                    table_data.append({
+
+                    })
+
                 break
     frase = "\n".join(front_spis)
     rez = CQT.msgboxgYN(f'Подтверждаешь применение к ТК, блоков?:\n{frase}')

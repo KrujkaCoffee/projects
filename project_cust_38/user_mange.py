@@ -18,8 +18,9 @@ class FetchAction(enum.Enum):
     CHECK_PASSWORD = "authenticate"
     REGISTER = "register"
     CHANGE_PASSWORD = "change-password"
+    CHECK_LAST_UPDATE_PASSWORD_DATE = "check-actual-password"
 
-def fetch_api(fio: str, password: str, update_date: bool = True,
+def fetch_api(fio: str, password: str = "", update_date: bool = True,
                           action: FetchAction = FetchAction.CHECK_PASSWORD) -> bool | None:
     endpoint = action.value
     response = requests.post(
@@ -50,6 +51,9 @@ class UserManager:
         setattr(self.window, "glob_ima", fio)
         setattr(self.window, "glob_fio", fio)
 
+    def check_actual_password(self, fio: str) -> bool:
+        res = fetch_api(fio, action=FetchAction.CHECK_LAST_UPDATE_PASSWORD_DATE)
+        return res
 
     def reg_new_user(self):
         ima = CMS.name_by_empl_c(self.combo_fio.currentText())

@@ -2005,103 +2005,270 @@ class Pozition():
         self.update_day_plan_etap_jurnal(dict_days,clear_upd=True)
         return dict_days
 
+
+class Tech_mat():
+    def __init__(self, parent:Tech_oper, cod,
+                        naimen,
+                        ed_izm,
+                        norma):
+        self.parent:Tech_oper = parent
+        self.cod:str = cod
+        self.naimen:str = naimen
+        self.ed_izm:str = ed_izm
+        self.norma:str = norma
+
+    def __repr__(self):
+        return f'{self.cod} {self.naimen} {self.norma} {self.ed_izm}'
+    
+    def template(self):
+        return f'{(self.parent.lvl+1)*'        '}*{str(self)}'
+    
+class Tech_pereh():
+    def __init__(self,parent:Tech_oper,list_data:list):
+        self.parent:Tech_oper = parent
+        if list_data[16] == '':
+            self.params_dict = dict()
+        else:
+            self.params_dict = eval(list_data[16])
+
+        self.name_ver:str =  list_data[0]
+        self.doc_mark:str =  list_data[1]
+        self.doc_card:str =  list_data[13].split("$")
+        self.s_name:str =  list_data[2]
+        self.s_name_full:str =  list_data[3]
+        self.t_sht:float =  F.valm(list_data[7])
+        self.params:str =  list_data[14].split("$")
+        self.prisposobs:str =  list_data[11].split("$")
+        self.instrums:str =  list_data[12].split("$")
+
+        self.lvl:int =  int(list_data[20])
+        
+    def __repr__(self):
+        return f'{self.s_name} {self.name_ver}'
+
+    def template(self):
+        return f'{self.lvl*'        '}{str(self)}'
+    
+    def get_dict_params(self):
+        return self.params_dict
+    
+class Tech_oper():
+    def __init__(self,parent:Tech_kard,list_data:list):
+        self.parent:Tech_kard = parent
+        if list_data[0] not in self.parent.parent.DICT_KOD_OPER:
+            CQT.msgbox(
+                f"{self.parent.parent.nn} Операция ``{list_data[0]}`` не найдена в"
+                        f" БД для {CFG.Config.user_config.Organization['Значение']}")
+            raise ValueError
+        self.materials:list[Tech_mat] = self.unpack_materials(list_data[10].split("{"))
+        self.perehs:list[Tech_pereh] = []
+
+        if list_data[16] == '':
+            self.params_dict = dict()
+        else:
+            self.params_dict = eval(list_data[16])
+
+        if self.parent.parent.check_val_on_unrecalcitrant_mark(list_data[7]):
+            self.t_sht = list_data[7]
+        else:
+            self.t_sht = F.valm(list_data[7])
+
+        if self.parent.parent.check_val_on_unrecalcitrant_mark(list_data[6]):
+            self.t_pz = list_data[6]
+        else:
+            self.t_pz = F.valm(list_data[6])
+
+        if list_data[8] not in self.parent.parent.DICT_PROFESSIONS:
+            if self.parent.parent.silent_mode:
+                return 
+            CQT.msgbox(f'Некорректный код профессии необходимо править техкарту: {self.parent.parent.nn}')
+            raise ValueError
+
+        self.cod:str =  self.parent.parent.DICT_KOD_OPER[list_data[0]]
+        self.name_ver:str =  list_data[0]
+        self.doc_mark:str =  list_data[1]
+        self.doc_card:str =  list_data[13].split("$")
+        self.doc:str =  list_data[15]
+        self.s_name:str =  list_data[2]
+        self.s_name_full:str =  list_data[3]
+        self.rab_centr:str =  list_data[4]
+        self.oborudovanie:str =  list_data[5]
+
+        self.profession:str =  list_data[8]
+        self.kr:int =  F.valm(list_data[9])
+
+        self.koid:int =  F.valm(list_data[11])
+        self.params:str =  list_data[14].split("$")
+        self.lvl:str =  int(list_data[20])
+            
+    def __repr__(self):
+        return f'{self.cod} {self.name_ver}, {len(self.materials)} materials, {len(self.perehs)} perehs'
+    
+    def template(self):
+        return f'{self.lvl*'        '}{str(self)}'
+
+    def get_dict_params(self)->dict:
+        rez = self.params_dict
+        for ph in self.perehs:
+            rez.update(ph.get_dict_params())
+        return rez
+
+
+
+    def add_pereh(self,list_data:list)->Tech_pereh:
+        ph = Tech_pereh(self,list_data)
+        if ph:
+            self.perehs.append(ph)
+        return ph
+    
+    def unpack_materials(self, splited_row: list[str])->list[Tech_mat]:
+        db_nomen = CFG.Config.project.db_nomen
+        mats = []
+        for _ in splited_row:
+            if _ == '':
+                break
+            if len(_.split("$")) == 3:
+                ed_izm = ''
+                dict_ed_izm = CSQ.custom_request_c(db_nomen,
+                                                   f"""SELECT * FROM nomen WHERE Код = "{_.split("$")[0]}"; """,
+                                                   rez_dict=True)
+                if len(dict_ed_izm) > 0:
+                    ed_izm = dict_ed_izm[0]['ЕдиницаИзмерения']
+                mats.append(Tech_mat(self,_.split("$")[0], _.split("$")[1],  ed_izm,
+                              F.valm(_.split("$")[2])))
+                if self.parent.parent.fix_mat:
+                    self.parent.parent.fl_fix = True
+
+            else:
+                try:
+                    mats.append(Tech_mat(self, _.split("$")[0],  _.split("$")[1],  _.split("$")[2],
+                                 F.valm(_.split("$")[3])))
+                except:
+                    print(f'error load mats')
+        return mats
+
+
+class Tech_kard():
+    def __init__(self,parent:Techkards,list_data:dict):
+        self.parent:Techkards = parent
+        self.opers: list[Tech_oper] = []
+        self.name_ver:str = list_data[0]
+        self.doc_mark:str = list_data[1]
+        self.doc_card:str = list_data[13].split("$")
+        self.doc:str = list_data[15]
+        self.s_name:str = list_data[2]
+        self.s_name_full:str = list_data[3]
+        
+        self.date:str = list_data[5]
+        self.razrabotal:str = list_data[6]
+        self.primech:str = list_data[7]
+        self.params:str = list_data[14]
+        self.lvl:str = int(list_data[20])
+    
+    def __repr__(self):
+        return f'{self.name_ver}, {len(self.opers)} opers'
+    
+    def template(self):
+        return f'{str(self)}'
+    
+    def add_oper(self,list_data:list)->Tech_oper:
+        op = Tech_oper(self,list_data)
+        if op:
+            self.opers.append(op)
+        return  op
+    
 class Techkards():
     UNRECALC_MARK = '='
     db_dse = None
-    def __init__(self,nn_or_snum:str|int,db_dse:str, nom_mk:int = '',path_docs='',
+    def __init__(self,nn_or_snum:str|int|list,db_dse:str= '', nom_mk:int = '',path_docs='',
                  db_nomen='', # не используется
                  fix_mat=False,
             DICT_OP_NAME: dict = None,
-            DICT_PROFESSIONS: dict = None #31.07.25
+            DICT_PROFESSIONS: dict = None, #31.07.25
+        silent_mode=False
         ):
         poki = CFG.Config.place.poki
-        self.DICT_OP_NAME = self.DICT_KOD_OPER = None
+        self.DICT_KOD_OPER = None
         if DICT_OP_NAME is None:
             print(f'class Techkards: DICT_OP_NAME = None')
             config = CFG.Config.project #10.04.25
             list_operations = CSQ.custom_request_c(config.db_naryad, f"""SELECT * FROM operacii WHERE poki == {poki}""",rez_dict=True)
             DICT_OP_NAME = F.deploy_dict_c(list_operations,'name')
-        self.DICT_KOD_OPER = {oper_name: creds['kod'] for oper_name, creds in DICT_OP_NAME.items()} #20.11.25
+        self.DICT_OP_NAME  =DICT_OP_NAME
+        self.DICT_KOD_OPER = {oper_name: creds['kod'] for oper_name, creds in self.DICT_OP_NAME.items()} #20.11.25
         self.fix_mat = fix_mat
         self.fl_fix = False
-
+        self.silent_mode = silent_mode
+        
         self.DICT_PROFESSIONS = DICT_PROFESSIONS
         if DICT_PROFESSIONS is None:
             print(f'class Techkards: DICT_PROFESSIONS = None')
             dict_professions(self, db_users=CFG.Config.project.db_users)
-
+        sp_tk = None
         Techkards.db_dse = db_dse
         fl_fix = False
+        self.dse:dict = dict()
         if isinstance(nn_or_snum, str):
             self.dse = CSQ.custom_request_c(db_dse,f"""SELECT * FROM dse WHERE Номенклатурный_номер = "{nn_or_snum}" and poki = {poki};""",rez_dict=True) #07.04.25
         elif isinstance(nn_or_snum, int):
             self.dse = CSQ.custom_request_c(db_dse, f"""SELECT * FROM dse WHERE Пномер = {nn_or_snum};""",
                                             rez_dict=True)
+        elif isinstance(nn_or_snum, list):
+            sp_tk = nn_or_snum
+            if isinstance(nn_or_snum[10],str):
+                sp_tk = [_.split('|') for _ in sp_tk]
         else:
             raise ValueError
-
-        if self.dse == None or self.dse == False or self.dse == []:
-            print(f'Не найдена {nn_or_snum} в БД')
-            return None
-        self.dse = self.dse[0]
-        nn = self.dse['Номенклатурный_номер']
-        self.tk = None
-        if nom_mk == '':
-            if path_docs == "":
-                path_docs = F.scfg('add_docs')
-            putf = path_docs + os.sep + self.dse['Номер_техкарты'] + "_" + nn + '.pickle'
-        else:
-            if path_docs == "":
-                path_docs = CFG.Config.project.mk_temp_folder #31.07.25
-            putf = path_docs + os.sep + nom_mk + os.sep + self.dse['Номер_техкарты'] + '_' + nn + '.pickle'
-        self.putf = putf
-        self.nom_mk = nom_mk
-        self.path_docs = path_docs
-        self.xl_formulas = CXLF.XlFormula()
-        if not F.existence_file_c(putf):
-            print(f'Не найден файл {putf}')
-            return
-        sp_tk = F.open_file_c(putf, False, "|", pickl=True)
+        self.nn = None
+        if sp_tk is None:
+            if self.dse == None or self.dse == False or self.dse == []:
+                print(f'Не найдена {nn_or_snum} в БД')
+                return None
+            self.dse = self.dse[0]
+            self.nn = nn = self.dse['Номенклатурный_номер']
+            self.tk = None
+            if nom_mk == '':
+                if path_docs == "":
+                    path_docs = F.scfg('add_docs')
+                putf = path_docs + os.sep + self.dse['Номер_техкарты'] + "_" + self.nn + '.pickle'
+            else:
+                if path_docs == "":
+                    path_docs = CFG.Config.project.mk_temp_folder #31.07.25
+                putf = path_docs + os.sep + nom_mk + os.sep + self.dse['Номер_техкарты'] + '_' + self.nn + '.pickle'
+            self.putf = putf
+            self.nom_mk = nom_mk
+            self.path_docs = path_docs
+            self.xl_formulas = CXLF.XlFormula()
+            if not F.existence_file_c(putf):
+                print(f'Не найден файл {putf}')
+                return
+            sp_tk = F.open_file_c(putf, False, "|", pickl=True)
+            
+        self.tech_cards:list[Tech_kard] = []
         bodys = []
-
         for i in range(10,len(sp_tk)):
             if int(sp_tk[i][20]) == 0:
+                tk = self.add_tech_kard(sp_tk[i])
                 opers = []
                 for j in range(i+1,len(sp_tk)):
                     if int(sp_tk[j][20]) < 1:
                         break
                     if int(sp_tk[j][20]) == 1:
                         if sp_tk[j][0] not in DICT_OP_NAME:
+                            if self.silent_mode:
+                                continue
                             CQT.msgbox(
-                                f"{nn} Операция ``{sp_tk[j][0]}`` не найдена в БД для {CFG.Config.user_config.Organization['Значение']}")
+                                f"{self.nn} Операция ``{sp_tk[j][0]}`` не найдена в БД для {CFG.Config.user_config.Organization['Значение']}")
                             return
+                        oper = tk.add_oper(sp_tk[j])
+                        
                         mats = self.unpack_materials(sp_tk[j][10].split("{"))
-                        # for _ in sp_tk[j][10].split("{"):
-                        #     if _ == '':
-                        #         break
-                        #     if len(_.split("$")) == 3:
-                        #         ed_izm = ''
-                        #         if db_nomen == '':
-                        #             print(f'error load edizm, need db_nomen')
-                        #             return None
-                        #         dict_ed_izm = CSQ.custom_request_c(db_nomen,f"""SELECT * FROM nomen WHERE Код = "{_.split("$")[0]}"; """,rez_dict=True)
-                        #         if len(dict_ed_izm) >0:
-                        #             ed_izm = dict_ed_izm[0]['ЕдиницаИзмерения']
-                        #         mats.append( {"cod":_.split("$")[0],"naimen":_.split("$")[1],"ed_izm":ed_izm,"norma":F.valm(_.split("$")[2])} )
-                        #         if self.fix_mat:
-                        #             self.fl_fix=True
-                        #
-                        #     else:
-                        #         try:
-                        #             mats.append( {"cod":_.split("$")[0],"naimen":_.split("$")[1],"ed_izm":_.split("$")[2],"norma":F.valm(_.split("$")[3])} )
-                        #         except:
-                        #             print(f'error load mats')
-
                         perehs = []
                         for k in range(j + 1, len(sp_tk)):
                             if int(sp_tk[k][20]) < 2:
                                 break
                             if int(sp_tk[k][20]) == 2:
+                                ph = oper.add_pereh(sp_tk[k])
                                 if sp_tk[j][16] == '':
                                     params_dict = dict()
                                 else:
@@ -2140,7 +2307,9 @@ class Techkards():
                             t_pz = F.valm(sp_tk[j][6])
 
                         if sp_tk[j][8] not in self.DICT_PROFESSIONS:
-                            CQT.msgbox(f'Некорректный код профессии необходимо править техкарту: {nn}')
+                            if self.silent_mode:
+                                continue
+                            CQT.msgbox(f'Некорректный код профессии необходимо править техкарту: {self.nn}')
                             return
                         oper = {"cod": DICT_OP_NAME[sp_tk[j][0]]['kod'],
                                 "name_ver": sp_tk[j][0],
@@ -2196,7 +2365,29 @@ class Techkards():
         self.sp_tk = sp_tk
         if self.fix_mat and self.fl_fix:
             self.save_tk()
+    @property
+    def active_tk(self)->Tech_kard|None:
+        if self.tech_cards:
+            return self.tech_cards[0]
+    
+    
+    def __repr__(self):
+        return f'{str(self.dse)}, {len(self.active_tk.opers)} opers'
 
+    def get_dict_params(self)->dict:
+        rez = dict()
+        act_tk = self.active_tk
+        for oper in act_tk.opers:
+            rez.update(oper.get_dict_params())
+        return rez
+
+
+    def add_tech_kard(self,list_data:list)->Tech_kard:
+        tk = Tech_kard(self,list_data)
+        if tk:
+            self.tech_cards.append(tk)
+        return tk
+        
     def check_tk(self) -> str | None: #03.09.25
         """
         Проверка техкарты на доступность атрибутов для последующего парсинга

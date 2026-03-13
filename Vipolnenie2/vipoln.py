@@ -1536,7 +1536,7 @@ class mywindow(QtWidgets.QMainWindow):
         return True
     @CQT.onerror
     def start_nar(self, *args):
-        if not CMS.check_actual_parol(self.glob_fio):
+        if not self.auth_manager.check_actual_password(self.glob_fio): #12.03.2026
             CQT.msgbox(f'Нужно обновить пароль через меню "Параметры"')
             return
 
