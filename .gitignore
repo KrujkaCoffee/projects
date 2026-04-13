@@ -29,7 +29,6 @@ notes*
 *.db
 *.vbs
 *.bat
-*.txt
 
 venv
 venv_setup
@@ -38,5 +37,5 @@ build
 
 *.spec
 *.sql
-minigit.py
-!/Setup/minigit.py
+mini_git.py
+!/Setup/mini_git.py
