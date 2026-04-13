@@ -218,7 +218,7 @@ class ResourceHeader:
                  ДатаОкончания: str,
                  ПодразделениеДиспетчер: Subdivision,
                  РодительКод: GroupRes,
-                 ВариантПодбораВДокументы: Variationsrespecificationdocuments,
+                 #ВариантПодбораВДокументы: Variationsrespecificationdocuments,
                  СпособРаспределенияЗатратНаВыходныеИзделия: TheMethodOfAllocatingTheCostOfTheOutputProducts,
                  ТекущийПользователь: CurrentUser,
                  КоличествоУпаковок: int | float = 1,
@@ -260,7 +260,7 @@ class ResourceHeader:
         self.ПодразделениеДиспетчер: Subdivision = ПодразделениеДиспетчер
         self.ВыпускПроизвольнымиПорциями: bool = ВыпускПроизвольнымиПорциями
         self.РодительКод: GroupRes = РодительКод
-        self.ВариантПодбораВДокументы: Variationsrespecificationdocuments = ВариантПодбораВДокументы
+        #self.ВариантПодбораВДокументы: Variationsrespecificationdocuments = ВариантПодбораВДокументы
         self.СпособРаспределенияЗатрат: TheMethodOfAllocatingTheCostOfTheOutputProducts = СпособРаспределенияЗатратНаВыходныеИзделия
         self.Описание: Optional[str] = Описание
         self.Код: Optional[str] = Код  # для обновления = Код
@@ -520,7 +520,7 @@ class ObjsData():
     def _get_data_erp(cls, req_text: str):
         key, data_rez = APIERP.get_wet_request(req_text, lazy_method_huours=LAZY_METHOD_HUOURS)
         if key != 200:
-            raise ConnectionError(f'Ошибка получения данных {cls.NAME_ERP_OBJ} из ERP')
+            raise ConnectionError(f'Ошибка (Код {key}) получения данных {cls.NAME_ERP_OBJ} из ERP')
         if not data_rez['data']:
             raise ValueError(f'Не найдено {cls.NAME_ERP_OBJ} из ERP')
         return data_rez['data']
@@ -2123,7 +2123,7 @@ class ResourceSpecificationInitData:
     # Инициализация данных
     SubdivisionsData.init_data()
     GroupResData.init_data()
-    VariationsrespecificationdocumentsData.init_data()
+    #VariationsrespecificationdocumentsData.init_data() 06.04.2026
     TheMethodOfAllocatingTheCostOfTheOutputProductsData.init_data()
     ArticulationArticlesData.init_data()
     MethodOfObtainingMaterialspecificationsData.init_data()
@@ -2173,7 +2173,7 @@ class ResourceSpecification:
                 "ПодразделениеДиспетчер": self.hat.ПодразделениеДиспетчер.code,
                 "ВыпускПроизвольнымиПорциями": self.hat.ВыпускПроизвольнымиПорциями,
                 "РодительКод": self.hat.РодительКод.code,
-                "ВариантПодбораВДокументы": self.hat.ВариантПодбораВДокументы.order,
+                #"ВариантПодбораВДокументы": self.hat.ВариантПодбораВДокументы.order,
                 "СпособРаспределенияЗатратНаВыходныеИзделия": self.hat.СпособРаспределенияЗатрат.order,
                 "Описание": self.hat.Описание,
                 "Код": self.hat.Код
@@ -2366,7 +2366,7 @@ class Nomenclature():
 def test_fnc():
     ПодразделениеДиспетчер = SubdivisionsData._hnt_производственные_подразделения_келаст_келаст_00_000129
     РодительКод = GroupResData._hnt_литье_таткуз_00_058862
-    ВариантПодбораВДокументы = VariationsrespecificationdocumentsData._hnt_вручную_1
+    #ВариантПодбораВДокументы = VariationsrespecificationdocumentsData._hnt_вручную_1
     СпособРаспределенияЗатратНаВыходныеИзделия = TheMethodOfAllocatingTheCostOfTheOutputProductsData._hnt_по_долям_стоимости_0
     # Шапка
     hat = ResourceHeader(
@@ -2377,7 +2377,7 @@ def test_fnc():
         ДатаОкончания="2025-08-21",
         ПодразделениеДиспетчер=ПодразделениеДиспетчер,
         РодительКод=РодительКод,
-        ВариантПодбораВДокументы=ВариантПодбораВДокументы,
+        #ВариантПодбораВДокументы=ВариантПодбораВДокументы,
         Описание='',
         СпособРаспределенияЗатратНаВыходныеИзделия=СпособРаспределенияЗатратНаВыходныеИзделия
     )

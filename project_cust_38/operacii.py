@@ -3631,7 +3631,7 @@ def sb_pod_sv(ima_operacii, arr_tmp): #28.10.25
     # Масса,кг:int;Кол-во входящих ДСЕ:int;Вид конструкции:int;Материал(1-черн,2-нерж):int;Условия(1-удобные 2-неудобные):int;Длина стыков,мм:int;Толщина металла(мм):int;Сопряжения узлов:int;Количество сварных узлов:int;Коэфф сложности:int;Коэфф сложности значения:int;Изделие:int;Диаметр,мм:int;Число сегментов:int;Ширина фланцев,мм:int;Длинна обечайки(мм):int;Коэфф сборки:int;Длина швов(мм):int
 
     Kusl = 1.1 if uslovia == 2 else 1  # коэффициент, учитывающий условия выполнения работы
-    Km = 2 if material == 2 else 1  # коэффициент, учитывающий вид стали
+    Km = 1.2 if material == 2 else 1  # коэффициент, учитывающий вид стали
     Tpz = 0.03 if kol_vo <= 15 else 0.04 if kol_vo <= 50 else 0.05  # Подготовительно-заключительное время
     koef_met = 1 if tolshina_met <= 12 else 1.15 if tolshina_met <= 20 else 3  # Коэфициент металла
     koef_sbor = 1.3 if sopr_uzl == 2 else 1  # Коэфициент сборки
@@ -3995,6 +3995,7 @@ def oform_operation(self: mywindow2, tbl: QTableWidget, oper_name: str):
             apply_combo_values(self, tbl)
 
 
+@CQT.onerror
 def oform_pereh(self: mywindow2, tbl: QTableWidget, pereh_name: str, struct: dict):
     def apply_combo_values(self: mywindow2, tbl: QTableWidget):
         for row in range(tbl.rowCount()):
@@ -4022,7 +4023,10 @@ def oform_pereh(self: mywindow2, tbl: QTableWidget, pereh_name: str, struct: dic
             if struct[name_field]['vals'][key]['val'] == text:
                 val = key
                 break
-        tbl.item(row, col).setText(str(val))
+
+        item = tbl.item(row, col)
+        if item is not None: # 26.03.2026
+            item.setText(str(val))
 
         # self.ui2.lbl_prim.setText(struct[name_field]['comment'])
 

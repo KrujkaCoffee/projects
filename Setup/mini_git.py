@@ -14,7 +14,7 @@ import tarfile
 import io
 import tempfile
 from typing import List
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import requests
 
@@ -25,6 +25,24 @@ KEY_SERVER_NOT_AVAILABLE = 'KEY_SERVER_NOT_AVAILABLE'
 
 logging.basicConfig(level=logging.INFO)
 
+
+def check_network_drive_connection(network_drive: str = 'Z:', network_path: str = r"\\powerz\share\ProdSoft"):
+    print(f'==== Проверка подключения диска: {network_drive!r} ====')
+    if os.path.exists(network_drive):
+        print(f'Диск {network_drive!r} подключен')
+        return True
+    commands = (
+        ["net", "use", f"{network_drive}", network_path],
+        ['explorer', 'Z:\\']
+    )
+    for cmd in commands:
+        result = subprocess.run(cmd, capture_output=True, text=True, shell=True, encoding='cp866')
+        if os.path.exists(network_path):
+            print(f'Диск {network_drive!r} подключен')
+            return True
+        print(result.stderr)
+    print(f'Не удалось подключится к диску {network_drive!r}')
+    return False
 
 class Crypt:
     def generate_file_hash(self, file_path):
@@ -68,20 +86,39 @@ def ping(fn):
 class LoneInterpreter:
     def __init__(self):
         self.home_path = str(Path().home() / 'MES')
-        from project_cust_38.Cust_client_socket import ip
-        SRV_PORT = 20011
-        self.server_url = f'http://{ip}:{SRV_PORT}/files'
+        self.server_url = f'{SRV_ADDRESS}/files'
         self.system_interpreter_path = r'Z:\Setup\python.zip'
         self.is_actual = self.check_python_available(self.python_path) and self.check_actual_interpreter()
 
         self.usr_hash = self.usr_packages = None
 
+    @property
+    def DICT_PROG(self):
+
+        from project_cust_38 import Cust_SQLite as CSQ
+        apps_response = CSQ.custom_request_c(
+            'SRV:BD_users.db',
+            'SELECT app AS Имя, path AS Путь, module AS Название FROM app_config WHERE is_ui = 1 AND path != ""',
+            rez_dict=True
+        )
+        apps = {}
+        for item in apps_response:
+            item['Путь'] = item['Путь'].replace('\\embed', '')
+            apps[item['Имя']] = {
+                'Имя': item['Имя'],
+                'Название': item['Название'],
+                'Путь': item['Путь'].replace('\\embed', ''),
+            }
+        return apps
+
     def create_run_bat(self, program_path_embed: str, program_name: str):
         try:
-            executor = self.interpreter.python_path
+            executor = self.python_path
             src_mini_git_path = os.path.join(r'Z:\Setup', 'mini_git.py')
             dest_mini_git_path = str((Path(program_path_embed) / 'mini_git.py').absolute())
-            bat_source = f"@echo off\ncopy /Y {src_mini_git_path} {dest_mini_git_path}\n{executor} mini_git.py\n{executor} {self.DICT_PROG[program_name]["Название"]} %*"
+            ss = os.path.join(program_path_embed, self.DICT_PROG[program_name]["Название"])
+            ss2 = os.path.join(program_path_embed, 'mini_git.py')
+            bat_source = f"@echo off\ncopy /Y {src_mini_git_path} {dest_mini_git_path}\n{executor} {ss2}\n{executor} {ss} %*"
             with open(os.path.join(program_path_embed, 'run.bat'), 'w+') as desc:
                 desc.write(bat_source)
         except Exception as e:
@@ -90,14 +127,14 @@ class LoneInterpreter:
     @property
     def python_folder(self):
         py = shutil.which("python")
-        if os.path.exists(py) and 'Microsoft' not in py:
+        if py and os.path.exists(py) and 'Microsoft' not in py:
             return str(Path(py).parent.absolute())
         return str((Path(self.home_path) / 'py').absolute())
 
     @property
     def python_path(self):
         py = shutil.which("python")
-        if os.path.exists(py) and 'Microsoft' not in py:
+        if py and os.path.exists(py) and 'Microsoft' not in py:
             return py
         return str((Path(self.python_folder) / 'python.exe').absolute())
 
@@ -107,7 +144,7 @@ class LoneInterpreter:
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
-            logging.error('[python]Не удалось запросить актуальный хэш python интерпретатора')
+            logging.error('[LoneInterpreter.__server_inter_size]Не удалось запросить актуальный хэш python интерпретатора')
             logging.error(e)
 
     def __main_inter_size(self):
@@ -126,20 +163,17 @@ class LoneInterpreter:
         except Exception as e:
             print()
 
-    def check_actual_interpreter(self):
+    def check_actual_interpreter(self, srv_info = None):
         if not os.path.exists(self.python_path):
             return False
         try:
-            srv_info = self.get_srv_size()
+            if srv_info is None:
+                srv_info = self.get_srv_size()
             if isinstance(srv_info, dict) and all(key in srv_info for key in ('packages', 'size')):
                 srv_packages = srv_info['packages']
-                srv_size = srv_info['size']
                 usr_packages = self.get_installed_packages()
-                usr_size = self.get_py_size()
-                if (usr_size / srv_size) * 100 > 80:
-                    necessary_libs = set(srv_packages).difference(usr_packages)
-                    return not bool(necessary_libs)
-                return False
+                necessary_libs = set(srv_packages).difference(usr_packages)
+                return not bool(necessary_libs)
         except Exception as e:
             logging.error(e)
 
@@ -249,29 +283,26 @@ class LoneInterpreter:
     def actualize_py_libs(self):
         srv_info = self.get_srv_size()
         if isinstance(srv_info, dict) and all(key in srv_info for key in ('packages', 'size')):
-            srv_packages = srv_info['packages']
-            srv_size = srv_info['size']
-            usr_packages = self.get_installed_packages()
-            usr_size = self.get_py_size()
-            if (usr_size / srv_size) * 100 > 80:
-                superfluous_libs = set(usr_packages).difference(srv_packages)
-                necessary_libs = set(srv_packages).difference(usr_packages)
-                if necessary_libs:
-                    self.download_srv_packages(necessary_libs)
-                if self.check_actual_interpreter():
-                    logging.info('Библитеки успешно обновлены')
-            else:
-                self.replace_interpreter()
+            srv_packages = [item.split('==')[0] for item in srv_info['packages']]
+            usr_packages = [item.split('==')[0] for item in self.get_installed_packages()]
+            necessary_libs = set(srv_packages).difference(usr_packages)
+            if necessary_libs:
+                self.download_srv_packages(necessary_libs)
+            if self.check_actual_interpreter(srv_info):
+                logging.info('Библитеки успешно обновлены')
 
     def check_python_home_version(self):
         return self.check_python_available(self.python_folder) and self.check_actual_interpreter()
 
 
 class ProjectCust38:
-    def __init__(self, window = None):
+    def __init__(self, window = None, project_cust_dir: str = None):
         self.is_download = False
         self.content = None
         self.PUT_PO_UMOLCH = str(Path().home() / 'MES')
+
+        if project_cust_dir:
+            self.PUT_PO_UMOLCH = project_cust_dir
         if window:
             self.PUT_PO_UMOLCH = window.PUT_PO_UMOLCH
         self.path = os.path.join(self.PUT_PO_UMOLCH, "project_cust_38.zip")
@@ -347,25 +378,35 @@ class ProjectCust38:
         os.environ[KEY_SRV_HASH] = new_hash
         return new_hash
 
+    def _normalize_rel_path(self, path: str) -> str:
+        raw = str(path).replace('\\', '/')
+        raw = raw.lstrip('./').lstrip('/')
+        return str(PurePosixPath(raw)) if raw else ''
+
     def __user_hash(self, proj_path: str) -> str:
         hash_object = hashlib.sha256()
         dir_path = Path(proj_path) / 'project_cust_38'
         dir_path.mkdir(exist_ok=True, parents=True)
-        for path in self.make_files_tree_struct(str(dir_path)):
+        for path, relative_path in self.make_files_tree_struct(str(dir_path)):
             if path.is_file():
+                hash_object.update(relative_path.encode('utf-8'))
+                hash_object.update(b'\0')
                 with path.open('rb') as f:
-                    hash_object.update(f.read())
-                hash_object.update(path.name.encode('utf-8'))
+                    for chunk in iter(lambda: f.read(1024 * 1024), b''):
+                        hash_object.update(chunk)
         return hash_object.hexdigest()
 
     def make_files_tree_struct(self, proj_path):
-        exclude_folders = ('.git', '__pycache__', '.idea', 'venv')
+        exclude_folders = {'.git', '__pycache__', '.idea', 'venv'}
         tree = []
+        root = Path(proj_path)
         for abs_path, folders, filenames in os.walk(proj_path):
+            folders[:] = sorted(folder for folder in folders if folder not in exclude_folders)
             base_path = Path(abs_path)
-            if base_path.name not in exclude_folders:
-                for filename in filenames:
-                    tree.append(base_path / filename)
+            for filename in sorted(filenames):
+                file_path = base_path / filename
+                rel_path = self._normalize_rel_path(os.path.relpath(str(file_path), str(root)))
+                tree.append((file_path, rel_path))
         return tree
 
     def check_project_cust_38(self, path: str, check_srv_not_available: bool = False):
@@ -373,31 +414,54 @@ class ProjectCust38:
             return True
         if not os.path.exists(path):
             return False
-        return self.__srv_hash() == self.__user_hash(path)
+        user_hash = self.__user_hash(path)
+        server_hash = self.__srv_hash()
+        logging.info(f'[ProjectCust38.check_project_cust_38] User hash {user_hash}')
+        logging.info(f'[ProjectCust38.check_project_cust_38] Server hash {server_hash}')
+        return server_hash == user_hash
 
     @ping
     def update(self, path: str):
         with self:
             list_dirs = []
             dir_to_extract = os.path.join(path, 'project_cust_38')
+            logging.info(f'[ProjectCust38.update] Задана папка для распаковки: {dir_to_extract}')
+
             try:
                 with zipfile.ZipFile(self.path, 'r') as zip_ref:
-                    list_dirs.extend(file.filename for file in zip_ref.filelist)
+                    list_dirs.extend(
+                        self._normalize_rel_path(file.filename)
+                        for file in zip_ref.filelist
+                        if not file.is_dir()
+                    )
                     zip_ref.extractall(dir_to_extract)
-                    logging.info('[project_cust_38]Обновление успешно завершено!')
+                    logging.info('[ProjectCust38.update]Обновление успешно завершено!')
             except Exception as e:
-                logging.error('[project_cust_38]Обновление завершилось неудачей', exc_info=e)
+                logging.error('[ProjectCust38.update]Обновление завершилось неудачей', exc_info=e)
             self.drop_unnecessary_files(base_dir=dir_to_extract, lst_zip=list_dirs)
 
     def drop_unnecessary_files(self, base_dir, lst_zip):
-        logging.info('[project_cust_38]Удаление лишних модулей')
-        for filename in os.listdir(base_dir):
-            if filename not in lst_zip:
-                abs_path = os.path.join(base_dir, filename)
-                if os.path.isfile(abs_path):
-                    os.remove(abs_path)
-                if os.path.isdir(abs_path):
-                    shutil.rmtree(abs_path, onerror=self.on_delete_error)
+        logging.info('[ProjectCust38.drop_unnecessary_files]Удаление лишних модулей')
+        expected = {self._normalize_rel_path(item) for item in lst_zip if item}
+        if not os.path.isdir(base_dir):
+            return
+        for root, dirs, files in os.walk(base_dir, topdown=False):
+            for filename in files:
+                abs_path = os.path.join(root, filename)
+                rel_path = self._normalize_rel_path(os.path.relpath(abs_path, base_dir))
+                if rel_path not in expected:
+                    try:
+                        os.remove(abs_path)
+                    except Exception:
+                        self.on_delete_error(os.remove, abs_path, None)
+            for dirname in dirs:
+                abs_dir = os.path.join(root, dirname)
+                rel_dir = self._normalize_rel_path(os.path.relpath(abs_dir, base_dir))
+                has_expected_child = any(item == rel_dir or item.startswith(rel_dir + '/') for item in expected)
+                if not has_expected_child and os.path.isdir(abs_dir):
+                    shutil.rmtree(abs_dir, onerror=self.on_delete_error)
+                elif os.path.isdir(abs_dir) and not os.listdir(abs_dir):
+                    os.rmdir(abs_dir)
 
     def on_delete_error(self, fn, path, exc):
         try:
@@ -433,7 +497,9 @@ SET_PY_FILES = {'Lib', 'libcrypto-1_1.dll', 'libffi-8.dll', 'libssl-1_1.dll', 'p
               '_overlapped.pyd', '_queue.pyd', '_socket.pyd', '_sqlite3.pyd', '_ssl.pyd', '_uuid.pyd', '_zoneinfo.pyd'}
 
 class Main:
-    def __init__(self, srv_dir: str = '', usr_dir: str = None, app_name: str = None):
+    def __init__(self, srv_dir: str = '', usr_dir: str = None, app_name: str = None, project_cust_dir: str= None):
+        self.is_server = os.path.abspath(__file__).startswith("Z:")
+        print('SRV_DIR:', srv_dir)
         self.developers = ()
         self.current_dir = usr_dir
         self.app_executor = None
@@ -442,28 +508,25 @@ class Main:
         self.ip = None
         self.pickle_name = 'hashed_files.pickle'
         self.list_apps = r'Z:\MES_setup\list.txt'
+        self.interpreter = LoneInterpreter()
+
         if not self.current_dir or not self.server_dir or not self.app_name:
             self.fill_params()
             self.current_dir, self.current_file = os.path.split(os.path.abspath(__file__))
         self.pickle_path = str((Path(self.server_dir) / self.pickle_name).absolute())
         self.who_im()
         self.is_windows = True
-        self.ignore_files = [self.pickle_name, '.gitignore', 'python', 'window_free.vbs', 'window.vbs', 'run.bat', 'ver', 'mini_git.py', 'remote_run.bat'] + list(SET_PY_FILES)  #  игонрируются _*
+        self.ignore_files = ['Thumbs.db', self.pickle_name, '.gitignore', 'python', 'window_free.vbs', 'window.vbs', 'run.bat', 'ver', 'mini_git.py', 'remote_run.bat'] + list(SET_PY_FILES)  #  игонрируются _*
         self.ignore_dirs = ['venv', 'clients_errors', '__pycache__', '.idea', '.git', 'Scripts', 'Lib', 'project_cust_38'] + list(SET_PY_FILES)
-        self.project_cust = ProjectCust38()
-        self.interpreter = LoneInterpreter()
-
-    def test_func(self):
-        '''Принудительное задание роли'''
-        self.is_server = True
+        self.project_cust = ProjectCust38(project_cust_dir=project_cust_dir)
 
     def push(self, no_update: bool = False):
         if no_update:
             return
         if self.is_server:
-            self.server_actions()  # успешно
+            self.server_actions()
         else:
-            self.client_actions()  # успешно
+            self.client_actions()
 
     def who_im(self):
         self.is_server = None
@@ -483,20 +546,31 @@ class Main:
         if not os.path.exists(self.list_apps):
             logging.warning(f'не найдена директория: {self.list_apps}')
             return
-        with open(self.list_apps, 'r', encoding='utf8') as desc:
-            list_apps = desc.readlines()
-        self.apps = [line.replace('\n', '').split('|') for line in list_apps]
-        apps_by_module = {line[2]: line for line in self.apps}
+        apps_by_module = {
+            credentials['Название']: credentials
+            for app_name, credentials in self.interpreter.DICT_PROG.items()
+        }
         files = set(os.listdir(os.path.curdir)).intersection(apps_by_module.keys())
-        if files and len(files) == 1:
-            line = apps_by_module[files.pop()]
-            self.server_dir = os.path.join(line[1].replace(r'\ProdSoft', ''), 'embed')
-            self.app_name = line[0]
-            self.app_executor = line[2]
-            if not os.path.exists(self.server_dir):
-                logging.warning(f'Не найдена директория {self.server_dir} возможно нету доступа к диску Z')
+        remote_run = Path('./remote_run.bat')
+        if files and len(files) >= 1:
+            executor = next(file for file in files if file in apps_by_module)
+            credential = apps_by_module[executor]
+            self.app_name = credential['Имя']
+            self.app_executor = credential['Название']
+            self.server_dir = os.path.join(credential['Путь'], 'embed')
+            return
+        if remote_run.exists():
+            pattern = r"python\.exe\s+.*?/remote_run\.py\s+([^\s]+)"
+            text = remote_run.read_text(encoding='utf-8', errors='ignore')
+            match = re.search(pattern, text)
+            if not match:
                 return
-
+            app = match.group(1)
+            if credential := apps_by_module.get(f'{app}.py'):
+                self.app_name = credential['Имя']
+                self.app_executor = credential['Название']
+                self.server_dir = os.path.join(credential['Путь'], 'embed')
+            return
     def load_cust_mes_config(self):
         try:
             from project_cust_38 import Cust_mes as CMS
@@ -561,13 +635,12 @@ class Main:
 
     def server_actions(self):
         print('server_actions')
-        files, dirs = self.get_hashed_files()
+        files, dirs = self.get_hashed_files(self.server_dir)
         self.save_hashed_fils(files, dirs)
 
     def del_file(self, full_path):
         if os.path.exists(full_path):
-            if self.is_windows:
-                os.chmod(full_path, 0o777)
+            os.chmod(full_path, 0o777)
             name = Path(full_path).name
             if name not in self.ignore_files and name not in SET_PY_FILES:
                 os.remove(full_path)
@@ -582,9 +655,39 @@ class Main:
         source = os.path.join(source, file_path)
         distinct = os.path.join(distanation, file_path)
 
-        if del_file and os.path.exists(distinct):
-            self.del_file(distinct)
-        shutil.copy(source, distinct)
+        Path(distinct).parent.mkdir(parents=True, exist_ok=True)
+
+        tmp = distinct + f".tmp.{os.getpid()}"
+        try:
+            shutil.copy2(source, tmp)
+
+            if self.is_windows and os.path.exists(distinct):
+                try:
+                    os.chmod(distinct, 0o666)
+                except Exception:
+                    pass
+
+            os.replace(tmp, distinct)
+
+        except PermissionError as e:
+            try:
+                new_path = distinct + ".new"
+                if os.path.exists(new_path):
+                    os.remove(new_path)
+                os.replace(tmp, new_path)
+            except Exception:
+                pass
+            print(f"[mini_git] PermissionError при обновлении {file_path}: {e}")
+
+        except Exception as e:
+            print(f"[mini_git] Ошибка копирования {file_path}: {e}")
+
+        finally:
+            if os.path.exists(tmp):
+                try:
+                    os.remove(tmp)
+                except Exception:
+                    pass
 
     def make_dirs(self, create_dirs, path):
         for dir in create_dirs:
@@ -661,7 +764,10 @@ class Main:
         save_full_dir_dict['dirs'] = dirs
         if not path:
             path = self.pickle_path
-        with open(path, 'wb') as file:
+        if os.path.exists(path):
+            os.chmod(path, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
+
+        with open(path, 'wb+') as file:
             pickle.dump(save_full_dir_dict, file)
 
     def load_pickle(self, path):
@@ -683,7 +789,13 @@ class Main:
         usr_files, client_dirs = self.get_hashed_files()
         usr_files = {k: v for k, v in usr_files.items() if k not in self.ignore_files}
         srv_files = {k: v for k, v in srv_files.items() if k not in self.ignore_files}
-        return not all(usr_files.get(f) == h for f, h in srv_files.items())
+        try:
+            for f, h in srv_files.items():
+                if usr_files.get(f) != h:
+                    print(f'{f} {usr_files.get(f)}  {h}')
+        except Exception as e:
+            print(e)
+        return not all(usr_files.get(f) == h for f, h in srv_files.items() if Path(f).name not in self.ignore_files)
 
     def check_files(self, server_files_dict, client_files_dict, distanation, source, del_file):
         server_files = server_files_dict.keys()
@@ -713,7 +825,17 @@ if __name__ == '__main__':
         default=False,
         help='Отключает проврку обновления файлов клиента'
     )
+    parser.add_argument(
+        '--srv-app-path',
+        help='Директория приложения на сервере'
+    )
+    parser.add_argument(
+        '--project-cust-dir',
+        help='Директория для распаковки ядра project_cust'
+    )
 
     args = parser.parse_args()
-    m = Main()
+    srv = args.srv_app_path or ''
+    check_network_drive_connection()
+    m = Main(srv_dir=srv, project_cust_dir=args.project_cust_dir)
     m.push(no_update=args.no_update)

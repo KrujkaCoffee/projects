@@ -27,6 +27,7 @@ from project_cust_38 import Cust_xl_formul as CXLF
 from project_cust_38 import Cust_docs as CDOCS
 import tk_operation_docs as TOD
 import project_cust_38.api_erp_commands as APIERP
+from project_cust_38 import Cust_emoji as CE
 
 import hashlib
 import osn_materials as osn_mat
@@ -213,6 +214,7 @@ class mywindow(QtWidgets.QMainWindow):
         CQT.connect_to_resize(self, CMS.tmp_dir())
         CMS.add_action_config_save_tbl_filtrs(self, self.ui)
         CQT.load_icons(self, 24)
+        self.MODIFIED_MARK = '*'
         self.nom_tk = ''
         self.dse_nn = ''
         self.dse_naim = ''
@@ -231,6 +233,7 @@ class mywindow(QtWidgets.QMainWindow):
         self.db_kplan = F.bdcfg('DB_kplan')
         self.putf_magaz = F.bdcfg('mag')
         self.PUT_K_TMP = F.put_po_umolch() + os.sep + "tmptehkart"
+        self.SET_RUS_WORDS = F.load_file_pickle('summary.pickle')
         self.path_cash_poki = os.path.join(F.scfg('cash'), str(self.place.poki))
 
         F.test_path()
@@ -242,11 +245,9 @@ class mywindow(QtWidgets.QMainWindow):
         self.DICT_EMPLOEE_FULL = CMS.dict_emploee_full(self.db_users)
         self.LIST_NOMEN = CSQ.custom_request_c(self.db_mater,f"""SELECT * FROM nomen""", rez_dict=True)
         self.DICT_NOMEN = F.deploy_dict_c(self.LIST_NOMEN,'Код')
-
-
-
-
-
+        # ================checkb======================
+        self.ui.chk_borrow_vars.clicked.connect(self.save_state_chk_borrow_vars)
+        # ================trees======================
         tree = self.ui.tree
         tree.setColumnCount(3)
         tree.headerItem().setText(0, QtCore.QCoreApplication.translate("MainW", "Элемент"))
@@ -383,22 +384,26 @@ class mywindow(QtWidgets.QMainWindow):
         if F.existence_file_c(self.PUT_K_TMP + os.sep + '9.txt'):
             spisok = F.open_file_c(self.PUT_K_TMP + os.sep + '9.txt')
             CQT.fill_wtabl_old_c(mywindow, spisok, tab_buf9, 0, 0, (), (), 200, False, "|", 5)
-
-        self.ui.btn_mag_napolky.clicked.connect(lambda _, x=self: MAGAZ.magazin_na_polky(x))
-        self.ui.btn_mag_sbros.clicked.connect(lambda _, x=self: MAGAZ.magazin_na_del(x))
         tbl_magaz = self.ui.tbl_magaz
         tbl_magaz.clicked.connect(lambda _, x=self: MAGAZ.tbl_magaz_click(x))
-        self.ui.btn_mag_prim.clicked.connect(lambda _, x=self: MAGAZ.magazin_primenit(x))
-        self.ui.btn_mag_up.clicked.connect(lambda _, x=self: MAGAZ.magazin_up(x))
-        self.ui.btn_mag_down.clicked.connect(lambda _, x=self: MAGAZ.mag_down(x))
         tbl_magaz.setSelectionBehavior(1)
         tbl_magaz.setSelectionMode(1)
         CQT.set_color_sort_cell_table_c(tbl_magaz)
+
+        # BTNS===========================================
+        self.ui.btn_mag_napolky.clicked.connect(lambda _, x=self: MAGAZ.magazin_na_polky(x))
+        self.ui.btn_mag_sbros.clicked.connect(lambda _, x=self: MAGAZ.magazin_na_del(x))
+
+        self.ui.btn_mag_prim.clicked.connect(lambda _, x=self: MAGAZ.magazin_primenit(x))
+        self.ui.btn_mag_up.clicked.connect(lambda _, x=self: MAGAZ.magazin_up(x))
+        self.ui.btn_mag_down.clicked.connect(lambda _, x=self: MAGAZ.mag_down(x))
+
 
         self.ui.btn_obnov_sp_mk.clicked.connect(self.nalichie_nevip_mk)
 
         # Утвержден action
         self.ui.btn_validate.clicked.connect(lambda *_: self.validate_approve())
+
 
         butt_op = self.ui.Button_t_op
         butt_op.clicked.connect(self.obnovt_drevo_s_tabl1_op)
@@ -525,7 +530,7 @@ class mywindow(QtWidgets.QMainWindow):
         action_unlock_tk = self.ui.action_unlock_tk
         action_unlock_tk.triggered.connect(self.unlock_tk)
 
-        self.view_lock_tk_action = QtWidgets.QAction()
+        self.view_lock_tk_action = QtWidgets.QAction() #29.01.2026
         self.view_lock_tk_action.setText('Техкарты в работе')
         self.view_lock_tk_action.triggered.connect(self.view_lock_tk_table)
         self.ui.menu.addAction(self.view_lock_tk_action)
@@ -559,9 +564,16 @@ class mywindow(QtWidgets.QMainWindow):
 
         #II.fill_table(self)
 
-    @property
-    def SET_RUS_WORDS(self):
-        return F.load_file_pickle('summary.pickle')
+    @property #21.03.2026
+    def current_tk_modified(self):
+        return self.MODIFIED_MARK in self.glob_tk_title
+
+    def mark_tk_modified_status(self):
+        if self.MODIFIED_MARK not in self.glob_tk_title:
+            self.set_glob_tk_title(self.glob_tk_title + '*')
+
+    def clear_tk_modified_status(self):
+        self.set_glob_tk_title(self.glob_tk_title.replace(self.MODIFIED_MARK, ''))
 
     def set_glob_tk_title(self,val:str):
         self.glob_tk_title = val
@@ -918,8 +930,7 @@ class mywindow(QtWidgets.QMainWindow):
                 if e.key() == QtCore.Qt.Key_F5:
                     print("Нажата клавиша <F5>")
                     self.dobav_V_tree_root(self.ui.tree.topLevelItemCount() + 1)
-                    if '*' not in self.glob_tk_title:
-                        self.set_glob_tk_title(self.glob_tk_title + '*')
+                    self.mark_tk_modified_status()
                     # self.obnovit_param_tabl_kar()
                 if e.key() == QtCore.Qt.Key_F6:
                     print("Нажата клавиша <F6>")
@@ -933,8 +944,7 @@ class mywindow(QtWidgets.QMainWindow):
                         level_c = item.parent().text(3)
                         self.dobav_V_tree_oper(item.parent(), level_c)
                     self.obnovit_param_tabl_oper()
-                    if '*' not in self.glob_tk_title:
-                        self.set_glob_tk_title(self.glob_tk_title + '*')
+                    self.mark_tk_modified_status()
             # =====================================ограничение по режиму
 
             if e.key() == QtCore.Qt.Key_F7:
@@ -948,8 +958,7 @@ class mywindow(QtWidgets.QMainWindow):
                 if item.text(item.columnCount() - 1) == "2":
                     level_c = item.parent().text(3)
                     self.dobav_V_tree_perex(item.parent(), level_c)
-                if '*' not in self.glob_tk_title:
-                    self.set_glob_tk_title(self.glob_tk_title + '*')
+                self.mark_tk_modified_status()
             if e.modifiers() == QtCore.Qt.ControlModifier and e.key() == QtCore.Qt.Key_Return:  # ввод через интер операции перехода карты
                 self.w2 = mywindow2(self, self.ui.tree, "Древо")
                 self.w2.showNormal()
@@ -1069,7 +1078,7 @@ class mywindow(QtWidgets.QMainWindow):
         if self.ui.tabWidget.currentIndex() == CQT.number_table_by_name_c(self.ui.tabWidget,'Номенклатура'):
             self.ui.tblw_dse.setEnabled(True)
         if self.ui.tabWidget.currentIndex() != CQT.number_table_by_name_c(self.ui.tabWidget,'Разработка'):
-            if '*' in self.glob_tk_title:
+            if self.current_tk_modified:
                 self.save_tk_vklad()
             else:
                 n_dse = self.ui.lineEdit_dse
@@ -1488,7 +1497,7 @@ class mywindow(QtWidgets.QMainWindow):
                     flag = True
                 if sp_tree[i][20] == '1'and sp_tree[i][0] == 'Резка(ЧПУ)' and sp_tree[i][4] == '010101':
                     if sp_tree[i][15] != '':
-                        new_name = f'{F.clear_row_for_file_name_c(self.dse_nn)}.dxf'
+                        new_name = f'{F.clear_row_for_file_name_c(self.dse_nn)}.dxf' #29.01.2026 незафиксированная
                         file = self.operation_docs.storage.get_dxf(sp_tree[i][15], self.dse_nn, new_name=new_name) # 08.12.25
                         if file == None or file == False:
                             nom_op = sp_tree[i][2]
@@ -1502,6 +1511,7 @@ class mywindow(QtWidgets.QMainWindow):
                             CQT.msgbox('DXF не корректный, не распознать.')
                         break
         # ===============================================
+        # ++29.01.2026
     @CQT.onerror
     def on_click_close_lock_tk_table(self, label, row, *args, **kwargs):
         try:
@@ -1607,6 +1617,7 @@ class mywindow(QtWidgets.QMainWindow):
             return
         chk.clicked.connect(lambda *args: refill_tbl(tbl, chk))
         return dialog.exec()
+        # --29.01.2026
 
     @CQT.onerror
     def obnov_dse(self,conn = '', cur = '', *args):
@@ -1838,6 +1849,14 @@ class mywindow(QtWidgets.QMainWindow):
         n_dse = self.ui.lineEdit_dse
         n_tk = self.ui.lineEdit_nntk
         naim_dse = self.ui.lineEdit_dse_naim
+
+        msg_default_exit = "Вы уверены, что хотите покинуть техкарту?"
+        msg_modified_exit = "В техкарте присутствуют несохранённые изменения. Вы уверены, что хотите выйти без сохранения?"
+        if self.current_tk_modified:
+            if not CQT.msgboxgYN_delay(msg_modified_exit, delay_sec=3): return
+        else:
+            if not CQT.msgboxgYN(msg_default_exit): return # 03.04.2026
+
         ima = n_tk.text() + '_' + n_dse.text() + ".txt"
         tmpf = F.put_po_umolch() + os.sep + "tmp_tk"
         vosst_mk = False
@@ -1883,24 +1902,71 @@ class mywindow(QtWidgets.QMainWindow):
 
     @CQT.onerror
     def vigruzit(self,*args):
-        sp = GF3(self)
-        # for i in sp:
-        #   print(i)
-        # return
-        if sp == None:
-            return
-        n_tk = self.ui.lineEdit_nntk
+        table_instance = self.ui.tblw_dse
+        fl_table_instance = self.ui.tblw_dse_find
+
         putt = F.scfg('vivod_tk')
-        if F.existence_file_c(putt) == False:
-            F.create_dir_c(putt)
-        if len(putt) < 3:
-            putt = os.path.expanduser('~')
-        ima = CQT.f_dialog_save(self, "Сохранить", putt + os.sep + n_tk.text() + '.txt', 'Текст файл(*.txt);;Все(*.*)')
-        if ima == ".":
-            return
-        F.write_file_c(ima, sp)
-        CQT.msgbox("Файл " + ima + " сохранен")
-        F.run_file_c(ima)
+        Path(putt).mkdir(parents=True, exist_ok=True)
+
+        if 'shift' in CQT.get_key_modifiers(self): #31.02.2026
+            filter_is_filled = fl_table_instance.rowCount() >= 1 and any(
+                value for value in CQT.list_from_wtabl_c(fl_table_instance)[0]
+            )
+            list_tk = CQT.list_from_wtabl_c(table_instance, rez_dict=True, only_visible=True)
+            if not filter_is_filled:
+                return CQT.msgbox('Для массовой выгрузки необходимо применить фильтр')
+            if filter_is_filled and len(list_tk) > 40:
+                return CQT.msgbox('Выделено слишком много техкарт')
+            if not CQT.msgboxgYN_delay(f'Вы уверены, что хотите выгрузить {len(list_tk)} техкарт в текстовой формат?'):
+                return
+            report = []
+            user_path = CQT.getDirectory(self, putt)
+            if not user_path.replace('.', ''):
+                return
+            path = Path(user_path)
+            for row in list_tk:
+                nn = row['Номенклатурный_номер']
+                name_tk = row['Номер_техкарты']
+
+                error_msg = {'Состояние выгрузки': f'{CE.СтатусыПроизводства.error} Неудачно',
+                                   'Номенклатурный_номер': nn, 'Номер_техкарты': name_tk}
+                success_msg = {'Состояние выгрузки': f'{CE.СтатусыПроизводства.success} Успешно',
+                               'Номенклатурный_номер': nn, 'Номер_техкарты': name_tk}
+                try: #01.04.2026
+                    sp = GF3(nn, name_tk)
+                except Exception as e:
+                    sp = None
+
+                if sp == None:
+                    report.append(error_msg)
+                    continue
+                if not F.existence_file_c(putt):
+                    F.create_dir_c(putt)
+
+                path.mkdir(exist_ok=True, parents=True)
+                filename = path / f'{name_tk}.txt'
+                F.write_file_c(str(filename), sp)
+                report.append(success_msg if filename.exists() else error_msg)
+            F.run_file_c(putt)
+            CQT.msgboxg_get_table_ok_inf(self, 'Выгрузка завершена', report)
+        else:
+            if table_instance.currentRow() == -1:
+                return CQT.msgbox('Сначала необходимо выбрать техкарту')
+            n_dse = self.ui.lineEdit_dse.text()
+            n_tk = self.ui.lineEdit_nntk.text()
+            sp = GF3(n_dse, n_tk)
+            if sp == None:
+                return
+            n_tk = self.ui.lineEdit_nntk
+            if len(putt) < 3:
+                putt = os.path.expanduser('~')
+            ima = CQT.f_dialog_save(self, "Сохранить", putt + os.sep + n_tk.text() + '.txt',
+                                    'Текст файл(*.txt);;Все(*.*)')
+            if ima == ".":
+                return
+            F.write_file_c(ima, sp)
+            CQT.msgbox("Файл " + ima + " сохранен")
+            F.run_file_c(ima)
 
     @CQT.onerror
     def block_tk(self, naim, nn):
@@ -1962,6 +2028,8 @@ class mywindow(QtWidgets.QMainWindow):
         nazv_dse = self.ui.lineEdit_dse_naim
         n_tk = self.ui.lineEdit_nntk
 
+        current_row = self.ui.tblw_dse.currentRow()
+
         if nazv_dse.text() == '':
             CQT.msgbox('Не заполнено название ДСЕ')
             return
@@ -1982,22 +2050,18 @@ class mywindow(QtWidgets.QMainWindow):
                     conn, cur = CSQ.connect_bd(self.db_dse,1)
                     CSQ.custom_request_c(
                         self.db_dse,
-                        f"""UPDATE dse SET Номер_техкарты = '{n_tk.text()}' {where}""",
-                    conn = conn, cur= cur)
-                    self.obnov_dse(conn=conn,cur =cur)
+                        f"""UPDATE dse SET Номер_техкарты = '{n_tk.text()}' {where}""")
+                    self.obnov_dse()
                     CSQ.close_bd(conn, cur)
                     self.save_tk()
                 else:
                     return False
-            if self.ui.tblw_dse.currentRow() == -1:
+            if current_row == -1: #01.04.2026
                 return
-            if self.ui.tblw_dse.item(self.ui.tblw_dse.currentRow(), CQT.num_col_by_name_c(self.ui.tblw_dse,'Номер_техкарты')).text() == '':
-                conn, cur = CSQ.connect_bd(self.db_dse, 1)
+            if self.ui.tblw_dse.item(current_row, CQT.num_col_by_name_c(self.ui.tblw_dse,'Номер_техкарты')).text() == '':
                 CSQ.custom_request_c(self.db_dse,
-                           f"""UPDATE dse SET Номер_техкарты = '{n_tk.text()}' {where}""",
-                           conn=conn,cur = cur)
-                self.obnov_dse(conn=conn,cur = cur)
-                CSQ.close_bd(conn, cur)
+                           f"""UPDATE dse SET Номер_техкарты = '{n_tk.text()}' {where}""")
+                self.obnov_dse()
             F.copy_file_c(F.scfg("add_docs") + os.sep + ima.replace('.txt', '.pickle'),
                           F.put_po_umolch() + os.sep + "tmp_tk")
 
@@ -2044,11 +2108,10 @@ class mywindow(QtWidgets.QMainWindow):
             if msg == 1:
                 CQT.msgbox('Не сохранено')
             return
-        if '*' in  self.glob_tk_title:
-            self.set_glob_tk_title(self.glob_tk_title.replace('*',''))
+        if self.current_tk_modified: #31.03.2026
+            self.clear_tk_modified_status()
         if msg == 1:
             CQT.msgbox('Успешно сохранено')
-
 
     @CQT.onerror
     def btn_prim_izm_shablon(self,*args):
@@ -2732,7 +2795,7 @@ class mywindow(QtWidgets.QMainWindow):
             if naim_dse.text() != tbl_dse.item(tbl_dse.currentRow(), n_k_naim).text():
                 naim_dse.setText(tbl_dse.item(tbl_dse.currentRow(), n_k_naim).text())
 
-
+        self.load_state_chk_borrow_vars()
         if n_dse.text() == '' and naim_dse.text() == "":
             CQT.msgbox('Не заполнен номер, название ДСЕ')
             return
@@ -3131,8 +3194,7 @@ class mywindow(QtWidgets.QMainWindow):
 
     @CQT.onerror
     def obnovt_drevo_s_tabl1_op(self,*args):
-        if '*' not in  self.glob_tk_title:
-            self.set_glob_tk_title(self.glob_tk_title + '*')
+        self.mark_tk_modified_status()
         tree = self.ui.tree
         tabl = self.ui.tab_op
         tabl_doc = self.ui.tab_op_doc
@@ -3203,8 +3265,7 @@ class mywindow(QtWidgets.QMainWindow):
 
     @CQT.onerror
     def obnovt_drevo_s_tabl3_kar(self,*args):
-        if '*' not in  self.glob_tk_title:
-            self.set_glob_tk_title(self.glob_tk_title + '*')
+        self.mark_tk_modified_status()
         tabl = self.ui.tab_kar
         tabl_doc = self.ui.tab_tk_doc
         if self.ui.tree.currentItem() == None:
@@ -3233,8 +3294,7 @@ class mywindow(QtWidgets.QMainWindow):
 
     @CQT.onerror
     def obnovt_drevo_s_tab2_per(self,*args):
-        if '*' not in  self.glob_tk_title:
-            self.set_glob_tk_title(self.glob_tk_title + '*')
+        self.mark_tk_modified_status()
         tabl = self.ui.tap_per
         tabl_osn = self.ui.tap_per_osnast
         tabl_ins = self.ui.tap_per_insrt
@@ -3575,10 +3635,23 @@ class mywindow(QtWidgets.QMainWindow):
     def get_oper_prim(self, operation: str, pereh: str = '') -> str:
         return str(Path(self.path_cash_poki) / 'tables' / operation / pereh / 'prim.txt')
 
+    @CQT.onerror
+    def save_state_chk_borrow_vars(self,
+                                   *args):
+        CMS.save_tmp_stukt(self.ui.chk_borrow_vars.isChecked(),'state_chk_borrow_vars')
+
+    @CQT.onerror
+    def load_state_chk_borrow_vars(self,
+                                   *args):
+        chk = self.ui.chk_borrow_vars
+        chk.blockSignals(True)
+
+        chk.setChecked(CMS.load_tmp_stukt('state_chk_borrow_vars', 0))
+        chk.blockSignals(False)
+
 class mywindow2(QtWidgets.QDialog):  # диалоговое окно
     @CQT.onerror
     def __init__(self, pself:mywindow,  parent=None, item_o="", p1=0, p2=0):
-        self._disposed = False
         self.item_o = item_o
         self.p1 = p1
         self.p2 = p2
@@ -3617,6 +3690,7 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
 
         self.ui2.btn_add_weld.clicked.connect(self.btn_add_weld)
         self.ui2.btn_del_welds.clicked.connect(self.btn_del_welds)
+        self.ui2.btn_select_combo2.clicked.connect(self.btn_select_combo2)
         self.ui2.btn_del_one_weld.clicked.connect(lambda *_: operacii.del_one_weld(self))
         self.ui2.tab_vib.cellChanged.connect(lambda row, col: operacii.table_sum_cell_changed(self, row, col))
         self.ui2.btn_del_one_weld.setDefault(False)
@@ -3808,6 +3882,7 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
                 self.ui2.lbl_info_dxf.setText(str(pself.global_param_tk_dxf))
 
             if parent.currentItem().text(20) == '2':
+                self.ui2.btn_select_combo2.setHidden(True)
                 ima_oper = parent.currentItem().parent().text(0)
                 pereh_path = self.pself.xl_formulas.get_pereh_txt_path(ima_oper)
                 limit_o = int(F.scfg('limit_o'))
@@ -3837,12 +3912,31 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
                     CQT.msgbox(self.ui2.lbl_prim.text(),'Я понял',icon=QtWidgets.QMessageBox.Warning)
             self.toggle_access_main_widgets(self.ui2.tab_vib.columnCount() != 0)
 
+
         if self.pself.chbox_edit_combos:
             self.ui2.chbox_edit_combos.setChecked(True)
         else:
             self.ui2.chbox_edit_combos.setChecked(False)
+    def btn_select_combo2(self,*args):
+        data_opers = [{'Название':name,
+                       'Код':_['kod'],
+                       'Этап':_['etap'],
+                       'РЦ':_['rc'],
+                       'Тпз':_['Tpz'],
+                       'Вспом.':_['Вспомогат'],
+                       'КР':_['kr_default'],
+                       'Проф.':_['dopust_prof'],
+                       'ТИ':_['ТИ']
+                       } for name, _ in self.pself.DICT_OPERS.items()]
 
-
+        rez = CQT.msgboxg_get_table(self,'Выбор операции',data_opers,'Выбрать','Отмена',
+                                    selection_from_tbl=True,styleSheet=CQT.MES_CSS,sortingEnabled=True,
+                                    ExtendedSelection=False,selectRows=True)
+        if not rez:
+            return
+        text_combo = f"{rez['Название']} / {rez['Код']}"
+        self.ui2.combo2.setCurrentText(text_combo)
+        self.vibor_elem2()
     def btn_add_weld(self):
         operacii.add_weld(self)
 
@@ -3915,7 +4009,7 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
                 tab_v.item(tab_v.currentRow(), nk_db_edizm).text())
             tab_mat.item(tab_mat.currentRow(), nk_tblm_norma).setText(
                 '0')
-            self.close()
+            self.hide()
             osn_mat.zagr_sortament(self.pself)
             #application.ui.tabW_mat.setCurrentIndex(1)
             self.pself.ui.tbl_resch_mater.setFocus()
@@ -3946,7 +4040,7 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
                 else:
                     cellinfo = QtWidgets.QTableWidgetItem(tab_v.item(tab_v.currentRow(), 0).text())
                     tab_doc.setItem(tab_doc.currentRow(), 0, cellinfo)
-                self.close()
+                self.hide()
         if self.item_o == "Док_тк":
             tab_v = self.ui2.tab_vib
             if tab_v.hasFocus() == False:
@@ -3958,7 +4052,7 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
                 else:
                     cellinfo = QtWidgets.QTableWidgetItem(tab_v.item(tab_v.currentRow(), 0).text())
                     tab_doc.setItem(tab_doc.currentRow(), 0, cellinfo)
-                self.close()
+                self.hide()
         if self.item_o == "Профессия":
             tab_v = self.ui2.tab_vib
             if tab_v.hasFocus() == False:
@@ -3970,7 +4064,7 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
                 else:
                     cellinfo = QtWidgets.QTableWidgetItem(tab_v.item(tab_v.currentRow(), 0).text())
                     tab_op.setItem(tab_op.currentRow(), 7, cellinfo)
-                self.close()
+                self.hide()
         if self.item_o == "Оборудование":
             tab_v = self.ui2.tab_vib
             if tab_v.hasFocus() == False:
@@ -3982,7 +4076,7 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
                 else:
                     cellinfo = QtWidgets.QTableWidgetItem(tab_v.item(tab_v.currentRow(), 1).text())
                     tab_op.setItem(tab_op.currentRow(), 4, cellinfo)
-                self.close()
+                self.hide()
         if self.item_o == "Раб_ц":
             tab_v = self.ui2.tab_vib
             if tab_v.hasFocus() == False:
@@ -3994,7 +4088,7 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
                 else:
                     cellinfo = QtWidgets.QTableWidgetItem(tab_v.item(tab_v.currentRow(), 0).text())
                     tab_op.setItem(tab_op.currentRow(), 3, cellinfo)
-                self.close()
+                self.hide()
         if self.item_o == "Материал":
             tab_v = self.ui2.tab_vib
             if tab_v.hasFocus():
@@ -4034,7 +4128,7 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
                 strok = self.ui2.lineEdit.text().strip().replace('\n', ' ')
                 strok = F.clear_row_for_separ_c(strok)
                 strok = F.capital_letter_c(strok)
-                self.close()
+                self.hide()
                 cellinfo = QtWidgets.QTableWidgetItem(strok)
                 cu.setItem(cu.currentRow(), 0, cellinfo)
                 cu.item(self.p1, 0).setText(strok)
@@ -4211,7 +4305,7 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
                 self.pself.obnovit_param_tablic()
                 if '*' not in self.pself.glob_tk_title:
                     self.pself.set_glob_tk_title(self.pself.glob_tk_title + '*')
-                self.close()
+                self.hide()
         return
 
     @CQT.onerror
@@ -4295,7 +4389,7 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
             except Exception as e:
                 vrema = 0
         if vrema == 0:
-            CQT.msgbox('Не рассчиано время, материалы не заненсены.')
+            CQT.msgbox('Не рассчитано время, материалы не занесены.')
         if F.valm(vrema) >= CFG.Config.place.limit_time_on_naryad: #25.11.25
             CQT.msgbox(f'Время: "{vrema}" на единицу превышает установленный лимит на один наряд {CFG.Config.place.limit_time_on_naryad}\nИзменения не применены')
             return item
@@ -4384,6 +4478,37 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
 
     @CQT.onerror
     def vibor_elem2(self,*args):
+
+        def insert_borrow_vals(rez):
+            # ===========INSERT BORROW VALS===========
+            if self.pself.ui.chk_borrow_vars.isChecked():
+                data_tree = CQT.list_from_tree_c(self.pself.ui.tree)
+                tk_ = [[''] for _ in range(10)]
+                tk_.extend(data_tree)
+                tk_obj = CMS.Techkards(tk_, DICT_PROFESSIONS=self.pself.DICT_PROFESSIONS,
+                                       DICT_OP_NAME=self.pself.DICT_OPERS, silent_mode=True)  # TODO
+                params = tk_obj.get_dict_params()
+                if params and len(rez) <= 2:
+                    if len(rez) == 1:
+                        tmp_dict_rez = {k: '' for k in rez[0]}
+                    else:
+                        tmp_dict_rez = dict(zip(rez[0], rez[1]))
+
+                    compare_dict = dict()
+                    for k, v in tmp_dict_rez.items():
+                        if k in params and v == '':
+                            compare_dict[k] = params[k].split(';')[0]
+
+                    if compare_dict:
+                        if len(rez) == 1:
+                            rez.append(['' for _ in rez[0]])
+                        print(f'insert saved vals:')
+                        for ind, k in enumerate(rez[0]):
+                            if k in compare_dict:
+                                rez[1][ind] = compare_dict[k]
+                                print(f'    {k}: {compare_dict[k]}')
+            return rez
+
         combo1 = self.ui2.combo1
         combo2 = self.ui2.combo2
         tbl = self.ui2.tab_vib
@@ -4394,6 +4519,8 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
         item = self.pself.ui.tree.currentItem()
         self.ui2.lbl_prim.setText('')
         if self.item_o == 'Древо':
+
+
             if item.text(20) == '1':
                 rez = []
                 oper_name = combo2.currentText().split(' / ')[0]
@@ -4463,6 +4590,8 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
                                         break
                         except:
                             pass
+                    #===========INSERT SAVED VALS===========
+                    rez = insert_borrow_vals(rez)
 
 
                     set_corr = set(range(len(rez[0])))
@@ -4510,6 +4639,10 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
                                     if row < len(template) and column < len(template[row]):
                                         template[row][column] = row_pereh_params[column].split(';')[row]
                             rez = [*rez, *template]
+
+                        # ===========INSERT SAVED VALS===========
+                        rez = insert_borrow_vals(rez)
+
                         set_corr = set(range(len(rez[0])))
                         CQT.fill_wtabl(rez, tbl, set_editeble_col_nomera=set_corr, auto_type=False) #14.07.25
                         tbl.resizeColumnsToContents()
@@ -4577,42 +4710,6 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
                     return F.valm(spis_op[i][2])
         return tpz
 
-    def dispose(self):
-        """корректное уничтожение окна."""
-        if self._disposed:
-            return
-        self._disposed = True
-        try:
-            self.disconnect()
-        except Exception:
-            pass
-        tbl = self.ui2.tab_vib
-        try:
-            tbl.setUpdatesEnabled(False)
-            tbl.blockSignals(True)
-            for r in range(tbl.rowCount()):
-                for c in range(tbl.columnCount()):
-                    w = tbl.cellWidget(r, c)
-                    if w is not None:
-                        tbl.removeCellWidget(r, c)
-                        w.deleteLater()
-
-            tbl.clearContents()
-            tbl.setRowCount(0)
-            tbl.setColumnCount(0)
-
-            tbl.blockSignals(False)
-            tbl.setUpdatesEnabled(True)
-        except Exception:
-            pass
-        self.close()
-        self.deleteLater()
-
-    def closeEvent(self, e):
-        if not self._disposed:
-            self.dispose()
-        e.accept()
-
 
 
 
@@ -4635,6 +4732,7 @@ app.setStyle(S[1])
 application = mywindow()
 from project_cust_38.widget_spy import install_pyqt_event_hook
 install_pyqt_event_hook(app)
+
 #=============================================================
 versia = application.versia
 if F.is_frozen()== False:

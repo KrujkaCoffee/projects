@@ -73,6 +73,139 @@ class _ImportDb():
                 print(f'class {self.__class__.__name__} ImportDbRow attr not declared :{fix_key}' )
             exec(f'self.{fix_key} = val')
 
+    def __repr__(self):
+        return (f"{', '.join([f'"{k}" : {v if F.is_numeric(v) else f'"{v}"'}' for k,v in self.__dict__.items()])}")
+
+class _DbRow(_ImportDb):
+
+    TABLE:str = ''
+    PK:str = 'id'
+    FIELDS:tuple = ()
+
+    def __init__(self,parent,item:dict|None=None):
+        setattr(self, 'parent', parent)
+        self._db = self.parent._db
+        for field in self.FIELDS:
+            setattr(self, field, None)
+        if item:
+            self.parce_row_dict(item)
+
+
+    def _data(self)->list:
+        return [getattr(self,f) for f in self.FIELDS if f != self.PK]
+
+
+    def _fields_without_pk(self)->list:
+        return [f for f in self.FIELDS if f != self.PK]
+
+
+    def _insert(self):
+
+        fields = ",".join(self._fields_without_pk())
+        data = self._data()
+
+        result = CSQ.custom_request_c(
+            self._db,
+            f"""INSERT INTO {self.TABLE}
+            ({fields})
+            VALUES ({CSQ.questions_for_mask(data)})
+            RETURNING {self.PK}""",
+            list_of_lists_c=data,
+            returning=True,
+            rez_dict=True
+        )
+
+        if result:
+            setattr(self,self.PK,result[0][self.PK])
+            return True
+        return False
+
+
+    def update(self):
+
+        fields = ",".join(self._fields_without_pk())
+        data = self._data()
+
+        result = CSQ.custom_request_c(
+            self._db,
+            f"""UPDATE {self.TABLE}
+                SET ({fields})
+                = ({CSQ.questions_for_mask(data)})
+                WHERE {self.PK} = {getattr(self,self.PK)}""",
+            list_of_lists_c=data
+        )
+
+        return bool(result)
+
+
+    def save(self):
+        if getattr(self,self.PK) is None:
+            return self._insert()
+        return self.update()
+
+
+    def delete(self):
+        result = CSQ.custom_request_c(
+            self._db,
+            f"""DELETE FROM {self.TABLE}
+                WHERE {self.PK} = {getattr(self,self.PK)}"""
+        )
+        return bool(result)
+
+    def to_dict(self):
+        return {f:getattr(self,f) for f in self.FIELDS}
+
+class _DbTable:
+
+    ROW_CLASS = None
+    TABLE = ''
+
+    def __init__(self,db:str):
+        self._db:str = db
+        self.rows:list = []
+        self.load()
+
+
+    def load(self):
+        self.rows = []
+        rez = CSQ.custom_request_c(
+            self._db,
+            f"""SELECT * FROM {self.TABLE}""",
+            rez_dict=True
+        )
+        for item in rez:
+            self.rows.append(self.ROW_CLASS(self,item))
+
+
+    def all(self)->list:
+        return self.rows
+
+
+    def add(self)->object:
+        obj = self.ROW_CLASS(self,{})
+        self.rows.append(obj)
+        return obj
+
+
+    def find(self,id:int):
+        for row in self.rows:
+            if getattr(row,row.PK) == id:
+                return row
+
+
+    def find_by(self,field:str,value):
+        for row in self.rows:
+            if getattr(row,field) == value:
+                return row
+
+
+    def delete(self,id:int):
+        row = self.find(id)
+        if row:
+            if row.delete():
+                self.rows.remove(row)
+                return True
+        return False
 
 class Shift():
     def __init__(self,num,start:str,end:str):
@@ -103,26 +236,30 @@ class Production_shifts():
         self.sm_3:Shift|None = None
         self._calc_sm_time()
 
-    def _calc_sm_time(self):
-        rez = CSQ.custom_request_c(self.db_users, f"""SELECT * FROM rab_mesta 
-        WHERE {self.user_mes_id} = ФИО_1 or {self.user_mes_id} = ФИО_2 or
-        {self.user_mes_id} = ФИО_3""", rez_dict=True, one=True)
-        if rez:
-            self.sm_1 = Shift(1,rez['Время_начала_1'],rez['Время_конца_1'])
-            self.sm_2 = Shift(2,rez['Время_начала_2'],rez['Время_конца_2'])
-            self.sm_3 = Shift(3,rez['Время_начала_3'],rez['Время_конца_3'])
+    def _calc_sm_time(self): #13.02.2026
+        rez = CSQ.custom_request_c(
+            self.db_users,
+            f"""SELECT "sm_" || shift_no AS shift, * FROM schedule_work_places WHERE employee_id = {self.user_mes_id}""",
+            rez_dict=True,
+        ) or []
+        for schedule in rez:
+            shift = Shift(schedule['shift_no'], schedule['time_start'], schedule['time_end'])
+            setattr(self, schedule['shift'], shift)
+        print(f'[Production_shifts] Загрузка смен: sm_1: {self.sm_1}; sm_2: {self.sm_2}; sm_3: {self.sm_3};')
 
     def _what_is_shift(self)->Shift:
         now = F.now("").time()
-        if self.sm_1.start <= now and self.sm_1.end >= now:
+        if self.sm_1 is not None and self.sm_1.start <= now and self.sm_1.end >= now:
             return self.sm_1
-        if self.sm_2.start <= now and self.sm_2.end >= now:
+        if self.sm_2 is not None and self.sm_2.start <= now and self.sm_2.end >= now:
             return self.sm_2
-        if self.sm_3.start <= now and self.sm_3.end >= now:
+        if self.sm_3 is not None and self.sm_3.start <= now and self.sm_3.end >= now:
             return self.sm_3
 
     def minutes_till_end(self)->float:
         sm = self._what_is_shift()
+        if sm is None:
+            return 0
         now = F.now("").time()
         diff = Shift.minutes_between(now, sm.end)
         return diff
@@ -316,6 +453,12 @@ class Color_tbl():
         100: "49;140;73",  # Насыщенный зеленый
     }
     def __init__(self,val:float|int,revers=False,dark_mode=False):
+        """
+
+        :param val: 0-100
+        :param revers:
+        :param dark_mode:
+        """
         DICT_COLOR = Color_tbl.DICT_COLOR
         if dark_mode:
             DICT_COLOR = Color_tbl.DICT_COLOR_DARK
@@ -330,13 +473,193 @@ class Color_tbl():
             if key >= val:
                 self.r,self.g,self.b =color.split(';')
                 break
-        self.r = int(self.r)
-        self.g = int(self.g)
-        self.b = int(self.b)
-        self.rgb = [self.r,self.g,self.b]
+        self.r:int = int(self.r)
+        self.g:int = int(self.g)
+        self.b:int = int(self.b)
+        self.rgb:list[int] = [self.r,self.g,self.b]
 
     def str_rgb(self,sep:str=' ,')->str:
         return  sep.join([str(_) for _ in self.rgb])
+
+
+class Color:
+    def __init__(self, color_str: str|tuple[int, int, int]|tuple[int, int, int, int]|None = None):
+        self.r = 0
+        self.g = 0
+        self.b = 0
+        self.a = 255  # альфа-канал по умолчанию (непрозрачный)
+        self.none:bool=True
+
+        if color_str is not None:
+            self.none = False
+            self.parse_color(color_str)
+
+    def __bool__(self):
+        if self.none:
+            return False
+        return True
+
+    def get_str(self,sep:str)->str:
+        return sep.join([str(_) for _ in self.rgb])
+
+    def parse_color(self, color_str: str|tuple[int, int, int]|tuple[int, int, int, int]):
+        """Парсит строку или кортеж в компоненты цвета"""
+        if isinstance(color_str, tuple):
+            if len(color_str) == 3:
+                self.r, self.g, self.b = color_str
+                self.a = 255
+            elif len(color_str) == 4:
+                self.r, self.g, self.b, self.a = color_str
+            return
+
+        # Очищаем строку от лишних пробелов
+        color_str = color_str.strip()
+
+        # Поддерживаемые разделители: ; , пробел
+        # Убираем "rgb(" и "rgba(" если есть
+        color_str = re.sub(r'^rgba?\(|\)$', '', color_str)
+
+        # Разделяем по любому из разделителей
+        parts = re.split(r'[;, ]+', color_str)
+
+        # Фильтруем пустые значения
+        parts = [p.strip() for p in parts if p.strip()]
+
+        if len(parts) >= 3:
+            self.r = self._clamp(int(parts[0]))
+            self.g = self._clamp(int(parts[1]))
+            self.b = self._clamp(int(parts[2]))
+
+            if len(parts) >= 4:
+                self.a = self._clamp(int(parts[3]), 0, 255)
+            else:
+                self.a = 255
+
+    @staticmethod
+    def _clamp(value: int, min_val: int = 0, max_val: int = 255) -> int:
+        """Ограничивает значение в заданном диапазоне"""
+        return max(min_val, min(value, max_val))
+
+    @property
+    def red(self) -> int:
+        return self.r
+
+    @property
+    def r(self) -> int:
+        return self._r
+
+    @r.setter
+    def r(self, value: int):
+        self._r = self._clamp(value)
+
+    @property
+    def green(self) -> int:
+        return self.g
+
+    @property
+    def g(self) -> int:
+        return self._g
+
+    @g.setter
+    def g(self, value: int):
+        self._g = self._clamp(value)
+
+    @property
+    def blue(self) -> int:
+        return self.b
+
+    @property
+    def b(self) -> int:
+        return self._b
+
+    @b.setter
+    def b(self, value: int):
+        self._b = self._clamp(value)
+
+    @property
+    def alpha(self) -> int:
+        return self.a
+
+    @property
+    def a(self) -> int:
+        return self._a
+
+    @a.setter
+    def a(self, value: int):
+        self._a = self._clamp(value, 0, 255)
+
+    @property
+    def rgb(self) -> tuple[int, int, int]:
+        """Возвращает кортеж (r, g, b)"""
+        return (self.r, self.g, self.b)
+
+    @property
+    def rgba(self) -> tuple[int, int, int, int]:
+        """Возвращает кортеж (r, g, b, a)"""
+        return (self.r, self.g, self.b, self.a)
+
+    @property
+    def hex(self) -> str:
+        """Возвращает hex-представление цвета"""
+        return f"#{self.r:02x}{self.g:02x}{self.b:02x}"
+
+    @property
+    def hexa(self) -> str:
+        """Возвращает hex-представление цвета с альфа-каналом"""
+        return f"#{self.r:02x}{self.g:02x}{self.b:02x}{self.a:02x}"
+
+    def set_val(self, val: int):
+        """Устанавливает все компоненты цвета в одно значение (оттенки серого)"""
+        self.r = self.g = self.b = self._clamp(val)
+
+    def align_colors(self, level=80, level_percent=0, saturation = None, saturation_percent = None,copy=False) -> 'Color':
+        r, g, b =  F.align_colors(self.rgb,level=level, level_percent=level_percent,
+                                                 saturation = saturation,
+                        saturation_percent = saturation_percent,sep_out='')
+        if copy:
+            return Color((r,g,b))
+        else:
+            self.r, self.g, self.b = r, g, b
+
+    def __str__(self) -> str:
+        return f"Color(r={self.r}, g={self.g}, b={self.b}, a={self.a})"
+
+    def __repr__(self) -> str:
+        return self.__str__()
+
+    def __eq__(self, other) -> bool:
+        if not isinstance(other, Color):
+            return False
+        return (self.r, self.g, self.b, self.a) == (other.r, other.g, other.b, other.a)
+
+
+# Примеры использования:
+if __name__ == "__main__":
+    # Разные форматы ввода
+    c1 = Color("153;102;255")
+    print(c1.r, c1.g, c1.b)  # 153 102 255
+    print(c1.rgb)  # (153, 102, 255)
+
+    c2 = Color("100,200,50,128")
+    print(c2.rgba)  # (100, 200, 50, 128)
+
+    c3 = Color("rgb(255 100 50)")
+    print(c3.rgb)  # (255, 100, 50)
+
+    c4 = Color("rgba(255,100,50,200)")
+    print(c4.rgba)  # (255, 100, 50, 200)
+
+    c5 = Color((64, 128, 192))
+    print(c5.hex)  # #4080c0
+
+    # Методы
+    c5.set_val(100)
+    print(c5.rgb)  # (100, 100, 100)
+
+    # align_colors
+    result = c1.align_colors(c2)
+    print(result)  # Усредненный цвет
+
 
 class Emploee_usr(CFG.User_emploee):
     def __init__(self,fio:str,user_db:str):
@@ -415,9 +738,9 @@ class Emploee_spread_db():
             return
         data_1C = F.deploy_dict_c(data_1C['data'],'ФизическоеЛицо_Key',keep_key=True)
 
-
+        # 17.03.2026
         data_mes = CSQ.custom_request_c(CFG.Config.project.db_users,f"""SELECT * 
-                                                                                      FROM ФизическоеЛица;
+                                                                                      FROM ФизическиеЛица;
                                                                                     """,rez_dict=True)
         if data_mes is None or data_mes == False:
             print(f'update_fiz_users err data_mes')
@@ -458,7 +781,7 @@ class Emploee_spread_db():
                 list_k = list(dict_vals.keys())
                 list_v = list(dict_vals.values())
                 CSQ.custom_request_c(CFG.Config.project.db_users, f"""
-                        UPDATE ФизическоеЛица 
+                        UPDATE ФизическиеЛица 
                 SET  ({','.join(list_k)})
                     = ({CSQ.questions_for_mask(list_k)})
                             WHERE ФизическоеЛицо_Key == "{ref}" ;""", list_of_lists_c=[list_v])
@@ -466,8 +789,8 @@ class Emploee_spread_db():
         if dict_add:
             fields = [list(dict_vals.keys()) for dict_vals in dict_add.values()]
             fields = fields[0]
-            list_of_lists = [list(dict_vals.values()) for dict_vals in dict_add.values()]
-            CSQ.custom_request_c(CFG.Config.project.db_users, f"""INSERT INTO ФизическоеЛица
+            list_of_lists = [list(dict_vals.values()) for dict_vals in dict_add.values()] #17.03.2026
+            CSQ.custom_request_c(CFG.Config.project.db_users, f"""INSERT INTO ФизическиеЛица
                               ({','.join(fields)}) 
                               VALUES ({CSQ.questions_for_mask(fields)});""", list_of_lists_c=list_of_lists)
         
@@ -1351,6 +1674,7 @@ class Pozition():
         self.Приоритет = None
         self.local_graf = None
         self.fact_jurnal_blolb_data = None
+        self.poki:int|None = None
         if F.is_numeric(p_nom_or_row_preload):
             p_nom_or_row_preload = int(p_nom_or_row_preload)
         if not isinstance(p_nom_or_row_preload,int) :
@@ -1399,8 +1723,8 @@ class Pozition():
                             plan.Готовность_ПУ, 
                             plan.Постановка_в_план, 
                             plan.Примечание, 
-                            plan.Приоритет{postfix_local_graf}{postfix_day_plan} 
-
+                            plan.Приоритет{postfix_local_graf}{postfix_day_plan}, 
+                            plan.poki 
                              FROM plan INNER JOIN пл_оуп ON пл_оуп.НомПл = plan.Пномер,
                              знпр ON знпр.s_num = пл_оуп.Пномер_ЗП 
             WHERE plan.Пномер == {p_nom};"""
@@ -1472,7 +1796,7 @@ class Pozition():
     def get_napravl(self):
         rez = CSQ.custom_request_c(self.db,f"""SELECT * FROM napravl_deyat INNER JOIN 
         napravlenie ON napravl_deyat.Направление = napravlenie.Пномер WHERE napravl_deyat.Пномер 
-         = {self.Направление_деятельности} and napravl_deyat.poki == {CFG.Config.place.poki}""",rez_dict=True)[0]
+         = {self.Направление_деятельности} and napravl_deyat.poki == {self.poki}""",rez_dict=True)[0]
         return rez
 
     def get_plan_etaps_dates(self):
@@ -1531,7 +1855,10 @@ class Pozition():
         request = f"""
                 SELECT * FROM {name_table} 
                 WHERE НомПл == {self.Пномер};"""
-        row = CSQ.custom_request_c(self.db, request, rez_dict=True)[0]
+        resp = CSQ.custom_request_c(self.db, request, rez_dict=True)
+        if not resp:
+            return
+        row = resp[0]
         self.dict_tables[name_table] = dict()
         for key in row.keys():
             exec(f'self.dict_tables["{name_table}"]["{key.replace(".", "_")}"] = row[key]')
@@ -2077,12 +2404,12 @@ class Tech_oper():
             self.t_pz = list_data[6]
         else:
             self.t_pz = F.valm(list_data[6])
-
-        if list_data[8] not in self.parent.parent.DICT_PROFESSIONS:
-            if self.parent.parent.silent_mode:
-                return 
-            CQT.msgbox(f'Некорректный код профессии необходимо править техкарту: {self.parent.parent.nn}')
-            raise ValueError
+        if self.parent.parent.validate_empty_attrs:
+            if list_data[8] not in self.parent.parent.DICT_PROFESSIONS:
+                if self.parent.parent.silent_mode:
+                    return
+                CQT.msgbox(f'Некорректный код профессии необходимо править техкарту: {self.parent.parent.nn}')
+                raise ValueError
 
         self.cod:str =  self.parent.parent.DICT_KOD_OPER[list_data[0]]
         self.name_ver:str =  list_data[0]
@@ -2185,7 +2512,8 @@ class Techkards():
                  fix_mat=False,
             DICT_OP_NAME: dict = None,
             DICT_PROFESSIONS: dict = None, #31.07.25
-        silent_mode=False
+        silent_mode=False,
+                 validate_empty_attrs = True
         ):
         poki = CFG.Config.place.poki
         self.DICT_KOD_OPER = None
@@ -2199,7 +2527,8 @@ class Techkards():
         self.fix_mat = fix_mat
         self.fl_fix = False
         self.silent_mode = silent_mode
-        
+        self.validate_empty_attrs = validate_empty_attrs
+
         self.DICT_PROFESSIONS = DICT_PROFESSIONS
         if DICT_PROFESSIONS is None:
             print(f'class Techkards: DICT_PROFESSIONS = None')
@@ -2891,7 +3220,19 @@ class Marshrut_cards():
                 print(f'Marshrut_cards __init__ : CFG.Config.project.db_kplan err')
 
 
+    def get_poz(self)->Pozition:
+        self.poz:Pozition = Pozition(self.НомКплан,CFG.Config.project.db_kplan,CFG.Config.project.db_naryad,
+                                     CFG.Config.project.db_resxml,CFG.Config.project.db_users
+                                     )
+        return  self.poz
 
+    def calc_poki(self)->int|None:
+        return CSQ.custom_request_c( # 07.04.2026
+            CFG.Config.project.db_naryad,
+            f"""SELECT poki FROM plan WHERE Пномер={self.НомКплан};""",hat_c=False,one=True,
+            one_column=True,
+            attach_dbs=CFG.Config.project.db_kplan
+        )
 
     def is_del(self):
         if "На_удал" not in self.__dict__:
@@ -3044,22 +3385,83 @@ class _Naryad_base():
             CSQ.custom_request_c(db_naryad, f"""SELECT * FROM dolgn_etap""", rez_dict=True),
                                                                             'Должность')
 
+    def calc_dict_opers(self,db_naryad:str)->list[dict]:
+        return F.deploy_dict_c(
+            CSQ.custom_request_c(db_naryad, f"""SELECT * FROM operacii WHERE poki = {CFG.Config.place.poki}""", rez_dict=True),
+            'name')
+
 class Naryad_list(_Naryad_base):
     def __init__(self,set_nums):
         self.db_naryad = CFG.Config.project.db_naryad
         self.db_users = CFG.Config.project.db_users
         self._dict_dolgn_etap = self.calc_dict_dolgn_etap(self.db_naryad)
         self._dict_empl = self.calc_dict_empl(self.db_users)
+        self._dict_opers = self.calc_dict_opers(self.db_naryad)
 
         data  = CSQ.custom_request_c(self.db_naryad,f'''SELECT naryad.*, mk.Дата as ДатаМК FROM naryad JOIN mk ON mk.Пномер = naryad.Номер_мк 
             WHERE naryad.Пномер in ({CSQ.prepare_list_to_tuple(set_nums)});''',rez_dict=True)
 
-        self.naryads:list[Naryads] = [Naryads(_,self.db_naryad,self._dict_dolgn_etap,self.db_users,self._dict_dolgn_etap) for _ in data]
+        self.naryads:list[Naryads] = [Naryads(_,self.db_naryad,self._dict_dolgn_etap,self.db_users,self._dict_dolgn_etap,self._dict_opers) for _ in data]
+
+class Naryad_param():
+    def __init__(self,parent:Naryads|None,
+            ДСЕ:str|None = None,
+            ДСЕ_ID:int|None = None,
+            Операции_номер:str|None = None,
+            Операции_имя:str|None = None,
+            Опер_колво:int|None = None,
+            Опер_время:float|None = None,
+            Профессии:str|None = None,
+            Виды_работ:str|None = None,
+                 ):
+        self.parent:Naryads = parent
+        Наименование,  НН = ДСЕ.split("$")
+        self.НН:str|None = НН
+        self.Наименование:str|None = Наименование
+        self.ДСЕ_ID:int|None = ДСЕ_ID
+        self.Операции_номер:str|None = Операции_номер
+        self.Операции_имя:str|None = Операции_имя
+        self.Опер_колво:int|None = Опер_колво
+        self.Опер_время:float|None = Опер_время
+        self.Профессии:str|None = Профессии
+        self.Виды_работ:str|None = Виды_работ
+        self.Норма_времени_пооперационно:float|None = copy.copy(self.Опер_время)
+        self.code_oper:str|None = None
+        self.recalc_code_oper()
 
 
+    @property
+    def dse(self):
+        return '$'.join([self.Наименование,self.НН])
+
+    def recalc_code_oper(self):
+        if self.parent:
+            if not hasattr(self.parent,'dict_opers'):
+                return
+            data = self.parent.dict_opers.get(self.Операции_имя,None)
+            if data:
+                self.code_oper = data['kod']
+
+    def recalc_time_norma(self,koef:float= 1):
+        self.Норма_времени_пооперационно = round(self.Опер_время * koef, 2)
+
+    def to_dict(self):
+        return {        'ДСЕ': self.dse,
+                        'ДСЕ_ID':self.ДСЕ_ID,
+                        'Операции_номер':self.Операции_номер,
+                        'Операции_имя':self.Операции_имя,
+                        'Опер_колво':self.Опер_колво,
+                        'Опер_время':self.Опер_время,
+                        'Профессии':self.Профессии,
+                        'Виды_работ':self.Виды_работ,
+                        'Норма_времени_пооперационно':self.Норма_времени_пооперационно
+                }
+
+    def __repr__(self):
+        return ';  '.join([f'{k}: "{v}"' for k,v in self.__dict__.items() if k not in ('parent')])
 
 class Naryads(_Naryad_base):
-    def __init__(self,p_nom_or_row,db_naryad=None,dict_dolgn_etap=None,db_users=None,dict_empl=None):
+    def __init__(self,p_nom_or_row,db_naryad=None,dict_dolgn_etap=None,db_users=None,dict_empl=None,dict_opers=None):
         self.params = []
         self.db = db_naryad
         self.row = []
@@ -3122,24 +3524,319 @@ class Naryads(_Naryad_base):
         self.row = row
         for key in row.keys():
             exec(f'self.{str(key).replace(".", "_")} = row[key]')
+        self.params_o:list[Naryad_param] = []
+        self.params:list[dict] = []
+        self._get_strukt_params()
+        self._recalc_params()
 
-        self.params = self._get_strukt_params()
         if db_users != None:
             if dict_dolgn_etap == None:
                 dict_dolgn_etap = self.calc_dict_dolgn_etap(self.db)
             if dict_empl == None:
                 dict_empl = self.calc_dict_empl(db_users)
+            if dict_opers == None:
+                dict_opers = self.calc_dict_opers(self.db)
+
             if self.ДатаМК is None: #07.07.25
                 print('[Cust_mes.Naryads.__init__] не задано поле ДатаМК')
                 row = CSQ.custom_request_c(db_naryad,f'''SELECT mk.Дата as ДатаМК FROM naryad JOIN mk ON mk.Пномер = naryad.Номер_мк 
-            WHERE naryad.Пномер == {p_nom_or_row};''',rez_dict=True, one=True)
+            WHERE mk.Пномер == {self.Номер_мк};''',rez_dict=True, one=True)
                 self.__dict__.update(row)
             if self.ФИО != '':
                 self.Этап_фио_1 = etap_by_employee(date_str=self.ДатаМК, key_employee=self.ФИО) # 07.07.25
             if self.ФИО2 != '':
                 self.Этап_фио_2 = etap_by_employee(date_str=self.ДатаМК, key_employee=self.ФИО2) # 07.07.25
-        self.dict_dolgn_etap = dict_dolgn_etap
-        self.dict_empl = dict_empl
+
+        self.dict_dolgn_etap:dict[dict] = dict_dolgn_etap
+        self.dict_empl:dict[dict] = dict_empl
+        self.dict_opers:dict[dict] = dict_opers
+
+    def __repr__(self):
+        pref = ''
+        num = f'№{self.Пномер}'
+        if self.Пномер is None:
+            pref = '*'
+            num = ''
+        return f'{pref}{num}, МК {self.Номер_мк}, {self.Норма_времени} мин.: {self.ФИО}-{self.Фвремя}|{self.ФИО2}-{self.Фвремя2}. Вып:{self.Подтвержд_вып_дата}'
+
+    def _recalc_params(self):
+        self.params = [_.to_dict() for _ in self.params_o]
+
+    def _update_attrs_params(self):
+        self.ДСЕ = '|'.join([str(_.dse) for _ in self.params_o])
+        self.ДСЕ_ID = '|'.join([str(_.ДСЕ_ID) for _ in self.params_o])
+        self.Операции_номер = '|'.join([str(_.Операции_номер) for _ in self.params_o])
+        self.Операции_имя = '|'.join([str(_.Операции_имя) for _ in self.params_o])
+        self.Опер_колво = '|'.join([str(_.Опер_колво) for _ in self.params_o])
+        self.Опер_время = '|'.join([str(_.Опер_время) for _ in self.params_o])
+        self.Профессии = '|'.join([str(_.Профессии) for _ in self.params_o])
+        self.Виды_работ = '|'.join([str(_.Виды_работ) for _ in self.params_o])
+        self.Норма_времени_пооперационно = '|'.join([str(_.Норма_времени_пооперационно) for _ in self.params_o])
+
+    def _recalc_time_norma(self: Naryads) -> float:
+        if self.Профессии == '1' and self.ДСЕ_ID == '':
+            return ""
+        koef = 1
+        try:
+            summ_time_minutes = sum([_.Опер_время for _ in self.params_o])
+            if summ_time_minutes:
+                koef = self.Норма_времени / summ_time_minutes
+
+        except:
+            pass
+        for param_o in self.params_o:
+            param_o.recalc_time_norma(koef)
+
+    def _get_strukt_params(self):
+
+        def _list_dse_name_nn(self):
+            if self.ДСЕ == '':
+                return []
+            list_dse = self.ДСЕ.split('|')
+            return [name_nn for name_nn in list_dse]
+
+        def _list_dse_id(self):
+            if self.ДСЕ_ID == '':
+                return []
+            list_dse_id = self.ДСЕ_ID.split('|')
+            return [int(_) for _ in list_dse_id]
+
+        def _list_opers_nom_name(self):
+            if self.ДСЕ_ID == '$':
+                return []
+            list_opers = self.Операции.split('|')
+            return [pnom_name.split('$') for pnom_name in list_opers]
+
+        def _list_kolvo(self):
+            if self.Опер_колво == '':
+                return []
+            list_kol = self.Опер_колво.split('|')
+            return [int(_) for _ in list_kol ]
+
+        def _list_prof(self):
+            if self.Профессии == '':
+                return []
+            list_prof = self.Профессии.split('|')
+            return list_prof
+
+        def _list_time(self):
+            if self.Профессии == '1' and self.ДСЕ_ID == '':
+                return []
+            list_time_minutes =self.Опер_время.split('|')
+            return [F.valm(ch) for ch in list_time_minutes]
+
+        def _list_vid_r(self):
+            if self.Виды_работ == '':
+                return []
+            list_vid_r =self.Виды_работ.split('|')
+            return [vid_r for vid_r in list_vid_r]
+
+        list_dse = _list_dse_name_nn(self)
+        list_opers = _list_opers_nom_name(self)
+        list_kol = _list_kolvo(self)
+        list_time_minutes = _list_time(self)
+        list_dse_id = _list_dse_id(self)
+        list_prof = _list_prof(self)
+        list_vid_r = _list_vid_r(self)
+
+        self.params_o = []
+        for i in range(len(list_dse_id)):
+            if len(list_prof) != len(list_dse_id):
+                print(f'naryad {self.Пномер} err list_prof')
+                list_prof = ['' for _ in list_dse_id]
+            if len(list_vid_r) != len(list_dse_id):
+                print(f'naryad {self.Пномер} err list_prof')
+                list_vid_r = ['' for _ in list_dse_id]
+
+            param_o = Naryad_param(self,list_dse[i],int(list_dse_id[i]),
+                                  list_opers[i][0],list_opers[i][1],
+                                  int(list_kol[i]),F.valm(list_time_minutes[i]),
+                                  list_prof[i],list_vid_r[i]
+                                  )
+            self.params_o.append(param_o)
+        self._recalc_time_norma()
+        return
+
+    @staticmethod
+    def add_new_nar(
+        db_naryd, db_users, nom_mk: int, fio, zadanie_fix, nar_norma: float, prim_fix, РЦ_наряд,# код РЦ [:5]
+        spis_dse: list = [],
+        spis_id: list = [],
+        spis_oper: list = [],
+        spis_vr: list = [],
+        spis_kolvo: list = [],
+        spis_sort_crab: list = [],
+        spis_prof: list = [],
+        kompl_fio='',
+        kompl_data=F.now(),
+        kompl_tara='-',
+        kompl_address='Авто',
+        kat_vnepl: int = 0, autcourse: int = 0, auto_confirm: int = 1, nom_zam_zhurnal = '', koef_norm: float = 1
+                            )->Naryads|None:
+        if koef_norm > 1:
+            CQT.msgbox(f"koef_norm не может быт больше 1")
+            return
+        Твремя = round(nar_norma * koef_norm, 2)
+        Норма_времени = round(nar_norma, 2)
+
+        str_dse = '|'.join(spis_dse)
+        str_id = '|'.join(spis_id)
+        str_oper = '|'.join(spis_oper)
+        str_vr = '|'.join(spis_vr)
+        str_kolvo = '|'.join(spis_kolvo)
+        str_sort_crab = '|'.join(spis_sort_crab)
+        str_prof = '|'.join(spis_prof)
+
+        if not kompl_fio:
+            kompl_fio = fio
+
+
+
+        def calc_koef_slogn(db_naryd, nom_mk):
+            text = f"""
+                                    SELECT Тип, Тип_доработки, тип_доработок.Коэффициент_наряда FROM mk left join тип_доработок 
+                                    on тип_доработок.Пномер = mk.Тип_доработки
+                                                                              WHERE  mk.Пномер = {nom_mk}
+                                    """
+            query = CSQ.custom_request_c(db_naryd,
+                                         text, one=True,
+                                         rez_dict=True)
+            if query == None or query == False:
+                CQT.msgbox(f'ОШибка расчета коэффициента сложности тип')
+                return False
+            if query['Тип'] == 2:
+                text = f"""
+                                        SELECT  тип_дорезок.Коэффициент_наряда FROM дорезки_мк
+                                         inner join тип_дорезок on тип_дорезок.Пномер = дорезки_мк.Причина
+                                         WHERE Номер_мк = {nom_mk}
+                                        """
+                query_dorez = CSQ.custom_request_c(db_naryd,
+                                                   text,
+                                                   rez_dict=True)
+
+                if query_dorez == None or query_dorez == False:
+                    CQT.msgbox(f'ОШибка расчета коэффициента сложности дорезка')
+                    return False
+                return query_dorez[0]['Коэффициент_наряда']
+
+            if query['Тип'] == 5:
+                return query['Коэффициент_наряда']
+            return 1
+
+        koef_slogn = calc_koef_slogn(db_naryd, nom_mk)
+        if koef_slogn == False:
+            return
+
+        date_nar = F.now()
+
+        code = CFG.Config.place.КодыНарядов.Плановая #04.09.25
+        if kat_vnepl:
+            code = CFG.Config.place.КодыНарядов.НеподтвержденныйВнеплан
+
+        dict_data = {
+            'Пномер': None,
+            'Дата': date_nar,
+            'Автор': fio,
+            'Номер_мк': nom_mk,
+            'Внеплан': code,
+            'Задание': zadanie_fix,
+            'Компл_ФИО': kompl_fio,
+            'Компл_Дата': kompl_data,
+            'Компл_номер_тара': kompl_tara,
+            'Компл_адрес': kompl_address,
+            'Распред_ФИО': '',
+            'ФИО': '',
+            'Фвремя': '',
+            'ФИО2': '',
+            'Фвремя2': '',
+            'Твремя': Твремя,
+            'Норма_времени': Норма_времени,
+            'ДСЕ': str_dse,
+            'ДСЕ_ID': str_id,
+            'Операции': str_oper,
+            'Опер_время': str_vr,
+            'Опер_колво': str_kolvo,
+            'Примечание': prim_fix,
+            'Коэфф_сложности': koef_slogn,
+            'Подтвержд_вып': 0,
+            'Категория_внепл': kat_vnepl,
+            'Виды_работ': str_sort_crab,
+            'Номер_замечания_журнал': nom_zam_zhurnal,
+            'Подтвержд_вып_дата': '',
+            'Подтвержд_вып_фио': '',
+            'Профессии': str_prof,
+            'РЦ_наряд': РЦ_наряд,
+            'ФИО_для_ОТК': '',
+            'ФИО_для_ОТК_от_мастера': '',
+            'Коэф_норм_созд': koef_norm,
+            'Аутсорсинг': autcourse,
+            'Обособленная_расценка': 0,
+            'Заводской_комплект': '',
+            'Кол_повт_приемок': 0,
+            'Распред_дата': '',
+            'month_closing_block': '',
+            'АвтоПодтвержд': auto_confirm,
+            }
+        new_nar = Naryads(dict_data, db_naryd, db_users=db_users)
+        new_nar._recalc_time_norma()
+        new_nar._isert_into_db()
+        return new_nar
+
+    def _isert_into_db(self):
+        ins_data = [self.Дата,
+                  self.Автор,
+                  self.Номер_мк,
+                  self.Внеплан,
+                  self.Задание,
+                  self.Компл_ФИО,
+                  self.Компл_Дата,
+                  self.Компл_номер_тара,
+                  self.Компл_адрес,
+                  self.ФИО,
+                  self.Фвремя,
+                  self.ФИО2,
+                  self.Фвремя2,
+                  self.Твремя,
+                  self.ДСЕ,
+                  self.ДСЕ_ID,
+                  self.Операции,
+                  self.Опер_время,
+                  self.Опер_колво,
+                  self.Примечание,
+                  self.Коэфф_сложности,
+                  self.Подтвержд_вып,
+                  self.Категория_внепл,
+                  self.Виды_работ,
+                  self.Номер_замечания_журнал,
+                  self.Подтвержд_вып_дата,
+                  self.Подтвержд_вып_фио,
+                  self.Профессии,
+                  self.РЦ_наряд,
+                  self.Коэф_норм_созд,
+                  self.Аутсорсинг,
+                  self.Норма_времени,
+                  self.АвтоПодтвержд]
+
+        text = f'''INSERT INTO naryad (Дата,Автор,Номер_мк,Внеплан,Задание,Компл_ФИО,Компл_Дата,
+                                            Компл_номер_тара,
+                                            Компл_адрес,ФИО,Фвремя,ФИО2,Фвремя2,Твремя,ДСЕ,ДСЕ_ID,Операции,Опер_время,Опер_колво,Примечание,
+                                            Коэфф_сложности,
+                                            Подтвержд_вып,Категория_внепл,Виды_работ,Номер_замечания_журнал,Подтвержд_вып_дата,
+                                            Подтвержд_вып_фио,Профессии,
+                                            РЦ_наряд,Коэф_норм_созд,Аутсорсинг,Норма_времени,АвтоПодтвержд) VALUES 
+                                            ({", ".join(("?" * len(ins_data)))}) RETURNING Пномер;'''
+        inf_nar = CSQ.custom_request_c(self.db, text, list_of_lists_c=ins_data,rez_dict=True,one=True)
+        self.Пномер = inf_nar['Пномер']
+        return
+
+
+    def add_param(self,param_o:Naryad_param):
+        param_o.parent = self
+        self.params_o.append(param_o)
+        param_o.recalc_code_oper()
+        self._recalc_time_norma()
+        self._recalc_params()
+        self._update_attrs_params()
 
     def etap_by_fio(self, fio: str): #17.07.25
         match str(fio):
@@ -3257,90 +3954,6 @@ class Naryads(_Naryad_base):
             db_xml = CFG.Config.project.db_resxml
         self.mk = Marshrut_cards(self.Номер_мк,self.db,db_xml,load_resource)
 
-    def _get_strukt_params(self):
-
-        def _list_dse_name_nn(self):
-            if self.ДСЕ == '':
-                return []
-            list_dse = self.ДСЕ.split('|')
-            return [name_nn for name_nn in list_dse]
-
-        def _list_dse_id(self):
-            if self.ДСЕ_ID == '':
-                return []
-            list_dse_id = self.ДСЕ_ID.split('|')
-            return [int(_) for _ in list_dse_id]
-
-        def _list_opers_nom_name(self):
-            if self.ДСЕ_ID == '$':
-                return []
-            list_opers = self.Операции.split('|')
-            return [pnom_name.split('$') for pnom_name in list_opers]
-
-        def _list_kolvo(self):
-            if self.Опер_колво == '':
-                return []
-            list_kol = self.Опер_колво.split('|')
-            return [int(_) for _ in list_kol ]
-
-        def _list_prof(self):
-            if self.Профессии == '':
-                return []
-            list_prof = self.Профессии.split('|')
-            return list_prof
-
-        def _list_time(self):
-            if self.Профессии == '1' and self.ДСЕ_ID == '':
-                return []
-            list_time_minutes =self.Опер_время.split('|')
-            return [F.valm(ch) for ch in list_time_minutes]
-
-        def _list_time_norma(self):
-            if self.Профессии == '1' and self.ДСЕ_ID == '':
-                return []
-            try:
-                list_time_minutes =self.Опер_время.split('|')
-                summ = 0
-                for time in list_time_minutes:
-                    summ+=F.valm(time)
-                koef = self.Норма_времени/summ
-                return [round(F.valm(ch)*koef,2) for ch in list_time_minutes]
-            except:
-                return [round(F.valm(ch),2) for ch in list_time_minutes]
-
-        def _list_vid_r(self):
-            if self.Виды_работ == '':
-                return []
-            list_vid_r =self.Виды_работ.split('|')
-            return [vid_r for vid_r in list_vid_r]
-
-        list_dse = _list_dse_name_nn(self)
-        list_opers = _list_opers_nom_name(self)
-        list_kol = _list_kolvo(self)
-        list_time_minutes = _list_time(self)
-        list_dse_id = _list_dse_id(self)
-        list_prof = _list_prof(self)
-        list_vid_r = _list_vid_r(self)
-        list_time_norm = _list_time_norma(self)
-        rez = []
-        for i in range(len(list_dse_id)):
-            if len(list_prof) != len(list_dse_id):
-                print(f'naryad {self.Пномер} err list_prof')
-                list_prof = ['' for _ in list_dse_id]
-            if len(list_vid_r) != len(list_dse_id):
-                print(f'naryad {self.Пномер} err list_prof')
-                list_vid_r = ['' for _ in list_dse_id]
-            rez.append({'ДСЕ':list_dse[i],
-                        'ДСЕ_ID':list_dse_id[i],
-                        'Операции_номер':list_opers[i][0],
-                        'Операции_имя':list_opers[i][1],
-                        'Опер_колво':list_kol[i],
-                        'Опер_время':list_time_minutes[i],
-                        'Профессии':list_prof[i],
-                        'Виды_работ':list_vid_r[i],
-                        'Норма_времени_пооперационно':list_time_norm[i]})
-        return rez
-
     def recalc_by_mk(self,DICT_OPERS, DICT_PROFESSIONS):
         summ_time = 0
         zadanie = ''
@@ -3392,8 +4005,14 @@ class Naryads(_Naryad_base):
                 self.row[key] = elem
                 exec(f'self.{key} = "{elem}"')
 
+    def save(self):
+        self._save_nar()
+
     def _save_nar(self):
         self._recalc_selfrow()
+        if self.Пномер is None:#create
+            return
+
         row_db = CSQ.custom_request_c(self.db,f"""SELECT * FROM naryad WHERE Пномер = {self.Пномер};""",rez_dict=True)
         if row_db == None or row_db == False:
             print(f'ОШибка загрузки наряда CMS.Naryads._save_nar')
@@ -3544,8 +4163,9 @@ class Group_nar(_ImportDb):
         self.summ: float | None = None
         self.user_ref: str | None = None
         self.parce_row_dict(item)
-
-    def split_by_group(self, fragment:Fragment_jur)->bool:
+    
+    @staticmethod
+    def split_by_group(set_nars_num:set[int],name:str, msg_jur:str, fragment:Fragment_jur)->bool:
 
         def proportional_fragment(norm_dict: dict, total_seconds: int) -> dict:
             """
@@ -3592,14 +4212,14 @@ class Group_nar(_ImportDb):
 
         _dict_emploee_full = dict_emploee_full(CFG.Config.project.db_users)
 
-        set_nars_num = self.load_s_nums_nar()
+
         if fragment.parent.nom_nar not in set_nars_num:
-            CQT.msgbox(f'Группа "{self.name}" не содержит наряд №{fragment.parent.nom_nar}')
+            CQT.msgbox(f'Группа "{name}" не содержит наряд №{fragment.parent.nom_nar}')
             return False
         needed_seconds = 2*len(set_nars_num)
         fragment_count_seconds = fragment.count_seconds
         if fragment_count_seconds < needed_seconds:
-            CQT.msgbox(f'Группа "{self.name}" трeбует бОльшую длительность наряда ({needed_seconds} < {fragment_count_seconds})')
+            CQT.msgbox(f'Группа "{name}" трeбует бОльшую длительность наряда ({needed_seconds} < {fragment_count_seconds})')
             return False
 
         dict_new_seconds = dict()
@@ -3624,18 +4244,19 @@ class Group_nar(_ImportDb):
             new_seconds = dict_new_seconds[nar_obj.Пномер]
             new_end = F.date_add_seconds(new_start,new_seconds)
 
-            jur_obj = Jurnal_nar(self.parent.db, user=fragment.user, nom_nar=nar_obj.Пномер)
+            jur_obj = Jurnal_nar(CFG.Config.project.db_naryad, user=fragment.user, nom_nar=nar_obj.Пномер)
 
             start_row_num = jur_obj.add_new_row(
                 DICT_EMPL_FULL=_dict_emploee_full,
                 lbl_abstract_text='',
                 date_time=new_start,
-                primech=f'Автовставка по гр.id{self.id}'
+                primech=msg_jur
             )
             jur_obj.refresh()
             jur_obj.set_selected_fragment(start_row_num)
             is_idle = nar_obj.Задание == 'ПРОСТОЙ'
-            if not jur_obj.add_new_row(_dict_emploee_full, '', new_end, fragment.end_state, f'Автовставка по гр. id{self.id}',
+            if not jur_obj.add_new_row(_dict_emploee_full, '', new_end, fragment.end_state, 
+                                       msg_jur,
                                        is_idle):
                 return
             print(f'nar {nar_obj.Пномер} new_time: {jur_obj.fragment.start_date} - {new_end}')
@@ -4379,7 +5000,7 @@ class Jurnal_nar():
                 return rez
         return rez
 
-    def is_fregments_unclose(self):
+    def is_fregments_unclose(self)->bool|list:
         rez = self.get_ontime_naruad()
         if rez[0] == '':
             return  False
@@ -5065,11 +5686,12 @@ class Msg_b24():
         'fix_name_res': {'chats': ['Готовность Маршрутных карт']},
         'reset_py': {'chats': ['Готовность Маршрутных карт']},
         'upd_fdate_res_erp': {'chats': ['готовность РС']},
+
     }
 
     def __init__(self,db_kpl:str,db_naryad:str,db_resxml:str,db_users:str,nom_kpl:int=0,conn = None):
         self.nom_kpl = nom_kpl
-        self.data_poz = Pozition(self.nom_kpl,db_kpl, db_naryad, db_resxml, db_users)
+        self.data_poz:Pozition = Pozition(self.nom_kpl,db_kpl, db_naryad, db_resxml, db_users)
         self.data_poz.load_kpl_table('пл_оуп')
         self.data_poz.load_kpl_table('пл_топ')
         self.data_poz.load_kpl_table('пл_ко')
@@ -5083,12 +5705,17 @@ class Msg_b24():
                                       ('№ERP', self.data_poz.dict_tables['пл_оуп']['№ERP']),
                                       ('Поз.', self.data_poz.Позиция),
                                       ('Количество', self.data_poz.dict_tables['пл_оуп']['Количество']) ])
-
+        self.poki:int=self.data_poz.poki
+        
         self.basement_msg ="\n" + r'*схема: https://miro.com/app/board/uXjVKvx6xCU=/?share_link_id=77704755673'
 
         self.fio = F.user_full_namre()
 
         self.additional_str = ''
+
+    def add_erp_info(self):
+        self.base_dict['Спецификация ЕРП'] = self.data_poz.dict_tables['пл_топ']['Спецификация_ЕРП']
+        self.base_dict['Спецификация код ЕРП'] = self.data_poz.dict_tables['пл_топ']['Спецификация_код_ЕРП']
 
     def send_msg(self,type_msg:str,additional_str='',tbl:list[dict]=None):
         self.additional_str = additional_str
@@ -5097,9 +5724,9 @@ class Msg_b24():
         msg_str, form_dict, basement_msg = self.generate_msg(type_msg)
         print(f'{msg_str}\n{form_dict}\n{basement_msg}')
         for chat in Msg_b24.DATA_MSG_DICT[type_msg]['chats']:
-            send_info_mk_b24_by_action(msg_str, chat,form_dict=form_dict,basement_msg=basement_msg)
+            send_info_mk_b24_by_action(msg_str, chat,form_dict=form_dict,basement_msg=basement_msg,poki=self.poki)
             if tbl:
-                send_tbl_b24_by_action('Изменения:',chat,tbl)
+                send_tbl_b24_by_action('Изменения:',chat,tbl,poki=self.poki)
 
     def generate_msg(self,type_msg):
         base_str ='err'
@@ -5838,6 +6465,8 @@ class ResSpec():
         self.count = self.data[0].Количество
         self.mk:Marshrut_cards = Marshrut_cards(num_mk,CFG.Config.project.db_naryad,CFG.Config.project.db_resxml,
                                                 False)
+    def __repr__(self):
+        return f'{self.count} шт. "{self.mk.Номенклатура}"'
 
     def get_vids_rab(self,key_ref=False)->dict:
         dict_res = dict()
@@ -5974,7 +6603,7 @@ class ResSpecERP():
             self.Сделка: str | None = None
             self.ДопустимоеПревышениеОптимальнойПартииВыпуска: str | None = None
             self.ВариантНазначения: str | None = None
-            self.ВариантПодбораВДокументы: str | None = None
+            #self.ВариантПодбораВДокументы: str | None = None
             self.ЕстьУточняемоеОсновноеИзделие: str | None = None
             self.ЕстьПараметризацияРесурсов: str | None = None
             self.ЕстьВложенныеСпецификации: str | None = None
@@ -5996,7 +6625,7 @@ class ResSpecERP():
             self.ОтборПоСвойствам: str | None = None
             self.ПромежуточныйВыпуск: str | None = None
             self.ВыходныеИзделия: str | None = None
-        
+        # РесурсныеСпецификации.ВариантПодбораВДокументы КАК ВариантПодбораВДокументы, deleted
         wet_req_text = f"""ВЫБРАТЬ
             ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(РесурсныеСпецификации.Ссылка)) КАК refKey,
             РесурсныеСпецификации.Ссылка КАК Ссылка,
@@ -6030,7 +6659,7 @@ class ResSpecERP():
             РесурсныеСпецификации.Сделка КАК Сделка,
             РесурсныеСпецификации.ДопустимоеПревышениеОптимальнойПартииВыпуска КАК ДопустимоеПревышениеОптимальнойПартииВыпуска,
             РесурсныеСпецификации.ВариантНазначения КАК ВариантНазначения,
-            РесурсныеСпецификации.ВариантПодбораВДокументы КАК ВариантПодбораВДокументы,
+            
             РесурсныеСпецификации.ЕстьУточняемоеОсновноеИзделие КАК ЕстьУточняемоеОсновноеИзделие,
             РесурсныеСпецификации.ЕстьПараметризацияРесурсов КАК ЕстьПараметризацияРесурсов,
             РесурсныеСпецификации.ЕстьВложенныеСпецификации КАК ЕстьВложенныеСпецификации,
@@ -6131,6 +6760,831 @@ class ResSpecERP():
 
     def __str__(self):
         return f'{self.Код}, {self.Наименование} - {self.Статус}'
+
+
+class Composition(_ImportDb):
+    ALIASES = {
+        'id': '№',
+        'name': 'Название',
+        'local_num': '№Раскрой',
+        'local_count': 'Из',
+        'path': '_Путь',
+        'signed': 'Проведен',
+        'coupled': 'Связан',
+        'finished': 'Завершен',
+        'count': 'Количество',
+        'material_name': 'Материал',
+        'material_thickness': 'Толщина',
+        'given_out': 'Выдан',
+        'oper_code': '_Код_операции',
+        'rc': '_rc',
+        'comment': 'Примечание',
+    }
+    def __init__(self,item:dict):
+        self.id:int|None = None
+        self.local_num: int | None = None
+        self.local_count: int | None = None
+        self.path:str|None = None
+        self.signed:bool = False
+        self.coupled:bool = False
+        self.finished:bool = False
+        self.name:str|None = None
+        self.count:int|None = None
+        self.material_name:int|None = None
+        self.material_thickness:int|None = None
+        self.given_out: int | None = None
+        self.oper_code: str | None = None
+        self.rc: str | None = None
+        self.comment:int|None = None
+        self.pozs: list[Composition_poz]|None = None
+
+        self._fl_edited:bool = False
+
+        self.parce_row_dict(item)
+
+    @property
+    def emo_name(self)->str:
+        return f"{CEMOJ.ДокументыДанные.folder_closed.symbol} {self.name}"
+
+    def template(self)->dict:
+        data = F.get_all_attrs_with_properties(self)
+        data = {k: v for k, v in data.items() if k in self.ALIASES}
+        if data['signed'] == 0:
+            data['signed'] = ''
+        else:
+            data['signed'] = CEMOJ.ОборудованиеИнструменты.lock.symbol
+        if data['coupled'] == 0:
+            data['coupled'] = ''
+        else:
+            data['coupled'] = CEMOJ.ОборудованиеИнструменты.link.symbol
+        if data['finished'] == 0:
+            data['finished'] = ''
+        else:
+            data['finished'] = CEMOJ.СтатусыПроизводства.success.symbol
+        data['name'] = self.emo_name
+        data = F.sort_dict_by_sample(data,self.ALIASES)
+        return data
+
+    @property
+    def is_edited(self)->bool:
+        return self._fl_edited
+    @property
+    def is_coupled(self)->bool:
+        return self.coupled
+
+    def get_set_nars(self,filter:set[int]) -> set[int]:
+        list_nars = CSQ.custom_request_c(CFG.Config.project.db_naryad,
+                                    f"""SELECT naryad_composit_poz_snum_nars.snum_nar from 
+                            naryad_composit_poz_snum_nars 
+                            inner join naryad_composit_poz on naryad_composit_poz_snum_nars.id_poz = naryad_composit_poz.id
+                            inner join naryad_composit_files on naryad_composit_poz.id_file = naryad_composit_files.id
+                            where naryad_composit_files.id = {self.id} """, hat_c=False, one_column=True)
+        return set(list_nars).intersection(filter)
+
+    def set_not_edited(self):
+        self._fl_edited = False
+
+    def recalc_finished(self):
+        rez = sum([int(_.finished) for _ in self.pozs]) == len(self.pozs) and len(self.pozs)>0
+        if rez and not self.finished:
+            self.finished = True
+            self.upload()
+        if not rez and self.finished:
+            self.finished = False
+            self.upload()
+        return rez
+    def recalc_signed(self):
+        rez = sum([len(_.couples) for _ in self.pozs])
+        if rez and not self.signed:
+            self.signed = True
+            self.upload()
+        if not rez and self.signed:
+            self.signed = False
+            self.upload()
+        return rez
+    def recalc_coupled(self):
+        rez = sum([int(_.is_coupled) for _ in self.pozs]) == len(self.pozs) and len(self.pozs)>0
+        if rez and not self.coupled:
+            self.coupled = True
+            self.upload()
+        if not rez and self.coupled:
+            self.coupled = False
+            self.upload()
+        return rez
+
+    def delete(self,forced:bool= False)->bool:
+        if self.signed and not forced:
+            return False
+        if self.is_coupled and not forced:
+            return False
+        res = CSQ.custom_request_c(CFG.Config.project.db_naryad,f'''DELETE FROM naryad_composit_poz_snum_nars 
+             WHERE id_poz in (SELECT id FROM naryad_composit_poz WHERE id_file = {self.id})''')
+        if not res:
+            CQT.msgbox(f'Ошибка удаления из naryad_composit_poz_snum_nars')
+            return False
+        res = CSQ.custom_request_c(CFG.Config.project.db_naryad,f'''DELETE FROM  
+         naryad_composit_poz WHERE id_file = {self.id}''')
+        if not res:
+            CQT.msgbox(f'Ошибка удаления из naryad_composit_poz')
+            return False
+        res = CSQ.custom_request_c(CFG.Config.project.db_naryad,f'''DELETE FROM  
+         naryad_composit_files WHERE id = {self.id}''')
+        if not res:
+            CQT.msgbox(f'Ошибка удаления из naryad_composit_files')
+            return False
+        return True
+
+
+
+    def template_pozs(self)->list[dict]:
+        return  [_.template() for _ in self.pozs]
+
+    def find_poz(self,id:int)->Composition_poz|None:
+        if self.pozs is None:
+            self.load_pozs()
+        for poz in self.pozs:
+            if poz.id == id:
+                return poz
+
+    def upload(self):
+        data = [self.path,self.signed,self.name,self.count,self.comment,self.given_out,
+                self.material_name,self.material_thickness, self.coupled, self.local_num, self.local_count,
+                self.finished, self.oper_code, self.rc]
+        fields = f'''path, signed, name, count, comment, given_out, 
+                        material_name, material_thickness, coupled, local_num, local_count, finished, oper_code, rc'''
+        if self.id is None:
+            result = CSQ.custom_request_c(CFG.Config.project.db_naryad,f"""INSERT INTO naryad_composit_files 
+                              ({fields})
+                              VALUES ({CSQ.questions_for_mask(data)}) RETURNING id""",list_of_lists_c=data,returning=True,rez_dict=True)
+            self.id = result[0]['id']
+        else:
+            result = CSQ.custom_request_c(CFG.Config.project.db_naryad,f"""UPDATE naryad_composit_files
+                SET  ({fields})
+                    = ({CSQ.questions_for_mask(data)})
+                            WHERE id = {self.id} """,list_of_lists_c=data,rez_dict=True)
+        if result:
+            self._fl_edited = True
+            return True
+        return False
+
+    def add_poz(self)->Composition_poz:
+        return Composition_poz(self,{})
+
+    def load_pozs(self):
+        self.pozs:list[Composition_poz] = []
+        result = CSQ.custom_request_c(CFG.Config.project.db_naryad, f"""SELECT id,
+                   id_file,
+                   dse,
+                   count,
+                   proj, 
+                   py,
+                   mk
+              FROM naryad_composit_poz WHERE id_file = {self.id}; """,
+                                                   rez_dict=True)
+        for item in result:
+            self.pozs.append(Composition_poz(self,item))
+
+class Compositions():
+    def __init__(self,filtr_nars:list[int]|None=None):
+        self.comps:list[Composition] = []
+        self._load_from_db(filtr_nars)
+
+    def template(self)->list[dict]:
+        return [_.template() for _ in self.comps]
+
+    def _load_from_db(self,filtr_nars:list[int]|None=None):
+        self.comps = []
+        filtr_str = ''
+        if filtr_nars is not None:
+            filtr_str = f'''inner join naryad_composit_poz on naryad_composit_poz.id_file = naryad_composit_files.id
+            inner join naryad_composit_poz_snum_nars on naryad_composit_poz_snum_nars.id_poz = naryad_composit_poz.id
+            where naryad_composit_poz_snum_nars.snum_nar in ({CSQ.prepare_list_to_tuple(filtr_nars)})'''
+
+        text = f"""
+            SELECT naryad_composit_files.* from 
+                naryad_composit_files {filtr_str};
+                    """
+        rez = CSQ.custom_request_c(CFG.Config.project.db_naryad, text, rez_dict=True)
+
+        for item in rez:
+            self.comps.append(Composition(item))
+
+    @staticmethod
+    def add_new_comp()->Composition:
+        return Composition({})
+
+    
+    def find_by_name(self,name:str)->Composition|None:
+        for comp in self.comps:
+            ext = F.keep_extention_c(comp.path)
+            store_name = f'{comp.name} N{comp.local_num} из {comp.local_count}{ext}'
+            if store_name.lower() == name.lower():
+                return comp
+
+    def find(self,id:int)->Composition|None:
+        for comp in self.comps:
+            if comp.id == id:
+                return comp
+class Couple_nar_poz(_ImportDb):
+    def __init__(self,item:dict):
+        self.id:int|None = None
+        self.id_poz:int|None = None
+        self.snum_nar:int|None = None
+        self.count_nar:int|None = None
+        self.id_dse:int|None = None
+        self.n_oper:str|None = None
+        self.с_oper:str|None = None
+        self.parce_row_dict(item)
+
+class Composition_poz(_ImportDb):
+    ALIASES = {
+        'id':'№',
+        'id_file':'_id_file',
+        'pr_py':'Проект',
+        'proj':'_proj',
+        'py':'_py',
+        'mk':'МК',
+        'dse':'ДСЕ',
+        'count':'Кол-во\nна лист',
+        'count_aggregate':'Общee\nколичество',
+        'count_left_couple': 'Не\nсвязано',
+        'is_coupled':'Связана',
+        'finished':'Завершена',
+
+    }
+    def __init__(self,parent,item:dict):
+        self.id:int|None = None
+        self.id_file:int|None = None
+        self.dse:str|None = None
+        self.name:str|None = None
+        self.nn:str|None = None
+        self.count:int|None = None
+        self.couples: list[Couple_nar_poz] | None = None
+        self.proj:str|None = None
+        self.py:str|None = None
+        self.mk:int|None = None
+        self.parent:Composition = parent
+        self.finished:bool = False
+        self.parce_row_dict(item)
+        self.aviable_to_composite:int|None = None
+        self.aviable_to_create:int|None = None
+        self._load_couples()
+        self._calc_finished()
+
+    @property
+    def count_aggregate(self)->int:
+        if self.count is None or self.parent.count is None:
+            return 0
+        return self.count * self.parent.count
+
+    @property
+    def count_left_couple(self)->int:
+        return self.count_aggregate - sum([_.count_nar for _ in self.couples])
+
+    @property
+    def is_coupled(self) -> bool:
+        if self.count_aggregate == self.calc_summ_coupled() and self.count_aggregate >0:
+            return True
+        return False
+
+    def __setattr__(self, key, value):
+        object.__setattr__(self, key, value)
+        if value:
+            if key == "dse":
+                self._calc_nn_naim()
+
+    def template(self)->dict:
+        data = F.get_all_attrs_with_properties(self)
+        data = {k:v for k,v in data.items() if k in self.ALIASES}
+
+        data['pr_py'] = '-'.join([self.proj, self.py])
+        data['is_coupled'] = CEMOJ.ОборудованиеИнструменты.link.symbol if data['is_coupled'] else ''
+        data['finished'] = CEMOJ.СтатусыПроизводства.success.symbol if data['finished'] else ''
+        data['dse'] = f"{CEMOJ.ОперацииПроизводства.dse.symbol} {data['dse']}"
+        data = F.sort_dict_by_sample(data,self.ALIASES)
+        return data
+
+
+    def _calc_nn_naim(self):
+        if self.dse is None:
+            return
+        list_w = self.dse.split(' ')
+        for w in list_w:
+            if '.' in w:
+                self.nn = w
+                break
+        list_name:list = copy.copy(list_w)
+        if self.nn:
+            list_name.remove(self.nn)
+            self.name = ' '.join(list_name)
+        else:
+            self.name = ''
+            self.nn = self.dse
+
+    def calc_code_oper(self)->str|None:
+        for c in self.couples:
+            return c.с_oper
+
+    def _calc_finished(self):
+        nnars = list(set([_.snum_nar for _ in self.couples]))
+        ALIASES = {'Пномер':'Наряд',
+                   'ФИО': 'ФИО',
+                   'ФИО2': 'ФИО2',
+                   'Фвремя': '_Фвремя',
+                   'Фвремя2': '_Фвремя2',
+
+                   }
+        dict_nars = F.deploy_dict_c(CSQ.custom_request_c(CFG.Config.project.db_naryad,
+                                                         f"""SELECT 
+            {','.join([f'{k} AS "{v}"' for k, v in ALIASES.items()])} FROM naryad WHERE 
+                                    Пномер in ({CSQ.prepare_list_to_tuple(nnars)});""",
+                                                         rez_dict=True), 'Наряд')
+        fl_finished = True
+        for c in self.couples:
+            nar = dict_nars[c.snum_nar]
+            if not self._is_closed_nar(nar):
+                fl_finished = False
+                break
+
+        if fl_finished and self.is_coupled:
+            self.finished = True
+        else:
+            self.finished = False
+
+    def calc_summ_coupled(self):
+        return sum([_.count_nar for _ in self.couples])
+
+    def add_associated_dse(self,snum_nar:int, id_dse:int, count_nar:int,n_oper:str,с_oper:str)->bool:
+        id_poz = self.id
+        data = [id_poz,snum_nar,count_nar,id_dse,n_oper,с_oper]
+        rez = CSQ.custom_request_c(CFG.Config.project.db_naryad,f"""
+        INSERT INTO naryad_composit_poz_snum_nars 
+                              (
+                                id_poz,
+                                snum_nar,
+                                count_nar,
+                                id_dse,
+                                n_oper,
+                                с_oper
+                              ) 
+                              VALUES ({CSQ.questions_for_mask(data)});
+            """, list_of_lists_c=[data])
+        if rez == False:
+            return False
+
+        self._load_couples()
+        self.parent.recalc_coupled()
+        self.parent.recalc_signed()
+        self.parent.recalc_finished()
+        return True
+
+
+    def _load_couples(self):
+        self.couples = []
+        if self.id is None:
+            return
+        data = CSQ.custom_request_c(CFG.Config.project.db_naryad, f'SELECT * FROM naryad_composit_poz_snum_nars '
+                                                           f' WHERE id_poz ={self.id}',rez_dict=True)
+
+        for item in data:
+            self.couples.append(Couple_nar_poz(item))
+
+    @staticmethod
+    def _is_closed_nar(tmp_data: dict):
+        if tmp_data['ФИО'] != "" and tmp_data['_Фвремя'] == '':
+            return False
+        if tmp_data['ФИО2'] != "" and tmp_data['_Фвремя2'] == '':
+            return False
+        return True
+
+    def load_template_chose_nar(self):
+        rez = []
+        nnars = list(set([_.snum_nar for  _ in self.couples]))
+        ALIASES = {'Пномер':'Наряд',
+                    'Дата':'От',
+                    'ФИО':'ФИО',
+                    'ФИО2':'ФИО2',
+                    'Фвремя':'_Фвремя',
+                    'Фвремя2':'_Фвремя2',
+
+                    'Норма_времени':'Норма\nвремени',
+                    'Подтвержд_вып_дата':'Подтвержд. дата',
+                   'Примечание':'Примечание',
+                   }
+        dict_nars = F.deploy_dict_c(CSQ.custom_request_c(CFG.Config.project.db_naryad,
+                f"""SELECT {','.join([f'{k} AS "{v}"' for k,v in ALIASES.items()])} FROM naryad WHERE 
+                            Пномер in ({CSQ.prepare_list_to_tuple(nnars)});""",
+                                                         rez_dict=True),'Наряд')
+
+        for couple in self.couples:
+            tmp_data = copy.deepcopy(dict_nars[couple.snum_nar])
+            closed_state = ''
+            if self._is_closed_nar(tmp_data):
+                closed_state = CEMOJ.СтатусыПроизводства.success.symbol
+
+            tmp_data = F.insert_key_to_dict(tmp_data,0,'Кол-во',couple.count_nar)
+            tmp_data = F.insert_key_to_dict(tmp_data,1,'_snum_couple',couple.id)
+            tmp_data = F.insert_key_to_dict(tmp_data, 1, 'Наряд', couple.snum_nar)
+            tmp_data = F.insert_key_to_dict(tmp_data,9,'Завершен', closed_state)
+            rez.append(tmp_data)
+        for it in rez:
+            it['Наряд'] = f"{CEMOJ.ДокументыДанные.document.symbol} {it['Наряд']}"
+        if rez:
+            return rez
+        else:
+            return [['Количество','_snum_couple','Завершен',*(ALIASES.values())]]
+
+
+    def calc_count_composite(self,DICT_DOLGN_ETAP,DICT_EMPLOEE_FULL,DICT_OPER_NAME,  *args)->int:
+        template = self.calc_composite_templ(DICT_DOLGN_ETAP,DICT_EMPLOEE_FULL,DICT_OPER_NAME)
+        count = sum([_['Кол_во'] for _ in template])
+        self.aviable_to_composite = count
+        return  count
+
+    def calc_composite_templ(self: Composition_poz,DICT_DOLGN_ETAP,DICT_EMPLOEE_FULL,DICT_OPER_NAME) -> list[dict]:
+        text = f'''SELECT
+                пл_оуп.НомПл as KPL, 
+                пл_оуп.Номенклатура_ЕРП as Номенклатура_ЕРП, 
+                plan.Позиция, 
+                   знпр.№проекта as proj,
+                   знпр.№ERP as erp,
+                   naryad.*
+
+                     FROM знпр 
+                     INNER JOIN пл_оуп ON пл_оуп.Пномер_ЗП == знпр.s_num 
+                     INNER JOIN plan ON plan.Пномер == пл_оуп.НомПл 
+                     INNER JOIN mk ON пл_оуп.НомПл = mk.НомКплан 
+                     INNER JOIN naryad ON naryad.Номер_мк = mk.Пномер 
+                     where mk.Пномер = {self.mk}
+                   ;
+                   '''
+        data = CSQ.custom_request_c(CFG.Config.project.db_kplan, text, rez_dict=True,
+                                    attach_dbs=(CFG.Config.project.db_naryad))
+        if data == []:
+            CQT.msgbox(f'Не найдено подходящих МК')
+            return []
+        naryads: list[Naryads] = []
+        for item in data:
+            naryads.append(Naryads(item,
+                                       dict_dolgn_etap=
+                                       DICT_DOLGN_ETAP,
+                                       dict_empl=DICT_EMPLOEE_FULL,
+                                       dict_opers=DICT_OPER_NAME))
+        template = []
+
+        aim_code_oper = self.calc_code_oper()
+        if aim_code_oper is None:
+            aim_code_oper = self.parent.oper_code
+
+        for nar in naryads:
+            for param in nar.params_o:
+                naim = param.Наименование
+                nn = param.НН
+                tmp_count = copy.deepcopy(param.Опер_колво)
+
+                name_oper = param.Операции_имя
+                if name_oper not in DICT_OPER_NAME:
+                    print(f'{name_oper} not found in db')
+                    continue
+                oper_code = DICT_OPER_NAME[name_oper]['kod']
+                if nn == self.nn and oper_code == aim_code_oper:
+                    for couple in self.couples:
+                        if (couple.id_dse == param.ДСЕ_ID and couple.snum_nar == nar.Пномер and
+                                param.Операции_номер == couple.n_oper):
+                            tmp_count -= couple.count_nar
+
+                    if not tmp_count:
+                        continue
+                    template.append({
+                        'Проект': nar.proj,
+                        'ЗП': nar.erp,
+                        'КПЛ': nar.KPL,
+                        'поз.': nar.Позиция,
+                        'Изделие': nar.Номенклатура_ЕРП,
+                        'МК': nar.Номер_мк,
+                        'Наряд': nar.Пномер,
+                        'Норма_времени': nar.Норма_времени,
+                        'Распред_дата': nar.Распред_дата,
+                        'ФИО': nar.ФИО,
+                        'ФИО2': nar.ФИО2,
+                        'Примечание': nar.Примечание,
+                        'N ДСЕ': param.ДСЕ_ID,
+                        'Наименование': naim,
+                        'Номер': nn,
+                        '№ Опер.': param.Операции_номер,
+                        'Код опер.': oper_code,
+                        'Имя опер.': name_oper,
+                        'Кол_во': tmp_count,
+                        'Выбрано шт.': '',
+                    })
+        return template
+
+    @CQT.onerror
+    def calc_count_create(self, *args)->int:
+        template = self.calc_composite_create_templ()
+        count = sum([_['Доступно'] for _ in template])
+        self.aviable_to_create = count
+        return count
+
+    def calc_composite_create_templ(self: Composition_poz) -> list[dict]:
+        template = []  # Naryads(165205,CFG.Config.project.db_naryad,None,CFG.Config.project.db_users)
+        res = ResSpec(self.mk)
+        for dse in res.data:
+            if not dse.Номенклатурный_номер == self.nn:
+                continue
+            for oper in dse.Операции:
+                if not oper.Опер_код == self.parent.oper_code:
+                    continue
+                available = dse.Количество - oper.Освоено  # available = 2
+                if available:
+                    template.append({
+                        'МК': res.mk.Пномер,
+                        '_ДСЕ ID': dse.Номерпп,
+                        'ДСЕ Наим.': dse.Наименование,
+                        'ДСЕ НН': dse.Номенклатурный_номер,
+                        'Опер. Код': oper.Опер_код,
+                        'Опер. Наименование': oper.Опер_наименование,
+                        'Опер. Номер': oper.Опер_номер,
+                        'Опер. Tпз': oper.Опер_Тпз,
+                        'Опер. Tшт': oper.Опер_Тшт_ед,
+                        'КОИД': oper.Опер_КОИД,
+                        '_Опер. Проф.Код': oper.Опер_профессия_код,
+                        '_Опер. Проф.': oper.Опер_профессия_наименование,
+                        'Доступно': available,
+                        'Выбрано шт.': ''
+                    })
+        return template
+
+    def upload(self):
+        data = [self.id_file, self.dse, self.count, self.proj, self.py, self.mk]
+        fields = f'id_file, dse, count, proj, py, mk'
+        if self.id is None:
+            result = CSQ.custom_request_c(CFG.Config.project.db_naryad, f"""INSERT INTO naryad_composit_poz
+                                      ({fields})
+                                      VALUES ({CSQ.questions_for_mask(data)}) RETURNING id""", list_of_lists_c=data,
+                                          returning=True, rez_dict=True)
+            self.id = result[0]['id']
+        else:
+            result = CSQ.custom_request_c(CFG.Config.project.db_naryad, f"""UPDATE naryad_composit_poz
+                        SET  ({fields})
+                            = ({CSQ.questions_for_mask(data)})
+                                    WHERE id = {self.id} """, list_of_lists_c=data, rez_dict=True)
+        if result:
+            return True
+        return False
+
+
+class Tree_unique():
+    def __init__(self):
+        self.fields:list[Tree_unique_field] = []
+        self.rows:list[Tree_unique_row] = []
+        self.tree_q: QtWidgets.QTreeWidget|None = None
+        self._state_dict:dict|None = None
+    def hide(self,field:Tree_unique_field,val:bool = True):
+        self.tree_q.setColumnHidden(field.idx,val)
+    def _save_tree_state(self):
+        tree_widget : QtWidgets.QTreeWidget = self.tree_q
+        state_dict = {}
+        f = self.get_primary_field()
+
+        def traverse(item):
+            state_dict[item.text(f.idx)] = item.isExpanded()
+            for i in range(item.childCount()):
+                traverse(item.child(i))
+
+        for i in range(tree_widget.topLevelItemCount()):
+            traverse(tree_widget.topLevelItem(i))
+        self._state_dict = state_dict
+
+    def fill_tree(self,tree_q:QtWidgets.QTreeWidget):
+        self.tree_q:QtWidgets.QTreeWidget = tree_q
+        self.tree_q.blockSignals(True)
+        self.rows.sort(key=lambda x: (x.get(self.get_field('_tbl')), x.lvl))
+
+        self._save_tree_state()
+
+
+        tree_q.setColumnCount(len(self.fields))
+        iter = 0
+        for f in self.fields:
+            tree_q.headerItem().setText(iter, f.name)
+            iter += 1
+        tree_q.clear()
+
+        def add_item(tree, row: Tree_unique_row, parent=None):
+
+            if parent:
+                item_obj = QtWidgets.QTreeWidgetItem(parent, row.get_vals())
+            else:
+                item_obj = QtWidgets.QTreeWidgetItem(tree, row.get_vals())
+
+
+            for i, f in enumerate(row.vals.keys()):
+                if f in row.tooltips:
+                    item_obj.setToolTip(i, row.tooltips[f])
+
+                r, g, b = row.propery.color_font.rgb
+                if f.propery.color_font:
+                    r, g, b = f.propery.color_font.rgb
+                color = QtGui.QColor.fromRgb(int(r), int(g), int(b))
+                item_obj.setForeground(i, color)
+
+                r = g= b = '244'
+                if not row.odd:
+                    r, g, b = row.propery.color_background.rgb
+                    if f.propery.color_background:
+                        r, g, b = f.propery.color_background.rgb
+                else:
+                    r, g, b = row.propery.color_background_odd.rgb
+                    if f.propery.color_background_odd:
+                        r, g, b = f.propery.color_background_odd.rgb
+
+
+                color = QtGui.QColor.fromRgb(int(r), int(g), int(b))
+                item_obj.setBackground(i, color)
+
+                font = item_obj.font(i)
+
+                bold_font = row.propery.bold_font
+                if f.propery.bold_font is not None:
+                    bold_font = f.propery.bold_font
+                font.setBold(bold_font)
+
+                italic_font = row.propery.italic_font
+                if f.propery.italic_font is not None:
+                    italic_font = f.propery.italic_font
+                font.setItalic(italic_font)
+
+                size_font = row.propery.size_font
+                if f.propery.size_font is not None:
+                    size_font = f.propery.size_font
+                font.setPointSize(size_font)
+
+                item_obj.setFont(i, font)
+
+            if parent:
+                parent.addChild(item_obj)
+            else:
+                tree.addTopLevelItem(item_obj)
+            return item_obj
+
+        dict_levels = dict()
+        base_lvl = 0
+        for row in self.rows:
+            lvl = row.lvl
+            if lvl == base_lvl:
+                current_item_tree = add_item(tree_q, row)
+                dict_levels[lvl] = current_item_tree
+            if lvl > base_lvl:
+                current_item_tree = add_item(tree_q, row, dict_levels[lvl - 1])
+                dict_levels[lvl] = current_item_tree
+
+
+        self._restore_tree_state()
+
+        self.tree_q.blockSignals(False)
+
+    def _restore_tree_state(self,  ):
+        tree_widget = self.tree_q
+        state_dict = self._state_dict
+        f = self.get_primary_field()
+        def set_expanded(item):
+            if item.text(f.idx) in state_dict:
+                if state_dict[item.text(f.idx)]:
+                    item.setExpanded(True)
+                else:
+                    item.setExpanded(False)
+            for i in range(item.childCount()):
+                set_expanded(item.child(i))
+
+        for i in range(tree_widget.topLevelItemCount()):
+            set_expanded(tree_widget.topLevelItem(i))
+
+    def gui_expand(self):
+        self.tree_q.expandAll()
+
+    def get_field(self,name)->Tree_unique_field|None:
+        for f in self.fields:
+            if f.name == name:
+                return f
+    def get_primary_field(self)->Tree_unique_field|None:
+        for f in self.fields:
+            if f.primary:
+                return f
+
+
+    def add_field(self, name:str,
+                 color_font:str = None,
+                 color_background:str = None,
+                 color_background_odd:str = None,
+                 bold_font:bool=None,
+                 italic_font:bool=None,
+                 size_font:int=None,
+                  primary:bool = False)->Tree_unique_field:
+        prop = Tree_unique_property(color_font,color_background,color_background_odd,
+                                             bold_font,italic_font,size_font)
+        idx = len(self.fields)
+        field = Tree_unique_field(self,name,prop,primary)
+        field.idx = idx
+        self.fields.append(field)
+        return field
+
+    def add_row(self, lvl:int,
+                 tooltip:str,
+                 color_font = '10;10;10',
+                 color_background = '254;254;254',
+                 color_background_odd = '254;254;254',
+                 bold_font=False,
+                 italic_font=False,
+                 size_font=10,)->Tree_unique_row:
+        prop = Tree_unique_property(color_font,color_background,color_background_odd,
+                                             bold_font,italic_font,size_font)
+        row = Tree_unique_row(self,lvl,
+                 tooltip,prop)
+        odd = False
+        if len(self.rows)%2:
+            odd = True
+            row.odd = odd
+        self.rows.append(row)
+        return row
+
+class Tree_unique_row():
+    def __init__(self,
+                 parent:Tree_unique,
+                 lvl:int,
+                 tooltip:str,
+                 propery: Tree_unique_property
+                 ):
+        self.parent:Tree_unique = parent
+        self.lvl:int = lvl
+        self.vals:dict[Tree_unique_field,any] = {f:'' for f in self.parent.fields}
+        self.tooltips:dict[Tree_unique_field,any] = {f:None for f in self.parent.fields}
+        self.propery: Tree_unique_property = propery
+        self.odd:bool = False
+        self.tooltip: str = tooltip
+        pass
+
+    def __setattr__(self, key, value):
+        super().__setattr__(key, value)
+        if value is None:
+            return
+        if key in ('tooltip'):
+            self._set_tooltip_on_first_column()
+
+    def _set_tooltip_on_first_column(self):
+        for k, v in self.tooltips.items():
+            if v is not None:
+                return
+            self.tooltips[k] = self.tooltip
+            return
+
+
+    def get(self,field:Tree_unique_field):
+        return self.vals[field]
+    def add_val(self,field:Tree_unique_field,val,tooltip:str|None=None):
+
+        if self.tooltip and not tooltip:
+            self.tooltips[field] = tooltip
+        if tooltip:
+            self.tooltips[field] = tooltip
+        self.vals[field] = val
+    def get_vals(self)->list[str]:
+        return [str(val) for val in self.vals.values()]
+
+class Tree_unique_property():
+    def __init__(self,
+                 color_font:str='10;10;10',
+                 color_background:str='254;254;254',
+                 color_background_odd:str='254;254;254',
+                 bold_font:bool=False,
+                 italic_font:bool=False,
+                 size_font:int=10,
+                 ):
+        self.color_font: Color|None = Color(color_font)
+        self.color_background: Color|None = Color(color_background)
+        self.color_background_odd: Color|None = Color(color_background_odd)
+        self.bold_font: bool|None = bold_font
+        self.italic_font: bool|None = italic_font
+        self.size_font: int|None = size_font
+
+class Tree_unique_field():
+    def __init__(self,
+                 parent:Tree_unique,
+                 name:str,
+                 propery:Tree_unique_property,
+                 primary = False
+                 ):
+        self.name:str = name
+        self.parent:Tree_unique = parent
+        self.propery:Tree_unique_property = propery
+        self.idx:int|None = None
+        self.primary:bool = primary
+    def __repr__(self):
+        return f'{self.idx}. {self.name}{" PRIM" if self.primary else ""}'
+
+
+
+
 
 if __name__ == "__main__":
     pass
@@ -6705,13 +8159,11 @@ def update_local_graf(self=None, update=False,pnom:int = 0,fill_gant=True,DICT_C
 
     def setText_data(self,dict_form,pnom):
         tbl = self.ui.tbl_kal_pl
+        t = CQT.TableContext(tbl)
         data = F.to_binary_pickle(dict_form)
-        nk_pnom = CQT.num_col_by_name_c(tbl,'plan.Пномер')
-        nk_graf = CQT.num_col_by_name_c(tbl,'plan.local_graf')
-        for i in range(tbl.rowCount()):
-            if tbl.item(i,nk_pnom).text() == str(pnom):
-                tbl.item(i, nk_graf).setText(str(data))
-                break
+        row = t.find_row({'plan.Пномер':str(pnom)},True)
+        if row:
+            row.set_value('plan.local_graf',str(data))
         return data
 
     def fill_date(DICT_PODR,dict_form,dict_dates:dict,dict_norms:dict,pnom,proj,poz, napr,napr_deyat):
@@ -7408,11 +8860,24 @@ def calc_num_etap_from_name_etap(dict_etaps_from_erp,part_py,etap_name,s_num_kpl
     else:
         CQT.msgbox(f'НомерПартииЗапуска {part_py} не найден в МЕС\n Нужно обратиться в ПДО для корректировки')
 
-def create_nar_prosoy(self,fio:str,type_prost:int,db_nar,primech,koef,db_naryd,dop_prim_prost='',num_bad_bar=''):
+def create_nar_prosoy(fio:str, primech, koef, dop_prim_prost='', num_bad_bar='',
+        pk_mk: int = None,
+        code_category: int = None,
+        pk_remark: int = None
+    ):
+    """Создать простойный наряд
+
+        @pk_mk Пномер маршрутной карты          (Naryad.mk.Пномер)
+        @code_category код категории внеплана   (Naryad.kategor_vnepl.kod)
+        @pk_remark Пномер журнала замечаний     (Naryad.zamech.Пномер)
+    """
+    profile = CFG.Config.user_config.User
+    db_naryd = CFG.Config.project.db_naryad
+    glob_login = f'{profile.ФИО} {profile.Должность}'
     date_nar = F.now()
 
     stroka = [date_nar,
-              name_by_empl_c(fio),
+              name_by_empl_c(glob_login),
               0,
               CFG.Config.place.КодыНарядов.Простой,
               'ПРОСТОЙ',
@@ -7431,31 +8896,36 @@ def create_nar_prosoy(self,fio:str,type_prost:int,db_nar,primech,koef,db_naryd,d
               1,
               '',
               primech,
-              koef, 0, type_prost, '', '']
+              koef, 0, str(code_category), '', '']
     custom_request_c = f'''INSERT INTO naryad (Дата,	Автор,Номер_мк,Внеплан,Задание,Компл_ФИО,Компл_Дата,Компл_номер_тара,
                    Компл_адрес,ФИО,Фвремя,ФИО2,Фвремя2,Твремя,ДСЕ,ДСЕ_ID,Операции,Опер_время,Опер_колво,Примечание,Коэфф_сложности,
-                   Подтвержд_вып,Категория_внепл,Виды_работ,Номер_замечания_журнал) VALUES ({", ".join(("?" * len(stroka)))});'''
+                   Подтвержд_вып,Категория_внепл,Виды_работ,Номер_замечания_журнал) VALUES ({", ".join(("?" * len(stroka)))}) RETURNING *;'''
 
-    rez = CSQ.custom_request_c(db_naryd, custom_request_c, list_of_lists_c=[stroka])
+    rez = CSQ.custom_request_c(db_naryd, custom_request_c, list_of_lists_c=stroka, rez_dict=True, one=True)
     if rez == False:
         return False
-    nom_new_nar = CSQ.custom_request_c(db_naryd, f"""SELECT Пномер FROM naryad WHERE Дата = '{date_nar}' 
-                   AND Автор = '{name_by_empl_c(fio)}' ORDER BY Пномер DESC LIMIT 1""")
-    try:
-        if len(nom_new_nar) != 2 or F.is_numeric(nom_new_nar[-1][0]) == False:
-            return False
-    except:
-        return False
-    nom_new_nar = int(nom_new_nar[-1][0])
+    nom_new_nar = int(rez['Пномер'])
+
+    dict_status_out = DICT_STATUS_OUT
     if primech == "Ошибка нормирования и технологии":
-        dict_status_out = DICT_STATUS_OUT
         nar = Naryads(int(num_bad_bar),db_naryd)
         nar.get_mk()
         kplan = nar.mk.НомКплан
-        line = [kplan, nar.Номер_мк, F.now(), self.glob_login,
-                f'Ошибка нормирования и технологии ({dop_prim_prost.strip()}) по наряду {num_bad_bar}', int(0), dict_status_out[4],int(num_bad_bar),nom_new_nar]
-        CSQ.custom_request_c(self.db_naryd, f"""INSERT INTO jur_vnepl (Кплан_номер, МК, Дата, ФИО,
-         Запрос, Кплан_номер, Статус, Номер_наряда_с_ошибкой, Номер_внепланового_наряда)
+        line = [kplan, nar.Номер_мк, F.now(), glob_login,
+                f'Ошибка нормирования и технологии ({dop_prim_prost.strip()}) по наряду {num_bad_bar}', int(0), dict_status_out[4],int(num_bad_bar),nom_new_nar,
+                code_category]
+        CSQ.custom_request_c(CFG.Config.project.db_naryad, f"""INSERT INTO jur_vnepl (Кплан_номер, МК, Дата, ФИО,
+         Запрос, Кплан_номер, Статус, Номер_наряда_с_ошибкой, Номер_внепланового_наряда, code_category)
+                                      VALUES ({CSQ.questions_for_mask(line)});""", list_of_lists_c=[line])
+    if code_category == 18: # 18/03/2026
+        pk_kpl = CSQ.custom_request_c(CFG.Config.project.db_naryad,
+                                      f'SELECT НомКплан FROM mk WHERE Пномер = {pk_mk}',
+                                      one=True, one_column=True, hat_c=False)
+        comment = f"({dop_prim_prost.strip()})" if dop_prim_prost.strip() else ""
+        line = [pk_kpl, pk_mk, F.now(), glob_login,
+                f'Финишный ОТК {comment} по мк {pk_mk}', int(0), dict_status_out[2],int(num_bad_bar),nom_new_nar, code_category, pk_mk, pk_remark]
+        CSQ.custom_request_c(CFG.Config.project.db_naryad, f"""INSERT INTO jur_vnepl (Кплан_номер, МК, Дата, ФИО,
+         Запрос, Кплан_номер, Статус, Номер_наряда_с_ошибкой, Номер_внепланового_наряда, code_category, Номер_нов_мк, Журнал_замеч_номер)
                                       VALUES ({CSQ.questions_for_mask(line)});""", list_of_lists_c=[line])
     return nom_new_nar
 
@@ -8125,6 +9595,11 @@ def load_ip_srv(self):
                 pass
 @CQT.onerror
 def load_tkp_list(self, db_dse, dict_alias,  tbl_list_tkp, tbl_list_tkp_filtr,set_editeble_col_nomera= {}, date_res = None, include_deleted=False):
+    def print_hdr(tag):
+        print(tag, id(self.ui.tbl_red_tree.horizontalHeader()))
+
+    
+
     prefix =''
     if not include_deleted:
         prefix = "status != 'На удаление' and "
@@ -8145,6 +9620,7 @@ def load_tkp_list(self, db_dse, dict_alias,  tbl_list_tkp, tbl_list_tkp_filtr,se
         nnom_izd,  
         nnom_tkp, 
         dir_rkd, 
+        "" as "ВО",
         status, 
         name_prices.name AS "Проверка цены",
         resp_technolog, 
@@ -8164,8 +9640,17 @@ def load_tkp_list(self, db_dse, dict_alias,  tbl_list_tkp, tbl_list_tkp_filtr,se
     #   Имя
     #    FROM predv_res;
     #    """,rez_dict=True), 'Имя')
-
+    dir_emo = CEMOJ.ДокументыДанные.folder.symbol
+    docs_emo = CEMOJ.ДокументыДанные.receiving.symbol
+    
     for i in range(len(list_tkp)):
+        rkd = list_tkp[i]['dir_rkd']
+        if rkd:
+            if rkd.startswith('docs'):
+                list_tkp[i]["ВО"] = docs_emo
+            else:
+                list_tkp[i]["ВО"] = dir_emo
+
         if int(list_tkp[i]['вид_по_напр']) in self.Data_plan.DICT_VID_PO_NAPR:
             list_tkp[i]['вид_по_напр'] = self.Data_plan.DICT_VID_PO_NAPR[int(list_tkp[i]['вид_по_напр'])]['Имя']
         if not list_tkp[i]["Выгружено в 1С"]:
@@ -8180,15 +9665,31 @@ def load_tkp_list(self, db_dse, dict_alias,  tbl_list_tkp, tbl_list_tkp_filtr,se
             else:
                 print(f'Не найден predv_res для ТКПА_{list_tkp[i]["s_nom"]}')
 
+    
+    def fnc_dbl_clc(t:CQT.TableContext,i:int,col_name:str,app_self):
+        row = t.get_row(i)
+        link = row.value('Путь до ВО')
+        if not link:
+            return
+        CQT.lbl_linkActivated(link)
+        pass
 
-
+    
     list_tkp = F.list_of_dicts_to_list_of_lists(list_tkp)
     list_tkp = CSQ.apply_alias_list(list_tkp, dict_alias)
+    with CQT.table_updating(tbl_list_tkp):
+        
+        CQT.fill_wtabl(list_tkp, tbl_list_tkp, set_editeble_col_nomera=set_editeble_col_nomera,select_last_row=True)
+        
 
-    CQT.fill_wtabl(list_tkp, tbl_list_tkp, set_editeble_col_nomera=set_editeble_col_nomera,select_last_row=True,load_links=True)
-    fill_filtr_c(self, tbl_list_tkp_filtr, tbl_list_tkp, hidden_scroll=True)
-    update_width_filtr(tbl_list_tkp, tbl_list_tkp_filtr)
-
+        t = CQT.TableContext(tbl_list_tkp)
+        
+        t.hide('Путь до ВО')
+        t.add_column_events('ВО',on_double_click=fnc_dbl_clc,parent_self=self)
+        fill_filtr_c(self, tbl_list_tkp_filtr, tbl_list_tkp, hidden_scroll=True)
+        
+        update_width_filtr(tbl_list_tkp, tbl_list_tkp_filtr)
+        
 
 
 def kontrol_ver(ver, ima):
@@ -8645,7 +10146,7 @@ def resursnaya_from_cust_struktura(self, spis_dse, kol_vo_izdeliy=None, ruchnoi=
 
 @CQT.onerror
 def check_possibility_statistic_calc_tkp(vid_izd:str|int):
-    VID_PO_NAPR = CSQ.custom_request_c(CFG.Config.project.db_kplan, f"""SELECT * FROM виды_по_направлению""", rez_dict=True) #18.07.25
+    VID_PO_NAPR = CSQ.custom_request_c(CFG.Config.project.db_kplan, f"""SELECT Имя,Пномер,Выборка,Утверждены_нормы  FROM виды_по_направлению""", rez_dict=True) #18.07.25
     if isinstance(vid_izd,str):
         DICT_VID_PO_NAPR = F.deploy_dict_c(VID_PO_NAPR, 'Имя')
     if isinstance(vid_izd,int):
@@ -9249,10 +10750,12 @@ def fix_mastered_count(res:list,s_num_mk:int):
         if count_fio:#распределен
             if count_fio == clc_count_ftime():#завершен
                 fl_zav = True
-
+        if item['ДСЕ_ID'] == '':
+            continue
         list_ids = item['ДСЕ_ID'].split('|')
         list_counts = item['Опер_колво'].split('|')
         list_opers = [_.split('$')[0] for _ in  item['Операции'].split('|')]
+
         for i, id in enumerate(list_ids):
             count = int(list_counts[i])
             id = int(id)
@@ -9708,15 +11211,15 @@ def b24_notation_user_fio(str_fio: str = F.user_full_namre()):
     return str_fio_rez
 
 @CQT.onerror
-def send_info_mk_b24_by_action(msg, action: str,form_dict:dict=None,msg_bold:bool=False,basement_msg:str=None):
+def send_info_mk_b24_by_action(msg, action: str,form_dict:dict=None,msg_bold:bool=False,basement_msg:str=None,poki:int|None=None):
     sender = CB24.B24Sender()
-    if not sender.send_msg_by_action(action, msg,form_dict=form_dict,msg_bold=msg_bold,basement_msg=basement_msg):
+    if not sender.send_msg_by_action(action, msg,form_dict=form_dict,msg_bold=msg_bold,basement_msg=basement_msg,poki=poki):
         CQT.msgbox(f'Ошибка отправки запроса в Б24')
 
 @CQT.onerror
-def send_tbl_b24_by_action(title, action: str,tbl:list[dict],chat_id:str|None=None):
+def send_tbl_b24_by_action(title, action: str,tbl:list[dict],chat_id:str|None=None,poki:int | None = None):
     sender = CB24.B24Sender()
-    if not sender.send_msg_table_by_action(action, title,tbl,chat_id):
+    if not sender.send_msg_table_by_action(action, title,tbl,chat_id,poki=poki):
         CQT.msgbox(f'Ошибка отправки запроса в Б24')
 
 
@@ -9977,15 +11480,16 @@ def dict_professions(self, db_users, conn = ''):
     return
 
 def dict_etapi(self, db_naryd, conn = '',cur = ''):
-    """
-    стадия МК(ресурсной)
-    этап с 24.03.2025 по РЦ до этого по имени операции (operacii)/
-    вид работ - по профессии
+    """ не удалять!!!!!
+    ---стадия МК(ресурсной)
+    этап        с 24.03.2025    по РЦ до этого по имени операции (operacii)/
+    вид работ   - по профессии
 
-    стадия выгрузки трудов
-    этап по должности исполнителя (dolgn_etap)
-    вид работ по должности исполнителя (professions)
+    ----стадия выгрузки трудов
+    этап        по должности исполнителя (dolgn_etap)
+    вид работ   по должности исполнителя (professions)
 
+        не удалять!!!!!
     """
     self.DICT_ETAPI = dict()
     custom_request_c = f'''SELECT * FROM operacii WHERE poki == {CFG.Config.place.poki}'''
@@ -10280,7 +11784,7 @@ def add_mats_into_list_c(spis:list,list_mat,kolvo):
         spis.append(list_mat)
     return spis
 
-def load_tmp_path(ima):
+def load_tmp_path(ima)->str:
     if F.existence_file_c(tmp_dir() + os.sep + ima + '.txt') == True:
         tmp_putt = F.open_file_c(tmp_dir() + os.sep + ima + '.txt', False, '')[0]
     else:
@@ -10393,243 +11897,267 @@ def note_OGK_c(strok:str):
     except:
         return ''
 
-def load_csv(self,db_nomen,db_kplan):
-    if self.glob_nom_mk == "":
-        CQT.msgbox('Невыбрана мк')
-        return False
-    nom_mk = str(self.glob_nom_mk)
-    nom_kpl = CSQ.custom_request_c(self.db_naryd,f'''SELECT  НомКплан FROM mk WHERE Пномер = {int(nom_mk)}''',one_column=True,one=True,hat_c=False)
-    if nom_kpl == None or nom_kpl == False:
-        CQT.msgbox(f'Не найден норма КПЛ')
-        return #11.11.25 exclude nom_kpl (т.к. возвращается уже распакованый)
-    otv_technolog_query = CSQ.custom_request_c(self.db_kplan,f'''SELECT пл_топ.Отв_технолог FROM пл_топ INNER JOIN plan
-        ON plan.Пномер = пл_топ.НомПл WHERE plan.Пномер = {nom_kpl}''',one_column=True,one=True,hat_c=False)
-    if otv_technolog_query == None or otv_technolog_query == False:
-        otv_technolog = ''
+def load_csv(self,db_nomen,db_kplan,list_mk:list|None=None):
+    if list_mk is None:
+        if self.glob_nom_mk == "":
+            CQT.msgbox('Невыбрана мк')
+            return False
+        nom_mk = str(self.glob_nom_mk)
+        list_mk = [nom_mk]
     else:
-        otv_technolog = otv_technolog_query #11.11.25
+        if not CQT.msgboxgYN(f'Будут выгружены задания по МК№№: {", ".join([str(_) for _ in list_mk])}'):
+            return False
 
-    if user_access(self.db_naryd,'создание_задание_на_резку',name_by_empl_c(self.glob_login)) == False and self.glob_ima != otv_technolog:
-        return False
+    list_errs = []
 
-
-    tmp_putt = load_tmp_path("tmp_put_csv")
-
-    put = CQT.getDirectory(self,tmp_putt)
-    if put == None or put == '.':
-        return False
-
-    save_tmp_path("tmp_put_csv", put, False)
-
-    rc = '010101'#010101
-
-
-    conn_res, cur_res = CSQ.connect_bd(F.bdcfg('db_resxml'))
-    squery = f"""SELECT CASE WHEN знпр.№проекта IS NOT NULL 
-       THEN знпр.№проекта 
-       ELSE mk.Номер_проекта 
-       END AS Номер_проекта, 
-        
-        
-        CASE WHEN знпр.№ERP IS NOT NULL 
-       THEN знпр.№ERP 
-       ELSE mk.Номер_заказа 
-       END AS Номер_заказа, 
-        
-        CASE WHEN plan.Приоритет IS NOT NULL 
-       THEN plan.Приоритет 
-       ELSE mk.Приоритет 
-       END AS Приоритет 
-        
-         FROM mk 
-         LEFT JOIN plan ON plan.Пномер = mk.НомКплан  
-       LEFT JOIN пл_оуп ON пл_оуп.НомПл = mk.НомКплан 
-LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП 
-
-    
-               WHERE mk.Пномер = {int(nom_mk)}"""
-    query = CSQ.custom_request_c(F.bdcfg('Naryad'),squery,rez_dict=True,one=True,attach_dbs=(self.db_kplan))
-
-    np =query['Номер_проекта'][-3:]
-    py =query['Номер_заказа'][-4:]
-    if py == "*":
-        CQT.msgbox(f'Выгрузить CSV без заказа на производство нельзя.')
-        return False
-    prioritet = str(query['Приоритет'])
-    nppy = np + "-" + py #+"-" + nom_mk
-    put += os.sep + nppy+'-'+nom_mk
-    if F.existence_file_c(put)== False:
-        F.create_dir_c(put)
-    spis_dse = F.from_binary_pickle(CSQ.custom_request_c(F.bdcfg('db_resxml'),f"""SELECT data FROM res WHERE Номер_мк = {int(nom_mk)}""",rez_dict=True,one=True,conn=conn_res,cur=cur_res)['data'])
     try:
-        test_dse = F.from_binary_pickle(CSQ.custom_request_c(F.bdcfg('db_resxml'),f"""SELECT data FROM res WHERE Номер_мк = 902""",rez_dict=True,one=True,conn=conn_res,cur=cur_res)['data'])
-        CSQ.close_bd(conn_res, cur_res)
-        spis_dse.insert(0, test_dse[0])
-        set_mat_tolsh = set()
+        test_dse = F.from_binary_pickle(CSQ.custom_request_c(CFG.Config.project.db_resxml,
+                                                             f"""SELECT data FROM res WHERE Номер_мк = 902""",
+                                                             rez_dict=True, one=True)['data'])
+        test_dse = test_dse[0]
     except:
-        CSQ.close_bd(conn1,cur1)
-        CSQ.close_bd(conn_res, cur_res)
         CQT.msgbox(f'Не удалось загрузить тестовую деталь по МК902')
         return False
 
-    rez_csv = [["путь и дет. -", "название дет. -", "кол-во -", "код из номенклатуры технолога ", "толщина из номенклауры технолога -","3проект_4ПУ_Нмк -","заменяем на номерМК -","Приоритет -","Технолог -","Гравировка -"]]
-
-    #nomenklatura = F.open_file_c(F.scfg('bd_prof')+ os.sep + "bd_mater.txt",separ='|')
-    nomenklatura = CSQ.custom_request_c(db_nomen,"""SELECT * FROM nomen WHERE На_удаление == 0""",rez_dict=True)
-    nomenklatura = F.deploy_dict_c(nomenklatura,'Код')
-
-    err_arr = []
-    #найти колонку с лазерной резкой 010101 и найти операцию там
+    nomenklatura = CSQ.custom_request_c(db_nomen, """SELECT Код, П5, П6, П1 FROM nomen WHERE На_удаление == 0""", rez_dict=True)
+    nomenklatura = F.deploy_dict_c(nomenklatura, 'Код')
 
     poki = CFG.Config.place.poki
-    custom_request_c = f'''SELECT Номенклатурный_номер, Номер_техкарты, Примечание FROM dse WHERE poki = {poki}''' #18.04.25
-    rez = CSQ.custom_request_c(self.db_dse, custom_request_c, hat_c=True,rez_dict=True)
+    custom_request_c = f'''SELECT Номенклатурный_номер, Номер_техкарты, Примечание FROM dse WHERE poki = {poki}'''  # 18.04.25
+    rez = CSQ.custom_request_c(self.db_dse, custom_request_c, hat_c=True, rez_dict=True)
+    DICT_NN_NTK = F.deploy_dict_c(rez, 'Номенклатурный_номер')
 
 
-    DICT_NN_NTK = F.deploy_dict_c(rez,'Номенклатурный_номер')
+    tmp_putt = load_tmp_path("tmp_put_csv")
+    put = CQT.getDirectory(self,tmp_putt)
+    if put == None or put == '.':
+        return False
+    save_tmp_path("tmp_put_csv", put, False)
+    rc = '010101'  # 010101
 
 
-    for dse in spis_dse:
-        for oper in dse['Операции']:
-            if oper['Опер_РЦ_код'] == rc:
-                gravir = ''
-                op = oper['Опер_номер']
-                nn = dse['Номенклатурный_номер']
-                naim = dse['Наименование']
-                kolvo = dse['Количество']
-                nom_tk = DICT_NN_NTK[nn]['Номер_техкарты']
-                primech = DICT_NN_NTK[nn]['Примечание']
-                if 'грав.' in primech:
-                    gravir = '1'
-                if nn == 'ТОП.ПР.008' and naim == 'ETALON':
-                    putf = F.scfg('add_docs') + os.sep + nom_tk + '_' + nn + '.pickle'
-                else:
-                    putf = F.scfg('bd_mk') + os.sep + nom_mk + os.sep + nom_tk + '_' + nn + '.pickle'
+    for nom_mk in list_mk:
+        otv_technolog_query = CSQ.custom_request_c(self.db_naryd,f'''SELECT  пл_топ.Отв_технолог FROM mk
+        INNER JOIN  пл_топ ON пл_топ.НомПл = mk.НомКплан
+         WHERE Пномер = {int(nom_mk)}''',
+                                       one_column=True,one=True,hat_c=False,attach_dbs=(self.db_kplan))
+        if otv_technolog_query == None or otv_technolog_query == False:
+            otv_technolog = ''
+        else:
+            otv_technolog = otv_technolog_query #11.11.25
+        if user_access(self.db_naryd,'создание_задание_на_резку',name_by_empl_c(self.glob_login)) == False and self.glob_ima != otv_technolog:
+            list_errs.append({'МК':nom_mk,'Содержимое':'Нет доступа'})
+            continue
+        squery = f"""SELECT CASE WHEN знпр.№проекта IS NOT NULL 
+           THEN знпр.№проекта 
+           ELSE mk.Номер_проекта 
+           END AS Номер_проекта, 
+            
+            
+            CASE WHEN знпр.№ERP IS NOT NULL 
+           THEN знпр.№ERP 
+           ELSE mk.Номер_заказа 
+           END AS Номер_заказа, 
+            
+            CASE WHEN plan.Приоритет IS NOT NULL 
+           THEN plan.Приоритет 
+           ELSE mk.Приоритет 
+           END AS Приоритет 
+            
+             FROM mk 
+             LEFT JOIN plan ON plan.Пномер = mk.НомКплан  
+           LEFT JOIN пл_оуп ON пл_оуп.НомПл = mk.НомКплан 
+            LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП 
+        
+                   WHERE mk.Пномер = {int(nom_mk)}"""
+        query = CSQ.custom_request_c(self.db_naryd,squery,rez_dict=True,one=True,attach_dbs=(self.db_kplan))
 
-                if F.existence_file_c(putf):
-                    nk_rc_tk = 4
-                    nk_ur_tk = 20
-                    nk_op_tk = 2
-                    nk_mat_tk = 10
-                    nk_doc_tk = 15
-                    nk_textper = 0
-                    set_segment = {"част","сегм","сект"}
-                    sp_tk = F.open_file_c(putf, False, "|", pickl=True)
-                    if sp_tk == None:
-                        F.copy_file_c(F.scfg('add_docs') + os.sep + nom_tk + '_' + nn + '.pickle',putf)
+        np =query['Номер_проекта'][-3:]
+        py =query['Номер_заказа'][-4:]
+        if py in ("*"):
+            list_errs.append({'МК': nom_mk, 'Содержимое': f'Выгрузить CSV без заказа на производство нельзя.'})
+            continue
+
+
+        prioritet = str(query['Приоритет'])
+        nppy = np + "-" + py #+"-" + nom_mk
+        put_nppy_mk = put + os.sep + nppy+'-'+nom_mk
+        if F.existence_file_c(put_nppy_mk)== False:
+            F.create_dir_c(put_nppy_mk)
+        spis_dse = F.from_binary_pickle(CSQ.custom_request_c(CFG.Config.project.db_resxml,
+                                            f"""SELECT data FROM res WHERE Номер_мк = {int(nom_mk)}""",
+                                                             rez_dict=True,one=True)['data'])
+
+        spis_dse.insert(0, test_dse)
+        set_mat_tolsh = set()
+
+        rez_csv = [["путь и дет. -", "название дет. -", "кол-во -", "код из номенклатуры технолога ",
+                    "толщина из номенклауры технолога -","3проект_4ПУ_Нмк -","заменяем на номерМК -",
+                    "Приоритет -","Технолог -","Гравировка -"]]
+
+        fl_err_mk = False
+        #найти колонку с лазерной резкой 010101 и найти операцию там
+
+        for dse in spis_dse:
+            for oper in dse['Операции']:
+                if oper['Опер_РЦ_код'] == rc:
+                    gravir = ''
+                    op = oper['Опер_номер']
+                    nn = dse['Номенклатурный_номер']
+                    naim = dse['Наименование']
+                    kolvo = dse['Количество']
+                    nom_tk = DICT_NN_NTK[nn]['Номер_техкарты']
+                    primech = DICT_NN_NTK[nn]['Примечание']
+                    if 'грав.' in primech:
+                        gravir = '1'
+                    if nn == 'ТОП.ПР.008' and naim == 'ETALON':
+                        putf = F.scfg('add_docs') + os.sep + nom_tk + '_' + nn + '.pickle'
+                    else:
+                        putf = F.scfg('bd_mk') + os.sep + nom_mk + os.sep + nom_tk + '_' + nn + '.pickle'
+
+                    if F.existence_file_c(putf):
+                        nk_rc_tk = 4
+                        nk_ur_tk = 20
+                        nk_op_tk = 2
+                        nk_mat_tk = 10
+                        nk_doc_tk = 15
+                        nk_textper = 0
+                        set_segment = {"част","сегм","сект"}
                         sp_tk = F.open_file_c(putf, False, "|", pickl=True)
                         if sp_tk == None:
-                            CQT.msgbox(f'ОШибка чтения ТК {putf}')
-                            return False
-                    try:
-                        ima_tehnolog = sp_tk[3][0]
-                    except:
+                            F.copy_file_c(F.scfg('add_docs') + os.sep + nom_tk + '_' + nn + '.pickle',putf)
+                            sp_tk = F.open_file_c(putf, False, "|", pickl=True)
+                            if sp_tk == None:
+                                list_errs.append({'МК': nom_mk,
+                                                  'Содержимое': f'Ошибка чтения ТК {putf}'})
+                                fl_err_mk = True
+                                continue
+                        try:
+                            ima_tehnolog = sp_tk[3][0]
+                        except:
 
-                        CQT.msgbox(f'ошибка в ТК {putf} ')
-                        return False
-                    print(f'{nn}:')
-                    for j in range(11,len(sp_tk)):
-                        if sp_tk[j][nk_ur_tk] == '1':
-                            print(f'    {sp_tk[j][2]} {sp_tk[j][0]} {";".join(sp_tk[j][14].split("$"))}')
-                        if sp_tk[j][nk_ur_tk] == '0':
-                            break
-                        if sp_tk[j][nk_rc_tk] == '010101' and sp_tk[j][nk_op_tk] == op:
-                            kod_mat =''
-                            if sp_tk[j][nk_mat_tk] == '':
-                                err_arr.append(f'Не найден материал на {nom_tk + "_" + nn + " операция " + sp_tk[j][nk_op_tk]}')
-                            else:
-                                mat = sp_tk[j][nk_mat_tk].split('{')
-                                for material in mat:
-                                    if kod_mat != '':
-                                        break
-                                    nn_mat = material.split('$')[0]
-                                    name_mat = material.split('$')[1]
-                                    if nn_mat in nomenklatura:
-                                        if nomenklatura[nn_mat]['П5'] == '1':
-                                            kod_mat = str(nomenklatura[nn_mat]['П6'])
-                                            tolsh = str(nomenklatura[nn_mat]['П1'])
+                            list_errs.append({'МК': nom_mk,
+                                              'Содержимое': f'ошибка в ТК {putf} '})
+                            fl_err_mk = True
+                            continue
+
+                        print(f'{nn}:')
+                        for j in range(11,len(sp_tk)):
+                            if sp_tk[j][nk_ur_tk] == '1':
+                                print(f'    {sp_tk[j][2]} {sp_tk[j][0]} {";".join(sp_tk[j][14].split("$"))}')
+                            if sp_tk[j][nk_ur_tk] == '0':
+                                break
+                            if sp_tk[j][nk_rc_tk] == '010101' and sp_tk[j][nk_op_tk] == op:
+                                kod_mat =''
+                                if sp_tk[j][nk_mat_tk] == '':
+                                    list_errs.append({'МК':nom_mk,
+                                    'Содержимое':f'Не найден материал на {nom_tk + "_" + nn + " операция " + sp_tk[j][nk_op_tk]}'})
+                                    fl_err_mk = True
+                                else:
+                                    mat = sp_tk[j][nk_mat_tk].split('{')
+                                    for material in mat:
+                                        if kod_mat != '':
                                             break
-                                    else:
-                                        err_arr.append(f'Не найден в номенклатуре материал {nn_mat} {name_mat} на'
-                                                       f' {nom_tk + "_" + nn + "_" + naim + " операция " + sp_tk[j][nk_op_tk]}')
-                            if kod_mat == '' and not sp_tk[j][nk_mat_tk] == '': #24.11.25
-                                err_arr.append(f'Не найден матерал для резки (П5, П6, П1) на'
-                                                f' {nom_tk + "_" + nn + "_" + naim +  " операция " + sp_tk[j][nk_op_tk]}')
-                            kolvo_seg = 1 # 27.11.25
-                            if j+1< len(sp_tk) and sp_tk[j+1][nk_ur_tk] == '2':
-                                flag_naid = False
-                                text = sp_tk[j+1][nk_textper]
-                                for slovo in set_segment:
-                                    if slovo.lower() in text.lower():
-                                        flag_naid = True
-                                        break
-                                if flag_naid == True:
-                                    kolvo_seg = text.split(' ')[-1]
-                                    if F.is_numeric(kolvo_seg) == False or len(text.split(' ')) != 2:
-                                        err_arr.append(f'Число сегментов не распознано на {nom_tk + "_" + nn} принят 1')
-                                    else:
-                                        kolvo_seg = int(kolvo_seg)
+                                        nn_mat = material.split('$')[0]
+                                        name_mat = material.split('$')[1]
+                                        if nn_mat in nomenklatura:
+                                            if nomenklatura[nn_mat]['П5'] == '1':
+                                                kod_mat = str(nomenklatura[nn_mat]['П6'])
+                                                tolsh = str(nomenklatura[nn_mat]['П1'])
+                                                break
+                                        else:
+                                            fl_err_mk = True
+                                            list_errs.append({'МК':nom_mk,
+                                    'Содержимое':f'Не найден в номенклатуре материал {nn_mat} {name_mat} на'
+                                                           f' {nom_tk + "_" + nn + "_" + naim + " операция " + sp_tk[j][nk_op_tk]}'})
+                                if kod_mat == '' and not sp_tk[j][nk_mat_tk] == '': #24.11.25
+                                    fl_err_mk = True
+                                    list_errs.append({'МК':nom_mk,
+                                    'Содержимое':f'Не найден матерал для резки (П5, П6, П1) на'
+                                                    f' {nom_tk + "_" + nn + "_" + naim +  " операция " + sp_tk[j][nk_op_tk]}'})
+                                kolvo_seg = 1 # 27.11.25
+                                if j+1< len(sp_tk) and sp_tk[j+1][nk_ur_tk] == '2':
+                                    flag_naid = False
+                                    text = sp_tk[j+1][nk_textper]
+                                    for slovo in set_segment:
+                                        if slovo.lower() in text.lower():
+                                            flag_naid = True
+                                            break
+                                    if flag_naid == True:
+                                        kolvo_seg = text.split(' ')[-1]
+                                        if F.is_numeric(kolvo_seg) == False or len(text.split(' ')) != 2:
+                                            fl_err_mk = True
+                                            list_errs.append({'МК':nom_mk,
+                                    'Содержимое':f'Число сегментов не распознано на {nom_tk + "_" + nn} принят 1'})
+                                        else:
+                                            kolvo_seg = int(kolvo_seg)
 
-                            ima_dxf = sp_tk[j][15] #10.11.25
-                            storage = CSTORE.FileStorage(CFG.Config.project.tk_storage_reestr)
-                            new_name_dxf = f'{nom_mk}_{nn}.dxf'
-                            abs_path_dxf = storage.get_dxf(ima_dxf, nn, put, new_name_dxf)
-                            if abs_path_dxf is None:
-                                print()
-                                abs_path_dxf = storage.get_dxf(ima_dxf, nn, put, new_name_dxf)
+                                ima_dxf = sp_tk[j][15] #10.11.25
+                                storage = CSTORE.FileStorage(CFG.Config.project.tk_storage_reestr)
+                                new_name_dxf = f'{nom_mk}_{nn}.dxf'
+                                abs_path_dxf = storage.get_dxf(ima_dxf, nn, put_nppy_mk, new_name_dxf)
+                                if abs_path_dxf is None:
+                                    print()
+                                    abs_path_dxf = storage.get_dxf(ima_dxf, nn, put_nppy_mk, new_name_dxf)
 
-                            if abs_path_dxf is None:
-                                F.copy_bufer(ima_dxf)
-                                err_arr.append(
-                                    f'Отсутвует в бд файл {F.scfg("add_docs") + os.sep + ima_dxf} из текарты '
-                                    f' {nom_tk + "_" + nn + ".pickle"}')
-                            if err_arr == []:
-                                rez_csv.append([abs_path_dxf,new_name_dxf , str(int(kolvo) * kolvo_seg), kod_mat,
-                                           tolsh, nppy, nom_mk, prioritet, ima_tehnolog, gravir])
-                                if nn != 'ТОП.ПР.008':
-                                    set_mat_tolsh.add((tolsh,kod_mat))
-                else:
-                    err_arr.append(f'Не найдена техкарта {nom_tk + "_" + nn} в {F.scfg("mk_data") + os.sep + nom_mk}')
-    if err_arr == []:
-        сsv_sp = ['-'.join(rez_csv[0])]
-        if '_ТОП.ПР.008.dxf' in rez_csv[1][1]:
-            for set_ in set_mat_tolsh:
-                tmp_test_obr = copy.deepcopy(rez_csv[1])
-                tmp_test_obr[3] = set_[1]
-                tmp_test_obr[4] = set_[0]
-                сsv_sp.append(';'.join(tmp_test_obr))
+                                if abs_path_dxf is None:
+                                    F.copy_bufer(ima_dxf)
+                                    fl_err_mk = True
+                                    list_errs.append({'МК':nom_mk,
+                                    'Содержимое':
+                                        f'Отсутвует в бд файл {F.scfg("add_docs") + os.sep + ima_dxf} из текарты '
+                                        f' {nom_tk + "_" + nn + ".pickle"}'})
+                                if not fl_err_mk:
+                                    rez_csv.append([abs_path_dxf,new_name_dxf , str(int(kolvo) * kolvo_seg), kod_mat,
+                                               tolsh, nppy, nom_mk, prioritet, ima_tehnolog, gravir])
+                                    if nn != 'ТОП.ПР.008':
+                                        set_mat_tolsh.add((tolsh,kod_mat))
+                    else:
+                        list_errs.append({'МК':nom_mk,
+                                    'Содержимое':f'Не найдена техкарта {nom_tk + "_" + nn} в {F.scfg("mk_data") + os.sep + nom_mk}'})
 
-            for i in range(2,len(rez_csv)):
-                сsv_sp.append(';'.join(rez_csv[i]))
+        if not fl_err_mk:
+            сsv_sp = ['-'.join(rez_csv[0])]
+            if '_ТОП.ПР.008.dxf' in rez_csv[1][1]:
+                for set_ in set_mat_tolsh:
+                    tmp_test_obr = copy.deepcopy(rez_csv[1])
+                    tmp_test_obr[3] = set_[1]
+                    tmp_test_obr[4] = set_[0]
+                    сsv_sp.append(';'.join(tmp_test_obr))
+
+                for i in range(2,len(rez_csv)):
+                    сsv_sp.append(';'.join(rez_csv[i]))
+            else:
+                for i in range(1,len(rez_csv)):
+                    сsv_sp.append(';'.join(rez_csv[i]))
+            try:
+                path_csv = put_nppy_mk + os.sep + nom_mk + '.csv'
+                F.write_file_c(put_nppy_mk + os.sep + nom_mk + '.csv',сsv_sp,separ='')
+            except PermissionError as e:
+                list_errs.append({'МК': nom_mk, 'Содержимое': f'Файл {path_csv!r} открыт или используется другой программой'})
+                continue
+
+            otmetka = "_".join([F.user_name(),F.now() , put_nppy_mk])
+            custom_request_c = f'''UPDATE mk SET Статус_ЧПУ = ? WHERE Пномер == ?'''
+             # spis = CSQ.list_from_db_sql_c(F.bdcfg('Naryad'), 'mk', False, True)
+            perem = [otmetka,nom_mk]
+            CSQ.custom_request_c(self.db_naryd, custom_request_c, hat_c= True, list_of_lists_c = perem)
+
         else:
-            for i in range(1,len(rez_csv)):
-                сsv_sp.append(';'.join(rez_csv[i]))
-        try:
-            path = put + os.sep + nom_mk + '.csv'
-            F.write_file_c(put + os.sep + nom_mk + '.csv',сsv_sp,separ='')
-        except PermissionError as e:
-            CQT.msgbox(f'Файл {path!r} открыт или используется другой программой')
-            return
+            try:
+                F.delete_dir_c(put_nppy_mk) #25.11.25
+            except PermissionError as e:
+                CQT.msgbox(f'Файл в {put_nppy_mk!r} открыт или используется другой программой')
+                list_errs.append(
+                    {'МК': nom_mk, 'Содержимое': f'Файл в {put_nppy_mk!r} открыт или используется другой программой'})
+                continue
 
-
-        otmetka = "_".join([F.user_name(),F.now() , put])
-        custom_request_c = f'''UPDATE mk SET Статус_ЧПУ = ? WHERE Пномер == ?'''
-         # spis = CSQ.list_from_db_sql_c(F.bdcfg('Naryad'), 'mk', False, True)
-        perem = [otmetka,nom_mk]
-        CSQ.custom_request_c(F.bdcfg('Naryad'), custom_request_c, '', True, perem)
-        CQT.msgbox('Готово')
-        F.open_dir_c(put)
-    else:
-        try:
-            F.delete_dir_c(put) #25.11.25
-        except PermissionError as e:
-            CQT.msgbox(f'Файл {put!r} открыт или используется другой программой')
-            return
-        correct_width = lambda tbl: [tbl.setRowHeight(row, 46) for row in range(tbl.rowCount())] #type: QtWidgets.QTableWidget
-        CQT.msgboxg_get_table_ok_inf(self, 'Ошибки при выгрузке dxf',dict_or_list=['Ошибки', *err_arr],
+    if list_errs:
+        correct_width = lambda tbl: [tbl.setRowHeight(row, 46) for row in
+                                     range(tbl.rowCount())]  # type: QtWidgets.QTableWidget
+        CQT.msgboxg_get_table_ok_inf(self, 'Ошибки при выгрузке dxf', dict_or_list=list_errs,
                                      func_oform_tbl=correct_width, show_filtr=False)
-        # CQT.msgbox('\n'.join(err_arr))
-        return False
+    F.open_dir_c(put)
     return True
 
 def add_menu(self,*args):
@@ -11711,8 +13239,8 @@ def calc_productivity_c(data,db_users,db_naryad,db_act,db_kplan,DICT_EMPLOEE,DIC
         check_and_fix_broken_narayds(db_naryad,conn,cur)
 
 
-
-    spis_jur_full,dict_per_month_all_state_from_jur = VIR.list_per_month_new_c(db_naryad, nach, konec,db_kplan,db_users,podrazdelenie,organization,tabel_m=tabel)
+    spis_jur_full,dict_per_month_all_state_from_jur = VIR.list_per_month_new_c(db_naryad, nach, konec,db_kplan,db_users,
+                                                                               podrazdelenie,organization,tabel_m=tabel)
 
     CSQ.close_bd(conn, cur)#[_ for _ in spis_jur_full if 'Гримбер' in _[1]]
     #print('=====')
@@ -12709,73 +14237,65 @@ def apply_gui_groups(self: mywindow):
 
     dict_filtr = apply_filtr_c(self, self.ui.tbl_filtr_kal_pl, self.ui.tbl_kal_pl, False,
                                    get_dict_by_fild='plan.Пномер')
-    
-    tbl.blockSignals(True)
-    tbl.setUpdatesEnabled(False)
+    dict_info = dict()
+    dict_grs = dict()
 
-    nf = CQT.nums_col_by_name_dict(tbl)
-
-    col_group = nf['plan.Группа']
-    col_status = nf['plan.Статус']
-    col_type = nf['plan.ТипГр']
-    col_snum = nf['plan.Пномер']
-
-
-    row_count = tbl.rowCount()
-
-    # --- собрать все непустые группы, кроме статуса "Группа" ---
-    set_groups = set()
-    set_groups_filtr_all = set()
-    set_groups_filtr_wiev = set()
-    for i in range(row_count):
-        group_item = tbl.item(i, col_group)
-        if not group_item:
-            continue
-            
-        group = group_item.text().strip()
-        if group:
-            set_groups_filtr_all.add(group)
-        
-
-        status_item = tbl.item(i, col_status)
-        if not status_item:
-            continue
-        status = status_item.text()
-
-
-        if group and status != 'Группа':
-            snum = tbl.item(i, col_snum).text()
-            if snum in dict_filtr and dict_filtr[snum]:
-                set_groups_filtr_wiev.add(group)
-            if tbl.isRowHidden(i):
+    t = CQT.TableContext(tbl)
+    with CQT.table_updating(tbl):
+        for row in t.rows():
+            gr = row.value('plan.Группа').strip()
+            if not gr:
                 continue
-            set_groups.add(group)
+            np = row.value('plan.Пномер')
+            is_fold = row.value('plan.Статус') == 'Группа'
+            is_hidden = True
+            is_collapsed = False
+            if np in dict_filtr and dict_filtr[np]:  # видна строка
+                is_hidden = False
+                if row.is_hidden():
+                    is_collapsed = True
 
+            dict_info[np] = {'gr':gr,'is_fold':is_fold,'is_hidden':is_hidden,'is_collapsed':is_collapsed}
+            if not is_fold:
+                if gr not in dict_grs:
+                    dict_grs[gr] = {'open':False,'hidden':True,'list_np':[]}
+                if not dict_grs[gr]['open'] and not is_collapsed:
+                    dict_grs[gr]['open'] = True
+                if dict_grs[gr]['hidden'] and not is_hidden:
+                    dict_grs[gr]['hidden'] = False
 
-            
-    set_groups_filtr_hidden = set_groups_filtr_all - set_groups_filtr_wiev
-    # --- обновить только группы ---
-    for i in range(row_count):
-        status_item = tbl.item(i, col_status)
-        if not status_item or status_item.text() != 'Группа':
-            continue
+        for row in t.rows():
+            np = row.value('plan.Пномер')
+            if np not in dict_info:
+                continue
+            it = dict_info[np]
+            if np == '-1':
+                gr = row.value('plan.Группа').strip()
+                is_fold = True
+            else:
+                gr = it['gr']
+                is_fold = it['is_fold']
+            is_hidden = it['is_hidden']
+            is_collapsed = it['is_collapsed']
 
-        group_item = tbl.item(i, col_group)
-        type_item = tbl.item(i, col_type)
-        if not group_item or not type_item:
-            continue
+            if is_fold:
+                if dict_grs[gr]['hidden']:
+                    row.hide()
+                else:
+                    row.hide(False)
+                    if dict_grs[gr]['open']:
+                        row.set_value('plan.ТипГр', FOLDER_OPEN)
+                    else:
+                        row.set_value('plan.ТипГр', FOLDER_CLOSED)
+            else:
+                if dict_grs[gr]['hidden']:
+                    pass
+                else:
+                    if dict_grs[gr]['open']:
+                        row.hide(False)
+                    else:
+                        row.hide(True)
 
-        if group_item.text() in set_groups:
-            type_item.setText(FOLDER_OPEN)
-        else:
-            type_item.setText(FOLDER_CLOSED)
-        tbl.setRowHidden(i, False)
-        if group_item.text() in set_groups_filtr_hidden:
-            tbl.setRowHidden(i,True)
-
-    tbl.setUpdatesEnabled(True)
-    tbl.blockSignals(False)
-    tbl.viewport().update()
 
 #===========vipoln===========================================================================
 def ____________VIPOLN___________________________________():
@@ -12808,7 +14328,7 @@ def processing_fix_of_brak(jur_obj, zadanie, nom_nar):
         CQT.msgbox('Ошибка занесения отметки в акты о браке')
         return
 
-def auto_podtv(glob_fio, nar_obj: CMS.Naryads):
+def auto_podtv(glob_fio, nar_obj: Naryads):
     if nar_obj.count_users() == 2:
         if nar_obj.Фвремя != '' and nar_obj.Фвремя2 != '':
             custom_request_c = (f'UPDATE naryad SET Подтвержд_вып = 1, Подтвержд_вып_дата = "{F.now()}",'
@@ -12819,14 +14339,23 @@ def auto_podtv(glob_fio, nar_obj: CMS.Naryads):
                             f' Подтвержд_вып_фио = "{glob_fio}" WHERE Пномер == {nar_obj.Пномер}')
         CSQ.custom_request_c(CFG.Config.project.db_naryad, custom_request_c)
 
+def get_plan_otk_alias_by_poki(poki):
+    return CSQ.custom_request_c(
+        CFG.Config.project.db_kplan,
+        f"SELECT Имя FROM podrazdel WHERE is_control = 1 AND poki = {poki} LIMIT 1",
+        hat_c=False,
+        one=True,
+        one_column=True
+    )
 
 def check_otk_after_proizv(nom_mk:int,rc_proizv:str ='',kod_oper:set =''):
     list_nar = CSQ.custom_request_c(CFG.Config.project.db_naryad,f"""SELECT * FROM naryad 
                     WHERE naryad.Номер_мк == {nom_mk};""",rez_dict=True)
 
     res = load_res(nom_mk)
+    oper_by_code, oper_by_name = calc_dicts_opers(CFG.Config.place.poki or 1)
 
-    def get_list_opers_proizv_otk(self,res,rc_proizv):
+    def get_list_opers_proizv_otk(self,res, *args):
         rez = []
         for dse in res:
             kolvo = dse['Количество']
@@ -12836,6 +14365,9 @@ def check_otk_after_proizv(nom_mk:int,rc_proizv:str ='',kod_oper:set =''):
                 if i == 0:
                     continue
                 pev_oper = dse["Операции"][i-1]
+
+                current_oper_credentials = oper_by_code.get(oper.get('Опер_код')) or {}
+                previous_oper_credentials = oper_by_code.get(pev_oper.get('Опер_код')) or {}
                 tmp_dict = {'dse_id':dse['Номерпп'],
                                 'dse_name': f"{dse['Наименование']} {dse['Номенклатурный_номер']}" ,
                                 'count_dse':kolvo,
@@ -12843,12 +14375,10 @@ def check_otk_after_proizv(nom_mk:int,rc_proizv:str ='',kod_oper:set =''):
                                 'nom_op':oper['Опер_номер'],
                                 'name_op': oper['Опер_наименование']
                                 }
-                if kod_oper:
-                    if oper['Опер_РЦ_код'][:3] == '060' and pev_oper['Опер_код'] in kod_oper:
-                        rez.append(tmp_dict)
-                else:
-                    if oper['Опер_РЦ_код'][:3] == '060' and pev_oper['Опер_РЦ_код'][:4] == rc_proizv:
-                        rez.append(tmp_dict)
+                curr_oper_is_otk = current_oper_credentials.get('kontrol_opers')
+
+                if curr_oper_is_otk and previous_oper_credentials.get('is_coating'):
+                    rez.append(tmp_dict)
         return rez
 
     list_opers_otk = get_list_opers_proizv_otk('',res,rc_proizv)
@@ -12868,20 +14398,68 @@ def check_otk_after_proizv(nom_mk:int,rc_proizv:str ='',kod_oper:set =''):
         return '\n'.join([_ for _ in list_untapped_opers])
     return False
 
-def processing_finish_sign_otk(glob_fio, nom_mk, nom_kpl, nom_nar, nar_obj):
-    msg = check_otk_after_proizv(nom_mk, kod_oper={'7135', '6011',
-                                                          '0136'})  # Пассивирование Окрашивание Дробеструйная
+def processing_finish_sign_otk(glob_fio, nom_mk, nom_kpl, nom_nar, nar_obj,poki):
+    alias = get_plan_otk_alias_by_poki(poki) #08.04.2026
+
+    if nar_obj.Категория_внепл == 18: # 20.03.2026
+        messages = []
+        is_done = CSQ.custom_request_c(
+            CFG.Config.project.db_naryad,
+            'UPDATE jur_vnepl SET Утверждено = ? WHERE Номер_внепланового_наряда = ?',
+            list_of_lists_c=[[F.now(), nom_nar]]
+        )
+        if not is_done:
+            messages.append('Не удалось утвердить журнал внеплана')
+        query = f"""
+            SELECT mk.Пномер, mk.НомКплан,
+               CASE WHEN знпр.№ERP IS NOT NULL 
+                    THEN знпр.№ERP 
+                    ELSE пл_оуп.№ERP
+                END AS Номер_заказа,  
+                CASE WHEN знпр.№проекта IS NOT NULL 
+                   THEN знпр.№проекта 
+                   ELSE пл_оуп.№проекта 
+                END AS Номер_проекта
+            FROM jur_vnepl 
+            INNER JOIN mk ON mk.Пномер = jur_vnepl.МК 
+            INNER JOIN пл_оуп ON mk.НомКплан = пл_оуп.НомПл
+            INNER JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП
+            WHERE jur_vnepl.Номер_внепланового_наряда = {nom_nar}
+            LIMIT 1
+        """
+        kpl_info = CSQ.custom_request_c(
+            CFG.Config.project.db_naryad,
+            query,
+            one=True,
+            rez_dict=True,
+            attach_dbs=CFG.Config.project.db_kplan
+        )
+        order_num = kpl_info['Номер_заказа']
+        project_num = kpl_info['Номер_проекта']
+        num_mk = kpl_info['Пномер']
+        nom_kpl = kpl_info['НомКплан']
+        if not nom_kpl:
+            messages.append('Не удалось загрузить номер плана')
+        msg = '\n'.join(messages)
+
+    else:
+        msg = check_otk_after_proizv(nom_mk, kod_oper={'7135', '6011', '0136'})  # Пассивирование Окрашивание Дробеструйная
+        order_num = nar_obj.mk.Номер_заказа
+        project_num = nar_obj.mk.Номер_проекта
+        num_mk = nar_obj.mk.Пномер
+
+
     if not msg:
-        custom_request_c = f'''UPDATE пл_отк  SET (Контр_покрытие_ФИО, Контр_покрытие_дата) = (?,?) 
+        custom_request_c = f'''UPDATE {alias}  SET (Контр_покрытие_ФИО, Контр_покрытие_дата) = (?,?) 
                     WHERE НомПл == ?;'''
         param = [glob_fio, F.now(), nom_kpl]  # 15.07.25
         CSQ.custom_request_c(CFG.Config.project.db_kplan, custom_request_c, list_of_lists_c=param)
 
         try:
-            sender = B24.B24Sender()
-            msg_rows = f'По {nar_obj.mk.Номер_заказа} {nar_obj.mk.Номер_проекта} MK №{nar_obj.mk.Пномер} контроль\n ' \
-                       f'после Пассивирование/Окрашивание/Дробеструйная успешно пройден {glob_fio} по наряду {nom_nar}'  # 15.07.25
-            sender.send_msg_by_action('Отгрузка на склад', msg_rows)
+            sender = CB24.B24Sender()
+            notify_message = f'По {order_num} {project_num} MK №{num_mk} контроль\n ' \
+                             f'после Пассивирование/Окрашивание/Дробеструйная успешно пройден {glob_fio} по наряду {nom_nar}'
+            sender.send_msg_by_action('Отгрузка на склад', notify_message,poki=poki)
         except:
             pass
 
@@ -12896,8 +14474,9 @@ def ending_oform_zav_nar(nar_obj, jur_obj, glob_otk_kontrol: bool, glob_fio):
         nom_mk = nar_obj.Номер_мк
         nom_nar = nar_obj.Пномер
         zadanie = nar_obj.Задание
+        poki = nar_obj.mk.calc_poki()
         if type_mk == 1:  # Тип Плановая
-            processing_finish_sign_otk(glob_fio, nom_mk, nom_kpl, nom_nar, nar_obj)
+            processing_finish_sign_otk(glob_fio, nom_mk, nom_kpl, nom_nar, nar_obj,poki)
 
         processing_fix_of_brak(jur_obj, zadanie, nom_nar)
 def ____________VIPOLN_END__________________________________():
@@ -13660,7 +15239,7 @@ class TypesWorkingByDirections:
         return dict_vid_po_napr
 
     # ---- Изменить вид по направлению в указанной таблице -----
-    def change_vid_po_napr(self, window, target_table: QtWidgets.QTableWidget, row: int, column: int):
+    def change_vid_po_napr(self, window, target_table: QtWidgets.QTableWidget, row: int, column: int)->InteractiveLabelInstance:
         dict_vid_po_napr = self.get_dict_working_types_by_pk()
         current_type = target_table.item(row, column).text()
         current_type_text = ''
@@ -13675,6 +15254,7 @@ class TypesWorkingByDirections:
             img_path='btn_pl_edit_poz',
             cell_val=window
         )
+        return widget
 
     def decor_change_working_type_table(self, parent, tbl: QtWidgets.QTableWidget, *args):
         add_new_type_column = CQT.num_col_by_name_c(tbl, 'Имя')
@@ -13906,7 +15486,7 @@ def get_start_stop_journal_pairs(
             - Дата паузы/финиша
             - Статус паузы/финиша
 
-    CMS.get_start_stop_journal_pairs(between_start_datetime='2025-12-05', between_stop_datetime='2025-12-06')
+    get_start_stop_journal_pairs(between_start_datetime='2025-12-05', between_stop_datetime='2025-12-06')
     """
     where = ""
     journal_where = ""

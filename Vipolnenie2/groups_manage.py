@@ -38,10 +38,11 @@ def tab_gr_click(*args):
         fill_tab_edit_gr()
 
 def fill_tab_edit_gr():
+    tbl = DTCLS.app_self.ui.tbl_edit_gr_groups
+    CQT.clear_tbl(tbl)
     grps = CMS.Groups_nar(DTCLS.USER_CONFIG.common_config.db_naryad,DTCLS.app_self, DTCLS.USER_CONFIG.User)
     DTCLS.gr_groups_nar = grps
     list_templ = grps.gen_template()
-    tbl = DTCLS.app_self.ui.tbl_edit_gr_groups
     CQT.fill_wtabl(list_templ,tbl,styleSheet=CQT.MES_CSS,aliases_header = CMS.Group_nar.ALIASES,
                    selectionBehavior='SelectRows',font_size=12)
     CQT.clear_tbl(DTCLS.app_self.ui.tbl_edit_gr_nars)
@@ -121,6 +122,8 @@ def bnt_nar_remove(self:mywindow):#Убрать наряд
     gr.remove_nar(s_nums)
     fill_tab_edit_gr()
     t = CQT.TableContext(DTCLS.app_self.ui.tbl_edit_gr_groups)
+    if t.tbl.rowCount() == 0:
+        return
     for row in t.rows():
         if int(row.value('id')) == gr.id:
             row.set_current('id')
@@ -138,6 +141,18 @@ def btn_test_apply_gr(self:mywindow,*args):# для теста при разра
     apply_group_event(int(s_num_gr),int(s_num_nar))
     pass
 
+def apply_comp_event(composition:CMS.Composition,s_num_main_nar:int)->bool:
+    jur = CMS.Jurnal_nar(DTCLS.USER_CONFIG.common_config.db_naryad, s_num_main_nar, DTCLS.USER_CONFIG.User.ФИО,
+                         blob_pass=True)
+    if not jur.rows:
+        CQT.msgbox(f'Ошибка чтения журнала')
+        return False
+    jur.select_last_fragment()
+    set_nar = composition.get_set_nars(set([_['Пномер'] for _ in DTCLS.table_nar]))
+    if not CMS.Group_nar.split_by_group(set_nar, composition.name,
+                                        f'Автовставка по раскрою.id {composition.id}', jur.fragment):
+        return False
+    return True
 def apply_group_event(s_num_gr:int,s_num_main_nar:int)->bool:
     DTCLS.gr_groups_nar = CMS.Groups_nar(DTCLS.USER_CONFIG.common_config.db_naryad,DTCLS.app_self,DTCLS.USER_CONFIG.User)
     gr = DTCLS.gr_groups_nar.find_gr(s_num_gr)
@@ -150,16 +165,23 @@ def apply_group_event(s_num_gr:int,s_num_main_nar:int)->bool:
         CQT.msgbox(f'Ошибка чтения журнала')
         return False
     jur.select_last_fragment()
-    if not gr.split_by_group(jur.fragment):
+    if not CMS.Group_nar.split_by_group(gr.load_s_nums_nar(),gr.name,
+                                        f'Автовставка по гр.id {gr.id}', jur.fragment):
         return False
     return True
 
 
 @CQT.onerror
+def btn_reset_gr(self:mywindow,*args):
+    DTCLS.gr_filter_nar.clear_select_headers()
+    fill_table_nar({})
+@CQT.onerror
 def btn_crash_header(self:mywindow,*args):
     set_nnar = DTCLS.gr_filter_nar.calc_selectd_nars()
     DTCLS.gr_filter_nar.clear_select_headers()
     DTCLS.gr_filter_nar.set_select_nnar('Пномер',set_nnar)
+
+
 @CQT.onerror
 def bnt_group_ok(self:mywindow,*args):
     grps = CMS.Groups_nar(DTCLS.USER_CONFIG.common_config.db_naryad,DTCLS.app_self,DTCLS.USER_CONFIG.User)
@@ -186,13 +208,19 @@ def bnt_group_ok(self:mywindow,*args):
 def bnt_group_cancel(self:mywindow):
     toggle_filtr_group_mode(False)
 
-def btn_group_manage(self:mywindow):
 
+def btn_group_manage(self:mywindow):
     if self.glob_login == "":
         return
     if DTCLS.table_nar is None:
         CQT.msgbox(f'Не сформирована таблица нарядов',app_self=DTCLS.app_self)
         return
+    if not DTCLS.USER_CONFIG.is_developer:
+        jur_obj = CMS.Jurnal_nar(DTCLS.USER_CONFIG.common_config.db_naryad, user=DTCLS.app_self.glob_fio)
+        Номер_наряда, Пномер, Дата = jur_obj.get_ontime_naruad()
+        if Номер_наряда:
+            CQT.msgbox(f'Для управления группами, необходимо выйти из текущего наряда № {Номер_наряда}',app_self=DTCLS.app_self)
+            return
     toggle_filtr_group_mode(True)
     load_tbl_filter()
 
@@ -355,9 +383,11 @@ def fill_table_nar(set_nars=None):
     summ_time = round(sum([_['Норматив время'] for _ in nars_tbl]), 2)
 
     minutes_remained = DTCLS.production_shift.minutes_till_end()
-    minutes_shift = DTCLS.production_shift._what_is_shift().minutes_vol
+
     DTCLS.app_self.ui.lbl_info_group.setText(f'Выбрано нарядов на {summ_time} мин. из {minutes_remained} мин.')
-    percent_covered = round(summ_time / minutes_remained, 2) * 100
+    percent_covered = 0
+    if minutes_remained:
+        percent_covered = round(summ_time / minutes_remained, 2) * 100
     if percent_covered > 100:
         percent_covered = 100
     clr = CMS.Color_tbl(percent_covered)
@@ -431,13 +461,6 @@ def recalc_name_group()->str:
 def load_tbl_filter():
     ui = DTCLS.app_self.ui
     tbl_filter_in_groups = ui.tbl_filter_in_groups
-
-    #if not DTCLS.USER_CONFIG.is_developer:
-    jur_obj = CMS.Jurnal_nar(DTCLS.USER_CONFIG.common_config.db_naryad, user=DTCLS.app_self.glob_fio)
-    Номер_наряда, Пномер, Дата = jur_obj.get_ontime_naruad()
-    if Номер_наряда:
-        CQT.msgbox(f'Для управления группами, необходимо выйти из текущего наряда {Пномер}',app_self=DTCLS.app_self)
-        return
 
     DTCLS.gr_prgs_bar = CQT.Cust_progress_bar(DTCLS.app_self.ui.prgb_filtr)
     DTCLS.gr_prgs_bar.set_text_style(14, True)

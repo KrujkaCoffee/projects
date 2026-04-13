@@ -18,9 +18,13 @@ class EmojiItem:
         return f"EmojiItem('{self.symbol}', '{self.name}', '{self.category}', '{self.description}')"
 
 
-class СтатусыПроизводства:
+class Эмоции:
     """Категория статусов производства"""
+    confused: ClassVar[EmojiItem] = EmojiItem('😕', 'confused', 'emoj', 'Растерянное лицо')
 
+class СтатусыПроизводства:
+
+    """Категория статусов производства"""
     success: ClassVar[EmojiItem] = EmojiItem('✅', 'success', 'status', 'Успешное выполнение')
     error_bold: ClassVar[EmojiItem] = EmojiItem('❎', 'error_bold', 'status', 'Ошибка или сбой')
     success_tin: ClassVar[EmojiItem] = EmojiItem('✔', 'success_tin', 'status', 'Успешное выполнение')
@@ -82,6 +86,7 @@ class ОборудованиеИнструменты:
     label: ClassVar[EmojiItem] = EmojiItem('🏷', 'label', 'equipment', 'Ярлык')
     bricks: ClassVar[EmojiItem] = EmojiItem('🧱', 'bricks', 'equipment', 'форма')
     potion: ClassVar[EmojiItem] = EmojiItem('🧪', 'potion', 'equipment', 'смесь')
+    link: ClassVar[EmojiItem] = EmojiItem('🔗', 'link', 'equipment', 'связь')
 
 class ПерсоналРоли:
     """Категория персонала и ролей"""
@@ -91,7 +96,9 @@ class ПерсоналРоли:
     supervisor: ClassVar[EmojiItem] = EmojiItem('👔', 'supervisor', 'personnel', 'Руководитель')
     team: ClassVar[EmojiItem] = EmojiItem('👥', 'team', 'personnel', 'Команда')
     training: ClassVar[EmojiItem] = EmojiItem('🎓', 'training', 'personnel', 'Обучение')
-
+    workday: ClassVar[EmojiItem] = EmojiItem('💼', 'workday', 'operations', 'Будний день')
+    weekend: ClassVar[EmojiItem] = EmojiItem('🛋️', 'weekend', 'rest', 'Выходной день')
+    holiday: ClassVar[EmojiItem] = EmojiItem('🎈', 'holiday', 'event', 'Праздничный день')
 
 class ДокументыДанные:
     """Категория документов и данных"""
@@ -113,7 +120,9 @@ class ДокументыДанные:
     analysis: ClassVar[EmojiItem] = EmojiItem('📊', 'analysis', 'documents', 'Анализ данных')
     archive: ClassVar[EmojiItem] = EmojiItem('🗃️', 'archive', 'documents', 'Архив')
     expand: ClassVar[EmojiItem] = EmojiItem('🔽', 'expand', 'documents', 'Развернуть')
+    up: ClassVar[EmojiItem] = EmojiItem('🔼', 'up', 'documents', 'Вверх')
     collapse: ClassVar[EmojiItem] = EmojiItem('▶️', 'collapse', 'documents', 'Свернуть')
+    left: ClassVar[EmojiItem] = EmojiItem('◀️', 'left', 'documents', 'Лево')
     refresh: ClassVar[EmojiItem] = EmojiItem('🔄', 'refresh', 'operations', 'Обновить / Пересчитать')
     plus: ClassVar[EmojiItem] = EmojiItem('➕', 'plus', 'documents', 'Развернуть')
     plus_circled: ClassVar[EmojiItem] = EmojiItem('⊕︎', 'plus_circled', 'documents', 'Развернуть')
@@ -133,6 +142,7 @@ class EmojiMain:
     """
 
     # Прямой доступ к категориям как к классам
+    Эмоции = Эмоции
     Статусы = СтатусыПроизводства
     Операции = ОперацииПроизводства
     Метрики = ПоказателиМетрики
@@ -141,6 +151,7 @@ class EmojiMain:
     Документы = ДокументыДанные
 
     # Полные имена для обратной совместимости
+    Эмоции = Эмоции
     СтатусыПроизводства = СтатусыПроизводства
     ОперацииПроизводства = ОперацииПроизводства
     ПоказателиМетрики = ПоказателиМетрики
@@ -159,7 +170,7 @@ class EmojiMain:
 
         categories = [
             СтатусыПроизводства, ОперацииПроизводства, ПоказателиМетрики,
-            ОборудованиеИнструменты, ПерсоналРоли, ДокументыДанные
+            ОборудованиеИнструменты, ПерсоналРоли, ДокументыДанные, Эмоции 
         ]
 
         for category in categories:

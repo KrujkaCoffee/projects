@@ -709,7 +709,6 @@ class Table_view(ft.DataTable):
 
 
     ):
-        print('INIT Table_view')
         self.table_data:Table_data = table_input_data
         self.lazy_groups: bool = bool(lazy_groups)
         self.single_group_expand: bool = bool(single_group_expand)
@@ -1519,7 +1518,7 @@ def generate_param_table(
                     height=height)
 
                 if obj_type == ft.DataColumn:
-                    elem = ft.DataColumn(input_data, visible=visible)
+                    elem = ft.DataColumn(label=input_data, visible=visible)
                 else:
                     elem = ft.DataCell(input_data, visible=visible)
                 cells_columns.append(elem)
@@ -1560,7 +1559,7 @@ def generate_param_table(
                                 size=14,
                                 color=ft.Colors.ON_SURFACE  # Автоматический цвет текста
                             ),
-                            alignment=ft.alignment.center,
+                            alignment=ft.Alignment.CENTER,
                             bgcolor=ft.Colors.TRANSPARENT,  # Цвет контейнера для акцента
                             padding=12,
                             border=ft.border.only(ft.BorderSide(1, ft.Colors.TRANSPARENT),
@@ -1610,9 +1609,9 @@ def generate_param_table(
                         fnc_onchange=fnc_onchange,
                         width=cell_data.params_field.width,
                         visible=visible,
-                        row_data=row_data,
-                        table_input_data=table_input_data,
-                        ref_table=ref
+                        # row_data=row_data,
+                        # table_input_data=table_input_data,
+                        # ref_table=ref
                     )
                     list_cells.append(value_cell)
                 else:
@@ -1640,7 +1639,7 @@ def generate_param_table(
                                 padding=ft.padding.all(4),  # Отступы со всех сторон
                                 width=cell_data.params_field.width,
                                 expand=True,  # 🔑 растянуть по высоте строки
-                                alignment=ft.alignment.center_left,  # чтобы текст красиво встал
+                                alignment=ft.Alignment.CENTER_LEFT,  # чтобы текст красиво встал
                             ),
                             visible=visible,
 
@@ -1651,11 +1650,10 @@ def generate_param_table(
         while len(list_cells) < visible_columns_count:
             list_cells.append(ft.DataCell(content=ft.Text(""), visible=True))
         list_cells = list_cells[:visible_columns_count]
-
         if selectedRows and not row_data.merge:
             rows.append(ft.DataRow(
                 cells=list_cells,
-                on_select_changed=lambda e, idx=i: selectedRowsfnc_dflt(e, selectedRowsfnc),
+                on_select_change=lambda e, idx=i: selectedRowsfnc_dflt(e, selectedRowsfnc),
                 data={"row_index": i}
             ))
         else:
@@ -1802,7 +1800,7 @@ def msgboxgYN(
     # Определяем цвета
     is_dark = page.theme_mode == ft.ThemeMode.DARK
     colors = {
-        'bg': ft.colors.SURFACE_VARIANT if is_dark else ft.colors.WHITE,
+        'bg': ft.colors.ON_SURFACE_VARIANT if is_dark else ft.colors.WHITE,
         'text': ft.colors.ON_SURFACE_VARIANT if is_dark else ft.colors.BLACK,
         'divider': ft.colors.OUTLINE_VARIANT,
         'icon': ft.colors.BLUE_400 if is_dark else ft.colors.BLUE_600,
@@ -1931,6 +1929,68 @@ def msgboxgYN(
     return result[0]
 
 
+def message_dialog(
+        page: ft.Page,
+        *,
+        # оформление тела
+        title: str,
+        title_size = 22,
+        body_icon: ft.IconData = ft.Icons.CHECK_CIRCLE_ROUNDED,
+        body_icon_color: str = "red",
+        body_icon_size: int = 56,
+        message: str = None,
+        message_size: int = 15,
+        additional_message_controls: list[ft.Control] = None,
+        # Кнопка ок
+        btn_ok_text: str = "Ок",
+        btn_ok_icon: ft.IconData = None,
+        additional_action_controls: list[ft.Control] = None
+):
+    additional_message_controls = additional_message_controls or []
+    additional_action_controls = additional_action_controls or []
+    dialog = ft.AlertDialog(
+        modal=True,
+        icon=body_icon and ft.Icon(
+            body_icon,
+            size=body_icon_size,
+            color=body_icon_color,
+        ),
+        title=ft.Text(
+            title,
+            size=title_size,
+            weight=ft.FontWeight.BOLD,
+            text_align=ft.TextAlign.CENTER,
+        ),
+        content=ft.Container(
+            content=ft.Column(
+                controls=[
+                    ft.Text(
+                        message,
+                        size=message_size,
+                        text_align=ft.TextAlign.CENTER,
+                    ),
+                    *additional_message_controls
+                ],
+                spacing=8,
+                tight=True,
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
+            width=360,
+            padding=ft.padding.only(top=6, bottom=4),
+        ),
+        actions_alignment=ft.MainAxisAlignment.CENTER,
+        actions=[
+            ft.ElevatedButton(
+                btn_ok_text,
+                icon=btn_ok_icon,
+                on_click=lambda *args: page.pop_dialog(),
+            ),
+            *additional_action_controls
+        ],
+    )
+    page.show_dialog(dialog)
+    return dialog
+
 def msgbox(
         e,
         msg: str,
@@ -1965,7 +2025,7 @@ def msgbox(
     # Определяем цвета
     is_dark = page.theme_mode == ft.ThemeMode.DARK
     colors = {
-        'bg': ft.Colors.SURFACE_VARIANT if is_dark else ft.Colors.WHITE,
+        'bg': ft.Colors.ON_SURFACE_VARIANT if is_dark else ft.Colors.WHITE,
         'text': ft.Colors.ON_SURFACE_VARIANT if is_dark else ft.Colors.BLACK,
         'divider': ft.Colors.OUTLINE_VARIANT,
         'icon': ft.Colors.BLUE_400 if is_dark else ft.Colors.BLUE_600
@@ -2068,6 +2128,47 @@ def msgbox(
     return close_modal  # Возвращаем функцию для ручного закрытия
 
 
+
+def clone_table_for_history(table_data: Table_data | None) -> Table_data | None:
+    if table_data is None:
+        return None
+
+    cloned = Table_data()
+    for field in table_data.list_fields:
+        cloned.append_column_desc(
+            name=field.name,
+            header=field.header,
+            hidden=field.hidden,
+            editable=field.editable,
+            width=field.width,
+            unique=field.unique,
+        )
+
+    cloned.name = table_data.name
+
+    for src_row in table_data.rows:
+        row = Row_data(merge=getattr(src_row, "merge", False))
+        row.group_name = getattr(src_row, "group_name", None)
+        row.table_header = getattr(src_row, "table_header", False)
+
+        for src_cell in src_row.cells:
+            desc = Cell_description(
+                min_max_list=copy.deepcopy(src_cell.description.min_max_list),
+                accuracy=src_cell.description.accuracy,
+                comment=copy.deepcopy(src_cell.description.comment),
+                data_type=src_cell.description.data_type,
+                default_val=copy.deepcopy(src_cell.description.default_val),
+            )
+            row.append(copy.deepcopy(src_cell.val), desc)
+
+        cloned.add_row(row)
+        cloned.rows[-1].group_name = getattr(src_row, "group_name", None)
+        cloned.rows[-1].table_header = getattr(src_row, "table_header", False)
+
+    return cloned
+
+
+
 async def launch_url(page: ft.Page, url: str):
     return await page.launch_url(url)
 
@@ -2092,6 +2193,7 @@ def build_save_reports_menu(
     on_excel=None,
     on_tech_build=None,
     on_tech_settings=None,
+        on_db= None
 ):
     """Нативное меню сохранения:"""
 
@@ -2128,6 +2230,10 @@ def build_save_reports_menu(
         alignment_offset=ft.Offset(width, 0),
         controls=[
             ft.MenuItemButton(
+                leading=ft.Icon(ft.Icons.DESCRIPTION),
+                content=ft.Text("В истории"),
+                on_click=lambda e: _safe_call(on_db, e),
+            ),            ft.MenuItemButton(
                 leading=ft.Icon(ft.Icons.DESCRIPTION),
                 content=ft.Text("Word"),
                 on_click=lambda e: _safe_call(on_word, e),

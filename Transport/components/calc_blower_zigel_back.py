@@ -1,7 +1,10 @@
 import copy
+import dataclasses
 import math
+import operator
 import os
 import re
+import typing
 
 import flet as ft
 
@@ -37,6 +40,16 @@ GOST_D_LIST_M = [
     0.350,
     0.400,
 ]
+
+@dataclasses.dataclass
+class Validator:
+    condition: typing.Union[operator.ge, operator.le, operator.gt, operator.lt, operator.eq, operator.ne]
+    second_operand: typing.Any
+    if_true_message: str = None
+    if_false_message: str = None
+
+    def validate(self, value: typing.Any):
+        return self.if_true_message if self.condition(value, self.second_operand) else self.if_false_message
 
 
 
@@ -159,8 +172,8 @@ def apply_material_defaults(input_vals: dict, overwrite: bool = True) -> tuple[d
         try:
             a, b = rec['u0_range']
             a = float(a); b = float(b)
-            _set('u2_min_m_s', max(5.0, min(a, b) - 2.0))
-            _set('u2_max_m_s', min(60.0, max(a, b) + 2.0))
+            _set('u2_min_m_s', max(5.0, min(a, b)))
+            _set('u2_max_m_s', min(60.0, max(a, b)))
         except Exception:
             pass
 
@@ -532,25 +545,25 @@ INPUT_PARAMS: list[dict] = [
     },
     {
         "name": "u2_min_m_s",
-        "header": "Минимальная предел u2 для рабочая скорость воздуха (Корректирующая скорость 2)",
+        "header": "Минимальный предел u2 для рабочей скорости воздуха",
         "dimension": "м/с",
         "default_val": 0.0,
         "data_type": float,
         "accuracy": 2,
         "min_max_list": (0.0, 200.0),
         "group_name": "Параметры автоподбора",
-        "comment": "",
+        "comment": "минимальное значение параметра u0 m/s",
     },
     {
         "name": "u2_max_m_s",
-        "header": "Макисмальный предел u2 для рабочая скорость воздуха (Корректирующая скорость 2)",
+        "header": "Макисмальный предел u2 для рабочая скорость воздуха",
         "dimension": "м/с",
         "default_val": 0.0,
         "data_type": float,
         "accuracy": 2,
         "min_max_list": (0.0, 200.0),
         "group_name": "Параметры автоподбора",
-        "comment": "",
+        "comment": "максимальное значение параметра u0 m/s",
     },
 
 
@@ -901,6 +914,13 @@ OUTPUT_PARAMS: dict[str, dict] = {
         "comment": "Разница Давление воздуходувки и Потери давления на пневматическую транспортировку",
         "accuracy": 6,
         "group_name": GROUP_2,
+        "validators": [
+            Validator(
+                condition=operator.lt,
+                second_operand=0,
+                if_true_message=f"{Cust_emoji.СтатусыПроизводства.error} Запас по давлению (Pblower - Δp) ниже нуля транспортировка невозможна!"
+            )
+        ]
     },
     "log": {
         "view": False,
@@ -940,7 +960,7 @@ TBL_OUTPUT = Table_data()
 TBL_OUTPUT.append_column_desc(name="name", header="Имя", hidden=True, editable=False, unique=True)
 TBL_OUTPUT.append_column_desc(name="header", header="Параметр", hidden=False, editable=False, width=300)
 TBL_OUTPUT.append_column_desc(name="val", header="Значение", hidden=False, editable=False, width=130)
-TBL_OUTPUT.append_column_desc(name="dimension", header="Ед.изм", hidden=False, editable=False)
+TBL_OUTPUT.append_column_desc(name="dimension", header="Ед.изм", hidden=False, editable=False, width=100)
 TBL_OUTPUT.append_column_desc(name="comment", header="Примечание", hidden=False, editable=False, width=500)
 
 TBL_HISTORY = Table_data()
@@ -1251,8 +1271,16 @@ def calc_new_data(input_data: dict) -> tuple[dict, list[dict], bool]:
         return out, errs, False
     return out, [], True
 
-def validate_result(result: dict[str, float | int]):
-    ...
+def validate_output_result(calculated: dict[str, typing.Any]) -> list[str]:
+    messages = []
+    for param, value in calculated.items():
+        if param not in OUTPUT_PARAMS or not isinstance(OUTPUT_PARAMS[param], dict):
+            continue
+        validators = OUTPUT_PARAMS[param].get('validators', [])
+        for validator in validators:
+            if message := validator.validate(value):
+                messages.append(message)
+    return messages
 
 def generate_rez_tbl(e: ft.ControlEvent, tbl: ft.DataTable, ref_out, fnc_cell_click=None) -> bool | None:
     """Генерация таблицы результатов."""
@@ -1283,6 +1311,7 @@ def generate_rez_tbl(e: ft.ControlEvent, tbl: ft.DataTable, ref_out, fnc_cell_cl
         Data.Data_module.status_bar.set_text(f"{warning_symbol} Ошибка расчёта: рассчитанных параметров нет")
         return False
 
+
     DTCLS.Data_page.Data_module.cust_data.output_tbl = tbl_output
     try:
         mat = str(
@@ -1294,14 +1323,19 @@ def generate_rez_tbl(e: ft.ControlEvent, tbl: ft.DataTable, ref_out, fnc_cell_cl
     except Exception:
         mat = ""
 
+
     suffix = ""
     if not mat:
-        suffix = " · материал не выбран — использованы ручные параметры материала"
+        suffix = f"{Cust_emoji.СтатусыПроизводства.info} материал не выбран — использованы ручные параметры материала"
     if errors:
         headers = "\n ".join(f"{msg.get('header')}" for msg in errors if msg.get("header"))
         Data.Data_module.status_bar.set_text(
             f"{warning_symbol} Произошли ошибки при расчете {len(errors)} параметров ({headers})"
         )
+    elif validate_messages := validate_output_result(calculated):
+        if suffix:
+            validate_messages.append(suffix)
+        Data.Data_module.status_bar.set_text('\n'.join(validate_messages))
     else:
         Data.Data_module.status_bar.set_text(f"{success_symbol} Успешно рассчитано\n{suffix}")
     return True
@@ -1381,11 +1415,12 @@ def make_err_tbl(data, ref_out=None) -> CMF.Table_data:
 
 def make_history_tbl_data(Data: DTCLS.Data_page):
     tbl = copy.deepcopy(TBL_HISTORY)
-    where = "" if Data.Data_module.cust_data.filtr_seach_history == "" else f'and name like "%{Data.Data_module.cust_data.filtr_seach_history}%"'
+    filter_value = str(getattr(Data.Data_module.cust_data, "filtr_seach_history", "") or "").strip()
+    where = "" if filter_value == "" else f'and name like "%{filter_value}%"'
     try:
         list_calcs = CSQ.custom_request_c(
             Data.Data_user.db_flet,
-            f"""SELECT * FROM blower_zigel_history WHERE ip = '{Data.Data_user.ip}' {where} LIMIT 20;""",
+            f"""SELECT * FROM blower_zigel_history WHERE ip = '{Data.Data_user.ip}' {where} ORDER BY s_num DESC LIMIT 20;""",
             rez_dict=True,
         )
     except Exception:
@@ -1402,26 +1437,70 @@ def make_history_tbl_data(Data: DTCLS.Data_page):
 
 def save_in_db(e: ft.ControlEvent, name: str):
     Data: DTCLS.Data_page = e.page.data
-    Module_data: Cust_module_params = Data.Data_module.cust_data
-    if Module_data.input_tbl_not_editbl is None or Module_data.output_tbl is None:
+    module_data: Cust_module_params = Data.Data_module.cust_data
+
+    input_tbl = _clone_table_for_history(getattr(module_data, "input_tbl_editbl", None))
+    output_tbl = _clone_table_for_history(getattr(module_data, "output_tbl", None))
+    if input_tbl is None or output_tbl is None:
         return False
+
     data_save = {
-        "ver": Module_data.ver_tbls_data,
-        "input_tbl": Module_data.input_tbl_not_editbl,
-        "output_tbl": Module_data.output_tbl,
+        "ver": module_data.ver_tbls_data,
+        "input_tbl": input_tbl,
+        "output_tbl": output_tbl,
     }
-    row = [F.now(), name, Data.Data_user.ip, F.to_binary_pickle(data_save)]
+    row = [F.now(), name, Data.Data_user.ip or "", F.to_binary_pickle(data_save)]
     try:
-        rez = CSQ.custom_request_c(
+        return CSQ.custom_request_c(
             Data.Data_user.db_flet,
             """INSERT INTO blower_zigel_history (date, name, ip, data) VALUES ({})""".format(
                 CSQ.questions_for_mask(row)
             ),
             list_of_lists_c=[row],
         )
-        return rez
     except Exception:
         return False
+
+
+
+def _clone_table_for_history(table_data: CMF.Table_data | None) -> CMF.Table_data | None:
+    if table_data is None:
+        return None
+
+    cloned = CMF.Table_data()
+    for field in table_data.list_fields:
+        cloned.append_column_desc(
+            name=field.name,
+            header=field.header,
+            hidden=field.hidden,
+            editable=field.editable,
+            width=field.width,
+            unique=field.unique,
+        )
+
+    cloned.name = table_data.name
+
+    for src_row in table_data.rows:
+        row = CMF.Row_data(merge=getattr(src_row, "merge", False))
+        row.group_name = getattr(src_row, "group_name", None)
+        row.table_header = getattr(src_row, "table_header", False)
+
+        for src_cell in src_row.cells:
+            desc = CMF.Cell_description(
+                min_max_list=copy.deepcopy(src_cell.description.min_max_list),
+                accuracy=src_cell.description.accuracy,
+                comment=copy.deepcopy(src_cell.description.comment),
+                data_type=src_cell.description.data_type,
+                default_val=copy.deepcopy(src_cell.description.default_val),
+            )
+            row.append(copy.deepcopy(src_cell.val), desc)
+
+        cloned.add_row(row)
+        cloned.rows[-1].group_name = getattr(src_row, "group_name", None)
+        cloned.rows[-1].table_header = getattr(src_row, "table_header", False)
+
+    return cloned
+
 
 def clean_unicode(string):
     if not isinstance(string, str): return ''

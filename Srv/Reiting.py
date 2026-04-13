@@ -29,6 +29,7 @@ if __name__ != '__main__':
 import requests
 import project_cust_38.Cust_Functions as F
 import time
+import copy
 import project_cust_38.report_ci as reports
 import project_cust_38.Cust_SQLite as CSQ
 import project_cust_38.Cust_Qt as CQT
@@ -1024,7 +1025,8 @@ def check_and_calc_plan_kpl():
      пл_топ.НомПл, пл_топ.Спецификация_код_ЕРП,
     пл_топ.Спецификация_ЕРП,
      пл_топ.Рес_действует, 
-     '' as 'Статус', 
+     '' as 'Статус_в_ерп', 
+     plan.poki as poki,
      '' as 'Description' 
      FROM пл_топ INNER JOIN
     пл_оуп ON пл_оуп.НомПл = пл_топ.НомПл, 
@@ -1035,7 +1037,7 @@ def check_and_calc_plan_kpl():
     "Приостановлена",
     "К производству",
     "Перепроверка");""", rez_dict=True)
-
+    #[_ for _ in list_kod_res if '070471' in _['Спецификация_код_ЕРП']]
     list_py_mes = CSQ.custom_request_c(db_kplan, f"""SELECT s_num, Год, Статус_поз_ЕРП, 
         №ERP, Дата_заявки_на_произв,Ref_Key_py, Дата_отгрузки_ПУ, Комментарий  FROM знпр WHERE Статус_поз_ЕРП != "Закрыт" and s_num > 0;""",
                                        rez_dict=True)
@@ -1084,10 +1086,12 @@ def check_and_calc_plan_kpl():
         if resoutse_mes_item['Спецификация_код_ЕРП'] in rezult_form_erp:
             resoutse_mes_item['Description'] = rezult_form_erp[resoutse_mes_item['Спецификация_код_ЕРП']]['Description']
             state_str = rezult_form_erp[resoutse_mes_item['Спецификация_код_ЕРП']]['Статус']
+            resoutse_mes_item['state_str'] = state_str
             if state_str == 'Действует':
-                resoutse_mes_item['Статус'] = 1
+                resoutse_mes_item['Статус_в_ерп'] = 1
             else:
-                resoutse_mes_item['Статус'] = 0
+                resoutse_mes_item['Статус_в_ерп'] = 0 #[_ for _ in rezult_form_erp.values() if '070795' in _['Code']]
+            #[_ for _ in list_kod_res if _['НомПл'] == 7228]
     for i, resoutse_mes_item in enumerate(list_kod_res):
         if resoutse_mes_item['Description'] != resoutse_mes_item['Спецификация_ЕРП']:
             CSQ.custom_request_c(db_kplan, f"""UPDATE пл_топ SET (Спецификация_ЕРП) 
@@ -1097,11 +1101,21 @@ def check_and_calc_plan_kpl():
                              f"По рес. код {resoutse_mes_item['Спецификация_код_ЕРП']} исправлено наименование в МЕС."
                              f'\nБыло "{resoutse_mes_item["Спецификация_ЕРП"]}"\nСтало "{resoutse_mes_item["Description"]}"')
             list_kod_res[i]['Спецификация_ЕРП'] = resoutse_mes_item['Description']
-        if resoutse_mes_item['Статус'] != resoutse_mes_item['Рес_действует']:
-            CSQ.custom_request_c(db_kplan, f"""UPDATE пл_топ SET (Рес_действует) 
-                         = ({resoutse_mes_item['Статус']}) WHERE НомПл = {resoutse_mes_item['НомПл']}""")
-            if resoutse_mes_item['Статус'] == 1:
-                list_kod_res[i]['Рес_действует'] = resoutse_mes_item['Статус']
+
+        if resoutse_mes_item['Рес_действует'] == 1 and resoutse_mes_item['Статус_в_ерп'] ==0:
+            rez = CSQ.custom_request_c(db_kplan, f"""UPDATE пл_топ SET (Рес_действует) 
+                                     = (0) WHERE НомПл = {resoutse_mes_item['НомПл']}""")
+            print('fix _err')
+        if resoutse_mes_item['Статус_в_ерп'] == 1 and  resoutse_mes_item['Рес_действует'] == 0: # resoutse_mes_item['Рес_действует'] = 0
+            rez = CSQ.custom_request_c(db_kplan, f"""UPDATE пл_топ SET (Рес_действует) 
+                         = (1) WHERE НомПл = {resoutse_mes_item['НомПл']}""")
+            if rez:
+                print(f'{resoutse_mes_item['НомПл']} - {resoutse_mes_item['Спецификация_код_ЕРП']} set ON')
+            else:
+                print(f'err')
+
+            if resoutse_mes_item['Статус_в_ерп'] == 1:
+                list_kod_res[i]['Рес_действует'] = resoutse_mes_item['Статус_в_ерп']
                 obj_msg = CMS.Msg_b24(db_kplan, db_naryad, db_resxml, db_users, resoutse_mes_item['НомПл'])
 
                 obj_msg.send_msg('state_valid_kod_res_recalc')
@@ -1175,7 +1189,8 @@ def check_and_calc_plan_kpl():
 
         if resp[0]['Комментарий'] != item['Комментарий']:
             CSQ.custom_request_c(db_kplan,
-                                 f"""UPDATE знпр SET (Комментарий) = ("{resp[0]['Комментарий']}") WHERE s_num = {item['s_num']};""")
+                                 f"""UPDATE знпр SET (Комментарий) = (?) 
+                                 WHERE s_num = ?;""",list_of_lists_c=[[resp[0]['Комментарий'],item['s_num']]])
             # CMS.send_info_mk_b24(None,
             #                     msg1 + f"Комментарий\n    было {item['Комментарий']}\n    стало {resp[0]['Комментарий']}" + msg2,
             #                     id_chat)
@@ -1850,6 +1865,8 @@ vrem = 600
 #user_calendar.main()
 #quit()
 #nomen_erp.obn_mat_erp_file(db_mater)
+#check_and_calc_plan_kpl()
+#quit()
 
 while True:
     counter_timer += vrem

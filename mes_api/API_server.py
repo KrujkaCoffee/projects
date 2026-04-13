@@ -150,9 +150,14 @@ def change_password(body: AuthModel) -> bool:
     F.save_file_pickle(api_srv_config.PASSWORD_STORAGE + f'_back_{F.now("%Y%m%d")}', passwords)
     return True
 
+
 @app.post("/check-actual-password")
 def check_actual_password(body: AuthModel) -> bool:
     from project_cust_38 import Cust_mes as CMS
+    import datetime
+    current_year = datetime.datetime.now().year
+    default_passwords = [CMS.shifr(str(current_year + i)) for i in range(-5, 6)]
+
     if not body.fio:
         return True
     if not F.existence_file_c(api_srv_config.PASSWORD_STORAGE):
@@ -163,7 +168,7 @@ def check_actual_password(body: AuthModel) -> bool:
             if len(passwords[i]) == 2:
                 return False
             try:
-                if F.add_months(passwords[i][2], 1) < F.now(''):
+                if passwords[i][1] in default_passwords and F.add_months(passwords[i][2], 1) < F.now(''):
                     return False
             except:
                 return False

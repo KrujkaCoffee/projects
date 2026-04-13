@@ -277,7 +277,7 @@ class Srv_data(metaclass=SingletonMeta):
 class Data_page(SingletonMeta):
     #def __init__(self,page:ft.Page):
     page:ft.Page = None
-    Data_vars:_Data_vars = _Data_vars()
+    Data_vars:_Data_vars = _Data_vars(width=1920, height=1040)
     client_data:Client_data = None
     Data_user:Client_data = None
     Data_srv:Srv_data = None
@@ -285,7 +285,7 @@ class Data_page(SingletonMeta):
     @classmethod
     def reload(cls):
         print(f'==== INIT Data_page =======')
-        cls.Data_vars: _Data_vars = _Data_vars()
+        cls.Data_vars: _Data_vars = _Data_vars(width=1920, height=1040)
         cls.client_data: Client_data = Client_data(cls.page)
         cls.client_data.get_user_config()
         cls.Data_user: Client_data = cls.client_data

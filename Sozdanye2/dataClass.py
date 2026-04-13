@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     from Sozdanie import mywindow
     from project_cust_38.competence_matrix import Competencies
     from project_cust_38.Cust_mes import Emploee_usr
+    from composition_manage import Compositions
 
 class SingletonMeta(type):
     __instances = {}
@@ -26,3 +27,5 @@ class data_app(SingletonMeta):
     _old_val_cell = None
     obj_Competencies:Competencies|None = None
     empl_obj:Emploee_usr|None = None
+    #======COMPOZITIONS=============
+    compositions: Compositions|None = None

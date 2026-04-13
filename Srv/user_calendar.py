@@ -5,14 +5,16 @@ import project_cust_38.Cust_SQLite as CSQ
 import project_cust_38.Cust_mes as CMS
 import project_cust_38.api_erp_commands as APIERP
 from project_cust_38 import Cust_b24 as CB24
+import project_cust_38.Cust_config as CFG
 import copy
 #F.test_path()
 
 put_db = F.bdcfg('BD_users')
 put_emploee = F.tcfg('employee')
 db_kplan = F.bdcfg('DB_kplan')
+db_files = CFG.Config.project.db_files
 plecho = 15
-WEEK_STEP_DAYS = -14
+WEEK_STEP_DAYS = -7
 
 
 first_day_1 = F.date_add_days(F.now(''),WEEK_STEP_DAYS,'','').replace(day=1).date()
@@ -72,7 +74,7 @@ def count_rab_days(clnd_dict):
         if clnd_dict[i].value == 0:
             count+=1
     return count
-def add_jurnal_kplan(dict_podr, res, ima_table_jurnal_kplan,spis_empl,DICT_PODRAZD,DICT_MNTS_PLAN,month_str,tabel_workforce,DICT_PROFESSIONS_NICKNAME):
+def add_jurnal_kplan(dict_podr, res, ima_table_jurnal_kplan,spis_empl,DICT_PODRAZD,DICT_MNTS_PLAN,month_str):
 
     list_podr_range = []
     for i in range(len(dict_podr)):
@@ -552,12 +554,9 @@ def reload_tbl_empl_old(ima_table_empl, LIST_DICT_EMPLOYEE_FULL, res, dict_rab_v
 
 #++12.11.25
 def get_current_state_employee(fio: str, prof: str, ref_key: str):
-    where_prof = ''
-    if prof:
-        where_prof = f"AND Должность = {prof!r}"
     return CSQ.custom_request_c(put_db, f"""
         SELECT * FROM employee 
-        WHERE ФИО = {fio!r} {where_prof} AND ID_ФизЛица = {ref_key!r}
+        WHERE ФИО = {fio!r} AND Должность = {prof!r} AND ID_ФизЛица = {ref_key!r}
         ORDER BY Пномер DESC LIMIT 1;
     """, rez_dict=True, one=True)
 
@@ -743,7 +742,8 @@ def reload_tbl_employee(ima_table_empl, LIST_DICT_EMPLOYEE_FULL, res, dict_rab_v
 ГДЕ
     (ВЫРАЗИТЬ(ТабельУчетаРабочегоВремениДанныеОВремени.Ссылка.Комментарий КАК СТРОКА(20))) = "Фактическая явка"
     И ТабельУчетаРабочегоВремениДанныеОВремени.Ссылка.ПериодРегистрации = {ПериодРегистрации}
-    И {ПериодРегистрации} BETWEEN ДанныеДляПодбора.Начало И ДанныеДляПодбора.Окончание
+    И ДанныеДляПодбора.Начало <= {ПериодРегистрации}
+    И ДанныеДляПодбора.Окончание >= {ПериодРегистрации_конец}
 
 СГРУППИРОВАТЬ ПО
     ТабельУчетаРабочегоВремениДанныеОВремени.Сотрудник.Наименование,
@@ -778,8 +778,9 @@ def reload_tbl_employee(ima_table_empl, LIST_DICT_EMPLOYEE_FULL, res, dict_rab_v
     list_to_add_scedule = []
     print(f'    Обновление времени {ima_table_empl} ')
     used_indexes = set()
-    cache_employee = {}
+
     messages = []
+    cache_employee=Data_cls.CACHE_EMPLOYEE
     for item_erp in list_erp_tabels:
         is_finded = False
         fio = item_erp['Сотрудник'].strip()
@@ -791,9 +792,8 @@ def reload_tbl_employee(ima_table_empl, LIST_DICT_EMPLOYEE_FULL, res, dict_rab_v
         else:
             current_state = get_current_state_employee(fio, prof, phys_ref)
             cache_employee[employee_key] = current_state
-            prof = current_state['Должность'] if not prof else prof
         if current_state == False:
-            print(f'[reload_tbl_employee]Прогрузка {ima_table_empl} была прервана из-за некорректного ответа БД')
+            print(f'[reload_tbl_employee] Прогрузка {ima_table_empl} была прервана из-за некорректного ответа БД')
             return
 
         for idx, item_scedule in enumerate(list_from_scedule_month):
@@ -813,9 +813,11 @@ def reload_tbl_employee(ima_table_empl, LIST_DICT_EMPLOYEE_FULL, res, dict_rab_v
                                                                      ({erp_val}), Примечание = {comment!r} WHERE Пномер == {Пномер};""")
                             if erp_val != val:
                                 messages.append({
-                                    'Сотрудник': item_scedule['ФИО'].split(' ')[:3],
-                                    'Комментарий было/стало': f"{item_scedule['Примечание']} / {comment}",
-                                    'Время было / стало': f"{val} / {erp_val}",
+                                    'Сотрудник': item_erp['ТекущаяДолжность'],
+                                    'Комментарий было': item_scedule['Примечание'],
+                                    'Комментарий стало': comment,
+                                    'Время было ': val,
+                                    'Время стало': erp_val,
                                 })
 
                             print(
@@ -838,14 +840,19 @@ def reload_tbl_employee(ima_table_empl, LIST_DICT_EMPLOYEE_FULL, res, dict_rab_v
                         strok.append(norma)
             list_to_add_scedule.append(strok)
     for idx, item_scedule in enumerate(list_from_scedule_month):
-        if idx not in used_indexes:
-            fields_to_update = {'Примечание': 'Увольнение'}
-            pk = item_scedule['Пномер']
-            for key, val in item_scedule.items():
-                if F.is_date(key, 'd_%Y_%m_%d'):
-                    fields_to_update[key] = 0
-            fields = ','.join(f'{key} = {val!r}' for key, val in fields_to_update.items())
-            CSQ.custom_request_c('SRV:BD_users.db', f'UPDATE {ima_table_empl} SET {fields} WHERE Пномер = {pk}')
+        if list_erp_tabels:
+            if idx not in used_indexes:
+                fields_to_update = {}
+                if item_scedule['Примечание'] != 'Увольнение':
+                    fields_to_update = {'Примечание': 'Увольнение'}
+                pk = item_scedule['Пномер']
+                for key, val in item_scedule.items():
+                    if F.is_date(key, 'd_%Y_%m_%d'):
+                        if item_scedule[key] != 0:
+                            fields_to_update[key] = 0
+                if fields_to_update:
+                    fields = ','.join(f'{key} = {val!r}' for key, val in fields_to_update.items())
+                    CSQ.custom_request_c('SRV:BD_users.db', f'UPDATE {ima_table_empl} SET {fields} WHERE Пномер = {pk}')
     if messages:
         sender = CB24.B24Sender()
         sender.send_msg_table_by_action(
@@ -917,8 +924,9 @@ def reload_tbl_rm(ima_table_rm, row_rm, res):
     CSQ.add_line_into_db_sql_c(put_db, ima_table_rm, strok_rez)
 
 
-def reload_jurnal_kplan(dict_podr, res, ima_table_jurnal_kplan,spis_empl,DICT_PODRAZD,DICT_MNTS_PLAN,month_str,tabel_workforce, DICT_PROFESSIONS_NICKNAME):
-
+def reload_jurnal_kplan(dict_podr, res, ima_table_jurnal_kplan,spis_empl,DICT_PODRAZD,DICT_MNTS_PLAN,month_str,
+                        tabel_workforce)->bool:
+    fl_dirty = False
     def count_empl_adapt(month_str, tabel_workforce,DICT_PODRAZD,podr,count_rab_day,DICT_MNTS_PLAN,spis_empl):
         if month_str in tabel_workforce and DICT_PODRAZD[podr]['Группа_для_расч_норм_и_ганта'] != '':
             count_user = count_empl_by_workforce(tabel_workforce, month_str, count_rab_day, podr,DICT_PODRAZD)
@@ -943,6 +951,7 @@ def reload_jurnal_kplan(dict_podr, res, ima_table_jurnal_kplan,spis_empl,DICT_PO
         else:
             if round( F.valm(dict_podr_old[podr]),3) != round(count_user,3):
                 CSQ.custom_request_c(db_kplan,f"""UPDATE {ima_table_jurnal_kplan} SET Примечание = "{count_user}" WHERE Подразделение = "{podr}";""")
+                fl_dirty = True
                 dict_to_edit[podr] = count_user
     if len(dict_to_add) > 0:
         row_empl = []
@@ -960,6 +969,7 @@ def reload_jurnal_kplan(dict_podr, res, ima_table_jurnal_kplan,spis_empl,DICT_PO
         list_kol = CSQ.list_of_columns_c(db_kplan, ima_table_jurnal_kplan)[1:]
         CSQ.custom_request_c(db_kplan,f"""INSERT INTO {ima_table_jurnal_kplan}({", ".join(list_kol)}) 
          VALUES ({CSQ.questions_for_mask(row_empl[0])})""",list_of_lists_c=row_empl)
+        fl_dirty = True
         print(f'    Добавлены {dict_to_add}')
 
     if len(dict_to_edit) != 0:
@@ -983,6 +993,7 @@ def reload_jurnal_kplan(dict_podr, res, ima_table_jurnal_kplan,spis_empl,DICT_PO
         for podr in row_empl:
             CSQ.custom_request_c(db_kplan,f"""UPDATE {ima_table_jurnal_kplan} SET ({", ".join(tmp_list_kol)}) 
              = ({CSQ.questions_for_mask(row_empl[0])}) WHERE Подразделение = "{podr[0]}";""",list_of_lists_c=[podr])
+            fl_dirty = True
         print(f'    Изменены {dict_to_edit.keys()}')
 
     #==============UPDATE HOLYDAYS+++++++++++++++++
@@ -994,6 +1005,9 @@ def reload_jurnal_kplan(dict_podr, res, ima_table_jurnal_kplan,spis_empl,DICT_PO
         if v != int(res[date_for_api]):
             CSQ.custom_request_c(db_kplan,f"""UPDATE {ima_table_jurnal_kplan} SET ({k}) = ({int(res[date_for_api])}) WHERE Пномер = 1""")
             print(f'Обновлен выходной {ima_table_jurnal_kplan} - {k} было {v} стало {int(res[date_for_api])}')
+            fl_dirty = True
+
+    return fl_dirty
 
 
 
@@ -1021,18 +1035,23 @@ def check_rm(ima_table_rm, row_rm, res):
         print(f'     обновление')
         reload_tbl_rm(ima_table_rm, row_rm, res)
 
-def check_jurnal_kplan(ima_table_jurnal_kplan, res, spis_empl,DICT_PODRAZD,DICT_MNTS_PLAN,month_str,tabel_workforce,
-                       DICT_PROFESSIONS_NICKNAME):
+def check_jurnal_kplan(ima_table_jurnal_kplan, res, spis_empl,DICT_PODRAZD,DICT_MNTS_PLAN,month_str,
+                       tabel_workforce)->bool:
+    fl_dirty =False
     list_podr = CSQ.custom_request_c(db_kplan, f"""SELECT * FROM podrazdel""", rez_dict=True)
     list_podr = F.deploy_dict_c(list_podr, 'Имя')
     if ima_table_jurnal_kplan not in CSQ.get_list_of_tables_c(db_kplan):
-        add_jurnal_kplan(list_podr, res, ima_table_jurnal_kplan,spis_empl,DICT_PODRAZD,DICT_MNTS_PLAN,month_str,
-                         tabel_workforce, DICT_PROFESSIONS_NICKNAME)
+        add_jurnal_kplan(list_podr, res, ima_table_jurnal_kplan,spis_empl,DICT_PODRAZD,DICT_MNTS_PLAN,
+                         month_str)
+        fl_dirty = True
     else:
         print(f'    {ima_table_jurnal_kplan} на месте')
         print(f'     обновление')
-        reload_jurnal_kplan(list_podr, res, ima_table_jurnal_kplan,spis_empl,DICT_PODRAZD,DICT_MNTS_PLAN,month_str,
-                            tabel_workforce, DICT_PROFESSIONS_NICKNAME)
+        dirty = reload_jurnal_kplan(list_podr, res, ima_table_jurnal_kplan,spis_empl,DICT_PODRAZD,DICT_MNTS_PLAN,
+                                       month_str,tabel_workforce)
+        if dirty:
+            fl_dirty = True
+    return fl_dirty
 
 def check_jurnaltdz(ima_table_jurnaltdz, res):
     list_podr = CSQ.custom_request_c(put_db,f"""SELECT * FROM rab_c""", rez_dict=True)
@@ -1066,6 +1085,11 @@ def get_dict_prof_vid(db_users):
     DICT_PROFESSIONS = F.deploy_dict_c(SPIS_prof, 'код')
     return DICT_PROFESSIONS,DICT_VID_RABOT
 
+
+class Data_cls():
+    CACHE_EMPLOYEE:dict|None = None
+
+
 def main():
     print('==================================')
     print('Проверка производственного календаря...')
@@ -1097,9 +1121,11 @@ def main():
         dict_rab_vrema[spis_rab_mesta[i]['ФИО_3см']] = delta_time(spis_rab_mesta[i]["Время_начала_3"],
                                                                   spis_rab_mesta[i]["Время_конца_3"])
     DICT_PROFESSIONS, DICT_VID_RABOT = get_dict_prof_vid(put_db)
-    DICT_PROFESSIONS_NICKNAME = F.deploy_dict_c(CSQ.custom_request_c(put_db, f"""SELECT 
-     * FROM group_vid_rab_for_plan WHERE composite = 0;""", rez_dict=True), 'name')
+    #DICT_PROFESSIONS_NICKNAME = F.deploy_dict_c(CSQ.custom_request_c(put_db, f"""SELECT
+    # * FROM group_vid_rab_for_plan WHERE composite = 0;""", rez_dict=True), 'name')
     tabel_workforce = CMS.load_tabel_workforce(db_kplan,DICT_PROFESSIONS, DICT_VID_RABOT,'name')
+    fl_dirty = False
+    Data_cls.CACHE_EMPLOYEE = {(_['ФИО'], _['ID_ФизЛица'], _['Должность']): _ for _ in LIST_DICT_EMPLOYEE_FULL}
     for m in months:
         # ima_table_empl = 'm_' + str(m).replace('-', '_') #04.07.25
         ima_table_empl_tdz = 'mtdz_' + str(m).replace('-', '_')
@@ -1112,14 +1138,26 @@ def main():
 
         calendar_dict = calendar.month(m)
 
-        check_jurnal_kplan(ima_table_jurnal_kplan, calendar_dict, spis_empl_live,DICT_PODRAZD,DICT_MNTS_PLAN,
-                           month_str,tabel_workforce,DICT_PROFESSIONS_NICKNAME)
+        dirty = check_jurnal_kplan(ima_table_jurnal_kplan, calendar_dict, spis_empl_live,DICT_PODRAZD,DICT_MNTS_PLAN,
+                           month_str,tabel_workforce)
+        if dirty:
+            fl_dirty = True
         check_empl(ima_table_empl_tdz, LIST_DICT_EMPLOYEE_FULL, calendar_dict, dict_rab_vrema)
         # check_empl(ima_table_empl,LIST_DICT_EMPLOYEE_FULL,calendar_dict,dict_rab_vrema) # #04.07.25
         check_eq(ima_table_eq, row_equip, calendar_dict)
         check_rm(ima_table_rm, row_rm, calendar_dict)
         check_jurnaltdz(ima_table_jur_tdz, calendar_dict)
+
+
     print('Проверка производственного календаря завершено')
+    if fl_dirty:
+        print('Генерация агрегированной таблицы')
+        if not getattr(CMS, 'agregate_m_cld',False):
+            CMS.agregate_m_cld()
+        print('Генерация агрегированной таблицы завершена')
+    else:
+        print('Генерация агрегированной таблицы не требуется')
+
     print('==================================')
     calendar.close()
     return

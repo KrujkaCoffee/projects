@@ -32,7 +32,7 @@ def load_connects(self):
 
 def tedit(self):
     ui = DTCLS.app_self.ui
-    pline = CMS.Cust_plane_edit(ui.pte_start)
+    pline = CQT.Cust_plane_edit(ui.pte_start)
     text = GEN.load_plane_text()
     pline.set_text(text)
     pline.event_text_edit(GEN.save_plane_text)

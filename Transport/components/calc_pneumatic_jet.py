@@ -118,8 +118,6 @@ def gen_page(page):
             set_header_elems_visible(btn_enabled)
             _header_input_panel_textfield_ref.current.value = calc_pneumatic_jet_back.get_name_new_calc(Data.Data_module.alias)
 
-            page.update()
-
         def grab_new_table(e: ft.ControlEvent):
             dict_vals = calc_pneumatic_jet_back.get_vals_from_input_data_tbl(_input_tabe_ref.current)
             new_calc(e, dict_vals)
@@ -229,7 +227,7 @@ def gen_page(page):
                 _input_column_tabels_ref.current.controls.append(data_tbl_input)
                 _output_column_tabels_ref.current.controls.append(data_tbl_output)
                 _btn_calc_ref.current.disabled = True
-                _btn_grab_ref.current.visible = True
+                _btn_grab_ref.current.visible = False
                 page.update()
 
             tbl_data = calc_pneumatic_jet_back.make_history_tbl_data(e.page.data)

@@ -34,4 +34,4 @@ class data_app(SingletonMeta):
     APP_ARGS: dict | None = None
     lazy_time_munutes:int = 5
     params_doc:CLSS.Params_doc = None
-    pline:CMS.Cust_plane_edit =None
+    pline:CQT.Cust_plane_edit =None

@@ -472,7 +472,7 @@ def make_history_tbl_data(Data: DTCLS.Data_page):
     else:
         where = f'and name like "%{Data.Data_module.cust_data.filtr_seach_history}%"'
     list_calcs = CSQ.custom_request_c(Data.Data_user.db_flet,
-                                      f"""SELECT * FROM airslide_history WHERE ip = '{Data.Data_user.ip}' {where} LIMIT 20;""",
+                                      f"""SELECT * FROM airslide_history WHERE login = '{Data.Data_user.login}' {where} LIMIT 20;""",
                                       rez_dict=True)
     for calc in list_calcs:
         row = CMF.Row_data()
@@ -484,18 +484,63 @@ def make_history_tbl_data(Data: DTCLS.Data_page):
     return TBL_HISTORY_TMP
 
 
+def _clone_table_for_history(table_data: CMF.Table_data | None) -> CMF.Table_data | None:
+    if table_data is None:
+        return None
+
+    cloned = CMF.Table_data()
+    for field in table_data.list_fields:
+        cloned.append_column_desc(
+            name=field.name,
+            header=field.header,
+            hidden=field.hidden,
+            editable=field.editable,
+            width=field.width,
+            unique=field.unique,
+        )
+
+    cloned.name = table_data.name
+
+    for src_row in table_data.rows:
+        row = CMF.Row_data(merge=getattr(src_row, "merge", False))
+        row.group_name = getattr(src_row, "group_name", None)
+        row.table_header = getattr(src_row, "table_header", False)
+
+        for src_cell in src_row.cells:
+            desc = CMF.Cell_description(
+                min_max_list=copy.deepcopy(src_cell.description.min_max_list),
+                accuracy=src_cell.description.accuracy,
+                comment=copy.deepcopy(src_cell.description.comment),
+                data_type=src_cell.description.data_type,
+                default_val=copy.deepcopy(src_cell.description.default_val),
+            )
+            row.append(copy.deepcopy(src_cell.val), desc)
+
+        cloned.add_row(row)
+        cloned.rows[-1].group_name = getattr(src_row, "group_name", None)
+        cloned.rows[-1].table_header = getattr(src_row, "table_header", False)
+
+    return cloned
+
+
 def save_in_db(e: ft.ControlEvent, name: str):
-    Data: DTCLS.Data_page = e.page.data
-    Module_data: Cust_module_params = Data.Data_module.cust_data
-    if Module_data.input_tbl_not_editbl == None or Module_data.output_tbl == None:
+    data: DTCLS.Data_page = e.page.data
+    module_data: Cust_module_params = data.Data_module.cust_data
+    input_tbl = _clone_table_for_history(getattr(module_data, "input_tbl_editbl", None))
+    output_tbl = _clone_table_for_history(getattr(module_data, "output_tbl", None))
+    if input_tbl is None or output_tbl is None:
         return False
-    data_save = {'ver': Module_data.ver_tbls_data, 'input_tbl': Module_data.input_tbl_not_editbl,
-                 'output_tbl': Module_data.output_tbl}
-    row = [F.now(), name, Data.Data_user.ip, F.to_binary_pickle(data_save)]
-    rez = CSQ.custom_request_c(Data.Data_user.db_flet, f"""INSERT INTO airslide_history 
+    data_save = {
+        "ver": module_data.ver_tbls_data,
+        "input_tbl": input_tbl,
+        "output_tbl": output_tbl,
+    }
+    row = [F.now(), name, data.Data_user.ip, data.Data_user.login, F.to_binary_pickle(data_save)]
+    rez = CSQ.custom_request_c(data.Data_user.db_flet, f"""INSERT INTO airslide_history 
                         (date, 
                             name, 
                             ip, 
+                            login,
                             data)
                               VALUES ({CSQ.questions_for_mask(row)})""", list_of_lists_c=[row])
     return rez

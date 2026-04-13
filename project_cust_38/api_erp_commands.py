@@ -53,7 +53,7 @@ class Refs_wet():
     
     def add_ref(self,ref_wet:Ref_wet):
         if f'&{ref_wet.name_var}' not in self.text_req:
-            raise ValueError
+            raise ValueError(f'&{ref_wet.name_var} not in self.text_req')
         
         self.refs[ref_wet.name_var] =  {'путь':ref_wet.path_conf_1c,'уид': ref_wet.ref_key}
         

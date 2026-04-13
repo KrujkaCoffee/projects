@@ -84,6 +84,7 @@ class Rule(Base_get_data):
         self.period:Period|None|int = None
         self.count_by_period:int|None = None
         self.start_date: Report_date | None = Report_date()
+        self.date_offset_pass:int|None = None
         self.description:str = ''
         self.ref_creator:str = ''
         self.id_chat_24:str = ''
@@ -99,6 +100,23 @@ class Rule(Base_get_data):
         if self.start_date.date:
             self.is_early = self.start_date.date > F.now('')
 
+    @property
+    def start_date_period(self)->datetime.datetime:
+        date_period = F.start_end_dates_c(vid=self.period.date_time_liter, format_out='')[0]
+        date_period = self.apply_offset(date_period)
+        return date_period
+
+    @property
+    def end_date_period(self)->datetime.datetime:
+        date_period = F.start_end_dates_c(vid=self.period.date_time_liter, format_out='')[1]
+        date_period = self.apply_offset(date_period)
+        return date_period
+
+    def apply_offset(self,date:datetime.datetime)->datetime.datetime:
+        if self.date_offset_pass:
+            date = F.date_add_days(date,self.date_offset_pass,'','')
+        return date
+
     def __str__(self):
         return f'{self.name} ({self.count_by_period} в {self.period.date_time_liter}) с {self.start_date}'
 
@@ -107,21 +125,32 @@ class Rule(Base_get_data):
 
     def __gt__(self, other):
         return str(self)>str(other)
+    @property
+    def date_pass(self):
+        if self.date_offset_pass> 0:
+            return  f'В течение {self.date_offset_pass} дней\nпосле завершения периода'
+        if self.date_offset_pass == 0:
+            return  f'До конца периода'
+        if self.date_offset_pass < 0:
+            return  f'За {self.date_offset_pass} дня\n до завершения периода'
 
 
     def calc_status(self):
         self.state = Statuses.in_period
 
+
+        start_date_period = self.start_date_period
+        end_date_period = self.end_date_period
+
+        list_events = [event for event in DTCLS.module_repots_of_personal.selected_user_events.list_events if event.rule == self]
+
         count_passed = 0
         count_approved = 0
-        start_date_period, end_date_period = F.start_end_dates_c(vid=self.period.date_time_liter,format_out='')
-        for doc in DTCLS.module_repots_of_personal.selected_user_events.list_events:
-            if doc.rule != self:
-                continue
-            if doc.date.date >= start_date_period and doc.date.date <= end_date_period:
-                if not doc.is_canceled():
+        for event in list_events:
+            if event.date.date >= start_date_period and event.date.date <= end_date_period:
+                if not event.is_canceled():
                     count_passed += 1
-                if doc.date_approval.date:
+                if event.date_approval.date:
                     count_approved += 1
         if count_approved == self.count_by_period:
             self.state = Statuses.approved
@@ -169,19 +198,20 @@ class Rule(Base_get_data):
         description: str  = self.description
         chat:str = self.id_chat_24
         enabled:bool = self.enabled
-
+        date_offset_pass = self.date_offset_pass
 
         tmp =   [
-            {'Параметр':'Название', 'Значение':name, 'Name':'name'},
-            {'Параметр':'УИД', 'Значение':id, 'Name':'id'},
-            {'Параметр':'Пользователь', 'Значение':ref_user, 'Name':'ref_user'},
-            {'Параметр':'Типы документов', 'Значение':self.str_doc_types(), 'Name':'doc_types'},
-            {'Параметр':'Период', 'Значение':self.str_period(), 'Name':'period'},
-            {'Параметр':'Кол-во за период', 'Значение':count_by_period, 'Name':'count_by_period'},
-            {'Параметр':'Дата начала', 'Значение': start_date, 'Name':'start_date'},
-            {'Параметр':'Описание', 'Значение': description, 'Name':'description'},
-            {'Параметр':'Вывод в Б24 чат №', 'Значение': chat, 'Name':'id_chat_24'},
-            {'Параметр':'Активно', 'Значение': int(enabled), 'Name':'enabled'},
+            {'Параметр':'Название', 'Значение':name, 'Name':'name','Примечание':""},
+            {'Параметр':'УИД', 'Значение':id, 'Name':'id','Примечание':""},
+            {'Параметр':'Пользователь', 'Значение':ref_user, 'Name':'ref_user','Примечание':""},
+            {'Параметр':'Типы документов', 'Значение':self.str_doc_types(), 'Name':'doc_types','Примечание':""},
+            {'Параметр':'Период', 'Значение':self.str_period(), 'Name':'period','Примечание':""},
+            {'Параметр':'Кол-во за период', 'Значение':count_by_period, 'Name':'count_by_period','Примечание':""},
+            {'Параметр':'Дата начала', 'Значение': start_date, 'Name':'start_date','Примечание':""},
+            {'Параметр':'Дата cдачи', 'Значение': date_offset_pass, 'Name':'date_offset_pass','Примечание':"число(м.б. отрицательным) дней от конца периода"},
+            {'Параметр':'Описание', 'Значение': description, 'Name':'description','Примечание':""},
+            {'Параметр':'Вывод в Б24 чат №', 'Значение': chat, 'Name':'id_chat_24','Примечание':""},
+            {'Параметр':'Активно', 'Значение': int(enabled), 'Name':'enabled','Примечание':""},
         ]
         return tmp
 class Rules():
@@ -232,6 +262,7 @@ class Rules():
             edited_rule['description'],
             edited_rule['id_chat_24'],
             edited_rule['enabled'],
+            edited_rule['date_offset_pass'],
         ]
 
         returning = CSQ.custom_request_c(CFG.Config.project.db_users,
@@ -243,7 +274,8 @@ class Rules():
                                   start_date,
                                   description,
                                   id_chat_24,
-                                  enabled
+                                  enabled,
+                                  date_offset_pass
                               )
                         =  ({CSQ.questions_for_mask(edit_data)}) WHERE id = {id_rule};
                 """, list_of_lists_c=edit_data)
@@ -296,6 +328,7 @@ class Rules():
             DTCLS.module_repots_of_personal.creator_user.ID_ФизЛица,
             new_rule['id_chat_24'],
             new_rule['enabled'],
+            new_rule['date_offset_pass'],
         ]
 
         returning = CSQ.custom_request_c(CFG.Config.project.db_users,
@@ -309,7 +342,8 @@ class Rules():
                                   description,
                                   ref_creator,
                                   id_chat_24,
-                                  enabled
+                                  enabled,
+                                  date_offset_pass
                               )
                         VALUES ({CSQ.questions_for_mask(insert_data)}) RETURNING id ;
                 """, list_of_lists_c=insert_data)
@@ -357,7 +391,8 @@ class Rules():
                description,
                ref_creator,
                id_chat_24,
-               enabled
+               enabled,
+               date_offset_pass 
           FROM user_report_rules{where};
         """, rez_dict=True)
         rules = [Rule(_) for _ in list_rules]
@@ -430,13 +465,20 @@ class Schedule():
         end_date_period = F.start_end_dates_c(F.now("%Y-%m-%d"), "%Y-%m-%d", vid=period_liter, format_out='')[0]
 
         start_tmp = copy.deepcopy(start_date_period)
+
+
         while start_tmp <= end_date_period:
-            end_tmp = F.date_add_period(start_tmp, '', period_liter, '')
-            end_date = F.date_add_days(end_tmp, -1, '', '')
-            end_date = F.start_end_dates_c(end_date,format_in='',vid='d',format_out='')[1]
+            end_tmp = F.date_add_period(start_tmp, '', period_liter, '')#шаг периода
+            end_date = F.date_add_days(end_tmp, -1, '', '')#день назад
+
+            end_date = F.start_end_dates_c(end_date,format_in='',vid='d',format_out='')[1]#конец дня
+
+            start_date_offset = rule.apply_offset(start_tmp)#смещение
+            end_date_offset = rule.apply_offset(end_date)
+
             sc_elem = Schedule_elem(rule,
-                                    start_tmp,
-                                    end_date
+                                    start_date_offset,
+                                    end_date_offset
                                     )
             self.elems.append(sc_elem)
             start_tmp = end_tmp
@@ -538,19 +580,27 @@ class Schedule_doc():
 
 class Schedule_elem():
     def __init__(self,rule:Rule,
-                 start_time_frame,
+                 start_time_frame ,
                  end_time_frame,
 
                  ):
         self.rule:Rule = rule
-        self.start_time_frame:str = start_time_frame
-        self.end_time_frame:str = end_time_frame
+        self._start_time_frame:str = start_time_frame
+        self._end_time_frame:str = end_time_frame
         self.rule_id:int = rule.id
         self.ref_creator:str = rule.ref_creator
         self.period_priority:int = rule.period.priority
         self.docs:list[Schedule_doc] = []
         self.state:Status |None   = None
         self.calc_status()
+
+    @property
+    def start_time_frame(self):
+        return self._start_time_frame
+    @property
+    def end_time_frame(self):
+        return self._end_time_frame
+
     def __str__(self):
         return f'С {self.start_time_frame} по {self.end_time_frame} {self.rule.name}'
 
@@ -561,13 +611,15 @@ class Schedule_elem():
             self.state = Statuses.in_period
         if F.now('') > self.end_time_frame:
             self.state = Statuses.expired
+
         if self.docs:
             count_passed = False
             count_approved = False
             for doc in self.docs:
-                if doc.event.date.date and not doc.event.is_canceled():
+                event = doc.event
+                if event.date.date and not event.is_canceled():
                     count_passed += 1
-                if doc.event.date_approval.date:
+                if event.date_approval.date:
                     count_approved += 1
             if count_approved == self.rule.count_by_period:
                 self.state = Statuses.approved
@@ -755,6 +807,13 @@ class Event(Base_get_data):
         path = f'{F.sep().join([Events.DIR_REPOZ_FILES,self.user.ФИО,norm_rule_name,self.date.to_db()])}{ext}'
         return path
 
+    def del_file(self)->bool:
+        path = self.link
+        F.delete_file_c(path)
+        if F.existence_file_c(path):
+            return False
+        return True
+
     def save(self):
         if self.id is None:
             list_ins = [self.rule_doc_id,self.link,self.message,self.date.to_db(),self.date_approval.to_db(),self.msg_approval]
@@ -776,10 +835,12 @@ class Event(Base_get_data):
                 )
                     = ({CSQ.questions_for_mask(list_upd)}) WHERE id = {self.id}; """, list_of_lists_c=[list_upd])
 
-    def send_into_b24(self,id_chat_24:str,edit=False):
+    def send_into_b24(self,id_chat_24:str,edit=False,delete= False):
         msg = f'Добавлен документ'
         if edit:
             msg = f'Изменен документ'
+        if delete:
+            msg = f'Удалён документ'
         CMS.send_tbl_b24_by_action(
             f'{msg} по \n{self.rule.name}\n{F.now("%d.%m.%Y %H:%M")} {DTCLS.module_repots_of_personal.selected_user.ФИО}',
             'Отчетность пользователей',
@@ -839,6 +900,24 @@ class Events():
             CQT.msgbox(f'Нет доступа к Директории с файлами. Обратитесь к администратору')
             raise PermissionError
         DTCLS.module_repots_of_personal.selected_user_events = self
+
+    def delete_event(self,id:int)-> tuple[bool,Event|str]:
+        event = self.load_event(id)
+        if event is None:
+            return False,f'Ошибка инициализации документа'
+        if event.date_approval.date:
+            return False,f'Утвержденный документ не может быть удалён'
+
+        if not event.del_file():
+            return False, f'Ошибка очистка вложения'
+
+        if not CSQ.custom_request_c(CFG.Config.project.db_users,f"""DELETE FROM user_report_events
+                            WHERE user_report_events.id = {event.id};"""):
+            return False, f"Неудачная попыткa удаления"
+
+
+        return True,event
+
 
     def load_event(self,id:int)->Event:
         event = CSQ.custom_request_c(CFG.Config.project.db_users, f"""SELECT 
@@ -1002,10 +1081,11 @@ def dbl_clck_user():
         return
     if DTCLS.module_repots_of_personal.regime == Regimes.events:
         tbl_details = DTCLS.app_self.ui.tbl_report_add
-        tbl_details_f = DTCLS.app_self.ui.tbl_report_add_filtr
-        t = CQT.TableContext(tbl_details_f)
-        t.get_row(0).set_value('Название',row['Название'])
-        CQT.apply_filtr_c(DTCLS.app_self,tbl_details_f,tbl_details)
+        if tbl_details.rowCount():
+            tbl_details_f = DTCLS.app_self.ui.tbl_report_add_filtr
+            t = CQT.TableContext(tbl_details_f)
+            t.get_row(0).set_value('Название',row['Название'])
+            CQT.apply_filtr_c(DTCLS.app_self,tbl_details_f,tbl_details)
 
 def ______________SETTINGS___________________():
     pass
@@ -1015,6 +1095,7 @@ def load_pers_rules():
     DTCLS.module_repots_of_personal.regime = Regimes.settings
     ui = DTCLS.app_self.ui
     ui.bnt_glsv_append.setHidden(True)
+    ui.bnt_glsv_del_doc.setHidden(True)
     ui.bnt_glsv_add_rule.setHidden(False)
     ui.bnt_glsv_edit_rule.setHidden(False)
     DTCLS.module_repots_of_personal.creator_user = CMS.Emploee_usr(F.user_full_namre(),CFG.Config.project.db_users)
@@ -1076,6 +1157,7 @@ def fill_details_by_user(uid:str,tbl_details,tbl_details_f,show_disabled_rules:b
         'Период':_.period.name,
         'Частота':_.count_by_period,
         'Дата начала':_.start_date.ru_notation(),
+        'Дата сдачи':_.date_pass,
         'Статус': _.state.to_str(),
         'Описание':_.description,
         'Документы':[{
@@ -1152,6 +1234,7 @@ def load_pers_events():
     DTM.regime = Regimes.events
     DTCLS.module_repots_of_personal.creator_user = CMS.Emploee_usr(F.user_full_namre(), CFG.Config.project.db_users)
     DTCLS.app_self.ui.bnt_glsv_append.setHidden(False)
+    DTCLS.app_self.ui.bnt_glsv_del_doc.setHidden(False)
     DTCLS.app_self.ui.bnt_glsv_add_rule.setHidden(True)
     DTCLS.app_self.ui.bnt_glsv_edit_rule.setHidden(True)
     apply_selected_user()
@@ -1173,6 +1256,10 @@ def recalc_and_fill_tbls():
 def bnt_glsv_append(*args):
     add_event()
 
+@CQT.onerror
+def bnt_glsv_del_doc(*args):
+    del_event()
+
 def ______________REPORT___________________():
     pass
 
@@ -1184,6 +1271,7 @@ def load_pers_report():
     tbl = ui.tbl_report_c
     tblf = ui.tbl_report_c_filtr
     ui.bnt_glsv_append.setHidden(True)
+    ui.bnt_glsv_del_doc.setHidden(True)
     ui.bnt_glsv_add_rule.setHidden(True)
     ui.bnt_glsv_edit_rule.setHidden(True)
     ui.fr_addition_tbl.setHidden(True)
@@ -1332,6 +1420,25 @@ def edit_rule():
             CQT.msgbox(f'Нет доступа')
             return
     handling_rule(row['ID_ФизЛица'], id_rule)
+
+
+def del_event():
+    tbl_event = DTCLS.app_self.ui.tbl_report_add
+    row_event = CQT.get_dict_line_form_tbl(tbl_event)
+    if not row_event:
+        CQT.msgbox(f'Не выбран документ')
+        return
+    else:
+        id_doc = int(row_event['id'])
+        suc, event = DTCLS.module_repots_of_personal.selected_user_events.delete_event(id_doc)
+        if not suc:
+            CQT.msgbox(event)
+            return
+        if event.rule.id_chat_24:
+            event.send_into_b24(f'chat{event.rule.id_chat_24}',delete=True)
+        recalc_and_fill_tbls()
+        return CQT.msgbox(f'Документ успешно уделён')
+
 
 
 def add_event():
@@ -1521,7 +1628,7 @@ def show_form(user_id:str,id_rule:int|None =None):
                     if not F.is_numeric(val):
                         CQT.msgbox(f'В строке {row.i + 1} не число')
                         return
-                if row.value('Name') == 'id_chat_24':
+                if row.value('Name') in ('date_offset_pass','id_chat_24'):
                     if val != '' and not F.is_numeric(val):
                         CQT.msgbox(f'В строке {row.i + 1} не число')
                         return
@@ -1736,13 +1843,17 @@ def show_form(user_id:str,id_rule:int|None =None):
                 CQT.set_cell_editable(tbl,i,nf_val,True)
             if row['Name'] == 'id_chat_24':
                 CQT.set_cell_editable(tbl, i, nf_val, True)
-
             if row['Name'] == 'enabled':
                 if fl_new:
                     tbl.setRowHidden(i,True)
                 else:
                     is_enable = F.valm(tbl.item(i,nf_val).text())
                     CQT.add_check_box_switcher(tbl,i,nf_val,val=is_enable,conn_func_checked_row_col=fnc_toggle_enable)
+
+            if row['Name'] == 'date_offset_pass':
+                CQT.set_cell_editable(tbl, i, nf_val, True)
+                if fl_new:
+                    tbl.item(i,nf_val).setText('0')
 
         nf = CQT.nums_col_by_name_dict(tbl)
         dev = False

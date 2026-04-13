@@ -1,30 +1,3 @@
-'''версия 5 lite здесь только функционал сервер клиент без директории разработчика
-назначение: 
-    На сервере только создаем pickle
-    клиентом сверяемся с серверным pickle и получаем себе
-
-
-!!!!!!!!!!!!!! ПРИ ЗАПУСКЕ НЕОБХОДИМО:
-1) УКАЗАТЬ ПАПКУ СЕРВЕРА ПУТЬ ДО ПАПКИ ТАМ ГДЕ mini_git в серверной папке в self.server_dir там где основной файл запуска программы
-    например 
-
-2) в основном контролируемом или запускаемом файле прописать:
-    через batch запускать основной файл mini_git
-
-
-проверяет версии файлов в той папке где находиться
-и если версия файла отлична то обновляет файл.
-если такого файла нет на сервере то удаляет
-если на сервере есть а на клиенте нет то, копирует
-на сервере только создает pickle архив к которому обращаются все клиенты
-на клиенте проверяет целостность/актуальность файлов и запускает программу
-
-Внесенные изменения версия программы:
-5.1 Lite вырезан функционал разработчик
-4 протестирована, не удаляет папки
-3 автоматически определяет серверх
-2 исправлена работа с папками
-1 стартовая версия программы'''
 import datetime
 import stat
 import os
@@ -33,18 +6,23 @@ import hashlib
 import shutil
 import getpass
 import sys
-from pathlib import Path
 import logging
+import zipfile
+import re
+import subprocess
+import tarfile
+import io
+import tempfile
+from typing import List
+from pathlib import Path
 
 import requests
-import zipfile
 
-DEVELOP_SAFTY = True  # Защита от накатывания разработчику от диска Z
-MY_ERRORS = 'my_errors.txt' # персональный файл ошибки минии гита для каждого клиента
-
+SRV_ADDRESS = 'http://mesinfo.powerz.ru:20011'
 
 KEY_SRV_HASH = 'PROJECT_CUST_SRV_HASH'
 KEY_SERVER_NOT_AVAILABLE = 'KEY_SERVER_NOT_AVAILABLE'
+
 logging.basicConfig(level=logging.INFO)
 
 
@@ -74,7 +52,7 @@ def request(fn):
 
 @request
 def fetch_ping():
-    response = requests.get('http://mesinfo.powerz.ru:20011', timeout=3)
+    response = requests.get(SRV_ADDRESS, timeout=3, verify=False)
     response.raise_for_status()
     return response.ok
 
@@ -86,18 +64,219 @@ def ping(fn):
         os.environ[KEY_SERVER_NOT_AVAILABLE] = '1'
     return wrapper
 
+
+class LoneInterpreter:
+    def __init__(self):
+        self.home_path = str(Path().home() / 'MES')
+        from project_cust_38.Cust_client_socket import ip
+        SRV_PORT = 20011
+        self.server_url = f'http://{ip}:{SRV_PORT}/files'
+        self.system_interpreter_path = r'Z:\Setup\python.zip'
+        self.is_actual = self.check_python_available(self.python_path) and self.check_actual_interpreter()
+
+        self.usr_hash = self.usr_packages = None
+
+    def create_run_bat(self, program_path_embed: str, program_name: str):
+        try:
+            executor = self.interpreter.python_path
+            src_mini_git_path = os.path.join(r'Z:\Setup', 'mini_git.py')
+            dest_mini_git_path = str((Path(program_path_embed) / 'mini_git.py').absolute())
+            bat_source = f"@echo off\ncopy /Y {src_mini_git_path} {dest_mini_git_path}\n{executor} mini_git.py\n{executor} {self.DICT_PROG[program_name]["Название"]} %*"
+            with open(os.path.join(program_path_embed, 'run.bat'), 'w+') as desc:
+                desc.write(bat_source)
+        except Exception as e:
+            logging.error(e)
+
+    @property
+    def python_folder(self):
+        py = shutil.which("python")
+        if os.path.exists(py) and 'Microsoft' not in py:
+            return str(Path(py).parent.absolute())
+        return str((Path(self.home_path) / 'py').absolute())
+
+    @property
+    def python_path(self):
+        py = shutil.which("python")
+        if os.path.exists(py) and 'Microsoft' not in py:
+            return py
+        return str((Path(self.python_folder) / 'python.exe').absolute())
+
+    def __server_inter_size(self):
+        try:
+            response = requests.get(f'{self.server_url}/py/hash/')
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            logging.error('[python]Не удалось запросить актуальный хэш python интерпретатора')
+            logging.error(e)
+
+    def __main_inter_size(self):
+        """Возвращает общий размер всех файлов в указанной директории в байтах."""
+        temp = tempfile.gettempdir()
+        path = Path(temp) / 'mes_libs' / 'lib_hash.pickle'
+        if not os.path.exists(self.python_path): return False
+        try:
+            if not subprocess.run([self.python_path, r'Z:\Setup\generate_hash.py'], check=True, encoding='utf8'):
+                return logging.error(f'[python]Не удалось актуализировать хэш у библиотек с аргументами [python={self.python_path}, hash_path={path}]')
+            usr_py_info = pickle.load(path.open('rb'))
+            usr_hash = usr_py_info.get('packages_hash')
+
+            if usr_hash and len(usr_hash) == 64:
+                return usr_hash
+        except Exception as e:
+            print()
+
+    def check_actual_interpreter(self):
+        if not os.path.exists(self.python_path):
+            return False
+        try:
+            srv_info = self.get_srv_size()
+            if isinstance(srv_info, dict) and all(key in srv_info for key in ('packages', 'size')):
+                srv_packages = srv_info['packages']
+                srv_size = srv_info['size']
+                usr_packages = self.get_installed_packages()
+                usr_size = self.get_py_size()
+                if (usr_size / srv_size) * 100 > 80:
+                    necessary_libs = set(srv_packages).difference(usr_packages)
+                    return not bool(necessary_libs)
+                return False
+        except Exception as e:
+            logging.error(e)
+
+    def replace_interpreter(self):
+        try:
+            if os.path.exists(self.system_interpreter_path) and os.path.getsize(self.system_interpreter_path) > 300_000:
+                filename = self.system_interpreter_path
+            else:
+                filename = self.download_file()
+            if filename is None:
+                return logging.error('[python_download] Не удалось загрузить интерпретатор с сервера')
+            extract_to = os.path.join(self.home_path, 'py')
+            if self.unzip_file(filename, extract_to):
+                self.is_actual = True
+        except Exception as e:
+            print(e)
+
+    def extract_filename(self, content_disposition):
+        match = re.search(r'filename="([^"]+)"', content_disposition)
+        if match:
+            return match.group(1)
+        return None
+
+    def unzip_file(self, zip_file_path, extract_to_folder):
+        if not os.path.exists(zip_file_path):
+            print(f"Файл {zip_file_path} не найден.")
+            return
+        os.makedirs(extract_to_folder, exist_ok=True)
+        with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
+            zip_ref.extractall(extract_to_folder)
+            print(f"Файлы распакованы в {extract_to_folder}")
+            return True
+
+    def download_file(self):
+        try:
+            response = requests.get(f'{self.server_url}/py/', stream=True, verify=False)
+            response.raise_for_status()
+            if content_disposition := response.headers.get('Content-Disposition'):
+                filename = self.extract_filename(content_disposition)
+                with open(filename, 'wb+') as file:
+                    for chunk in response.iter_content(chunk_size=8192):  # 8192
+                        file.write(chunk)
+                print(f"Файл '{filename}' успешно скачан.")
+                return filename
+        except requests.exceptions.RequestException as e:
+            print(f"Ошибка при скачивании файла: {e}")
+
+    def check_python_available(self, python_path: str):
+        python_exec_path = str(Path(python_path) / 'python.exe')
+        if not os.path.exists(python_exec_path):
+            return False
+        try:
+            result = subprocess.run([python_exec_path, '--version'], capture_output=True, text=True, check=True)
+            print(result.stdout.strip())
+            return True
+        except subprocess.CalledProcessError:
+            return False
+
+    def get_installed_packages(self):
+        """Получаем список установленных пакетов и их версий."""
+        temp = tempfile.gettempdir()
+        path = Path(temp) / 'mes_libs' / 'lib_hash.pickle'
+        if not os.path.exists(self.python_path): return False
+        if not subprocess.run([self.python_path, r'Z:\Setup\generate_hash.py'], check=True, encoding='utf8', creationflags=subprocess.CREATE_NO_WINDOW):
+            return logging.error(
+                f'[python]Не удалось актуализировать хэш у библиотек с аргументами [python={self.python_path}, hash_path={path}]')
+        usr_py_info = pickle.load(path.open('rb'))
+        usr_packages = usr_py_info.get('packages')
+        if isinstance(usr_packages, list):
+            return usr_packages
+
+    def get_py_size(self):
+        return sum(
+            os.path.getsize(os.path.join(dir_path, file))
+            for dir_path, _, files in os.walk(self.python_folder)
+            for file in files
+        )
+
+    def drop_superfluous_libs(self, lib_list: List[str]):
+        for package in lib_list:
+            try:
+                script_folder = Path(r'Z:\Setup') / 'uninstall_lib.bat'
+                subprocess.check_call([str(script_folder), self.python_path, package], shell=True)
+            except Exception as e:
+                print(e)
+    def get_srv_size(self):
+        response = requests.get(f'{self.server_url}/py/packages/list/', verify=False)
+        if response.ok:
+            return response.json()
+
+    def download_srv_packages(self, libs: List[str]):
+        temp_dir = tempfile.gettempdir()
+        response = requests.post(f'{self.server_url}/py/packages/', json=list(libs), verify=False)
+        temp_libs = Path(temp_dir) / 'mes_libs'
+        temp_libs.mkdir(exist_ok=True, parents=True)
+        if response.ok:
+            try:
+                with tarfile.open(fileobj=io.BytesIO(response.content), mode="r:gz") as tar:
+                    tar.extractall(str(temp_libs))
+                    for lib in libs:
+                        script_folder = Path(r'Z:\Setup') / 'install_lib.bat'
+                        lib_name, version = lib.split('==')
+                        subprocess.check_call([str(script_folder), self.python_path, str(temp_libs), lib_name, version], shell=True)
+            except Exception as e:
+                logging.error(f'Ошибка во время установки библиотек {libs}', exc_info=True)
+
+    def actualize_py_libs(self):
+        srv_info = self.get_srv_size()
+        if isinstance(srv_info, dict) and all(key in srv_info for key in ('packages', 'size')):
+            srv_packages = srv_info['packages']
+            srv_size = srv_info['size']
+            usr_packages = self.get_installed_packages()
+            usr_size = self.get_py_size()
+            if (usr_size / srv_size) * 100 > 80:
+                superfluous_libs = set(usr_packages).difference(srv_packages)
+                necessary_libs = set(srv_packages).difference(usr_packages)
+                if necessary_libs:
+                    self.download_srv_packages(necessary_libs)
+                if self.check_actual_interpreter():
+                    logging.info('Библитеки успешно обновлены')
+            else:
+                self.replace_interpreter()
+
+    def check_python_home_version(self):
+        return self.check_python_available(self.python_folder) and self.check_actual_interpreter()
+
+
 class ProjectCust38:
-    def __init__(self, window = None, *, dir_for_unpack = None):
+    def __init__(self, window = None):
         self.is_download = False
         self.content = None
-        if dir_for_unpack is None:
-            dir_for_unpack = str(Path().home() / 'MES')
-        self.PUT_PO_UMOLCH = dir_for_unpack
+        self.PUT_PO_UMOLCH = str(Path().home() / 'MES')
         if window:
             self.PUT_PO_UMOLCH = window.PUT_PO_UMOLCH
         self.path = os.path.join(self.PUT_PO_UMOLCH, "project_cust_38.zip")
         self.crypt = Crypt()
-        self.BASE_URL = f'http://mesinfo.powerz.ru:20011'
+        self.BASE_URL = SRV_ADDRESS
         self.PROJECT_CUST_FILE_URL = f'{self.BASE_URL}/files/project-cust/'
         self.PROJECT_CUST_HASH_URL = f'{self.BASE_URL}/files/project-cust/hash/'
 
@@ -139,7 +318,6 @@ class ProjectCust38:
         except Exception as e:
             print(e)
 
-
     @ping
     def download_project_cust_38(self):
         logging.info('Загрузка библиотеки project_cust_38 с сервера...')
@@ -172,7 +350,7 @@ class ProjectCust38:
     def __user_hash(self, proj_path: str) -> str:
         hash_object = hashlib.sha256()
         dir_path = Path(proj_path) / 'project_cust_38'
-        dir_path.mkdir(exist_ok=True)
+        dir_path.mkdir(exist_ok=True, parents=True)
         for path in self.make_files_tree_struct(str(dir_path)):
             if path.is_file():
                 with path.open('rb') as f:
@@ -193,6 +371,8 @@ class ProjectCust38:
     def check_project_cust_38(self, path: str, check_srv_not_available: bool = False):
         if check_srv_not_available and os.environ.get(KEY_SERVER_NOT_AVAILABLE):
             return True
+        if not os.path.exists(path):
+            return False
         return self.__srv_hash() == self.__user_hash(path)
 
     @ping
@@ -253,7 +433,7 @@ SET_PY_FILES = {'Lib', 'libcrypto-1_1.dll', 'libffi-8.dll', 'libssl-1_1.dll', 'p
               '_overlapped.pyd', '_queue.pyd', '_socket.pyd', '_sqlite3.pyd', '_ssl.pyd', '_uuid.pyd', '_zoneinfo.pyd'}
 
 class Main:
-    def __init__(self, srv_dir: str = '', usr_dir: str = None, app_name: str = None, *, project_cust_dir = None):
+    def __init__(self, srv_dir: str = '', usr_dir: str = None, app_name: str = None):
         self.developers = ()
         self.current_dir = usr_dir
         self.app_executor = None
@@ -268,9 +448,10 @@ class Main:
         self.pickle_path = str((Path(self.server_dir) / self.pickle_name).absolute())
         self.who_im()
         self.is_windows = True
-        self.ignore_files = [MY_ERRORS, self.pickle_name, '.gitignore', 'python', 'window_free.vbs', 'window.vbs', 'run.bat', 'ver'] + list(SET_PY_FILES)  #  игонрируются _*
+        self.ignore_files = [self.pickle_name, '.gitignore', 'python', 'window_free.vbs', 'window.vbs', 'run.bat', 'ver', 'mini_git.py', 'remote_run.bat'] + list(SET_PY_FILES)  #  игонрируются _*
         self.ignore_dirs = ['venv', 'clients_errors', '__pycache__', '.idea', '.git', 'Scripts', 'Lib', 'project_cust_38'] + list(SET_PY_FILES)
-        self.project_cust = ProjectCust38(dir_for_unpack=project_cust_dir)
+        self.project_cust = ProjectCust38()
+        self.interpreter = LoneInterpreter()
 
     def test_func(self):
         '''Принудительное задание роли'''
@@ -346,8 +527,20 @@ class Main:
             print(e)
 
     def client_actions(self):
-        print('[mini_git]client actions')
+        logging.info('[mini_git]client actions')
+
         if Path().absolute().drive != 'Z:':
+            try: # обновление библиотек python
+                self.interpreter.actualize_py_libs()
+            except Exception as e:
+                logging.error(
+                    '[self.interpreter.actualize_py_libs]Произошла ошибка при попытке актуализации библиотек python',
+                    exc_info=True
+                )
+            try: # актуализация run.bat
+                self.interpreter.create_run_bat(self.current_dir, self.app_name)
+            except Exception as e:
+                logging.error(e)
             self.project_cust.check_exclude_dirs()
             self.get_project_cust_lib()
 
@@ -488,7 +681,8 @@ class Main:
         if not os.path.exists(self.pickle_path): return False
         srv_files, srv_dirs = self.load_pickle(self.pickle_path)
         usr_files, client_dirs = self.get_hashed_files()
-
+        usr_files = {k: v for k, v in usr_files.items() if k not in self.ignore_files}
+        srv_files = {k: v for k, v in srv_files.items() if k not in self.ignore_files}
         return not all(usr_files.get(f) == h for f, h in srv_files.items())
 
     def check_files(self, server_files_dict, client_files_dict, distanation, source, del_file):
@@ -519,11 +713,7 @@ if __name__ == '__main__':
         default=False,
         help='Отключает проврку обновления файлов клиента'
     )
-    parser.add_argument(
-        '--project-cust-dir',
-        help='Задать директорию для распаковки библиотеки project_cust'
-    )
 
     args = parser.parse_args()
-    m = Main(project_cust_dir=args.project_cust_dir)
+    m = Main()
     m.push(no_update=args.no_update)

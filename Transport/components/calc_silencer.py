@@ -1,11 +1,15 @@
+import copy
+from typing import Any
+
 import flet as ft
+
 import components.calc_silencer_back as calc_silencer_back
 import components.common_funcs as CMF
 import data_class as DTCLS
+
 import project_cust_38.Cust_Functions as F
 import project_cust_38.Cust_emoji as Cust_emoji
-from typing import Any
-
+from project_cust_38 import Cust_SQLite as CSQ
 from components.tech_report_excel import build_tech_report_xlsx
 from components.tech_report_settings_dialog import open_tech_report_settings_dialog
 
@@ -59,17 +63,6 @@ _output_tabe_ref = ft.Ref[ft.DataTable]()
 
 NAME_MODULE = "silencer"
 
-
-def show_msgbox_err(e):
-    CMF.msgbox(
-        e,
-        msg="Файл не был сохранен! Ошибка генерации",
-        btn0_name="Закрыть",
-        icon="WARNING",
-        fontsize=14,
-        title="Ошибка сохранения",
-        time_life=3
-    )
 
 async def apply_page_settings(page: ft.Page,MODULE:DTCLS.ModuleCfg):
     Data: DTCLS.Data_page = page.data
@@ -133,7 +126,12 @@ def _save_word(e: ft.ControlEvent):
         cfg_module.name,
     )
     if not rez:
-        show_msgbox_err(e)
+        CMF.message_dialog(
+            e.page,
+            body_icon=ft.Icons.ERROR,
+            title="Ошибка",
+            message="Не удалось сохранить документ word"
+        )
         return
 
     # if not calc_silencer_back.save_in_db(e, name):
@@ -163,7 +161,12 @@ def _tech_build(e: ft.ControlEvent):
 
     calculated, errors, success = calc_silencer_back.prepare_calc_new_data(input_rows, Data)
     if calculated is None:
-        show_msgbox_err(e)
+        CMF.message_dialog(
+            e.page,
+            body_icon=ft.Icons.ERROR,
+            title="Ошибка",
+            message="Произошла критическая ошибка во время расчетов"
+        )
         return
     cfg = getattr(cfg_module.cust_data, "tech_report_cfg", None) or {}
 
@@ -178,7 +181,12 @@ def _tech_build(e: ft.ControlEvent):
         cfg_raw=cfg,
     )
     if not path:
-        show_msgbox_err(e)
+        CMF.message_dialog(
+            e.page,
+            body_icon=ft.Icons.ERROR,
+            title="Ошибка",
+            message="Не удалось сохранить excel"
+        )
         return
 
     calc_silencer_back.save_in_db(e, name)
@@ -224,6 +232,90 @@ def _tech_settings(e: ft.ControlEvent):
         cfg=cfg,
         on_save=_on_save,
     )
+
+def _clone_table_for_history(table_data: CMF.Table_data | None) -> CMF.Table_data | None:
+    if table_data is None:
+        return None
+
+    cloned = CMF.Table_data()
+    for field in table_data.list_fields:
+        cloned.append_column_desc(
+            name=field.name,
+            header=field.header,
+            hidden=field.hidden,
+            editable=field.editable,
+            width=field.width,
+            unique=field.unique,
+        )
+
+    cloned.name = table_data.name
+
+    for src_row in table_data.rows:
+        row = CMF.Row_data(merge=getattr(src_row, "merge", False))
+        row.group_name = getattr(src_row, "group_name", None)
+        row.table_header = getattr(src_row, "table_header", False)
+
+        for src_cell in src_row.cells:
+            desc = CMF.Cell_description(
+                min_max_list=copy.deepcopy(src_cell.description.min_max_list),
+                accuracy=src_cell.description.accuracy,
+                comment=copy.deepcopy(src_cell.description.comment),
+                data_type=src_cell.description.data_type,
+                default_val=copy.deepcopy(src_cell.description.default_val),
+            )
+            row.append(copy.deepcopy(src_cell.val), desc)
+
+        cloned.add_row(row)
+        cloned.rows[-1].group_name = getattr(src_row, "group_name", None)
+        cloned.rows[-1].table_header = getattr(src_row, "table_header", False)
+
+    return cloned
+
+
+
+def _save_in_db(e: ft.ControlEvent):
+    Data: DTCLS.Data_page = e.page.data
+    module_data: calc_silencer_back.Cust_module_params = Data.Data_module.cust_data
+
+    input_tbl = _clone_table_for_history(getattr(module_data, "input_tbl_editbl", None))
+    output_tbl = _clone_table_for_history(getattr(module_data, "output_tbl", None))
+    if input_tbl is None or output_tbl is None:
+        return False
+
+    data_save = {
+        "ver": module_data.ver_tbls_data,
+        "input_tbl": input_tbl,
+        "output_tbl": output_tbl,
+    }
+    name = _header_input_panel_textfield_ref.current.value
+    row = [F.now(), name, Data.Data_user.login, F.to_binary_pickle(data_save)]
+    try:
+        status = CSQ.custom_request_c(
+            Data.Data_user.db_flet,
+            """INSERT INTO silencer_history (date, name, login, data) VALUES ({})""".format(
+                CSQ.questions_for_mask(row)
+            ),
+            list_of_lists_c=[row],
+        )
+        if status:
+            CMF.message_dialog(
+                e.page,
+                title="Успешно сохранено",
+                title_size=20,
+                body_icon_color="green",
+                body_icon=ft.Icons.CHECK_CIRCLE,
+                btn_ok_text="Отлично"
+            )
+        else:
+            CMF.message_dialog(
+                e.page,
+                title="Ошибка",
+                message=f"Не удалось сохранить {Data.Data_module.name} в истории расчетов",
+                body_icon=ft.Icons.ERROR,
+                btn_ok_text="Ок"
+            )
+    except Exception as e:
+        return False
 
 def gen_page(page):
     Data: DTCLS.Data_page = page.data
@@ -282,8 +374,8 @@ def gen_page(page):
 
         _input_column_tabels_ref.current.controls.append(input_table_datatable)
         DTCLS.Data_page.Data_module.status_bar.set_text()
-        page.update()
-        apply_oforml(table_data)
+        # page.update()
+        # apply_oforml(table_data)
 
     def generate_desktop_row(page: ft.Page, rail: ft.NavigationRail):
         Data: DTCLS.Data_page = page.data
@@ -343,7 +435,6 @@ def gen_page(page):
             rez = calc_silencer_back.save_exel(rezult_data_for_save['input'], rezult_data_for_save['output'],
                                              rezult_data_for_save['name'], cfg_module.sub_dir,cfg_module.name)
             if not rez:
-                show_msgbox_err(e)
                 return
             else:
                 if not calc_silencer_back.save_in_db(e, name):
@@ -369,8 +460,9 @@ def gen_page(page):
                 scroll=ft.ScrollMode.ALWAYS, expand=True,
                 ref=_output_column_tabels_ref
             )
-        ], scroll=ft.ScrollMode.ALWAYS, width=(Data.Data_vars.width - rail_width), height=Data.Data_vars.height,
+        ], scroll=ft.ScrollMode.ALWAYS,
             vertical_alignment=ft.CrossAxisAlignment.START,
+            height=page.height - 120,
             expand=True, ref=_desktop_row_ref)
 
 
@@ -383,6 +475,7 @@ def gen_page(page):
             on_excel=_save_excel,
             on_tech_build=_tech_build,
             on_tech_settings=_tech_settings,
+            on_db=_save_in_db
         )
 
         header_input_panel = ft.Row(controls=[ft.VerticalDivider(thickness=0, width=200),
@@ -438,20 +531,38 @@ def gen_page(page):
     def select_destination(e: ft.ControlEvent):
         def load_history_dest(e: ft.ControlEvent):
             def selectedRowsfnc(e: ft.ControlEvent, row_index: int, row_data: CMF.Row_data):
-                s_num = int(row_data.dict_cells()['s_num'].val)
-                name = row_data.dict_cells()['name'].val
+                s_num = int(row_data.dict_cells()["s_num"].val)
+                name = row_data.dict_cells()["name"].val
                 input_tbl, output_tbl = calc_silencer_back.load_from_db_history_calc(e.page.data, s_num)
-                data_tbl_input = CMF.generate_param_table(input_tbl, ref=_input_tabe_ref)
-                data_tbl_output = CMF.generate_param_table(output_tbl, ref=_output_tabe_ref)
+                if not input_tbl or not output_tbl:
+                    CMF.message_dialog(
+                        e.page,
+                        title="Ошибка",
+                        message=str(e)
+                    )
+                    return
+
+                data_tbl_output = CMF.Table_view(
+                    output_tbl,
+                    ref=_output_tabe_ref,
+                    lazy_groups=True,
+                    single_group_expand=False,
+                )
+                data_tbl_input = CMF.Table_view(
+                    input_tbl,
+                    ref=_input_tabe_ref,
+                )
+                Data.Data_module.cust_data.input_tbl_editbl = input_tbl
+                Data.Data_module.cust_data.output_tbl = output_tbl
+
                 generate_desktop_row(page, rail)
+
                 _header_input_panel_textfield_ref.current.value = name
                 _header_input_panel_textfield_ref.current.visible = True
                 _header_input_panel_textfield_ref.current.disabled = True
                 _input_column_tabels_ref.current.controls.append(data_tbl_input)
                 _output_column_tabels_ref.current.controls.append(data_tbl_output)
                 _btn_calc_ref.current.disabled = True
-                _btn_grab_ref.current.visible = True
-                page.update()
 
             tbl_data = calc_silencer_back.make_history_tbl_data(e.page.data)
             tbl_history = CMF.generate_param_table(tbl_data, selectedRowsfnc=selectedRowsfnc, selectedRows=True)
@@ -488,7 +599,7 @@ def gen_page(page):
             _desktop_column_ref.current.horizontal_alignment=ft.CrossAxisAlignment.START
             _desktop_column_ref.current.expand=True
 
-            page.update()
+            # page.update()
 
 
         ind = e.control.selected_index

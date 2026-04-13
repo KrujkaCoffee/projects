@@ -1466,8 +1466,9 @@ class mywindow_res(QtWidgets.QDialog):  # диалоговое окно
                 CQT.blink_obj_c(self,2,tbl.cellWidget(4,2),f'Не указан ОсновноеИзделиеНоменклатура')
                 return False
             if tbl.item(5 ,1).text() == "":
-                CQT.blink_obj_c(self,2,tbl.cellWidget(4,2),f'Не указан ОсновноеИзделиеАртикул')
-                return False
+                if not CQT.msgboxgYN_delay('Не задан артикул основного изделия. Продолжить создание ресурсной БЕЗ артикула основного изделия?'):
+                    CQT.blink_obj_c(self,2,tbl.cellWidget(4,2),f'Не указан ОсновноеИзделиеАртикул')
+                    return False
             if tbl.item(6 ,1).text() == "":
                 CQT.blink_obj_c(self,2,tbl.cellWidget(4,2),f'Не указан ОсновноеИзделиеКод')
                 return False
@@ -1533,14 +1534,14 @@ class mywindow_res(QtWidgets.QDialog):  # диалоговое окно
             СпособРаспределенияЗатратНаВыходныеИзделия = CRES.TheMethodOfAllocatingTheCostOfTheOutputProductsData._hnt_по_долям_стоимости_0
             РодительКод = CRES.GroupResData.find_by_code(pref_hat['ГруппаКод'], CRES.GroupRes())
             if USRCNF.Config.place.poki == 0:
-                ВариантПодбораВДокументы = CRES.VariationsrespecificationdocumentsData._hnt_автоматически_по_приоритету_0
+                #ВариантПодбораВДокументы = CRES.VariationsrespecificationdocumentsData._hnt_автоматически_по_приоритету_0
                 ПодразделениеДиспетчер = CRES.SubdivisionsData._hnt_планово_диспетчерский_отдел_производства_пауэрз_производственные_подразделения_пауэрз_00_000049
             if USRCNF.Config.place.poki== 1:
                 ПодразделениеДиспетчер = CRES.SubdivisionsData._hnt_планово_диспетчерский_отдел_производства_келаст_производственные_подразделения_келаст_00_000112
-                ВариантПодбораВДокументы = CRES.VariationsrespecificationdocumentsData._hnt_вручную_1
+                #ВариантПодбораВДокументы = CRES.VariationsrespecificationdocumentsData._hnt_вручную_1
             if USRCNF.Config.place.poki== 2:
                 ПодразделениеДиспетчер = CRES.SubdivisionsData._hnt_сталелитейный_цех_таткуз_таткуз_00_000164
-                ВариантПодбораВДокументы = CRES.VariationsrespecificationdocumentsData._hnt_вручную_1
+                #ВариантПодбораВДокументы = CRES.VariationsrespecificationdocumentsData._hnt_вручную_1
             # Шапка
             hat = CRES.ResourceHeader(
                 ОсновноеИзделиеКод=ОсновноеИзделиеКод,
@@ -1551,7 +1552,7 @@ class mywindow_res(QtWidgets.QDialog):  # диалоговое окно
                 ДатаОкончания=F.dateStrToStr(pref_hat['КонецДействия ресурсной']),
                 ПодразделениеДиспетчер=ПодразделениеДиспетчер,
                 РодительКод=РодительКод,
-                ВариантПодбораВДокументы=ВариантПодбораВДокументы,
+                #ВариантПодбораВДокументы=ВариантПодбораВДокументы,
                 Описание=self.res_obj.primech,
                 СпособРаспределенияЗатратНаВыходныеИзделия=СпособРаспределенияЗатратНаВыходныеИзделия,
                 Код=code_old_res

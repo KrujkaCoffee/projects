@@ -58,13 +58,14 @@ class B24Sender(BaseSender):
     _SEND_MESSAGE_ENDPOINT = 'im.message.add'
     _EDIT_MESSAGE_ENDPOINT = 'im.message.update'
 
-    def get_chat_id_by_action(self, action: str):
+    def get_chat_id_by_action(self, action: str,poki:int|None=None):
         if CFG.Config.user_config.is_developer:
             return 'chat90445'
         if action.startswith('chat') and F.is_numeric(action[4:]):
             return action
         db_naryad = CFG.Config.project.db_naryad
-        poki = CFG.Config.place.poki
+        if poki is None:
+            poki = CFG.Config.place.poki
         result = CSQ.custom_request_c(
             db_naryad,
             f'SELECT chat_id FROM place_chat_info WHERE name = {action!r} AND poki = {poki}',
@@ -75,16 +76,16 @@ class B24Sender(BaseSender):
             return result['chat_id']
 
     def send_msg_by_action(self, action: str, msg: str,form_dict:dict=None,msg_bold:bool=False,basement_msg:str=None,
-                           attach: list = None) -> bool:
-        chat_id = self.get_chat_id_by_action(action) #chat_id = 'chat88696'
+                           attach: list = None,poki:int|None=None) -> bool:
+        chat_id = self.get_chat_id_by_action(action,poki=poki) #chat_id = 'chat88696'
         if chat_id:
             return self.send_msg_by_chat_id(chat_id, msg,form_dict=form_dict,msg_bold=msg_bold,basement_msg=basement_msg, attach=attach)
         logging.error('[b24-chat]Ошибка отправки сообщения')
         return False
 
-    def send_msg_table_by_action(self, action: str,title:str, tbl: list[dict],chat_id:str|None=None) -> bool:
+    def send_msg_table_by_action(self, action: str,title:str, tbl: list[dict],chat_id:str|None=None,poki:int|None=None) -> bool:
         if chat_id is None:
-            chat_id = self.get_chat_id_by_action(action)
+            chat_id = self.get_chat_id_by_action(action,poki=poki)
         if chat_id:
             return self.send_msg_table(tbl, chat_id, title, bold_title = False  )
         logging.error('[b24-chat]Ошибка отправки сообщения')
@@ -190,12 +191,14 @@ class MessageBuilder:
     def __init__(
             self,
             init_title: str,
-            bold_title: bool = True
+            bold_title: bool = True,
+            poki:int|None = None
     ) -> None:
         if bold_title:
             init_title = f'[B]{init_title}[/B]'
         self.title = init_title
         self.sandwich = []
+        self.poki:int|None = poki
         self.__sender = B24Sender()
 
     def add_table(self,
@@ -228,7 +231,7 @@ class MessageBuilder:
 
     def send_by_action(self, action: str):
         """Отправка сообщения по наименованию action (Все action содержаться в Naryad.db->place_chat_info"""
-        self.__sender.send_msg_by_action(action, self.title, attach=self.sandwich)
+        self.__sender.send_msg_by_action(action, self.title, attach=self.sandwich, poki=self.poki)
 
     def send_by_chat_id(self, chat_id: str):
         """Отправка сообщения по chat_id"""

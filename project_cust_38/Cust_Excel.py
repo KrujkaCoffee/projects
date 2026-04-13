@@ -42,15 +42,9 @@ def spis_listov(wb):
         rez.append(wb.sheets[i].name)
     return rez
 
-def read_file(book,list_name,r1=1,r2='*',c1=1,c2='*'):
+def read_file(book,list_name:str|None=None,r1=1,r2='*',c1=1,c2='*'):
     def lastRC_xlo(ws):
-        max_col_row = 0
-        for col in range(1, ws.max_column + 1):
-            col_letter = get_column_letter(col)
-            col_row = len([cell for cell in ws[col_letter] if cell.value])
-            if max_col_row < col_row:
-                max_col_row = col_row
-        return [max_col_row, ws.max_column]
+        return [ws.max_row, ws.max_column]
 
     def RangeValue(sheet, startRow, endRow, startCol, endCol ):
         rangeSelected = []
@@ -65,7 +59,11 @@ def read_file(book,list_name,r1=1,r2='*',c1=1,c2='*'):
         return rangeSelected
     
     workbook = xlo.load_workbook(book)
+    if list_name is None:
+        names = workbook.sheetnames
+        list_name = names[0]
     worksheet = workbook.get_sheet_by_name(list_name)
+
 
     r,c = lastRC_xlo(worksheet)
     if r2 == '*':
@@ -74,7 +72,6 @@ def read_file(book,list_name,r1=1,r2='*',c1=1,c2='*'):
         c2 = c 
     rez = RangeValue(worksheet, r1,r2,c1,c2)
     #XL.App().visible = True
-
     return rez
 
 

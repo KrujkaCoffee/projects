@@ -28,8 +28,10 @@ class data_app(SingletonMeta):
     project: CFG.ProjectConfig | None = None
     APP_ARGS: dict | None = None
     production_shift: CMS.Production_shifts|None = None
+    user_abstracts:list[dict]=[]#список абстрактов пользователя
     #modules
     table_nar: list[dict]|None = None
     gr_filter_nar: GRM.Filtr_nar|None = None
     gr_prgs_bar:CQT.Cust_progress_bar|None = None
     gr_groups_nar:CMS.Groups_nar|None = None
+    user_compositions:CMS.Compositions|None = None

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import datetime
 import os
@@ -53,9 +53,11 @@ def update_db_info_fields_kpl(self: mywindow):
             else:
                 tbl = ''
                 field = str_name
-            CSQ.custom_request_c(self.db_kplan,
-                                 f"""INSERT INTO info_fields_kpl (table_kpl,name,nickname) VALUES ("{tbl}","{field}","{str_name}");""")
-            result.append(str_name)
+            print(f"table_kpl {tbl}, name {field}, nickname {str_name}")
+            if CSQ.custom_request_c(self.db_kplan,
+                                 f"""INSERT INTO info_fields_kpl (table_kpl,name,nickname) VALUES ("{tbl}","{field}","{str_name}");"""):
+            
+                result.append(str_name)
     if len(result):
         CQT.msgbox(f'Успешно {pprint.pformat(result)}')
     else:
@@ -2510,6 +2512,8 @@ def update_tabels(self: mywindow):
                 И ВидыНоменклатуры.Наименование = "{CFG.Config.place.Имя}");"""
         key, data_rez = APIERP.get_wet_request(wet_req_text,lazy_method_huours=2)
         if key != 200:
+            if not CFG.Config.user_config.is_developer:
+                self.ui.tabWidget.setCurrentIndex(self.START_TAB_IND)
             CQT.msgbox(f'Ошибка получения данных код ({key}) из ERP')
             return
         self.DICT_plan_erp_nomen_refs = F.deploy_dict_c(data_rez['data'] , 'Ref_Key')
@@ -4624,10 +4628,9 @@ class Сomparison_fields_vs_db():
         return kpls
 
     @CQT.onerror
-    def reload_fields_from_db(self)->tuple[bool,dict]:
+    def reload_fields_from_db(self) -> tuple[bool, dict]:
         def norm(v):
             return '' if v is None else str(v)
-
 
         rez = dict()
         suc_iter = False
@@ -4670,9 +4673,6 @@ class Сomparison_fields_vs_db():
                                           'Было':old_val,
                                           'Стало':new_val})
         return suc_iter,rez
-
-
-
 
 
 
@@ -4765,7 +4765,8 @@ def load_db(self: mywindow, pnom=False, only_hat=False,use_groups=False):
             if use_groups:
                 list_conf = move_gr_field(list_conf,use_groups)
         for i in range(len(list_conf[0])):
-            if list_conf[1][i]:
+            field_credentials = self.Data_plan.DICT_INFO_FIELDS_KPL.get(list_conf[0][i]) or {} # 23.03.2026
+            if list_conf[1][i] or field_credentials.get('is_system'):
                 alias = f'{list_conf[0][i]} as "{list_conf[0][i]}"'
                 if alias in dict_inner:
                     alias = dict_inner[alias] #25.11.25
@@ -5163,9 +5164,8 @@ def load_table_db(self, hook_prog_bar=None):
                     tbl.cellWidget(i, j).deleteLater()
                     CQT.add_label_link(tbl, i, j, res_code, res_code, fcn_pred_spec_erp, self)
 
-
-        self.ui.tbl_kal_pl.setColumnHidden(nk_local_graf, True)
-
+        if nk_local_graf:
+            self.ui.tbl_kal_pl.setColumnHidden(nk_local_graf, True)
 
         if nk_nom_pr != None:
             for i in range(tbl.rowCount()):
@@ -5176,7 +5176,6 @@ def load_table_db(self, hook_prog_bar=None):
                     pass
                 CQT.set_color_wtab_c(tbl, i, nk_pseudo, r, g, b)
                 CQT.font_cell_size_format(tbl, i, nk_nom_pr, underline=True)
-
         if nk_pkk != None:
             for i in range(tbl.rowCount()):
                 if not tbl.item(i, nk_pkk) == None:
@@ -5206,21 +5205,19 @@ def load_table_db(self, hook_prog_bar=None):
                         pred_spec_erp_name = '...'
                     CQT.add_label_link(tbl, i, nk_pred_spec_erp, pred_spec_erp_name, pred_spec_erp_name, fcn_pred_spec_erp, self)
 
-
         if nk_mk != None:
             for i in range(tbl.rowCount()):
                 if tbl.item(i, nk_mk):
                     mk = tbl.item(i, nk_mk).text()
                     if mk == '0':
                         CQT.set_color_wtab_c(tbl, i, nk_mk, 206, 128, 128)
-
         if self.ui.chk_paint_dates.isChecked():
             dict_nkpl_for_paint = dict()
             dict_pairs_fields = {
                 name + '.' + _['Имя_начала_этапа']: name + '.' + _['Имя_начала_этапа'].replace('Пдата',
                                                                                                'Фдата').replace(
                     'ПДата', 'ФДата') for name, _ in
-                self.Data_plan.DICT_PODR.items() if _['Имя_начала_этапа'] != ''}
+                self.Data_plan.DICT_PODR.items() if _['Имя_начала_этапа'] != '' and _['Имя_начала_этапа'] is not None}
             list_dicts_tbl = CQT.list_from_wtabl_c(tbl, rez_dict=True)
             if list_dicts_tbl:
                 for i, item in enumerate(list_dicts_tbl):
@@ -5236,12 +5233,13 @@ def load_table_db(self, hook_prog_bar=None):
                                             dict_nkpl_for_paint[i] = []
                                         dict_nkpl_for_paint[i].append(j)
             clr_bad = CMS.Color_tbl(10)
-            for i_row, list_fields in dict_nkpl_for_paint.items():
-                if nk_nom_pr != None:
-                    CQT.set_color_wtab_c(tbl, i_row, nk_nom_pr, clr_bad.r, clr_bad.g, clr_bad.b)
-                CQT.set_color_wtab_c(tbl, i_row, nk_s_num, clr_bad.r, clr_bad.g, clr_bad.b)
-                for field in list_fields:
-                    CQT.set_color_wtab_c(tbl, i_row, field, clr_bad.r, clr_bad.g, clr_bad.b)
+            with CQT.table_updating(tbl): #02.04.2026
+                for i_row, list_fields in dict_nkpl_for_paint.items():
+                    if nk_nom_pr != None:
+                        CQT.set_color_wtab_c(tbl, i_row, nk_nom_pr, clr_bad.r, clr_bad.g, clr_bad.b)
+                    CQT.set_color_wtab_c(tbl, i_row, nk_s_num, clr_bad.r, clr_bad.g, clr_bad.b)
+                    for field in list_fields:
+                        CQT.set_color_wtab_c(tbl, i_row, field, clr_bad.r, clr_bad.g, clr_bad.b)
 
     debug = False
     hook_prog_bar.open()
@@ -5262,12 +5260,10 @@ def load_table_db(self, hook_prog_bar=None):
     hook_prog_bar.set(20)
     hook_prog_bar.text("Применение прав")
     for i, name_field in enumerate(list_from_db[0]):
-        if name_field not in self.Data_plan.DICT_INFO_FIELDS_KPL:
-            CQT.msgbox(f'Необходимо сформировать правила редактирования поля в БД info_fields_kpl')
-            return
-        if self.Data_plan.DICT_INFO_FIELDS_KPL[name_field]['hand_editable'] == 1:
-            if CMS.access_kpl_tbl(self.Data_plan.DICT_INFO_FIELDS_KPL, name_field):
-                editeble_col_nomera.append(name_field)
+        if name_field in self.Data_plan.DICT_INFO_FIELDS_KPL:
+            if self.Data_plan.DICT_INFO_FIELDS_KPL[name_field]['hand_editable'] == 1:
+                if CMS.access_kpl_tbl(self.Data_plan.DICT_INFO_FIELDS_KPL, name_field):
+                    editeble_col_nomera.append(name_field)
         hook_prog_bar.set(20 + round(i / len(list_from_db[0]) * 10))
     hook_prog_bar.text("Заполнение данными")
     @CQT.onerror

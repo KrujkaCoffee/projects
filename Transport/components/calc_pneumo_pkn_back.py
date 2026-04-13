@@ -36,7 +36,7 @@ class Cust_module_params:
         self.ver_tbls_data = 1
         self.input_tbl_editbl: Table_data | None = None
         self.output_tbl: Table_data | None = None
-        self.filtr_seach_history: str = None
+        self.filtr_seach_history: str = ""
 
 
 TBL_INPUT = Table_data()
@@ -217,6 +217,69 @@ def clean_unicode(string):
     if not isinstance(string, str): return ''
     return ''.join(symbol for symbol in string if not (0x2790 <= ord(symbol) <= 0x27BF))
 
+def _clone_table_for_history(table_data: CMF.Table_data | None) -> CMF.Table_data | None:
+    if table_data is None:
+        return None
+
+    cloned = CMF.Table_data()
+    for field in table_data.list_fields:
+        cloned.append_column_desc(
+            name=field.name,
+            header=field.header,
+            hidden=field.hidden,
+            editable=field.editable,
+            width=field.width,
+            unique=field.unique,
+        )
+
+    cloned.name = table_data.name
+
+    for src_row in table_data.rows:
+        row = CMF.Row_data(merge=getattr(src_row, "merge", False))
+        row.group_name = getattr(src_row, "group_name", None)
+        row.table_header = getattr(src_row, "table_header", False)
+
+        for src_cell in src_row.cells:
+            desc = CMF.Cell_description(
+                min_max_list=copy.deepcopy(src_cell.description.min_max_list),
+                accuracy=src_cell.description.accuracy,
+                comment=copy.deepcopy(src_cell.description.comment),
+                data_type=src_cell.description.data_type,
+                default_val=copy.deepcopy(src_cell.description.default_val),
+            )
+            row.append(copy.deepcopy(src_cell.val), desc)
+
+        cloned.add_row(row)
+        cloned.rows[-1].group_name = getattr(src_row, "group_name", None)
+        cloned.rows[-1].table_header = getattr(src_row, "table_header", False)
+
+    return cloned
+
+
+def save_in_db(e: ft.ControlEvent, name: str):
+    Data: DTCLS.Data_page = e.page.data
+    module_data: Cust_module_params = Data.Data_module.cust_data
+
+    input_tbl = _clone_table_for_history(getattr(module_data, "input_tbl_editbl", None))
+    output_tbl = _clone_table_for_history(getattr(module_data, "output_tbl", None))
+    if input_tbl is None or output_tbl is None:
+        return False
+
+    data_save = {
+        "ver": module_data.ver_tbls_data,
+        "input_tbl": input_tbl,
+        "output_tbl": output_tbl,
+    }
+    row = [F.now(), name, Data.Data_user.login or "", F.to_binary_pickle(data_save)]
+    try:
+        return CSQ.custom_request_c(
+            Data.Data_user.db_flet,
+            f"""INSERT INTO pneumo_pkn_history (date, name, login, data) VALUES ({CSQ.questions_for_mask(row)})""",
+            list_of_lists_c=[row],
+        )
+    except Exception:
+        return False
+
 def save_word(list_dict_rez_input: list, list_dict_rez_output: list, name: str, dir_save: str, name_module: str) -> str | bool:
     list_dict_rez_input = [{clean_unicode(k): clean_unicode(v) for k, v in _.items() if k != 'Имя'} for _ in list_dict_rez_input]
     list_dict_rez_output = [{clean_unicode(k): clean_unicode(v) for k, v in _.items() if k != 'Имя'} for _ in list_dict_rez_output]
@@ -231,33 +294,40 @@ def save_word(list_dict_rez_input: list, list_dict_rez_output: list, name: str, 
     return rez
 
 def load_from_db_history_calc(Data: DTCLS.Data_page, s_num: int) -> (CMF.Table_data, CMF.Table_data):
-    data = CSQ.custom_request_c(Data.Data_user.db_flet, f"""SELECT data FROM
-                        pneumo_pkn_history WHERE s_num == {s_num}""", one=True, one_column=True, hat_c=False)
+    data = CSQ.custom_request_c(
+        Data.Data_user.db_flet,
+        f"""SELECT data FROM pneumo_pkn_history WHERE s_num == {int(s_num)}""",
+        one=True,
+        one_column=True,
+        hat_c=False,
+    )
     if not data:
         return False
     data_obj = F.from_binary_pickle(data)
-    ver = data_obj['ver']
-    input_tbl = data_obj['input_tbl']
-    output_tbl = data_obj['output_tbl']
-    return input_tbl, output_tbl
+    return data_obj.get("input_tbl"), data_obj.get("output_tbl")
 
 def make_history_tbl_data(Data: DTCLS.Data_page):
-    TBL_HISTORY_TMP = copy.deepcopy(TBL_HISTORY)
-    if Data.Data_module.cust_data.filtr_seach_history == "":
-        where = ''
-    else:
-        where = f'and name like "%{Data.Data_module.cust_data.filtr_seach_history}%"'
-    list_calcs = CSQ.custom_request_c(Data.Data_user.db_flet,
-                                      f"""SELECT * FROM pneumo_pkn_history WHERE login = '{Data.Data_user.login}' {where} LIMIT 20;""",
-                                      rez_dict=True)
+    tbl_history_tmp = copy.deepcopy(TBL_HISTORY)
+    filter_value = str(getattr(Data.Data_module.cust_data, "filtr_seach_history", "") or "").strip()
+    where = "" if filter_value == "" else f'and name like "%{filter_value}%"'
+
+    try:
+        list_calcs = CSQ.custom_request_c(
+            Data.Data_user.db_flet,
+            f"""SELECT * FROM pneumo_pkn_history WHERE login = '{Data.Data_user.login}' {where} ORDER BY s_num DESC LIMIT 20;""",
+            rez_dict=True,
+        )
+    except Exception:
+        list_calcs = []
+
     for calc in list_calcs:
         row = CMF.Row_data()
-        row.append(calc['s_num'], CMF.Cell_description())
-        row.append(calc['date'], CMF.Cell_description())
-        row.append(calc['name'], CMF.Cell_description())
-        TBL_HISTORY_TMP.add_row(row)
+        row.append(calc.get('s_num'), CMF.Cell_description())
+        row.append(calc.get('date'), CMF.Cell_description())
+        row.append(calc.get('name'), CMF.Cell_description())
+        tbl_history_tmp.add_row(row)
 
-    return TBL_HISTORY_TMP
+    return tbl_history_tmp
 
 def validate_inputs(raw: dict[str, Any]) -> list[dict[str, Any]]:
     errors: list[dict[str, Any]] = []

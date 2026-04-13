@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING
 import copy
 import re
 
@@ -6,7 +8,9 @@ from PyQt5 import QtWidgets
 import project_cust_38.Cust_Qt as CQT
 import project_cust_38.Cust_SQLite as CSQ
 import project_cust_38.Cust_Functions as F
-
+import project_cust_38.Cust_mes as CMS
+if TYPE_CHECKING:
+    from TehKart import mywindow
 #+++20.06.25 ( по задаче 100055627 )
 class PreviewMaterials:
     INDEX_OPERATION_NAME = 0
@@ -173,8 +177,8 @@ def magazin_up(self):
     load_magaz(self,spis)
     tbl.setCurrentCell(cur_row - 2, 2)
 
-
-def magazin_primenit(self):
+@CQT.onerror
+def magazin_primenit(self:mywindow,*args):
     len_msg = 45
     tab = '    '
     tbl = self.ui.tbl_magaz
@@ -188,38 +192,37 @@ def magazin_primenit(self):
         CQT.msgbox('Не выбраны блоки')
         return
     conn, cur = CSQ.connect_bd(self.putf_magaz)
-    if len(list_check) == 1:
-        custom_request_c = f'''
-                                        SELECT Пномер, Запись FROM blocks
-                                        WHERE Пномер = {list_check[0]} AND poki = {self.place.poki}; '''
-    else:
-        custom_request_c = f'''
+
+    custom_request_c = f'''
                                 SELECT Пномер, Запись FROM blocks
-                                WHERE Пномер IN {tuple(list_check)} AND poki = {self.place.poki}; '''
-    query = CSQ.custom_request_c('', custom_request_c, conn)
+                                WHERE Пномер IN ({CSQ.prepare_list_to_tuple(list_check)}) AND poki = {self.place.poki}; '''
+    query = CSQ.custom_request_c('', custom_request_c, conn,rez_dict=True)
     CSQ.close_bd(conn)
-    spis = []
+    if query:
+        query = F.deploy_dict_c(query,'Пномер')
+    else:
+        return
+    spis = []#TODO
     front_spis = []
-    table_data = []
-    for k in range(len(list_check)):
-        for i in range(1, len(query)):
-            if query[i][0] == list_check[k]:
-                tmp = query[i][1].split('@')
-                for j in tmp:
-                    spis.append(j.split('|'))
-                    ur = int(spis[-1][20])
-                    if len(j) > len_msg:
-                        front_spis.append(tab * ur + j[:len_msg] + '...')
-                    else:
-                        front_spis.append(tab * ur + j)
-                    ##
-                    table_data.append({
 
-                    })
+    for s_num in list_check:
+        if s_num in query:
+            list_str_data = query[s_num].split('@')
+            spis.extend([_.split('|') for _ in list_str_data])
+            tk_ = ['' for _ in range(10)]
+            tk_.extend(list_str_data)
+            tk_obj = CMS.Techkards(tk_, DICT_PROFESSIONS=self.DICT_PROFESSIONS,DICT_OP_NAME=self.DICT_OPERS)
+            active_tk = tk_obj.active_tk
 
-                break
-    frase = "\n".join(front_spis)
-    rez = CQT.msgboxgYN(f'Подтверждаешь применение к ТК, блоков?:\n{frase}')
+            front_spis.append({'Наименование':active_tk.template()})
+            for oper in active_tk.opers:
+                front_spis.append({'Наименование': oper.template()})
+                for mat in oper.materials:
+                    front_spis.append({'Наименование': mat.template()})
+                for ph in oper.perehs:
+                    front_spis.append({ 'Наименование': ph.template()})
+
+    rez = CQT.msgboxg_get_table(self,f'Применить к ТК, блоки?',front_spis,styleSheet=CQT.MES_CSS,yesNoMode=True)
     if rez == False:
         return
 

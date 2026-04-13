@@ -5,13 +5,28 @@ import project_cust_38.Cust_Functions as F
 import project_cust_38.Cust_mes as CMS
 import project_cust_38.Cust_SQLite as CSQ
 from project_cust_38 import Cust_config as CFG
-
+from project_cust_38 import Cust_emoji as CEMOJ
+from app_dataclasses import data_app as DTCLS
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from vipoln import mywindow
 
+class State_nar():
+    def __init__(self,name,descr,emoj):
+        self.name:str = name
+        self.descr:str = descr
+        self.emoj:str = emoj
+
+    def as_str(self):
+        return f'{self.emoj} {self.descr}'
+
+
+class States_nar():
+    new:State_nar = State_nar('new',"Новый",CEMOJ.СтатусыПроизводства.selected.symbol)
+    started:State_nar = State_nar("started","В работе",CEMOJ.СтатусыПроизводства.running.symbol)
+    pause:State_nar = State_nar("pause","На паузе",CEMOJ.СтатусыПроизводства.progress.symbol)
 class Naryad_info():
-    def __init__(self, parent_self:mywindow, row_data:dict[str,str]):
+    def __init__(self, parent_self:mywindow, row_data:dict[str,str|CMS.Composition]):
         self.parent:mywindow = parent_self
         self._nom_nar:int|None = None
         self.nom_nar:int|str|None = row_data['Пномер']
@@ -26,11 +41,44 @@ class Naryad_info():
         self.fio2:None|str = row_data['ФИО2']
         self._zadanie_wet:None|str = row_data['Задание']
         self.zadanie:None|str = self._zadanie_wet.replace('LF', '\n')
+        self.composition:None|CMS.Composition = row_data['composition']
+        self._jur:CMS.Jurnal_nar|None=None
+        self.calc_obj_jur()
+        self.state:State_nar|None = None
+        self.calc_state()
+
+        if self.composition:
+            self.group_id = ''
+            self.group = ''
     @property
     def nom_nar(self):
         if self._nom_nar is None:
             return '-'
         return self._nom_nar
+
+    def calc_obj_jur(self):
+        absts = DTCLS.user_abstracts
+        fio_fix = CFG.Config.user_config.User.ФИО
+        for abst in absts:
+            if abst["ФИО"] in (self.fio,self.fio2):
+                fio_fix = abst["ФИО"]
+        self._jur = CMS.Jurnal_nar(CFG.Config.project.db_naryad, self._nom_nar, fio_fix)
+
+
+    def calc_state(self):
+        if not self._jur.rows:
+            self.state =States_nar.new
+            return
+        if self.is_unclosed:
+            self.state = States_nar.started
+            return
+        self.state = States_nar.pause
+
+    @property
+    def is_unclosed(self)->bool:
+        if self._jur.is_fregments_unclose():
+            return True
+        return False
 
     @property
     def mk(self):
@@ -54,9 +102,14 @@ class Naryad_info():
 
     def fill_tbl(self):
         tbl = self.parent.ui.tbl_descr_nar
+        gr_comp_data =  {"Параметр":'Группа', 'Значение':self.group}
+        if self.composition:
+            gr_comp_data =  {"Параметр":'Раскрой', 'Значение':self.composition.emo_name}
+        state = self.state.as_str()
         data = [
             {"Параметр":'Наряд', 'Значение':self.nom_nar},
-            {"Параметр":'Группа', 'Значение':self.group},
+            {"Параметр":'Статус','Значение':state},
+            gr_comp_data,
             {"Параметр":'Создан', 'Значение':self.sozdan},
             {"Параметр":'Проект', 'Значение':self.proj},
             {"Параметр":'Заказ', 'Значение':self.zp},
@@ -65,6 +118,7 @@ class Naryad_info():
             {"Параметр":'Исполнитель 1', 'Значение':self.fio},
             {"Параметр":'Исполнитель 2', 'Значение':self.fio2},
         ]
+
         with CQT.table_updating(tbl):
             CQT.fill_wtabl(data,tbl,set_editeble_col_nomera={},hide_head_column=True,hide_head_rows=True,
                            styleSheet=CQT.MES_CSS,ogr_maxshir_kol=500,font_size=12)

@@ -185,6 +185,9 @@ class OperationDocs:
             CQT.msgbox("Файл прикреплен успешно")
             sp_soh = self.window.save_tk()
         except Exception as e:
+            print(e)
+            import traceback
+            traceback.print_exc()
             CQT.msgbox("Не удалось сохранить файл после прикрепления")
             return
         sp_tree = []

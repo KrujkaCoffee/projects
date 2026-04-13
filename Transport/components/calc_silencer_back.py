@@ -152,7 +152,6 @@ def prepare_calc_new_data(data: list[dict], Data: DTCLS.Data_page) -> tuple[dict
     data_params = Data.Data_module.cust_data.input_tbl_editbl.to_dict_by_unique()
     calculated, errors, success = calc_new_data({k: v['val'] for k, v in data_params.items()})
     return calculated, errors, success
-    # F.save_file_pickle('test_data_params.pickle',{_['Имя']:F.valm(_['Значение']) for _ in data})
 
 
 def generate_rez_tbl(e: ft.ControlEvent, tbl: ft.DataTable, ref_out, fnc_cell_click=None) -> bool | None:
@@ -201,15 +200,6 @@ def make_res_tbl(data: dict, ref_out=None, fnc_cell_click=None) -> CMF.Table_dat
     new_tbl_output.add_table_name(F.get_time_shtamp_c(), 'Расчетные данные:')
 
     list_groups = [group for group, is_view in GROUPS.items() if is_view]
-    # list_groups = []
-    # for key, _ in OUTPUT_PARAMS.items():
-    #     if key not in data:
-    #         continue
-    #     group = ''
-    #     if 'group_name' in _:
-    #         group = _['group_name']
-    #     if _['group_name'] not in list_groups:
-    #         list_groups.append(group)
 
     list_groups = sorted(list_groups)
     for group in list_groups:
@@ -394,7 +384,7 @@ def make_history_tbl_data(Data: DTCLS.Data_page):
     else:
         where = f'and name like "%{Data.Data_module.cust_data.filtr_seach_history}%"'
     list_calcs = CSQ.custom_request_c(Data.Data_user.db_flet,
-                                      f"""SELECT * FROM silencer_history WHERE ip = '{Data.Data_user.ip}' {where} LIMIT 20;""",
+                                      f"""SELECT * FROM silencer_history WHERE login = '{Data.Data_user.login}' {where} LIMIT 20;""",
                                       rez_dict=True)
     for calc in list_calcs:
         row = CMF.Row_data()
@@ -413,11 +403,11 @@ def save_in_db(e: ft.ControlEvent, name: str):
         return False
     data_save = {'ver': Module_data.ver_tbls_data, 'input_tbl': Module_data.input_tbl_not_editbl,
                  'output_tbl': Module_data.output_tbl}
-    row = [F.now(), name, Data.Data_user.ip, F.to_binary_pickle(data_save)]
+    row = [F.now(), name, Data.Data_user.login, F.to_binary_pickle(data_save)]
     rez = CSQ.custom_request_c(Data.Data_user.db_flet, f"""INSERT INTO silencer_history 
                         (date, 
                             name, 
-                            ip, 
+                            login, 
                             data)
                               VALUES ({CSQ.questions_for_mask(row)})""", list_of_lists_c=[row])
     return rez

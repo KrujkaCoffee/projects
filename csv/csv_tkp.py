@@ -17,11 +17,11 @@ import project_cust_38.Cust_mes as CMS
 from data_class import Data_mes
 import analogues_tree as ANAL
 import tkp
-
+from functools import partial
 
 CQT.convert_UI_into_PY_c()
 cfg = config.Config(r'Config\CFG.cfg')
-F.test_path()
+
 #class mywindow2(QtWidgets.QDialog):  # диалоговое окно
 #    def __init__(self,parent=None,item_o="",p1=0,p2=0):
 #        self.item_o = item_o
@@ -43,21 +43,21 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
         self.setFocusPolicy(QtCore.Qt.StrongFocus)
-        def qwe(self, column, *args, **kwargs):
-            text = self.ui.tbl_red_tree.horizontalHeaderItem(column).text()
-            return
-        self.ui.tbl_red_tree.setColumnHidden = lambda *args, **kwargs: qwe(self, *args, **kwargs)
         self.versia = '0.2.3.7'
         self.setWindowTitle(f"Создание CSV/ВО v{self.versia}")
         #pyinstaller.exe --onefile --icon=1.ico --noconsole csv_tkp.py
 
-        CQT.connect_to_resize(self, CMS.tmp_dir())
+
         #h = ctypes.windll.user32.GetSystemMetrics(1)-75
         #w = round(ctypes.windll.user32.GetSystemMetrics(0)/2)
         #self.setGeometry(0,0,w,h)
         self.params = None
+        self.edit_cr_mk:set = set()
 
-        self.Data_mes = Data_mes
+        self.Data_plan = self.Data_mes = Data_mes
+
+        self.Data_mes.app_self = self
+
 
         tkp.load_list_params(self)
         list_dse = [['Чек', 'Узел', 'Кол-во','Корневой']]
@@ -98,11 +98,12 @@ class mywindow(QtWidgets.QMainWindow):
             self.ui.tbl_anal_mat_filtr.horizontalScrollBar().setValue)
         self.ui.tbl_anal_mat.clicked.connect(lambda: ANAL.click_row_mat(self))
         self.ui.tbl_red_tree.clicked.connect(lambda: ANAL.click_row_strukt(self))
-        self.ui.tbl_red_tree.cellChanged[int,int].connect(lambda: ANAL.recalc_weight(self))
+        self.ui.tbl_red_tree.cellChanged[int,int].connect(lambda: ANAL.on_tree_changed(self))
+        # self.ui.tbl_red_tree.cellChanged[int,int].connect(lambda: ANAL.recalc_weight(self))
         self.ui.tbl_red_tree.itemSelectionChanged.connect(lambda *_: self.calculation.item_selection())
-        self.ui.tbl_red_tree.horizontalHeader().sectionResized.connect(lambda i,j,k: CMS.on_section_resized(self,i,j,k))
-        self.ui.tbl_red_tree.cellChanged[int, int].connect(lambda row, col: ANAL.accumulate_tree_mass(self, row=row, col=col))
-        self.ui.tbl_red_tree.cellChanged[int, int].connect(lambda row, col: ANAL.fill_tab_to_level(self.ui.tbl_red_tree))
+
+        # self.ui.tbl_red_tree.cellChanged[int, int].connect(lambda row, col: ANAL.accumulate_tree_mass(self, row=row, col=col))
+        # self.ui.tbl_red_tree.cellChanged[int, int].connect(lambda row, col: ANAL.fill_tab_to_level(self.ui.tbl_red_tree))
         #========lineedit
         self.ui.le_udk_len.textEdited.connect(lambda: ANAL.calc_udk(self))
         self.ui.le_udk_len_a.textEdited.connect(lambda: ANAL.calc_udk(self))
@@ -141,7 +142,7 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.btn_get_knot.clicked.connect(lambda: ANAL.get_knot(self))
         self.ui.btn_plus_lvl.clicked.connect(lambda: ANAL.change_lvl(self, operator.add))
         self.ui.btn_minus_lvl.clicked.connect(lambda: ANAL.change_lvl(self, operator.sub))
-        self.ui.btn_red_tree_clear.clicked.connect(lambda: ANAL.prepare_tbl_red_stukt(self))
+        self.ui.btn_red_tree_clear.clicked.connect(lambda: ANAL.clear_tbl_red_stukt(self))
         self.ui.btn_red_tree_del_knot.clicked.connect(lambda: ANAL.red_tree_del_knot(self))
         self.ui.btn_red_tree_save.clicked.connect(lambda: ANAL.red_tree_save(self))
         self.ui.btn_red_tree_load.clicked.connect(lambda: ANAL.red_tree_load(self))
@@ -193,7 +194,8 @@ class mywindow(QtWidgets.QMainWindow):
         CQT.load_css(self)
         CQT.load_icons(self)
         ANAL.clear_add_info(self)
-        self.Data_plan = Data_mes()
+        CQT.connect_to_resize(self, CMS.tmp_dir())
+        CQT.load_resize_splitters(self,CQT.qt_tmp_dir())
 
     def anal_dse_dbl_clk(self,r,c):
         if c == CQT.num_col_by_name_c(self.ui.tbl_anal_dse,'Путь_docs'):
@@ -224,19 +226,28 @@ class mywindow(QtWidgets.QMainWindow):
             date_res=data_res
         )
 
+    def ensure_header_connected(self):
+        header = self.ui.tbl_red_tree.horizontalHeader()
+        # import inspect
+        # f = [name for name, val in inspect.getmembers(header) if type(val).__name__ == 'pyqtBoundSignal']
+        header.sectionResized.connect(
+            partial(CQT.on_section_resized, self, CMS.tmp_dir(),self.ui.tbl_red_tree)
+        )
+
     @CQT.onerror
     def tab_clcik(self,num_tab):
+        tbl = self.ui.tbl_red_tree
+        print(id(tbl.horizontalHeader()))
         if self.ui.tabWidget.tabText(num_tab) == 'Список ТКП':
             data = ['По умолчанию'] + [str(datetime.now().year - num) for num in range(3)]
+            self.ui.cmb_select_year.blockSignals(True)#
             self.ui.cmb_select_year.clear()
             self.ui.cmb_select_year.addItems(data)
-            CMS.load_tkp_list(
-                self,
-                self.Data_mes.db_dse,
-                self.Data_mes.DICT_NAME_SQL['tkp'],
-                self.ui.tbl_list_tkp,
-                self.ui.tbl_list_tkp_filtr,
-            )
+            self.ui.cmb_select_year.blockSignals(False)  #
+            self.on_cmb_select_year_changed('По умолчанию')
+
+        if self.ui.tabWidget.tabText(num_tab) == 'Структура':
+            self.ensure_header_connected()
 
 
     @CQT.onerror

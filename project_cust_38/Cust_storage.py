@@ -1,5 +1,6 @@
 import hashlib
 import os
+import pathlib # 26.03.2026
 import pprint
 import shutil
 from dataclasses import dataclass
@@ -293,6 +294,7 @@ class FileStorage(BaseStorage):
             if docs_manager.is_docs_reference(filename):
                 content = docs_manager.load_docs_file(filename, nn)
                 put_file_tmp = os.path.join(destination_dir, new_name) #17.11.25 fix filename
+                pathlib.Path(put_file_tmp).parent.mkdir(parents=True, exist_ok=True) # 26.03.2026
                 F.save_binary_convert_to_file(content.binary_content, put_file_tmp)
             else:
                 if not self.get_file_by_name(filename, put_file_tmp):

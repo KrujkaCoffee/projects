@@ -177,25 +177,29 @@ class mywindow(QtWidgets.QMainWindow):
 
         #++24.12.2025
         # ================== UNSAVED CHANGES GUARD (Создание МК) ==================
-        self._mk_dirty = CQT.DirtyState(self)
-        self._mk_dirty.watch_table_widget(self.ui.table_razr_MK)     # таблица разработки МК
-        self._mk_dirty.watch_table_widget(self.ui.table_zayavk)      # таблица из XML
-        self._mk_dirty.watch_line_edit(self.ui.lineEdit_ves)         # вес
-        self._mk_dirty.watch_combo_box(self.ui.comboBox_napravlenia, user_only=True)
-        self._mk_dirty.watch_combo_box(self.ui.comboBox_sort_c, user_only=True)
+        try:
+            self._mk_dirty = CQT.DirtyState(self)
+            self._mk_dirty.watch_table_widget(self.ui.table_razr_MK)     # таблица разработки МК
+            self._mk_dirty.watch_table_widget(self.ui.table_zayavk)      # таблица из XML
+            self._mk_dirty.watch_line_edit(self.ui.lineEdit_ves)         # вес
+            self._mk_dirty.watch_combo_box(self.ui.comboBox_napravlenia, user_only=True)
+            self._mk_dirty.watch_combo_box(self.ui.comboBox_sort_c, user_only=True)
 
-        self._mk_tab_guard = CQT.TabLeaveGuard(
-            self.ui.tabWidget,
-            is_dirty=self._mk_dirty.is_dirty,
-            discard=self._discard_create_mk_changes,
-            from_tabs={"Создание МК"},
-            allowed_tabs={"Номенклатура", "Брак", "Просмотр структуры"},
-            message="Вы покидаете вкладку «Создание МК» не сохранив данные.\nПри подтверждении данные будут очищены\nВы уверены что хотите покинуть вкладку?",
-            title="Несохраненные данные",
-            sub_tubs={self.ui.tabWidget_2},
-            forbidden_sub_tubs={'ТКП'},
-        )
-        self._mk_dirty.mark_clean()
+            self._mk_tab_guard = CQT.TabLeaveGuard(
+                self.ui.tabWidget,
+                is_dirty=self._mk_dirty.is_dirty,
+                discard=self._discard_create_mk_changes,
+                from_tabs={"Создание МК"},
+                allowed_tabs={"Номенклатура", "Брак", "Просмотр структуры"},
+                message="Вы покидаете вкладку «Создание МК» не сохранив данные.\nПри подтверждении данные будут очищены\nВы уверены что хотите покинуть вкладку?",
+                title="Несохраненные данные",
+                sub_tubs={self.ui.tabWidget_2},
+                forbidden_sub_tubs={'ТКП'},
+            )
+            self._mk_dirty.mark_clean()
+        except:
+            print('err self._mk_dirty = CQT.DirtyState(self)')
+            pass
         # ========================================================================
         #--24.12.25
 
@@ -1672,7 +1676,9 @@ class mywindow(QtWidgets.QMainWindow):
     SELECT plan.Пномер AS КПЛ, пл_топ.Вид, пл_топ.Отв_технолог
     FROM пл_топ 
     INNER JOIN plan ON plan.Пномер = пл_топ.НомПл 
-    WHERE пл_топ.Вид = 1 AND DATE(plan.Дата_внесения) >= DATE("2023-08-01") and plan.Статус IN (1,2,3,7) and plan.poki = {self.place.poki}"""
+    WHERE 
+        пл_топ.Предв_структура_путь != '' AND пл_топ.Предв_структура_путь IS NOT NULL AND
+        пл_топ.Вид = 1 AND DATE(plan.Дата_внесения) >= DATE("2023-08-01") and plan.Статус IN (1,2,3,7) and plan.poki = {self.place.poki}"""
             result = CSQ.custom_request_c(USRCNF.Config.project.db_kplan, query, rez_dict=True)
             if result:
                 CQT.msgboxg_get_table_ok_inf(
@@ -2632,11 +2638,11 @@ class mywindow(QtWidgets.QMainWindow):
                         = ('{now}', '{now}') where НомПл == {nom_pl}""")
             tbl.item(tbl.currentRow(), nk_date_etap).setText(now)
             obj_msg = CMS.Msg_b24(self.db_kplan, self.bd_naryad, self.db_resxml, self.db_users, nom_pl)
+            obj_msg.add_erp_info()
             old_str = F.dateStrToStr(val_date,format_out="%d.%m.%Y", onerror='')
             now_str = F.dateStrToStr(now,format_out="%d.%m.%Y", onerror='')
             obj_msg.send_msg('upd_fdate_res_erp',additional_str=f'\n    было: {old_str}\n    стало: {now_str}')
             CQT.msgbox(f'Успешно')
-
         pass
 
     def raschet_etapa(self, fio):

@@ -1,5 +1,3 @@
 @echo off
 echo %cd%
-cd  /d "Z:\Mkarti\embed\"
-echo %cd%
-Z:\Setup\py\python.exe mini_git.py
+Z:\Setup\py\python.exe Z:\Setup\mini_git.py --srv-app-path=%cd%

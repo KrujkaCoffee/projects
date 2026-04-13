@@ -67,34 +67,35 @@ async def apply_page_settings(page: ft.Page, MODULE: DTCLS.ModuleCfg):
     Data.Data_module.cust_data = blower_back.Cust_module_params()
 
 
-def show_msgbox_err(e):
-    CMF.msgbox(
-        e,
-        msg="Операция не выполнена",
-        btn0_name="Закрыть",
-        icon="WARNING",
-        fontsize=14,
-        title="Ошибка",
-        time_life=3,
-    )
-
-
 def save_word(e: ft.ControlEvent):
     Data: DTCLS.Data_page = e.page.data
     cfg_module: DTCLS.ModuleCfg = Data.Data_module
-    name = _header_input_panel_textfield_ref.current.value
+    name = (_header_input_panel_textfield_ref.current.value or "").strip()
+    if not name:
+        name = blower_back.get_name_new_calc()
+        _header_input_panel_textfield_ref.current.value = name
     rezult_data_for_save = blower_back.generate_rezult_data_for_save(name, _input_tabe_ref.current,
                                                                             _output_tabe_ref.current)
     rez = blower_back.save_word(rezult_data_for_save['input'], rezult_data_for_save['output'],
                                        rezult_data_for_save['name'], cfg_module.sub_dir, cfg_module.name)
     if not rez:
-        show_msgbox_err(e)
-        return
+        CMF.message_dialog(
+            e.page,
+            body_icon=ft.Icons.ERROR,
+            title="Ошибка",
+            message="Не удалось сохранить документ word"
+        )
     else:
-        # if not blower_back.save_in_db(e, name):
-        #     return
+        if not blower_back.save_in_db(e, name):
+            CMF.message_dialog(
+                e.page,
+                body_icon=ft.Icons.ERROR,
+                title="Ошибка",
+                message="Ошибка во время сохранения отчета в истории"
+            )
+            return e
         CMF.dialog_save_file(e, rez)
-        return
+    return e
 
 def gen_page(page: ft.Page | DummyEvent):
     Data: DTCLS.Data_page = page.data
@@ -237,7 +238,7 @@ def gen_page(page: ft.Page | DummyEvent):
                 ft.VerticalDivider(width=2),
                 ft.Column(
                     controls=[],
-                    # alignment=ft.MainAxisAlignment.START,
+                    alignment=ft.MainAxisAlignment.START,
                     horizontal_alignment=ft.CrossAxisAlignment.START,
                     scroll=ft.ScrollMode.ALWAYS,
                     expand=True,
@@ -245,8 +246,7 @@ def gen_page(page: ft.Page | DummyEvent):
                 ),
             ],
             scroll=ft.ScrollMode.ALWAYS,
-            width=(Data.Data_vars.width - rail_width),
-            height=Data.Data_vars.height,
+            height=page.height - 120,
             vertical_alignment=ft.CrossAxisAlignment.START,
             expand=True,
             ref=_desktop_row_ref,
@@ -301,18 +301,34 @@ def gen_page(page: ft.Page | DummyEvent):
                 name = row_data.dict_cells()["name"].val
                 input_tbl, output_tbl = blower_back.load_from_db_history_calc(e.page.data, s_num)
                 if not input_tbl or not output_tbl:
-                    show_msgbox_err(e)
+                    CMF.message_dialog(
+                        e.page,
+                        body_icon=ft.Icons.ERROR,
+                        title="Ошибка",
+                        message="Не удалось загрузить историю расчетов"
+                    )
                     return
                 data_tbl_input = CMF.generate_param_table(input_tbl, ref=_input_tabe_ref)
-                data_tbl_output = CMF.generate_param_table(output_tbl, ref=_output_tabe_ref)
+
+                data_tbl_output = CMF.Table_view(
+                    output_tbl,
+                    ref=_output_tabe_ref,
+                    lazy_groups=True,
+                    single_group_expand=False,
+                )
+                output_tbl.toggle_group(None)  # раскрыть все группы сразу
+
+                Data.Data_module.cust_data.input_tbl_editbl = input_tbl
+                Data.Data_module.cust_data.output_tbl = output_tbl
+
                 generate_desktop_row(page, rail)
+
                 _header_input_panel_textfield_ref.current.value = name
                 _header_input_panel_textfield_ref.current.visible = True
                 _header_input_panel_textfield_ref.current.disabled = True
                 _input_column_tabels_ref.current.controls.append(data_tbl_input)
                 _output_column_tabels_ref.current.controls.append(data_tbl_output)
                 _btn_calc_ref.current.disabled = True
-                _btn_grab_ref.current.visible = True
                 page.update()
 
             tbl_data = blower_back.make_history_tbl_data(e.page.data)

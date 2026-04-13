@@ -165,6 +165,22 @@ def init_zamech_const(self):
     for name, kod, kod_for_normatives in rez:
         self.SL_KOD_MATER[name] = kod
 
+def select_article(self, row: int, col: int, nomenclature: list[dict]):
+    try:
+        tbl = self.ui.tbl_zamech_add_field
+        table_data = [
+            {'Вид': item['Вид'], 'Наименование': item['Наименование'], 'Артикул': item['Артикул'], 'Код': code}
+            for code, item in nomenclature.items()
+        ]
+        if selected := CQT.msgboxg_get_table(self, "Выберите артикул", table_data,
+                                             btn0_name='Выбрать', ExtendedSelection=False,
+                                             selectRows=True):
+            tbl.item(row, col).setText(selected['Наименование'])
+    except Exception as e:
+        print(e)
+        import traceback
+        traceback.print_exc()
+
 def load_table_add(self):
     tbl = self.ui.tbl_zamech_add_field
     rez = [["Пномер", "МК", "Виновное_подразделение", "Фсмещение_дней", "Фпотери_времени_час", "Фпотери_материала_марка","Артикул_ЕРП",
@@ -180,8 +196,9 @@ def load_table_add(self):
     nk_mater = F.num_col_by_name_in_hat_c(rez, 'Фпотери_материала_марка')
     CQT.add_combobox(self, tbl, 0, nk_mater, [_ for _ in self.SL_KOD_MATER.keys()], True, select_kod_mat)
     nk_art = F.num_col_by_name_in_hat_c(rez, 'Артикул_ЕРП')
-    CQT.add_combobox(self, tbl, 0, nk_art, [self.DICT_NOMEN[_]['Наименование'] for _ in self.DICT_NOMEN.keys()], True, select_art)
-    tbl.cellWidget(0,nk_art).setEditable(True)
+    CQT.add_btn(tbl, 0, nk_art, text='Выбрать', conn_func_checked_row_col=select_article, cell_val=self.DICT_NOMEN, self=self)
+    # CQT.add_combobox(self, tbl, 0, nk_art, [self.DICT_NOMEN[_]['Наименование'] for _ in self.DICT_NOMEN.keys()], True, select_art)
+    # tbl.cellWidget(0,nk_art).setEditable(True)
     self.ui.pte_zamechnie.setPlainText('')
     self.ui.pte_primechanie.setPlainText('')
 
@@ -242,6 +259,10 @@ def add_zamech(self):
 
     tbl = self.ui.tbl_zamech_add_field
     spis = CQT.list_from_wtabl_c(tbl,hat_c=True)
+    dump_table = CQT.list_from_wtabl_c(tbl, rez_dict=True)
+    if not dump_table:
+        return
+    create_form = dump_table[0]
     nk_nom = F.num_col_by_name_in_hat_c(spis, 'Пномер')
     nk_mk = F.num_col_by_name_in_hat_c(spis, 'МК')
     nk_vinov = F.num_col_by_name_in_hat_c(spis, 'Виновное_подразделение')
@@ -267,12 +288,61 @@ def add_zamech(self):
         else:
             CQT.msgbox(f'Замечание {spis[-1][nk_nom]} не найдено')
     else:
-        custom_request_c = '''INSERT INTO zamech
-                              (Дата_создания, МК, Инициатор, Содержание, Виновное_подразделение, Фсмещение_дней,
-                              Фпотери_времени_час, Фпотери_материала_марка, Артикул_ЕРП, Фпотери_материала_вес, Код, Примечание)
-                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);'''
-        CSQ.custom_request_c(self.bd_naryad,custom_request_c,list_of_lists_c=[[F.now(), spis[-1][nk_mk], F.user_name(), self.ui.pte_zamechnie.toPlainText(), spis[-1][nk_vinov], spis[-1][nk_smesh],
-                              spis[-1][nk_poteri_vrem], spis[-1][nk_poteri_mat], spis[-1][nk_poteri_art], spis[-1][nk_poteri_ves], spis[-1][nk_kod], self.ui.pte_primechanie.toPlainText()]])
-        CQT.msgbox('Замечание успешно добавлено')
+        body = {
+            'Дата_создания': F.now(),
+            'МК': spis[-1][nk_mk],
+            'Инициатор': F.user_name(),
+            'Содержание': self.ui.pte_zamechnie.toPlainText(),
+            'Виновное_подразделение': spis[-1][nk_vinov],
+            'Фсмещение_дней': spis[-1][nk_smesh],
+            'Фпотери_времени_час': spis[-1][nk_poteri_vrem],
+            'Фпотери_материала_марка': spis[-1][nk_poteri_mat],
+            'Артикул_ЕРП': spis[-1][nk_poteri_art],
+            'Фпотери_материала_вес': spis[-1][nk_poteri_ves],
+            'Код': spis[-1][nk_kod],
+            'Примечание': self.ui.pte_primechanie.toPlainText()
+        }
+        questions = CSQ.questions_for_mask(body.keys())
+        keys = ','.join(body.keys())
+        custom_request_c = f'''INSERT INTO zamech ({keys}) VALUES ({questions}) RETURNING *;'''
+        result = CSQ.custom_request_c(self.bd_naryad,custom_request_c, list_of_lists_c=list(body.values()),
+                                      rez_dict=True, one=True)
+        if result:
+            code_remark = result['Код']
+            pk_remark = result['Пномер']
+            if code_remark == 10:
+                query = """
+                    SELECT employee.ФИО
+                    FROM podrazdel
+                    LEFT JOIN employee on employee.Подразделение = podrazdel.Наименование_ЕРП
+                    WHERE podrazdel.Имя = 'пл_отк' AND employee.Режим = 'Абстракт'
+                    LIMIT 1
+                """
+                abstract_name = CSQ.custom_request_c(CFG.Config.project.db_kplan,
+                                                     query, one=True, one_column=True, hat_c=False,
+                                                     attach_dbs=CFG.Config.project.db_users)
+                if not abstract_name:
+                    pk = int(result['Пномер'])
+                    CSQ.custom_request_c(
+                        CFG.Config.project.db_naryad,
+                        f'DELETE FROM zamech WHERE Пномер = {pk}')
+                    return CQT.msgbox('Не удалось создать замечание')
+                category_vnepl = CSQ.custom_request_c(CFG.Config.project.db_naryad,
+                                     'SELECT * FROM kategor_vnepl WHERE kod = 18',
+                                     one=True, rez_dict=True)
+                comment = category_vnepl.get('value')
+                ratio = category_vnepl.get('Коэффициент_наряда')
+                category = category_vnepl.get('kod')
+                rez = CMS.create_nar_prosoy(
+                    abstract_name,
+                    comment,
+                    ratio,
+                    self.ui.pte_primechanie.toPlainText(),
+                    0,
+                    pk_mk=spis[-1][nk_mk],
+                    code_category=category,
+                    pk_remark=pk_remark
+                )
+            CQT.msgbox('Замечание успешно добавлено')
     load_table_add(self)
     load_table(self)

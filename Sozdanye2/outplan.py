@@ -7,6 +7,8 @@ import project_cust_38.Cust_Qt as CQT
 import project_cust_38.Cust_Functions as F
 import project_cust_38.Cust_SQLite  as CSQ
 import project_cust_38.Cust_mes as CMS
+from project_cust_38 import Cust_b24 as B24
+from project_cust_38.Cust_config import Config as CFG
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -163,8 +165,7 @@ def load_form(self:mywindow):
         jur_vnepl.Ответ, 
         jur_vnepl.Статус,
         jur_vnepl.Утверждено
-        
-         FROM jur_vnepl 
+        FROM jur_vnepl 
           INNER JOIN mk 
           ON mk.Пномер = jur_vnepl.МК 
           
@@ -172,7 +173,7 @@ def load_form(self:mywindow):
         LEFT JOIN пл_топ ON пл_топ.НомПл = пл_оуп.НомПл 
         LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП 
         LEFT JOIN plan ON plan.Пномер = mk.НомКплан 
-          WHERE  plan.poki = {self.place.poki} AND mk.Статус = 'Открыта' or mk.Пномер = 0; """
+          WHERE  plan.poki = {self.place.poki} ; """
 
     #list_fio_techn = CSQ.custom_request_c(self.db_kplan,f"""SELECT НомПл, Отв_технолог FROM пл_топ""",rez_dict=True)
     #if list_fio_techn == None or list_fio_techn == False:
@@ -236,6 +237,9 @@ def ansver_row(self:mywindow, *args):
 @CQT.onerror
 def confirm_row(self:mywindow, *args):
     def check_row(self: mywindow, dict_row):
+        if not validate_finish_otk_row(dict_row['Пномер']):
+            return False
+
         if dict_row['Статус'] == dict_status_out[1]:
             CQT.msgbox(f'Статус не выбран')
             return False
@@ -257,26 +261,68 @@ def confirm_row(self:mywindow, *args):
     if not CQT.msgboxgYN(f"Утвердить статус {dict_row['Статус']} в заявке с причиной \n {dict_row['Запрос']}"):
         return
     tmp = [F.now()]
-    CSQ.custom_request_c(self.db_naryd, f"""UPDATE jur_vnepl SET  (Утверждено)
-       = ({CSQ.questions_for_mask(tmp)}) WHERE Пномер == {int(dict_row['Пномер'])}""", list_of_lists_c=[tmp])
+    new_row = CSQ.custom_request_c(self.db_naryd, f"""UPDATE jur_vnepl SET  (Утверждено)
+       = ({CSQ.questions_for_mask(tmp)}) WHERE Пномер == {int(dict_row['Пномер'])} RETURNING *""", list_of_lists_c=tmp, rez_dict=True, one=True)
+
+    apply_otk_after_confirm(new_row['Кплан_номер'], new_row['code_category'], new_row['Номер_внепланового_наряда'])
+
     load_form(self)
     CQT.msgbox('Успешно')
+
+def validate_finish_otk_row(pk_vnepl: int):
+    row = CSQ.custom_request_c(CFG.project.db_naryad,
+                               f'SELECT * FROM jur_vnepl WHERE Пномер = {pk_vnepl}',
+                               rez_dict=True, one=True)
+    pk_nar = row['Номер_внепланового_наряда']
+    if row['code_category'] == 18:
+        journal_row = CSQ.custom_request_c(
+            CFG.project.db_naryad,
+            f'SELECT Пномер, ФИО FROM jurnal WHERE Номер_наряда = {pk_nar} AND Статус = "Завершен"',
+            rez_dict=True,
+            one=True
+        )
+        if row == False:
+            return False
+        if not journal_row:
+            CQT.msgbox(f'Ошибка. Внеплановый наряд {pk_nar} не был завершен')
+            return False
+    return True
+
+
+def apply_otk_after_confirm(pk_kpl: int, code_category: int, pk_nar: int):
+    if code_category == 18:
+        row = CSQ.custom_request_c(
+            CFG.project.db_naryad,
+            f'SELECT Пномер, ФИО FROM jurnal WHERE Номер_наряда = {pk_nar} AND Статус = "Завершен"',
+            rez_dict=True,
+            one=True
+        )
+        if row == False:
+            return
+        if row:
+            custom_request_c = f'''UPDATE пл_отк  SET (Контр_покрытие_ФИО, Контр_покрытие_дата) = (?,?) 
+                        WHERE НомПл == ?;'''
+            param = [row['ФИО'], F.now(), pk_kpl]
+            CSQ.custom_request_c(CFG.project.db_kplan, custom_request_c, list_of_lists_c=param)
 
 
 @CQT.onerror
 def apply_row_technolog(self:mywindow):
     def check_row(self:mywindow,dict_row):
+        if not validate_finish_otk_row(dict_row['Пномер']):
+            return False
         if dict_row['Статус'] == dict_status_out[1]:
             CQT.msgbox(f'Статус не выбран')
             return False
         if dict_row['Статус'] == dict_status_out[4]:
             CQT.msgbox(f'Статус Подготовка провести нельзя')
             return False
-        if len(dict_row['Ответ'].strip()) <3 or len(dict_row['Ответ'].strip()) > 100:
-            CQT.msgbox(f'Поле ответ не заполнено должным образом от 3 до 100 символов')
-            return False
-        if not check_words(self, dict_row['Ответ']):
-            return False
+        if not CFG.user_config.is_developer:
+            if len(dict_row['Ответ'].strip()) <3 or len(dict_row['Ответ'].strip()) > 100:
+                CQT.msgbox(f'Поле ответ не заполнено должным образом от 3 до 100 символов')
+                return False
+            if not check_words(self, dict_row['Ответ']):
+                return False
         if dict_row['Статус'] == dict_status_out[2]:#ПРИНЯТО
 
             if dict_row['Журнал_замеч_номер'] == '0':
@@ -310,16 +356,13 @@ def apply_row_technolog(self:mywindow):
         if CQT.msgboxgYN(f'Не указана новая МК!\n Создаем МК ?'):
            return
     tmp = [dict_row['Статус'],dict_row['Журнал_замеч_номер'],dict_row['Номер_нов_мк']]
-    CSQ.custom_request_c(self.db_naryd,f"""UPDATE jur_vnepl SET  (Статус, Журнал_замеч_номер,Номер_нов_мк)
-   = ({CSQ.questions_for_mask(tmp)}) WHERE Пномер == {int(dict_row['Пномер'])}""",list_of_lists_c=[tmp])
+    new_row = CSQ.custom_request_c(self.db_naryd,f"""UPDATE jur_vnepl SET  (Статус, Журнал_замеч_номер,Номер_нов_мк)
+   = ({CSQ.questions_for_mask(tmp)}) WHERE Пномер == {int(dict_row['Пномер'])} RETURNING *""",list_of_lists_c=tmp, rez_dict=True, one=True)
 
-
+    apply_otk_after_confirm(new_row['Кплан_номер'], new_row['code_category'], new_row['Номер_внепланового_наряда'])
     if dict_row['Номер_внепланового_наряда'] != '0':
         nar = CMS.Naryads(int(dict_row['Номер_внепланового_наряда']),self.db_naryd)
         nar.set_koef_nar(0.0001)
-
-
-
     load_form(self)
     CQT.msgbox('Успешно')
 
@@ -384,8 +427,8 @@ def tbl_out_select_row(self:mywindow):
     if not self.outplan_edit_acces and dict_row['Ответственный'] != self.glob_ima:
         return
     nf = CQT.num_col_by_name_c(tbl, 'Статус')
-    if dict_row['Статус'] == dict_status_out[1]:
-        CQT.add_combobox(self,tbl,row,nf,[dict_status_out[_] for _ in dict_status_out.keys()],False,select_status)
+    # if dict_row['Статус'] == dict_status_out[1]:
+    CQT.add_combobox(self,tbl,row,nf,[dict_status_out[_] for _ in dict_status_out.keys()],False,select_status)
     if dict_row['Статус'] == dict_status_out[4]:
         CQT.add_combobox(self,tbl,row,nf,[dict_status_out[_] for _ in dict_status_out.keys() if _ in (2,3,4)],False,select_status)
     if dict_row['Журнал_замеч_номер'] == '0':

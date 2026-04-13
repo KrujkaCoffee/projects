@@ -4,6 +4,7 @@ import pathlib
 import time
 from datetime import datetime as DT, timedelta
 import shutil
+import threading
 import os
 import subprocess
 import sys
@@ -248,6 +249,16 @@ class StatisticDecorator:
         wraps(function)(instance)
         return instance
 
+    def _trace(self, stage: str, **kwargs):
+        parts = []
+        for key, value in kwargs.items():
+            if value is None:
+                continue
+            if isinstance(value, (list, tuple, set)) and len(value) > 8:
+                value = list(value)[:8] + ['...']
+            parts.append(f'{key}={value!r}')
+        print(f"[STAT][{time.strftime('%Y-%m-%d %H:%M:%S')}][pid={os.getpid()}][tid={threading.get_ident()}][{stage}] {' '.join(parts)}")
+
     def _encode_struct(self, obj):
         if isinstance(obj, dict):
             return {k: self._encode_struct(v) for k, v in obj.items()}
@@ -297,35 +308,63 @@ class StatisticDecorator:
         bound.apply_defaults()
         return bound.arguments.get(key)
 
+
     def get_used_tables(self, bd, sql, attach_dbs):
+        explain_started = time.perf_counter()
+        self._trace('StatisticDecorator.get_used_tables.start', bd=bd, attach_dbs=attach_dbs, sql=str(sql)[:220])
         try:
             sql = sql.replace('?', "''")
             result = self.function(bd, f'EXPLAIN QUERY PLAN {sql}', attach_dbs=attach_dbs)
         except Exception as e:
             print(e)
+            self._trace('StatisticDecorator.get_used_tables.error', elapsed_ms=round((time.perf_counter() - explain_started) * 1000, 3), error=str(e))
             return []
         if not isinstance(result, (tuple, list, set)):
+            self._trace('StatisticDecorator.get_used_tables.empty', elapsed_ms=round((time.perf_counter() - explain_started) * 1000, 3), result_type=type(result).__name__)
             return []
+        self._trace('StatisticDecorator.get_used_tables.end', elapsed_ms=round((time.perf_counter() - explain_started) * 1000, 3), tables_count=len(result), tables=(list(result)[:8] if not isinstance(result, list) else result[:8]))
         return result
 
+
     def task(self, start, result, args, kwargs):
+        task_started = time.perf_counter()
         try:
             end = time.time() - start # 1. Время затраченное на исполнение с учетом кодирования
+            self._trace('StatisticDecorator.task.start', completion_time_sec=round(end, 6))
+
+            size_started = time.perf_counter()
             length = self.deep_size(result) # 2. Вес результата (в байтах)
+            self._trace('StatisticDecorator.task.deep_size.end', elapsed_ms=round((time.perf_counter() - size_started) * 1000, 3), size_bytes=length)
+
+            hash_body_started = time.perf_counter()
             hash_body = self.hash_for_http(result) # 3. Хэш сумма ответа
+            self._trace('StatisticDecorator.task.hash_body.end', elapsed_ms=round((time.perf_counter() - hash_body_started) * 1000, 3), hash_body=hash_body[:16])
+
+            hash_args_started = time.perf_counter()
             hash_args = self.hash_for_http((args, kwargs)) # 4. Хэш сумма аргументов
+            self._trace('StatisticDecorator.task.hash_args.end', elapsed_ms=round((time.perf_counter() - hash_args_started) * 1000, 3), hash_args=hash_args[:16])
+
             query = self.unpack_argument('custom_request_c', args, kwargs) # 5. Запрос
             bd = self.unpack_argument('bd', args, kwargs) # 6. Имя базы данных
             attach_dbs = self.unpack_argument('attach_dbs', args, kwargs) # 6. Имя базы данных
+            self._trace('StatisticDecorator.task.args.unpack.end', bd=bd, attach_dbs=attach_dbs, query=str(query)[:220])
+
             if self.config.user_config.is_developer: #18.08.25
+                self._trace('StatisticDecorator.task.skip', reason='developer_mode')
                 return
             if not bd or not result:
+                self._trace('StatisticDecorator.task.skip', reason='empty_bd_or_result', bd=bd, result_type=type(result).__name__)
                 return
             if self.config.app.is_disabled or not self.config.project.db_files: #18.08.25
+                self._trace('StatisticDecorator.task.skip', reason='app_disabled_or_no_db_files', app_disabled=self.config.app.is_disabled, db_files=self.config.project.db_files)
                 return
             app_name = self.config.app.module
             files = self.config.project.db_files
+
+            explain_started = time.perf_counter()
             used_tables = self.get_used_tables(bd, query, attach_dbs)
+            self._trace('StatisticDecorator.task.used_tables.end', elapsed_ms=round((time.perf_counter() - explain_started) * 1000, 3), tables_count=len(used_tables), tables=used_tables[:8])
+
             body = {'query': query,
                     'app': app_name,
                     'size': length,
@@ -337,22 +376,46 @@ class StatisticDecorator:
             questions = ','.join('?' for _ in body.values())
             keys = ', '.join(body.keys())
             insert_query = f""" INSERT INTO SqlEvents({keys}) VALUES ({questions})"""
+            insert_started = time.perf_counter()
             self.function(files, insert_query, list_of_lists_c=[list(body.values())])
+            self._trace('StatisticDecorator.task.insert_stats.end', elapsed_ms=round((time.perf_counter() - insert_started) * 1000, 3), db_files=files)
+            self._trace('StatisticDecorator.task.end', total_ms=round((time.perf_counter() - task_started) * 1000, 3), completion_time_sec=round(end, 6))
         except Exception as e:
             print('[Ошибка]Сохранение статистики SQL: ', e)
+            self._trace('StatisticDecorator.task.error', error=str(e), total_ms=round((time.perf_counter() - task_started) * 1000, 3))
+
 
     def __call__(self, *args, **kwargs):
+        call_started_perf = time.perf_counter()
+        bd = None
+        query = None
+        try:
+            bd = self.unpack_argument('bd', args, kwargs)
+            query = self.unpack_argument('custom_request_c', args, kwargs)
+        except Exception:
+            pass
+        self._trace('StatisticDecorator.call.start', bd=bd, query=str(query)[:220])
+
         start = time.time()
+        main_started = time.perf_counter()
         result = self.function(*args, **kwargs)
+        self._trace('StatisticDecorator.call.main_function.end', elapsed_ms=round((time.perf_counter() - main_started) * 1000, 3), result_type=type(result).__name__)
+
         bd = self.unpack_argument('bd', args, kwargs) #15.09.25
         if not bd:
+            self._trace('StatisticDecorator.call.skip', reason='empty_bd', total_ms=round((time.perf_counter() - call_started_perf) * 1000, 3))
             return result
         if self.config is None: # 18.08.25
+            self._trace('StatisticDecorator.call.skip', reason='config_is_none', total_ms=round((time.perf_counter() - call_started_perf) * 1000, 3))
             return result
         from concurrent.futures import ThreadPoolExecutor
+        pool_started = time.perf_counter()
         pool = ThreadPoolExecutor()
+        data_copy_started = time.perf_counter()
         data_for_task = copy.deepcopy(result) #19.08.25
+        self._trace('StatisticDecorator.call.deepcopy.end', elapsed_ms=round((time.perf_counter() - data_copy_started) * 1000, 3), result_type=type(result).__name__)
         pool.submit(self.task, start, data_for_task, args, kwargs)
+        self._trace('StatisticDecorator.call.submit.end', elapsed_ms=round((time.perf_counter() - pool_started) * 1000, 3), total_ms=round((time.perf_counter() - call_started_perf) * 1000, 3))
         return result
 # --18.08.25
 

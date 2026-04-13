@@ -4,28 +4,20 @@ import os
 from PyQt5 import QtWidgets, QtCore, QtGui
 
 from project_cust_38 import Cust_config as CFG
+from project_cust_38 import Cust_Qt as CQT
 
-def showDialog(self, msg):
-    msgBox = QtWidgets.QMessageBox()
-    msgBox.setIcon(QtWidgets.QMessageBox.Information)
-    msgBox.setText(msg)
-    msgBox.setWindowTitle("Внимание!")
-    msgBox.setStandardButtons(QtWidgets.QMessageBox.Ok)  # | QtWidgets.QMessageBox.Cancel)
-    returnValue = msgBox.exec()
 
-def vigruzit2(obj):
-    n_dse = obj.ui.lineEdit_dse
-    n_tk = obj.ui.lineEdit_nntk
-    if n_tk.text() == '':
-        return
-    ima = n_tk.text() + '_' + n_dse.text() + ".txt"
+def vigruzit2(dse_name, tk_name):
+    n_dse = dse_name
+    n_tk = tk_name
+    if not tk_name:
+        return CQT.msgbox('Имя техкарты пустое')
+    ima = tk_name + '_' + dse_name + ".txt"
     if F.existence_file_c(F.scfg("add_docs")) == False:
-        showDialog(obj, 'Не найден каталог с ТК')
-        return
+        return CQT.msgbox('Не найден каталог с ТК')
     spisok_tk = F.open_file_c(F.scfg("add_docs") + os.sep + ima, False, '|',pickl=True,propuski=True)
     if spisok_tk == ['']:
-        showDialog(obj, 'Не найдена ТК')
-        return
+        return CQT.msgbox('Не найдена ТК')
 
     sp = []
     sp.append(F.inscribe_c("ГОСТ 3.1118-82  ФОРМА 3  САПР  ", 65, ' ', ' ', 2))
@@ -34,7 +26,7 @@ def vigruzit2(obj):
     # sp.append(':ООО Пауэрз:                      :                 :     :     :')
     sp.append(f':ООО {org_name}:                      :                 :     :     :') #25.02.2026
     sp.append(F.inscribe_c("-" * 63, 65))
-    sp.append(F.inscribe_c("", 5, prz=' ') + F.inscribe_c(n_dse.text(), 24) + 13 * " " + F.inscribe_c(n_tk.text(), 23))
+    sp.append(F.inscribe_c("", 5, prz=' ') + F.inscribe_c(dse_name, 24) + 13 * " " + F.inscribe_c(n_tk, 23))
     sp.append(F.inscribe_c("", 5, prz=' ') + F.inscribe_c("", 24) + 13 * " " + F.inscribe_c("", 23))
     sp.append(F.inscribe_c("-" * 63, 65))
     nnomer_dse, nazv_dse = [x for x in spisok_tk[0][0].split('$')]
@@ -124,7 +116,7 @@ def vigruzit2(obj):
     m_eksp = spisok_tk[7][0]
     norm_k = spisok_tk[8][0]
     sp = vstavit_osn_nadp_1(sp, razr, dat, prov, norm, m_eksp, norm_k)
-    sp = vstavit_shapku(sp, n_dse.text(), n_tk.text())
+    sp = vstavit_shapku(sp, dse_name, n_tk)
     sp = vstavit_osn_nadp(sp)
     sp = prostavit_num_strok(sp,22,30,76,63)
     sp = prostavit_num_stranic(sp)

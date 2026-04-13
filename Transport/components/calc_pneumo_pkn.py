@@ -111,17 +111,6 @@ def paint_rail(select_destination):
         on_change=select_destination,
     )
 
-def show_msgbox_err(e):
-    CMF.msgbox(
-        e,
-        msg="Операция не выполнена",
-        btn0_name="Закрыть",
-        icon="WARNING",
-        fontsize=14,
-        title="Ошибка",
-        time_life=3,
-    )
-
 
 async def gen_page(page: ft.Page):
     Data: DTCLS.Data_page = page.data
@@ -132,17 +121,31 @@ async def gen_page(page: ft.Page):
             s_num = int(row_data.dict_cells()['s_num'].val)
             name = row_data.dict_cells()['name'].val
             input_tbl, output_tbl = calc_pneumo_pkn_back.load_from_db_history_calc(e.page.data, s_num)
+            if not input_tbl or not output_tbl:
+                CMF.message_dialog(
+                    e.page,
+                    body_icon=ft.Icons.ERROR,
+                    title="Ошибка",
+                    message="Не удалось загрузить историю"
+                )
+                return
 
-            data_tbl_input = CMF.generate_param_table(input_tbl, ref=_input_tabe_ref)
-            data_tbl_output = CMF.generate_param_table(output_tbl, ref=_output_tabe_ref)
-            # generate_desktop_row(page)
+            input_tbl_view = CMF.generate_param_table(input_tbl, ref=_input_tabe_ref, fnc_onchange=fnc_onchange_tbl_input)
+            output_tbl_view = CMF.generate_param_table(output_tbl, ref=_output_tabe_ref)
+
+            Data.Data_module.cust_data.input_tbl_editbl = input_tbl
+            Data.Data_module.cust_data.output_tbl = output_tbl
+            show_calc_screen(input_tbl_view, output_tbl_view)
+
+            # apply_input_styles(input_tbl)
             _header_input_panel_textfield_ref.current.value = name
             _header_input_panel_textfield_ref.current.visible = True
             _header_input_panel_textfield_ref.current.disabled = True
-            _input_column_tabels_ref.current.controls.append(data_tbl_input)
-            _output_column_tabels_ref.current.controls.append(data_tbl_output)
+            if _header_input_panel_btn_save_ref.current is not None:
+                _header_input_panel_btn_save_ref.current.disabled = True
             _btn_calc_ref.current.disabled = True
-            _btn_grab_ref.current.visible = True
+            _set_status("Открыт расчёт из истории")
+            # page.update()
 
         tbl_data = calc_pneumo_pkn_back.make_history_tbl_data(e.page.data)
         tbl_history = CMF.generate_param_table(tbl_data, selectedRowsfnc=selectedRowsfnc, selectedRows=True)
@@ -176,6 +179,7 @@ async def gen_page(page: ft.Page):
         _desktop_column_ref.current.alignment = ft.MainAxisAlignment.START
         _desktop_column_ref.current.horizontal_alignment = ft.CrossAxisAlignment.START
         _desktop_column_ref.current.expand = True
+        page.update()
 
     def fnc_onchange_tbl_input(e, *args):
         _ = args
@@ -247,17 +251,31 @@ async def gen_page(page: ft.Page):
     def save_word(e: ft.ControlEvent):
         Data: DTCLS.Data_page = e.page.data
         cfg_module: DTCLS.ModuleCfg = Data.Data_module
-        name = _header_input_panel_textfield_ref.current.value
+        name = (_header_input_panel_textfield_ref.current.value or "").strip()
+        if not name:
+            name = calc_pneumo_pkn_back.get_name_new_calc()
+            _header_input_panel_textfield_ref.current.value = name
         rezult_data_for_save = calc_pneumo_pkn_back.generate_rezult_data_for_save(name, _input_tabe_ref.current,
                                                                          _output_tabe_ref.current)
         rez = calc_pneumo_pkn_back.save_word(rezult_data_for_save['input'], rezult_data_for_save['output'],
                                     rezult_data_for_save['name'], cfg_module.sub_dir, cfg_module.name)
         if not rez:
-            show_msgbox_err(e)
+            CMF.message_dialog(
+                e.page,
+                body_icon=ft.Icons.ERROR,
+                title="Ошибка",
+                message="Не удалось сохранить документ word"
+            )
             return
         else:
-            # if not blower_back.save_in_db(e, name):
-            #     return
+            if not calc_pneumo_pkn_back.save_in_db(e, name):
+                CMF.message_dialog(
+                    e.page,
+                    title="Ошибка",
+                    body_icon=ft.Icons.ERROR,
+                    message="Не удалось сохранить расчет в истории",
+                )
+                return
             CMF.dialog_save_file(e, rez)
             return
 
@@ -331,7 +349,7 @@ async def gen_page(page: ft.Page):
         return ft.Container(
             border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
             border_radius=10,
-            padding=ft.padding.symmetric(horizontal=12, vertical=10),
+            padding=ft.padding.symmetric(horizontal=16, vertical=10),
             content=ft.Column(
                 controls=[
                     ft.Container(
@@ -344,6 +362,7 @@ async def gen_page(page: ft.Page):
                                         ft.Text(
                                             "График выбора весовой концентрации",
                                             weight=ft.FontWeight.BOLD,
+                                            expand=True,
                                         ),
 
                                     ],
@@ -364,30 +383,60 @@ async def gen_page(page: ft.Page):
                             ],
                             vertical_alignment=ft.CrossAxisAlignment.CENTER,
                         ),
+                        expand=True,
                     ),
                     details,
                 ],
                 spacing=6,
+                expand=True,
             ),
+            expand=True,
         )
 
-    def replace_tables(input_control):
+    def show_calc_screen(input_control, output_control=None):
         if _input_column_tabels_ref.current is not None:
             _input_column_tabels_ref.current.controls.clear()
-            _input_column_tabels_ref.current.controls.extend(
-                [
-                    build_hint_section(),
-                    input_control,
-                ]
-            )
+            _input_column_tabels_ref.current.controls.extend([build_hint_section(), input_control])
 
         if _output_column_tabels_ref.current is not None:
             _output_column_tabels_ref.current.controls.clear()
-            # _output_column_tabels_ref.current.controls.append(output_control)
+            if output_control is not None:
+                _output_column_tabels_ref.current.controls.append(output_control)
+
+        if _desktop_column_ref.current is not None:
+            _desktop_column_ref.current.controls = [
+                ft.Container(content=header_row, padding=ft.padding.only(top=10, right=10)),
+                ft.Divider(height=1),
+                ft.Row(
+                    controls=[
+                        left_column,
+                        ft.VerticalDivider(width=2),
+                        right_column,
+                    ],
+                    expand=True,
+                    vertical_alignment=ft.CrossAxisAlignment.START,
+                ),
+            ]
+            _desktop_column_ref.current.expand = True
+            _desktop_column_ref.current.alignment = ft.MainAxisAlignment.START
+            _desktop_column_ref.current.horizontal_alignment = ft.CrossAxisAlignment.START
 
     async def reset_module(e: ft.ControlEvent | None = None):
-        input_control, table_datas = build_controls()
-        replace_tables(input_control)
+        hint_state["open"] = False
+        input_control, table_data = build_controls()
+        Data.Data_module.cust_data.output_tbl = None
+        show_calc_screen(input_control)
+        await apply_input_styles_later(table_data)
+        if _header_input_panel_textfield_ref.current is not None:
+            _header_input_panel_textfield_ref.current.value = calc_pneumo_pkn_back.get_name_new_calc()
+            _header_input_panel_textfield_ref.current.visible = False
+            _header_input_panel_textfield_ref.current.disabled = False
+
+        if _header_input_panel_btn_save_ref.current is not None:
+            _header_input_panel_btn_save_ref.current.visible = False
+        if _btn_calc_ref.current is not None:
+            _btn_calc_ref.current.disabled = False
+        _set_status()
         if e is not None:
             page.update()
 
@@ -416,7 +465,11 @@ async def gen_page(page: ft.Page):
             _output_column_tabels_ref.current.controls.append(output_tbl_data.table_view)
             _output_column_tabels_ref.current.update()
             output_tbl_data.toggle_group(None)
-
+        if _header_input_panel_btn_save_ref.current is not None:
+            _header_input_panel_btn_save_ref.current.visible = True
+        if _header_input_panel_textfield_ref.current is not None:
+            _header_input_panel_textfield_ref.current.visible = True
+            _header_input_panel_textfield_ref.current.content = calc_pneumo_pkn_back.get_name_new_calc()
         _set_status(_status_message_from_errors(errors, success=success))
         e.page.update()
 
@@ -454,11 +507,13 @@ async def gen_page(page: ft.Page):
                 width=500,
                 value=calc_pneumo_pkn_back.get_name_new_calc(),
                 icon=ft.Icons.NOTE_ALT,
+                visible=False,
                 ref=_header_input_panel_textfield_ref),
             ft.Button(
               'Сохранить',
               ft.Icons.SAVE_AS,
               on_click=save_word,
+                visible=False,
               style=ft.ButtonStyle(
                   shape=ft.RoundedRectangleBorder(radius=1),
               ), height=50, width=150, ref=_header_input_panel_btn_save_ref
@@ -476,14 +531,14 @@ async def gen_page(page: ft.Page):
             initial_input_control,
         ],
         ref=_input_column_tabels_ref,
-        expand=True,
+        expand=False,
         scroll=ft.ScrollMode.ALWAYS,
     )
 
     right_column = ft.Column(
         controls=[],
         ref=_output_column_tabels_ref,
-        expand=True,
+        expand=False,
         scroll=ft.ScrollMode.ALWAYS,
     )
 

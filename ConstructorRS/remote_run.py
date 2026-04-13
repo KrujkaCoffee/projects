@@ -15,11 +15,15 @@ EXTRACT_TO_DIRECTORY = os.path.join(PROJECT_CUST, 'project_cust_38')
 def start(module):
     sys.path.append(PROJECT_CUST)
     logging.info('Загрузка project_cust_38...')
-    response = requests.get(CUST_API)
+    try:
+        response = requests.get(CUST_API)
+    except:
+        logging.info('Подключение c CUST_API не установлено')
+        return
     if not response.ok:
         logging.info('клиент не смог получить актуальную версию пакета "project-cust" из-за проблем на сервере')
         return
-    logging.info('Распаковка...')
+    logging.info(f'Распаковка...{EXTRACT_TO_DIRECTORY}')
     zip_file_path = "project_cust_38.zip"
     with open(zip_file_path, 'wb') as f:
         f.write(response.content)
@@ -39,4 +43,4 @@ if __name__ == '__main__':
     if len(sys.argv) > 1:
         start(sys.argv[1])
     else:
-        logging.info('Введите имя модуля: server_runner.py Mkart')
+        logging.info('Введите имя модуля: server_runner.py constr_rc')

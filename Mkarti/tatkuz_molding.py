@@ -1943,7 +1943,7 @@ def upload_1c_res_product_tch(self:mywindow):
         hat['ПодразделениеДиспетчер'] = ПодразделениеДиспетчер
         hat['ВыпускПроизвольнымиПорциями'] = False
         hat['РодительКод'] = '00-058862'
-        hat['ВариантПодбораВДокументы'] = "Вручную"
+        #hat['ВариантПодбораВДокументы'] = "Вручную"
         hat['СпособРаспределенияЗатратНаВыходныеИзделия'] = "ПоДолямСтоимости"
 
 
@@ -2005,7 +2005,7 @@ def upload_1c_res_product_tch(self:mywindow):
         ОсновноеИзделиеКод = CRES.MainProduct.find_by_code(self._ttkz_tmp_settings.current_order.name_nomen_for_res_product)
 
         РодительКод = CRES.GroupResData._hnt_литье_таткуз_00_058862
-        ВариантПодбораВДокументы = CRES.VariationsrespecificationdocumentsData._hnt_вручную_1
+        #ВариантПодбораВДокументы = CRES.VariationsrespecificationdocumentsData._hnt_вручную_1
         СпособРаспределенияЗатратНаВыходныеИзделия = CRES.TheMethodOfAllocatingTheCostOfTheOutputProductsData._hnt_по_долям_стоимости_0
 
         # Шапка
@@ -2016,7 +2016,7 @@ def upload_1c_res_product_tch(self:mywindow):
             ДатаОкончания=F.date_add_days(F.now(""),7,format_out="%Y-%m-%d"),
             ПодразделениеДиспетчер=ПодразделениеДиспетчер,
             РодительКод=РодительКод,
-            ВариантПодбораВДокументы=ВариантПодбораВДокументы,
+            #ВариантПодбораВДокументы=ВариантПодбораВДокументы,
             Описание='Создан из MES(Мкарты)',
             СпособРаспределенияЗатратНаВыходныеИзделия=СпособРаспределенияЗатратНаВыходныеИзделия,
             Код=code_old_res
@@ -2196,7 +2196,7 @@ def upload_1c_mold_tch(self:mywindow):
         hat['ПодразделениеДиспетчер'] = None
         hat['ВыпускПроизвольнымиПорциями'] = False
         hat['РодительКод'] = '00-058862'
-        hat['ВариантПодбораВДокументы'] = "Вручную"
+        #hat['ВариантПодбораВДокументы'] = "Вручную"
         hat['СпособРаспределенияЗатратНаВыходныеИзделия'] = "ПоДолямСтоимости"
         if code_old_res:
             hat['Код'] = code_old_res
@@ -2257,7 +2257,7 @@ def upload_1c_mold_tch(self:mywindow):
         ОсновноеИзделиеКод = CRES.MainProduct.find_by_code(self._ttkz_tmp_settings.current_order.name_nomen_for_forming)
 
         РодительКод = CRES.GroupResData._hnt_литье_таткуз_00_058862
-        ВариантПодбораВДокументы = CRES.VariationsrespecificationdocumentsData._hnt_автоматически_по_приоритету_0
+        #ВариантПодбораВДокументы = CRES.VariationsrespecificationdocumentsData._hnt_автоматически_по_приоритету_0
         СпособРаспределенияЗатратНаВыходныеИзделия = CRES.TheMethodOfAllocatingTheCostOfTheOutputProductsData._hnt_по_долям_стоимости_0
 
         # Шапка
@@ -2270,7 +2270,7 @@ def upload_1c_mold_tch(self:mywindow):
             ДатаОкончания=F.date_add_days(F.now(""),7,format_out="%Y-%m-%d"),
             ПодразделениеДиспетчер=ПодразделениеДиспетчер,
             РодительКод=РодительКод,
-            ВариантПодбораВДокументы=ВариантПодбораВДокументы,
+            #ВариантПодбораВДокументы=ВариантПодбораВДокументы,
             Описание='Создан из MES(Мкарты)',
             СпособРаспределенияЗатратНаВыходныеИзделия=СпособРаспределенияЗатратНаВыходныеИзделия,
             Код=code_old_res

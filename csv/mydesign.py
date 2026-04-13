@@ -813,7 +813,7 @@ class Ui_MainWindow(object):
         self.verticalLayout.addWidget(self.tabWidget)
         MainWindow.setCentralWidget(self.centralwidget)
         self.menubar = QtWidgets.QMenuBar(MainWindow)
-        self.menubar.setGeometry(QtCore.QRect(0, 0, 1620, 27))
+        self.menubar.setGeometry(QtCore.QRect(0, 0, 1620, 34))
         font = QtGui.QFont()
         font.setPointSize(12)
         self.menubar.setFont(font)

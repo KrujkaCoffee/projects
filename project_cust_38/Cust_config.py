@@ -20,6 +20,7 @@ try:
 except:
     print(f'Cust_config err import Cust_Qt')
 
+LAZY_LOAD_TIME = 0
 
 class SingletonMeta(type):
     __instances = {}
@@ -377,6 +378,7 @@ def load_place():
     SingletonMeta.clear_instance(Place)
     Config.place = Place(Config.user_config.Organization['Значение'])
 
+
 class System_changes():
     FILE_CHANGE_NAME = 'mes_changes.pickle'
     DIR = CQT.qt_tmp_dir()
@@ -551,17 +553,21 @@ class User_config(metaclass=SingletonMeta): # noqa
         self.common_config = common_config #18.07.25
         self.window_app = None 
         self.cust_windowTitle:str|None = None
-        orgnizations = CSQ.custom_request_c(ProjectConfig().db_naryad, f"""SELECT Имя FROM places""",
+        self.user_mode:bool|None = None
+        orgnizations = CSQ.custom_request_c(ProjectConfig().db_naryad,
+                                            f"""SELECT Имя FROM places""",
                                             hat_c=False, one_column=True)
         orgnizations.insert(0, '')
         path_files = F.sep().join([F.path_to_execut_file_c(), 'css'])
 
-        erp_bases = CSQ.custom_request_c(ProjectConfig().db_users , f"""SELECT name FROM bases_ERP""",
+        erp_bases = CSQ.custom_request_c(ProjectConfig().db_users,
+                                         f"""SELECT name FROM bases_ERP""",
                                             hat_c=False, one_column=True)
 
         list_thems = []
         if os.path.exists(path_files):
-            list_thems = [_.split('.')[0] for _ in F.list_of_files_c(path_files)[0][2] if _.split('.')[-1] == 'qss']
+            list_thems = [_.split('.')[0] for _ in
+                          F.list_of_files_c(path_files)[0][2] if _.split('.')[-1] == 'qss']
 
         data_config_sample = {
             'reset_tbl_filtrs': {'Параметр': 'Сброс фильтров',
@@ -631,6 +637,12 @@ class User_config(metaclass=SingletonMeta): # noqa
 
     @property
     def is_developer(self): #18.07.25
+        if self.user_mode:
+            if F.is_date(self.user_mode, "%Y-%m-%d"):
+                if F.now("%Y-%m-%d") == self.user_mode:
+                    return False
+            else:
+                return False
         current_login = F.user_name()
         return current_login in self.common_config.developers.split('|')
 
@@ -640,6 +652,8 @@ class User_config(metaclass=SingletonMeta): # noqa
 
     def load_config(self=None):
         app_args = F.parse_args(sys.argv)
+        if 'UserMode' in app_args:
+            self.user_mode = app_args['UserMode']
         data = load_tmp_stukt('user_config', copy.deepcopy(self.__data_config_sample)) #02.03.2026
         if app_args:
             for k,v in app_args.items():
@@ -795,12 +809,15 @@ class CodeNaryad:
     НеподтвержденныйВнеплан: int = None
     ПодтвержденныйВнеплан: int = None
     Простой: int = None
-
-    def __init__(self, poki, bd: str):
+    _dev:bool|None = None
+    def __init__(self, poki, bd: str,dev:bool|None = None):
+        self._dev = dev
+        
+        lazy_load_time = LAZY_LOAD_TIME if self._dev else 0
         code_naryads = CSQ.custom_request_c(
             bd,
             f'SELECT name, code FROM коды_веплана_для_наряда WHERE poki = {poki}',
-            hat_c=False
+            hat_c=False,lazy_method_hours= lazy_load_time
         )
         if isinstance(code_naryads, list):
             for k, v in code_naryads:
@@ -812,11 +829,14 @@ class CodeNaryad:
 class Evaluation_department_podrazdel_for_reports:
     Имя: str = None
 
-    def __init__(self, eval_podr, bd_kplan: str):
+    def __init__(self, eval_podr, bd_kplan: str,dev:bool|None = None):
+        self._dev = dev
+
+        lazy_load_time = LAZY_LOAD_TIME if self._dev else 0
         data = CSQ.custom_request_c(
             bd_kplan,
             f'SELECT Имя FROM podrazdel WHERE Пномер = {eval_podr}', one_column=True,one=True,
-            hat_c=False
+            hat_c=False,lazy_method_hours=lazy_load_time
         )
         if data != False:
             self.Имя = data #11.11.25
@@ -849,14 +869,19 @@ class Place(metaclass=SingletonMeta):
     autoload_fact_kpl_onoff: int = None #26.09.2025 100060640  тобы в ганте увидеть, что начались работы
     apply_ratio_on_calc_plan_norm: int = None #27.01.2026 100065475 выключение/выключение коэффициентов для подгрузки норм позиции
     ref_top_storage: str = None #17.02.2026 основной склад
+    _dev:bool|None = None
 
+    def __init__(self, organization_name: str | None = None,dev:bool|None = None) -> None:
+        self._dev = dev
+        
+        lazy_load_time = LAZY_LOAD_TIME if self._dev else 0
 
-    def __init__(self, organization_name: str | None = None) -> None:
         if not organization_name:
             if AppConfig().is_disabled:
                 return
             user_config = User_config()
-            if not isinstance(user_config.Organization, dict) or not user_config.Organization.get('Значение'):
+            if (not isinstance(user_config.Organization, dict) or
+                    not user_config.Organization.get('Значение')):
                 if QtWidgets.QApplication.instance() is None:
                     app = QtWidgets.QApplication(sys.argv)
                 widget = QtWidgets.QMainWindow()
@@ -866,13 +891,16 @@ class Place(metaclass=SingletonMeta):
             organization_name = user_config.Organization.get('Значение')
         # db_naryad = F.scfg('Naryad')
         db_naryad = ProjectConfig().db_naryad
-        row = CSQ.custom_request_c(db_naryad, f"""SELECT * FROM places WHERE Имя = "{organization_name}";""", one=True,
-                                   rez_dict=True)
+        row = CSQ.custom_request_c(db_naryad,
+                    f"""SELECT * FROM places WHERE Имя = "{organization_name}";""",
+                                   one=True,
+                                   rez_dict=True,lazy_method_hours=lazy_load_time)
         if not row:
             F.win_msgbox(f'Ошибка',f'Организация "{organization_name}" не обнаружена')
             raise ValueError('')
-        self.КодыНарядов = CodeNaryad(row['poki'], db_naryad)
-        self.evaluation_department = Evaluation_department_podrazdel_for_reports(row['evaluation_department_podrazdel_for_reports'],ProjectConfig().db_kplan)
+        self.КодыНарядов = CodeNaryad(row['poki'], db_naryad,self._dev)
+        self.evaluation_department = Evaluation_department_podrazdel_for_reports(
+            row['evaluation_department_podrazdel_for_reports'],ProjectConfig().db_kplan,self._dev)
 
         for key in row.keys():
             exec(f'self.{str(key).replace(".", "_")} = row[key]')
@@ -881,7 +909,7 @@ class Place(metaclass=SingletonMeta):
 class Config(metaclass=ConfigMeta): #18.08.25
     project: ProjectConfig = ProjectConfig()
     app: AppConfig = AppConfig()
+    user_config: User_config = User_config(common_config=project)  # 18.07.25
     app_args: dict = F.parse_args(sys.argv)
-    user_config: User_config = User_config(common_config=project) #18.07.25
-    place: Place = Place()
+    place: Place = Place(dev = user_config.is_developer)
 

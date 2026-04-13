@@ -68,13 +68,29 @@ def ping(fn):
 class LoneInterpreter:
     def __init__(self):
         self.home_path = str(Path().home() / 'MES')
-        from project_cust_38.Cust_client_socket import ip
-        SRV_PORT = 20011
-        self.server_url = f'http://{ip}:{SRV_PORT}/files'
+        self.server_url = f'{SRV_ADDRESS}/files'
         self.system_interpreter_path = r'Z:\Setup\python.zip'
         self.is_actual = self.check_python_available(self.python_path) and self.check_actual_interpreter()
 
         self.usr_hash = self.usr_packages = None
+
+    @property
+    def DICT_PROG(self):
+        from project_cust_38 import Cust_SQLite as CSQ
+        apps_response = CSQ.custom_request_c(
+            'SRV:BD_users.db',
+            'SELECT app AS Имя, path AS Путь, module AS Название FROM app_config WHERE is_ui = 1 AND path != ""',
+            rez_dict=True
+        )
+        apps = {}
+        for item in apps_response:
+            item['Путь'] = item['Путь'].replace('\\embed', '')
+            apps[item['Имя']] = {
+                'Имя': item['Имя'],
+                'Название': item['Название'],
+                'Путь': item['Путь'].replace('\\embed', ''),
+            }
+        return apps
 
     def create_run_bat(self, program_path_embed: str, program_name: str):
         try:
@@ -249,9 +265,9 @@ class LoneInterpreter:
     def actualize_py_libs(self):
         srv_info = self.get_srv_size()
         if isinstance(srv_info, dict) and all(key in srv_info for key in ('packages', 'size')):
-            srv_packages = srv_info['packages']
+            srv_packages = [item.split('==')[0] for item in srv_info['packages']]
             srv_size = srv_info['size']
-            usr_packages = self.get_installed_packages()
+            usr_packages = [item.split('==')[0] for item in self.get_installed_packages()]
             usr_size = self.get_py_size()
             if (usr_size / srv_size) * 100 > 80:
                 superfluous_libs = set(usr_packages).difference(srv_packages)
@@ -434,6 +450,8 @@ SET_PY_FILES = {'Lib', 'libcrypto-1_1.dll', 'libffi-8.dll', 'libssl-1_1.dll', 'p
 
 class Main:
     def __init__(self, srv_dir: str = '', usr_dir: str = None, app_name: str = None):
+        self.is_server = os.path.abspath(__file__).startswith("Z:")
+        print('SRV_DIR:', srv_dir)
         self.developers = ()
         self.current_dir = usr_dir
         self.app_executor = None
@@ -442,6 +460,8 @@ class Main:
         self.ip = None
         self.pickle_name = 'hashed_files.pickle'
         self.list_apps = r'Z:\MES_setup\list.txt'
+        self.interpreter = LoneInterpreter()
+
         if not self.current_dir or not self.server_dir or not self.app_name:
             self.fill_params()
             self.current_dir, self.current_file = os.path.split(os.path.abspath(__file__))
@@ -451,7 +471,6 @@ class Main:
         self.ignore_files = ['Thumbs.db', self.pickle_name, '.gitignore', 'python', 'window_free.vbs', 'window.vbs', 'run.bat', 'ver', 'mini_git.py', 'remote_run.bat'] + list(SET_PY_FILES)  #  игонрируются _*
         self.ignore_dirs = ['venv', 'clients_errors', '__pycache__', '.idea', '.git', 'Scripts', 'Lib', 'project_cust_38'] + list(SET_PY_FILES)
         self.project_cust = ProjectCust38()
-        self.interpreter = LoneInterpreter()
 
     def push(self, no_update: bool = False):
         if no_update:
@@ -479,20 +498,31 @@ class Main:
         if not os.path.exists(self.list_apps):
             logging.warning(f'не найдена директория: {self.list_apps}')
             return
-        with open(self.list_apps, 'r', encoding='utf8') as desc:
-            list_apps = desc.readlines()
-        self.apps = [line.replace('\n', '').split('|') for line in list_apps]
-        apps_by_module = {line[2]: line for line in self.apps}
+        apps_by_module = {
+            credentials['Название']: credentials
+            for app_name, credentials in self.interpreter.DICT_PROG.items()
+        }
         files = set(os.listdir(os.path.curdir)).intersection(apps_by_module.keys())
-        if files and len(files) == 1:
-            line = apps_by_module[files.pop()]
-            self.server_dir = os.path.join(line[1].replace(r'\ProdSoft', ''), 'embed')
-            self.app_name = line[0]
-            self.app_executor = line[2]
-            if not os.path.exists(self.server_dir):
-                logging.warning(f'Не найдена директория {self.server_dir} возможно нету доступа к диску Z')
+        remote_run = Path('./remote_run.bat')
+        if files and len(files) >= 1:
+            executor = next(file for file in files if file in apps_by_module)
+            credential = apps_by_module[executor]
+            self.app_name = credential['Имя']
+            self.app_executor = credential['Название']
+            self.server_dir = os.path.join(credential['Путь'], 'embed')
+            return
+        if remote_run.exists():
+            pattern = r"python\.exe\s+.*?/remote_run\.py\s+([^\s]+)"
+            text = remote_run.read_text(encoding='utf-8', errors='ignore')
+            match = re.search(pattern, text)
+            if not match:
                 return
-
+            app = match.group(1)
+            if credential := apps_by_module.get(f'{app}.py'):
+                self.app_name = credential['Имя']
+                self.app_executor = credential['Название']
+                self.server_dir = os.path.join(credential['Путь'], 'embed')
+            return
     def load_cust_mes_config(self):
         try:
             from project_cust_38 import Cust_mes as CMS
@@ -557,7 +587,7 @@ class Main:
 
     def server_actions(self):
         print('server_actions')
-        files, dirs = self.get_hashed_files()
+        files, dirs = self.get_hashed_files(self.server_dir)
         self.save_hashed_fils(files, dirs)
 
     def del_file(self, full_path):
@@ -747,7 +777,12 @@ if __name__ == '__main__':
         default=False,
         help='Отключает проврку обновления файлов клиента'
     )
+    parser.add_argument(
+        '--srv-app-path',
+        help='Директория приложения на сервере'
+    )
 
     args = parser.parse_args()
-    m = Main()
+    srv = args.srv_app_path or ''
+    m = Main(srv_dir=srv)
     m.push(no_update=args.no_update)

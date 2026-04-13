@@ -1,6 +1,7 @@
 from __future__ import annotations
 import base64
 import pprint
+import struct
 from collections import defaultdict
 import copy
 
@@ -9,16 +10,17 @@ import project_cust_38.Cust_Functions as F
 import project_cust_38.Cust_SQLite as CSQ
 import project_cust_38.Cust_Qt as CQT
 import project_cust_38.Cust_mes as CMS
-from project_cust_38.Cust_config import Config
-
 from PyQt5 import QtGui, QtCore, QtWidgets
 import project_cust_38.xml_v_drevo as XML
 from typing import TYPE_CHECKING
 import project_cust_38.Cust_odata_erp as ODAT
 import tkp
-
+from data_class import Data_mes as DTCLS
+import  project_cust_38.Cust_emoji as CEMOJ
 if TYPE_CHECKING:
     from csv_tkp import mywindow
+
+MASS_KEY = 'Масса/М1,М2,М3'
 
 
 @CQT.onerror
@@ -142,6 +144,8 @@ def check_prices(self: mywindow, *args):
 @CQT.onerror
 def recalc_weight(self, *args):
     tbl = self.ui.tbl_red_tree
+    if CQT.is_table_updating(tbl):
+        return
     list_rows = CQT.list_from_wtabl_c(tbl, rez_dict=True)
 
     def calc_count(self, num_row):
@@ -222,8 +226,6 @@ def recalc_weight(self, *args):
 
 @CQT.onerror
 def save_red_tree(self: mywindow):
-    # 24.11.25 (Чат доработка МЕС: Арсенов) Актуализация номенклатуры перед валидацией
-    self.Data_mes.reload_nomen(Config.project.db_nomen)
     def generate_rez_dict(self: mywindow):
         struct = CQT.list_from_wtabl_c(self.ui.tbl_red_tree, rez_dict=True)
         for item in struct:
@@ -239,75 +241,74 @@ def save_red_tree(self: mywindow):
 
     def check_tbl(self: mywindow):
 
-        def check_analogue_property(item: dict, list_of_errs: list[str]):
-            if 'Не найден в БД' in item['Наименование_аналог']:
-                list_of_errs.append(
-                    f"В {item['Наименование']} {item['Обозначение']} не найден аналог в номенклатуре ДСЕ")
-            if F.is_numeric(item['Коэфф_длины_швов'] + item['Уд_количество_аналог']) == False:
-                list_of_errs.append(
-                    f"В {item['Наименование']} {item['Обозначение']} Коэфф_длины_швов/Уд_количество_аналог не число")
-            if item['Коэфф_длины_швов'] == '' and item['Уд_количество_аналог'] == '':
-                list_of_errs.append(
-                    f"В {item['Наименование']} {item['Обозначение']} Коэфф_длины_швов/Уд_количество_аналог не заполнен")
-            if item['Коэфф_длины_швов'] != '' and item['Уд_количество_аналог'] != '':
-                list_of_errs.append(
-                    f"В {item['Наименование']} {item['Обозначение']} Коэфф_длины_швов/Уд_количество_аналог к заполнению только один параметр")
-
         list_of_dicts = CQT.list_from_wtabl_c(self.ui.tbl_red_tree, rez_dict=True)
         list_of_errs = []
         count_konts = 0
         is_simple = self.ui.tbl_red_tree.property('is_simple')
         if self.ui.cmb_vid_napr.currentText() == '':
-            list_of_errs.append(f"Не выбран вид изделия")
-        for i in range(len(list_of_dicts)):
-            item = list_of_dicts[i]
+            return CQT.blink_obj_c(self, 2,  self.ui.cmb_vid_napr, msg=f"Не выбран вид изделия")
+        tree_instance = TreeKnotList(list_of_dicts)
+        for i, branch in enumerate(tree_instance): # type: TreeKnotBranch
+            item = branch.item
             weight = item['Масса/М1,М2,М3'].split("/")
             if len(weight) <= 1 or weight[1] == '':
                 wei_col = CQT.num_col_by_name_c(self.ui.tbl_red_tree, 'Масса/М1,М2,М3')
                 item['Масса/М1,М2,М3'] = '//'
                 self.ui.tbl_red_tree.item(i, wei_col).setText('//')
+            template = {
+                'Строка': i + 1,
+                'Наименование': item['Наименование'],
+                'Обозначение': item['Обозначение'],
+            }
             if not is_simple:
-                check_analogue_property(item, list_of_errs)
+                if 'Не найден в БД' in item['Наименование_аналог']:
+                    list_of_errs.append({**template, "Ошибка": "не найден аналог в номенклатуре ДСЕ"})
+                if branch.is_root and not item['Коэфф_длины_швов']:
+                    list_of_errs.append(
+                        {**template, "Ошибка": "Коэфф_длины_швов не заполнен"})
+                if not branch.is_root and not item['Уд_количество_аналог']:
+                    list_of_errs.append(
+                        {**template, "Ошибка": "Уд_количество_аналог не заполнен"})
             if item['Обозначение'] == '':
-                list_of_errs.append(f'Пустое обозначение в строке {i}')
+                list_of_errs.append({**template, "Ошибка": "Пустое обозначение"})
             if ' не найден' in item['Масса/М1,М2,М3']:
-                list_of_errs.append(f"В {item['Наименование']} {item['Обозначение']} код ЕРП не найден в номенклатуре")
+                list_of_errs.append({**template, "Ошибка": "код ЕРП не найден в номенклатуре"})
             if F.is_numeric(item['Количество']) == False:
-                list_of_errs.append(f"В {item['Наименование']} {item['Обозначение']} количество не число")
-
+                list_of_errs.append({**template, "Ошибка": "количество не число"})
             if F.is_numeric(item['Уровень']) == False:
-                list_of_errs.append(f"В {item['Наименование']} {item['Обозначение']} Уровень не число")
+                list_of_errs.append({**template, "Ошибка": "Уровень не число"})
             else:
                 if item['Уровень'] == '0':
                     count_konts += 1
+                    if count_konts > 1:
+                        list_of_errs.append({**template, "Ошибка": f"В структуре должен быть один корневой узел"})
             if i == 0:
                 if F.valm(item['Уровень']) > 1:
-                    list_of_errs.append(
-                        f"В {item['Наименование']} {item['Обозначение']} 0 уровень в иерархии должен быть первым")
+                    list_of_errs.append({**template, "Ошибка": "0 уровень в иерархии должен быть первым"})
             if i > 0 and i < len(list_of_dicts) - 1:
                 if F.valm(item['Уровень']) - F.valm(list_of_dicts[i - 1]['Уровень']) > 1:
-                    list_of_errs.append(
-                        f"В {item['Наименование']} {item['Обозначение']} Уровень не может быть оторван от иерархии")
+                    list_of_errs.append({**template, "Ошибка": "Уровень не может быть оторван от иерархии"})
 
             if item['ПКИ'] == '1' and item['Код ERP'] == '':
-                list_of_errs.append(f"В {item['Наименование']} {item['Обозначение']} не указан Код ЕРП")
+                list_of_errs.append({**template, "Ошибка": "не указан Код ЕРП"})
+
             if item['Масса/М1,М2,М3'] != '':
                 if item['Масса/М1,М2,М3'].split("/")[1] != '':
                     if item['Код ERP'] == '':
-                        list_of_errs.append(f"В {item['Наименование']} {item['Обозначение']} не указан Код ЕРП")
+                        list_of_errs.append({**template, "Ошибка": "не указан Код ЕРП"})
 
             if item['Код ERP'] != '':
                 if item['Код ERP'] in self.Data_mes.dict_nomenklat_by_kod:
                     if self.Data_mes.dict_nomenklat_by_kod[item['Код ERP']]['На_удаление'] == 1:
-                        list_of_errs.append(
-                            f"В {item['Наименование']} {item['Обозначение']} материал помечен на удаление")
+                        list_of_errs.append({**template, "Ошибка": "материал помечен на удаление"})
                 else:
-                    list_of_errs.append(f"В {item['Наименование']} {item['Обозначение']} материал отсутствует в БД")
-        if count_konts > 1 or count_konts == 0:
-            list_of_errs.append(
-                f"В структуре должен быть один корневой узел")
+                    list_of_errs.append({**template, "Ошибка": "материал отсутствует в БД"})
+
+        if count_konts == 0:
+            return CQT.msgbox('Не найден корневой узел')
+
         if len(list_of_errs) > 0:
-            CQT.msgbox(pprint.pformat(list_of_errs))
+            CQT.msgboxg_get_table_ok_inf(self, 'Найдены ошибки в структуре', list_of_errs)
             return False
         if not tkp.check_name_tkp(self.ui.le_name_tkp_2.text().strip(), self.ui.le_nnom_izd_2.text().strip(),
                                   self.ui.le_path_vo_2.text()):
@@ -393,7 +394,6 @@ def save_red_tree(self: mywindow):
     self.ui.tbl_red_tree.blockSignals(True)
     if not check_tbl(self):
         return
-
     save_into_db(self)
     self.ui.tbl_red_tree.blockSignals(False)
 
@@ -437,8 +437,8 @@ def get_into_red(self: mywindow):
             ]
         else:
             spis = pickle_file
+
     fill_tbl_strukt(self, spis)
-    fill_tab_to_level(self.ui.tbl_red_tree)
 
     self.ui.cmb_vid_napr.setCurrentText(self.Data_mes.DICT_VID_PO_NAPR[strukt['вид_по_напр']]['Имя'])
     self.ui.tabWidget.setCurrentIndex(CQT.number_table_by_name_c(self.ui.tabWidget, 'Структура'))
@@ -446,7 +446,14 @@ def get_into_red(self: mywindow):
     self.ui.le_name_tkp_2.setText(strukt['name_tkp'])
     self.ui.le_nnom_izd_2.setText(strukt['nnom_izd'])
     self.ui.le_path_vo_2.setText(strukt['dir_rkd'])
-    recalc_weight(self)
+    on_tree_changed(self)
+
+    tbl.setUpdatesEnabled(True)
+    tbl.viewport().setUpdatesEnabled(True)
+    tbl.horizontalHeader().setSectionsMovable(True)  # если был блок на движение
+    tbl.viewport().update()
+    QtWidgets.QApplication.processEvents()
+
 
 def fix_struct(struct):
     for item in struct:
@@ -456,32 +463,16 @@ def fix_struct(struct):
             continue
         if item['Обозначение'] == '':
             item['Обозначение'] = item['Обозначение_аналог']
-def fix_columns(tabl_cr_stukt):
-    required_columns = ['b', 'Наименование', 'Обозначение', 'Количество', 'Масса/М1,М2,М3','Количество на изделие', 'Примечание', 'ПКИ', 'Код ERP',
-                  'Наименование_аналог', 'Обозначение_аналог', 'Уд_количество_аналог', 'Коэфф_длины_швов', 'Кол. по заявке', 'Уровень']
-    for col in range(tabl_cr_stukt.columnCount()):
-        text = tabl_cr_stukt.horizontalHeaderItem(col).text()
-        width = tabl_cr_stukt.columnWidth(col)
-        if text in required_columns and width < 20:
-            tabl_cr_stukt.setColumnWidth(col, 20)
 
 @CQT.onerror
 def fill_tbl_strukt(self, data):
     fix_struct(data)
-    horizontal_scroll = self.ui.tbl_red_tree.horizontalScrollBar().value()
     scroll_vertical = self.ui.tbl_red_tree.verticalScrollBar().value()
     hidden_column = CQT.num_col_by_name_c(self.ui.tbl_red_tree, 'Ед.изм.')
-    CQT.fill_wtabl(data, self.ui.tbl_red_tree, self.edit_cr_mk, 200, height_row=24, auto_type=False,
-                   list_column_widths=CMS.load_column_widths(self,self.ui.tbl_red_tree))
+    fill_tree_stukture(self, data)
     self.ui.tbl_red_tree.horizontalHeader().hideSection(hidden_column)
-    # CMS.load_column_widths(self, self.ui.tbl_red_tree)
-    CQT.set_color_sort_cell_table_c(self.ui.tbl_red_tree)
     hide_columns_for_simple_mode(self, self.ui.tbl_red_tree)
     self.ui.tbl_red_tree.verticalScrollBar().setValue(scroll_vertical)
-    self.ui.tbl_red_tree.horizontalScrollBar().setValue(horizontal_scroll)
-    fix_columns(self.ui.tbl_red_tree)
-
-
 
 
 @CQT.onerror
@@ -1082,9 +1073,7 @@ def red_tree_del_knot(self: mywindow):
 
     if len(spisok) > 1:
         tabl_cr_stukt.setCurrentCell(q_strok, q_column)
-        fill_tab_to_level(self.ui.tbl_red_tree)
-        accumulate_tree_mass(self)
-        fill_tab_to_level(tabl_cr_stukt)
+        on_tree_changed(self)
     tabl_cr_stukt.setCurrentCell(-1, 0)
     recalc_weight(self)
     tabl_cr_stukt.blockSignals(False)
@@ -1163,8 +1152,7 @@ def red_tree_load(self: mywindow):
             ]
     spis = check_knot(self, spis)
     fill_tbl_strukt(self, spis)
-    fill_tab_to_level(self.ui.tbl_red_tree)
-    recalc_weight(self)
+    on_tree_changed(self)
 
 
 @CQT.onerror
@@ -1188,8 +1176,7 @@ def red_tree_move(self: mywindow, operator):
                 cur_item.setText(swap_item.text())
             tabl_cr_stukt.setItem(operator(row, 1), col, cur_item)
             tabl_cr_stukt.setItem(row, col, swap_item)
-    accumulate_tree_mass(self)
-    fill_tab_to_level(self.ui.tbl_red_tree)
+    on_tree_changed(self)
     tabl_cr_stukt.blockSignals(False)
     for row in sorted(selected_rows):
         for col in range(tabl_cr_stukt.columnCount()):
@@ -1222,12 +1209,6 @@ def add_row_branch(self: mywindow, *args):
     data[tbl.currentRow() + 1] = new_data
     fill_tbl_strukt(self, data)
 
-def rollback(self: mywindow, tbl):
-    # CQT.RollBackUserChangesDelegator.
-    ...
-
-def add_stack_row(self, tbl):
-    ...
 
 @CQT.onerror
 def mat_apply(self: mywindow, val: str, name: str, kod: str):
@@ -1254,9 +1235,7 @@ def mat_apply(self: mywindow, val: str, name: str, kod: str):
         sync_row_materials(self, nn, val, name, kod)
     tbl.item(selected_row, nf_mat).setText(val + "/" + name)
     tbl.item(selected_row, nf_kod).setText(kod)
-    accumulate_tree_mass(self)
-    fill_tab_to_level(tbl)
-    recalc_weight(self)
+    on_tree_changed(self)
     CQT.msgbox(f'Успешно')
     CQT.select_cell(tbl, selected_row, nf_mat)
 
@@ -1293,40 +1272,44 @@ def mat_apply_2(self: mywindow, replace_weight: bool = False, replace_material: 
     new_val = '/'.join(changes)
     if not CQT.msgboxgYN(f'Применить значение {new_val!r}\n к всем выделенным строкам'):
         return
-    for current_row_struct in selected_rows:
-        st_nn_value = tbl_struct.item(current_row_struct, st_nn_column).text()
-        st_code_value = tbl_struct.item(current_row_struct, st_code_column).text()
-        st_mass_value = tbl_struct.item(current_row_struct, st_mat_column).text()
 
-        if replace_material:
-            name_mat = tbl_mats.item(current_row_materials, nf_naim).text()
-            kod_mat = tbl_mats.item(current_row_materials, nf_kod).text()
-        else:
-            name_mat = ''
-            if st_code_value:
-                name_mat = self.Data_mes.dict_nomenklat_by_kod[st_code_value]['Наименование']
-            kod_mat = st_code_value
+    with CQT.table_updating(tbl_struct,False):
+        for current_row_struct in selected_rows:
+            st_nn_value = tbl_struct.item(current_row_struct, st_nn_column).text()
+            st_code_value = tbl_struct.item(current_row_struct, st_code_column).text()
+            st_mass_value = tbl_struct.item(current_row_struct, st_mat_column).text()
 
-        if not replace_weight:
-            split_mass = st_mass_value.split('/')
-            val = '0'
-            if len(split_mass) > 0:
-                val = st_mass_value.split('/')[0]
-        if self.ui.chk_mat_for_all.isChecked():
-            sync_row_materials(self, st_nn_value, val, name_mat, kod_mat)
-        tbl_struct.item(current_row_struct, st_mat_column).setText(val + "/" + name_mat)
-        tbl_struct.item(current_row_struct, st_code_column).setText(kod_mat)
-        accumulate_tree_mass(self)
-        fill_tab_to_level(tbl_struct)
-    recalc_weight(self)
-    for row in selected_rows:
-        for col in range(tbl_struct.columnCount()):
-            tbl_struct.item(row, col).setSelected(True)
+            if replace_material:
+                name_mat = tbl_mats.item(current_row_materials, nf_naim).text()
+                kod_mat = tbl_mats.item(current_row_materials, nf_kod).text()
+            else:
+                name_mat = ''
+                if st_code_value:
+                    name_mat = self.Data_mes.dict_nomenklat_by_kod[st_code_value]['Наименование']
+                kod_mat = st_code_value
+
+            if not replace_weight:
+                split_mass = st_mass_value.split('/')
+                val = '0'
+                if len(split_mass) > 0:
+                    val = st_mass_value.split('/')[0]
+            if self.ui.chk_mat_for_all.isChecked():
+                sync_row_materials(self, st_nn_value, val, name_mat, kod_mat)
+            tbl_struct.item(current_row_struct, st_mat_column).setText(val + "/" + name_mat)
+            tbl_struct.item(current_row_struct, st_code_column).setText(kod_mat)
+        for row in selected_rows:
+            for col in range(tbl_struct.columnCount()):
+                tbl_struct.item(row, col).setSelected(True)
+    on_tree_changed(self)
     CQT.msgbox(f'Успешно')
+
+def on_tree_changed(self):
+    recalc_weight(self)
+    accumulate_tree_mass(self)
+    fill_tab_to_level(self.ui.tbl_red_tree)
 
 def sync_row_materials(self: mywindow, target_nn: str, val: str, name: str, kod: str):
     tbl = self.ui.tbl_red_tree
-    # if target_nn in self.Data_mes.dict_dse:
     lst_dse = CQT.list_from_wtabl_c(tbl, rez_dict=True)
     cp_lst = copy.deepcopy(lst_dse)
     for idx, dse in enumerate(cp_lst):
@@ -1374,16 +1357,6 @@ def apply_dse(self: mywindow, check=True):
 
 
 @CQT.onerror
-def mat_apply_wout_mat(self: mywindow):
-    val = self.ui.le_norma.text()
-    if not F.is_numeric(val):
-        CQT.msgbox(f'Норма не число')
-        return
-    mat_apply(self, str(round(F.valm(val), 2)).replace(",", '.'), "", '')
-    recalc_weight(self)
-
-
-@CQT.onerror
 def mat_apply_mat(self: mywindow):
     val = self.ui.le_norma.text()
     if not F.is_numeric(val):
@@ -1397,28 +1370,6 @@ def mat_apply_mat(self: mywindow):
     nf_kod = CQT.num_col_by_name_c(self.ui.tbl_anal_mat, 'Код')
     name_mat = self.ui.tbl_anal_mat.item(cur_row, nf_naim).text()
     kod_mat = self.ui.tbl_anal_mat.item(cur_row, nf_kod).text()
-    mat_apply(self, str(round(F.valm(val), 2)).replace(",", '.'), name_mat, kod_mat)
-    recalc_weight(self)
-
-
-@CQT.onerror
-def change_mat(self: mywindow):
-    cur_row = self.ui.tbl_anal_mat.currentRow()
-    cur_row_anal = self.ui.tbl_red_tree.currentRow()
-    if cur_row == -1:
-        CQT.msgbox(f'Не выбран материал')
-        return
-    if cur_row_anal == -1:
-        return
-    nf_naim = CQT.num_col_by_name_c(self.ui.tbl_anal_mat, 'Наименование')
-    nf_kod = CQT.num_col_by_name_c(self.ui.tbl_anal_mat, 'Код')
-    if None in (nf_naim, nf_kod):
-        return
-    col_mass_anal = CQT.num_col_by_name_c(self.ui.tbl_red_tree, 'Масса/М1,М2,М3')
-    name_mat = self.ui.tbl_anal_mat.item(cur_row, nf_naim).text()
-    kod_mat = self.ui.tbl_anal_mat.item(cur_row, nf_kod).text()
-    mass_mat = self.ui.tbl_red_tree.item(cur_row_anal, col_mass_anal).text()
-    val = round(F.valm(mass_mat.split("/")[0]), 3)
     mat_apply(self, str(round(F.valm(val), 2)).replace(",", '.'), name_mat, kod_mat)
     recalc_weight(self)
 
@@ -1459,35 +1410,53 @@ def load_dse(self: mywindow):
 
 
 @CQT.onerror
+def clear_tbl_red_stukt(self: mywindow):
+    tabl_cr_stukt = self.ui.tbl_red_tree
+    with CQT.table_updating(tabl_cr_stukt):
+        for i in range(tabl_cr_stukt.rowCount()):
+            tabl_cr_stukt.removeRow(0)
+
+@CQT.onerror
 def prepare_tbl_red_stukt(self: mywindow):
     tabl_cr_stukt = self.ui.tbl_red_tree
-    tabl_cr_stukt.clearContents()
-    tabl_cr_stukt.setRowCount(0)
+
+    EDIT_CR_MK = {
+        'Количество',
+        'Ссылка',
+        'Примечание',
+        'ПКИ',
+        'Уд_количество_аналог',
+        'Коэфф_длины_швов',
+        'Кол. по заявке',
+        'Уровень',
+    }
+
     self.hat_c = ['b', 'Наименование', 'Обозначение', 'Количество', 'Ед.изм.', 'Масса/М1,М2,М3', 'Ссылка',
                   'ID', 'Количество на изделие', 'Примечание', 'ПКИ', 'Сумм.Количество', 'Код ERP',
                   'Наименование_аналог', 'Обозначение_аналог', 'Уд_количество_аналог', 'Коэфф_длины_швов', '_5', '_6'
         , 'dreva_kod', 'Кол. по заявке', 'Уровень']
-    tabl_cr_stukt.setColumnCount(len(self.hat_c))
+    pseudo_templ = {k:'' for k in self.hat_c}
+    self.edit_cr_mk = set([idx for idx, k in enumerate(self.hat_c) if k in EDIT_CR_MK])
 
-    tabl_cr_stukt.setHorizontalHeaderLabels(self.hat_c)
-    # tabl_cr_stukt.resizeColumnsToContents()
-    for column_name in ('_5', '_6', 'dreva_kod', 'ID'):
-        try:
-            tabl_cr_stukt.setColumnHidden(CQT.num_col_by_name_c(tabl_cr_stukt, column_name), True)
-        except Exception as e:
-            ...
-    # tabl_cr_stukt.setColumnHidden(7, True)
-    # tabl_cr_stukt.setColumnHidden(10, True)
-    CQT.set_color_sort_cell_table_c(tabl_cr_stukt)
-    tabl_cr_stukt.horizontalHeader().setStretchLastSection(True)
-    tabl_cr_stukt.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
+    fill_tree_stukture(self,[pseudo_templ])
+
     delegator = CQT.RollBackUserChangesDelegator(tabl_cr_stukt, self)
     tabl_cr_stukt.setItemDelegate(delegator)
-    # self.edit_cr_mk = {2, 5, 8, 14,15, 19, 20}
-    self.edit_cr_mk = {3, 6, 9, 10, 15, 16, 20, 21}
-    self.calculation = CalculationAnalog(self)
-    # recalc_weight(self)
 
+    self.calculation = CalculationAnalog(self)
+    t = CQT.TableContext(tabl_cr_stukt)
+    t.remove(0)
+
+def fill_tree_stukture(self,data):
+    HIDDEN_FIELDS = {'_5', '_6', 'dreva_kod', 'Кол. по заявке'}
+    tabl_cr_stukt = self.ui.tbl_red_tree
+    CQT.fill_wtabl(data, tabl_cr_stukt, styleSheet=CQT.MES_EDIT_CSS,
+                   set_editeble_col_nomera=self.edit_cr_mk, auto_type=False, selectionBehavior='SelectRows')
+    t = CQT.TableContext(tabl_cr_stukt)
+    for k in t.nf.keys():
+        if k in HIDDEN_FIELDS:
+            t.hide(k)
+    CMS.load_column_widths(self, tabl_cr_stukt)
 
 """def get_convert_di(li):
     levels = []
@@ -1517,8 +1486,49 @@ def get_convert_di(li):
 
 @CQT.onerror
 def fill_tab_to_level(table: QtWidgets.QTableWidget):
-    table.blockSignals(True)
+    if CQT.is_table_updating(table):
+        return
+    plus = CEMOJ.ДокументыДанные.plus.symbol
+    minus = CEMOJ.ДокументыДанные.minus.symbol
+    @CQT.onerror
+    def fnc_click_red_tree(index:QtCore.QModelIndex,*args):
 
+        i = index.row()
+        j = index.column()
+        if j != 0:
+            return
+        plus = CEMOJ.ДокументыДанные.plus.symbol
+        minus = CEMOJ.ДокументыДанные.minus.symbol
+        t = CQT.TableContext(DTCLS.app_self.ui.tbl_red_tree)
+        with CQT.table_updating(t):
+            row = t.get_row(i)
+            symbol = row.value('b')
+            lvl_str = row.value('Уровень')
+            if not F.is_numeric(lvl_str):
+                return
+            previous_lvl = int(lvl_str)
+            if symbol == minus:
+                for i_row in t.rows():
+                    if i_row.i<=row.i:
+                        continue
+                    current_level = int(i_row.value('Уровень'))
+                    if previous_lvl >= current_level: break
+                    if i_row.value('b'):
+                        i_row.set_value('b', plus)
+                    i_row.hide()
+                row.set_value('b',plus)
+                return
+            if symbol == plus:
+                for i_row in t.rows():
+                    if i_row.i<=row.i:
+                        continue
+                    current_level = int(i_row.value('Уровень'))
+                    if previous_lvl >= current_level: break
+                    if i_row.value('b'):
+                        i_row.set_value('b', minus)
+                    i_row.hide(False)
+                row.set_value('b',minus)
+                return
     def btn_action(row, col):
         table.blockSignals(True)  # блок событий на время нажатия кнопки иначе recalc
         btn = table.cellWidget(row, 0)
@@ -1538,36 +1548,47 @@ def fill_tab_to_level(table: QtWidgets.QTableWidget):
             btn.setText('-')
         QtWidgets.QApplication.processEvents()
         table.blockSignals(False)  # блок событий на время нажатия кнопки иначе recalc
+    with CQT.table_updating(table):
+        data = CQT.list_from_wtabl_c(table, rez_dict=True)
+        tree_obj = TreeKnotList(data)
+        table.clicked.disconnect()
+        table.clicked.connect(fnc_click_red_tree)
+        for row_idx, obj in enumerate(tree_obj):
+            lvl_nk = CQT.num_col_by_name_c(table, 'Наименование')
+            row_item = table.item(row_idx, lvl_nk)
+            level = obj.level
+            tabs = '      ' * level
+            row_item.setText(tabs + row_item.text().strip())
+            gray_value = 130 + ((level + 1) * 25)
+            if obj.is_root:
+                btn_text = plus if obj.child and table.isRowHidden(row_idx + 1) else minus
+                font = QtGui.QFont()
+                font.setBold(True)
+                font.setPixelSize(16)
+                #CQT.add_btn(table, row_idx, 0, btn_text, conn_func_checked_row_col=btn_action)
+                #table.cellWidget(row_idx, 0).setFont(font)
+                table.item(row_idx,0).setText(btn_text)
 
-    data = CQT.list_from_wtabl_c(table, rez_dict=True)
-    tree_obj = TreeKnotList(data)
-
-    for row_idx, obj in enumerate(tree_obj):
-        lvl_nk = CQT.num_col_by_name_c(table, 'Наименование')
-        row_item = table.item(row_idx, lvl_nk)
-        level = obj.level
-        tabs = '      ' * level
-        row_item.setText(tabs + row_item.text().strip())
-        gray_value = 130 + ((level + 1) * 25)
-        if obj.is_root:
-            btn_text = '+' if obj.child and table.isRowHidden(row_idx + 1) else '-'
-            font = QtGui.QFont()
-            font.setBold(True)
-            font.setPixelSize(16)
-            CQT.add_btn(table, row_idx, 0, btn_text, conn_func_checked_row_col=btn_action)
-            table.cellWidget(row_idx, 0).setFont(font)
-            CQT.set_color_row_wtab_c(table, row_idx, gray_value, gray_value, gray_value)
-        else:
-            CQT.set_color_row_wtab_c(table, row_idx, 255, 255, 255)
-    table.blockSignals(False)
+                CQT.set_color_row_wtab_c(table, row_idx, gray_value, gray_value, gray_value)
+                CQT.set_color_wtab_c(table,row_idx,0,255,255,255)
+            else:
+                CQT.set_color_row_wtab_c(table, row_idx, 255, 255, 255)
+                table.item(row_idx, 0).setText('')
+        CMS.load_column_widths(DTCLS.app_self,table)
 
 @CQT.onerror
-def accumulate_tree_mass(self: mywindow, previous: int = 0, row: int = None, col: int = None):
-    data = CQT.list_from_wtabl_c(self.ui.tbl_red_tree, "", True, rez_dict=True)
-    tree_knot_object = TreeKnotList(data)
+def accumulate_tree_mass(self: mywindow):
+    table_widget = self.ui.tbl_red_tree
+    if CQT.is_table_updating(self.ui.tbl_red_tree):
+        return
+    table_data = CQT.list_from_wtabl_c(table_widget, "", True, rez_dict=True)
+    tree_knot_object = TreeKnotList(table_data)
     data = tree_knot_object.calc_knot()
-    fill_tbl_strukt(self, data)
-    # CMS.load_column_widths(self, self.ui.tbl_red_tree)
+    with CQT.table_updating(table_widget):
+        mass_column = CQT.num_col_by_name_c(table_widget, MASS_KEY)
+        if mass_column is None: return []
+        for i, row in enumerate(data):
+            table_widget.item(i, mass_column).setText(row[MASS_KEY])
     return data
 
 
@@ -1580,17 +1601,20 @@ def change_lvl(self: mywindow, operator) -> None:
         return
     num_col_lvl = CQT.num_col_by_name_c(tabl_cr_strukt, 'Уровень')
     selected_rows = [item.topRow() for item in tabl_cr_strukt.selectedRanges()]
-    for row in sorted(selected_rows):
-        current_level = tabl_cr_strukt.item(row, num_col_lvl).text()
-        if current_level == '0':
-            CQT.msgbox('Нельзя менять главный корень')
-            return
-        tabl_cr_strukt.selectRow(row)
-        current_item = tabl_cr_strukt.item(row, num_col_lvl)
-        current_item.setText(str(operator(int(current_level), 1)))
+    with CQT.table_updating(tabl_cr_strukt):
+        for row in sorted(selected_rows):
+            current_level = tabl_cr_strukt.item(row, num_col_lvl).text()
+            if current_level == '0':
+                CQT.msgbox('Нельзя менять главный корень')
+                return
+            tabl_cr_strukt.selectRow(row)
+            current_item = tabl_cr_strukt.item(row, num_col_lvl)
+            current_item.setText(str(operator(int(current_level), 1)))
+    on_tree_changed(self)
 
 
 class TreeKnotBranch:
+
     def __init__(self, parent, **kwargs):
         self.item = kwargs
         self.parent: 'TreeKnotBranch' = parent
@@ -1609,13 +1633,13 @@ class TreeKnotBranch:
         count = self.item.get('Количество')
         if count and F.is_numeric(count):
             return F.valm(count)
-        CQT.msgbox('Количество не число')
+        print('Количество не число')
         return 1
 
     @property
     def mass(self):
         text = self.item.get('Масса/М1,М2,М3', '')
-        lst = text.split('/')
+        lst = str(text).split('/')
         if len(lst[0]) >= 1 and F.is_numeric(lst[0]):
             return F.valm(lst[0]) #09.09.25
         return float()
@@ -1724,7 +1748,7 @@ def check_tree_on_type_tkp(window: mywindow):
 def check_knot(self, struct):
     spisok = copy.deepcopy(struct)
     for i in range(len(spisok)):
-        spisok[i]['ID'] = spisok[i]['ID'].split('_')[0] + f'_{str(i)}'
+        spisok[i]['ID'] = str(spisok[i]['ID']).split('_')[0] + f'_{str(i)}'
         nn_analogue = spisok[i]['Обозначение_аналог'].strip()
         if nn_analogue and nn_analogue in self.Data_mes.dict_dse:
             nn = self.Data_mes.dict_dse.get(nn_analogue) or {}
@@ -1808,7 +1832,6 @@ def get_knot(self: mywindow):
         return
 
     col_lvl_anal = CQT.num_col_by_name_c(tabl_cr_stukt, 'Уровень')
-    base_lvl = 0
 
     list_to_add = [sp_tree[0]]
     ur = int(sp_tree[flag_naid][nk_level_c])
@@ -1848,9 +1871,7 @@ def get_knot(self: mywindow):
     spisok = check_knot(self, spisok)
     spisok = [{'b': '', **elem} for elem in spisok]
     fill_tbl_strukt(self, spisok)
-    accumulate_tree_mass(self)
-    fill_tab_to_level(tabl_cr_stukt)
-    recalc_weight(self)
+    on_tree_changed(self)
 
 def hide_columns_for_simple_mode(self, tabl_cr_stukt):
     current_type = self.ui.cmb_vid_napr.currentText()

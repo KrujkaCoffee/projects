@@ -165,6 +165,7 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.btn_show_history_nar.clicked.connect(lambda: ARMOPER.show_history_nar(self))
         self.ui.btn_show_structure_nar.clicked.connect(lambda: ARMOPER.show_structure_nar(self))
         self.ui.bnt_glsv_append.clicked.connect(lambda: RPTP.bnt_glsv_append(self))
+        self.ui.bnt_glsv_del_doc.clicked.connect(lambda: RPTP.bnt_glsv_del_doc(self))
         self.ui.bnt_glsv_edit_rule.clicked.connect(lambda: RPTP.bnt_glsv_edit_rule(self))
         self.ui.bnt_glsv_add_rule.clicked.connect(lambda: RPTP.bnt_glsv_add_rule(self))
         # ==================lines

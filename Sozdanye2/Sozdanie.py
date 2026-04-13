@@ -25,7 +25,9 @@ import outplan
 import project_cust_38.Cust_b24 as B24
 import project_cust_38.Cust_config as CFG
 import project_cust_38.competence_matrix as MTXCMP
+import composition_manage as CMPM
 from dataClass import data_app as DTCLS
+import project_cust_38.Cust_emoji as CEMOJ
 # import traceback
 
 
@@ -50,6 +52,7 @@ class mywindow(QtWidgets.QMainWindow):
         self.app_icons()
         DTCLS.app_self = self
         CQT.connect_to_resize(self, CMS.tmp_dir())
+        CQT.QtCore.QTimer.singleShot(50, lambda: CQT.load_resize_splitters(self, CMS.tmp_dir()))
         CMS.add_action_config_save_tbl_filtrs(self, self.ui)
         CQT.load_icons(self, 24)
         # ===========================================connects
@@ -68,6 +71,12 @@ class mywindow(QtWidgets.QMainWindow):
             btn_logout=self.ui.btn_logout,
         )
         if 'btn':
+            self.ui.btn_comp_add_file.clicked.connect(lambda: CMPM.btn_comp_add_file(self))
+            self.ui.btn_comp_delete_file.clicked.connect(lambda: CMPM.btn_comp_delete_file(self))
+            self.ui.btn_comp_dse.clicked.connect(lambda: CMPM.btn_comp_dse(self))
+            self.ui.btn_comp_dse_cr_nar.clicked.connect(lambda: CMPM.btn_comp_dse_cr_nar(self))
+            self.ui.btn_show_comp_file.clicked.connect(lambda: CMPM.btn_show_comp_file(self))
+            self.ui.btn_update_files.clicked.connect(lambda: CMPM.btn_update_files(self))
             self.ui.btn_create_comp.clicked.connect(lambda: MTXCMP.create_comp(self))
             self.ui.btn_info_comp.clicked.connect(lambda: MTXCMP.show_info_comp(self))
             self.ui.btn_reset_changes_competence.clicked.connect(lambda: MTXCMP.reset_changes_competence(self))
@@ -124,6 +133,8 @@ class mywindow(QtWidgets.QMainWindow):
             self.ui.le_Nparol2.setVisible(False)
         # ==================TABLES
         if 'tbl':
+            self.ui.tbl_comp_dse.itemSelectionChanged.connect(CMPM.tbl_comp_dse)
+            self.ui.tbl_comp_files.itemSelectionChanged.connect(CMPM.btn_comp_load_file)
             self.ui.tbl_competence_users.itemActivated.connect(lambda item: MTXCMP.tbl_current_elem_itemActivated(self, item))
             self.ui.tbl_competence_users.cellClicked.connect(lambda i,j : MTXCMP.tbl_current_elem_cellEntered(self, i,j))
             self.ui.tbl_competence_users.itemChanged.connect(lambda item: MTXCMP.tbl_current_elem_itemChanged(self, item))
@@ -173,7 +184,7 @@ class mywindow(QtWidgets.QMainWindow):
         # ==================TABS
         if 'tab':
             self.ui.tabWidget_2.currentChanged[int].connect(self.tab2_clcik)
-            self.ui.tabWidget.currentChanged[int].connect(self.tab_click)
+            self.ui.tabWidget.currentChanged[int].connect(self.tab_clcik)
             self.ui.tab_prosm_nar.currentChanged[int].connect(self.tab_prosm_nar)
             self.ui.tabWidget.setTabEnabled(CQT.number_table_by_name_c(self.ui.tabWidget,'Контроль проектов'),False)
         # ===================CHECKBOX
@@ -465,6 +476,7 @@ class mywindow(QtWidgets.QMainWindow):
             return
         if not CQT.msgboxgYN(msg):
             return set_state(prev_state, checkbox)
+        return
         response = CSQ.custom_request_c(self.db_naryd,f'UPDATE naryad SET Аутсорсинг = {new_state} WHERE Пномер = {pnom}')
         if response:
             query = f"""SELECT пл_оуп.НомПл as "Номер КПЛ", знпр.№ERP, знпр.№проекта, mk.Пномер as "Номер МК" FROM naryad
@@ -600,6 +612,15 @@ class mywindow(QtWidgets.QMainWindow):
 
     @CQT.onerror
     def key_handler(self, key_val: int, set_modifiers: set = ()):
+        if key_val == QtCore.Qt.Key_Return:
+            focus: QtWidgets.QTableWidget = QtWidgets.QApplication.focusWidget()
+            if not focus == None:
+                if '_filtr' in focus.objectName():
+                    tbl_name = focus.objectName().replace('_filtr', '')
+                    if hasattr(self.ui, tbl_name):
+                        CMS.apply_filtr_c(self, focus, self.ui.__getattribute__(tbl_name))
+                        return
+
         if self.ui.tbl_filtr_projs_raspred.hasFocus():
             if key_val == 16777220:
                 CMS.apply_filtr_c(self, self.ui.tbl_filtr_projs_raspred, self.ui.tbl_projs_raspred)
@@ -813,7 +834,7 @@ class mywindow(QtWidgets.QMainWindow):
             QtWidgets.QApplication.style().standardIcon(QtWidgets.QStyle.SP_FileDialogListView)))
         self.ui.tabWidget_2.setTabIcon(2, QtGui.QIcon(
             QtWidgets.QApplication.style().standardIcon(QtWidgets.QStyle.SP_TrashIcon)))
-        self.ui.tabWidget_2.setTabIcon(3, QtGui.QIcon(
+        self.ui.tabWidget_2.setTabIcon(4, QtGui.QIcon(
             QtWidgets.QApplication.style().standardIcon(QtWidgets.QStyle.SP_MessageBoxWarning)))
 
 
@@ -832,6 +853,9 @@ class mywindow(QtWidgets.QMainWindow):
             data_pl = F.from_binary_pickle(item['file_poz_plan'])
             if item['Дата'] not in self.DICT_ACCESS_PROJ_MONTH:
                 self.DICT_ACCESS_PROJ_MONTH[item['Дата']] = set()
+            if not data_pl:
+                print(f'[get_plan_proj]Не найден file_poz_plan в строке {item}')
+                continue
             for poz in data_pl.keys():
                 if poz in dict_poz:
                     self.DICT_ACCESS_PROJ_MONTH[item['Дата']].add(dict_poz[poz])
@@ -846,7 +870,7 @@ class mywindow(QtWidgets.QMainWindow):
 
     @CQT.onerror
     @CQT.progress_decorator
-    def tab_click(self, nom, hook_prog_bar, *args):
+    def tab_clcik(self, nom, hook_prog_bar, *args):
         hook_prog_bar.set(10)
         hook_prog_bar.text('Обработка')
         if CMS.kontrol_ver(self.versia, self.NAME_MODULE_BASE) == False:
@@ -897,12 +921,15 @@ class mywindow(QtWidgets.QMainWindow):
         name = self.ui.tabWidget_2.tabText(nom)
         if name == 'МК':
             pass
+        if name == 'Компоновка':
+            CMPM.update_comp_files()
         if name == 'ДСЕ':
             # self.load_brak()
             # if self.ui.tbl_brak.rowCount() > 0:
             #    self.ui.tabWidget_2.setCurrentIndex(CQT.number_table_by_name_c(self.ui.tabWidget_2, 'Брак'))
             # else:
             #    self.load_mk()
+
             if self.ui.tabWidget_2.tabText(self.tab2_clcik_old_index) == 'МК':
                 self.load_mk()
                 self.raschet_naruada_time_tmp()
@@ -927,6 +954,9 @@ class mywindow(QtWidgets.QMainWindow):
             self.raschet_naruada()
         if name == 'Брак':
             self.load_brak()
+
+        if name == 'Компоновка':
+            CMPM.btn_update_files(self)
 
         self.tab2_clcik_old_index = nom
 
@@ -1165,7 +1195,7 @@ class mywindow(QtWidgets.QMainWindow):
         CMS.load_peresilniy(self, tbl, tblv)
 
     @CQT.onerror
-    def load_csv(self, *args):
+    def load_csv(self, arg=None, list_mk=None, *args):
         # list_nar = CSQ.custom_request_c(self.db_naryd,f"""
         #    SELECT * FROM naryad WHERE naryad.Пномер IN (SELECT naryad.Пномер FROM
         #     naryad INNER JOIN mk ON mk.Пномер = naryad.Номер_мк  WHERE mk.Статус != "Закрыта")""",rez_dict=True)
@@ -1188,7 +1218,7 @@ class mywindow(QtWidgets.QMainWindow):
         if self.glob_login == "":
             CQT.msgbox('Необходимо войти')
             return
-        if not CMS.load_csv(self, self.db_nomen, self.db_kplan):
+        if not CMS.load_csv(self, self.db_nomen, self.db_kplan,list_mk = list_mk):
             return
         if not CFG.Config.user_config.is_developer:
             self.zapoln_tabl_mk()
@@ -1569,32 +1599,6 @@ class mywindow(QtWidgets.QMainWindow):
             CSQ.custom_request_c(self.db_naryd, f"""DELETE FROM naryad WHERE Дата = '{date_nar}' 
                                     AND ДСЕ_ID = '{dse_id}';""")
 
-        def calc_koef_slogn(self, nom_mk):
-            query = CSQ.custom_request_c(self.db_naryd,
-                                         f"""SELECT Тип, Тип_доработки FROM mk WHERE Пномер = {nom_mk}""", one=True,
-                                         rez_dict=True)
-            if query == None or query == False:
-                CQT.msgbox(f'ОШибка расчета коэффициента сложности тип')
-                return False
-
-            if query['Тип'] == 2:
-                query_dorez = CSQ.custom_request_c(self.db_naryd,
-                                                   f"""SELECT Причина, Пномер FROM дорезки_мк WHERE Номер_мк = {nom_mk}""",
-                                                   rez_dict=True)
-                if query_dorez == None or query_dorez == False:
-                    CQT.msgbox(f'ОШибка расчета коэффициента сложности дорезка')
-                    return False
-                if len(query_dorez) > 0:
-                    if query_dorez[0]['Причина'] not in self.DICT_TIP_DOREZ:
-                        CQT.msgbox(f'ОШибка определения коэффициента сложности дорезка')
-                        return False
-                    return self.DICT_TIP_DOREZ[query_dorez[0]['Причина']]['Коэффициент_наряда']
-            if query['Тип'] == 5:
-                if query['Тип_доработки'] not in self.DICT_TIP_DORAB:
-                    CQT.msgbox(f'ОШибка определения коэффициента сложности доработка')
-                    return False
-                return self.DICT_TIP_DORAB[query['Тип_доработки']]['Коэффициент_наряда']
-            return 1
 
         if self.glob_login == '':
             return
@@ -1628,7 +1632,6 @@ class mywindow(QtWidgets.QMainWindow):
             if self.spis_dse != []:
                 CQT.msgbox('Для внеплана не должны быть выбраны ДСЕ')
                 return
-
             if F.valm(self.ui.lineEdit_cr_nar_norma.text()) != 0:
                 CQT.msgbox('Норма времени должна быть 0')
                 return
@@ -1657,13 +1660,13 @@ class mywindow(QtWidgets.QMainWindow):
                     return
 
             self.spis_sort_crab = ['']
-
             self.spis_dse = ['ДСЕ$НН']
             self.spis_id = ['0']
             self.spis_oper = ['001$Сварка']
             self.spis_prof = [self.ui.cmb_prof_vnepl.currentText()]
             self.spis_vr = [self.ui.lineEdit_cr_nar_norma.text()]
             self.spis_kolvo = [self.ui.lineEdit_cr_nar_kolvo.text()]
+
         nom_zam_zhurnal = self.ui.le_nom_zam.text()
         kompl_fio = ''
         kompl_data = ''
@@ -1674,82 +1677,48 @@ class mywindow(QtWidgets.QMainWindow):
             kompl_data = F.now()
             kompl_tara = '-'
             kompl_address = 'Авто'
-        koef_slogn = calc_koef_slogn(self, self.glob_nom_mk)
-        if koef_slogn == False:
-            return
 
-        date_nar = F.now()
-        dse_id = '|'.join(self.spis_id)
+
         zadanie_fix = self.ui.plainTextEdit_zadanie.toPlainText().replace("\n", "LF")
         prim_fix = self.ui.plainTextEdit_primechanie.toPlainText().replace("\n", "LF")
-        code = CFG.Config.place.КодыНарядов.Плановая #04.09.25
-        if self.ui.checkBox_vneplan_rab.isChecked():
-            code = CFG.Config.place.КодыНарядов.НеподтвержденныйВнеплан
-        stroka = [date_nar,
-                  CMS.name_by_empl_c(self.glob_login),
-                  self.glob_nom_mk,
-                  code,
-                  zadanie_fix,
-                  kompl_fio,
-                  kompl_data,
-                  kompl_tara,
-                  kompl_address,
-                  '',
-                  '',
-                  '',
-                  '',
-                  round(F.valm(self.ui.lineEdit_cr_nar_norma.text()) * F.valm(self.ui.lineEdit_koef_norm.text()), 2),
-                  '|'.join(self.spis_dse),
-                  dse_id,
-                  '|'.join(self.spis_oper),
-                  '|'.join(self.spis_vr),
-                  '|'.join(self.spis_kolvo),
-                  prim_fix,
-                  koef_slogn, 0, kat_vnepl, '|'.join(self.spis_sort_crab), nom_zam_zhurnal, '', '',
-                  '|'.join(self.spis_prof), list(self.set_rc_check_dse)[0], F.valm(self.ui.lineEdit_koef_norm.text()),
-                  int(self.ui.chkb_autcourse.isChecked()),
-                  round(F.valm(self.ui.lineEdit_cr_nar_norma.text()), 2),int(self.ui.chk_auto_confirm.isChecked())]
 
-        custom_request_c = f'''INSERT INTO naryad (Дата,	Автор,Номер_мк,Внеплан,Задание,Компл_ФИО,Компл_Дата,
-        Компл_номер_тара,
-        Компл_адрес,ФИО,Фвремя,ФИО2,Фвремя2,Твремя,ДСЕ,ДСЕ_ID,Операции,Опер_время,Опер_колво,Примечание,Коэфф_сложности,
-        Подтвержд_вып,Категория_внепл,Виды_работ,Номер_замечания_журнал,Подтвержд_вып_дата,Подтвержд_вып_фио,Профессии,
-        РЦ_наряд,Коэф_норм_созд,Аутсорсинг,Норма_времени,АвтоПодтвержд) VALUES 
-        ({", ".join(("?" * len(stroka)))}) RETURNING *;'''
-        nom_nar = CSQ.custom_request_c(self.db_naryd, custom_request_c, list_of_lists_c=stroka)
-        # if rez == None or rez == False:
-        #     CQT.msgbox(f'Неудачно!, попробуй еще.')
-        #     self.spis_dse = []
-        #     self.spis_id = []
-        #     self.spis_oper = []
-        #     delete_nar(date_nar, dse_id)
-        #     return
-        # nom_nar = CSQ.custom_request_c(self.db_naryd, f"""SELECT Пномер FROM naryad WHERE Дата = '{date_nar}'
-        # AND ДСЕ_ID = '{dse_id}' ORDER BY Пномер DESC LIMIT 1""")
+        new_nar = CMS.Naryads.add_new_nar(self.db_naryd, self.bd_users, self.glob_nom_mk,
+                                          CMS.name_by_empl_c(self.glob_login),
+                                      zadanie_fix,
+                                       F.valm(self.ui.lineEdit_cr_nar_norma.text()),
 
-        try:
-            if len(nom_nar) != 2 or F.is_numeric(nom_nar[-1][0]) == False:
-                CQT.msgbox(f'Неудачно!, попробуй еще.')
-                self.spis_dse = []
-                self.spis_id = []
-                self.spis_oper = []
-                delete_nar(date_nar, dse_id)
-                return
-        except:
-            CQT.msgbox(f'Неудачно!, попробуй еще.')
-            delete_nar(date_nar, dse_id)
-            self.spis_dse = []
-            self.spis_id = []
-            self.spis_oper = []
+                                    prim_fix,
+                                  list(self.set_rc_check_dse)[0],
+                                  self.spis_dse,
+                                  self.spis_id,
+                                  self.spis_oper,
+                                  self.spis_vr,
+                                  self.spis_kolvo,
+                                  self.spis_sort_crab,
+                                  self.spis_prof,
+                                  kompl_fio,
+                                  kompl_data,
+                                  kompl_tara,
+                                  kompl_address,
+                                    kat_vnepl,
+                                  int(self.ui.chkb_autcourse.isChecked()),
+                                  int(self.ui.chk_auto_confirm.isChecked()),
+                                  nom_zam_zhurnal,
+                                  F.valm(self.ui.lineEdit_koef_norm.text()))
+
+
+        if new_nar is None:
+            CQT.msgbox(f'Неудачно!, ошибка в CMS.Naryads.add_new_nar')
             return
 
-
-
-        CQT.msgbox(f'Наряд №{nom_nar[-1][0]} создан')
+        nom_nar = new_nar.Пномер
+        CQT.msgbox(f'Наряд № {nom_nar} создан')
         self.ui.plainTextEdit_zadanie.setPlainText('')
         self.ui.plainTextEdit_primechanie.setPlainText('')
         self.ui.lineEdit_cr_nar_norma.setText('')
         self.load_mk()
+
+
 
     @CQT.onerror
     def primen_imena(self, *args):
@@ -2107,7 +2076,7 @@ class mywindow(QtWidgets.QMainWindow):
                             current_index = i
                             target_dse = dse
             if current_index is None or target_dse is None:
-                return False
+                return list_predv_opers#18.03.2026 100068300
             n = current_index - 1
             cur_oper = target_dse['Операции'][current_index]
             current_oper_is_otk = self.DICT_OPER[cur_oper['Опер_код']]['kontrol_opers']
@@ -2120,9 +2089,9 @@ class mywindow(QtWidgets.QMainWindow):
                         n -= 1
                         continue
                     return list_predv_opers
-                if current_oper_is_otk and is_skip_otk_operation:
-                    n -= 1
-                    continue
+                # if current_oper_is_otk and is_skip_otk_operation:
+                #     n -= 1
+                #     continue
                 prev_osv = oper.get('Освоено,шт.', 0)
                 prev_zav = oper.get('Закрыто,шт.', 0)
                 prev_oper_nom = oper['Опер_номер']
@@ -2132,7 +2101,7 @@ class mywindow(QtWidgets.QMainWindow):
                 fl = True
                 break
             if fl == False:
-                return fl
+                return list_predv_opers#18.03.2026 100068300
             list_predv_opers.append(
                 {'dse_id': target_dse['Номерпп'], 'dse': f"{target_dse['Наименование']} {target_dse['Номенклатурный_номер']}",
                  'prev_kol': target_dse['Количество'],
@@ -2291,7 +2260,7 @@ class mywindow(QtWidgets.QMainWindow):
                 res = CMS.load_res(nom_mk)
 
                 if res == False:
-                    CQT.msgbox(f'Не удалось загрузить ресурнсую попробуй позже')
+                    CQT.msgbox(f'Не удалось загрузить ресурсную попробуй позже')
                     return
                 for i, id in enumerate(list_dse_id):
                     for dse in res:
@@ -2507,11 +2476,17 @@ class mywindow(QtWidgets.QMainWindow):
             CQT.msgbox(f'{fl_fio_recalc} не найден в БД')
             return
         podr = self.DICT_EMPLOEE_FULL_WITH_DEL[fl_fio_recalc]['Подразделение']
+        prof = self.DICT_EMPLOEE_FULL_WITH_DEL[fl_fio_recalc]['Должность']
         if podr == '':
             CQT.msgbox(f'для {fl_fio_recalc} не найдено подразделение')
             return
         list_users = [{'ФИО': k, 'Должность': _['Должность']} for k, _ in self.DICT_EMPLOEE_FULL.items() if
                       _['Подразделение'] == podr and k != '']
+        groups_unpk = set((self.DICT_PROFESSIONS_NAME[prof]['Группа_в_распред'] or '').split(';'))
+        list_users = [{'ФИО': k, 'Должность': _['Должность']} #09.04.2026
+                      for k, _ in self.DICT_EMPLOEE_FULL.items()
+                      if _['Должность'] in self.DICT_PROFESSIONS_NAME and
+                        groups_unpk.intersection(self.DICT_PROFESSIONS_NAME[_['Должность']]['Группа_в_распред'].split(';'))]
         user_data = CQT.msgboxg_get_table(self, 'Выбор работника', F.sort_by_column_c(list_users, 'ФИО'),ExtendedSelection=False)
         if user_data == False:
             return
@@ -4567,7 +4542,11 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
     def raschet_naruada_time_tmp(self, check='', i='', j='', *, clear_prof_state: bool = True):
         tbl = self.ui.tbl_dse
         nk_check = CQT.num_col_by_name_c(tbl, 'Чек')
-
+        if not self.glob_res:
+            self.ui.tabWidget_2.blockSignals(True)
+            self.ui.tabWidget_2.setCurrentIndex(CQT.number_table_by_name_c(self.ui.tabWidget_2, 'МК'))
+            self.ui.tabWidget_2.blockSignals(False)
+            return
         count_izd = self.glob_res[0]['Количество']
 
         if nk_check is None:
@@ -5079,6 +5058,21 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
             CQT.fill_wtabl(spis_wt_res, tabl_sp_mk, red_col, 200, 20, 30, auto_type=False,
                            list_column_widths=CMS.load_column_widths(self, tabl_sp_mk))
 
+            def fnc_context(self: mywindow, tbl: QtWidgets.QTableWidget, row: int, col: int,
+                            menu_builder: CQT.ContextMenuBuilder):
+
+                def fnc_upload_cut_programm(*args):
+                    ct = CQT.TableContext(tbl)
+                    selected_rows = ct.get_selected_rows()
+                    self.load_csv(list_mk = [_.value('Пномер') for _ in selected_rows])
+
+                # menu_builder.add_submenu(f"{emoji.symbol} График")
+                menu_builder.add_menu(f'{CEMOJ.EmojiMain.ДокументыДанные.database.symbol}\tВыгрузить задание на резку выбранные',
+                                      fnc_upload_cut_programm)
+
+
+            t = CQT.TableContext(tabl_sp_mk)
+            t.add_column_events('Пномер',on_context_menu=fnc_context,parent_self=self)
         # tmp_spis = spis_wt_res
         # for i in range(len(tmp_spis)):
         #    for j in range(len(tmp_spis[i])):
@@ -5097,7 +5091,7 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
             CQT.fill_progress_c(self, tabl_sp_mk, nk_meh_t, isp_poc=False)
             CQT.fill_progress_c(self, tabl_sp_mk, nk_sb_t, isp_poc=False)
             CQT.fill_progress_c(self, tabl_sp_mk, nk_mal_t, isp_poc=False)
-        nl_pnom = F.num_col_by_name_in_hat_c(spis, 'Пномер')
+
         # for i in range(1, len(spis)):
         #    if self.load_mk(True, spis[i][nk_nom_mk], conn='', res=F.from_binary_pickle(spis[i][nk_res])):
         #        CQT.set_color_wtab_c(tabl_sp_mk, i - 1, nl_pnom, 102, 153, 102)
@@ -5153,11 +5147,21 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
             CMS.save_tmp_val('fr_dse_elems_setHidden', True)
 
     def btn_dse_info(self):
-        msg = []
-        for key in self.DICT_RC.keys():
-            msg.append(f'{key}:{self.DICT_RC[key]}')
-        txt = pprint.pformat(msg)
-        CQT.msgbox(txt)
+        keys = sorted(list(self.DICT_RC.keys()))
+        ALIASES = {'Имя':'Имя',
+                   'Примечание':'Примечание',
+                   'empl_Подразделение':'Подразделение',
+                   'Сокр_наим_СТО':'Сокр. наим. по СТО',
+                   'Вспомогательный':'Вспомогательный',
+                   }
+        tbl_data = []
+        for k in keys:
+            it = self.DICT_RC[k]
+            tmp_dict = {'РЦ':k}
+            for key,alias  in ALIASES.items():
+                tmp_dict[alias]= it[key]
+            tbl_data.append(tmp_dict)
+        CQT.msgboxg_get_table_ok_inf(self,'Список РЦ',tbl_data,styleSheet=CQT.MES_CSS)
 
 
 app = QtWidgets.QApplication(sys.argv)

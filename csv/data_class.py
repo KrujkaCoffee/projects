@@ -1,11 +1,23 @@
+from __future__ import annotations
 from  dataclasses import dataclass
 import project_cust_38.Cust_SQLite as CSQ
 import project_cust_38.Cust_Functions as F
 from project_cust_38.Cust_mes import DICT_NAME_SQL
+import project_cust_38.Cust_mes as CMS
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from csv_tkp import mywindow
+class SingletonMeta(type):
+    __instances = {}
 
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls.__instances:
+            instance = super().__call__(*args, **kwargs)
+            cls.__instances[cls] = instance
+        return cls.__instances[cls]
 
 @dataclass
-class Data_mes:
+class Data_mes(SingletonMeta):
     """list_exept_vid_mats = [
                             'Прочие материалы (10.06)',
 
@@ -147,8 +159,8 @@ class Data_mes:
 
 
 """
-
-    DEBUG = True
+    app_self: mywindow | None = None
+    DEBUG = False
     postfix = ''
     if DEBUG:
         postfix = " LIMIT 50"

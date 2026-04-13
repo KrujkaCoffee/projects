@@ -49,7 +49,7 @@ class mywindow(QtWidgets.QMainWindow):
         self.name_module = self.NAME_MODULE_BASE
 
 
-        CFG.Config.user_config.load_user_config(self)
+        CFG.Config.user_config.load_user_config(self,DTCLS)
         # добавление действий для сохранения фильтров таблицы
         CMS.add_action_config_save_tbl_filtrs(self, self.ui)
         # загрузка иконок и стилей

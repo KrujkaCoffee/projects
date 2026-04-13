@@ -646,7 +646,7 @@ def make_history_tbl_data(Data: DTCLS.Data_page):
     else:
         where = f'and name like "%{Data.Data_module.cust_data.filtr_seach_history}%"'
     list_calcs = CSQ.custom_request_c(Data.Data_user.db_flet,
-                                      f"""SELECT * FROM pneumatic_jet_history WHERE ip = '{Data.Data_user.ip}' {where} LIMIT 20;""",
+                                      f"""SELECT * FROM pneumatic_jet_history WHERE login = '{Data.Data_user.login}' {where} LIMIT 20;""",
                                       rez_dict=True)
     for calc in list_calcs:
         row = CMF.Row_data()
@@ -660,16 +660,22 @@ def make_history_tbl_data(Data: DTCLS.Data_page):
 
 def save_in_db(e: ft.ControlEvent, name: str):
     Data: DTCLS.Data_page = e.page.data
-    Module_data: Cust_module_params = Data.Data_module.cust_data
-    if Module_data.input_tbl_not_editbl == None or Module_data.output_tbl == None:
+    module_data: Cust_module_params = Data.Data_module.cust_data
+
+    input_tbl = CMF.clone_table_for_history(module_data.input_tbl_editbl)
+    output_tbl = CMF.clone_table_for_history(module_data.output_tbl)
+
+
+    if input_tbl is None or output_tbl is None:
         return False
-    data_save = {'ver': Module_data.ver_tbls_data, 'input_tbl': Module_data.input_tbl_not_editbl,
-                 'output_tbl': Module_data.output_tbl}
-    row = [F.now(), name, Data.Data_user.ip, F.to_binary_pickle(data_save)]
+    data_save = {'ver': module_data.ver_tbls_data, 'input_tbl': input_tbl,
+                 'output_tbl': output_tbl}
+    row = [F.now(), name, Data.Data_user.ip, Data.Data_user.login, F.to_binary_pickle(data_save)]
     rez = CSQ.custom_request_c(Data.Data_user.db_flet, f"""INSERT INTO pneumatic_jet_history 
                         (date, 
                             name, 
-                            ip, 
+                            ip,
+                            login, 
                             data)
                               VALUES ({CSQ.questions_for_mask(row)})""", list_of_lists_c=[row])
     return rez

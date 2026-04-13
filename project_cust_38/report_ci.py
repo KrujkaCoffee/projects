@@ -193,9 +193,6 @@ def vibor_additional_sort_report(self: mywindow, *args):
             self.ui.cmb_addit_sort_c_report.setEnabled(False)
 
 
-
-
-
 def _______SELECT_REPORT_____________():
     pass
 

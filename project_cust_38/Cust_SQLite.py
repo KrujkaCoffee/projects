@@ -2,7 +2,7 @@ import copy
 import os.path
 import sqlite3
 import re
-
+import datetime as DT
 import project_cust_38.Cust_Functions as F
 import project_cust_38.Cust_client_socket as CSQS
 
@@ -13,9 +13,27 @@ def add_db(bd,text):
     conn.commit()
     conn.close()
 
+#==================DEBUG====================================
+LASY_DEBUG = False
+if F.now("%Y-%m-%d") == '2026-04-08':
+    LASY_DEBUG = 2
+#==========================================================
 
 WAIT_TIME = 2
 RE_COUNT_SRV = 4
+
+
+def resolve_srv_target(bd: str):
+    return CSQS.db_path(bd)
+
+
+def srv_query(bd: str, custom_request_c: str, **kwargs):
+    resolved_bd, port = resolve_srv_target(bd)
+    return CSQS.client_sql_query(resolved_bd, custom_request_c=custom_request_c, port=port, **kwargs)
+
+
+def custom_request_c_dispatch(bd, custom_request_c, hat_c=True, list_of_lists_c=[[]], rez_dict=False, one=False, one_column=False, attach_dbs=()):
+    return custom_request_c(bd, custom_request_c, hat_c=hat_c, list_of_lists_c=list_of_lists_c, rez_dict=rez_dict, one=one, one_column=one_column, attach_dbs=attach_dbs)
 
 
 def get_tables_from_select(conn, sql, body): #18.08.25
@@ -39,14 +57,44 @@ def check_existance_record_sql_c(bd, table_name, spis_novih_zap, kol_sravnenia_s
             return False
     return True
 
+def get_primary_fields(db:str,table_name: str)->list[str]:
+    """
+    Получение имени(ён) колонок первичного ключа для указанной таблицы
+
+    Args:
+        bd: путь к БД или строка с 'SRV:' для удалённого подключения
+        table_name: имя таблицы
+
+    Returns:
+        list: список имён колонок первичного ключа (может быть пустым)
+    """
+
+    # Экранируем имя таблицы от возможных кавычек
+    safe_table_name = table_name.replace("'", "''")
+    text= f"SELECT name FROM pragma_table_info('{safe_table_name}') WHERE pk = 1"
+    list_fields = custom_request_c(db, custom_request_c=text,
+                                  hat_c=False,one_column=True)
+
+
+    return list_fields
+
+
 
 def get_list_of_tables_c(bd, conn="", cur=""):
     if 'SRV:' in bd:
         custom_request_c = 'SELECT name from sqlite_master where type= "table"'
-        bd, port = CSQS.db_path(bd)
+        resolved_bd, port = resolve_srv_target(bd)
+        if port is None:
+            conn_local = sqlite3.connect(resolved_bd)
+            try:
+                cur_local = conn_local.cursor()
+                cur_local.execute('SELECT name from sqlite_master where type= "table"')
+                return [_[0] for _ in cur_local.fetchall() if _[0] != 'sqlite_sequence']
+            finally:
+                conn_local.close()
         n_try = 1 if 'select' in custom_request_c.lower() else RE_COUNT_SRV - 1
         while n_try < RE_COUNT_SRV:
-            rez = CSQS.client_sql_query(bd, custom_request_c=custom_request_c,
+            rez = CSQS.client_sql_query(resolved_bd, custom_request_c=custom_request_c,
                                         name_module=F.name_of_executable_file_c(),
                                         client_name=F.user_name(), port=port)
             if rez == None or rez == False:
@@ -106,15 +154,19 @@ def create_db_sql_c(bd, frase, foreign_keys=False, conn="", cur=""):
     if 'SRV:' in bd:
         
         
-        bd, port = CSQS.db_path(bd)
-        if foreign_keys:
-            frase1 = 'PRAGMA foreign_keys=on;'
-            rez = CSQS.client_sql_query(bd, custom_request_c=frase1,
+        resolved_bd, port = resolve_srv_target(bd)
+        if port is None:
+            if foreign_keys:
+                custom_request_c_dispatch(resolved_bd, 'PRAGMA foreign_keys=on;')
+            rez = custom_request_c_dispatch(resolved_bd, frase)
+        else:
+            if foreign_keys:
+                rez = CSQS.client_sql_query(resolved_bd, custom_request_c='PRAGMA foreign_keys=on;',
+                                            name_module=F.name_of_executable_file_c(),
+                                            client_name=F.user_name(), port=port)
+            rez = CSQS.client_sql_query(resolved_bd, custom_request_c=frase,
                                         name_module=F.name_of_executable_file_c(),
                                         client_name=F.user_name(), port=port)
-        rez = CSQS.client_sql_query(bd, custom_request_c=frase,
-                                    name_module=F.name_of_executable_file_c(),
-                                    client_name=F.user_name(), port=port)
        
         if rez == None or rez == False:
             print(f'ОШибка create_db_sql_c')
@@ -161,9 +213,12 @@ def create_table_db_c(bd, table_name, spis_name_col_ogr):
 
 def existence_table_c(bd, ima):
     if 'SRV:' in bd:
-        bd, port = CSQS.db_path(bd)
+        resolved_bd, port = resolve_srv_target(bd)
         custom_request_c = f"SELECT count(*) as count FROM sqlite_master WHERE type='table' AND name='{ima}'"
-        rez = CSQS.client_sql_query(bd, custom_request_c=custom_request_c, hat_c=True, list_of_lists_c=[[]],
+        if port is None:
+            rez = custom_request_c_dispatch(resolved_bd, custom_request_c, hat_c=True, list_of_lists_c=[[]], rez_dict=True, one=True, one_column=False)
+        else:
+            rez = CSQS.client_sql_query(resolved_bd, custom_request_c=custom_request_c, hat_c=True, list_of_lists_c=[[]],
                                         rez_dict=True, one=True, name_module=F.name_of_executable_file_c(),
                                         client_name=F.user_name(), port=port, one_column=False)
         return rez['count']
@@ -201,9 +256,12 @@ def add_line_into_db_sql_c(bd, table, stroki_strok, s_pervoi=False, conn="", cur
     mask = mask[:-2]
 
     if 'SRV:' in bd:
-        bd, port = CSQS.db_path(bd)
+        resolved_bd, port = resolve_srv_target(bd)
         custom_request_c = f"INSERT INTO {table}({str_kol}) VALUES ({mask})"
-        rez = CSQS.client_sql_query(bd, custom_request_c=custom_request_c, hat_c=True, list_of_lists_c=stroki_strok,
+        if port is None:
+            rez = custom_request_c_dispatch(resolved_bd, custom_request_c, hat_c=True, list_of_lists_c=stroki_strok, rez_dict=False, one=True, one_column=False)
+        else:
+            rez = CSQS.client_sql_query(resolved_bd, custom_request_c=custom_request_c, hat_c=True, list_of_lists_c=stroki_strok,
                                         rez_dict=False, one=True, name_module=F.name_of_executable_file_c(),
                                         client_name=F.user_name(), port=port, one_column=False)
         return True
@@ -241,9 +299,12 @@ def add_line_into_db_sql_c(bd, table, stroki_strok, s_pervoi=False, conn="", cur
 
 def list_of_columns_c(bd, table, dict=False):
     if 'SRV:' in bd:
-        bd, port = CSQS.db_path(bd)
+        resolved_bd, port = resolve_srv_target(bd)
         custom_request_c = f'select * from {table} Limit 1'
-        rez = CSQS.client_sql_query(bd, custom_request_c=custom_request_c, hat_c=True, list_of_lists_c=[[]],
+        if port is None:
+            rez = custom_request_c_dispatch(resolved_bd, custom_request_c, hat_c=True, list_of_lists_c=[[]], rez_dict=False, one=True, one_column=False)
+        else:
+            rez = CSQS.client_sql_query(resolved_bd, custom_request_c=custom_request_c, hat_c=True, list_of_lists_c=[[]],
                                     rez_dict=False, one=True, name_module=F.name_of_executable_file_c(),
                                     client_name=F.user_name(), port=port, one_column=False)
         rez = rez[0]
@@ -288,7 +349,11 @@ def dict_types_tbl(db,tbl_name)->dict[str,type]:
         'REAL':float,
         'TEXT':str,
         'BLOB':bytes,
+        'TIME':DT.datetime,
             }
+    for it in list_dicts:
+        if it['type'] not in objs:
+            raise TypeError('Не установлен тип данных')
     return {_['name']:objs[_['type']] for _ in list_dicts}
 
 def list_types_table(bd, table):
@@ -459,24 +524,141 @@ def unpack_single_value(result): #11.11.25
         return unpack_single_value(list(result.values()))
     return result
 
-@F.StatisticDecorator #18.08.25
-def custom_request_c(bd, custom_request_c, conn='', hat_c=True, list_of_lists_c=[[]], rez_dict=False, one=False, cur='',
-                     one_column=False, returning=False, attach_dbs: tuple | str=()):
+def sanitize_sql_input(text: str) -> str:
+    if not text:
+        return ''
+
+    # 1. убираем управляющие символы
+    text = ''.join(ch for ch in text if ch.isprintable())
+
+    # 2. убираем SQL-комментарии и разделители
+    text = re.sub(r'(--.*?$)', '', text, flags=re.MULTILINE)
+    text = re.sub(r'/\*.*?\*/', '', text, flags=re.DOTALL)
+    text = text.replace(';', '')
+
+    # 3. удаляем кавычки
+    text = text.replace("'", "")
+    text = text.replace('"', "")
+    text = text.replace('`', "")
+
+    # 4. оставляем только безопасные символы
+    # буквы (включая кириллицу), цифры, пробел, базовые знаки
+    text = re.sub(r'[^a-zA-Zа-яА-ЯёЁ0-9 _\-\.\(\)]', '', text)
+
+    # 5. схлопываем пробелы
+    text = re.sub(r'\s+', ' ', text).strip()
+
+    return text
+
+
+# @F.StatisticDecorator #18.08.25
+
+def custom_request_c(bd, custom_request_c, conn='', hat_c=True, list_of_lists_c=[[]],
+                     rez_dict=False, one=False, cur='',
+                     one_column=False, returning=False, attach_dbs: tuple | str=(),
+                     lazy_method_hours: float = 0, debug:bool = True):
     '''sqlite_insert_with_param = """INSERT INTO sqlitedb_developers
                               (id, name, email, joining_date, salary)
                               VALUES (?, ?, ?, ?, ?);"""
         UPDATE users
                 SET  (field1, field2, field3)
                     = ('value1', 'value2', 'value3')
-                            WHERE some_condition ;'''
+                            WHERE some_condition ;
+
+        
+        UPSERT:
+        
+        INSERT INTO notes_blob (name, data, date)
+        VALUES (?, ?, datetime('now', 'localtime'))
+        ON CONFLICT(name) DO UPDATE SET
+            data = excluded.data,
+            date = excluded.date;
+
+                            '''
+
+    def calc_tupe_query(request) -> str:
+        return custom_request_c.replace('\n', '').strip().split(' ')[0].upper()
+
+    def save_tmp_stukt(data, name):
+        puth_name = F.tmp_dir_win() + F.sep() + name + '.pickle'
+        F.save_file_pickle(puth_name, data)
+
+    def load_tmp_stukt(ima, default_val=None):
+        puth_name = F.tmp_dir_win() + F.sep() + ima + '.pickle'
+        if F.existence_file_c(puth_name) == True:
+            val = F.load_file_pickle(puth_name)
+            return val
+        return default_val
+
+
+    def convert(obj):
+        if isinstance(obj, dict):
+            return {k: convert(v) for k, v in obj.items()}
+        elif isinstance(obj, (list, tuple)):
+            return [convert(item) for item in obj]
+        elif isinstance(obj, DT.datetime):
+            return obj.isoformat()
+        elif isinstance(obj, DT.date):
+            return obj.isoformat()
+        return obj
+
     if isinstance(list_of_lists_c[0],dict):
         list_of_lists_c = F.list_of_dicts_to_list_of_lists(list_of_lists_c)[1:]
+
+    type_query = calc_tupe_query(custom_request_c)
+
+    BASE_NAME_TMP_SQL = "lazy_sql"
+    start = F.now('')
+
+    if LASY_DEBUG:
+        lazy_method_hours = LASY_DEBUG
+
+    use_cache = lazy_method_hours > 0 and type_query in ('SELECT', 'WITH')
+    if use_cache:
+        cache_name = None
+        sum_hash = F.hash_data({
+            "bd": bd,
+            "sql": custom_request_c,
+            "params": convert(list_of_lists_c),
+            "attach": attach_dbs,
+            'returning':returning,
+            'hat_c':hat_c,
+            'rez_dict':rez_dict,
+            'one_column':one_column,
+            'one':one,
+            })
+
+        cache_name = f"{BASE_NAME_TMP_SQL}_{sum_hash}"
+
+        now_date = F.now('')
+        date_limit = F.date_add_time(now_date, hours=-(lazy_method_hours))
+
+        data_cache = load_tmp_stukt(cache_name, False)
+
+        if data_cache:
+            if F.strtodate(data_cache['date']) > date_limit:
+                if debug:
+                    print(f'Load req \n"{custom_request_c}"\n from Cache: {(F.now('') - start).total_seconds()} secs.')
+                return data_cache['data']
+
+
     if 'SRV:' in bd: #18.08.25
-        bd, port = CSQS.db_path(bd)
-        rez = CSQS.client_sql_query(bd, custom_request_c=custom_request_c, hat_c=hat_c,
+        resolved_bd, port = resolve_srv_target(bd)
+        rez = CSQS.client_sql_query(resolved_bd, custom_request_c=custom_request_c, hat_c=hat_c,
                                     list_of_lists_c=list_of_lists_c,
                                     rez_dict=rez_dict, one=one, name_module=F.name_of_executable_file_c(),
                                     client_name=F.user_name(), port=port, one_column=one_column, attach_dbs=attach_dbs)
+
+        if use_cache:
+            try:
+                save_tmp_stukt({
+                    "data": rez,
+                    "date": F.now()
+                }, cache_name)
+            except Exception as e:
+                print(f'cache save error: {e}')
+        if debug:
+            print(f'Load req \n"{custom_request_c}"\n from db: {(F.now('') - start).total_seconds()} secs.')
         return rez
 
     RE_COUNT = 1
@@ -493,15 +675,13 @@ def custom_request_c(bd, custom_request_c, conn='', hat_c=True, list_of_lists_c=
         print(f'Ошибка соединения с БД {bd}')
         return
 
+
     while True: # 19.09.25
         result = False
         returning = False
-        type_query = custom_request_c.replace('\n', '').strip().split(' ')[0].upper()
+        type_query = calc_tupe_query(custom_request_c)
         if 'EXPLAIN' == type_query: #15.08.25
             result = get_tables_from_select(cur, custom_request_c.replace('?', "''"), list_of_lists_c)
-        if 'PRAGMA'  == type_query:
-            cur.execute(custom_request_c)
-            result = True
         if 'CREATE'  == type_query:
             cur.executescript(custom_request_c)
             conn.commit()
@@ -548,7 +728,7 @@ def custom_request_c(bd, custom_request_c, conn='', hat_c=True, list_of_lists_c=
                         cur.execute(custom_request_c, list_of_lists_c)
                 conn.commit()
                 result = True
-        if 'SELECT' == type_query or 'WITH' == type_query: # 25.01.2025s
+        if type_query in ('SELECT', 'WITH', 'PRAGMA'): # 07.04.2026
             if list_of_lists_c == [[]]:
                 cur.execute(custom_request_c)
             else:
@@ -706,12 +886,12 @@ def connect_bd(bd, timeout_=6):
         RETRY_COUNT -= 1
         try:
             conn = sqlite3.connect(bd, timeout=timeout_)
-            conn.isolation_level = 'IMMEDIATE'
-            cur = conn.cursor()
-            cur.execute('BEGIN IMMEDIATE')
-            cur.execute('SELECT name from sqlite_master where type= "table"')
-            conn.rollback()
-            cur.close()
+            # conn.isolation_level = 'IMMEDIATE'
+            # cur = conn.cursor()
+            # cur.execute('BEGIN IMMEDIATE')
+            # cur.execute('SELECT name from sqlite_master where type= "table"')
+            # conn.rollback()
+            # cur.close()
             conn.isolation_level = None
             break
         except:

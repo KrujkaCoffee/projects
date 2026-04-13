@@ -1,3 +1,7 @@
+*
+!*/
+!*.*
+
 *.txt
 *.lnk
 .idea
@@ -20,9 +24,19 @@ css/*
 
 .log
 .pickle
-notes
+notes*
 *.pickle
 *.db
 *.vbs
 *.bat
 *.txt
+
+venv
+venv_setup
+dist
+build
+
+*.spec
+*.sql
+minigit.py
+!/Setup/minigit.py

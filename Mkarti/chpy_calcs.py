@@ -170,19 +170,20 @@ def generate_precsv_tree(self,p=None,write = True, *args,**kwargs):
     list_csv = dict()
     list_err = []
     for item in dict_tree:
-        if item['Код ERP'] == '':
+        cleaned_code_erp = item['Код ERP'].strip()
+        if cleaned_code_erp == '':
             continue
-        if item['Код ERP'].strip() not in self.DICT_NOMEN:
+        if cleaned_code_erp not in self.DICT_NOMEN:
             list_err.append(f"Ошибка. {item['Обозначение полное']} код {item['Код ERP']} отсутствует в номенклатуре")
             continue
 
-        if self.DICT_NOMEN[item['Код ERP']]['П5'] != '1':
-            if 'лист' in  self.DICT_NOMEN[item['Код ERP']]['Наименование'].lower():
-                list_err.append(f'{item["Обозначение полное"]}, код:{item["Код ERP"]} -в номенклатуре МЕС материал не имеет параметр (П5 = 1) обратиться к Администратору материалов.')
+        if self.DICT_NOMEN[cleaned_code_erp]['П5'] != '1':
+            if 'лист' in  self.DICT_NOMEN[cleaned_code_erp]['Наименование'].lower():
+                list_err.append(f'{item["Обозначение полное"]}, код:{cleaned_code_erp} -в номенклатуре МЕС материал не имеет параметр (П5 = 1) обратиться к Администратору материалов.')
             continue
 
-        kod_mat = str(self.DICT_NOMEN[item['Код ERP']]['П6'])
-        tolsh = str(self.DICT_NOMEN[item['Код ERP']]['П1'])
+        kod_mat = str(self.DICT_NOMEN[cleaned_code_erp]['П6'])
+        tolsh = str(self.DICT_NOMEN[cleaned_code_erp]['П1'])
         if kod_mat == '':
             list_err.append(f'Не найден матерал для резки (П5, П6, П1) на'
                            f' {item["Обозначение полное"]}')
