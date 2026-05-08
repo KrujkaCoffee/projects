@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import keyword
+import logging
 import pathlib
 import re
 import uuid
@@ -15,6 +16,8 @@ try:
     import Cust_postgresql_cache as CPG
 except Exception as e:
     CPG = None
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     'ADMIN_TABLES',
@@ -38,6 +41,8 @@ ADMIN_TABLES = {
     'table_fields': 'admin_table_fields',
     'schema_manifest': 'admin_schema_manifest',
 }
+
+EXCLUDED_PREFIXES = ('m_', 'mtdz_', 'eq_', 'rm_', 'jurnaltdz_', 'm_cld_')
 
 
 def _json_dumps(data: Any) -> str:
@@ -147,7 +152,7 @@ def _default_for_orm_field(orm_field_class: str, nullable: bool) -> str:
 
 
 def _strip_sql_comments(sql: str) -> str:
-    sql = re.sub(r'/\*.*%s\*/', ' ', sql, flags=re.S)
+    sql = re.sub(r'/\*.*?\*/', ' ', sql, flags=re.S)
     sql = re.sub(r'--[^\n]*', ' ', sql)
     return sql
 
@@ -262,7 +267,6 @@ class SchemaManifestMeta:
     generated_at_utc: str
     generator_version: str
     admin_schema_hash: str
-    source_templates_hash: str
     table_fields_hash: str
     artifact_version: str
     notes: str = ''
@@ -370,17 +374,21 @@ class ContextAdminRepo:
         data = manifest if isinstance(manifest, Mapping) else manifest.__dict__
         cols = list(data.keys())
         placeholders = ','.join('%s' for _ in cols)
-        sql = f"INSERT INTO {ADMIN_TABLES['schema_manifest']} ({', '.join(cols)}) VALUES ({placeholders}) RETURNING rowid;"
-        last_rowid = CPG.custom_request_pg(
-            sql,
-            one_column=True,
-            one=True,
-            params=list(data.values())
-        )
+        sql = f"INSERT INTO {ADMIN_TABLES['schema_manifest']} ({', '.join(cols)}) VALUES ({placeholders}) RETURNING generated_at_utc;"
+        conn, cur = CPG.connect_pg(CPG.PostgresConfig())
+        try:
+            last_rowid = CPG.custom_request_pg(
+                sql,
+                one_column=True,
+                one=True,
+                params=list(data.values())
+            )
+        finally:
+            CPG.close_pg(conn, cur)
         print('[write_manifest] returning: ', last_rowid)
         print('db_files', self.db_files)
         print('LAST_ROWID:', last_rowid)
-        return int(last_rowid)
+        return last_rowid
 
     def table_exists_in_db(self, db_path: str, table_name: str) -> bool:
         return bool(CSQ.custom_request_c(
@@ -396,6 +404,17 @@ class ContextAdminRepo:
             one_column=True,
             hat_c=False
         ) or []
+
+    def get_srv_nickname(self, abs_path: str) -> str:
+        from project_cust_38 import Cust_client_socket as CCS
+        from pathlib import Path
+        all_servers = CCS.Servers._declared_attrs               # noqa
+        for key, server in CCS.Servers._declared_attrs.items(): # noqa
+            if isinstance(server, CCS._ServerItem) and Path(server.absolute_path).resolve() == Path(abs_path).resolve(): # noqa
+                return str(server)
+
+
+
 
     def bootstrap_physical_table(
         self,
@@ -414,11 +433,16 @@ class ContextAdminRepo:
         db_path = _normalize_path(db_path)
         if not db_path:
             raise ValueError('db_path не задан')
+        if not db_path.startswith('SRV:'):
+            print(f'[bootstrap_physical_table] принят абсолютный путь к бд {db_path}')
+            db_path = self.get_srv_nickname(db_path)
+            if db_path is None or not db_path:
+                raise ValueError('Неверный формат ключа db-path ожидается "SRV:..."')
         if not self.table_exists_in_db(db_path, table_name):
             raise ValueError(f'Таблица {table_name!r} не найдена в БД {db_path!r}')
         db_key = db_key or resolve_db_key(db_path)
         table_key = table_key or make_table_key(db_key, table_name)
-        self.register_physical_table(
+        is_success = self.register_physical_table(
             table_key=table_key,
             db_key=db_key,
             table_name=table_name,
@@ -426,8 +450,9 @@ class ContextAdminRepo:
             cache_enabled=cache_enabled,
             schema_enabled=schema_enabled,
             cache_lifetime_min=cache_lifetime_min,
-            notes=notes or f'bootstrapped from {db_path}',
+            notes=notes,
         )
+        logger.info(f'[ContextAdminRepo.bootstrap_physical_table] Регистрация таблицы {table_name} Статус: {is_success}')
         if include_fields:
             self.bootstrap_table_fields(db_path=db_path, table_name=table_name, table_key=table_key)
         return table_key
@@ -442,7 +467,7 @@ class ContextAdminRepo:
         count = 0
         for row in rows:
             cid, field_name, db_type, notnull, default_value, pk = row
-            self.register_table_field(
+            is_success = self.register_table_field(
                 table_key=table_key,
                 field_name=field_name,
                 python_name=guess_python_name(field_name),
@@ -455,6 +480,8 @@ class ContextAdminRepo:
                 orm_field_class=guess_orm_field_class(db_type),
                 notes=f'default={default_value!r}' if default_value is not None else '',
             )
+            logger.info(
+                f'[ContextAdminRepo.bootstrap_table_fields] - [{table_name}] Регистрация поля {field_name} Статус: {is_success}')
             count += 1
         return count
 
@@ -470,12 +497,17 @@ class ContextAdminRepo:
         is_enabled: int = 1,
         cache_lifetime_min: int = 120,
         notes: str = '',
+        skip_tables: list[str] = None
     ) -> list[str]:
+        if not isinstance(skip_tables, (tuple, set, list)):
+            skip_tables = []
         db_path = _normalize_path(db_path)
         names = list(table_names or self.list_tables_in_db(db_path))
         result: list[str] = []
         for table_name in names:
-            print(f'\tГенерация таблицы: {table_name}')
+            if any(table_name.startswith(prefix) for prefix in EXCLUDED_PREFIXES) or table_name in skip_tables:
+                logger.info(f'[bootstrap_tables_from_db] table {table_name} skip')
+                continue
             result.append(
                 self.bootstrap_physical_table(
                     db_path=db_path,
@@ -507,14 +539,12 @@ class ContextAdminRepo:
 
     def get_table_fields(self, table_key: str | None = None, *, include_disabled: bool = True) -> list[dict[str, Any]]:
         if table_key:
+            where_sql = '' if include_disabled else ' AND include_in_schema = 1 '
             return CPG.custom_request_pg(
-                self.db_files,
                 f"""SELECT * FROM {ADMIN_TABLES['table_fields']}
-                WHERE table_key = {table_key!r}
-                {' ' if include_disabled else ' AND include_in_schema = 1 '}
+                WHERE table_key = {table_key!r}{where_sql}
                 ORDER BY sort_order, field_name""",
                 rez_dict=True,
-                # [table_key],
             )
         where_sql = '' if include_disabled else 'WHERE include_in_schema = 1'
         return CPG.custom_request_pg(
@@ -585,8 +615,6 @@ class ContextAdminRepo:
                 continue
             ensured = self.ensure_table_registered_for_invalidation(db_path=db_path, table_name=table_name)
             table_key = ensured['table_key']
-            if table_name.startswith('admin_') or 'events' in table_name.lower():
-                continue
             success = CPG.custom_request_pg(
                 f"""UPDATE {ADMIN_TABLES['physical_tables']}
                 SET validity_mark = %s,
@@ -600,6 +628,7 @@ class ContextAdminRepo:
                 affected_table_keys.append(table_key)
 
         if not affected_table_keys:
+            logger.info('[mark_sql_write_invalidated] NOT AFFECTED')
             return {'affected_tables': []}
         return {'affected_tables': affected_table_keys}
 
@@ -614,6 +643,7 @@ class ContextAdminRepo:
     ) -> dict[str, Any]:
         targets = detect_sql_write_targets(sql)
         if not targets:
+            logger.info('[mark_sql_write_invalidated] NOT TARGETS')
             return {'affected_tables': []}
 
         if isinstance(attach_dbs, str):
@@ -628,5 +658,16 @@ class ContextAdminRepo:
             else:
                 records.append({'db_path': main_db_path, 'table_name': target})
         if not records:
+            logger.info('[mark_sql_write_invalidated] NOT INVALIDATED')
+
             return {}
         return self.mark_tables_invalidated(table_records=records, notes=notes)
+
+if __name__ == '__main__':
+    from project_cust_38 import Cust_SQLite as CSQ
+    from project_cust_38 import Cust_config as CFG
+    b = ContextAdminRepo().get_srv_nickname('C://DB_srv//DB_kplan.db')
+    print(b)
+    b = CSQ.custom_request_c(CFG.Config.project.db_kplan, 'DELETE FROM gant_poz_val_by_day where val_minutes = 3333.6')
+    a = CSQ.custom_request_c(CFG.Config.project.db_kplan, 'SELECT * FROM gant_poz_val_by_day where id_poz = 7131')
+    print(a)

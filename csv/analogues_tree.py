@@ -142,11 +142,12 @@ def check_prices(self: mywindow, *args):
 
 
 @CQT.onerror
-def recalc_weight(self, *args):
+def recalc_weight(self, *args, list_rows = None):
     tbl = self.ui.tbl_red_tree
     if CQT.is_table_updating(tbl):
         return
-    list_rows = CQT.list_from_wtabl_c(tbl, rez_dict=True)
+    if list_rows is None:
+        list_rows = CQT.list_from_wtabl_c(tbl, rez_dict=True)
 
     def calc_count(self, num_row):
         def check_cell(data):
@@ -438,7 +439,7 @@ def get_into_red(self: mywindow):
         else:
             spis = pickle_file
 
-    fill_tbl_strukt(self, spis)
+    # fill_tbl_strukt(self, spis)
 
     self.ui.cmb_vid_napr.setCurrentText(self.Data_mes.DICT_VID_PO_NAPR[strukt['вид_по_напр']]['Имя'])
     self.ui.tabWidget.setCurrentIndex(CQT.number_table_by_name_c(self.ui.tabWidget, 'Структура'))
@@ -446,7 +447,9 @@ def get_into_red(self: mywindow):
     self.ui.le_name_tkp_2.setText(strukt['name_tkp'])
     self.ui.le_nnom_izd_2.setText(strukt['nnom_izd'])
     self.ui.le_path_vo_2.setText(strukt['dir_rkd'])
-    on_tree_changed(self)
+    if isinstance(spis, list) and len(spis) >= 1 and isinstance(spis[0], list):
+        spis = F.list_of_lists_to_list_of_dicts(spis)
+    on_tree_changed(self, spis)
 
     tbl.setUpdatesEnabled(True)
     tbl.viewport().setUpdatesEnabled(True)
@@ -987,7 +990,7 @@ def add_row(self: mywindow):
         q_strok = 0
         q_column = 1
     else:
-        q_strok = tabl_cr_stukt.currentRow() + 1
+        q_strok = tabl_cr_stukt.currentRow()
         q_column = tabl_cr_stukt.currentColumn()
 
     if self.ui.chk_pki.checkState() == 1:
@@ -1012,26 +1015,25 @@ def add_row(self: mywindow):
     if not CQT.msgboxgYN(f'Добавить строку {self.ui.le_add_naim.text()} {self.ui.le_add_nn.text()} ПКИ  = {pki_name}'):
         return
 
-    spisok = CQT.list_from_wtabl_c(tabl_cr_stukt, "", True)
+    spisok = CQT.list_from_wtabl_c(tabl_cr_stukt, rez_dict=True)
     if len(spisok) == 0:
         spisok = [self.hat_c]
 
-    idx_lvl = F.num_col_by_name_in_hat_c(spisok, 'Уровень')
-    level = spisok[q_strok][idx_lvl]
-    tmp_row = ['' for _ in spisok[0]]
-    tmp_row[F.num_col_by_name_in_hat_c(spisok, 'Наименование')] = self.ui.le_add_naim.text()
-    tmp_row[F.num_col_by_name_in_hat_c(spisok, 'Обозначение')] = self.ui.le_add_nn.text()
-    tmp_row[F.num_col_by_name_in_hat_c(spisok, 'Количество')] = '1'
-    tmp_row[F.num_col_by_name_in_hat_c(spisok, 'ID')] = str(F.get_time_shtamp_c())[:14]
-    tmp_row[F.num_col_by_name_in_hat_c(spisok, 'ПКИ')] = pki_val
-    tmp_row[idx_lvl] = level
+    level = spisok[q_strok]['Уровень']
+    tmp_row = {k: '' for k in spisok[0].keys()}
+    tmp_row['Наименование'] = self.ui.le_add_naim.text()
+    tmp_row['Обозначение'] = self.ui.le_add_nn.text()
+    tmp_row['Количество'] = '1'
+    tmp_row['ID'] = str(F.get_time_shtamp_c())[:14]
+    tmp_row['ПКИ'] = pki_val
+    tmp_row['Уровень'] = level
     spisok.insert(q_strok + 1, tmp_row)
-    fill_tbl_strukt(self, spisok)
 
     tabl_cr_stukt.setCurrentCell(q_strok, q_column)
     apply_dse(self, False)
     clear_add_info(self)
-    recalc_weight(self)
+    on_tree_changed(self, spisok)
+    # recalc_weight(self)
 
 
 @CQT.onerror
@@ -1040,10 +1042,11 @@ def red_tree_del_knot(self: mywindow):
     if tabl_cr_stukt.currentRow() == -1:
         CQT.msgbox('Не выбрана позиция в МК')
         return
+    if tabl_cr_stukt.rowCount() <= 1:
+        return CQT.clear_tbl(tabl_cr_stukt)
 
     q_strok = tabl_cr_stukt.currentRow()
     q_column = tabl_cr_stukt.currentColumn()
-    lvl_col = CQT.num_col_by_name_c(tabl_cr_stukt, 'Уровень')
     lvl = tabl_cr_stukt.item(q_strok, CQT.num_col_by_name_c(tabl_cr_stukt, 'Уровень')).text()
     if lvl == '':
         CQT.msgbox(f'Уровень строки не укзаан')
@@ -1052,30 +1055,26 @@ def red_tree_del_knot(self: mywindow):
         CQT.msgbox(f'Уровень указан не корректно')
         return
 
-    spisok = CQT.list_from_wtabl_c(tabl_cr_stukt, "", True)
+    spisok = CQT.list_from_wtabl_c(tabl_cr_stukt, rez_dict=True)
     spisok_tmp = spisok.copy()
     k = 0
-    spisok.pop(q_strok + 1)
+    spisok.pop(q_strok)
     k += 1
     ur = int(lvl)
-    for i in range(q_strok + 2, len(spisok_tmp)):
-        if spisok_tmp[i][lvl_col] == '':
+    for i in range(q_strok + 1, len(spisok_tmp)):
+        if spisok_tmp[i]['Уровень'] == '':
             CQT.msgbox(f'Уровень строки {i} не укзазан')
             return
-        if int(spisok_tmp[i][lvl_col]) > ur:
+        if int(spisok_tmp[i]['Уровень']) > ur:
             spisok.pop(i - k)
             k += 1
         else:
             break
     tabl_cr_stukt.blockSignals(True)
-    change = CQT.list_from_wtabl_c(self.ui.tbl_red_tree, "", True, rez_dict=True)
-    fill_tbl_strukt(self, spisok)
-
+    on_tree_changed(self, list_rows=spisok)
     if len(spisok) > 1:
         tabl_cr_stukt.setCurrentCell(q_strok, q_column)
-        on_tree_changed(self)
     tabl_cr_stukt.setCurrentCell(-1, 0)
-    recalc_weight(self)
     tabl_cr_stukt.blockSignals(False)
 
 
@@ -1151,36 +1150,42 @@ def red_tree_load(self: mywindow):
                 for elem in spis
             ]
     spis = check_knot(self, spis)
-    fill_tbl_strukt(self, spis)
-    on_tree_changed(self)
+    # fill_tbl_strukt(self, spis)
+    on_tree_changed(self, list_rows=spis)
 
 
 @CQT.onerror
 def red_tree_move(self: mywindow, operator):
     tabl_cr_stukt = self.ui.tbl_red_tree
     selected_rows = {item.row() for item in tabl_cr_stukt.selectedItems()}
-    tabl_cr_stukt.clearSelection()
-    tabl_cr_stukt.blockSignals(True)
+    # tabl_cr_stukt.clearSelection()
+    # tabl_cr_stukt.blockSignals(True)
     nk_lvl = CQT.num_col_by_name_c(tabl_cr_stukt, 'Уровень')
     if not selected_rows:
         CQT.msgbox('Не выбрана позиция')
         return
-    for row in sorted(selected_rows):
-        if row == 0:
-            return
-        tabl_cr_stukt.setRowHidden(row, tabl_cr_stukt.isRowHidden(operator(row, 1)))
-        for col in range(tabl_cr_stukt.columnCount()):
-            cur_item = tabl_cr_stukt.takeItem(row, col)
-            swap_item = tabl_cr_stukt.takeItem(operator(row, 1), col)
-            if col == nk_lvl:
-                cur_item.setText(swap_item.text())
-            tabl_cr_stukt.setItem(operator(row, 1), col, cur_item)
-            tabl_cr_stukt.setItem(row, col, swap_item)
-    on_tree_changed(self)
-    tabl_cr_stukt.blockSignals(False)
+    if any(True for row in selected_rows if operator(row, 1) >= tabl_cr_stukt.rowCount() or operator(row, 1) < 1):
+        return CQT.msgbox('Выход за диапазон таблицы')
+    tabl_cr_stukt.clearSelection()
     for row in sorted(selected_rows):
         for col in range(tabl_cr_stukt.columnCount()):
             self.ui.tbl_red_tree.item(operator(row, 1), col).setSelected(True)
+
+    with CQT.table_updating(tabl_cr_stukt):
+        for row in sorted(selected_rows):
+            if row == 0:
+                return
+            tabl_cr_stukt.setRowHidden(row, tabl_cr_stukt.isRowHidden(operator(row, 1)))
+            for col in range(tabl_cr_stukt.columnCount()):
+                cur_item = tabl_cr_stukt.takeItem(row, col)
+                swap_item = tabl_cr_stukt.takeItem(operator(row, 1), col)
+                if col == nk_lvl:
+                    cur_item.setText(swap_item.text())
+                tabl_cr_stukt.setItem(operator(row, 1), col, cur_item)
+                tabl_cr_stukt.setItem(row, col, swap_item)
+        # tabl_cr_stukt.blockSignals(False)
+
+    on_tree_changed(self)
 
 
 @CQT.onerror
@@ -1207,7 +1212,8 @@ def add_row_branch(self: mywindow, *args):
     new_data = [''] * tbl.columnCount()
     new_data[lvl_nk] = int(level) + 1
     data[tbl.currentRow() + 1] = new_data
-    fill_tbl_strukt(self, data)
+    # fill_tbl_strukt(self, data)
+    on_tree_changed(self, list_rows=data)
 
 
 @CQT.onerror
@@ -1303,10 +1309,10 @@ def mat_apply_2(self: mywindow, replace_weight: bool = False, replace_material: 
     on_tree_changed(self)
     CQT.msgbox(f'Успешно')
 
-def on_tree_changed(self):
-    recalc_weight(self)
-    accumulate_tree_mass(self)
-    fill_tab_to_level(self.ui.tbl_red_tree)
+def on_tree_changed(self, list_rows = None):
+    # accumulate_tree_mass(self, list_rows=list_rows)
+    fill_tab_to_level(self, self.ui.tbl_red_tree, list_rows=list_rows)
+    recalc_weight(self, list_rows=list_rows)
 
 def sync_row_materials(self: mywindow, target_nn: str, val: str, name: str, kod: str):
     tbl = self.ui.tbl_red_tree
@@ -1316,7 +1322,8 @@ def sync_row_materials(self: mywindow, target_nn: str, val: str, name: str, kod:
         if 'Обозначение' in dse and dse['Обозначение'] == target_nn:
             lst_dse[idx]['Масса/М1,М2,М3'] = '/'.join((val, name))
             lst_dse[idx]['Код ERP'] = kod
-    fill_tbl_strukt(self, lst_dse)
+    # fill_tbl_strukt(self, lst_dse)
+    on_tree_changed(self, list_rows=lst_dse)
 
 
 @CQT.onerror
@@ -1451,12 +1458,12 @@ def fill_tree_stukture(self,data):
     HIDDEN_FIELDS = {'_5', '_6', 'dreva_kod', 'Кол. по заявке'}
     tabl_cr_stukt = self.ui.tbl_red_tree
     CQT.fill_wtabl(data, tabl_cr_stukt, styleSheet=CQT.MES_EDIT_CSS,
+                   list_column_widths=CMS.load_column_widths(self, tabl_cr_stukt),
                    set_editeble_col_nomera=self.edit_cr_mk, auto_type=False, selectionBehavior='SelectRows')
     t = CQT.TableContext(tabl_cr_stukt)
     for k in t.nf.keys():
         if k in HIDDEN_FIELDS:
             t.hide(k)
-    CMS.load_column_widths(self, tabl_cr_stukt)
 
 """def get_convert_di(li):
     levels = []
@@ -1485,7 +1492,7 @@ def get_convert_di(li):
     return li
 
 @CQT.onerror
-def fill_tab_to_level(table: QtWidgets.QTableWidget):
+def fill_tab_to_level(self, table: QtWidgets.QTableWidget, list_rows = None):
     if CQT.is_table_updating(table):
         return
     plus = CEMOJ.ДокументыДанные.plus.symbol
@@ -1529,28 +1536,13 @@ def fill_tab_to_level(table: QtWidgets.QTableWidget):
                     i_row.hide(False)
                 row.set_value('b',minus)
                 return
-    def btn_action(row, col):
-        table.blockSignals(True)  # блок событий на время нажатия кнопки иначе recalc
-        btn = table.cellWidget(row, 0)
-        level_col = CQT.num_col_by_name_c(table, 'Уровень')
-        previous = int(table.item(row, level_col).text())
-        if btn.text() == '-':
-            for row_idx in range(row + 1, table.rowCount()):
-                current_level = int(table.item(row_idx, level_col).text())
-                if previous >= current_level: break
-                table.setRowHidden(row_idx, True)
-            btn.setText('+')
-        else:
-            for row_idx in range(row + 1, table.rowCount()):
-                current_level = int(table.item(row, level_col).text())
-                if previous > current_level: break
-                table.setRowHidden(row_idx, False)
-            btn.setText('-')
-        QtWidgets.QApplication.processEvents()
-        table.blockSignals(False)  # блок событий на время нажатия кнопки иначе recalc
     with CQT.table_updating(table):
-        data = CQT.list_from_wtabl_c(table, rez_dict=True)
-        tree_obj = TreeKnotList(data)
+        if list_rows is None:
+            list_rows = CQT.list_from_wtabl_c(table, rez_dict=True)
+        tree_obj = TreeKnotList(list_rows)
+        data = tree_obj.calc_knot()
+        fill_tree_stukture(self, data)
+
         table.clicked.disconnect()
         table.clicked.connect(fnc_click_red_tree)
         for row_idx, obj in enumerate(tree_obj):
@@ -1574,15 +1566,19 @@ def fill_tab_to_level(table: QtWidgets.QTableWidget):
             else:
                 CQT.set_color_row_wtab_c(table, row_idx, 255, 255, 255)
                 table.item(row_idx, 0).setText('')
-        CMS.load_column_widths(DTCLS.app_self,table)
+
+        # CMS.load_column_widths(DTCLS.app_self,table)
+        hide_columns_for_simple_mode(self, self.ui.tbl_red_tree)
+
 
 @CQT.onerror
-def accumulate_tree_mass(self: mywindow):
+def accumulate_tree_mass(self: mywindow, list_rows = None):
     table_widget = self.ui.tbl_red_tree
-    if CQT.is_table_updating(self.ui.tbl_red_tree):
-        return
-    table_data = CQT.list_from_wtabl_c(table_widget, "", True, rez_dict=True)
-    tree_knot_object = TreeKnotList(table_data)
+    # if CQT.is_table_updating(self.ui.tbl_red_tree):
+    #     return
+    if list_rows is None:
+        list_rows = CQT.list_from_wtabl_c(table_widget, "", True, rez_dict=True)
+    tree_knot_object = TreeKnotList(list_rows)
     data = tree_knot_object.calc_knot()
     with CQT.table_updating(table_widget):
         mass_column = CQT.num_col_by_name_c(table_widget, MASS_KEY)
@@ -1594,23 +1590,18 @@ def accumulate_tree_mass(self: mywindow):
 
 def change_lvl(self: mywindow, operator) -> None:
     tabl_cr_strukt = self.ui.tbl_red_tree
-
-    row = tabl_cr_strukt.currentRow()
-    if row == -1:
+    selected_rows = [item.topRow() for item in tabl_cr_strukt.selectedRanges()]
+    if not selected_rows:
         CQT.msgbox('Чтобы изменить уровень, нужно выделить строчку')
         return
-    num_col_lvl = CQT.num_col_by_name_c(tabl_cr_strukt, 'Уровень')
-    selected_rows = [item.topRow() for item in tabl_cr_strukt.selectedRanges()]
-    with CQT.table_updating(tabl_cr_strukt):
-        for row in sorted(selected_rows):
-            current_level = tabl_cr_strukt.item(row, num_col_lvl).text()
-            if current_level == '0':
-                CQT.msgbox('Нельзя менять главный корень')
-                return
-            tabl_cr_strukt.selectRow(row)
-            current_item = tabl_cr_strukt.item(row, num_col_lvl)
-            current_item.setText(str(operator(int(current_level), 1)))
-    on_tree_changed(self)
+    lst = CQT.list_from_wtabl_c(tabl_cr_strukt, rez_dict=True)
+    for row in sorted(selected_rows):
+        current_level = lst[row]['Уровень']
+        if current_level == '0':
+            CQT.msgbox('Нельзя менять главный корень')
+            return
+        lst[row]['Уровень'] = str(operator(int(current_level), 1))
+    on_tree_changed(self, list_rows=lst)
 
 
 class TreeKnotBranch:
@@ -1827,9 +1818,9 @@ def get_knot(self: mywindow):
             if sp_tree[0][i] == key:
                 sp_tree[0][i] = dict_zamen[key]
     current_row_anal = tabl_cr_stukt.currentRow()
-    if current_row_anal != -1 and accumulate_tree_mass(self) is None:
-        CQT.msgbox('Перед добавлением новых элементов исправьте структуру добавленных уровней')
-        return
+    # if current_row_anal == -1: # todo and accumulate_tree_mass(self) is None:
+    #     CQT.msgbox('Перед добавлением новых элементов исправьте структуру добавленных уровней')
+    #     return
 
     col_lvl_anal = CQT.num_col_by_name_c(tabl_cr_stukt, 'Уровень')
 
@@ -1870,8 +1861,8 @@ def get_knot(self: mywindow):
     spisok = get_convert_di(spisok)
     spisok = check_knot(self, spisok)
     spisok = [{'b': '', **elem} for elem in spisok]
-    fill_tbl_strukt(self, spisok)
-    on_tree_changed(self)
+    # fill_tbl_strukt(self, spisok)
+    on_tree_changed(self, list_rows=spisok)
 
 def hide_columns_for_simple_mode(self, tabl_cr_stukt):
     current_type = self.ui.cmb_vid_napr.currentText()

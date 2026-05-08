@@ -78,9 +78,6 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.btn_print_nar.clicked.connect(self.print_nar)
         self.ui.btn_print_nar_settings.clicked.connect(self.on_click_btn_print_nar_settings)
         self.ui.btn_group_manage.clicked.connect(partial(GRM.btn_group_manage,self))
-        if F.user_name() not in ('a.belyakov','s.kozyrkov','m.moyamsin','s.petrashov'):
-            self.ui.btn_group_manage.setHidden(True)
-
         self.ui.btn_seletc_base_doc.clicked.connect(self.on_click_btn_seletc_base_doc)
         self.ui.btn_reset_gr.clicked.connect(partial(GRM.btn_reset_gr,self))
         self.ui.bnt_group_cancel.clicked.connect(partial(GRM.bnt_group_cancel,self))
@@ -201,13 +198,32 @@ class mywindow(QtWidgets.QMainWindow):
             == "{USRCNF.Config.user_config.User.Подразделение.strip()}";""",
                                                     rez_dict=True)
 
+
     def on_success_login(self):
         DTCLS.production_shift = CMS.Production_shifts(DTCLS.USER_CONFIG.User.Пномер,
                                                        DTCLS.USER_CONFIG.common_config.db_users)
         self.zapoln_tabl_naryadov()
         self.lbl_tek_narayd(USRCNF.Config.user_config.User.ФИО)
         self.fill_cmb_abstract()
-
+        self.toggle_visible_btn_group_manage()
+    def toggle_visible_btn_group_manage(self,forced_hide=False):
+        if not forced_hide and  (F.user_name() in ('a.belyakov' 's.kozyrkov', 'm.moyamsin', 'a.a.fedorov') or (
+                USRCNF.Config.place.poki == 1 and USRCNF.Config.user_config.User and
+                USRCNF.Config.user_config.User.Подразделение in ('Сборочный цех Производства',
+                                                                 'Отдел комплектации',
+                                                                 'Набивочный цех Производства',
+                                                                 'Столярный цех Производства',
+                                                                 'Швейный цех Производства',
+                                                                 )
+        ) or (
+                USRCNF.Config.place.poki == 0 and USRCNF.Config.user_config.User and
+                USRCNF.Config.user_config.User.Подразделение in ('Цех механической обработки Производства'
+                                                                 )
+        )
+        ):
+            self.ui.btn_group_manage.setHidden(False)
+        else:
+            self.ui.btn_group_manage.setHidden(True)
 
     def clear_widgets(self):
         self.ui.cmb_fio.setCurrentText('')
@@ -240,7 +256,7 @@ class mywindow(QtWidgets.QMainWindow):
         GRM.clear()
         CQT.clear_tbl(self.ui.tbl_compositions)
         self.ui.tbl_compositions.setHidden(True)
-
+        self.toggle_visible_btn_group_manage(forced_hide=True)
     def load_users(self, conn='', cur=''):
         """Загрузить список сотрудников в листбокс"""
         poki = USRCNF.Config.place.poki
@@ -308,8 +324,8 @@ class mywindow(QtWidgets.QMainWindow):
             self.ui.gb_abstrakt.setVisible(False)
 
     def start_up(self):
-        if USRCNF.User_config.is_developer:
-            # self.auth_manager.log_in(autouser='Демичев Николай Юрьевич')
+        # if USRCNF.Config.user_config.is_developer: # 07.04.2026
+        #     self.auth_manager.log_in(autouser='Демичев Николай Юрьевич')
             ...
 
     @CQT.onerror
@@ -1704,9 +1720,9 @@ class mywindow(QtWidgets.QMainWindow):
             DTCLS.gr_groups_nar = CMS.Groups_nar(DTCLS.USER_CONFIG.common_config.db_naryad, DTCLS.app_self,
                                                      DTCLS.USER_CONFIG.User)
             gr = DTCLS.gr_groups_nar.find_gr(int(self.nar_info.group_id))
-
+            list_not_zav_nar = [str(_) for _ in  gr.load_s_nums_nar()]
             if not CQT.msgboxgYN(f'Наряд состоит в группе "{gr.name}".\nВ обработку попадут'
-                                 f' наряды №№:\n{", ".join([str(_) for _ in gr.load_s_nums_nar()])}',app_self=self,
+                                 f' наряды №№:\n{", ".join(list_not_zav_nar)}',app_self=self,
                                  btn0_name='ОК',
                                  btn1_name='Отмена'):
                 return
@@ -1973,7 +1989,6 @@ class mywindow(QtWidgets.QMainWindow):
             lbl_tek_nar = "-"
         else:
             lbl_tek_nar = str(rez[0])
-
         DTCLS.USER_CONFIG.cust_windowTitle = f'Текущий наряд: {lbl_tek_nar}'
         self.ui.lbl_tek_nar.setText(lbl_tek_nar)
 

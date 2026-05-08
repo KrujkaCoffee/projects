@@ -463,29 +463,32 @@ class System_changes():
             news = F.load_file_pickle(self.B24_PFILE)
         
         max_date = self.yesterday_end_day()
-        for row in news:
-            if row['ПРОЦЕНТ ВЫПОЛНЕНИЯ'] != '1':
-                continue
-            if row['ПП'] != 'MES':
-                continue
-            if row['ТИП'] not in self.DICT_TYPES:
-                continue
-            if row['ПРИЛОЖЕНИЕ'] in self.DICT_APP_COMPARE and row['ПРИЛОЖЕНИЕ'] in self.DICT_APP_COMPARE[self.app]:
-                date_end_str = row['ДАТА ОКОНЧАНИЯ']
-                if F.is_date(date_end_str):
-                    date_end = F.strtodate(date_end_str)
-                    if not hot or (date_end > self.data_setup and date_end < max_date):
-                        self.news.append({
-                            '№':row['НОМЕР'],
-                            'Тип':self.DICT_TYPES[row['ТИП']],
-                              'Дата': F.dateStrToStr(row['ДАТА ОКОНЧАНИЯ'],format_out="%d.%m.%y"),
-                              'Инициатор':row['ПОСТАНВОЩИК'],
-                              'Описание':row['НАЗВАНИЕ ЗАДАЧИ'],
-                              'Результат':row['ОПИСАНИЕ']
-                              } 
-)
-        return self.news
-    
+        try:
+            for row in news:
+                if row['ПРОЦЕНТ ВЫПОЛНЕНИЯ'] != '1':
+                    continue
+                if row['ПП'] != 'MES':
+                    continue
+                if row['ТИП'] not in self.DICT_TYPES:
+                    continue
+                if row['ПРИЛОЖЕНИЕ'] in self.DICT_APP_COMPARE and row['ПРИЛОЖЕНИЕ'] in self.DICT_APP_COMPARE[self.app]:
+                    date_end_str = row['ДАТА ОКОНЧАНИЯ']
+                    if F.is_date(date_end_str):
+                        date_end = F.strtodate(date_end_str)
+                        if not hot or (date_end > self.data_setup and date_end < max_date):
+                            self.news.append({
+                                '№':row['НОМЕР'],
+                                'Тип':self.DICT_TYPES[row['ТИП']],
+                                  'Дата': F.dateStrToStr(row['ДАТА ОКОНЧАНИЯ'],format_out="%d.%m.%y"),
+                                  'Инициатор':row['ПОСТАНВОЩИК'],
+                                  'Описание':row['НАЗВАНИЕ ЗАДАЧИ'],
+                                  'Результат':row['ОПИСАНИЕ']
+                                  }
+        )
+                return self.news
+        except:
+            print()
+
     def get_news(self)->list[dict]:
         news = CSQ.custom_request_c(self.db_users, f"""SELECT system_change.id as №,
                                 system_change.date_time as Дата,

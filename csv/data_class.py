@@ -185,7 +185,7 @@ class Data_mes(SingletonMeta):
     WHERE ВидыНоменклатуры.ТКП = 1 and На_удаление = 0{postfix};""") #08.09.25
     dict_nomenklat_by_kod = F.deploy_dict_c(F.list_of_lists_to_list_of_dicts(list_nomenklat) , 'Код')
     DICT_NAME_SQL = DICT_NAME_SQL
-    VID_PO_NAPR = CSQ.custom_request_c(db_kplan, f"""SELECT * FROM виды_по_напр""", rez_dict=True)
+    VID_PO_NAPR = CSQ.custom_request_c(db_kplan, f"""SELECT * FROM виды_по_направлению""", rez_dict=True) # 20.04.2026
     DICT_VID_PO_NAPR = F.deploy_dict_c(VID_PO_NAPR, 'Пномер')
     dict_vid_napr = DICT_VID_PO_NAPR_NAME = F.deploy_dict_c(VID_PO_NAPR, 'Имя')
     print(f'Data_mes')

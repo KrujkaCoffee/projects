@@ -39,3 +39,5 @@ build
 *.sql
 mini_git.py
 !/Setup/mini_git.py
+remote_run.py
+!/Setup/remote_run.py

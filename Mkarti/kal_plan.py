@@ -2764,7 +2764,9 @@ def fill_tbl_settings(self: mywindow, list_conf):
         CQT.add_check_box(self.ui.tbl_pl_add_poz, 0, j, val=val, conn_func_checked_row_col=check_val, self=self)
         it_value = list_conf[0][j] #10.11.25
         if it_value in self.Data_plan.DICT_INFO_FIELDS_KPL and self.Data_plan.DICT_INFO_FIELDS_KPL[it_value]['is_system']:
-            self.ui.tbl_pl_add_poz.cellWidget(0, j).setEnabled(False)
+            chk_box: QtWidgets.QCheckBox = self.ui.tbl_pl_add_poz.cellWidget(0, j)
+            chk_box.setEnabled(False)
+            chk_box.setChecked(True)
 
 
 
@@ -4650,7 +4652,7 @@ class Сomparison_fields_vs_db():
                             WHERE {fields_name['ind_field']}
                         in ({", ".join([str(_) for _ in chunk_kpl])});'''
                     data = CSQ.custom_request_c(self.db,text,rez_dict=True)
-                    dict_data = F.deploy_dict_c(data,'id_row')
+                    dict_data = F.deploy_dict_c(data,'id_row', keep_key=True) # 24.04.2026
                     for item in fields_name['items_fields']:
                         name_field_db = item.name_field_db
                         name_column_plan = item.name_column_plan

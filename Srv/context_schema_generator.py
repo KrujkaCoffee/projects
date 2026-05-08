@@ -5,12 +5,16 @@ import json
 import pathlib
 from typing import Any
 
-from project_cust_38 import context_admin as CADM  # type: ignore
+from project_cust_38 import context_admin as CADM   # noqa
+from project_cust_38 import Cust_Functions as F     # noqa
 
 
-GENERATOR_VERSION = '1.0.0'
-DEFAULT_ARTIFACT_DIRNAME = 'generated_schemas'
+GENERATOR_VERSION = '1.0.3'
 
+CORE_FOLDER_NAME = 'project_cust_38'
+DEFAULT_ARTIFACT_DIRNAME = 'dynamic_db_models'
+
+CURRENT_MODULE_FOLDER = pathlib.Path(__file__).resolve().parent
 
 def _module_root() -> pathlib.Path:
     return pathlib.Path(__file__).resolve().parent
@@ -19,6 +23,9 @@ def _module_root() -> pathlib.Path:
 def _default_output_dir(output_dir: str | pathlib.Path | None = None) -> pathlib.Path:
     if output_dir:
         return pathlib.Path(output_dir)
+    base_path = CURRENT_MODULE_FOLDER / CORE_FOLDER_NAME
+    if not base_path.exists():
+        raise Exception(f"В текущей директории отсутсвует {CORE_FOLDER_NAME}")
     return _module_root() / DEFAULT_ARTIFACT_DIRNAME
 
 
@@ -69,28 +76,7 @@ def _render_table_hints(tables: list[dict[str, Any]], table_fields: list[dict[st
     )
 
 
-def _render_source_hints(sources: list[dict[str, Any]], source_tables: list[dict[str, Any]]) -> str:
-    grouped: dict[str, list[str]] = {}
-    for row in source_tables:
-        grouped.setdefault(row['source_code'], []).append(row['table_key'])
-    payload = {}
-    for source in sources:
-        payload[source['source_code']] = {
-            'source_kind': source['source_kind'],
-            'base_table_key': source['base_table_key'],
-            'schema_source_table_key': source['schema_source_table_key'],
-            'schema_enabled': source['schema_enabled'],
-            'cache_enabled': source['cache_enabled'],
-            'cache_lifetime_min': source['cache_lifetime_min'],
-            'dependencies': sorted(grouped.get(source['source_code'], [])),
-        }
-    return (
-        '"""Автогенерированные source-level hints."""\n\n'
-        f'SOURCE_HINTS = {_py_repr(payload)}\n'
-    )
-
-
-def _render_orm_models(tables: list[dict[str, Any]], table_fields: list[dict[str, Any]]) -> str:
+def _render_orm_models(tables: list[dict[str, Any]], table_fields: list[dict[str, Any]], manifest: str) -> str:
     grouped: dict[str, list[dict[str, Any]]] = {}
     for field in table_fields:
         if not field.get('include_in_schema', 1):
@@ -98,29 +84,20 @@ def _render_orm_models(tables: list[dict[str, Any]], table_fields: list[dict[str
         grouped.setdefault(field['table_key'], []).append(field)
 
     lines = [
-        '"""Автогенерированные ORM-lite skeleton models."""',
-        '',
         'from __future__ import annotations',
+        manifest,
         '',
-        'try:',
-        '    from project_cust_38.Cust_orm import BaseModel, IntField, FloatField, StrField, BoolField, DateTimeField, BlobField',
-        'except Exception:',
-        '    from Cust_orm import BaseModel, IntField, FloatField, StrField, BoolField, DateTimeField, BlobField  # type: ignore',
+        'from project_cust_38.Cust_orm import BaseModel, IntField, FloatField, StrField, BoolField, DateTimeField, BlobField',
+        'from project_cust_38 import Cust_config as CFG',
+        'from project_cust_38 import Cust_client_socket as CCS',
         '',
-        'try:',
-        '    from project_cust_38 import Cust_config as CFG',
-        'except Exception:',
-        '    try:',
-        '        import Cust_config as CFG  # type: ignore',
-        '    except Exception:',
-        '        CFG = None  # type: ignore',
-        '',
-        '',
-        'def _resolve_db_path(db_key: str):',
-        '    try:',
-        '        return getattr(CFG.Config.project, db_key)  # type: ignore[attr-defined]',
-        '    except Exception:',
-        '        return db_key',
+        'def db(db_key: str):',
+        '    def wrap():',
+        '        try:',
+        '            return CCS.Servers[db_key]',
+        '        except Exception:',
+        '            return db_key',
+        '    return wrap',
         '',
     ]
 
@@ -128,12 +105,12 @@ def _render_orm_models(tables: list[dict[str, Any]], table_fields: list[dict[str
         if not table.get('schema_enabled', 1):
             continue
         fields = sorted(grouped.get(table['table_key'], []), key=lambda item: (item.get('sort_order', 0), item['field_name']))
-        class_name = _orm_class_name(table['table_key'])
+        class_name = _orm_class_name(table['table_name'])
         pk_field = next((field['field_name'] for field in fields if field.get('is_pk')), None) or 'id'
         lines.extend([
-            f'class {class_name}(BaseModel):',
+            f'class {class_name}(BaseModel): # noqa',
             f'    __table__ = {table["table_name"]!r}',
-            f'    __db__ = lambda: _resolve_db_path({table["db_key"]!r})',
+            f'    __db__ = db({table["db_key"]!r})',
             f'    __pk__ = {pk_field!r}',
             '',
         ])
@@ -144,7 +121,7 @@ def _render_orm_models(tables: list[dict[str, Any]], table_fields: list[dict[str
         for field in fields:
             orm_field_class = field.get('orm_field_class') or CADM.guess_orm_field_class(field.get('db_type'))
             nullable = bool(field.get('nullable', 1))
-            default_value = CADM._default_for_orm_field(orm_field_class, nullable)  # type: ignore[attr-defined]
+            default_value = CADM._default_for_orm_field(orm_field_class, nullable)
             annotation = 'str'
             if orm_field_class == 'IntField':
                 annotation = 'int'
@@ -171,34 +148,33 @@ def _render_init_py() -> str:
     )
 
 
-def generate_schema_artifacts(*, db_files: str | None = None, output_dir: str | pathlib.Path | None = None, generator_version: str = GENERATOR_VERSION) -> dict[str, Any]:
-    repo = CADM.ensure_admin_schema(db_files)
+def generate_schema_artifacts(*, debug: bool = False, output_dir: str | pathlib.Path | None = None, generator_version: str = GENERATOR_VERSION) -> dict[str, Any]:
+    repo = CADM.ContextAdminRepo()
     out_dir = _default_output_dir(output_dir)
 
     tables = repo.get_physical_tables(schema_enabled=1, only_enabled=True)
     all_table_fields = repo.get_table_fields(include_disabled=False)
-    sources = repo.get_sources(schema_enabled=1)
-    source_tables = repo.get_source_tables()
 
     hashes = repo.compute_manifest_hashes()
-    generated_at_utc = CADM._utc_now()  # type: ignore[attr-defined]
+    generated_at_utc = F.now()
     artifact_version = hashes['admin_schema_hash'][:12]
     manifest = {
         'generated_at_utc': generated_at_utc,
         'generator_version': generator_version,
         'admin_schema_hash': hashes['admin_schema_hash'],
-        'source_templates_hash': hashes['source_templates_hash'],
         'table_fields_hash': hashes['table_fields_hash'],
         'artifact_version': artifact_version,
         'notes': f'generated into {out_dir}',
     }
 
+    _py_manifest = _render_manifest_py(manifest)
+
+    _write_text(out_dir / 'orm_models.py', _render_orm_models(tables, all_table_fields, _py_manifest))
     _write_text(out_dir / '__init__.py', _render_init_py())
-    _write_text(out_dir / 'schema_manifest.py', _render_manifest_py(manifest))
-    _write_text(out_dir / 'manifest.json', json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True))
-    _write_text(out_dir / 'table_hints.py', _render_table_hints(tables, all_table_fields))
-    _write_text(out_dir / 'source_hints.py', _render_source_hints(sources, source_tables))
-    _write_text(out_dir / 'orm_models.py', _render_orm_models(tables, all_table_fields))
+    if debug:
+        _write_text(out_dir / 'table_hints.py', _render_table_hints(tables, all_table_fields))
+        _write_text(out_dir / 'schema_manifest.py', _render_manifest_py(manifest))
+        _write_text(out_dir / 'manifest.json', json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True))
 
     repo.write_manifest(CADM.SchemaManifestMeta(**manifest))
     return {
@@ -209,37 +185,25 @@ def generate_schema_artifacts(*, db_files: str | None = None, output_dir: str | 
 
 
 def _cmd_bootstrap(args: argparse.Namespace) -> int:
-    repo = CADM.ensure_admin_schema(args.db_files)
+    repo = CADM.ContextAdminRepo()
     repo.bootstrap_tables_from_db(
         db_path=args.db_path,
         table_names=args.tables,
         db_key=args.db_key,
         include_fields=not args.skip_fields,
         schema_enabled=1 if args.schema_enabled else 0,
-        cache_enabled=1,
+        cache_enabled=1, # временно выключил обработку
         is_enabled=1,
         cache_lifetime_min=args.cache_lifetime_min,
         notes=args.notes or 'bootstrap via context_schema_generator',
+        skip_tables=args.skip_tables
     )
-    print(f'Bootstrapped tables into {repo.db_files}: {args.tables or "<all>"}')
+    print(f'Генерация таблиц для БД {repo.db_files}: Для таблиц <{args.tables or "Всех"}>')
     return 0
 
 
 def _cmd_generate(args: argparse.Namespace) -> int:
-    result = generate_schema_artifacts(db_files=args.db_files, output_dir=args.output_dir, generator_version=args.generator_version)
-    print(json.dumps(result, ensure_ascii=False, indent=2))
-    return 0
-
-
-def _cmd_cleanup(args: argparse.Namespace) -> int:
-    repo = CADM.ensure_admin_schema(args.db_files)
-    result = repo.cleanup_source_variants(
-        older_than_days=args.older_than_days,
-        source_code=args.source_code,
-        dry_run=args.dry_run,
-        keep_pinned=not args.drop_pinned,
-        limit=args.limit,
-    )
+    result = generate_schema_artifacts(output_dir=args.output_dir, generator_version=args.generator_version)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 
@@ -251,28 +215,20 @@ def build_arg_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest='command', required=True)
 
     p_boot = sub.add_parser('bootstrap-db', help='Заполнить admin_physical_tables и admin_table_fields из физической БД')
-    p_boot.add_argument('--db-path', required=True, help='Путь к физической sqlite БД')
-    p_boot.add_argument('--db-key', default=None, help='Явный db_key вместо auto-resolve')
-    p_boot.add_argument('--tables', nargs='*', default=None, help='Список таблиц для bootstrap; если не задан — все')
-    p_boot.add_argument('--skip-fields', action='store_true', help='Не загружать PRAGMA table_info')
-    p_boot.add_argument('--schema-enabled', action='store_true', help='Пометить bootstrapped tables как schema_enabled=1')
-    p_boot.add_argument('--cache-lifetime-min', type=int, default=120)
-    p_boot.add_argument('--notes', default='')
+    p_boot.add_argument('--db-path', required=True, help='Путь к физической sqlite БД (Например SRV:Naryads.db)')
+    p_boot.add_argument('--tables', nargs='*', default=None, help='Список таблиц для обновления/создания; если не задан — все')
+    # p_boot.add_argument('--skip-tables', nargs='', default=None, help='Список таблиц на которых НЕ ДОЛЖНЫ создавать схемы')
+    p_boot.add_argument('--skip-fields', action='store_true', help='Поля, которые не должны входить в схемы')
+    p_boot.add_argument('--schema-enabled', action='store_true', help='Пометить таблицы schema_enabled = True')
+    p_boot.add_argument('--cache-lifetime-min', type=int, default=120, help='Время жизни кэша в таблицах')
+    p_boot.add_argument('--notes', default='', help='Заметка последнего изменения')
     p_boot.set_defaults(func=_cmd_bootstrap)
 
     p_gen = sub.add_parser('generate', help='Сгенерировать shipped schema artifacts')
-    p_gen.add_argument('--output-dir', default=None, help='Каталог вывода внутри project_cust_38')
+    p_gen.add_argument('--output-dir', default=None,
+                       help=f'Каталог вывода (дефолт /project_cust_38/{DEFAULT_ARTIFACT_DIRNAME})')
     p_gen.add_argument('--generator-version', default=GENERATOR_VERSION)
     p_gen.set_defaults(func=_cmd_generate)
-
-    p_cleanup = sub.add_parser('cleanup-variants', help='Ручной cleanup source realizations')
-    p_cleanup.add_argument('--older-than-days', type=int, default=30)
-    p_cleanup.add_argument('--source-code', default=None)
-    p_cleanup.add_argument('--limit', type=int, default=None)
-    p_cleanup.add_argument('--drop-pinned', action='store_true')
-    p_cleanup.add_argument('--dry-run', action='store_true')
-    p_cleanup.set_defaults(func=_cmd_cleanup)
-
     return parser
 
 

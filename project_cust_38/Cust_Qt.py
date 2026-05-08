@@ -3144,19 +3144,29 @@ def restore_selection(tbl: QtWidgets.QTableWidget):
     tbl.blockSignals(True)
 
     ranges = tbl.property('_saved_selected_ranges')
-    if ranges:
-        for top, left, bottom, right in ranges:
-            if bottom < tbl.rowCount() and right < tbl.columnCount():
-                tbl.setRangeSelected(
-                    QtWidgets.QTableWidgetSelectionRange(
-                        top, left-1, bottom, right-1
-                    ),
-                    True
-                )
-        # current — верхняя левая ячейка первого диапазона
-        top, left, _, _ = ranges[0]
-        tbl.setCurrentCell(top, left-1)
-        #print(f'restore_selection {(top, left)}')
+    if ranges: # 20.04.2026
+        if tbl.selectionBehavior() == QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows:
+            for top, left, bottom, right in ranges:
+                if bottom < tbl.rowCount() and right < tbl.columnCount():
+                    tbl.setRangeSelected(
+                        QtWidgets.QTableWidgetSelectionRange(
+                            top, left, bottom, right
+                        ),
+                        True
+                    )
+        else:
+            for top, left, bottom, right in ranges:
+                if bottom < tbl.rowCount() and right < tbl.columnCount():
+                    tbl.setRangeSelected(
+                        QtWidgets.QTableWidgetSelectionRange(
+                            top, left-1, bottom, right-1
+                        ),
+                        True
+                    )
+            # current — верхняя левая ячейка первого диапазона
+            top, left, _, _ = ranges[0]
+            tbl.setCurrentCell(top, left-1)
+            #print(f'restore_selection {(top, left)}')
     else:
         saved = tbl.property('_saved_current_cell')
         if saved:

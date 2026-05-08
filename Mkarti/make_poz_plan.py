@@ -772,7 +772,6 @@ def save_kpl_plan(self: mywindow):
         comp.reload_fields_from_db()
     except:
         CQT.msgbox(f'Ошибка заполнения таблицы')
-
     # ==================================Отметка даты внесения в план===============================================
 
     if len(Month_plan.file) == 0:

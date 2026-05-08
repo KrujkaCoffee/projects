@@ -2134,13 +2134,17 @@ class mywindow(QtWidgets.QMainWindow):
         list_mk = CSQ.custom_request_c(self.bd_naryad, custom_request_c, rez_dict=True)
 
         for mk in list_mk:
+
             if mk['Тип'] == 1 and F.strtodate(mk['Дата'], "%y-%m-%d") > F.strtodate('2024-02-01'):
-                res_row = \
-                    CSQ.custom_request_c(self.db_kplan, f"""SELECT * FROM пл_отк WHERE НомПл = {mk['НомКплан']}""",
-                                         rez_dict=True)[0]
-                if res_row['Контр_покрытие_ФИО'] == '':
+                if CMS.check_otk_after_proizv(mk['Пномер']): # 14.04.2026 Если все операции текущего poki с пометкой is_coating покрыты ОТК вернет False
                     list_err.append([f'Не проведены финишный ОТК (Контр_покрытие_ФИО)',
                                      f'МК № {mk}, финишный контроль после покрытия, пассивирования, пескоструйной обработки'])
+                # res_row = \
+                #     CSQ.custom_request_c(self.db_kplan, f"""SELECT * FROM пл_отк WHERE НомПл = {mk['НомКплан']}""",
+                #                          rez_dict=True)[0]
+                # if res_row['Контр_покрытие_ФИО'] == '':
+                #     list_err.append([f'Не проведены финишный ОТК (Контр_покрытие_ФИО)',
+                #                      f'МК № {mk}, финишный контроль после покрытия, пассивирования, пескоструйной обработки'])
 
         self.naryad__ = f'''SELECT mk.Пномер, mk.Тип, mk.НомКплан, naryad.Пномер as Номер_Наряда, naryad.ФИО , 
         naryad.ФИО2, naryad.Подтвержд_вып_фио  FROM mk INNER JOIN naryad ON mk.Пномер = naryad.Номер_мк WHERE
@@ -5136,7 +5140,7 @@ class mywindow(QtWidgets.QMainWindow):
             stat_proizv = 121
             if self.Data_plan.DICT_VID_PO_NAPR[vid_napr]['Выборка'] >= 1:
                 stat_proizv = self.Data_plan.DICT_VID_PO_NAPR[vid_napr]['кг_на_пост_см']
-            sb_sv = (dict_norm['пл_сб.Нчас_слсб'] + dict_norm['пл_сб.Нчас_св']) / 60
+            sb_sv = (dict_norm.get('пл_сб.Нчас_слсб', 0) + dict_norm.get('пл_сб.Нчас_св', 0)) / 60
             ves_tkp = F.valm(self.ui.lbl_summ_weight_wo_pki.text())
             proizv = 0
             if sb_sv > 0:

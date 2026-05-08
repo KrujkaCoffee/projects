@@ -1,6 +1,8 @@
 import colorsys
 import copy
 import collections
+import enum
+import typing
 
 from PyQt5 import QtWidgets, QtGui, QtCore
 from PyQt5.QtWinExtras import QtWin
@@ -34,7 +36,27 @@ import project_cust_38.Cust_emoji as CEMOJ
 cfg = F.load_cfg(False)  # файл конфига, находится п папке конфиг
 
 
-# F.test_path()
+
+class EditJournalActions(enum.Enum):
+    ADD = 'ADD_ROW'
+    EDIT_STATUS = 'EDIT_STATUS'
+
+class EditJournalState(typing.NamedTuple):
+    pk: int | None
+    action: EditJournalActions
+    status: str = None
+    fio: str = None
+    date: str = None
+    comment: str = None
+
+class EditJournalManager:
+    @staticmethod
+    def get_current_state(table_widget: QtWidgets.QTableWidget):
+        return table_widget.property('CURRENT_EDIT_STATE')
+
+    @staticmethod
+    def set_state(table_widget: QtWidgets.QTableWidget, state: "EditState"):
+        return table_widget.setProperty('CURRENT_EDIT_STATE', state)
 
 
 class mywindow(QtWidgets.QMainWindow):
@@ -325,8 +347,11 @@ class mywindow(QtWidgets.QMainWindow):
         dict_tip = CSQ.custom_request_c(self.db_naryd, """SELECT * FROM Тип_мк""", rez_dict=True)
         self.DICT_TIP_MK = F.deploy_dict_c(dict_tip, 'Имя')
 
-        spis_status = CSQ.custom_request_c(self.db_naryd, f'SELECT DISTINCT jurnal.Статус FROM jurnal', hat_c=False)
-        self.ui.cmb_edit_time_jur.addItems([i[0] for i in spis_status])
+        spis_status = CSQ.custom_request_c(self.db_naryd, f'SELECT DISTINCT jurnal.Статус FROM jurnal', hat_c=False, one_column=True)
+
+        self.ACTUAL_JOURNAL_STATUSES = spis_status
+        self.ui.cmb_edit_time_jur.addItems(spis_status)
+        self.ui.cmb_edit_time_jur.currentTextChanged.connect(self.set_edit_status_jur)
 
         MARSH.fill_filtr_rc(self)
         # ============DB
@@ -476,7 +501,7 @@ class mywindow(QtWidgets.QMainWindow):
             return
         if not CQT.msgboxgYN(msg):
             return set_state(prev_state, checkbox)
-        return
+
         response = CSQ.custom_request_c(self.db_naryd,f'UPDATE naryad SET Аутсорсинг = {new_state} WHERE Пномер = {pnom}')
         if response:
             query = f"""SELECT пл_оуп.НомПл as "Номер КПЛ", знпр.№ERP, знпр.№проекта, mk.Пномер as "Номер МК" FROM naryad
@@ -1293,6 +1318,7 @@ class mywindow(QtWidgets.QMainWindow):
             ORDER BY datetime(Дата)
         '''
         rez = CSQ.custom_request_c(self.db_naryd, custom_request_c)
+        tblp.setProperty('nom_nar', nom_nar) # 30.04.2026
         zad = CSQ.custom_request_c(self.db_naryd, f"""SELECT mk.Дата_завершения,
          naryad.Пномер, naryad.Задание FROM naryad Inner join mk ON mk.Пномер = naryad.Номер_мк WHERE naryad.Пномер == {nom_nar}""",
                                    rez_dict=True)
@@ -2189,6 +2215,30 @@ class mywindow(QtWidgets.QMainWindow):
 
         return list(ret_set)
 
+    def get_professions_for_assignment_naryad(self, pk_nar: CMS.Naryads | int): #13.04.2026
+        if isinstance(pk_nar, CMS.Naryads):
+            nar = pk_nar
+        else:
+            nar = CMS.Naryads(int(pk_nar), db_naryad=CFG.Config.project.db_naryad)
+        resource = CMS.ResSpec(num_mk=nar.Номер_мк)
+        dse_ids = {param.ДСЕ_ID for param in nar.params_o}
+        coords_dse_op = [(param.ДСЕ_ID, param.Операции_номер) for param in nar.params_o]
+        incoming_target_groups = set()
+        for dse in resource.data:
+            if dse.Номерпп not in dse_ids:
+                continue
+            for op in dse.Операции:
+                if (dse.Номерпп, op.Опер_номер) in coords_dse_op and op.Опер_профессия_код in self.DICT_PROFESSIONS:
+                    groups = str(self.DICT_PROFESSIONS[op.Опер_профессия_код]['Группа_в_распред']).split(';')
+                    incoming_target_groups.update(groups)
+        return {
+            prof for prof, credentials in self.DICT_PROFESSIONS_NAME.items()
+            if (
+                    incoming_target_groups.intersection(str(credentials['Группа_в_распред']).split(';'))
+                    and credentials['Группа_в_распред_блок'] == 0
+            )
+        }
+
     @CQT.onerror
     def tbl_nar_raspr_click(self, *args):
 
@@ -2207,7 +2257,7 @@ class mywindow(QtWidgets.QMainWindow):
                     'Подразделение'] not in exclude_department:
                     rez.append(item)
                 else:
-                    print(f'Исключон {item}')
+                    print(f'исключён {item}')
             return sorted(rez)
 
         def fill_cmb_empl_for_otk(self, list_empl):
@@ -2476,17 +2526,13 @@ class mywindow(QtWidgets.QMainWindow):
             CQT.msgbox(f'{fl_fio_recalc} не найден в БД')
             return
         podr = self.DICT_EMPLOEE_FULL_WITH_DEL[fl_fio_recalc]['Подразделение']
-        prof = self.DICT_EMPLOEE_FULL_WITH_DEL[fl_fio_recalc]['Должность']
         if podr == '':
             CQT.msgbox(f'для {fl_fio_recalc} не найдено подразделение')
             return
-        list_users = [{'ФИО': k, 'Должность': _['Должность']} for k, _ in self.DICT_EMPLOEE_FULL.items() if
-                      _['Подразделение'] == podr and k != '']
-        groups_unpk = set((self.DICT_PROFESSIONS_NAME[prof]['Группа_в_распред'] or '').split(';'))
+        incoming_target_group_profs = self.get_professions_for_assignment_naryad(nar)
         list_users = [{'ФИО': k, 'Должность': _['Должность']} #09.04.2026
                       for k, _ in self.DICT_EMPLOEE_FULL.items()
-                      if _['Должность'] in self.DICT_PROFESSIONS_NAME and
-                        groups_unpk.intersection(self.DICT_PROFESSIONS_NAME[_['Должность']]['Группа_в_распред'].split(';'))]
+                      if _['Должность'] in incoming_target_group_profs]
         user_data = CQT.msgboxg_get_table(self, 'Выбор работника', F.sort_by_column_c(list_users, 'ФИО'),ExtendedSelection=False)
         if user_data == False:
             return
@@ -2755,7 +2801,11 @@ class mywindow(QtWidgets.QMainWindow):
                    LEFT JOIN пл_оуп ON пл_оуп.НомПл = mk.НомКплан 
                    LEFT JOIN plan ON plan.Пномер = mk.НомКплан 
                 LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП  '''
-
+        is_access = CMS.user_access(db=self.db_naryd, rule='создание_корректировка_подтвердить_внеплан',
+                                    fio=self.glob_ima,
+                                    msg=False) # 05.05.2026
+        if list_rc is None and is_access:
+            close_mk = False
         if close_mk:
             where = f''' plan.poki = {self.place.poki}  AND mk.Статус != "Закрыта" {by_rc} '''
             if only_prost:
@@ -2763,7 +2813,7 @@ class mywindow(QtWidgets.QMainWindow):
                  datetime(naryad.Дата) >= datetime("{F.date_add_days(F.now(), -60)}") '''
 
         else:
-            where = f''' plan.poki = {self.place.poki}  AND jurnal.Статус == 'Завершен' {by_rc}'''
+            where = f''' plan.poki = {self.place.poki} {by_rc}'''
             if only_prost:
                 where = f''' naryad.Внеплан == {self.place.КодыНарядов.Простой} '''
 
@@ -2834,7 +2884,7 @@ class mywindow(QtWidgets.QMainWindow):
                     return_old_val(r, c, str(old_koef_user))
                     return
 
-                if not access_change_koef_sl_type_mk(self, nom_mk, koef_user, old_koef_user):
+                if row['Задание'] == 'ПРОСТОЙ':
                     return_old_val(r, c, str(old_koef_user))
                     return
 
@@ -3195,6 +3245,7 @@ class mywindow(QtWidgets.QMainWindow):
                     знпр.Комментарий 
                     HAVING COUNT(*) > 0 order BY знпр.Дата_отгрузки_ПУ;'''
         rez = CSQ.custom_request_c(self.db_naryd, custom_request_c,  rez_dict=True, attach_dbs=(self.db_kplan))
+        print('RESULT: ', len(rez))
         CQT.fill_wtabl(rez,tbl,sortingEnabled=True)
         tbl.setColumnHidden(CQT.num_col_by_name_c(tbl,'s_num'),True)
         tbl.setColumnHidden(CQT.num_col_by_name_c(tbl, 'Направление_деятельности'), True)
@@ -3280,7 +3331,7 @@ naryad.Внеплан, naryad.Компл_ФИО, naryad.Задание, naryad.�
                     load_resource=True,
                     db_resxml=self.db_resxml,
                     byte_data_res_from_db=res,
-                    load_znpr=False,
+
                     DICT_RC_BY_CODE=self.DICT_RC
                 )
             obj_mk = cache[nom_mk]
@@ -3671,8 +3722,8 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
 
             next_date = list_zap[i + 1]['Дата']
             next_status = list_zap[i + 1]['Статус']
-            previos_date = F.date_add_time(F.strtodate(previos_date), '', minutes=1)
-            next_date = F.date_add_time(F.strtodate(next_date), '', minutes=-1)
+            previos_date = F.strtodate(previos_date) #07.05.2026
+            next_date = F.strtodate(next_date)
             current_date = F.strtodate(list_zap[i]['Дата'])
             current_status = list_zap[i]['Статус']
             if current_date <= previos_date:
@@ -3735,6 +3786,7 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
 
         tbl_j = self.ui.tbl_prosmotr_nar_jurnal
         c_row = tbl_j.currentRow()
+        if c_row == -1: return
 
         tbl_data = CQT.list_from_wtabl_c(tbl_j, rez_dict=True)
         tbl_data.insert(c_row + 1, copy.deepcopy(tbl_data[c_row]))
@@ -3761,28 +3813,40 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
         list_tbl = self.load_jurnal_by_user(nom_nar, fio)
         if not self.check_hstory_jur(list_tbl):
             return
-        if 'edit_jur_nar_data' not in self.__dict__:
+        current_state = EditJournalManager.get_current_state(tbl)
+        log_message = None
+        if not isinstance(current_state, EditJournalState):
             CQT.msgbox(f'ОШибка учета данных редактирования')
             return
-        if self.edit_jur_nar_data['type'] == 'add':
-            start_num = None
-            row = self.edit_jur_nar_data["row"]
-            data_jur = CMS.Jurnal_nar(self.db_naryd, nom_nar, fio)
-            if self.edit_jur_nar_data['row']['Статус'] in ('Приостановлен', 'Завершен'):
-                fl_9999 = False
-                for i in range(len(list_tbl) - 1, -1, -1):
-                    if list_tbl[i]['Пномер'] == '99999999':
-                        fl_9999 = True
-                    if fl_9999 and list_tbl[i]['Статус'] == 'Начат':
-                        start_num = list_tbl[i]['Пномер']
-                        break
-                if start_num == None:
-                    CQT.msgbox(f'Не найти начало блока')
-                    return
-                data_jur.set_selected_fragment(int(start_num))
+        if current_state.action == EditJournalActions.EDIT_STATUS:
+            with CMS.ReportNarChanges(nom_nar=nom_nar, fio=fio, title='[Создание] Изменение статуса журнала'):
+                journal = CMS.Jurnal_nar(self.db_naryd, nom_nar, fio)
+                is_idle = journal.is_idle()
+                cr_idx = journal.update_row(self.DICT_EMPLOEE_FULL, '', current_state.pk, is_idle=is_idle,
+                                            state=current_state.status)
+                cr_idx and CQT.msgbox(f'Статус: {current_state.status} успешно применен')
 
-            data_jur.add_new_row(self.DICT_EMPLOEE_FULL_WITH_DEL, row['ФИО'], row['Дата'], row['Статус'],
-                                 row['Примечание'])
+        if current_state.action == EditJournalActions.ADD:
+            with CMS.ReportNarChanges(nom_nar=nom_nar, fio=fio, title='[Создание] Создание строки журнала'):
+                start_num = None
+                data_jur = CMS.Jurnal_nar(self.db_naryd, nom_nar, fio)
+                if current_state.status in ('Приостановлен', 'Завершен'):
+                    fl_9999 = False
+                    for i in range(len(list_tbl) - 1, -1, -1):
+                        if list_tbl[i]['Пномер'] == '99999999':
+                            fl_9999 = True
+                        if fl_9999 and list_tbl[i]['Статус'] == 'Начат':
+                            start_num = list_tbl[i]['Пномер']
+                            break
+                    if start_num == None:
+                        CQT.msgbox(f'Не найти начало блока')
+                        return
+                    data_jur.set_selected_fragment(int(start_num))
+
+
+            data_jur.add_new_row(self.DICT_EMPLOEE_FULL_WITH_DEL, current_state.fio, current_state.date, current_state.status,
+                                 current_state.comment)
+        CMS.recalc_naryad(pk_naryad=nom_nar, fio=fio)
         self.tbl_prosmotr_nar_click()
         self.ui.btn_apply_deladd_row_jur.setText('Применить')
 
@@ -3790,6 +3854,7 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
     def set_edit_time_jur(self, *args):
         tbl_j = self.ui.tbl_prosmotr_nar_jurnal
         c_row = tbl_j.currentRow()
+        if c_row == -1: return
         current_new_date_time = self.ui.dt_edit_time_jur.text()
         current_status = self.ui.cmb_edit_time_jur.currentText()
         nf_pnum = CQT.num_col_by_name_c(tbl_j, 'Пномер')
@@ -3797,8 +3862,41 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
         CQT.set_val_tbl_by_name(tbl_j, c_row, 'Пномер', '99999999')
         CQT.set_val_tbl_by_name(tbl_j, c_row, 'Статус', current_status)
         CQT.set_val_tbl_by_name(tbl_j, c_row, 'Дата', current_new_date_time)
-        self.edit_jur_nar_data = {"row": CQT.get_dict_line_form_tbl(tbl_j, c_row),
-                                  'type': 'add'}
+        row = CQT.get_dict_line_form_tbl(tbl_j, c_row)
+        comment = row['Примечание']
+        fio = row['ФИО']
+
+        EditJournalManager.set_state(
+            tbl_j,
+            EditJournalState(
+                pk=None,
+                action=EditJournalActions.ADD,
+                status=current_status,
+                comment=comment,
+                fio=fio,
+            )
+        )
+
+    @CQT.onerror
+    def set_edit_status_jur(self, *args):
+        tbl_j = self.ui.tbl_prosmotr_nar_jurnal
+        c_row = tbl_j.currentRow()
+        if c_row == -1:
+            return
+        status =  self.ui.cmb_edit_time_jur.currentText()
+        if status not in self.ACTUAL_JOURNAL_STATUSES:
+            return CQT.msgbox('Статус некорректный')
+        row = CQT.get_dict_line_form_tbl(tbl_j)
+        pk = row.get('Пномер')
+        if pk and status:
+            EditJournalManager.set_state(
+                tbl_j,
+                EditJournalState(
+                    pk=pk,
+                    action=EditJournalActions.EDIT_STATUS,
+                    status=status
+                )
+            )
 
     @CQT.onerror
     def edit_time_jur_btn(self, *args):
@@ -3827,14 +3925,20 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
                              f'время на:\n\t "{self.ui.dt_edit_time_jur.text()}"'):
             return
         tbl = self.ui.tbl_prosmotr_nar
-        autor_nar = tbl.item(tbl.currentRow(), CQT.num_col_by_name_c(tbl, 'Автор')).text()
-        if not CMS.user_access(self.db_naryd, f'создание_корректировка_журнал_работ_{autor_nar}',
+        current_naryad = tbl.property('nom_nar')  # 30.04.2026
+        current_row = CSQ.custom_request_c(
+            CFG.Config.project.db_naryad,
+    f'SELECT Автор FROM naryad WHERE Пномер = {current_naryad}',
+            rez_dict=True,
+            one=True
+        )
+        author_nar = current_row['Автор']
+        if not CMS.user_access(self.db_naryd, f'создание_корректировка_журнал_работ_{author_nar}',
                                CMS.name_by_empl_c(self.glob_login)):
             if not CMS.user_access(self.db_naryd, f'создание_корректировка_журнал_работ',
                                    CMS.name_by_empl_c(self.glob_login)):
                 return
         tbl = self.ui.tbl_prosmotr_nar_jurnal
-        tbl_nar = self.ui.tbl_prosmotr_nar
         if tbl.currentRow() == -1:
             CQT.msgbox(f'Не выбрана запись в журнале')
             return
@@ -3857,33 +3961,34 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
         abstr_list, current_new_date_time, current_status = result
         if not self.check_hstory_jur(abstr_list, por_nom):
             return
+        with CMS.ReportNarChanges(nom_nar=nom_nar, fio=fio, title='[Создание] Вкладка "Просмотр нарядов" корректировка'):  # 30.04.2026
+            rez = CSQ.custom_request_c(self.db_naryd, f"""UPDATE jurnal SET Дата = '{current_new_date_time}' , 
+             Статус = '{current_status}' WHERE Пномер = {por_nom};""")
+            if rez == False:
+                CQT.msgbox(f'ОШибка, не занесено')
+                return
 
-        rez = CSQ.custom_request_c(self.db_naryd, f"""UPDATE jurnal SET Дата = '{current_new_date_time}' , 
-         Статус = '{current_status}' WHERE Пномер = {por_nom};""")
-        if rez == False:
-            CQT.msgbox(f'ОШибка, не занесено')
-            return
+            jur = CMS.Jurnal_nar(self.db_naryd, nom_nar, fio)
+            por_nom = jur.get_s_num_start(por_nom)
+            if por_nom == False:
+                CQT.msgbox(f'ОШибка, не занесено')
+                return
+            jur.set_selected_fragment(por_nom)
+            jur.calc_and_set_poditog(jur.selected_fragment_end_state, jur.selected_fragment_end_date)
 
-        jur = CMS.Jurnal_nar(self.db_naryd, nom_nar, fio)
-        por_nom = jur.get_s_num_start(por_nom)
-        if por_nom == False:
-            CQT.msgbox(f'ОШибка, не занесено')
-            return
-        jur.set_selected_fragment(por_nom)
-        jur.calc_and_set_poditog(jur.selected_fragment_end_state, jur.selected_fragment_end_date)
-
-        rez = CSQ.custom_request_c(self.db_naryd,
-                                   f"""SELECT Пномер FROM jurnal WHERE Номер_наряда = {nom_nar} AND ФИО = '{fio}' 
-                          and Статус = 'Завершен';""")
-        if rez == False:
-            CQT.msgbox(f'Ошибка выгрузки в наряд попробуй еще')
-            return
-        if len(rez) >= 2:
-            jur.calc_and_fill_nar_by_zaversh(self.DICT_EMPLOEE_FULL_WITH_DEL, jur.user)
-        else:
-            jur.clear_nar_by_zaversh()
-        if row.get('Статус') == 'Завершен' and current_status in ('Начат', 'Приостановлен'): #10.04.25
-            jur.clear_mark_confirm()
+            rez = CSQ.custom_request_c(self.db_naryd,
+                                       f"""SELECT Пномер FROM jurnal WHERE Номер_наряда = {nom_nar} AND ФИО = '{fio}' 
+                              and Статус = 'Завершен';""")
+            if rez == False:
+                CQT.msgbox(f'Ошибка выгрузки в наряд попробуй еще')
+                return
+            if len(rez) >= 2:
+                jur.calc_and_fill_nar_by_zaversh(self.DICT_EMPLOEE_FULL_WITH_DEL, jur.user)
+            else:
+                jur.clear_nar_by_zaversh()
+            if row.get('Статус') == 'Завершен' and current_status in ('Начат', 'Приостановлен'): #10.04.25
+                jur.clear_mark_confirm()
+            CMS.recalc_naryad(nom_nar, fio) # 29.04.2026
         tbl.item(tbl.currentRow(), CQT.num_col_by_name_c(tbl, 'Дата')).setText(current_new_date_time)
         tbl.item(tbl.currentRow(), CQT.num_col_by_name_c(tbl, 'Статус')).setText(current_status)
         cur_row = tbl.currentIndex()
@@ -3908,7 +4013,9 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
         pl.setValue(val_time)
         pl.setTickInterval(self.TIME_DEAL)
         self.set_dt_line_jur_edit(self.TIME_DEAL)
+        self.ui.cmb_edit_time_jur.blockSignals(True)
         self.ui.cmb_edit_time_jur.setCurrentText(old_status)
+        self.ui.cmb_edit_time_jur.blockSignals(False)
 
     @CQT.onerror
     def edit_time_jur_time_change(self, *args):
@@ -5058,9 +5165,9 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
             CQT.fill_wtabl(spis_wt_res, tabl_sp_mk, red_col, 200, 20, 30, auto_type=False,
                            list_column_widths=CMS.load_column_widths(self, tabl_sp_mk))
 
-            def fnc_context(self: mywindow, tbl: QtWidgets.QTableWidget, row: int, col: int,
-                            menu_builder: CQT.ContextMenuBuilder):
-
+            def fnc_context(context: CQT.TableContext, row: int, col: int, #17.04.2026
+                            menu_builder: CQT.ContextMenuBuilder, self: mywindow):
+                tbl = context.tbl
                 def fnc_upload_cut_programm(*args):
                     ct = CQT.TableContext(tbl)
                     selected_rows = ct.get_selected_rows()

@@ -165,7 +165,10 @@ def apply_group_event(s_num_gr:int,s_num_main_nar:int)->bool:
         CQT.msgbox(f'Ошибка чтения журнала')
         return False
     jur.select_last_fragment()
-    if not CMS.Group_nar.split_by_group(gr.load_s_nums_nar(),gr.name,
+    not_finished_nars = gr.load_s_nums_nar()
+    if s_num_main_nar not in not_finished_nars:
+        not_finished_nars.add(s_num_main_nar)
+    if not CMS.Group_nar.split_by_group(not_finished_nars,gr.name,
                                         f'Автовставка по гр.id {gr.id}', jur.fragment):
         return False
     return True

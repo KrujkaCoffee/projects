@@ -3767,15 +3767,16 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
             CQT.set_color_sort_cell_table_c(tab)
             CQT.fill_wtabl(list_nomen_by_vid, tab, ogr_maxshir_kol=800)
             self.ui2.lbl_prim.setText(f'В КД заложено {pself.mat_kd_erp.replace("$"," ")}')
+            CMS.fill_filtr_c(self, self.ui2.tbl_filtr, tab, spis_znach={'На_удаление':'0'}, hidden_scroll=True)
+            CMS.apply_filtr_c(self,self.ui2.tbl_filtr,tab) # 14.04.2026
+            CMS.update_width_filtr(tab, self.ui2.tbl_filtr)
             kod_erp = pself.mat_kd_erp.split("$")[0]
             for i in range(len(list_nomen_by_vid)):
                 if list_nomen_by_vid[i]['Код']== kod_erp:
                     CQT.select_cell(tab,i,0)
                     break
 
-            CMS.fill_filtr_c(self, self.ui2.tbl_filtr, tab, spis_znach={'На_удаление':'0'}, hidden_scroll=True)
-            CMS.apply_filtr_c(self,self.ui2.tbl_filtr,tab)
-            CMS.update_width_filtr(tab, self.ui2.tbl_filtr)
+
 
             #custom_request_c = f'''SELECT * FROM nomen WHERE  == 0 ;'''
             #rez = CSQ.custom_request_c(self.db_mater, custom_request_c=custom_request_c, hat_c=True,conn=conn, cur = cur)

@@ -1290,11 +1290,12 @@ def load_pers_report():
     list_rules = rules.find(DTM.selected_user.ID_ФизЛица, date_end=DTM.date_end_report,creator_ref=creator_ref)
 
     diagramm = rules.generate_diagramm(events,list_rules)
+
+
+
+    CQT.fill_wtabl(diagramm,tbl,styleSheet=CQT.MES_EDIT_CSS)
     t_main = CQT.TableContext(tbl)
     with CQT.table_updating(t_main):
-
-        CQT.fill_wtabl(diagramm,tbl,styleSheet=CQT.MES_EDIT_CSS)
-        t_main.reload()
         def fnc_show_file(lbl,app_self,i,j,t:CQT.TableContext):
             row = t.get_row(i)
             link = row.value('Документ')

@@ -742,8 +742,7 @@ def reload_tbl_employee(ima_table_empl, LIST_DICT_EMPLOYEE_FULL, res, dict_rab_v
 ГДЕ
     (ВЫРАЗИТЬ(ТабельУчетаРабочегоВремениДанныеОВремени.Ссылка.Комментарий КАК СТРОКА(20))) = "Фактическая явка"
     И ТабельУчетаРабочегоВремениДанныеОВремени.Ссылка.ПериодРегистрации = {ПериодРегистрации}
-    И ДанныеДляПодбора.Начало <= {ПериодРегистрации}
-    И ДанныеДляПодбора.Окончание >= {ПериодРегистрации_конец}
+    И {ПериодРегистрации} BETWEEN ДанныеДляПодбора.Начало И ДанныеДляПодбора.Окончание
 
 СГРУППИРОВАТЬ ПО
     ТабельУчетаРабочегоВремениДанныеОВремени.Сотрудник.Наименование,
@@ -778,9 +777,8 @@ def reload_tbl_employee(ima_table_empl, LIST_DICT_EMPLOYEE_FULL, res, dict_rab_v
     list_to_add_scedule = []
     print(f'    Обновление времени {ima_table_empl} ')
     used_indexes = set()
-
+    cache_employee = {}
     messages = []
-    cache_employee=Data_cls.CACHE_EMPLOYEE
     for item_erp in list_erp_tabels:
         is_finded = False
         fio = item_erp['Сотрудник'].strip()
@@ -792,8 +790,9 @@ def reload_tbl_employee(ima_table_empl, LIST_DICT_EMPLOYEE_FULL, res, dict_rab_v
         else:
             current_state = get_current_state_employee(fio, prof, phys_ref)
             cache_employee[employee_key] = current_state
+            prof = current_state['Должность'] if not prof else prof
         if current_state == False:
-            print(f'[reload_tbl_employee] Прогрузка {ima_table_empl} была прервана из-за некорректного ответа БД')
+            print(f'[reload_tbl_employee]Прогрузка {ima_table_empl} была прервана из-за некорректного ответа БД')
             return
 
         for idx, item_scedule in enumerate(list_from_scedule_month):
@@ -813,11 +812,9 @@ def reload_tbl_employee(ima_table_empl, LIST_DICT_EMPLOYEE_FULL, res, dict_rab_v
                                                                      ({erp_val}), Примечание = {comment!r} WHERE Пномер == {Пномер};""")
                             if erp_val != val:
                                 messages.append({
-                                    'Сотрудник': item_erp['ТекущаяДолжность'],
-                                    'Комментарий было': item_scedule['Примечание'],
-                                    'Комментарий стало': comment,
-                                    'Время было ': val,
-                                    'Время стало': erp_val,
+                                    'Сотрудник': item_scedule['ФИО'].split(' ')[:3],
+                                    'Комментарий было/стало': f"{item_scedule['Примечание']} / {comment}",
+                                    'Время было / стало': f"{val} / {erp_val}",
                                 })
 
                             print(
@@ -840,19 +837,14 @@ def reload_tbl_employee(ima_table_empl, LIST_DICT_EMPLOYEE_FULL, res, dict_rab_v
                         strok.append(norma)
             list_to_add_scedule.append(strok)
     for idx, item_scedule in enumerate(list_from_scedule_month):
-        if list_erp_tabels:
-            if idx not in used_indexes:
-                fields_to_update = {}
-                if item_scedule['Примечание'] != 'Увольнение':
-                    fields_to_update = {'Примечание': 'Увольнение'}
-                pk = item_scedule['Пномер']
-                for key, val in item_scedule.items():
-                    if F.is_date(key, 'd_%Y_%m_%d'):
-                        if item_scedule[key] != 0:
-                            fields_to_update[key] = 0
-                if fields_to_update:
-                    fields = ','.join(f'{key} = {val!r}' for key, val in fields_to_update.items())
-                    CSQ.custom_request_c('SRV:BD_users.db', f'UPDATE {ima_table_empl} SET {fields} WHERE Пномер = {pk}')
+        if idx not in used_indexes:
+            fields_to_update = {'Примечание': 'Увольнение'}
+            pk = item_scedule['Пномер']
+            for key, val in item_scedule.items():
+                if F.is_date(key, 'd_%Y_%m_%d'):
+                    fields_to_update[key] = 0
+            fields = ','.join(f'{key} = {val!r}' for key, val in fields_to_update.items())
+            CSQ.custom_request_c('SRV:BD_users.db', f'UPDATE {ima_table_empl} SET {fields} WHERE Пномер = {pk}')
     if messages:
         sender = CB24.B24Sender()
         sender.send_msg_table_by_action(
