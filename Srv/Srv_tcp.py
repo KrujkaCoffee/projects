@@ -1,4 +1,4 @@
-import json
+﻿import json
 import pickle
 import logging
 import pathlib
@@ -7,6 +7,7 @@ import sqlite3
 import os
 import traceback
 import time
+import zlib
 from urllib.parse import quote
 
 os.environ['MES_IS_SERVER'] = '1'
@@ -36,6 +37,16 @@ url_map = Map()
 route_handlers = {}
 _NO_PAYLOAD = object()
 
+COMPRESSED_BYTES_LOW: int = 256 * 1024
+COMPRESSED_BYTES_MIDDLE: int = 1 * 1024 * 1024
+COMPRESSED_BYTES_HIGH: int = 4 * 1024 * 1024
+
+def choose_compress_level(size_payload: int) -> int:
+    if size_payload <= COMPRESSED_BYTES_MIDDLE:
+        return 3
+    if size_payload <= COMPRESSED_BYTES_HIGH:
+        return 4
+    return 5
 
 def route(rule):
     def decorator(func):
@@ -47,10 +58,7 @@ def route(rule):
             self = args[0] if args else None
             try:
                 start = time.time()
-                # conn, cur = CPG.connect_pg(CPG.PostgresConfig())
                 logger.info(f'[PG] start connection { time.time() - start:.2f}s')
-                # CPG.Connect = conn
-                # CPG.Cursor = cur
                 logger.info('start request')
                 result = func(*args, **kwargs)
                 logger.info(f'end: {time.time() - start}')
@@ -60,22 +68,21 @@ def route(rule):
                             result.headers[key] = value
                     return result
                 payload = b'' if result is _NO_PAYLOAD else pickle.dumps(result)
+                size_payload = len(payload)
+                if size_payload > COMPRESSED_BYTES_LOW and self is not None and self.client_can_accept_compress:
+                    compress_level = choose_compress_level(size_payload)
+                    payload = zlib.compress(payload, level=compress_level)
+                    self.headers[CCS.SrvHeaders.CONTENT_IS_COMPRESS_ZLIB.value] = '1'
+                    logger.info(f'[route] compress payload level {compress_level}')
                 response = Response(payload, status=200)
                 if self is not None:
                     for key, value in getattr(self, 'headers', {}).items():
                         response.headers[key] = value
+
                 return response
             except Exception as e:
                 logger.error(f'Ошибка: {e}')
                 return Response('Error', status=502)
-            finally:
-                start_cache_bypass = time.time()
-                # CPG.close_pg(CPG.Connect, CPG.Cursor)
-                # CPG.Cursor = None
-                # CPG.Connect = None
-                logger.info(f'[PG] end connection { time.time() - start_cache_bypass:.2f}s')
-
-
         return wrapper_route
 
     return decorator
@@ -86,6 +93,7 @@ class HTTPSrv:
         self.headers = {}
         self.admin_repo = CTXADM.ContextAdminRepo()
         self.request_cache = SQLCACHE.FileRequestCache()
+        self.client_can_accept_compress = False
 
     def dispatch_query(self, msg: dict):
         message = msg_format.format(
@@ -182,13 +190,6 @@ class HTTPSrv:
             return client_key
         return computed
 
-    def get_entry_payload_bytes(self, request_key: str):
-        sql = f"""
-        SELECT payload_bytes
-        FROM {REQUEST_CACHE_META_TABLE}
-        WHERE request_key = {request_key!r}
-        """
-        return CPG.custom_request_pg(sql, one=True, one_column=True)
 
     def try_serve_from_cache(self, *, request_key: str, request_headers: dict[str, str]):
         if not request_key or self.request_cache is None:
@@ -217,11 +218,14 @@ class HTTPSrv:
             logger.info(f'[try_serve_from_cache] touch {time.time() - start_touch:.2f}s')
             logger.info(f'[try_serve_from_cache] entry calc 2 {time.time() - start_calc_entry:.2f}s')
             return _NO_PAYLOAD, True
-        raw = self.request_cache.get_entry_payload(request_key)
-        payload = self.request_cache.deserialize_payload(raw)
+        # raw = self.request_cache.get_entry_payload(request_key)
+        payload_entry = self.request_cache.get_entry_payload_record(request_key)
+        if not payload_entry:
+            logger.info('[try_serve_from_cache] Данные в кэше не найдены')
+            return entry, False
+        payload = self.request_cache.deserialize_payload(payload_entry)
         if payload is None:
             logger.info('[try_serve_from_cache] Данные в кэше не корректные')
-
             return entry, False
 
         status = SQLCACHE.CACHE_STATUS.SERVER_HIT
@@ -260,7 +264,10 @@ class HTTPSrv:
             attached_alias_paths=self.attached_alias_paths(attach_dbs),
         )
         table_keys = [record['table_key'] for record in table_records if record.get('table_key')]
+        start_compute_after = time.time()
         policy = self.request_cache.compute_policy(table_keys=table_keys)
+        logger.info(f'[store_cache_after_read]compute {time.time() - start_compute_after:.2f} ')
+        store_start = time.time()
         entry = self.request_cache.store_entry(
             request_key=request_key,
             db_path=bd,
@@ -280,6 +287,8 @@ class HTTPSrv:
             stale_after_dt=policy.get('stale_after_dt'),
             notes=f'server_cache:{status.lower()}',
         )
+        logger.info(f'[store_cache_after_read]store  {time.time() - store_start:.2f} ')
+
         self._set_cache_headers(request_key=request_key, entry=entry, status=status, data_sent='1')
 
     def attach_db(self, cursor, lst_dbs: tuple):
@@ -293,6 +302,7 @@ class HTTPSrv:
 
     def run_invalidation_hook(self, bd, custom_request_c, attach_dbs, client='', module='', result=None):
         if result is False or not CTXADM.is_sql_write(custom_request_c):
+            logger.info('[run_invalidation_hook] is not sql write')
             return
         try:
             response = self.admin_repo.mark_sql_write_invalidated(
@@ -310,6 +320,8 @@ class HTTPSrv:
                             response.get('affected_tables'),
                             response.get('affected_sources'),
                             response.get('affected_variants'))
+            else:
+                logger.info('[context_admin] not affected_tables')
         except Exception as e:
             traceback.print_exc()
             logger.error(f'[context_admin] hook error: {e}')
@@ -323,10 +335,39 @@ class HTTPSrv:
         if list_of_lists_c == '':
             list_of_lists_c = spisok_spiskov
         request_headers = self.request_headers(_request)
+        logger.info(f'[use_db] HEADERS {request_headers}')
+        self.client_can_accept_compress = False
+        if CCS.SrvHeaders.CAN_ACCEPT_COMPRESS.value in request_headers and request_headers[CCS.SrvHeaders.CAN_ACCEPT_COMPRESS.value] == '1':
+            self.client_can_accept_compress = True
+        logger.info('[use_db]  client can accept compress: %s' % self.client_can_accept_compress)
+
 
         start_cache_bypass = time.time()
         cache_bypass = self.is_cache_bypass(bd=bd, custom_request_c=custom_request_c, attach_dbs=attach_dbs)
         logger.info(f'[use_db] cache bypass { time.time() - start_cache_bypass:.2f}s')
+        if zapros.strip().startswith('EXPLAIN') or 'SqlEvents' in zapros or 'WidgetEvents' in zapros or 'exchange' in zapros:
+            return self.execute_sql(
+                bd=bd,
+                custom_request_c=custom_request_c,
+                hat_c=hat_c,
+                list_of_lists_c=list_of_lists_c,
+                rez_dict=rez_dict,
+                one=one,
+                one_column=one_column,
+                attach_dbs=attach_dbs,
+            )
+        if 'DB_srv_test' in bd:
+            logger.info('[use_db] Пропуск кэша для тестовой базы')
+            return self.execute_sql(
+                bd=bd,
+                custom_request_c=custom_request_c,
+                hat_c=hat_c,
+                list_of_lists_c=list_of_lists_c,
+                rez_dict=rez_dict,
+                one=one,
+                one_column=one_column,
+                attach_dbs=attach_dbs,
+            )
 
         request_key = ''
         prev_entry = None
@@ -358,6 +399,7 @@ class HTTPSrv:
             self.headers[CCS.SrvHeaders.DATA_SENT.value] = '1'
 
         try:
+            start_sql = time.time()
             res = self.execute_sql(
                 bd=bd,
                 custom_request_c=custom_request_c,
@@ -368,10 +410,16 @@ class HTTPSrv:
                 one_column=one_column,
                 attach_dbs=attach_dbs,
             )
+            logger.info(f'[use_db] sql {time.time() - start_sql:.2f}s')
+
+            start_inv = time.time()
             self.run_invalidation_hook(bd=bd, custom_request_c=custom_request_c, attach_dbs=attach_dbs,
                                        client=client, module=module, result=res)
+            logger.info(f'[use_db] invalidation {time.time() - start_inv:.2f}s')
+
             if not cache_bypass and SQLCACHE.is_cacheable_sql(custom_request_c):
                 status = SQLCACHE.CACHE_STATUS.REFRESH if prev_entry else SQLCACHE.CACHE_STATUS.MISS
+                start_store_cache_after_read = time.time()
                 self.store_cache_after_read(
                     request_key=request_key,
                     bd=bd,
@@ -385,6 +433,8 @@ class HTTPSrv:
                     payload=res,
                     status=status,
                 )
+                logger.info(f'[use_db] store_cache_after_read {time.time() - start_store_cache_after_read:.2f}s')
+
             return res
         except (sqlite3.OperationalError, sqlite3.IntegrityError, sqlite3.ProgrammingError, sqlite3.DataError) as e:
             logger.error(f'Ошибка: {e}')
