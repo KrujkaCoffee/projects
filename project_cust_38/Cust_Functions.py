@@ -1529,12 +1529,13 @@ def date_add_seconds(date:str|datetime.datetime,seconds:int, format="%Y-%m-%d %H
     return d2
 
 
-def date_add_time(date, time: str = '', format_time="%H:%M", hours: int = 0, minutes: int = 0):
+def date_add_time(date, time: str = '', format_time="%H:%M", hours: int = 0, minutes: int = 0, seconds: int = 0): # 06.05.2026
     # date в DT либо time с формато либо hours:int=0,minutes:int=0
     if time != '':
         hours += DT.strptime(time, format_time).hour
         minutes += DT.strptime(time, format_time).minute
-    date += timedelta(hours=hours, minutes=minutes)
+        seconds += DT.strptime(time, format_time).second # 06.05.2026
+    date += timedelta(hours=hours, minutes=minutes, seconds=seconds)
     return date
 
 def delta_days(date1,date2,only_work_days=False):

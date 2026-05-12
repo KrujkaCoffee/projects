@@ -4896,7 +4896,7 @@ class Jurnal_nar():
         except Exception:
             self.fragment = None
 
-    def is_idle(self): #07.05.2026
+    def is_idle(self):
         idle_status = 'Плановая'
         query_vnepl = f"""
             SELECT коды_веплана_для_наряда.name

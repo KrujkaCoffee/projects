@@ -6,12 +6,15 @@ import keyword
 import logging
 import pathlib
 import re
+import os
+import sqlite3
 import uuid
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
 from project_cust_38 import Cust_SQLite as CSQ  # noqa
-from project_cust_38 import Cust_Functions as F # noqa
+from project_cust_38 import Cust_Functions as F  # noqa
+
 try:
     import Cust_postgresql_cache as CPG
 except Exception as e:
@@ -34,7 +37,6 @@ __all__ = [
     'guess_python_name',
     'guess_orm_field_class',
 ]
-
 
 ADMIN_TABLES = {
     'physical_tables': 'admin_physical_tables',
@@ -60,6 +62,18 @@ def _normalize_path(value: str | pathlib.Path | None) -> str:
     if not text:
         return ''
     return str(pathlib.Path(text))
+
+
+def _is_server_process() -> bool:
+    return bool(os.environ.get('MES_IS_SERVER'))
+
+
+def _quote_sqlite_ident(name: str) -> str:
+    return '"' + str(name).replace('"', '""') + '"'
+
+
+def _is_excluded_table(table_name: str) -> bool:
+    return any(str(table_name or '').startswith(prefix) for prefix in EXCLUDED_PREFIXES)
 
 
 def _coerce_bool(value: Any, default: int = 0) -> int:
@@ -88,8 +102,6 @@ def _iter_project_db_attrs() -> list[tuple[str, str]]:
         ("db_nomen", "SRV:DB_nomenklatura_erp.db"),
     ]
     return result
-
-
 
 
 def resolve_db_key(db_path: str | pathlib.Path | None) -> str:
@@ -279,8 +291,8 @@ class ContextAdminRepo:
         self.db_files = _normalize_path(db_files) or 'SRV:BD_files.db'
         self.create_base_tables = create_base_tables
 
-
-    def _upsert(self, table_name: str, record: Mapping[str, Any], conflict_cols: Sequence[str], update_cols: Sequence[str] | None = None) -> bool:
+    def _upsert(self, table_name: str, record: Mapping[str, Any], conflict_cols: Sequence[str],
+                update_cols: Sequence[str] | None = None) -> bool:
         if not record:
             return False
         cols = list(record.keys())
@@ -299,21 +311,21 @@ class ContextAdminRepo:
         )
 
     def register_physical_table(
-        self,
-        *,
-        table_key: str,
-        db_key: str,
-        table_name: str,
-        is_enabled: int = 1,
-        cache_enabled: int = 1,
-        schema_enabled: int = 1,
-        stale_after_dt: str | None = None,
-        cache_lifetime_min: int = 120,
-        validity_mark: str | None = None,
-        content_hash: str = '',
-        version: str = '',
-        invalidated_at: str | None = None,
-        notes: str = '',
+            self,
+            *,
+            table_key: str,
+            db_key: str,
+            table_name: str,
+            is_enabled: int = 1,
+            cache_enabled: int = 1,
+            schema_enabled: int = 1,
+            stale_after_dt: str | None = None,
+            cache_lifetime_min: int = 120,
+            validity_mark: str | None = None,
+            content_hash: str = '',
+            version: str = '',
+            invalidated_at: str | None = None,
+            notes: str = '',
     ) -> bool:
         now = F.now()
         record = {
@@ -335,21 +347,21 @@ class ContextAdminRepo:
         return self._upsert(ADMIN_TABLES['physical_tables'], record, ['table_key'])
 
     def register_table_field(
-        self,
-        *,
-        table_key: str,
-        field_name: str,
-        python_name: str | None = None,
-        db_type: str = '',
-        nullable: int = 1,
-        is_pk: int = 0,
-        label: str = '',
-        sort_order: int = 0,
-        include_in_schema: int = 1,
-        orm_field_class: str | None = None,
-        widget_hint: str = '',
-        form_hint: str = '',
-        notes: str = '',
+            self,
+            *,
+            table_key: str,
+            field_name: str,
+            python_name: str | None = None,
+            db_type: str = '',
+            nullable: int = 1,
+            is_pk: int = 0,
+            label: str = '',
+            sort_order: int = 0,
+            include_in_schema: int = 1,
+            orm_field_class: str | None = None,
+            widget_hint: str = '',
+            form_hint: str = '',
+            notes: str = '',
     ) -> bool:
         record = {
             'table_key': table_key,
@@ -368,7 +380,6 @@ class ContextAdminRepo:
             'updated_at': F.now(),
         }
         return self._upsert(ADMIN_TABLES['table_fields'], record, ['table_key', 'field_name'])
-
 
     def write_manifest(self, manifest: SchemaManifestMeta | Mapping[str, Any]) -> int:
         data = manifest if isinstance(manifest, Mapping) else manifest.__dict__
@@ -390,14 +401,47 @@ class ContextAdminRepo:
         print('LAST_ROWID:', last_rowid)
         return last_rowid
 
-    def table_exists_in_db(self, db_path: str, table_name: str) -> bool:
+    def table_exists_in_db_old(self, db_path: str, table_name: str) -> bool:
         return bool(CSQ.custom_request_c(
-                db_path,
-                'SELECT COUNT(*) FROM sqlite_master WHERE type = "table" AND name = ?',
-                list_of_lists_c=(table_name,)
+            db_path,
+            'SELECT COUNT(*) FROM sqlite_master WHERE type = "table" AND name = ?',
+            list_of_lists_c=(table_name,)
         ))
 
-    def list_tables_in_db(self, db_path: str) -> list[str]:
+    def table_exists_in_db(self, db_path: str, table_name: str) -> bool:
+        read_db_path = self._schema_read_db_path(db_path)
+
+        if self._can_direct_sqlite_schema_read(read_db_path):
+            try:
+                rows = self._read_sqlite_schema_rows(
+                    read_db_path,
+                    'SELECT COUNT(*) FROM sqlite_master WHERE type = "table" AND name = ?',
+                    (table_name,),
+                )
+                return bool(rows and int(rows[0][0] or 0) > 0)
+            except Exception as e:
+                logger.error(
+                    '[table_exists_in_db] direct sqlite schema read error db=%r table=%r err=%r',
+                    read_db_path,
+                    table_name,
+                    e,
+                )
+                return False
+
+        count = CSQ.custom_request_c(
+            read_db_path,
+            'SELECT COUNT(*) FROM sqlite_master WHERE type = "table" AND name = ?',
+            list_of_lists_c=[[table_name]],
+            hat_c=False,
+            one=True,
+            one_column=True,
+        )
+        try:
+            return int(count or 0) > 0
+        except Exception:
+            return False
+
+    def list_tables_in_db_old(self, db_path: str) -> list[str]:
         return CSQ.custom_request_c(
             db_path,
             'SELECT name FROM sqlite_master WHERE type = "table" AND name != "sqlite_sequence" ORDER BY name',
@@ -405,41 +449,65 @@ class ContextAdminRepo:
             hat_c=False
         ) or []
 
+    def list_tables_in_db(self, db_path: str) -> list[str]:
+        read_db_path = self._schema_read_db_path(db_path)
+
+        if self._can_direct_sqlite_schema_read(read_db_path):
+            try:
+                rows = self._read_sqlite_schema_rows(
+                    read_db_path,
+                    'SELECT name FROM sqlite_master WHERE type = "table" AND name != "sqlite_sequence" ORDER BY name',
+                )
+                return [row[0] for row in rows]
+            except Exception as e:
+                logger.error(
+                    '[list_tables_in_db] direct sqlite schema read error db=%r err=%r',
+                    read_db_path,
+                    e,
+                )
+                return []
+
+        return CSQ.custom_request_c(
+            read_db_path,
+            'SELECT name FROM sqlite_master WHERE type = "table" AND name != "sqlite_sequence" ORDER BY name',
+            one_column=True,
+            hat_c=False,
+        ) or []
+
     def get_srv_nickname(self, abs_path: str) -> str:
         from project_cust_38 import Cust_client_socket as CCS
         from pathlib import Path
-        all_servers = CCS.Servers._declared_attrs               # noqa
-        for key, server in CCS.Servers._declared_attrs.items(): # noqa
-            if isinstance(server, CCS._ServerItem) and Path(server.absolute_path).resolve() == Path(abs_path).resolve(): # noqa
+        all_servers = CCS.Servers._declared_attrs  # noqa
+        for key, server in CCS.Servers._declared_attrs.items():  # noqa
+            if isinstance(server, CCS._ServerItem) and Path(server.absolute_path).resolve() == Path(
+                    abs_path).resolve():  # noqa
                 return str(server)
 
-
-
-
     def bootstrap_physical_table(
-        self,
-        *,
-        db_path: str,
-        table_name: str,
-        db_key: str | None = None,
-        table_key: str | None = None,
-        include_fields: bool = True,
-        schema_enabled: int = 1,
-        cache_enabled: int = 1,
-        is_enabled: int = 1,
-        cache_lifetime_min: int = 120,
-        notes: str = '',
+            self,
+            *,
+            db_path: str,
+            table_name: str,
+            db_key: str | None = None,
+            table_key: str | None = None,
+            include_fields: bool = True,
+            schema_enabled: int = 1,
+            cache_enabled: int = 1,
+            is_enabled: int = 1,
+            cache_lifetime_min: int = 120,
+            notes: str = '',
     ) -> str:
         db_path = _normalize_path(db_path)
         if not db_path:
             raise ValueError('db_path не задан')
-        if not db_path.startswith('SRV:'):
-            print(f'[bootstrap_physical_table] принят абсолютный путь к бд {db_path}')
-            db_path = self.get_srv_nickname(db_path)
-            if db_path is None or not db_path:
-                raise ValueError('Неверный формат ключа db-path ожидается "SRV:..."')
-        if not self.table_exists_in_db(db_path, table_name):
-            raise ValueError(f'Таблица {table_name!r} не найдена в БД {db_path!r}')
+
+        read_db_path = self._schema_read_db_path(db_path)
+
+        if not self.table_exists_in_db(read_db_path, table_name):
+            raise ValueError(
+                f'Таблица {table_name!r} не найдена в БД {db_path!r}; schema_read_db_path={read_db_path!r}'
+            )
+
         db_key = db_key or resolve_db_key(db_path)
         table_key = table_key or make_table_key(db_key, table_name)
         is_success = self.register_physical_table(
@@ -452,17 +520,33 @@ class ContextAdminRepo:
             cache_lifetime_min=cache_lifetime_min,
             notes=notes,
         )
-        logger.info(f'[ContextAdminRepo.bootstrap_physical_table] Регистрация таблицы {table_name} Статус: {is_success}')
+        logger.info(
+            f'[ContextAdminRepo.bootstrap_physical_table] Регистрация таблицы {table_name} Статус: {is_success}')
         if include_fields:
             self.bootstrap_table_fields(db_path=db_path, table_name=table_name, table_key=table_key)
         return table_key
 
     def bootstrap_table_fields(self, *, db_path: str, table_name: str, table_key: str) -> int:
-        rows = CSQ.custom_request_c(
-            db_path,
-            f'PRAGMA table_info("{table_name}")',
-            hat_c=False
-        )
+        read_db_path = self._schema_read_db_path(db_path)
+        sql = f'PRAGMA table_info({_quote_sqlite_ident(table_name)})'
+
+        if self._can_direct_sqlite_schema_read(read_db_path):
+            try:
+                rows = self._read_sqlite_schema_rows(read_db_path, sql)
+            except Exception as e:
+                logger.error(
+                    '[bootstrap_table_fields] direct sqlite schema read error db=%r table=%r err=%r',
+                    read_db_path,
+                    table_name,
+                    e,
+                )
+                rows = []
+        else:
+            rows = CSQ.custom_request_c(
+                read_db_path,
+                sql,
+                hat_c=False,
+            ) or []
 
         count = 0
         for row in rows:
@@ -481,23 +565,57 @@ class ContextAdminRepo:
                 notes=f'default={default_value!r}' if default_value is not None else '',
             )
             logger.info(
+                f'[ContextAdminRepo.bootstrap_table_fields] - [{table_name}] Регистрация поля {field_name} Статус: {is_success}'
+            )
+            count += 1
+
+        return count
+
+    def bootstrap_table_fields_old(self, *, db_path: str, table_name: str, table_key: str) -> int:
+        rows = CSQ.custom_request_c(
+            db_path,
+            f'PRAGMA table_info("{table_name}")',
+            hat_c=False
+        ) or []
+
+        count = 0
+        current_field_names: list[str] = []
+        for row in rows:
+            cid, field_name, db_type, notnull, default_value, pk = row
+            current_field_names.append(str(field_name))
+            is_success = self.register_table_field(
+                table_key=table_key,
+                field_name=field_name,
+                python_name=guess_python_name(field_name),
+                db_type=db_type or '',
+                nullable=0 if notnull else 1,
+                is_pk=1 if pk else 0,
+                label=field_name,
+                sort_order=int(cid or 0),
+                include_in_schema=1,
+                orm_field_class=guess_orm_field_class(db_type),
+                notes=f'default={default_value!r}' if default_value is not None else '',
+            )
+            logger.info(
                 f'[ContextAdminRepo.bootstrap_table_fields] - [{table_name}] Регистрация поля {field_name} Статус: {is_success}')
             count += 1
+
+        self.disable_removed_table_fields(table_key=table_key, current_field_names=current_field_names)
         return count
 
     def bootstrap_tables_from_db(
-        self,
-        *,
-        db_path: str,
-        table_names: Sequence[str] | None = None,
-        db_key: str | None = None,
-        include_fields: bool = True,
-        schema_enabled: int = 1,
-        cache_enabled: int = 1,
-        is_enabled: int = 1,
-        cache_lifetime_min: int = 120,
-        notes: str = '',
-        skip_tables: list[str] = None
+            self,
+            *,
+            db_path: str,
+            table_names: Sequence[str] | None = None,
+            db_key: str | None = None,
+            include_fields: bool = True,
+            schema_enabled: int = 1,
+            cache_enabled: int = 1,
+            is_enabled: int = 1,
+            cache_lifetime_min: int = 120,
+            notes: str = '',
+            skip_tables: list[str] = None
     ) -> list[str]:
         if not isinstance(skip_tables, (tuple, set, list)):
             skip_tables = []
@@ -523,7 +641,8 @@ class ContextAdminRepo:
             )
         return result
 
-    def get_physical_tables(self, *, schema_enabled: int | None = None, only_enabled: bool = False) -> list[dict[str, Any]]:
+    def get_physical_tables(self, *, schema_enabled: int | None = None, only_enabled: bool = False) -> list[
+        dict[str, Any]]:
         where: list[str] = []
         params: list[Any] = []
         if schema_enabled is not None:
@@ -581,13 +700,14 @@ class ContextAdminRepo:
         existing = CPG.custom_request_pg(
             f"SELECT table_key FROM {ADMIN_TABLES['physical_tables']} WHERE table_key = {table_key!r}",
         )
+        is_dynamic_table = _is_excluded_table(table_name)
         if not existing and db_path and self.table_exists_in_db(db_path, table_name):
             self.bootstrap_physical_table(
                 db_path=db_path,
                 table_name=table_name,
                 db_key=db_key,
                 table_key=table_key,
-                include_fields=True,
+                include_fields=not is_dynamic_table,
                 schema_enabled=0,
                 cache_enabled=1,
                 is_enabled=1,
@@ -600,11 +720,226 @@ class ContextAdminRepo:
             'table_key': table_key,
         }
 
+    @staticmethod
+    def _sql_literal(value: Any) -> str:
+        return "'" + str(value).replace("'", "''") + "'"
+
+    @staticmethod
+    def _escape_like(value: Any) -> str:
+        text = str(value)
+        text = text.replace('\\', '\\\\')
+        text = text.replace('%', '\\%')
+        text = text.replace('_', '\\_')
+        return text
+
+    @staticmethod
+    def _unique_names(values: Sequence[Any] | None) -> list[str]:
+        result: list[str] = []
+        seen = set()
+        for value in values or ():
+            text = str(value or '').strip()
+            if not text or text in {'__schema__', 'sqlite_master', 'sqlite_schema'}:
+                continue
+            if '.' in text:
+                text = text.split('.')[-1].strip()
+            if text and text not in seen:
+                seen.add(text)
+                result.append(text)
+        return result
+
+    def get_physical_tables_by_names(self, table_names: Sequence[str] | None) -> list[dict[str, Any]]:
+        names = self._unique_names(table_names)
+        if not names:
+            return []
+
+        in_sql = ','.join(self._sql_literal(name) for name in names)
+        like_sql = ' OR '.join(
+            f"table_key LIKE {self._sql_literal(f'%.{self._escape_like(name)}')} ESCAPE '\\'"
+            for name in names
+        )
+        where_sql = f"table_name IN ({in_sql})"
+        if like_sql:
+            where_sql = f"({where_sql} OR {like_sql})"
+
+        return CPG.custom_request_pg(
+            f"""
+            SELECT *
+            FROM {ADMIN_TABLES['physical_tables']}
+            WHERE {where_sql}
+            ORDER BY db_key, table_name
+            """,
+            rez_dict=True,
+        ) or []
+
+    def mark_all_tables_invalidated(self, notes: str = '', return_details: bool = False) -> dict[str, Any]:
+        rows = CPG.custom_request_pg(
+            f"SELECT table_key, table_name FROM {ADMIN_TABLES['physical_tables']} ORDER BY db_key, table_name",
+            rez_dict=True,
+        ) or []
+        table_keys = [str(row.get('table_key') or '').strip() for row in rows if row.get('table_key')]
+        table_names = [str(row.get('table_name') or '').strip() for row in rows if row.get('table_name')]
+        if not table_keys:
+            result = {'ok': False, 'wide': True, 'table_names': [], 'table_keys': []}
+            return result if return_details else result
+
+        now = F.now()
+        joined = ','.join(self._sql_literal(key) for key in table_keys)
+        update_result = CPG.custom_request_pg(
+            f"""
+            UPDATE {ADMIN_TABLES['physical_tables']}
+            SET validity_mark = %s,
+                invalidated_at = %s,
+                updated_at = %s,
+                notes = CASE WHEN notes IS NULL OR notes = '' THEN %s ELSE notes END
+            WHERE table_key IN ({joined})
+            """,
+            params=[[uuid.uuid4().hex, now, now, notes or 'external_schema_wide_invalidation']],
+        )
+        result = {'ok': bool(update_result), 'wide': True, 'table_names': table_names, 'table_keys': table_keys}
+        return result if return_details else result
+
+    def mark_table_names_invalidated(self, table_names: Sequence[str] | None, notes: str = '',
+                                     return_details: bool = False) -> dict[str, Any]:
+        names = self._unique_names(table_names)
+        rows = self.get_physical_tables_by_names(names)
+        table_keys = []
+        seen = set()
+        for row in rows:
+            key = str(row.get('table_key') or '').strip()
+            if key and key not in seen:
+                seen.add(key)
+                table_keys.append(key)
+
+        if not table_keys:
+            result = {'ok': False, 'table_names': names, 'table_keys': []}
+            return result if return_details else result
+
+        now = F.now()
+        joined = ','.join(self._sql_literal(key) for key in table_keys)
+        update_result = CPG.custom_request_pg(
+            f"""
+            UPDATE {ADMIN_TABLES['physical_tables']}
+            SET validity_mark = %s,
+                invalidated_at = %s,
+                updated_at = %s,
+                notes = CASE WHEN notes IS NULL OR notes = '' THEN %s ELSE notes END
+            WHERE table_key IN ({joined})
+            """,
+            params=[[uuid.uuid4().hex, now, now, notes or 'external_invalidation']],
+        )
+        result = {'ok': bool(update_result), 'table_names': names, 'table_keys': table_keys}
+        return result if return_details else result
+
+    def _resolve_local_db_path_by_key(self, db_key: str) -> str:
+        from project_cust_38 import Cust_client_socket as CCS
+
+        raw_key = str(db_key or '').strip()
+        if not raw_key:
+            return ''
+
+        for attr_name, server in CCS.Servers._declared_attrs.items():  # noqa
+            if not isinstance(server, CCS._ServerItem):  # noqa
+                continue
+            candidates = {
+                str(attr_name),
+                str(getattr(server, 'alias', '') or ''),
+                pathlib.Path(str(getattr(server, 'alias', '') or '')).stem,
+                pathlib.Path(str(getattr(server, 'absolute_path', '') or '')).stem,
+            }
+            if raw_key in candidates and getattr(server, 'absolute_path', ''):
+                return str(server.absolute_path)
+
+        if raw_key.lower().endswith('.db'):
+            return str(pathlib.Path(r'C:/DB_srv') / raw_key)
+        return str(pathlib.Path(r'C:/DB_srv') / f'{raw_key}.db')
+
+    def disable_removed_table_fields(self, *, table_key: str, current_field_names: Sequence[str]) -> bool:
+        current = [str(name) for name in current_field_names if str(name).strip()]
+        if not table_key or not current:
+            return False
+
+        joined_fields = ','.join(self._sql_literal(name) for name in current)
+        now = F.now()
+        return bool(CPG.custom_request_pg(
+            f"""
+            UPDATE {ADMIN_TABLES['table_fields']}
+            SET include_in_schema = 0,
+                updated_at = %s,
+                notes = CASE WHEN notes IS NULL OR notes = '' THEN %s ELSE notes END
+            WHERE table_key = %s
+              AND field_name NOT IN ({joined_fields})
+            """,
+            params=[[now, 'disabled by ddl schema sync', table_key]],
+        ))
+
+    def disable_missing_physical_table(self, *, table_key: str, notes: str = '') -> bool:
+        if not table_key:
+            return False
+        now = F.now()
+        ok_table = CPG.custom_request_pg(
+            f"""
+            UPDATE {ADMIN_TABLES['physical_tables']}
+            SET is_enabled = 0,
+                schema_enabled = 0,
+                cache_enabled = 0,
+                validity_mark = %s,
+                invalidated_at = %s,
+                updated_at = %s,
+                notes = CASE WHEN notes IS NULL OR notes = '' THEN %s ELSE notes END
+            WHERE table_key = %s
+            """,
+            params=[[uuid.uuid4().hex, now, now, notes or 'disabled by ddl schema sync', table_key]],
+        )
+        ok_fields = CPG.custom_request_pg(
+            f"""
+            UPDATE {ADMIN_TABLES['table_fields']}
+            SET include_in_schema = 0,
+                updated_at = %s,
+                notes = CASE WHEN notes IS NULL OR notes = '' THEN %s ELSE notes END
+            WHERE table_key = %s
+            """,
+            params=[[now, notes or 'disabled by ddl schema sync', table_key]],
+        )
+        return bool(ok_table or ok_fields)
+
+    def sync_schema_for_table_names(self, table_names: Sequence[str] | None, notes: str = '') -> dict[str, Any]:
+        rows = self.get_physical_tables_by_names(table_names)
+        refreshed: list[dict[str, Any]] = []
+        disabled: list[str] = []
+        errors: list[dict[str, str]] = []
+
+        for row in rows:
+            table_key = str(row.get('table_key') or '').strip()
+            table_name = str(row.get('table_name') or '').strip()
+            db_key = str(row.get('db_key') or '').strip()
+            db_path = self._resolve_local_db_path_by_key(db_key)
+            if not table_key or not table_name or not db_path:
+                errors.append({'table_key': table_key, 'error': 'Данные запроса не содержат информации'})
+                continue
+            try:
+                if self.table_exists_in_db(db_path, table_name):
+                    fields_count = self.bootstrap_table_fields(db_path=db_path, table_name=table_name,
+                                                               table_key=table_key)
+                    refreshed.append({'table_key': table_key, 'fields_count': fields_count})
+                else:
+                    if self.disable_missing_physical_table(table_key=table_key, notes=notes):
+                        disabled.append(table_key)
+            except Exception as exc:
+                logger.error('[sync_schema_for_table_names] %s %s', table_key, exc)
+                errors.append({'table_key': table_key, 'error': str(exc)})
+
+        return {
+            'ok': bool(refreshed or disabled) and not errors,
+            'refreshed': refreshed,
+            'disabled': disabled,
+            'errors': errors,
+        }
+
     def mark_tables_invalidated(
-        self,
-        *,
-        table_records: Sequence[Mapping[str, str]],
-        notes: str = '',
+            self,
+            *,
+            table_records: Sequence[Mapping[str, str]],
+            notes: str = '',
     ) -> dict[str, Any]:
         now = F.now()
         affected_table_keys: list[str] = []
@@ -622,7 +957,7 @@ class ContextAdminRepo:
                     updated_at = %s,
                     notes = CASE WHEN notes IS NULL OR notes = '' THEN %s ELSE notes END
                 WHERE table_key = %s""",
-                    params=[[uuid.uuid4().hex, now, now, notes or '', table_key]]
+                params=[[uuid.uuid4().hex, now, now, notes or '', table_key]]
             )
             if success:
                 affected_table_keys.append(table_key)
@@ -633,13 +968,13 @@ class ContextAdminRepo:
         return {'affected_tables': affected_table_keys}
 
     def mark_sql_write_invalidated(
-        self,
-        *,
-        sql: str,
-        main_db_path: str,
-        attach_dbs: Sequence[str] | str | None = (),
-        notes: str = '',
-        attached_alias_paths: Mapping[str, str] | None = None,
+            self,
+            *,
+            sql: str,
+            main_db_path: str,
+            attach_dbs: Sequence[str] | str | None = (),
+            notes: str = '',
+            attached_alias_paths: Mapping[str, str] | None = None,
     ) -> dict[str, Any]:
         targets = detect_sql_write_targets(sql)
         if not targets:
@@ -663,9 +998,52 @@ class ContextAdminRepo:
             return {}
         return self.mark_tables_invalidated(table_records=records, notes=notes)
 
+    def _srv_to_abs_path(self, db_path: str) -> str:
+        """SRV:BD_users.db -> C://DB_srv//BD_users.db"""
+        db_path = _normalize_path(db_path)
+        if not db_path.startswith('SRV:'):
+            return db_path
+        from project_cust_38 import Cust_client_socket as CCS
+
+        abs_path, _port = CCS.db_path(db_path)
+        return _normalize_path(abs_path)
+
+    def _schema_read_db_path(self, db_path: str) -> str:
+        db_path = _normalize_path(db_path)
+        if not db_path:
+            return ''
+
+        if _is_server_process():
+            if db_path.startswith('SRV:'):
+                return self._srv_to_abs_path(db_path)
+            return db_path
+
+        if not db_path.startswith('SRV:'):
+            return self.get_srv_nickname(db_path) or db_path
+
+        return db_path
+
+    def _can_direct_sqlite_schema_read(self, db_path: str) -> bool:
+        db_path = _normalize_path(db_path)
+        return _is_server_process() and bool(db_path) and not db_path.startswith('SRV:')
+
+    def _read_sqlite_schema_rows(self, db_path: str, sql: str, params: tuple = ()) -> list[tuple]:
+        db_path = _normalize_path(db_path)
+        uri = f'file:{pathlib.Path(db_path).resolve().as_posix()}?mode=ro'
+
+        conn = sqlite3.connect(uri, uri=True, timeout=2)
+        try:
+            conn.execute('PRAGMA query_only = ON')
+            cur = conn.execute(sql, params)
+            return cur.fetchall()
+        finally:
+            conn.close()
+
+
 if __name__ == '__main__':
     from project_cust_38 import Cust_SQLite as CSQ
     from project_cust_38 import Cust_config as CFG
+
     b = ContextAdminRepo().get_srv_nickname('C://DB_srv//DB_kplan.db')
     print(b)
     b = CSQ.custom_request_c(CFG.Config.project.db_kplan, 'DELETE FROM gant_poz_val_by_day where val_minutes = 3333.6')

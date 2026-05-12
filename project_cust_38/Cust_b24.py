@@ -110,7 +110,13 @@ class B24Sender(BaseSender):
         if message_id is not None:
             endpoint = self._EDIT_MESSAGE_ENDPOINT
             body['MESSAGE_ID'] = message_id
-        return True
+        response = requests.post(f'{self._URL}{endpoint}', json=body, verify=False)
+        data = response.json()
+        match data:
+            case {'result': chat_id}:
+                return chat_id
+            case _:
+                return False
 
     def send_msg_table( #03.09.25
             self,
@@ -150,7 +156,8 @@ class B24Sender(BaseSender):
             'MESSAGE_OUT': message_for_mail,
             'TAG': tag,
         }
-        return True
+        response = requests.post(f'{self._URL}{self._NOTIFY_ENDPOINT}', json=body, verify=False)
+        return response.ok
 
 class MessageBuilder:
     """
@@ -234,7 +241,19 @@ class MessageBuilder:
 class HtmlContentDeployer:
     def pick_html_into_landing_block(self, *, html, matrix_id_landing_b24, matrix_id_landing_table_block_b24) -> bool:
         """Прикрепить html к блоку объекта landing"""
-        return True
+        url = f'{B24Config.BASE_REST_URL}{B24Config.USER_ID_BOTAPI}/{B24Config.AUTH_TOKEN_LANDING}/{B24Config.END_CHANGE_LANDING_BLOCK}'
+        response = requests.post(
+            url,
+            json={
+                'lid': matrix_id_landing_b24,
+                'block': matrix_id_landing_table_block_b24,
+                'content': html,
+                'scope': 'knowledge'
+            },
+            verify=False
+        )
+        return response.ok
+
 
 # https://bitrix24.kelast.ru/online/?IM_DIALOG=chat41228
 if __name__ == '__main__':
