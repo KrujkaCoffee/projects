@@ -49,25 +49,25 @@ OUTPUT_PARAMS = {
     'udelnyj_obem_m3_kg_out2'
     : {'view': True, 'header': 'Удельный объем, м3/кг', 'dimension': 'м3/кг',
        'comment': 'Удельный объем при заданной температуре и атмосферном давлении', 'accuracy': 3,
-       'group_name': 'Отдельное окно расчета'},
+       'group_name': 'Расчет реактивных сил'},
     'massovyj_rashod_kg_s_out2'
     : {'view': True, 'header': 'Массовый расход, кг/с', 'dimension': 'кг/с', 'comment': '', 'accuracy': 3,
-       'group_name': 'Отдельное окно расчета'},
+       'group_name': 'Расчет реактивных сил'},
     'diametr_shg_m_out2'
     : {'view': True, 'header': 'Диаметр ШГ, м', 'dimension': 'м', 'comment': '', 'accuracy': 3,
-       'group_name': 'Отдельное окно расчета'},
+       'group_name': 'Расчет реактивных сил'},
 
     'ploschad_vyhoda_shg_m2'
-    : {'view': True, 'header': 'Площадь выхода ШГ, м2', 'dimension': 'м2', 'comment': 'Отдельное окно расчета',
-       'group_name': 'Отдельное окно расчета',
+    : {'view': True, 'header': 'Площадь выхода ШГ, м2', 'dimension': 'м2', 'comment': 'Расчет реактивных сил',
+       'group_name': 'Расчет реактивных сил',
        'formula': {'expr': '=PI()*E59^2/4', 'cell': 'O18'}, 'accuracy': 4},
     'skorost_na_vyhode_shg_m_s'
     : {'view': True, 'header': 'Скорость на выходе ШГ, м/с', 'dimension': 'м/с', 'comment': '',
-       'group_name': 'Отдельное окно расчета',
+       'group_name': 'Расчет реактивных сил',
        'formula': {'expr': '=E58*E57/O18', 'cell': 'O19'}, 'accuracy': 4},
     'r_reaktivnye_sily_n'
     : {'view': True, 'header': 'R, реактивные силы, Н', 'dimension': '', 'comment': '',
-       'group_name': 'Отдельное окно расчета',
+       'group_name': 'Расчет реактивных сил',
        'formula': {'expr': '=O19^2*O18/E57', 'cell': 'O20'}, 'accuracy': 4},
     'sreda_2'
     : {'view': True, 'header': 'Среда', 'dimension': '', 'comment': 'Дроссельный блок',
@@ -1616,9 +1616,9 @@ ins = {'edinica_rashoda_imya': 'Промежуточные расчеты',
        'y_1': 'Промежуточные расчеты',
        'y': 'Промежуточные расчеты',
        'λ': 'Промежуточные расчеты',
-       'ploschad_vyhoda_shg_m2': 'Отдельное окно расчета',
-       'skorost_na_vyhode_shg_m_s': 'Отдельное окно расчета',
-       'r_reaktivnye_sily_n': 'Отдельное окно расчета',
+       'ploschad_vyhoda_shg_m2': 'Расчет реактивных сил',
+       'skorost_na_vyhode_shg_m_s': 'Расчет реактивных сил',
+       'r_reaktivnye_sily_n': 'Расчет реактивных сил',
        'sreda_2': 'Дроссельный блок',
        'rashod_sredy_g_kg_s': 'Дроссельный блок',
        'temperatura_sredy_s_2': 'Дроссельный блок',
@@ -1956,7 +1956,7 @@ ins = {'edinica_rashoda_imya': 'Промежуточные расчеты',
 GROUPS = {
     'Промежуточные расчеты': False,
     'Расчет аэродинамики для кольцевых каналов': False,
-    'Отдельное окно расчета': False,
+    'Расчет реактивных сил': True,
     'Дроссельный блок': False,
     'Параметры дроссельного блока': False,
     'Параметры потока в дроссельном блоке': True,
@@ -1964,7 +1964,7 @@ GROUPS = {
     'Аэродинамика': True,
     'Расчет давлений': False,
     'Расчет скоростей': False,
-    'Динамические нагрузки': True,
+    'Динамические нагрузки': False,
     'Давление за дроссельными решетками': False,
     'Расчет выхлопной части': False,
     'Расчет реактивной силы': True
