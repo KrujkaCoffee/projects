@@ -353,13 +353,24 @@ def open_tech_report_settings_dialog(
     group_expand_btn_by_name: Dict[str, ft.IconButton] = {}
 
     field_cb_by_key: Dict[str, ft.Checkbox] = {}
+    field_cbs_by_key: Dict[str, List[ft.Checkbox]] = {}
 
     _group_built: Dict[str, bool] = {g: False for g in group_names}
     _group_building: set[str] = set()
 
     _search_seq = {"n": 0}
 
-    def _set_group_value(g: str, val: bool, *, source_cb: ft.Checkbox | None = None):
+    def _register_field_cb(key: str, cb: ft.Checkbox):
+        field_cb_by_key[key] = cb
+        field_cbs_by_key.setdefault(key, []).append(cb)
+
+    def _set_group_value(
+        g: str,
+        val: bool,
+        *,
+        source_cb: ft.Checkbox | None = None,
+        sync_children: bool = False,
+    ):
         group_state[g] = bool(val)
         cb = group_cb_by_name.get(g)
         if cb is not None and cb is not source_cb:
@@ -369,24 +380,43 @@ def open_tech_report_settings_dialog(
             except Exception:
                 pass
 
-    def _set_field_value(key: str, val: bool, *, source_cb: ft.Checkbox | None = None):
+        if sync_children:
+            for it in group_to_items.get(g, []):
+                _set_field_value(it.key, bool(val), update_parent=False)
+
+    def _sync_parent_group_from_children(g: str):
+        group_has_checked_children = any(bool(field_state.get(it.key, True)) for it in group_to_items.get(g, []))
+        _set_group_value(g, group_has_checked_children)
+
+    def _set_field_value(
+        key: str,
+        val: bool,
+        *,
+        source_cb: ft.Checkbox | None = None,
+        update_parent: bool = True,
+    ):
         field_state[key] = bool(val)
-        cb = field_cb_by_key.get(key)
-        if cb is not None and cb is not source_cb:
+        controls = list(field_cbs_by_key.get(key, []))
+        fallback = field_cb_by_key.get(key)
+        if fallback is not None and fallback not in controls:
+            controls.append(fallback)
+        for cb in controls:
+            if cb is source_cb:
+                continue
             cb.value = bool(val)
             try:
                 cb.update()
             except Exception:
                 pass
 
-        if bool(val):
+        if update_parent:
             parent_group = field_group_by_key.get(key)
             if parent_group:
-                _set_group_value(parent_group, True)
+                _sync_parent_group_from_children(parent_group)
 
     def _on_group_toggle(e: ft.ControlEvent):
         gg = str(e.control.data)
-        _set_group_value(gg, bool(e.control.value), source_cb=e.control)
+        _set_group_value(gg, bool(e.control.value), source_cb=e.control, sync_children=True)
 
     def _on_field_toggle(e: ft.ControlEvent):
         kk = str(e.control.data)
@@ -450,7 +480,7 @@ def open_tech_report_settings_dialog(
         out: List[ft.Control] = []
         for it in group_to_items.get(g, []):
             cb = ft.Checkbox(value=bool(field_state.get(it.key, True)), data=it.key, on_change=_on_field_toggle)
-            field_cb_by_key[it.key] = cb
+            _register_field_cb(it.key, cb)
             subtitle = it.key
             if it.dim:
                 subtitle = f"{subtitle} · {it.dim}"
@@ -469,7 +499,7 @@ def open_tech_report_settings_dialog(
         group_items = group_to_items.get(g, [])
         for i, it in enumerate(group_items):
             cb = ft.Checkbox(value=bool(field_state.get(it.key, True)), data=it.key, on_change=_on_field_toggle)
-            field_cb_by_key[it.key] = cb
+            _register_field_cb(it.key, cb)
             subtitle = it.key
             if it.dim:
                 subtitle = f"{subtitle} · {it.dim}"
@@ -601,6 +631,7 @@ def open_tech_report_settings_dialog(
 
         for it in sliced:
             cb = ft.Checkbox(value=bool(field_state.get(it.key, True)), data=it.key, on_change=_on_field_toggle)
+            _register_field_cb(it.key, cb)
             subtitle = it.key
             if it.dim:
                 subtitle = f"{subtitle} · {it.dim}"
@@ -680,7 +711,34 @@ def open_tech_report_settings_dialog(
             t_group_built: Dict[str, bool] = {g: False for g in series_group_names}
             t_group_building: set[str] = set()
 
-            def _set_t_group_value(g: str, val: bool, *, source_sw: ft.Switch | None = None):
+            def _set_t_base_value(
+                base: str,
+                val: bool,
+                *,
+                source_cb: ft.Checkbox | None = None,
+                update_parent: bool = True,
+            ):
+                transpose_base_state[base] = bool(val)
+                cb = t_base_cb_by_base.get(base)
+                if cb is not None and cb is not source_cb:
+                    cb.value = bool(val)
+                    try:
+                        cb.update()
+                    except Exception:
+                        pass
+
+                if update_parent:
+                    parent_group = t_base_group_by_base.get(base)
+                    if parent_group:
+                        _sync_t_parent_group_from_children(parent_group)
+
+            def _set_t_group_value(
+                g: str,
+                val: bool,
+                *,
+                source_sw: ft.Switch | None = None,
+                sync_children: bool = False,
+            ):
                 transpose_group_state[g] = bool(val)
                 sw = t_group_sw_by_name.get(g)
                 if sw is not None and sw is not source_sw:
@@ -690,25 +748,28 @@ def open_tech_report_settings_dialog(
                     except Exception:
                         pass
 
+                if sync_children:
+                    for info in series_by_group.get(g, []):
+                        _set_t_base_value(info.base, bool(val), update_parent=False)
+
+            def _sync_t_parent_group_from_children(g: str):
+                group_has_checked_bases = any(
+                    bool(transpose_base_state.get(info.base, True))
+                    for info in series_by_group.get(g, [])
+                )
+                _set_t_group_value(g, group_has_checked_bases)
+
             def _on_t_group_toggle(e: ft.ControlEvent):
                 gg = str(e.control.data)
-                _set_t_group_value(gg, bool(e.control.value), source_sw=e.control)
+                _set_t_group_value(gg, bool(e.control.value), source_sw=e.control, sync_children=True)
 
             def _on_t_base_toggle(e: ft.ControlEvent):
                 bb = str(e.control.data)
-                transpose_base_state[bb] = bool(e.control.value)
-                if bool(e.control.value):
-                    parent_group = t_base_group_by_base.get(bb)
-                    if parent_group:
-                        _set_t_group_value(parent_group, True)
+                _set_t_base_value(bb, bool(e.control.value), source_cb=e.control)
 
             def _bases_all(val: bool):
-                for b in all_bases_set:
-                    transpose_base_state[b] = bool(val)
                 for g in series_group_names:
-                    _set_t_group_value(g, bool(val))
-                for cb in t_base_cb_by_base.values():
-                    cb.value = bool(val)
+                    _set_t_group_value(g, bool(val), sync_children=True)
                 try:
                     transpose_body_ref.current.update()
                 except Exception:
