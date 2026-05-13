@@ -207,8 +207,10 @@ def open_tech_report_settings_dialog(
     items.sort(key=lambda it: (it.group.lower(), it.header.lower()))
     group_names = sorted({it.group for it in items}, key=lambda s: s.lower())
     group_to_items: Dict[str, List[GroupItem]] = {g: [] for g in group_names}
+    field_group_by_key: Dict[str, str] = {}
     for it in items:
         group_to_items[it.group].append(it)
+        field_group_by_key[it.key] = it.group
 
     field_state: Dict[str, bool] = {}
     for it in items:
@@ -285,6 +287,7 @@ def open_tech_report_settings_dialog(
     transpose_body_ref = ft.Ref[ft.Column]()
 
     progress_ring = ft.ProgressRing(width=18, height=18, visible=False)
+    close_feedback_text = ft.Text("", size=12, opacity=0.75, visible=False)
     btn_cancel = ft.TextButton("Отмена")
     btn_save = ft.FilledButton("Сохранить")
 
@@ -356,6 +359,16 @@ def open_tech_report_settings_dialog(
 
     _search_seq = {"n": 0}
 
+    def _set_group_value(g: str, val: bool, *, source_cb: ft.Checkbox | None = None):
+        group_state[g] = bool(val)
+        cb = group_cb_by_name.get(g)
+        if cb is not None and cb is not source_cb:
+            cb.value = bool(val)
+            try:
+                cb.update()
+            except Exception:
+                pass
+
     def _set_field_value(key: str, val: bool, *, source_cb: ft.Checkbox | None = None):
         field_state[key] = bool(val)
         cb = field_cb_by_key.get(key)
@@ -366,9 +379,14 @@ def open_tech_report_settings_dialog(
             except Exception:
                 pass
 
+        if bool(val):
+            parent_group = field_group_by_key.get(key)
+            if parent_group:
+                _set_group_value(parent_group, True)
+
     def _on_group_toggle(e: ft.ControlEvent):
         gg = str(e.control.data)
-        group_state[gg] = bool(e.control.value)
+        _set_group_value(gg, bool(e.control.value), source_cb=e.control)
 
     def _on_field_toggle(e: ft.ControlEvent):
         kk = str(e.control.data)
@@ -653,20 +671,42 @@ def open_tech_report_settings_dialog(
             t_base_cb_by_base: Dict[str, ft.Checkbox] = {}
             t_group_children_by_name: Dict[str, ft.Column] = {}
             t_group_btn_by_name: Dict[str, ft.IconButton] = {}
+            t_group_sw_by_name: Dict[str, ft.Switch] = {}
+            t_base_group_by_base: Dict[str, str] = {
+                info.base: g
+                for g in series_group_names
+                for info in series_by_group.get(g, [])
+            }
             t_group_built: Dict[str, bool] = {g: False for g in series_group_names}
             t_group_building: set[str] = set()
 
+            def _set_t_group_value(g: str, val: bool, *, source_sw: ft.Switch | None = None):
+                transpose_group_state[g] = bool(val)
+                sw = t_group_sw_by_name.get(g)
+                if sw is not None and sw is not source_sw:
+                    sw.value = bool(val)
+                    try:
+                        sw.update()
+                    except Exception:
+                        pass
+
             def _on_t_group_toggle(e: ft.ControlEvent):
                 gg = str(e.control.data)
-                transpose_group_state[gg] = bool(e.control.value)
+                _set_t_group_value(gg, bool(e.control.value), source_sw=e.control)
 
             def _on_t_base_toggle(e: ft.ControlEvent):
                 bb = str(e.control.data)
                 transpose_base_state[bb] = bool(e.control.value)
+                if bool(e.control.value):
+                    parent_group = t_base_group_by_base.get(bb)
+                    if parent_group:
+                        _set_t_group_value(parent_group, True)
 
             def _bases_all(val: bool):
                 for b in all_bases_set:
                     transpose_base_state[b] = bool(val)
+                for g in series_group_names:
+                    _set_t_group_value(g, bool(val))
                 for cb in t_base_cb_by_base.values():
                     cb.value = bool(val)
                 try:
@@ -824,6 +864,7 @@ def open_tech_report_settings_dialog(
                     data=g,
                     on_change=_on_t_group_toggle,
                 )
+                t_group_sw_by_name[g] = g_sw
 
                 children_col = ft.Column(controls=[], visible=False, spacing=0)
                 t_group_children_by_name[g] = children_col
@@ -901,12 +942,22 @@ def open_tech_report_settings_dialog(
 
     transpose_mode_rg.on_change = _on_mode_change
 
+    async def _finish_close(save: bool):
+        await asyncio.sleep(0.05)
+        try:
+            if save:
+                on_save(_build_cfg())
+        finally:
+            page.pop_dialog()
+
     def _close(save: bool):
         if _closing["busy"]:
             return
         _closing["busy"] = True
 
         progress_ring.visible = True
+        close_feedback_text.value = "Сохраняю настройки..." if save else "Закрываю окно..."
+        close_feedback_text.visible = True
         btn_save.disabled = True
         btn_cancel.disabled = True
         try:
@@ -914,11 +965,7 @@ def open_tech_report_settings_dialog(
         except Exception:
             pass
 
-        try:
-            if save:
-                on_save(_build_cfg())
-        finally:
-            page.pop_dialog()
+        page.run_task(_finish_close, save)
 
     btn_cancel.on_click = lambda _e: _close(False)
     btn_save.on_click = lambda _e: _close(True)
@@ -969,7 +1016,7 @@ def open_tech_report_settings_dialog(
         title=ft.Text(title),
         content=ft.Container(width=980, height=650, content=tabs),
         actions_alignment=ft.MainAxisAlignment.END,
-        actions=[progress_ring, btn_cancel, btn_save],
+        actions=[progress_ring, close_feedback_text, btn_cancel, btn_save],
     )
     page.show_dialog(dlg)
 
@@ -995,7 +1042,7 @@ def open_tech_report_settings_dialog(
             return
         transpose_body_ref.current.controls = [
             ft.Text(
-                "Откройте вкладку «Транспонирование», чтобы загрузить список серий.",
+                "Загрузка..",
                 size=12,
                 opacity=0.75,
             )
