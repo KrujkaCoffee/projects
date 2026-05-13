@@ -47,28 +47,28 @@ OUTPUT_PARAMS = {
                    'cell': 'O16'}, 'accuracy': 4},
 
     'udelnyj_obem_m3_kg_out2'
-    : {'view': True, 'header': 'Удельный объем, м3/кг', 'dimension': 'м3/кг',
+    : {'view': False, 'header': 'Удельный объем, м3/кг', 'dimension': 'м3/кг',
        'comment': 'Удельный объем при заданной температуре и атмосферном давлении', 'accuracy': 3,
-       'group_name': 'Расчет реактивных сил'},
+       'group_name': 'Отдельное окно расчета'},
     'massovyj_rashod_kg_s_out2'
-    : {'view': True, 'header': 'Массовый расход, кг/с', 'dimension': 'кг/с', 'comment': '', 'accuracy': 3,
-       'group_name': 'Расчет реактивных сил'},
+    : {'view': False, 'header': 'Массовый расход, кг/с', 'dimension': 'кг/с', 'comment': '', 'accuracy': 3,
+       'group_name': 'Отдельное окно расчета'},
     'diametr_shg_m_out2'
-    : {'view': True, 'header': 'Диаметр ШГ, м', 'dimension': 'м', 'comment': '', 'accuracy': 3,
-       'group_name': 'Расчет реактивных сил'},
+    : {'view': False, 'header': 'Диаметр ШГ, м', 'dimension': 'м', 'comment': '', 'accuracy': 3,
+       'group_name': 'Отдельное окно расчета'},
 
     'ploschad_vyhoda_shg_m2'
-    : {'view': True, 'header': 'Площадь выхода ШГ, м2', 'dimension': 'м2', 'comment': 'Расчет реактивных сил',
+    : {'view': True, 'header': 'Площадь выхода ШГ, м2', 'dimension': 'м2', 'comment': 'Отдельное окно расчета',
        'group_name': 'Расчет реактивных сил',
-       'formula': {'expr': '=PI()*E59^2/4', 'cell': 'O18'}, 'accuracy': 4},
+       'formula': {'expr': '=PI()*D^2/4, D=внутренний диаметр корпуса ШГ', 'cell': 'O18'}, 'accuracy': 4},
     'skorost_na_vyhode_shg_m_s'
     : {'view': True, 'header': 'Скорость на выходе ШГ, м/с', 'dimension': 'м/с', 'comment': '',
        'group_name': 'Расчет реактивных сил',
-       'formula': {'expr': '=E58*E57/O18', 'cell': 'O19'}, 'accuracy': 4},
+       'formula': {'expr': '=G*v/O18, G=расход среды кг/с, v=удельный объем', 'cell': 'O19'}, 'accuracy': 4},
     'r_reaktivnye_sily_n'
     : {'view': True, 'header': 'R, реактивные силы, Н', 'dimension': '', 'comment': '',
        'group_name': 'Расчет реактивных сил',
-       'formula': {'expr': '=O19^2*O18/E57', 'cell': 'O20'}, 'accuracy': 4},
+       'formula': {'expr': '=O19^2*O18/v, v=удельный объем', 'cell': 'O20'}, 'accuracy': 4},
     'sreda_2'
     : {'view': True, 'header': 'Среда', 'dimension': '', 'comment': 'Дроссельный блок',
        'group_name': 'Дроссельный блок',
@@ -1587,21 +1587,21 @@ OUTPUT_PARAMS = {
     'udelnyj_obem_m3_kg_out'
     : {'view': True, 'header': 'Удельный объем, м3/кг', 'dimension': 'м3/кг',
        'comment': 'Удельный объем при заданной температуре и атмосферном давлении', 'accuracy': 3,
-       'group_name': 'Расчет реактивной силы'},
+       'group_name': 'Расчет реактивных сил'},
 
     'massovyj_rashod_kg_s_out'
     : {'view': True, 'header': 'Массовый расход, кг/с', 'dimension': 'кг/с', 'comment': '', 'accuracy': 3,
-       'group_name': 'Расчет реактивной силы'},
+       'group_name': 'Расчет реактивных сил'},
     'diametr_shg_m_out'
     : {'view': True, 'header': 'Диаметр ШГ, м', 'dimension': 'м', 'comment': '', 'accuracy': 3,
-       'group_name': 'Расчет реактивной силы'},
+       'group_name': 'Расчет реактивных сил'},
     'koefficient_treniya_out'
     : {'view': True, 'header': 'ξ  - Коэффициент трения', 'dimension': '', 'comment': '', 'accuracy': 3,
-       'group_name': 'Расчет реактивной силы'},
+       'group_name': 'Расчет реактивных сил'},
     'atmosfernoe_davlenie_pa_out'
     : {'view': True, 'header': 'Атмосферное давление, Па', 'dimension': 'Па',
        'comment': 'Стандартное атмосферное давление (Па)',
-       'accuracy': 3, 'group_name': 'Расчет реактивной силы'},
+       'accuracy': 3, 'group_name': 'Расчет реактивных сил'},
 
 }
 
@@ -1956,7 +1956,7 @@ ins = {'edinica_rashoda_imya': 'Промежуточные расчеты',
 GROUPS = {
     'Промежуточные расчеты': False,
     'Расчет аэродинамики для кольцевых каналов': False,
-    'Расчет реактивных сил': True,
+    'Отдельное окно расчета': False,
     'Дроссельный блок': False,
     'Параметры дроссельного блока': False,
     'Параметры потока в дроссельном блоке': True,
@@ -1964,8 +1964,8 @@ GROUPS = {
     'Аэродинамика': True,
     'Расчет давлений': False,
     'Расчет скоростей': False,
-    'Динамические нагрузки': False,
+    'Динамические нагрузки': True,
     'Давление за дроссельными решетками': False,
     'Расчет выхлопной части': False,
-    'Расчет реактивной силы': True
+    'Расчет реактивных сил': True
 }

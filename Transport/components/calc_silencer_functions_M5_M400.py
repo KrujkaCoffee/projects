@@ -198,26 +198,48 @@ def calc_λ(params):
     """
     return ((-1+(1+4*((params['koeffcient_adiabaty']-1)/(params['koeffcient_adiabaty']+1))*params['v_skorost_mezhdu_plastinami_m_s']**2*params['y']**2)**0.5)/(2*((params['koeffcient_adiabaty']-1)/(params['koeffcient_adiabaty']+1))*params['v_skorost_mezhdu_plastinami_m_s']*params['y']))
 
+def _reactive_specific_volume_m3_kg(params):
+    """Удельный объем для блока реактивных сил из уже заданных параметров среды."""
+    gas_constant = params.get('gazovaya_postoyannaya_m2_s2_k', params.get('gas_constant', 287))
+    temp_c = params.get('temperatura_sredy_s_2', params.get('temperatura_sredy_s', 0))
+    atm_pressure = params.get('atmosfernoe_davlenie_pa', params.get('pat_atmosfernoe_davlenie_pa', 101325))
+    return gas_constant * (temp_c + 273.15) / atm_pressure
+
+
+def _reactive_mass_flow_kg_s(params):
+    """Массовый расход для блока реактивных сил из расхода и единицы расхода."""
+    if 'rashod_sredy_g_kg_s' in params:
+        return params['rashod_sredy_g_kg_s']
+    return calc_rashod_sredy_g_kg_s(params)
+
+
+def _reactive_diameter_m(params):
+    """Диаметр для блока реактивных сил из внутреннего диаметра корпуса ШГ."""
+    return params['vnutrennij_diametr_shumoglushitelya_korpus_m']
+
+
 def calc_ploschad_vyhoda_shg_m2(params):
     """
     Excel M18 / O18
-    Формула (Excel): =PI()*E59^2/4
+    Формула (Excel): =PI()*D^2/4, где D — внутренний диаметр корпуса ШГ
     """
-    return (math.pi*params['diametr_shg_m']**2/4)
+    return (math.pi * _reactive_diameter_m(params) ** 2 / 4)
+
 
 def calc_skorost_na_vyhode_shg_m_s(params):
     """
     Excel M19 / O19
-    Формула (Excel): =E58*E57/O18
+    Формула (Excel): =G*v/O18, где G и v вычисляются из исходных параметров среды
     """
-    return (params['massovyj_rashod_kg_s']*params['udelnyj_obem_m3_kg']/params['ploschad_vyhoda_shg_m2'])
+    return (_reactive_mass_flow_kg_s(params) * _reactive_specific_volume_m3_kg(params) / params['ploschad_vyhoda_shg_m2'])
+
 
 def calc_r_reaktivnye_sily_n(params):
     """
     Excel M20 / O20
-    Формула (Excel): =O19^2*O18/E57
+    Формула (Excel): =O19^2*O18/v, где v вычисляется из исходных параметров среды
     """
-    return (params['skorost_na_vyhode_shg_m_s']**2*params['ploschad_vyhoda_shg_m2']/params['udelnyj_obem_m3_kg'])
+    return (params['skorost_na_vyhode_shg_m_s'] ** 2 * params['ploschad_vyhoda_shg_m2'] / _reactive_specific_volume_m3_kg(params))
 
 def calc_sreda_2(params):
     """
@@ -2816,14 +2838,14 @@ def calc_n0_3(params):
 
 
 def calc_udelnyj_obem_m3_kg_out(params):
-    """ трансляция из таблицы инпут"""
-    return params["udelnyj_obem_m3_kg"]
+    """Вычисляется из параметров среды для блока реактивных сил."""
+    return _reactive_specific_volume_m3_kg(params)
 def calc_massovyj_rashod_kg_s_out(params):
-    """ трансляция из таблицы инпут"""
-    return params["massovyj_rashod_kg_s"]
+    """Вычисляется из расхода и единицы расхода для блока реактивных сил."""
+    return _reactive_mass_flow_kg_s(params)
 def calc_diametr_shg_m_out(params):
-    """ трансляция из таблицы инпут"""
-    return params["diametr_shg_m"]
+    """Вычисляется из внутреннего диаметра корпуса ШГ для блока реактивных сил."""
+    return _reactive_diameter_m(params)
 def calc_koefficient_treniya_out(params):
     """ трансляция из таблицы инпут"""
     return params["koefficient_treniya"]

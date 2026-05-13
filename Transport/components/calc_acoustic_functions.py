@@ -37,7 +37,6 @@ def calc_lp_steam_discharge_sound_power_level_db(params):
     λ = round(1.77 - 0.77 / n, 1)
 
     K_n = round(18.5 * λ - 10 * math.log10(λ ** 7 / (1 - 0.13 * λ ** 2)), 1)
-    print(locals())
     return round(10 * math.log10(G ** 2 / S) - 10 * math.log10(n) - K_n + 141.3, 1)
 
 
@@ -236,8 +235,8 @@ def calc_ak_moschnost_shuma_wkl_vt(p: dict):
 
 def calc_ak_uroven_zvukovoj_moschnosti_klapana_lw_db(p: dict):
 # Описание: # Ячейка: O18
-# Формула: =IF(E6="Продувка",E57,10*LOG10(O17/(10^(-12))))
-	return excel_if(p["ak_izdavaemyj_shum"]=="Продувка",p["udelnyj_obem_m3_kg"],10*math.log10(p["ak_moschnost_shuma_wkl_vt"]/(10**(-12))))
+# Формула: =IF(E6="Продувка",Lw_парового_выброса,10*LOG10(O17/(10^(-12))))
+	return excel_if(p["ak_izdavaemyj_shum"]=="Продувка",p["lp_steam_discharge_sound_power_level_db"],10*math.log10(p["ak_moschnost_shuma_wkl_vt"]/(10**(-12))))
 
 def calc_ak_srednegeometricheskaya_chastota_oktavnyh_polos_gc_31_5(p: dict):
 # Описание: Уровень звуковой мощности трубы без ШГ, дБ# Ячейка: O20
