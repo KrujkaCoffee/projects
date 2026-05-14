@@ -13,6 +13,11 @@ from project_cust_38 import Cust_SQLite as CSQ
 from components.tech_report_excel import build_tech_report_xlsx
 from components.tech_report_settings_dialog import open_tech_report_settings_dialog
 
+try:
+    from components.silencer_chart_report import build_silencer_report
+except Exception:
+    build_silencer_mini_report = None
+
 DICT_BARS = {"leading": {'text': 'Домой',
                          'icon': ft.Icons.HOME,
                          'selected_icon': ft.Icons.HOME_SHARP,
@@ -43,6 +48,7 @@ DICT_BARS = {"leading": {'text': 'Домой',
              }
 _btn_calc_ref = ft.Ref[ft.Button]()
 _btn_grab_ref = ft.Ref[ft.Button]()
+_btn_report_ref = ft.Ref[ft.Button]()
 
 _header_filtr_text_field_ref = ft.Ref[ft.TextField]()
 _btn_search_ref = ft.Ref[ft.Button]()
@@ -355,6 +361,13 @@ def gen_page(page):
             if row_data.get_cell_unique().val == 'edinica_rashoda' and cell.params_field.name == 'val':
                 calc_silencer_back.oform_edinica_rashoda(cell, new_val)
 
+            try:
+                Data.Data_module.cust_data.last_calculated = None
+                Data.Data_module.cust_data.last_calc_errors = []
+            except Exception:
+                pass
+            set_header_elems_visible(False)
+
             # if set_header_elems_visible(False) or table_data.table_view.fl_need_upd:
             #     table_data.table_view.update_view()
 
@@ -371,6 +384,9 @@ def gen_page(page):
                                                                                  default_vals_input)
 
         Data.Data_module.cust_data.input_tbl_editbl = table_data
+        Data.Data_module.cust_data.last_calculated = None
+        Data.Data_module.cust_data.last_input_vals = None
+        Data.Data_module.cust_data.last_calc_errors = []
 
         _input_column_tabels_ref.current.controls.append(input_table_datatable)
         DTCLS.Data_page.Data_module.status_bar.set_text()
@@ -406,6 +422,11 @@ def gen_page(page):
             btn_enabled = calc_silencer_back.generate_rez_tbl(e, _input_tabe_ref.current,
                                                                                  _output_tabe_ref,fnc_cell_click)
             table_data:CMF.Table_data = DTCLS.Data_page.Data_module.cust_data.output_tbl
+            try:
+                input_vals = calc_silencer_back.get_vals_from_input_data_tbl(_input_tabe_ref.current)
+                Data.Data_module.cust_data.last_input_vals = input_vals
+            except Exception:
+                input_vals = {}
             tbl_rez = table_data.table_view
             if tbl_rez == None:
                 return
@@ -414,9 +435,59 @@ def gen_page(page):
             _output_column_tabels_ref.current.controls.append(tbl_rez)
             _output_column_tabels_ref.current.update()
             set_header_elems_visible(btn_enabled)
-            input_vals = calc_silencer_back.get_vals_from_input_data_tbl(_input_tabe_ref.current)
             _header_input_panel_textfield_ref.current.value = calc_silencer_back.get_name_new_calc(input_vals)
             #DTCLS.Data_page.Data_module.status_bar.set_text('Успешно рассчитано')
+
+
+        def show_mini_report(e: ft.ControlEvent):
+            if _input_tabe_ref.current is None:
+                DTCLS.Data_page.Data_module.status_bar.set_text(
+                    f"{str(Cust_emoji.EmojiMain.Статусы.warning)} Сначала выполните расчёт"
+                )
+                e.page.update()
+                return
+
+            input_vals = getattr(Data.Data_module.cust_data, "last_input_vals", None)
+            if not isinstance(input_vals, dict):
+                try:
+                    input_vals = calc_silencer_back.get_vals_from_input_data_tbl(_input_tabe_ref.current)
+                except Exception:
+                    input_vals = {}
+
+            calculated = getattr(Data.Data_module.cust_data, "last_calculated", None)
+            if not isinstance(calculated, dict):
+                input_rows = CMF.datatable_to_dicts(_input_tabe_ref.current)
+                calculated, errors, _success = calc_silencer_back.prepare_calc_new_data(input_rows, Data)
+                if calculated is None:
+                    CMF.message_dialog(
+                        e.page,
+                        body_icon=ft.Icons.ERROR,
+                        title="Ошибка",
+                        message="Не удалось подготовить данные для отчёта"
+                    )
+                    return
+                Data.Data_module.cust_data.last_calculated = calculated
+                Data.Data_module.cust_data.last_calc_errors = errors
+
+            back_controls = list(_desktop_column_ref.current.controls)
+
+            def back_to_calc(_e: ft.ControlEvent):
+                _desktop_column_ref.current.controls = back_controls
+                _desktop_column_ref.current.update()
+
+            report_panel = build_silencer_report(
+                calculated=calculated,
+                input_values=input_vals,
+                on_back=back_to_calc,
+            )
+
+            _desktop_column_ref.current.controls = [report_panel]
+            _desktop_column_ref.current.alignment = ft.MainAxisAlignment.START
+            _desktop_column_ref.current.horizontal_alignment = ft.CrossAxisAlignment.STRETCH
+            _desktop_column_ref.current.update()
+
+            _refStatusBar.current.visible = False
+            _refStatusBar.current.update()
 
 
         def grab_new_table(e: ft.ControlEvent):
@@ -496,6 +567,14 @@ def gen_page(page):
                                                       shape=ft.RoundedRectangleBorder(radius=1),
                                                       # Радиус скругления в пикселях
                                                   ), height=50, width=150, ref=_btn_calc_ref
+                                              ),
+                                              ft.Button(
+                                                  '📊 График',
+                                                  ft.Icons.INSERT_CHART,
+                                                  on_click=show_mini_report,
+                                                  style=ft.ButtonStyle(
+                                                      shape=ft.RoundedRectangleBorder(radius=1),
+                                                  ), height=50, width=170, ref=_btn_report_ref, visible=False
                                               ),
                                               ft.TextField(label="Название расчета", hint_text="Введите текст",
                                                            width=500,
@@ -682,17 +761,29 @@ def paint_rail(select_destination):
 
 
 def set_header_elems_visible(val: bool = True): #todo нужен ли ререндер
-    if not _header_input_panel_btn_save_ref.current.visible == val:
+    changed = False
+    if _header_input_panel_btn_save_ref.current and _header_input_panel_btn_save_ref.current.visible != val:
         _header_input_panel_btn_save_ref.current.visible = val
+        changed = True
+    if _header_input_panel_textfield_ref.current and _header_input_panel_textfield_ref.current.visible != val:
         _header_input_panel_textfield_ref.current.visible = val
-        return True
-    return False
+        changed = True
+    if _btn_report_ref.current and _btn_report_ref.current.visible != val:
+        _btn_report_ref.current.visible = val
+        changed = True
+    return changed
 
 
 def set_header_elems_enabled(val: bool = True): #todo нужен ли ререндер
-    if  _header_input_panel_btn_save_ref.current.disabled == val:
+    changed = False
+    if _header_input_panel_btn_save_ref.current and _header_input_panel_btn_save_ref.current.disabled == val:
         _header_input_panel_btn_save_ref.current.disabled = not val
+        changed = True
+    if _header_input_panel_textfield_ref.current and _header_input_panel_textfield_ref.current.disabled == val:
         _header_input_panel_textfield_ref.current.disabled = not val
-        return True
-    return False
+        changed = True
+    if _btn_report_ref.current and _btn_report_ref.current.disabled == val:
+        _btn_report_ref.current.disabled = not val
+        changed = True
+    return changed
 

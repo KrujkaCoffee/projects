@@ -24,7 +24,7 @@ from Config import srv_config
 from auth_backend import MONTH_SECONDS, SESSION_COOKIE_NAME, SESSIONS, authenticate_windows_user
 from middleware import SessionAuthMiddleware, current_auth_user
 
-ver = 0.03
+ver = 0.04
 
 FLET_PATH = ""
 FLET_PORT = SRVCFG.PORT

@@ -43,6 +43,9 @@ class Cust_module_params():
         self.input_tbl_not_editbl: Table_data | None = None
         self.output_tbl: Table_data | None = None
         self.filtr_seach_history: str = ''
+        self.last_calculated: dict | None = None
+        self.last_input_vals: dict | None = None
+        self.last_calc_errors: list[dict] = []
 
 TBL_INPUT = Table_data()
 TBL_INPUT.append_column_desc(name='name', header='Имя', hidden=True, editable=False, unique=True)
@@ -173,6 +176,9 @@ def generate_rez_tbl(e: ft.ControlEvent, tbl: ft.DataTable, ref_out, fnc_cell_cl
     calculated, errors, success = prepare_calc_new_data(data, Data)
     if calculated is None:
         return
+
+    Data.Data_module.cust_data.last_calculated = calculated
+    Data.Data_module.cust_data.last_calc_errors = errors
 
     tbl_output = make_res_tbl(calculated, ref_out, fnc_cell_click)
     warning_symbol = Cust_emoji.СтатусыПроизводства.warning.symbol
