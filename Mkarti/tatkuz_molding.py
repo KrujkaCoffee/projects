@@ -520,6 +520,8 @@ def mold_tch_res_product_itemSelectionChanged(self: mywindow):
 @CQT.onerror
 def mold_tch_res_product_cellchanged(self: mywindow,row:int,col:int):
     tbl = self.ui.tbl_data_mold_tch_res_product
+    if CQT.is_table_updating(tbl):
+        return
     row_data = CQT.get_dict_line_form_tbl(tbl,row)
     s_num = row_data['s_num']
     key_name = tbl.horizontalHeaderItem(col).text()
@@ -557,6 +559,8 @@ def mold_tch_res_product_cellchanged(self: mywindow,row:int,col:int):
 @CQT.onerror
 def mold_tch_cellchanged(self: mywindow,row:int,col:int):
     tbl = self.ui.tbl_data_mold_tch
+    if CQT.is_table_updating(tbl):
+        return
     row_data = CQT.get_dict_line_form_tbl(tbl,row)
     s_num = row_data['s_num']
     key_name = tbl.horizontalHeaderItem(col).text()
@@ -1912,7 +1916,7 @@ def upload_1c_res_product_tch(self:mywindow):
         return False
 
     def generate(tch_mold:OrderMoldTch,code_old_res=None):
-        err = []#TODO 00-064111
+        err = []
         hat = dict()
         ПодразделениеДиспетчер = 'Сталелитейный цех (ТатКуз)'
         hat['ОсновноеИзделиеКод'] = self._ttkz_tmp_settings.current_order.name_nomen_for_res_product
