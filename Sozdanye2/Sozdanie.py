@@ -350,7 +350,11 @@ class mywindow(QtWidgets.QMainWindow):
         spis_status = CSQ.custom_request_c(self.db_naryd, f'SELECT DISTINCT jurnal.Статус FROM jurnal', hat_c=False, one_column=True)
 
         self.ACTUAL_JOURNAL_STATUSES = spis_status
-        self.ui.cmb_edit_time_jur.addItems(spis_status)
+        try:
+            self.ui.cmb_edit_time_jur.addItems(spis_status)
+        except:
+            raise ValueError('ошибка загрузки статуcов')
+
         self.ui.cmb_edit_time_jur.currentTextChanged.connect(self.set_edit_status_jur)
 
         MARSH.fill_filtr_rc(self)
