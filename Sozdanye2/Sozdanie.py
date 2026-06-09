@@ -366,8 +366,8 @@ class mywindow(QtWidgets.QMainWindow):
         # self.zaversh_naruad()
         self.ui.tab_4.setEnabled(False)
         self.ui.tab_11.setEnabled(True)
-        self.DICT_KATEG_VNEPLAN = F.deploy_dict_c(
-            CSQ.custom_request_c(self.db_naryd, 'SELECT * FROM kategor_vnepl', rez_dict=True), 'value')
+        self.DICT_KATEG_VNEPLAN = F.deploy_dict_c( # 21.05.2026
+            CSQ.custom_request_c(self.db_naryd, f'SELECT * FROM category_vnepl WHERE poki = {CFG.Config.place.poki}', rez_dict=True), 'value')
         self.DICT_PROFESSIONS = dict()
         CMS.dict_professions(self, self.bd_users)
 
