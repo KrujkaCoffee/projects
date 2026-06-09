@@ -310,6 +310,7 @@ def save_red_tree(self: mywindow):
 
         if len(list_of_errs) > 0:
             CQT.msgboxg_get_table_ok_inf(self, 'Найдены ошибки в структуре', list_of_errs)
+            on_tree_changed(self) #09.06.2026
             return False
         if not tkp.check_name_tkp(self.ui.le_name_tkp_2.text().strip(), self.ui.le_nnom_izd_2.text().strip(),
                                   self.ui.le_path_vo_2.text()):

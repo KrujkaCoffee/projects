@@ -3,7 +3,7 @@ import project_cust_38.Cust_Functions as F
 from dataclasses import dataclass
 import project_cust_38.Cust_SQLite as CSQ
 import project_cust_38.Cust_mes as CMS
-
+import datetime
 import project_cust_38.Cust_config as USRCNF
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -32,6 +32,7 @@ class Data_plan(SingletonMeta):
             if item['name'].startswith('.'):
                 item['name'] = item['name'][1:]
         DICT_INFO_FIELDS_KPL = F.deploy_dict_c(_INFO_FIELDS_KPL, 'name')
+
         return  DICT_INFO_FIELDS_KPL
 
     @staticmethod
@@ -75,13 +76,19 @@ class Data_plan(SingletonMeta):
                                                         }
 
         return  result_dict
+
     app_self:mywindow|None = None
-    db_kplan = F.bdcfg('DB_kplan')
+    PROJECT = USRCNF.Config.project
+    PLACE = USRCNF.Config.place
+    USER_CONFIG = USRCNF.Config.user_config
+    db_kplan = PROJECT.db_kplan
     db_invest = F.bdcfg('DB_invest')
     db_state = F.bdcfg('DB_staff_placement')
-    bd_naryad = F.bdcfg('Naryad')
-    db_users = F.bdcfg('BD_users')
-    db_nomen = F.bdcfg('nomenklatura_erp')
+    bd_naryad = PROJECT.db_naryad
+    db_users = PROJECT.db_users
+    db_nomen = PROJECT.db_nomen
+    db_resxml = PROJECT.db_resxml
+    db_fiels = PROJECT.db_files
 
     PLACE = USRCNF.Config.place
     # ======= KAL PLAN======================
