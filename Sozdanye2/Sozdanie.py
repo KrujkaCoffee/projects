@@ -2,6 +2,7 @@ import colorsys
 import copy
 import collections
 import enum
+import json
 import typing
 
 from PyQt5 import QtWidgets, QtGui, QtCore
@@ -1761,17 +1762,8 @@ class mywindow(QtWidgets.QMainWindow):
                 return False
             return True
 
-        # list_boch = CSQ.custom_request_c(self.db_naryd,f"""SELECT * from naryad WHERE Пномер =34239""",rez_dict=True)
-        # for nar in list_boch:
-        #    list_nar = self.get_list_last_base_nar(nar['Номер_мк'], nar['Пномер'])
-        #    if list_nar == None:
-        #        return
-        #    line =','.join([str(_) for _ in list_nar])
-        #    CSQ.custom_request_c(self.db_naryd,f"""UPDATE naryad SET (ФИО_для_ОТК)
-        #   = ('{line}')
-        #    WHERE Пномер == {nar['Пномер']} ;""")
-        #
-        # return
+
+
         nk_py = CQT.num_col_by_name_c(self.ui.tbl_vibor_nar_rasp, 'Номер_заказа')
         if nk_py == None:
             CQT.msgbox(f'Поле Номер_заказа не найдено')
@@ -2771,7 +2763,9 @@ class mywindow(QtWidgets.QMainWindow):
         self.load_table_korr_naruad(close_mk=close_mk,list_rc=list_rc)
 
     @CQT.onerror
-    def load_table_korr_naruad(self, close_mk=True,list_rc:None|list|str=None):
+    @CQT.progress_decorator
+    def load_table_korr_naruad(self, close_mk=True,list_rc:None|list|str=None, hook_prog_bar=None, *args):
+
         if self.glob_login == '':
             return
         if list_rc == ['']:
@@ -2820,22 +2814,46 @@ class mywindow(QtWidgets.QMainWindow):
             where = f''' plan.poki = {self.place.poki} {by_rc}'''
             if only_prost:
                 where = f''' naryad.Внеплан == {self.place.КодыНарядов.Простой} '''
+        by_year = ''
+        if list_rc is None and only_prost == False:
+            def fnc_confirm(text)-> bool:
+                year_str = text.strip()
+                if not F.is_numeric(year_str) or len(year_str) != 4:
+                    return False
+                return True
+
+            def fnc_validate_year(year_str)->tuple[bool|None,object]:
+                year_str = year_str.strip()
+                return True, int(F.valm(year_str))
+
+            rez, year = CQT.get_dialog_choose_text(self,'Введите год создания МК',start_text=F.now("%Y"),on_confirm=fnc_confirm,
+                                                  func_validate=fnc_validate_year)
+            if not rez:
+                return
+
+            by_year = f""" AND strftime('%Y', Date("20" || mk.Дата)) = '{year}'"""
 
         custom_request_c = f''' {select}
-                WHERE  {where}; '''
-
+                WHERE  {where}{by_year}; '''
+        hook_prog_bar.set(5)
+        hook_prog_bar.text('Получение данных...')
         rez = CSQ.custom_request_c(self.db_naryd, custom_request_c, attach_dbs=(self.db_kplan))
+        hook_prog_bar.set(30)
+        hook_prog_bar.text('Заполняем таблицу')
         edit_columns = {F.num_col_by_name_in_hat_c(rez, 'Коэфф_сложности'), F.num_col_by_name_in_hat_c(rez, 'Твремя'),
                         F.num_col_by_name_in_hat_c(rez, 'Примечание')}
-        CQT.fill_wtabl_old_c(self, rez, self.ui.tbl_red_zhur, isp_hat_c=True, separ='', select_last_row=False,
-                             set_editeble_col_nomera=edit_columns)
+        CQT.fill_wtabl( rez, self.ui.tbl_red_zhur, select_last_row=False,
+                             set_editeble_col_nomera=edit_columns,styleSheet=CQT.MES_EDIT_CSS)
         CMS.load_column_widths(self, self.ui.tbl_red_zhur)
         CMS.fill_filtr_c(self, self.ui.tbl_red_zhur_filtr, self.ui.tbl_red_zhur, hidden_scroll=True)
-
+        hook_prog_bar.set(70)
+        hook_prog_bar.text('Оформляем таблицу')
         CQT.color_cell_wtable_c(self.ui.tbl_red_zhur, 'Внеплан', '', '2', 200, 240, 200)
         CQT.color_cell_wtable_c(self.ui.tbl_red_zhur, 'Внеплан', '', '1', 240, 200, 200)
-
+        hook_prog_bar.set(80)
+        hook_prog_bar.text('Применяю отметки подтвержения нарядов')
         self.apply_chk_korr_nar_filtr_podtv()
+
     @CQT.onerror
     def edit_red_zhur_koef_sl(self, r, c):
         tbl = self.ui.tbl_red_zhur
@@ -3335,7 +3353,6 @@ naryad.Внеплан, naryad.Компл_ФИО, naryad.Задание, naryad.�
                     load_resource=True,
                     db_resxml=self.db_resxml,
                     byte_data_res_from_db=res,
-
                     DICT_RC_BY_CODE=self.DICT_RC
                 )
             obj_mk = cache[nom_mk]
@@ -3846,7 +3863,6 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
                         CQT.msgbox(f'Не найти начало блока')
                         return
                     data_jur.set_selected_fragment(int(start_num))
-
 
             data_jur.add_new_row(self.DICT_EMPLOEE_FULL_WITH_DEL, current_state.fio, current_state.date, current_state.status,
                                  current_state.comment)
