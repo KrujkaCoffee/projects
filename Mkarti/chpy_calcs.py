@@ -169,24 +169,24 @@ def generate_precsv_tree(self,p=None,write = True, *args,**kwargs):
     set_segment = {"част", "сегм", "сект"}
     list_csv = dict()
     list_err = []
-    for item in dict_tree:
-        cleaned_code_erp = item['Код ERP'].strip()
-        if cleaned_code_erp == '':
+    error_key = 'Описание ошибки'
+    for item in dict_tree: # 09.06.2026
+        template = {'Обозначение': item["Обозначение полное"], 'Наименование': item["Наименование"], 'Код ERP': item['Код ERP']}
+        if item['Код ERP'] == '':
             continue
-        if cleaned_code_erp not in self.DICT_NOMEN:
-            list_err.append(f"Ошибка. {item['Обозначение полное']} код {item['Код ERP']} отсутствует в номенклатуре")
-            continue
-
-        if self.DICT_NOMEN[cleaned_code_erp]['П5'] != '1':
-            if 'лист' in  self.DICT_NOMEN[cleaned_code_erp]['Наименование'].lower():
-                list_err.append(f'{item["Обозначение полное"]}, код:{cleaned_code_erp} -в номенклатуре МЕС материал не имеет параметр (П5 = 1) обратиться к Администратору материалов.')
+        if item['Код ERP'] not in self.DICT_NOMEN:
+            list_err.append({**template, error_key: f"Код ERP отсутствует в справочнике номенклатуры МЕС"})
             continue
 
-        kod_mat = str(self.DICT_NOMEN[cleaned_code_erp]['П6'])
-        tolsh = str(self.DICT_NOMEN[cleaned_code_erp]['П1'])
+        if self.DICT_NOMEN[item['Код ERP']]['П5'] != '1':
+            if 'лист' in  self.DICT_NOMEN[item['Код ERP']]['Наименование'].lower():
+                list_err.append({**template, error_key: f'-в номенклатуре МЕС материал не имеет параметр (П5 = 1) обратиться к Администратору материалов.'})
+            continue
+
+        kod_mat = str(self.DICT_NOMEN[item['Код ERP']]['П6'])
+        tolsh = str(self.DICT_NOMEN[item['Код ERP']]['П1'])
         if kod_mat == '':
-            list_err.append(f'Не найден матерал для резки (П5, П6, П1) на'
-                           f' {item["Обозначение полное"]}')
+            list_err.append({**template, error_key: 'Не найден матерал для резки (П5, П6, П1)'})
 
 
         name_file_obozn = item["Обозначение полное"] + '.dxf'
@@ -217,15 +217,15 @@ def generate_precsv_tree(self,p=None,write = True, *args,**kwargs):
             #else:
             #    list_csv[name_file_obozn]['Количество'] += int(item["Количество на изделие"]) * segm_count(item)
             continue
-        list_err.append(f'Ошибка. отсутствуют файлы {full_path_name}')
+        list_err.append({**template, error_key: f'Не найден файл: {full_path_name}'})
 
     list_csv = F.list_of_dicts_to_list_of_lists(list(list_csv.values()))[1:]
     if len(list_err) > 0:
-        list_err.insert(0,f'Список ошибок')
         CQT.msgboxg_get_table_ok_inf(self,'Обнаружены ошибки',list_err)
         return
     if not list_csv:
-        CQT.msgbox(f'Список под выгрузку пуст.')
+        if CQT.msgboxgYN(f'Список под выгрузку пуст.\nПродолжить добавление ДСЕ?',app_self=self):
+            return list_csv
         return
     #if len(list_csv) == 0:
     #    CQT.msgbox(f'Выгрузка пустая.')
