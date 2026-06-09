@@ -1569,6 +1569,8 @@ def fill_tab_to_level(self, table: QtWidgets.QTableWidget, list_rows = None):
 
         # CMS.load_column_widths(DTCLS.app_self,table)
         hide_columns_for_simple_mode(self, self.ui.tbl_red_tree)
+        CMS.load_column_widths(DTCLS.app_self,table)
+
 
 
 @CQT.onerror
