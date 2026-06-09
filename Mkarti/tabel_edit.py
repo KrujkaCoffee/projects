@@ -48,13 +48,12 @@ def cmb_select_month(self:mywindow):
         CMS.update_width_filtr(self.ui.tbl_tabeli_person,self.ui.tbl_tabeli_person_filtr)
         self.ui.tbl_tabeli_person.horizontalScrollBar().valueChanged.connect(
             self.ui.tbl_tabeli_person_filtr.horizontalScrollBar().setValue)
-        dict_dned = {'1': 'Пн', '2': 'Вт', '3': 'Ср', '4': 'Чт', '5': 'Пт', '6': 'Сб', '7': 'Вс'}
         for j in range(3, tbl.columnCount()):
             if tbl.item(0, j).text() == '1':
                 tbl.item(0, j).setText('Вых')
             else:
                 tbl.item(0, j).setText('')
-            tbl.item(1, j).setText(dict_dned[tbl.item(1, j).text()])
+            tbl.item(1, j).setText(F.get_day_name([tbl.item(1, j).text()]))
         for j in range(2,tbl.columnCount()):
             if tbl.item(0,j).text() == 'Вых':
                 for i in range(tbl.rowCount()):
