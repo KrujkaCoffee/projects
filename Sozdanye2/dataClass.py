@@ -27,5 +27,10 @@ class data_app(SingletonMeta):
     _old_val_cell = None
     obj_Competencies:Competencies|None = None
     empl_obj:Emploee_usr|None = None
+    PLACE:CFG.Place = CFG.Config.place
+    PROJECT:CFG.ProjectConfig = CFG.Config.project
+    USER_CONFIG:CFG.User_config = CFG.Config.user_config
+    APP:CFG.AppConfig = CFG.Config.app
+    APP_ARGS:dict = CFG.Config.app_args
     #======COMPOZITIONS=============
     compositions: Compositions|None = None
