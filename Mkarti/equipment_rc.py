@@ -27,6 +27,8 @@ def load_equipment(self:mywindow,*args):
 def tbl_eq_change_cell(self:mywindow, *args):
     tbl = self.ui.tbl_equipment
    # _,row,column = args
+    if CQT.is_table_updating(tbl):
+        return
     column = tbl.currentColumn()
     row = tbl.currentRow()
     name_f = tbl.horizontalHeaderItem(column).text()
