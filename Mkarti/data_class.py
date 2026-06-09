@@ -6,8 +6,10 @@ import project_cust_38.Cust_mes as CMS
 import datetime
 import project_cust_38.Cust_config as USRCNF
 from typing import TYPE_CHECKING
+import project_cust_38.border_painter as BORDERP
 if TYPE_CHECKING:
     from MKart import mywindow
+    import gui_kal_plan as GPL
 class SingletonMeta(type):
     __instances = {}
 
@@ -22,6 +24,16 @@ class SingletonMeta(type):
 
 @dataclass
 class Data_plan(SingletonMeta):
+
+
+    @staticmethod
+    def get_groups_vid_rab_for_plan():
+        data = CSQ.custom_request_c(USRCNF.Config.project.db_users,f"""SELECT 
+        group_vid_rab_for_plan.* , group_vid_rab_for_plan_vs_etap.etap_id, 
+            group_vid_rab_for_plan_vs_etap.koef FROM group_vid_rab_for_plan 
+            INNER JOIN group_vid_rab_for_plan_vs_etap ON 
+            group_vid_rab_for_plan_vs_etap.group_vid_rab == group_vid_rab_for_plan.name""",rez_dict=True)
+        return CMS.Groups_vid_rab_for_plan(data)
     @staticmethod
     def GET_DICT_INFO_FIELDS_KPL(db_kplan):
 
@@ -90,8 +102,41 @@ class Data_plan(SingletonMeta):
     db_resxml = PROJECT.db_resxml
     db_fiels = PROJECT.db_files
 
-    PLACE = USRCNF.Config.place
+
     # ======= KAL PLAN======================
+    #----------flags--------------------------
+    current_id_poz_kpl:int|None=None
+    current_gant:CMS.Gant|None = None
+    current_vol_gant:CMS.Gant|None = None
+    EDIT_TABEL_MODE:bool|None = None
+    edit_tabel_current_month:str|None = None
+    SETTINGS_PL_MODE:bool|None = None
+    ADD_POZ_MODE:bool|None = None
+    EDIT_POZ_MODE:bool|None = None
+    DICT_INFO_FIELDS_KPL = GET_DICT_INFO_FIELDS_KPL(db_kplan)
+    GROUPS_VID_RAB_FOR_PLAN:CMS.Groups_vid_rab_for_plan = get_groups_vid_rab_for_plan()
+    CHECK_FIELD_RULES:None|KPL.Check_field_rules = None
+    FIELDS_DB_INFO:None|CMS.Fields_db_info = None
+    current_podr_for_edit: str | None = None
+    DICT_ITERS_FOR_CHECK_FIELDS:dict | None = None
+    LIST_FOR_HAT_GANT:list[str]|None = None
+    MOUSE_MOVING_BLOCK_GANT:KPL.Gant_handler|None = None
+    FNC_RECALC_GANT_BY_LOCAL_LIMIT_TABLE = None#GPL.recalc_gant_by_local_limit_table
+    #---------------gant_borders-------------
+    tbl_gant_local_border:BORDERP.BorderPainter = BORDERP.BorderPainter(
+                            left_top=(0, 0), right_bottom=(0, 0),
+                                thick_out=5,
+                               thick_in=0,rgb_out=(22,122,22),rgb_in=(122,222,122),enabled=False)
+
+    tbl_gant_context_border:BORDERP.BorderPainter = BORDERP.BorderPainter(
+                            left_top=(0, 0), right_bottom=(0, 0),
+                                thick_out=5,
+                               thick_in=0,rgb_out=(22,222,22),rgb_in=(122,222,122),enabled=False)
+
+    #---------------------------------------
+    BROWSER_GR_PAD_MOSH:QtWebEngineWidgets.QWebEngineView|None = None
+    BROWSER_DIAGRAM_SUMM:QtWebEngineWidgets.QWebEngineView|None = None
+
     NAPR_DEYAT = CMS.calc_napr_deyat(PLACE.poki)
     DICT_NAPR_DEYAT = F.deploy_dict_c(NAPR_DEYAT, 'Пномер')
     DICT_NAPR_DEYAT_NAME = F.deploy_dict_c(NAPR_DEYAT, 'Имя')
