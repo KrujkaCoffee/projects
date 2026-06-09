@@ -9,7 +9,9 @@ from typing import TYPE_CHECKING
 import project_cust_38.border_painter as BORDERP
 if TYPE_CHECKING:
     from MKart import mywindow
+    import kal_plan as KPL
     import gui_kal_plan as GPL
+    from PyQt5 import QtWebEngineWidgets
 class SingletonMeta(type):
     __instances = {}
 
@@ -161,10 +163,11 @@ class Data_plan(SingletonMeta):
     LIST_NAPRAVLENIE = CMS.calc_dict_napravlenie()
     DICT_NAPRAVLENIE = F.deploy_dict_c(LIST_NAPRAVLENIE, 'Пномер')
     DICT_NAPRAVLENIE_BY_NAME = F.deploy_dict_c(LIST_NAPRAVLENIE, 'name')
-
     DICT_CLD = CMS.DICT_CLD_KPLAN(db_kplan)
-    DICT_PODR = F.deploy_dict_c(CMS.calc_dict_podr(), 'Имя')
-    DICT_PODR_POKI = {k:v for k,v in  DICT_PODR.items() if (v['poki'] is None or v['poki'] == USRCNF.Config.place.poki)}
+    LIST_PODR = CMS.calc_dict_podr()
+    DICT_PODR = F.deploy_dict_c(LIST_PODR, 'Имя')
+    DICT_PODR_BY_ID = F.deploy_dict_c(LIST_PODR, 'Пномер')
+    DICT_PODR_POKI = {k:v for k,v in  DICT_PODR.items() if (v['poki'] is None or USRCNF.Config.place.poki == v['poki'] )}
     STATUS_NORM = CSQ.custom_request_c(db_kplan, f"""SELECT * FROM status_norm""", rez_dict=True)
     DICT_STATUS_NORM = F.deploy_dict_c(STATUS_NORM, 'Код')
     DICT_STATUS_NORM_NAME = F.deploy_dict_c(STATUS_NORM, 'Имя')
@@ -175,9 +178,11 @@ class Data_plan(SingletonMeta):
     DICT_ETAPS_NAME = F.deploy_dict_c(ETAPS_NAME,"name")
     DICT_ETAPS_VID_NAME = F.deploy_dict_c(ETAPS_NAME, "имя_в_виды_по_напр")
     DICT_EMPLOEE_FULL_WITH_DEL = CMS.dict_emploee_full_with_del(db_users)
+    DICT_EMPLOEE_FULL_WITH_DEL_BY_LOGIN = CMS.dict_emploee_full_with_del(db_users)
 
-    DICT_INFO_FIELDS_KPL = GET_DICT_INFO_FIELDS_KPL(db_kplan)
 
+    list_dict_from_db:None|list[dict] = None
+    dict_dict_from_db:None|dict[dict] = None
     DICT_REPLACE_BY_DAYS = dict()
 
     DICT_GROUP_VID_RAB_FOR_PLAN = F.deploy_dict_c(CSQ.custom_request_c(db_users, f'''SELECT * FROM group_vid_rab_for_plan WHERE composite = 0;''',rez_dict=True), 'name')
@@ -189,3 +194,7 @@ class Data_plan(SingletonMeta):
      FROM group_vid_rab_for_plan_vs_etap 
     INNER JOIN etaps ON etaps.s_num == group_vid_rab_for_plan_vs_etap.etap_id;''', rez_dict=True,attach_dbs=bd_naryad)
     DICT_GROUP_PODR_VID_RAB_FOR_PLAN = CMS.calc_dict_group_podr_vid_rab_for_plan()
+
+    @classmethod
+    def fnc_recalc_gant_by_local_limit_table(cls,i:int):
+        cls.FNC_RECALC_GANT_BY_LOCAL_LIMIT_TABLE(i)
