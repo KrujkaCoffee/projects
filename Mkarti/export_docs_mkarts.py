@@ -6,9 +6,7 @@ import project_cust_38.Cust_SQLite as CSQ
 import project_cust_38.xml_v_drevo as XML
 
 
-#TODO формать вырузки xls, убрать из номенклатуры всю покупнину, и у покупнины убрать хеш в ресурсных
-#TODO округлить до 3 знаков количество
-#TODO потерян рычаг
+
 
 @CQT.onerror
 def spis_res_erp_po_mk(self, nom_mk: int, kolich: int):
