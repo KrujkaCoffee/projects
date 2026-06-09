@@ -1887,9 +1887,24 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.lbl_vibr_nar.clear()
         self.ui.lbl_ispoln1.clear()
         self.ui.lbl_ispoln2.clear()
-        self.ui.cmb_prof_rasp.clear()
+        self.clear = self.ui.cmb_prof_rasp.clear()
         self.select_tbl_projs_raspred()
         CQT.clear_tbl(self.ui.tbl_vibor_rabotn_rasp)
+        #=============ДОБАВЛЕНИЕ Внеплановых этапов======================
+        try:
+            errs = check_and_add_etap_into_erp(nom_nar)
+            if errs:
+                template = B24.MessageBuilder(
+                    f'{DTCLS.PLACE.Имя}: {DTCLS.USER_CONFIG.User.ФИО} - Распределение наряда для {fio}/{fio2}')  # Инициализация (базовое сообщение)
+                template.add_message(
+                    f'ошибка stage = "{self.stage}" err: {str(errs)} в check_and_add_etap_into_erp для наряда {nom_nar}')  # Добавить сообщение
+                template.send_by_chat_id('chat90445')  # Итоговая отправка
+        except:
+            template = B24.MessageBuilder(
+                f'{DTCLS.PLACE.Имя}: {DTCLS.USER_CONFIG.User.ФИО} - Распределение наряда для {fio}/{fio2}')  # Инициализация (базовое сообщение)
+            template.add_message(f'ошибка stage = "{self.stage}" в check_and_add_etap_into_erp для наряда {nom_nar}')  # Добавить сообщение
+            template.send_by_chat_id('chat90445')  # Итоговая отправка
+        #===============================================================
         CQT.msgbox(f'Наряд №{nom_nar} успешно распределен')
 
     @CQT.onerror

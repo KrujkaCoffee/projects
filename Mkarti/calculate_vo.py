@@ -1191,6 +1191,7 @@ def recalc_weight(self, *args):
     tbl = self.ui.table_razr_MK
     if tbl.rowCount() == 0:
         return
+    print('===recalc weight=====')
     for i in range(tbl.rowCount()):
         row = CQT.get_dict_line_form_tbl(tbl, i)
         str_weight = row['Масса/М1,М2,М3'].split('/')[0]
@@ -1199,11 +1200,14 @@ def recalc_weight(self, *args):
         #if count != int(row['Количество на изделие']):
         #    CQT.msgbox(f'Ошибка расчетка количества на изделие')
         #    return
-        rez+= F.valm(str_weight)*count
+        s_add = F.valm(str_weight)*count
+        rez+= s_add
+        print(f'    {row['Обозначение']} {row['Наименование']}: {str_weight} * {count} = {s_add}')
         if pki == '0':
             rez_wo_pki += F.valm(str_weight)*count*1.3
     if rez > 0:
         self.ui.lbl_summ_weight.setText(str(round(rez,2)))
+        print(f'===recalc weight:  {round(rez,2)}  =====')
     if rez_wo_pki > 0:
         self.ui.lbl_summ_weight_wo_pki.setText(str(round(rez_wo_pki,2)))
     return round(rez,2), round(rez_wo_pki,2)
