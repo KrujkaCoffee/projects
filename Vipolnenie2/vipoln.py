@@ -5,6 +5,9 @@ import os
 from PyQt5 import QtWidgets, QtCore, QtGui
 from PyQt5.QtWinExtras import QtWin
 import project_cust_38.Cust_Qt as CQT
+
+import classes
+
 CQT.convert_UI_into_PY_c()
 from mydesign import Ui_MainWindow  # импорт нашего сгенерированного файла
 import config
@@ -163,7 +166,8 @@ class mywindow(QtWidgets.QMainWindow):
         self.DICT_VIDS_NOMEN = F.deploy_dict_c(list_nomens, 'name')
         self.DICT_VIDS_NOMEN_BY_REF = F.deploy_dict_c(list_nomens, 'Ref_Key')
         self.DICT_PRICE_BRAK = CMS.DICT_PRICE_BRAK(self.db_naryd)
-        self.DICT_TYPE_PROSTOI =F.deploy_dict_c( CSQ.custom_request_c(self.db_naryd,f"""SELECT * FROM kategor_vnepl WHERE poki_{self.place.poki} = 1""", rez_dict=True),"value")
+        self.DICT_TYPE_PROSTOI =F.deploy_dict_c( CSQ.custom_request_c(self.db_naryd,f"""SELECT * FROM category_vnepl WHERE poki = {self.place.poki} and use = 1""", rez_dict=True),"value")
+        # 21.05.2026
         self.DICT_DOLGN_ETAP = F.deploy_dict_c(
             CSQ.custom_request_c(self.db_naryd, f"""SELECT * FROM dolgn_etap""", rez_dict=True), 'Должность')
         self.app_icons()
