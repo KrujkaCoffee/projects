@@ -198,12 +198,15 @@ class mywindow(QtWidgets.QMainWindow):
 
     def log_in(self):
         self.auth_manager.log_in()
-        DTCLS.user_abstracts = CSQ.custom_request_c(USRCNF.Config.project.db_users,
-                                                    f"""SELECT ФИО FROM employee 
-            WHERE Режим == 'Абстракт' AND Подразделение 
-            == "{USRCNF.Config.user_config.User.Подразделение.strip()}";""",
-                                                    rez_dict=True)
-
+        if USRCNF.Config.user_config.User:
+            DTCLS.user_abstracts = CSQ.custom_request_c(USRCNF.Config.project.db_users,
+                                                        f"""SELECT ФИО FROM employee 
+                WHERE Режим == 'Абстракт' AND Подразделение 
+                == "{USRCNF.Config.user_config.User.Подразделение.strip()}";""",
+                                                        rez_dict=True)
+            return
+        CQT.msgbox(f'Ошибка инициализации пользователя')
+        return
 
     def on_success_login(self):
         DTCLS.production_shift = CMS.Production_shifts(DTCLS.USER_CONFIG.User.Пномер,
@@ -347,19 +350,33 @@ class mywindow(QtWidgets.QMainWindow):
 
     @CQT.onerror
     def update_poditogs(self):
-        start = "2024-07-01 04:03:25"
+        start = "2026-06-01 04:18:36"
+        end = "2026-06-02 04:18:36"
+        end_str = ''
+        if end:
+            end_str = f' AND datetime(Дата) < datetime("{end}")'
         list_nar = []
+        start_nar = None
         str_add = ''
         if list_nar:
             str_add = f' AND Номер_наряда IN ({", ".join([str(_) for _ in list_nar])})'
         list_users = CSQ.custom_request_c(self.db_naryd,f"""SELECT DISTINCT ФИО, Номер_наряда FROM jurnal
-         WHERE datetime(Дата) > datetime("{start}") {str_add};""",rez_dict=True)
+         WHERE datetime(Дата) > datetime("{start}") {end_str}  {str_add} ORDER BY Номер_наряда;""",rez_dict=True)
+
+        list_emploee_with_del = CMS.list_emploee_full_with_del(self.bd_users)
+        DICT_EMPLOEE_FULL_WITH_DEL = F.deploy_dict_c(list_emploee_with_del, 'ФИО')
+
         for i, item in enumerate(list_users):
-            print(f'{i}/{len(list_users)}')
+            if start_nar:
+                if item['Номер_наряда'] < start_nar:
+                    continue
+            print(f'{i}({item['Номер_наряда']})/{len(list_users)} start')
             nar = CMS.Naryads(item['Номер_наряда'], self.db_naryd, self.DICT_DOLGN_ETAP, self.bd_users,
-                              self.DICT_EMPLOEE_FULL_WITH_DEL)
+                              DICT_EMPLOEE_FULL_WITH_DEL)
             nar.recalc_jur_n_time(item['ФИО'])
 
+            print(f'{i}({item['Номер_наряда']})/{len(list_users)} end')
+        print(f'Succses  update_poditogs')
     @CQT.onerror
     def check_lock_db(self,func, conn = '', cur = ''):
         rez = func
@@ -789,9 +806,9 @@ class mywindow(QtWidgets.QMainWindow):
         if self.nar_info is None:
             return
         custom_request_c = f'''SELECT  Дата, ФИО, Статус, Подытог, Примечание 
-                FROM jurnal WHERE Номер_наряда == {self.nar_info.nom_nar}'''
+                FROM jurnal WHERE Номер_наряда == {self.nar_info.nom_nar} Order by  ФИО, Дата'''
         rez = CSQ.custom_request_c(self.db_naryd, custom_request_c)
-        CQT.fill_wtabl_old_c(self, rez, self.ui.tbl_history, isp_hat_c=True, separ='',min_shir_col=200)
+        CQT.fill_wtabl ( rez, self.ui.tbl_history,styleSheet=CQT.MES_CSS)
 
 
     @CQT.onerror
