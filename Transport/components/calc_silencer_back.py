@@ -109,29 +109,34 @@ def calc_new_tbl_input():
         if 'default_val' in item:
             default_val = item['default_val']
             val = copy.deepcopy(default_val)
-
         min_max_list = None
         if "min_max_list" in item:
             min_max_list = item["min_max_list"]
             if isinstance(min_max_list, tuple) and data_type == None:
                 data_type = int
+        visible = True
+        if 'visible' in item:
+            visible = item['visible']
+        if visible:
+            comment = None
+            if "comment" in item:
+                comment = item["comment"]
+            accuracy = 5
+            if 'accuracy' in item:
+                accuracy = item['accuracy']
 
-        comment = None
-        if "comment" in item:
-            comment = item["comment"]
-        accuracy = 5
-        if 'accuracy' in item:
-            accuracy = item['accuracy']
-        if 'group_name' in item:
-            if prev_gr != item['group_name']:
-                prev_gr = item['group_name']
-                new_tbl_input_copy.add_group(name,prev_gr)
-        row = CMF.Row_data()
-        row.append(name, CMF.Cell_description())
-        row.append(header, CMF.Cell_description())
-        row.append(dimension, CMF.Cell_description())
-        row.append(val, CMF.Cell_description(min_max_list, comment=comment, data_type=data_type, accuracy=accuracy, default_val=default_val))
-        new_tbl_input_copy.add_row(row)
+
+            if 'group_name' in item:
+                if prev_gr != item['group_name']:
+                    prev_gr = item['group_name']
+                    new_tbl_input_copy.add_group(name,prev_gr)
+
+            row = CMF.Row_data()
+            row.append(name, CMF.Cell_description())
+            row.append(header, CMF.Cell_description())
+            row.append(dimension, CMF.Cell_description())
+            row.append(val, CMF.Cell_description(min_max_list, comment=comment, data_type=data_type, accuracy=accuracy, default_val=default_val))
+            new_tbl_input_copy.add_row(row)
     return new_tbl_input_copy
 
 
@@ -423,7 +428,13 @@ def calc_new_data(input_data: dict) -> tuple[dict, list[dict], bool]:
     list_err = []
     calculated = {}
 
-    params = {**CONSTANTS, **input_data}
+    invisible_params = {
+        param['name']: param['val'] or 0
+        for param in INPUT_PARAMS
+            if 'visible' in param and not param['visible']
+    }
+
+    params = {**CONSTANTS, **invisible_params, **input_data}
 
     # Вспомогательные функции проверки
     def check_positive(name, value, header):
