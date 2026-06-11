@@ -460,6 +460,8 @@ def recalc_name_group()->str:
         return  f'Группа № {F.now("%d.%m %H:%M")}'
     return str
 
+MODIFIER_USER_DATA = 100
+
 @CQT.onerror
 def load_tbl_filter():
     ui = DTCLS.app_self.ui
@@ -483,7 +485,7 @@ def load_tbl_filter():
         CQT.fill_wtabl(rez_tbl,
                        tbl_filter_in_groups,
                        styleSheet=CQT.MES_CSS,
-                       auto_type=False,hide_head_rows=True,dict_or_list_user_data=rez_data_tbl,font_size=12)
+                       auto_type=False,hide_head_rows=True,dict_or_list_user_data=rez_data_tbl,font_size=12,modifier_user_data=MODIFIER_USER_DATA)
 
         t_filter_in_groups = CQT.TableContext(tbl_filter_in_groups)
 
@@ -493,7 +495,7 @@ def load_tbl_filter():
                 val = row.value(k)
                 if val == '':
                     continue
-                grop:Group_filtr = CQT.getCustData(row.item(k))
+                grop:Group_filtr = CQT.getCustData(row.item(k),modifier= MODIFIER_USER_DATA)
                 btn = CQT.add_btn(row.tbl,row.i,ki,val,checkable=True,
                                   conn_func_checked_row_col=fnc_checked,cell_val=grop)
                 grop.btn = btn
