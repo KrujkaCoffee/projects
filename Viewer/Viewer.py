@@ -56,8 +56,8 @@ class Data:
     #DICT_NAPR_DEYAT_NAME = F.deploy_dict_c(NAPR_DEYAT, 'name')
     DICT_NAPRAVL = F.deploy_dict_c(NAPR, 'name')
 
-    KAT_VNEPL = CSQ.custom_request_c(bd_naryad, f'''SELECT * FROM kategor_vnepl''', hat_c=False,
-                                                        rez_dict=True)
+    KAT_VNEPL = CSQ.custom_request_c(bd_naryad, f'''SELECT * FROM category_vnepl WHERE poki = {USRCNF.Config.place.poki}''', hat_c=False,
+                                                        rez_dict=True) #21.05.2026
 
     DICT_TYPE_MK_NAMES = F.deploy_dict_c(
         CSQ.custom_request_c(bd_naryad, f"""SELECT * FROM Тип_мк""", rez_dict=True),
@@ -143,7 +143,6 @@ class mywindow(QtWidgets.QMainWindow):
         self.files_tmp = F.scfg('files_tmp')
         self.data_f = F.scfg('data_f')
         #===================actions
-
         self.ui.actionexcel.triggered.connect(self.export_table)
         self.ui.action_txt.triggered.connect(self.export_table_txt)
 
