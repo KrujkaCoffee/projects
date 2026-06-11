@@ -154,7 +154,7 @@ class mywindow(QtWidgets.QMainWindow):
         self.load_users()
         self.check_lock_db(CMS.dict_professions(self, self.bd_users, conn=conn), conn,cur)
         CSQ.close_bd(conn,cur)
-        self.DICT_EMPL_FULL = CMS.dict_emploee_full(self.bd_users,self=self)
+        self.DICT_EMPL_FULL = CMS.dict_emploee_full(self.bd_users,self=self,org_name = USRCNF.Config.place.Имя)
         self.auth_manager.load_po_dolg()
 
         DICT_OPER = CSQ.custom_request_c(self.db_naryd, f"""SELECT * FROM operacii""", rez_dict=True)
@@ -193,6 +193,8 @@ class mywindow(QtWidgets.QMainWindow):
         #userm.log_in(self)
         #self.ui.btn_nekomplect.setEnabled(False)
         #self.update_poditogs()
+        #self.autostop_nars() #выставить на паузу не закрытые наряды
+
 
     def log_in(self):
         self.auth_manager.log_in()
@@ -328,9 +330,10 @@ class mywindow(QtWidgets.QMainWindow):
             self.ui.gb_abstrakt.setVisible(False)
 
     def start_up(self):
-        # if USRCNF.Config.user_config.is_developer: # 07.04.2026
-        #     self.auth_manager.log_in(autouser='Демичев Николай Юрьевич')
-            ...
+        pass
+        #if USRCNF.Config.user_config.is_developer: # 07.04.2026
+        #    self.auth_manager.log_in(autouser='Демичев Николай Юрьевич')
+        #    ...
 
     @CQT.onerror
     def check_selected_user(self, *args):
@@ -1938,7 +1941,6 @@ class mywindow(QtWidgets.QMainWindow):
             return
 
         #======================================
-
         is_idle = zadanie == 'ПРОСТОЙ'
         if not jur_obj.add_new_row(self.DICT_EMPL_FULL, lbl_abstract, F.now(), vid_stop, primech, is_idle):  # 15.05.25
             return
@@ -1946,9 +1948,7 @@ class mywindow(QtWidgets.QMainWindow):
         # ======================================
 
         if vid_stop == 'Завершен':
-
             CMS.ending_oform_zav_nar(nar_obj, jur_obj, self.glob_otk_kontrol, self.glob_fio)
-
         #==============группировка=====================================
         if group_id:
             GRM.apply_group_event(int(group_id),int(nom_nar))
@@ -1993,6 +1993,7 @@ class mywindow(QtWidgets.QMainWindow):
             lbl_tek_nar = "-"
         else:
             lbl_tek_nar = str(rez[0])
+
         DTCLS.USER_CONFIG.cust_windowTitle = f'Текущий наряд: {lbl_tek_nar}'
         self.ui.lbl_tek_nar.setText(lbl_tek_nar)
 
