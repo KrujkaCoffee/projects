@@ -374,7 +374,6 @@ class mywindow(QtWidgets.QMainWindow):
             nar = CMS.Naryads(item['Номер_наряда'], self.db_naryd, self.DICT_DOLGN_ETAP, self.bd_users,
                               DICT_EMPLOEE_FULL_WITH_DEL)
             nar.recalc_jur_n_time(item['ФИО'])
-
             print(f'{i}({item['Номер_наряда']})/{len(list_users)} end')
         print(f'Succses  update_poditogs')
     @CQT.onerror
@@ -1812,6 +1811,89 @@ class mywindow(QtWidgets.QMainWindow):
         if not self.ui.chk_come_back.isChecked():  # если стоит галочка вернуться обратно то...
             self.load_naruad()
 
+
+    def autostop_nars(self):
+        time_to_pase = '2026-06-05 15:30:00'
+        list_starts = CSQ.custom_request_c(USRCNF.Config.project.db_naryad,
+                                           f"""SELECT DISTINCT Номер_наряда, ФИО 
+            FROM jurnal WHERE Datetime(Дата)
+            BETWEEN "2026-06-05 06:00:00" AND "2026-06-05 15:15:00" and Статус = "Начат"
+                """,rez_dict=True)
+        cnt = len(list_starts)
+        cntr = 0
+        for it in list_starts:
+            cntr+=1
+            print(f'check {cntr}/{cnt}')
+
+            jurnal_o = CMS.Jurnal_nar(USRCNF.Config.project.db_naryad,it['Номер_наряда'],it["ФИО"])
+            if jurnal_o.is_fregments_unclose():
+                print(f'    fregments_unclose {cntr}/{cnt}')
+
+                empl_o = CMS.Emploee_usr(it["ФИО"], USRCNF.Config.project.db_users)
+                custom_request_c = f'''
+                    SELECT 
+                        COALESCE( groups.name, "") as Группа,
+                        naryad.Пномер, 
+                        naryad.Дата, 
+                        naryad.Номер_мк, 
+                        naryad.Задание, 
+                        naryad.ФИО, 
+                        naryad.ФИО2, 
+                        naryad.Твремя, 
+                        naryad.Норма_времени AS "Норматив время", 
+                        "" AS "Время", 
+                        naryad.Компл_номер_тара,
+                        naryad.Компл_адрес, 
+                        naryad.Примечание, 
+                        naryad.Внеплан,
+                        naryad.Категория_внепл,
+                        
+                        "" AS Приоритет,
+
+            naryad.Коэфф_сложности, 
+                        naryad.Виды_работ, 
+                        naryad.Опер_время, 
+                        mk.Статус_ЧПУ, 
+                        zagot.Прим_резка, 
+                        naryad.ФИО_для_ОТК , 
+                        naryad.Операции  , 
+                        naryad.Распред_ФИО , 
+                        naryad.Кол_повт_приемок AS "Кол_во повт. приёмок",
+                        "" as "Позиция",
+                        "" as "Номенклатура_ЕРП",
+                        "" AS "Номер_заказа", 
+                        "" AS Номер_проекта,
+                        COALESCE( groups.id, "") as _id,
+                        COALESCE( groups.summ, "") as _gr_summ
+                    FROM naryad 
+                    INNER JOIN mk ON mk.Пномер = naryad.Номер_мк 
+                    
+                          INNER JOIN    коды_веплана_для_наряда  ON коды_веплана_для_наряда.code = naryad.Внеплан
+                    INNER JOIN zagot ON zagot.Ном_МК = naryad.Номер_мк 
+                    LEFT JOIN naryad_groups ON  (naryad_groups.id_nar = naryad.Пномер AND naryad_groups.fio IN ("{it["ФИО"]}"))
+                    LEFT JOIN groups ON (groups.id == naryad_groups.id_group AND groups.user_ref == "{empl_o.ID_ФизЛица}")
+                    WHERE  (naryad.ФИО = "{it["ФИО"]}"  
+                                OR naryad.ФИО2 = "{it["ФИО"]}") AND naryad.Пномер = {it['Номер_наряда']};'''
+                data_inf = CSQ.custom_request_c(self.db_naryd, custom_request_c, rez_dict=True,
+                                           attach_dbs=USRCNF.Config.project.db_kplan,one=True)
+                if not data_inf:
+                    continue
+
+                is_idle = data_inf['Задание'] == 'ПРОСТОЙ'
+
+                is_vnepl_otk = data_inf['Категория_внепл'] == 18
+                self.glob_otk_kontrol = CMS.is_otk_nar(data_inf['Операции'], self.DICT_OPER_NAME) or is_vnepl_otk
+                abstract_name = it["ФИО"]
+                if self.glob_otk_kontrol:
+
+                    abstract_name = self.get_current_abstract_name(it['Номер_наряда'])
+                    jur_obj = CMS.Jurnal_nar(self.db_naryd, user=abstract_name, nom_nar=it['Номер_наряда'])
+                else:
+                    jur_obj = CMS.Jurnal_nar(self.db_naryd,it['Номер_наряда'], user=abstract_name)
+                jur_obj.select_last_fragment()
+                jur_obj.add_new_row(self.DICT_EMPL_FULL, abstract_name, time_to_pase, 'Приостановлен',
+                                    f'Авто остановка', is_idle)
+                print(f'    added_pause {cntr}/{cnt}',end='\n\n')
 
     @CQT.onerror
     def stop_nar(self, vid_stop):
