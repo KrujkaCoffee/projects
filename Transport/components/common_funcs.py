@@ -65,7 +65,7 @@ class Cell_description():
         type_val = self.data_type
 
         if val is None or (isinstance(val, str) and val.lower() in ('none', 'null', '')):
-            return None
+            return ''
 
         try:
             if type_val == bool:
@@ -1686,8 +1686,6 @@ def generate_param_table(
     return new_table
 
 
-
-
 def datatable_to_dicts(table: ft.DataTable) -> list[dict]:
     """
     Преобразует DataTable в список словарей с поддержкой различных контролов.
@@ -2213,7 +2211,7 @@ def build_save_reports_menu(
             ft.MenuItemButton(
                 leading=ft.Icon(ft.Icons.SETTINGS),
                 content=ft.Text("Настройки…"),
-                on_click=lambda e: _safe_call(on_tech_settings, e),
+                on_click=on_tech_settings,
             ),
         ],
     )

@@ -150,7 +150,7 @@ def _scan_series(
     return group_names, series_by_group
 
 
-def open_tech_report_settings_dialog(
+async def open_tech_report_settings_dialog(
     page: ft.Page,
     *,
     output_params: Dict[str, dict],
@@ -952,7 +952,7 @@ def open_tech_report_settings_dialog(
         transpose_body_ref.current.controls = tiles
         transpose_body_ref.current.update()
 
-    def _ensure_transpose_rendered():
+    async def _ensure_transpose_rendered():
         if _transpose_rendered["done"]:
             return
         _transpose_rendered["done"] = True
@@ -964,7 +964,8 @@ def open_tech_report_settings_dialog(
             ft.Row(controls=[ft.ProgressRing(width=18, height=18), ft.Text("Загрузка вкладки...")], spacing=10)
         ]
         try:
-            transpose_body_ref.current.update()
+            page.update(transpose_body_ref)
+            # transpose_body_ref.current.update()
         except Exception:
             pass
 
@@ -1011,7 +1012,13 @@ def open_tech_report_settings_dialog(
         finally:
             page.pop_dialog()
 
-    def _close(save: bool):
+    def async_wrap(fn, *args, **kwargs):
+        async def wrap():
+            return await fn(*args, **kwargs)
+        return wrap
+
+
+    async def _close(save: bool):
         if _closing["busy"]:
             return
         _closing["busy"] = True
@@ -1022,14 +1029,18 @@ def open_tech_report_settings_dialog(
         btn_save.disabled = True
         btn_cancel.disabled = True
         try:
-            dlg.update()
+            page.update(progress_ring, close_feedback_text, btn_save, btn_cancel)
+            # btn_save.update()
+            # btn_cancel.update()
         except Exception:
             pass
+        await _finish_close(save)
+        # page.run_task(_finish_close, save)
 
-        page.run_task(_finish_close, save)
-
-    btn_cancel.on_click = lambda _e: _close(False)
-    btn_save.on_click = lambda _e: _close(True)
+    btn_cancel.on_click = async_wrap(_close, False)
+    # btn_cancel.on_click = lambda _e: _close(False)
+    btn_save.on_click = async_wrap(_close, True)
+    # btn_save.on_click = lambda _e: _close(True)
 
     fields_tab = ft.Container(
         content=ft.Column(ref=fields_body_ref, controls=[], scroll=ft.ScrollMode.AUTO, expand=True),
@@ -1061,14 +1072,15 @@ def open_tech_report_settings_dialog(
         ),
     )
 
-    def _on_tab_click(e: ft.ControlEvent):
+    async def _on_tab_click(e: ft.ControlEvent):
         try:
             tabs.selected_index = int(e.data)
-            tabs.update()
+            e.page.update(tabs)
+            # tabs.update()
         except Exception:
             pass
         if str(e.data) == "1":
-            _ensure_transpose_rendered()
+            await _ensure_transpose_rendered()
 
     tab_bar.on_click = _on_tab_click
 

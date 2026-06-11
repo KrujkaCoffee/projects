@@ -1,3 +1,4 @@
+import asyncio
 import copy
 from typing import Any
 
@@ -17,6 +18,11 @@ try:
     from components.silencer_chart_report import build_silencer_report
 except Exception:
     build_silencer_mini_report = None
+
+try:
+    from components.silencer_report_pdf import build_silencer_report_pdf
+except Exception:
+    build_silencer_report_pdf = None
 
 DICT_BARS = {"leading": {'text': 'Домой',
                          'icon': ft.Icons.HOME,
@@ -68,6 +74,8 @@ _input_tabe_ref = ft.Ref[ft.DataTable]()
 _output_tabe_ref = ft.Ref[ft.DataTable]()
 
 NAME_MODULE = "silencer"
+
+
 
 
 async def apply_page_settings(page: ft.Page,MODULE:DTCLS.ModuleCfg):
@@ -199,7 +207,7 @@ def _tech_build(e: ft.ControlEvent):
     CMF.dialog_save_file(e, path)
 
 
-def _tech_settings(e: ft.ControlEvent):
+async def _tech_settings(e: ft.ControlEvent):
     Data: DTCLS.Data_page = e.page.data
     cfg = getattr(Data.Data_module.cust_data, "tech_report_cfg", None)
     if not isinstance(cfg, dict):
@@ -232,7 +240,7 @@ def _tech_settings(e: ft.ControlEvent):
         except Exception:
             pass
 
-    open_tech_report_settings_dialog(
+    await open_tech_report_settings_dialog(
         e.page,
         output_params=calc_silencer_back.OUTPUT_PARAMS,
         cfg=cfg,
@@ -323,35 +331,18 @@ def _save_in_db(e: ft.ControlEvent):
     except Exception as e:
         return False
 
-def gen_page(page):
+async def gen_page(page):
     Data: DTCLS.Data_page = page.data
 
     def new_calc(e: ft.ControlEvent, default_vals_input: dict | None = None):
         Data: DTCLS.Data_page = e.page.data
         Data.Data_module.cust_data: calc_silencer_back.Cust_module_params
 
-
-        def apply_oforml(table_data:CMF.Table_data):
-            for row_data in table_data.rows:
-                for cell in row_data.cells:
-                    if row_data.get_cell_unique().val == 'kolichestvo_kasset' and cell.params_field.name == 'val':
-                         calc_silencer_back.oform_kolichestvo_kasset(cell,cell.val)
-
-                    if row_data.get_cell_unique().val == 'kolichestvo_stupenej_drosselirovaniya_sht' and cell.params_field.name == 'val':
-                        calc_silencer_back.oform_kolichestvo_stupenej_drosselirovaniya_sht(cell,cell.val)
-
-                    if row_data.get_cell_unique().val == 'edinica_rashoda' and cell.params_field.name == 'val':
-                        calc_silencer_back.oform_edinica_rashoda(cell,cell.val)
-            # table_data.table_view.update_view()
-
-
         def fnc_onchange_tbl_input(e, *args):
             meta = e.control.data
             cell:CMF._Cell_data = meta['cell']
             row_data: CMF.Row_data = cell.parent_row
-            old_val = cell.val
             new_val = e.data
-
             new_val = cell.description.cast_type(new_val)
 
             if row_data.get_cell_unique().val == 'kolichestvo_kasset' and cell.params_field.name == 'val':
@@ -368,14 +359,9 @@ def gen_page(page):
                 pass
             set_header_elems_visible(False)
 
-            # if set_header_elems_visible(False) or table_data.table_view.fl_need_upd:
-            #     table_data.table_view.update_view()
-
         page: ft.Page = e.page
 
-        # if not _desktop_column_ref.current:
         generate_desktop_row(page, rail)
-        # _general_module_row_ref.current.controls.append(_desktop_column_ref.current)
 
         if _input_tabe_ref.current in _input_column_tabels_ref.current.controls:
             _input_column_tabels_ref.current.controls.clear()
@@ -397,15 +383,6 @@ def gen_page(page):
         Data: DTCLS.Data_page = page.data
 
         def fnc_cell_click(e):
-            def scroll_to_row(table_ref: ft.Ref[ft.DataTable], row_index: int):
-                if table_ref.current:
-                    # Получаем контейнер строки
-                    row = table_ref.current.rows[row_index]
-                    if hasattr(row, "ref") and row.ref and row.ref.current:
-                        row.ref.current.scroll_into_view(
-                            alignment=0.1,  # куда позиционировать (0.0 – верх, 1.0 – низ)
-                            duration=300  # анимация
-                        )
             meta = e.control.data
             cell: CMF._Cell_data = meta['cell']
             row_data: CMF.Row_data = cell.parent_row
@@ -418,7 +395,6 @@ def gen_page(page):
 
         def add_rez_table(e: ft.ControlEvent):
             Data.Data_module.cust_data: calc_silencer_back.Cust_module_params
-            page = e.page
             btn_enabled = calc_silencer_back.generate_rez_tbl(e, _input_tabe_ref.current,
                                                                                  _output_tabe_ref,fnc_cell_click)
             table_data:CMF.Table_data = DTCLS.Data_page.Data_module.cust_data.output_tbl
@@ -439,7 +415,7 @@ def gen_page(page):
             #DTCLS.Data_page.Data_module.status_bar.set_text('Успешно рассчитано')
 
 
-        def show_mini_report(e: ft.ControlEvent):
+        def show_chart_report(e: ft.ControlEvent):
             if _input_tabe_ref.current is None:
                 DTCLS.Data_page.Data_module.status_bar.set_text(
                     f"{str(Cust_emoji.EmojiMain.Статусы.warning)} Сначала выполните расчёт"
@@ -475,10 +451,80 @@ def gen_page(page):
                 _desktop_column_ref.current.controls = back_controls
                 _desktop_column_ref.current.update()
 
+            def print_pdf(print_e: ft.ControlEvent):
+                if build_silencer_report_pdf is None:
+                    DTCLS.Data_page.Data_module.status_bar.set_text(
+                        f"{str(Cust_emoji.EmojiMain.Статусы.warning)} Модуль PDF-отчёта не подключен"
+                    )
+                    print_e.page.update()
+                    return
+
+                btn = getattr(print_e, "control", None)
+                try:
+                    if btn is not None and hasattr(btn, "disabled"):
+                        btn.disabled = True
+                        btn.update()
+                except Exception:
+                    pass
+
+                DTCLS.Data_page.Data_module.status_bar.set_text(
+                    f"{str(Cust_emoji.EmojiMain.Статусы.info)} Формирую PDF-отчёт..."
+                )
+                print_e.page.update()
+
+                async def _task():
+                    await asyncio.sleep(0)
+                    try:
+                        report_name = ""
+                        try:
+                            report_name = (_header_input_panel_textfield_ref.current.value or "").strip()
+                        except Exception:
+                            report_name = ""
+                        if not report_name:
+                            report_name = str(input_vals.get("nazvanie_proekta") or "silencer_report")
+
+                        path = build_silencer_report_pdf(
+                            report_name=report_name,
+                            calculated=calculated,
+                            input_values=input_vals,
+                            save_dir=Data.Data_module.sub_dir,
+                        )
+                        if not path:
+                            raise RuntimeError("Не удалось сформировать PDF-отчёт")
+
+                        DTCLS.Data_page.Data_module.status_bar.set_text(
+                            f"{str(Cust_emoji.EmojiMain.Статусы.success)} PDF-отчёт сформирован"
+                        )
+                        CMF.dialog_save_file(print_e, path)
+                    except Exception as ex:
+                        DTCLS.Data_page.Data_module.status_bar.set_text(
+                            f"{str(Cust_emoji.EmojiMain.Статусы.warning)} Ошибка формирования PDF-отчёта: {ex}"
+                        )
+                        CMF.message_dialog(
+                            print_e.page,
+                            body_icon=ft.Icons.ERROR,
+                            title="Ошибка",
+                            message=f"Не удалось сформировать PDF-отчёт: {ex}",
+                        )
+                    finally:
+                        try:
+                            if btn is not None and hasattr(btn, "disabled"):
+                                btn.disabled = False
+                                btn.update()
+                        except Exception:
+                            pass
+                        try:
+                            print_e.page.update()
+                        except Exception:
+                            pass
+
+                print_e.page.run_task(_task)
+
             report_panel = build_silencer_report(
                 calculated=calculated,
                 input_values=input_vals,
                 on_back=back_to_calc,
+                on_print_pdf=print_pdf,
             )
 
             _desktop_column_ref.current.controls = [report_panel]
@@ -494,29 +540,6 @@ def gen_page(page):
             dict_vals = calc_silencer_back.get_vals_from_input_data_tbl(_input_tabe_ref.current)
             new_calc(e, dict_vals)
 
-        def click_save_rez(e):
-            DTCLS.Data_page.Data_module.status_bar.set_text(f'{str(Cust_emoji.EmojiMain.Статусы.info)} Отчет не доделан, сохранение отключено')
-            DTCLS.Data_page.page.update()
-            return
-            Data: DTCLS.Data_page = e.page.data
-            cfg_module: DTCLS.Module_cfg = Data.Data_module
-            name = _header_input_panel_textfield_ref.current.value
-            rezult_data_for_save = calc_silencer_back.generate_rezult_data_for_save(name, _input_tabe_ref.current,
-                                                                                  _output_tabe_ref.current)
-            rez = calc_silencer_back.save_exel(rezult_data_for_save['input'], rezult_data_for_save['output'],
-                                             rezult_data_for_save['name'], cfg_module.sub_dir,cfg_module.name)
-            if not rez:
-                return
-            else:
-                if not calc_silencer_back.save_in_db(e, name):
-                    return
-                CMF.dialog_save_file(e, rez)
-                return
-
-        rail_width = rail.min_width
-        if rail.width:
-            rail_width = rail.width
-
         desktop_row = ft.Row(controls=[
             ft.Column(
                 controls=[],
@@ -526,7 +549,6 @@ def gen_page(page):
             ft.VerticalDivider(width=2),
             ft.Column(
                 controls=[],
-                # alignment=ft.MainAxisAlignment.START,  # прижать всё к верху
                 horizontal_alignment=ft.CrossAxisAlignment.START,  # прижать влево
                 scroll=ft.ScrollMode.ALWAYS, expand=True,
                 ref=_output_column_tabels_ref
@@ -571,7 +593,7 @@ def gen_page(page):
                                               ft.Button(
                                                   '📊 График',
                                                   ft.Icons.INSERT_CHART,
-                                                  on_click=show_mini_report,
+                                                  on_click=show_chart_report,
                                                   style=ft.ButtonStyle(
                                                       shape=ft.RoundedRectangleBorder(radius=1),
                                                   ), height=50, width=170, ref=_btn_report_ref, visible=False
@@ -580,15 +602,6 @@ def gen_page(page):
                                                            width=500,
                                                            icon=ft.Icons.NOTE_ALT,
                                                            ref=_header_input_panel_textfield_ref), save_control
-                                              # ft.Button(
-                                              #     'Сохранить',
-                                              #     ft.Icons.SAVE_AS,
-                                              #     on_click=click_save_rez,
-                                              #     style=ft.ButtonStyle(
-                                              #         shape=ft.RoundedRectangleBorder(radius=1),
-                                              #         # Радиус скругления в пикселях
-                                              #     ), height=50, width=150, ref=_header_input_panel_btn_save_ref
-                                              # )
                                               ], spacing=120
                                     )
 
@@ -678,9 +691,6 @@ def gen_page(page):
             _desktop_column_ref.current.horizontal_alignment=ft.CrossAxisAlignment.START
             _desktop_column_ref.current.expand=True
 
-            # page.update()
-
-
         ind = e.control.selected_index
         selected_dist_name = list(DICT_BARS['destinations'].keys())[ind]
         if selected_dist_name == 'История':
@@ -711,9 +721,6 @@ def gen_page(page):
                                     ref=_refStatusBar,
                                     height=100
                                     )
-    # _general_module_row_ref.current = None
-    # _desktop_column_ref.current = None
-
     return ft.Row([
         rail,
         ft.VerticalDivider(width=1),
@@ -725,9 +732,6 @@ def gen_page(page):
         )
 
     ],
-        # vertical_alignment= ft.CrossAxisAlignment.START,
-        # width=(Data.Data_vars.width),
-        # height=Data.Data_vars.height,
         expand=True,
         ref=_general_module_row_ref
     )
@@ -760,7 +764,7 @@ def paint_rail(select_destination):
     return rail
 
 
-def set_header_elems_visible(val: bool = True): #todo нужен ли ререндер
+def set_header_elems_visible(val: bool = True):
     changed = False
     if _header_input_panel_btn_save_ref.current and _header_input_panel_btn_save_ref.current.visible != val:
         _header_input_panel_btn_save_ref.current.visible = val
@@ -774,7 +778,7 @@ def set_header_elems_visible(val: bool = True): #todo нужен ли ререн
     return changed
 
 
-def set_header_elems_enabled(val: bool = True): #todo нужен ли ререндер
+def set_header_elems_enabled(val: bool = True):
     changed = False
     if _header_input_panel_btn_save_ref.current and _header_input_panel_btn_save_ref.current.disabled == val:
         _header_input_panel_btn_save_ref.current.disabled = not val

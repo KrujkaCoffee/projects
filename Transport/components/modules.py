@@ -204,7 +204,7 @@ async def load_module(page: ft.Page):
         return MCPj.gen_page(page)
     if page.route == ("/modules/silencer"):
         await MCS.apply_page_settings(page,modules.get_module_by_route(page.route))
-        return MCS.gen_page(page)
+        return await MCS.gen_page(page)
     if page.route == ("/modules/blower_zigel"):
         await MCBZ.apply_page_settings(page,modules.get_module_by_route(page.route))
         return MCBZ.gen_page(page)

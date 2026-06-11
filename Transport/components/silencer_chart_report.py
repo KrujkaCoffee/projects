@@ -108,7 +108,7 @@ def _series(calculated: dict[str, Any], keys: Iterable[str]) -> list[float | Non
     return [_as_float(calculated.get(key)) for key in keys]
 
 
-def _card(title: str, rows: list[tuple[str, Any, str]], *, width: int | None = None) -> ft.Container:
+def build_card_component(title: str, rows: list[tuple[str, Any, str]], *, width: int | None = None) -> ft.Container:
     body: list[ft.Control] = [ft.Text(title, weight=ft.FontWeight.W_600, size=15)]
     for name, val, dim in rows:
         body.append(
@@ -132,7 +132,7 @@ def _card(title: str, rows: list[tuple[str, Any, str]], *, width: int | None = N
     )
 
 
-def _small_table(title: str, before_title: str, after_title: str, before: list[float | None], after: list[float | None]) -> ft.Container:
+def column_table(title: str, before_title: str, after_title: str, before: list[float | None], after: list[float | None]) -> ft.Container:
     header = ft.Row(
         controls=[
             ft.Text("Показатель", width=92, size=11, weight=ft.FontWeight.W_600),
@@ -170,7 +170,9 @@ def _small_table(title: str, before_title: str, after_title: str, before: list[f
     )
 
 
-def _twin_tower_chart(before: list[float | None], after: list[float | None]) -> ft.Container:
+def build_twin_tower_chart(before: list[float | None], after: list[float | None],
+                           on_print_pdf: Callable[[ft.ControlEvent], None] | None = None
+                           ) -> ft.Container:
     numeric_values = [v for v in [*before, *after] if isinstance(v, (int, float))]
     max_value = max(numeric_values) if numeric_values else 1.0
     min_value = min(numeric_values) if numeric_values else 0.0
@@ -236,6 +238,15 @@ def _twin_tower_chart(before: list[float | None], after: list[float | None]) -> 
                             spacing=6,
                             vertical_alignment=ft.CrossAxisAlignment.CENTER,
                         ),
+                                                ft.Button(
+                                                        "Печать PDF",
+                                                        ft.Icons.PICTURE_AS_PDF,
+                                                        on_click=on_print_pdf,
+                                height = 34,
+                                disabled = on_print_pdf is None,
+                                tooltip = "Сформировать PDF по листу «Отчет (табл)»",
+                                style = ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=6)),
+                            ),
                     ],
                     vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 ),
@@ -270,6 +281,7 @@ def build_silencer_report(
     calculated: dict[str, Any],
     input_values: dict[str, Any],
     on_back: Callable[[ft.ControlEvent], None],
+        on_print_pdf: Callable[[ft.ControlEvent], None] | None = None,
 ) -> ft.Control:
     """Собирает экран отчёта"""
 
@@ -285,7 +297,7 @@ def build_silencer_report(
 
     top_cards = ft.Row(
         controls=[
-            _card(
+            build_card_component(
                 "Номинальные параметры среды",
                 [
                     ("Среда", _value(input_values, "sreda", default="—"), ""),
@@ -295,7 +307,7 @@ def build_silencer_report(
                 ],
                 width=360,
             ),
-            _card(
+            build_card_component(
                 "Результаты аэродинамического расчёта",
                 [
                     ("Давление на входе", _value(input_values, "davlenie_na_vhode_v_shg_ri_abs_mpa"), "МПа"),
@@ -305,7 +317,7 @@ def build_silencer_report(
                 ],
                 width=400,
             ),
-            _card(
+            build_card_component(
                 "Элементы шумоглушителя",
                 [
                     ("Тип дроссельного блока", "Ступенчатый", ""),
@@ -336,21 +348,21 @@ def build_silencer_report(
                 opacity=0.78,
             ),
             top_cards,
-            _small_table(
+            column_table(
                 "Уровни звуковой мощности, дБ",
                 "Труба без ШГ",
                 "Шумоглушитель",
                 tube_power,
                 silencer_power,
             ),
-            _small_table(
+            column_table(
                 "Уровни звукового давления, дБ",
                 before_title,
                 after_title,
                 before_pressure,
                 after_pressure,
             ),
-            _twin_tower_chart(before_pressure, after_pressure),
+            build_twin_tower_chart(before_pressure, after_pressure, on_print_pdf=on_print_pdf),
             ft.Text("*УЗД — уровень звукового давления. LАЭкв — эквивалентный уровень звука.", size=12, opacity=0.72),
         ],
         spacing=14,
