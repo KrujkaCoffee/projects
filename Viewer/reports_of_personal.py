@@ -806,6 +806,10 @@ class Event(Base_get_data):
         norm_rule_name = F.clean_and_normalize_path_part(self.rule.name)
         path = f'{F.sep().join([Events.DIR_REPOZ_FILES,self.user.ФИО,norm_rule_name,self.date.to_db()])}{ext}'
         return path
+    def count_file_links(self)->int:
+        list_notes = CSQ.custom_request_c(CFG.Config.project.db_users,f"""SELECT id FROM user_report_events
+            WHERE link ="{self.link}";""",rez_dict=True)
+        return len(list_notes)
 
     def del_file(self)->bool:
         path = self.link
@@ -908,8 +912,9 @@ class Events():
         if event.date_approval.date:
             return False,f'Утвержденный документ не может быть удалён'
 
-        if not event.del_file():
-            return False, f'Ошибка очистка вложения'
+        if event.count_file_links()<=1:
+            if not event.del_file():
+                return False, f'Ошибка очистка вложения'
 
         if not CSQ.custom_request_c(CFG.Config.project.db_users,f"""DELETE FROM user_report_events
                             WHERE user_report_events.id = {event.id};"""):
@@ -1369,6 +1374,9 @@ def __END_INPUT___________________():
 def run_doc(link:str):
     if link is None:
         CQT.msgbox(f'Ошибка получения пути')
+        return
+    if not F.existence_file_c(link):
+        CQT.msgbox(f'Файл отсутствует')
         return
     ext = F.keep_extention_c(link)
     file_data = F.file_into_blob(link)
