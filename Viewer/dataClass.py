@@ -40,6 +40,8 @@ def load_user_report_doc_types():
     """,rez_dict=True)
     return doc_types
 
+class data_manage_kro(SingletonMeta):
+    pass
 class data_repots_of_personal(SingletonMeta):
     user_report_periods: list[dict] | None = load_user_report_periods()
     user_report_doc_types: list[dict] | None = load_user_report_doc_types()
@@ -50,11 +52,22 @@ class data_repots_of_personal(SingletonMeta):
     regime: Regime | None = None
     date_start_report:datetime.datetime| None = None
     date_end_report:datetime.datetime| None = None
+
+class data_arm_oper(SingletonMeta):
+    #===============ARM_OPER_PR========================================
+    current_row_jurnal:dict = None
+
+
+
+
 class data_app(SingletonMeta):
     if CFG.Config.place.poki == None:
         raise ImportError(f'CFG.Config.place not init')
+    CONFIG:CFG.Config = CFG.Config
     app_self: mywindow | None = None
     _old_val_cell = None
     obj_Competencies:Competencies|None = None
     empl_obj: Emploee_usr | None = None
     module_repots_of_personal: data_repots_of_personal | None = data_repots_of_personal
+    module_manage_kro: data_manage_kro | None = data_manage_kro
+    module_arm_oper: data_arm_oper | None = data_arm_oper
