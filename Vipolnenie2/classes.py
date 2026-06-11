@@ -69,6 +69,7 @@ class Naryad_info():
         if not self._jur.rows:
             self.state =States_nar.new
             return
+        self._jur.fix_poditogs()
         if self.is_unclosed:
             self.state = States_nar.started
             return
