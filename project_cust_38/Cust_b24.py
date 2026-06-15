@@ -1,6 +1,6 @@
 import logging
 import typing
-
+#test
 import urllib3
 import requests
 
@@ -181,12 +181,12 @@ class MessageBuilder:
                     'Профессия': 'Швея 3 разряда'
             }]
 
-            template = CB24.MessageBuilder('Таблица с дсе') Инициализация (базовое сообщение)
-            template.add_table(table1)                      Добавить табличную часть
-            template.add_delimiter()                        Добавить разделитель
-            template.add_message('Таблица с операциями')    Добавить сообщение
-            template.add_table(table2)                      Добавить таблицу 2
-            template.send_by_chat_id('chat78766')           Итоговая отправка
+            template = CB24.MessageBuilder('Таблица с дсе') #Инициализация (базовое сообщение)
+            template.add_table(table1)                      #Добавить табличную часть
+            template.add_delimiter()                        #Добавить разделитель
+            template.add_message('Таблица с операциями')    #Добавить сообщение
+            template.add_table(table2)                      #Добавить таблицу 2
+            template.send_by_chat_id('chat78766')           #Итоговая отправка
     """
 
     def __init__(

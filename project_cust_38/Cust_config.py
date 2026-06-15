@@ -15,6 +15,7 @@ except:
     print(f'Cust_config err import QtWidgets')
 import project_cust_38.Cust_Functions as F
 import project_cust_38.Cust_SQLite as CSQ
+
 try:
     from project_cust_38 import Cust_Qt as CQT
 except:
@@ -243,23 +244,23 @@ class AppConfig(HorizontalConfig):
 class User_emploee():
     def __init__(self, fio: str, user_db: str):
         fields = f"""
-employee.ФИО as ФИО,
-employee.Пномер as Пномер,
-employee.Должность as Должность,
-employee.Статус as Статус,
-employee.Подразделение as Подразделение,
-employee.Режим as Режим,
-employee.Компания as Компания,
-employee.ID_ФизЛица as ID_ФизЛица,
-employee.ВидЗанятости as ВидЗанятости,
-employee.ДатаИзмененияДолжности as ДатаИзмененияДолжности,
-ФизическиеЛица.Фамилия as Фамилия,
-ФизическиеЛица.Имя as Имя,
-ФизическиеЛица.Отчество as Отчество,
-ФизическиеЛица.Пол as Пол,
-ФизическиеЛица.login as login,
-ФизическиеЛица.id_bitrix as id_bitrix
-"""
+        employee.ФИО as ФИО,
+        employee.Пномер as Пномер,
+        employee.Должность as Должность,
+        employee.Статус as Статус,
+        employee.Подразделение as Подразделение,
+        employee.Режим as Режим,
+        employee.Компания as Компания,
+        employee.ID_ФизЛица as ID_ФизЛица,
+        employee.ВидЗанятости as ВидЗанятости,
+        employee.ДатаИзмененияДолжности as ДатаИзмененияДолжности,
+        ФизическиеЛица.Фамилия as Фамилия,
+        ФизическиеЛица.Имя as Имя,
+        ФизическиеЛица.Отчество as Отчество,
+        ФизическиеЛица.Пол as Пол,
+        ФизическиеЛица.login as login,
+        ФизическиеЛица.id_bitrix as id_bitrix
+        """
         if F.is_unique_identifier(fio):
             data = CSQ.custom_request_c(user_db, f"""SELECT {fields}
              FROM employee 
