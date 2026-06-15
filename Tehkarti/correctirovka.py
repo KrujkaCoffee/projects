@@ -84,13 +84,15 @@ def corr_ok(self):
 
 def load(self):
     list_dse = CQT.list_from_wtabl_c(self.ui.tblw_dse, hat_c=True, only_visible=True)
-    CQT.fill_wtabl_old_c(self, list_dse, self.ui.tbl_corr_select, separ='', isp_hat_c=True)
+    #CQT.fill_wtabl_old_c(self, list_dse, self.ui.tbl_corr_select, separ='', isp_hat_c=True)
+    CQT.fill_wtabl(list_dse, self.ui.tbl_corr_select)
+
     dict_plane_oper = {'Операция': '?', 'Раб.центр': '?', 'Оборудование': '?', "Тп.з.": '?', "Тшт.": '?', "Проф.": '?',
                        "N раб.": '?', "КОИД": '?'}
-    CQT.fill_wtabl_old_c(self, F.dict_to_list(dict_plane_oper), self.ui.tbl_corr_set, set_editeble_col_nomera={1}, separ='',
-                     isp_hat_c=False)
-    CQT.fill_wtabl_old_c(self, F.dict_to_list(dict_plane_oper), self.ui.tbl_corr_where, set_editeble_col_nomera={1},
-                     separ='', isp_hat_c=False)
 
+    CQT.fill_wtabl(F.dict_to_list(dict_plane_oper), self.ui.tbl_corr_set,  set_editeble_col_nomera={1})
+
+
+    CQT.fill_wtabl(F.dict_to_list(dict_plane_oper), self.ui.tbl_corr_where, set_editeble_col_nomera={1})
 
 
