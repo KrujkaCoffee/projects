@@ -5,7 +5,7 @@ import project_cust_38.Cust_SQLite as CSQ
 
 def num_col_by_name_in_hat_c_bdmat(sp, ima, vid):
     if vid not in nomenklatura.DICT_POLE:
-        CQT.msgbox(f'В словаре не нейден {vid}')
+        CQT.msgbox(f'В словаре калькулятора не найден вид {vid}')
         return
     for key in nomenklatura.DICT_POLE[vid].keys():
         if nomenklatura.DICT_POLE[vid][key] == ima:
@@ -60,7 +60,7 @@ def zagr_sortament(self):
         if sort == '10':
             self.ui.opt_but_nabivka.setChecked(True)
             mat_nabivka_load(self)
-    except Exception as e:
+    except:
         CQT.msgbox(f'ОШибка загрузки сортамента')
 
 def raschet_list(self,spis):
@@ -321,8 +321,8 @@ def raschet_kvadr_truba(self,spis):
     return Nr
 
 
-
-def vvod_rasch_mat(self):
+@CQT.onerror
+def vvod_rasch_mat(self,*args):
     tbln = self.ui.tableW_oper_mat
     if tbln.currentRow() == None or tbln.currentRow() == -1:
         return
@@ -348,19 +348,19 @@ def vvod_rasch_mat(self):
         Nr = raschet_shestig(self, spis)
     if self.ui.opt_but_nabivka.isChecked():
         Nr = raschet_nabivka(self, spis)
-    if Nr == 0:
+    if Nr == 0 or Nr is None:
         return
     Nr = round(Nr, 6)
     tbln.item(tbln.currentRow(), CQT.num_col_by_name_c(tbln, 'Норма')).setText(str(Nr))
 
 def mat_list_load(self):
+    vid = get_vid_nomen(self)
+    if vid is None:
+        return
     tbl = self.ui.tbl_resch_mater
     tree = self.ui.tree
     spis_dreva = CQT.list_from_tree_c(tree)
     tbl_oper_mat = self.ui.tbl_oper_mat
-    oper_mat_row = tbl_oper_mat.currentRow()
-    if oper_mat_row == -1: #20.02.2026
-        return
     nk_id = CQT.num_col_by_name_c(tbl_oper_mat, 'ID')
     oper = tbl_oper_mat.item(tbl_oper_mat.currentRow(), nk_id).text()
     if oper == None:
@@ -391,7 +391,7 @@ def mat_list_load(self):
         nn = tbln.item(tbln.currentRow(), CQT.num_col_by_name_c(tbln, 'Код')).text()
         spis_mat = zag_param_mat(self,nn)
         if spis_mat != None and len(spis_mat) == 2:
-            vid = spis_mat[-1][F.num_col_by_name_in_hat_c(spis_mat, 'Вид')]
+
             nk_nn = F.num_col_by_name_in_hat_c(spis_mat, 'Код')
             nk_tol = num_col_by_name_in_hat_c_bdmat(spis_mat, 'Толщина', vid)
             nk_shir = num_col_by_name_in_hat_c_bdmat(spis_mat, 'Ширина', vid)
@@ -419,6 +419,9 @@ def mat_list_load(self):
 
 
 def mat_krug_load(self):
+    vid = get_vid_nomen(self)
+    if vid is None:
+        return
     tbl = self.ui.tbl_resch_mater
     CQT.clear_tbl(tbl)
     spis = [['Диаметр, мм', 'Длина загот., мм', 'Длина круга., мм', "р -плотность(г/см2)"]]
@@ -430,7 +433,7 @@ def mat_krug_load(self):
         spis_mat = zag_param_mat(self,
             nn)  # эта функция будет, та же. она выдаст тебе O:\Производство Powerz\Отдел технолога\ТД\TehKart\Data\bin\bd_mater.txt
         if spis_mat != None and len(spis_mat) == 2:
-            vid = spis_mat[-1][F.num_col_by_name_in_hat_c(spis_mat, 'Вид')]
+
             nk_nn = F.num_col_by_name_in_hat_c(spis_mat, 'Код')
             nk_diametr = num_col_by_name_in_hat_c_bdmat(spis_mat, 'Диаметр', vid)
             nk_pl = num_col_by_name_in_hat_c_bdmat(spis_mat, 'Плотность', vid)
@@ -449,6 +452,9 @@ def mat_krug_load(self):
 
 
 def mat_truba_load(self):
+    vid = get_vid_nomen(self)
+    if vid is None:
+        return
     tbl = self.ui.tbl_resch_mater
     CQT.clear_tbl(tbl)
     spis = [['Толщина, мм', 'Диаметр наружний, мм', 'Диаметр внутренний, мм', 'Длина загот., мм',
@@ -461,7 +467,7 @@ def mat_truba_load(self):
         spis_mat = zag_param_mat(self,
             nn)  # эта функция будет, та же. она выдаст тебе O:\Производство Powerz\Отдел технолога\ТД\TehKart\Data\bin\bd_mater.txt
         if spis_mat != None and len(spis_mat) == 2:
-            vid = spis_mat[-1][F.num_col_by_name_in_hat_c(spis_mat, 'Вид')]
+
             nk_nn = F.num_col_by_name_in_hat_c(spis_mat, 'Код')
             nk_tolschina = num_col_by_name_in_hat_c_bdmat(spis_mat, 'Толщина', vid)
             nk_diametr_naruj = num_col_by_name_in_hat_c_bdmat(spis_mat, 'Нар.диаметр', vid)
@@ -485,6 +491,9 @@ def mat_truba_load(self):
 
 
 def mat_ygol_load(self):
+    vid = get_vid_nomen(self)
+    if vid is None:
+        return
     tbl = self.ui.tbl_resch_mater
     CQT.clear_tbl(tbl)
     spis = [
@@ -498,7 +507,7 @@ def mat_ygol_load(self):
         nn = tbln.item(tbln.currentRow(), CQT.num_col_by_name_c(tbln, 'Код')).text()
         spis_mat = zag_param_mat(self, nn)
         if spis_mat != None and len(spis_mat) == 2:
-            vid = spis_mat[-1][F.num_col_by_name_in_hat_c(spis_mat, 'Вид')]
+
             nk_nn = F.num_col_by_name_in_hat_c(spis_mat, 'Код')
             nk_tolschina = num_col_by_name_in_hat_c_bdmat(spis_mat, 'Толщина', vid)
             nk_a_shirina = num_col_by_name_in_hat_c_bdmat(spis_mat, 'a-ширина', vid)
@@ -521,6 +530,9 @@ def mat_ygol_load(self):
     CQT.fill_wtabl_old_c(self, spis, tbl, set_editeble_col_nomera=set_edit, separ='', isp_hat_c=True)
 
 def mat_shvel_load(self):
+    vid = get_vid_nomen(self)
+    if vid is None:
+        return
     tbl = self.ui.tbl_resch_mater
     CQT.clear_tbl(tbl)
     spis = [['s-площадь поперечного сеч.', 'Длина загот., мм', 'Длина швеллера, мм', "р -плотность(г/см2)"]]
@@ -533,7 +545,7 @@ def mat_shvel_load(self):
         nn = tbln.item(tbln.currentRow(), CQT.num_col_by_name_c(tbln, 'Код')).text()
         spis_mat = zag_param_mat(self, nn)
         if spis_mat != None and len(spis_mat) == 2:
-            vid = spis_mat[-1][F.num_col_by_name_in_hat_c(spis_mat, 'Вид')]
+
             nk_nn = F.num_col_by_name_in_hat_c(spis_mat, 'Код')
             nk_ploschad_poper_sechen = num_col_by_name_in_hat_c_bdmat(spis_mat, 's-площадь поперечного сечения', vid)
             nk_a_dlina_shveler = num_col_by_name_in_hat_c_bdmat(spis_mat, 'Длина швеллера', vid)
@@ -551,6 +563,9 @@ def mat_shvel_load(self):
 
 
 def mat_dvut_load(self):
+    vid = get_vid_nomen(self)
+    if vid is None:
+        return
     tbl = self.ui.tbl_resch_mater
     CQT.clear_tbl(tbl)
     spis = [['b–ширина полки', 's–толщина стенки', 't-толщина полки', 'h–высота балки', 'Длина двутавра, мм',
@@ -564,7 +579,7 @@ def mat_dvut_load(self):
         nn = tbln.item(tbln.currentRow(), CQT.num_col_by_name_c(tbln, 'Код')).text()
         spis_mat = zag_param_mat(self, nn)
         if spis_mat != None and len(spis_mat) == 2:
-            vid = spis_mat[-1][F.num_col_by_name_in_hat_c(spis_mat, 'Вид')]
+
             nk_nn = F.num_col_by_name_in_hat_c(spis_mat, 'Код')
             nk_B_shirina_polki = num_col_by_name_in_hat_c_bdmat(spis_mat, 'b-ширина полки', vid)
             nk_S_tolschina_stenki = num_col_by_name_in_hat_c_bdmat(spis_mat, 's-толщина стенки', vid)
@@ -590,6 +605,9 @@ def mat_dvut_load(self):
     CQT.fill_wtabl_old_c(self, spis, tbl, set_editeble_col_nomera=set_edit, separ='', isp_hat_c=True)
 
 def mat_nabivka_load(self):
+    vid = get_vid_nomen(self)
+    if vid is None:
+        return
     tbl = self.ui.tbl_resch_mater
     CQT.clear_tbl(tbl)
     spis = [['кол-во шт (из КД)', 'длина набивки (из кд)', 'коэффициент (из таблицы)']]
@@ -602,7 +620,7 @@ def mat_nabivka_load(self):
         nn = tbln.item(tbln.currentRow(), CQT.num_col_by_name_c(tbln, 'Код')).text()
         spis_mat = zag_param_mat(self, nn)
         if spis_mat != None and len(spis_mat) == 2:
-            vid = spis_mat[-1][F.num_col_by_name_in_hat_c(spis_mat, 'Вид')]
+
             nk_nn = F.num_col_by_name_in_hat_c(spis_mat, 'Код')
             nk_koef = num_col_by_name_in_hat_c_bdmat(spis_mat, 'Коэффициент', vid)
             for i in range(1, len(spis_mat)):
@@ -613,6 +631,9 @@ def mat_nabivka_load(self):
     CQT.fill_wtabl_old_c(self, spis, tbl, set_editeble_col_nomera=set_edit, separ='', isp_hat_c=True)
 
 def mat_shestigr_load(self):
+    vid = get_vid_nomen(self)
+    if vid is None:
+        return
     tbl = self.ui.tbl_resch_mater
     CQT.clear_tbl(tbl)
     spis = [['Диаметр вписанной окружности, мм', 'Длина шестигранника, мм', 'Длина загот., мм', "р -плотность(г/см2)"]]
@@ -625,7 +646,7 @@ def mat_shestigr_load(self):
         nn = tbln.item(tbln.currentRow(), CQT.num_col_by_name_c(tbln, 'Код')).text()
         spis_mat = zag_param_mat(self, nn)
         if spis_mat != None and len(spis_mat) == 2:
-            vid = spis_mat[-1][F.num_col_by_name_in_hat_c(spis_mat, 'Вид')]
+
             nk_nn = F.num_col_by_name_in_hat_c(spis_mat, 'Код')
             nk_diametr_inscribe_c_okruj = num_col_by_name_in_hat_c_bdmat(spis_mat, 'd–диаметр вписанной окружности', vid)
             nk_dlina_shestigrannicka = num_col_by_name_in_hat_c_bdmat(spis_mat, 'Длина шестигранника', vid)
@@ -642,6 +663,9 @@ def mat_shestigr_load(self):
     CQT.fill_wtabl_old_c(self, spis, tbl, set_editeble_col_nomera=set_edit, separ='', isp_hat_c=True)
 
 def mat_kv_load(self):
+    vid = get_vid_nomen(self)
+    if vid is None:
+        return
     tbl = self.ui.tbl_resch_mater
     CQT.clear_tbl(tbl)
     spis = [['s-площадь поперечного сечения', 'Длина квадрата, мм', 'Длина загот., мм', "р -плотность(г/см2)"]]
@@ -654,7 +678,7 @@ def mat_kv_load(self):
         nn = tbln.item(tbln.currentRow(), CQT.num_col_by_name_c(tbln, 'Код')).text()
         spis_mat = zag_param_mat(self, nn)
         if spis_mat != None and len(spis_mat) == 2:
-            vid = spis_mat[-1][F.num_col_by_name_in_hat_c(spis_mat, 'Вид')]
+
             nk_nn = F.num_col_by_name_in_hat_c(spis_mat, 'Код')
             nk_S_plosch_sechen = num_col_by_name_in_hat_c_bdmat(spis_mat, 's-площадь поперечного сечения', vid)
             nk_dlina_kvadrata = num_col_by_name_in_hat_c_bdmat(spis_mat, 'Длина квадрата', vid)
@@ -671,7 +695,25 @@ def mat_kv_load(self):
                     break
     CQT.fill_wtabl_old_c(self, spis, tbl, set_editeble_col_nomera=set_edit, separ='', isp_hat_c=True)
 
+def get_vid_nomen(self)->str|None:
+    tbln = self.ui.tableW_oper_mat
+    t = CQT.TableContext(tbln)
+    curr_row = t.current_row()
+    if curr_row.no_selection:
+        CQT.msgbox(f'Не выбран материал')
+        return
+    nn = curr_row.value('Код')
+    query = f'''SELECT Вид FROM nomen WHERE Код = "{nn.strip()}"'''
+    vid =  CSQ.custom_request_c(self.db_mater ,query,one=True,one_column=True,hat_c=False)
+    if vid not in nomenklatura.DICT_POLE:
+        CQT.msgbox(f'Вид проката {vid} не настроен для этого калькулятора')
+        return
+    return vid
+
 def mat_truba_kv_load(self):
+    vid = get_vid_nomen(self)
+    if vid is None:
+        return
     tbl = self.ui.tbl_resch_mater
     CQT.clear_tbl(tbl)
     spis = [['Толщина, мм', 'Высота, мм', 'Ширина, мм', 'Длина загот., мм', 'Длина трубы, мм', "р -плотность(г/см2)"]]
@@ -684,7 +726,6 @@ def mat_truba_kv_load(self):
         nn = tbln.item(tbln.currentRow(), CQT.num_col_by_name_c(tbln, 'Код')).text()
         spis_mat = zag_param_mat(self, nn)
         if spis_mat != None and len(spis_mat) == 2:
-            vid = spis_mat[-1][F.num_col_by_name_in_hat_c(spis_mat, 'Вид')]
             nk_nn = F.num_col_by_name_in_hat_c(spis_mat, 'Код')
             nk_tolschina = num_col_by_name_in_hat_c_bdmat(spis_mat, 'Толщина', vid)
             nk_visota = num_col_by_name_in_hat_c_bdmat(spis_mat, 'Высота', vid)
