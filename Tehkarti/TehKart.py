@@ -3782,6 +3782,8 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
         tab.setEnabled(False)
         self.ui2.lbl_prim.setWordWrap(True)
 
+        CQT.set_title_for_resize_event(tab,self.item_o)
+
         if self.item_o == "Док_оп" or self.item_o == "Док_тк":
             tab.setEnabled(True)
             if F.existence_file_c(self.bd_docs_txt):
@@ -3818,7 +3820,7 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
             tab.setFocus()
             CMS.fill_filtr_c(self, self.ui2.tbl_filtr, self.ui2.tab_vib)
 
-        if item_o == "Материал":
+        if self.item_o == "Материал":
             tab.setEnabled(True)
             #combo1.addItems([_[0] for _ in pself.nomenclature])
             #combo1.setEnabled(True)
@@ -3827,19 +3829,23 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
             #combo1.setFocus()
 
             tab = self.ui2.tab_vib
-
-            list_nomen_by_vid = pself.LIST_NOMEN
+            fields_to_view = {'Вид','Код','Артикул','Наименование','ЕдиницаИзмерения','На_удаление','Дата_изменения','Примечание'}
+            list_nomen_by_vid = [ {k: ('❌' if v else '' )   if k == 'На_удаление' else v for k,v in _.items() if k in fields_to_view} for _ in  pself.LIST_NOMEN]
+            #[ _  for _ in pself.LIST_NOMEN if _['На_удаление']]
             #for _ in self.pself.DICT_NOMEN.keys():
             #
             #    tmp = copy.copy(self.pself.DICT_NOMEN[_])
             #    tmp['Код'] = _
             #    list_nomen_by_vid.append(tmp)
-            CQT.set_color_sort_cell_table_c(tab)
-            CQT.fill_wtabl(list_nomen_by_vid, tab, ogr_maxshir_kol=800)
+
+            CQT.fill_wtabl(list_nomen_by_vid, tab, ogr_maxshir_kol=800, styleSheet=CQT.MES_CSS,selectionBehavior='SelectRows')
             self.ui2.lbl_prim.setText(f'В КД заложено {pself.mat_kd_erp.replace("$"," ")}')
-            CMS.fill_filtr_c(self, self.ui2.tbl_filtr, tab, spis_znach={'На_удаление':'0'}, hidden_scroll=True)
-            CMS.apply_filtr_c(self,self.ui2.tbl_filtr,tab) # 14.04.2026
+            CMS.load_column_widths(self,tab)
+
+            CMS.fill_filtr_c(self, self.ui2.tbl_filtr, tab, spis_znach={'На_удаление':'!*'}, hidden_scroll=True)
+            CMS.apply_filtr_c(self,self.ui2.tbl_filtr,tab)
             CMS.update_width_filtr(tab, self.ui2.tbl_filtr)
+
             kod_erp = pself.mat_kd_erp.split("$")[0]
             for i in range(len(list_nomen_by_vid)):
                 if list_nomen_by_vid[i]['Код']== kod_erp:
