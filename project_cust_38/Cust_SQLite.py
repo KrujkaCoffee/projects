@@ -340,8 +340,8 @@ def dict_zero_val_row(db,tbl_name):
             row[k] = None
     return row
 
-def dict_types_tbl(db,tbl_name)->dict[str,type]:
-    list_dicts = custom_request_c(db, custom_request_c=f"""SELECT name, type FROM pragma_table_info('{tbl_name}')""",
+def dict_types_tbl(db,tbl_name,as_str:bool=False)->dict[str,type]:
+    list_dicts = custom_request_c(db, custom_request_c=f"""SELECT  name, type FROM pragma_table_info('{tbl_name}') --{F.now()}""",
                                   rez_dict=True)
     objs = {
         'INTEGER':int,
@@ -353,7 +353,9 @@ def dict_types_tbl(db,tbl_name)->dict[str,type]:
             }
     for it in list_dicts:
         if it['type'] not in objs:
-            raise TypeError('Не установлен тип данных')
+            raise TypeError(f'Не установлен тип данных в таблице {tbl_name}, поле: {it['name']}, тип: {it['type']}')
+    if as_str:
+        return {_['name']:_['type'] for _ in list_dicts}
     return {_['name']:objs[_['type']] for _ in list_dicts}
 
 def list_types_table(bd, table):
@@ -638,7 +640,7 @@ def custom_request_c(bd, custom_request_c, conn='', hat_c=True, list_of_lists_c=
         if data_cache:
             if F.strtodate(data_cache['date']) > date_limit:
                 if debug:
-                    print(f'Load req \n"{custom_request_c}"\n from Cache: {(F.now('') - start).total_seconds()} secs.')
+                    print(f'Load req \n"{custom_request_c}"\n from Cache: {(F.now('') - start).total_seconds()} secs.\n')
                 return data_cache['data']
 
 
@@ -658,7 +660,11 @@ def custom_request_c(bd, custom_request_c, conn='', hat_c=True, list_of_lists_c=
             except Exception as e:
                 print(f'cache save error: {e}')
         if debug:
-            print(f'Load req \n"{custom_request_c}"\n from db: {(F.now('') - start).total_seconds()} secs.')
+            total_sec = (F.now('') - start).total_seconds()
+            pref_varn = ""
+            if total_sec > 10:
+                pref_varn = '\n\n!!!WARNING!!!\n '
+            print(f'{F.now()} {pref_varn}Load req \n"{custom_request_c}"\n from db: {total_sec} secs.\n')
         return rez
 
     RE_COUNT = 1
@@ -882,26 +888,21 @@ def connect_bd(bd, timeout_=6):
         print(f'DB {bd} not found')
         return False, False
     RETRY_COUNT = 5
+    conn = cur = None
     while RETRY_COUNT:
         RETRY_COUNT -= 1
         try:
             conn = sqlite3.connect(bd, timeout=timeout_)
-            # conn.isolation_level = 'IMMEDIATE'
-            # cur = conn.cursor()
-            # cur.execute('BEGIN IMMEDIATE')
-            # cur.execute('SELECT name from sqlite_master where type= "table"')
-            # conn.rollback()
-            # cur.close()
+            cur = conn.cursor()
             conn.isolation_level = None
             break
         except:
-            cur.close()
-            conn.close()
+            cur and cur.close()
+            conn and conn.close()
             if RETRY_COUNT == 1:
                 return False, False
             print(f'connect_bd не удалось, попыток {RETRY_COUNT}')
             F.sleep(timeout_ - 1)
-    cur = conn.cursor()
     return conn, cur
 
 
