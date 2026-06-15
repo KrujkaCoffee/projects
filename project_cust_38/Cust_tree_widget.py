@@ -1925,7 +1925,7 @@ class ExtTreeWidget(BaseTreeWidget):
         except Exception:
             pass
         header.sectionResized.connect(
-            lambda idx, old, new, h=header: self.on_header_resized(h, idx, old, new)
+            lambda idx, old, new, h=header: self.on_header_resized( h, idx, old, new)
         )
         self._connected_header = header
         

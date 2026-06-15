@@ -50,7 +50,7 @@ def load_table(self):
        z.МК,
        z.Инициатор,
        z.Содержание,
-       rab_c.empl_Подразделение as Виновное_подразделение,
+       Подразделения.Наименование as Виновное_подразделение,
        z.Фсмещение_дней,
        z.Фпотери_времени_час,
        z.Фпотери_материала_марка,
@@ -64,6 +64,7 @@ def load_table(self):
        z.ФИО_виновный
                               FROM zamech as z
                               LEFT JOIN rab_c ON rab_c.Код = z.Виновное_подразделение
+                              INNER JOIN Подразделения ON Подразделения.Подразделение_Key = rab_c.ref_Подразделения
                              ORDER BY Пномер DESC;
                              """
     db_users = CFG.Config.project.db_users # (По задаче 100054795 ) 28.05.2025
@@ -328,7 +329,7 @@ def add_zamech(self):
                         f'DELETE FROM zamech WHERE Пномер = {pk}')
                     return CQT.msgbox('Не удалось создать замечание')
                 category_vnepl = CSQ.custom_request_c(CFG.Config.project.db_naryad,
-                                     'SELECT * FROM kategor_vnepl WHERE kod = 18',
+                                     f'SELECT * FROM category_vnepl WHERE kod = 18 and poki = {CFG.Config.place.poki}', #21.05.2026
                                      one=True, rez_dict=True)
                 comment = category_vnepl.get('value')
                 ratio = category_vnepl.get('Коэффициент_наряда')

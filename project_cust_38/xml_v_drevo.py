@@ -1,10 +1,12 @@
 import copy
 import pprint
 
-import lxml2dict as L
-from lxml import etree
+
 import project_cust_38.Cust_Functions as F
 import project_cust_38.Cust_Qt as CQT
+import lxml2dict as L
+from lxml import etree
+
 
 def spisok_iz_xml(putt=None,str_f = None):
     
@@ -12,6 +14,7 @@ def spisok_iz_xml(putt=None,str_f = None):
     'Обозначение полное',
       'Наименование',
        'Тип',
+        
     }
     
     def count_val(val_str:str):
