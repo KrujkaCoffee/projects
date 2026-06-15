@@ -135,6 +135,15 @@ class _CacheUtils:
         sql = re.sub(r'/\*.*?\*/', ' ', sql, flags=re.S)
         sql = re.sub(r'--[^\n]*', ' ', sql)
         return sql
+
+    @staticmethod
+    def normalize_sql_for_cache(sql: str) -> str: #08.06.2026
+        try:
+            sql = re.sub(r'--[^\n]*', ' ', sql)
+        except Exception as e:
+            ...
+        return sql
+
     @staticmethod
     def normalize_sql_name(token: str) -> str:
         text = str(token).strip().strip(',;')
@@ -220,8 +229,10 @@ class CacheBuilder:
         }
         path = self.utils.cache_file_path(request_key)
         tmp_path = path.with_suffix('.tmp')
-        with open(tmp_path, 'wb') as desc:
-            pickle.dump(entry, desc, protocol=4) # noqa
+        try:
+            with open(tmp_path, 'wb') as desc:
+                pickle.dump(entry, desc, protocol=4) # noqa
+        except Exception: pass
         os.replace(tmp_path, path)
         return entry
 
@@ -315,7 +326,7 @@ class CacheBuilder:
                           hat_c: bool = True, attach_dbs: Iterable[str] | str | None = None) -> str:
         payload = {
             'db_path': self.utils.normalize_path(db_path),
-            'sql_text': str(sql_text or ''),
+            'sql_text': self.utils.normalize_sql_for_cache(str(sql_text or '')),
             'params': self.utils.normalize_params(params),
             'options': {
                 'rez_dict': bool(rez_dict),
@@ -505,8 +516,11 @@ class FileRequestCache:
     def _write_payload(self, request_key: str, payload: Any) -> pathlib.Path:
         path = self._payload_path(request_key)
         tmp_path = path.with_suffix('.tmp')
-        with tmp_path.open('wb') as desc:
-            pickle.dump(payload, desc, protocol=4)
+        try:
+            with tmp_path.open('wb') as desc:
+                pickle.dump(payload, desc, protocol=4)
+
+        except Exception: pass
         tmp_path.replace(path)
         return path
 
