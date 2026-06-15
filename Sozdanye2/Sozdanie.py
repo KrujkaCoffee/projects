@@ -4672,11 +4672,11 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
             if tabl_mk.item(i, nk_zakr).text() == tabl_mk.item(i, nk_kolvo).text():
                 CQT.font_cell_size_format(tabl_mk, i, nk_zakr, bold=True)
                 CQT.font_cell_size_format(tabl_mk, i, nk_kolvo, bold=True)
+        CMS.load_column_widths(self, self.ui.tbl_dse)
 
         CMS.fill_filtr_c(self, self.ui.tbl_filtr_dse, tabl_mk,
                          spis_znach=CQT.get_dict_line_form_tbl(self.ui.tbl_filtr_dse, 0), hidden_scroll=True)
         CMS.apply_filtr_c(self, self.ui.tbl_filtr_dse, self.ui.tbl_dse)
-        CMS.load_column_widths(self, self.ui.tbl_dse)
 
         self.info_label()
         self.oform_dse()
