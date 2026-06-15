@@ -47,8 +47,11 @@ class BorderPainter(QStyledItemDelegate):
             line_style_in = Qt.SolidLine,
             horizontal_inline: bool = False,
             vertical_inline: bool = False,
+            enabled:bool=True
     ):
         super().__init__()
+        self.enabled = enabled
+
         self.left_top = left_top
         self.right_bottom = right_bottom
         self.thick_out = thick_out
@@ -66,10 +69,155 @@ class BorderPainter(QStyledItemDelegate):
         self.inside_top = set()
         self._pens = []
 
-        self.__init_coords = self.calc_coord(left_top, right_bottom, self.pen_out, horizontal_inline, vertical_inline)
+        self.__init_coords = self.calc_coord(self.left_top, self.right_bottom, self.pen_out,
+                                             horizontal_inline, vertical_inline)
         self.added_pen = None
         self.__dict__.update(**self.__init_coords)
 
+    def update_border(self, table, left_top, right_bottom,
+                      pen=None,
+                      horizontal_inline=False,
+                      vertical_inline=False,
+                      repaint_by_row: bool = True):
+
+        old_cells = (
+                self.filled_top |
+                self.filled_bottom |
+                self.filled_left |
+                self.filled_right |
+                self.inside_top |
+                self.inside_right
+        )
+
+        if pen is None:
+            pen = self.pen_out
+
+        self.filled_top.clear()
+        self.filled_bottom.clear()
+        self.filled_left.clear()
+        self.filled_right.clear()
+        self.inside_top.clear()
+        self.inside_right.clear()
+        self._pens.clear()
+
+        coords = self.calc_coord(left_top, right_bottom, pen, horizontal_inline, vertical_inline)
+        self.__dict__.update(**coords)
+
+        new_cells = set().union(
+            coords.get('filled_top', set()),
+            coords.get('filled_bottom', set()),
+            coords.get('filled_left', set()),
+            coords.get('filled_right', set()),
+            coords.get('inside_top', set()),
+            coords.get('inside_right', set()),
+        )
+
+        cells_to_update = old_cells | new_cells
+
+        if repaint_by_row:
+            model = table.model()
+            if not model:
+                return
+
+            viewport = table.viewport()
+            row_count = model.rowCount()
+
+            if row_count == 0:
+                viewport.update()
+                return
+
+            # Исправление: left_top и right_bottom - это кортежи (row, col)
+            # Получаем строки из диапазона выделения
+            affected_rows = set()
+
+            # Добавляем строки из диапазона выделения
+            top_row = left_top[0] if isinstance(left_top, tuple) else left_top.row()
+            bottom_row = right_bottom[0] if isinstance(right_bottom, tuple) else right_bottom.row()
+
+            for row in range(top_row, bottom_row + 1):
+                affected_rows.add(row)
+
+            # Добавляем соседние строки (сверху и снизу)
+            rows_to_update = set()
+            for row in affected_rows:
+                # Сама строка
+                if 0 <= row < row_count:
+                    rows_to_update.add(row)
+                # Строка сверху
+                if 0 <= row - 1 < row_count:
+                    rows_to_update.add(row - 1)
+                # Строка снизу
+                if 0 <= row + 1 < row_count:
+                    rows_to_update.add(row + 1)
+
+            # Получаем видимые столбцы
+            first_visible_col = table.columnAt(0)
+            last_visible_col = table.columnAt(viewport.width() - 1)
+
+            if first_visible_col == -1 or last_visible_col == -1:
+                viewport.update()
+                return
+
+            # Обновляем каждую строку целиком
+            for row in rows_to_update:
+                left_index = model.index(row, first_visible_col)
+                right_index = model.index(row, last_visible_col)
+
+                if not left_index.isValid() or not right_index.isValid():
+                    continue
+
+                left_rect = table.visualRect(left_index)
+                right_rect = table.visualRect(right_index)
+
+                if not left_rect.isValid() or not right_rect.isValid():
+                    continue
+
+                row_rect = left_rect.united(right_rect)
+                row_rect.adjust(-5, -5, 5, 5)  # Запас для границ
+
+                viewport.update(row_rect)
+        else:
+            # Обновляем отдельные ячейки
+            for row, col in cells_to_update:
+                index = table.model().index(row, col)
+                if index.isValid():
+                    rect = table.visualRect(index)
+                    if rect.isValid():
+                        rect.adjust(-2, -2, 2, 2)
+                        table.viewport().update(rect)
+
+    def set_colors(self,
+                   rgb_out: tuple[int, int, int],
+                   rgb_in: tuple[int, int, int]):
+
+        self.color_out = QColor(*rgb_out)
+        self.color_in = QColor(*rgb_in)
+
+        self.pen_out = QPen(self.color_out, self.thick_out, self.line_style_out)
+        self.pen_in = QPen(self.color_in, self.thick_in, self.line_style_in)
+
+    def clear_borders(self, table: QTableWidget):
+        old_cells = (
+                self.filled_top |
+                self.filled_bottom |
+                self.filled_left |
+                self.filled_right |
+                self.inside_top |
+                self.inside_right
+        )
+
+        self.filled_top.clear()
+        self.filled_bottom.clear()
+        self.filled_left.clear()
+        self.filled_right.clear()
+        self.inside_top.clear()
+        self.inside_right.clear()
+        self._pens.clear()
+
+        self.enabled = False
+
+        # Просто обновляем всю видимую область
+        table.viewport().update()
     def get_pen(self, row, col):
         pen = None
         for item in self._pens:
@@ -133,17 +281,22 @@ class BorderPainter(QStyledItemDelegate):
         return found
 
     def paint(self, painter, option, index):
+
         super().paint(painter, option, index)
-        painter.setRenderHint(QPainter.Antialiasing, True)
-        found_out = self.get_outside(index.row(), index.column())
-        found_in = self.get_insides(index.row(), index.column())
-        pen = self.get_pen(index.row(), index.column())
-        for side in sorted(found_in):
-            painter.setPen(self.pen_in)
-            getattr(self, f'_{self.__class__.__name__}__{side}')(painter, option)
-        for side in found_out:
-            painter.setPen(pen)
-            getattr(self, f'_{self.__class__.__name__}__{side}')(painter, option)
+        if self.enabled:
+            painter.setRenderHint(QPainter.Antialiasing, True)
+            found_out = self.get_outside(index.row(), index.column())
+            found_in = self.get_insides(index.row(), index.column())
+            if not found_out and not found_in:
+                return
+            pen = self.get_pen(index.row(), index.column())
+            for side in sorted(found_in):
+                painter.setPen(self.pen_in)
+                getattr(self, f'_{self.__class__.__name__}__{side}')(painter, option)
+            for side in found_out:
+                if pen:
+                    painter.setPen(pen)
+                    getattr(self, f'_{self.__class__.__name__}__{side}')(painter, option)
 
 
     def get_min(self, lst, idx):
@@ -210,7 +363,8 @@ class MyWindow(QWidget):
         self.table = QTableWidget(100, 100)
         self.setLayout(QVBoxLayout())
         self.layout().addWidget(self.table)
-
+        self.table.setHorizontalHeaderLabels([str(_) for _ in range(100)])
+        self.table.setVerticalHeaderLabels([str(_) for _ in range(100)])
 
         for row in range(100):
             for col in range(100):
@@ -222,14 +376,15 @@ class MyWindow(QWidget):
                     item.setText('заголовок')
                 self.table.setItem(row, col, item)
         tbl = self.table
-        # border = BorderPainter(left_top=(2, 5), right_bottom=(9, 9), thick_out=4)
+        border = BorderPainter(left_top=(3, 5), right_bottom=(9, 9), thick_out=3,
+                               thick_in=3,rgb_out=(22,222,22),rgb_in=(122,222,122))
         # border = BorderPainter((0, 0), (3, tbl.columnCount() - 1))
-        border = BorderPainter((0, 0), (0, tbl.columnCount() - 1), thick_in=1,thick_out=2)
+        #border = BorderPainter((0, 0), (0, tbl.columnCount() - 1), thick_in=1,thick_out=2)
         #CQT.tbl_encircle(tbl, tbl.rowCount()-1, 0, tbl.rowCount()-1, tbl.columnCount() - 1)
-        border.add_corner_inside((1, 0), (3, tbl.columnCount() - 1), thick=2)
-        border.add_corner_inside((4, 0), (4, tbl.columnCount() - 1), thick=2)
-        border.add_corner_inside((5, 0), (tbl.rowCount()-2, tbl.columnCount() - 1), thick=2,horizontal_inline=True,)
-        border.add_corner_inside((tbl.rowCount()-1, 0), (tbl.rowCount()-1, tbl.columnCount() - 1), thick=2)
+        border.add_corner_inside((4, 4), (8, 8), thick=2)
+        # border.add_corner_inside((4, 0), (4, tbl.columnCount() - 1), thick=2)
+        #border.add_corner_inside((5, 0), (tbl.rowCount()-2, tbl.columnCount() - 1), thick=2,horizontal_inline=True,)
+        #border.add_corner_inside((tbl.rowCount()-1, 0), (tbl.rowCount()-1, tbl.columnCount() - 1), thick=2)
         self.table.setItemDelegate(border)
         # border.add_corner_inside((1, 6), (10, 8))
         # border.add_corner_inside((3, 4), (8, 10), thick=4)

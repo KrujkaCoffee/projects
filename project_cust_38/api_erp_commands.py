@@ -1,3 +1,4 @@
+import datetime
 import pprint
 import requests
 import project_cust_38.Cust_Functions as F
@@ -236,9 +237,6 @@ def get_wet_request(text: str, refs: Refs_wet | None = None, lazy_method_huours=
                         description, file, file_size, hash_file)
                       VALUES (?, ?, ?, ? ,? ,?);""",
                                  list_of_lists_c=[
-                                     [url_hash, time, description, F.to_binary_pickle(file), size, new_hash]])
-        else:
-            if new_hash == file_hash:
                                      [sum_hash, time, description, F.to_binary_pickle(file), size, new_file_hash]])
                 fl_upd = False
             except:
