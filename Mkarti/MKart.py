@@ -9,7 +9,6 @@ from PyQt5.QtWinExtras import QtWin
 import os
 import project_cust_38.Cust_Qt as CQT
 
-
 CQT.convert_UI_into_PY_c()
 from mk_gui import Ui_MainWindow  # импорт нашего сгенерированного файла
 
@@ -41,6 +40,7 @@ import project_cust_38.Cust_config as USRCNF
 import data_class
 import project_cust_38.api_erp_commands as APIERP
 import project_cust_38.Cust_emoji as CEMOJ
+import connects as CON
 try:
     import pl_xl_loader as PXL
 except Exception as e:
@@ -53,6 +53,8 @@ except Exception as e:
 # фиксировать Пдату Кд от ПДО и Пдату Кд от КО в разыне поля.
 # добавить в чат новаковскую, МХ
 # """
+
+
 
 
 class mywindow(QtWidgets.QMainWindow):
@@ -115,7 +117,7 @@ class mywindow(QtWidgets.QMainWindow):
         self.glob_nom_mk_obesp = ''
         self.glob_pre_csv_file_path = ''
         self.glob_dict_etaps_from_erp = None
-        self.regim = ''
+
         self.list_vars_vo = []
         self.hat_c = ['Наименование', 'Обозначение', 'Количество', 'Ед.изм.', 'Масса/М1,М2,М3', 'Ссылка',
                       'ID', 'Количество на изделие', 'Примечание', 'ПКИ', 'Сумм.Количество', 'Код ERP',
@@ -155,25 +157,8 @@ class mywindow(QtWidgets.QMainWindow):
             quit()
         CSQ.close_bd(conn_users, cur_users)
 
-        # ================CALENDAR===================================
-        self.ui.cld_obespechenie.clicked.connect(lambda _, x=self: OBSP.data_obespech(x))
-        self.ui.calendarWidget.clicked.connect(lambda: KPL.clck_cld(self))
-        # ==============TREE=========================================
-        self.ui.tree_fields.doubleClicked.connect(lambda: GKPL.tree_fields_dbl_clck(self))
-        # ==================================================================
-        self.ui.le_pl_find_field.textChanged.connect(lambda: KPL.find_field_reset(self))
-        self.ui.le_schema_font_height.textChanged.connect(lambda _, x=self: IND.select_schema(x))
-        self.ui.btn_set_start_end_dates.clicked.connect(lambda: GKPL.set_start_end_dates(self))
-        # ===============TAB================================================
-        tab = self.ui.tabWidget
-        tab.currentChanged[int].connect(self.tab_click)
-        self.ui.tabWidget_10.currentChanged[int].connect(self.tab_click10)
-        self.ui.tabWidget_2.currentChanged[int].connect(self.tab_click2)
-        self.ui.tabWidget_3.currentChanged[int].connect(self.tab_mk_click)
-        self.ui.tabWidget_4.currentChanged[int].connect(self.tab_zagruzka_rc)
-        self.ui.tab_addit_info_poz_gant.currentChanged[int].connect(self.tab_addit_info_poz_gant_click)
-        self.ui.tabW_rab_places.currentChanged[int].connect(self.tabW_rab_places_click)
-        self.ui.tab_rs_tch.currentChanged[int].connect(lambda: TTKZ.tab_rs_tch_currentChanged(self))
+        CON.connect_objects(self)
+
 
         #++24.12.2025
         # ================== UNSAVED CHANGES GUARD (Создание МК) ==================
@@ -748,6 +733,17 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.tbl_rc_autopause_2.cellChanged.connect(lambda *args: IND.on_autopause_table_changed(self, *args)) #25.01.2026
 
 
+    def eventFilter(self, obj, event):
+        # Теперь проверяем события от viewport
+        if obj == self.ui.tbl_preview.viewport():
+
+            if event.type() == CQT.QEvent.MouseButtonPress:
+                if event.button() == CQT.Qt.RightButton:
+                    #print("Right button click detected!")
+                    index = self.ui.tbl_preview.indexAt(event.pos())
+                    if index.isValid():
+                        GKPL.tbl_preview_right_click(self, index.row(), index.column())
+        return super().eventFilter(obj, event)
 
     @CQT.onerror
     def test_fnc(self,*args):
