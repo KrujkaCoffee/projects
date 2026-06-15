@@ -1,4 +1,5 @@
 import pprint
+import weakref # 11.06.2026
 
 from PyQt5 import QtWidgets, QtCore, QtGui
 from PyQt5.QtWinExtras import QtWin
@@ -195,6 +196,47 @@ def db_files_del(self,name,nom_tk):
     CSQ.custom_request_c(self.db_files,f"""DELETE FROM t_kards WHERE file_name == '{name}'""")
     return
 
+
+def destroy_window_on_close( # 11.06.2026
+    widget: QtWidgets.QWidget,
+    owner: object | None = None,
+    owner_attr: str | None = None,
+):
+    """Уничтожает QWidget после закрытия виджета
+
+    Пример:
+        self.w2 = CVO.mywindow2(self)
+        CQT.destroy_window_on_close(self.w2, self, "w2")
+        self.w2.show()
+    """
+    if widget is None:
+        return None
+
+    widget.setAttribute(QtCore.Qt.WA_DeleteOnClose, True)
+
+    if owner is not None and owner_attr:
+        owner_ref = weakref.ref(owner)
+        widget_ref = weakref.ref(widget)
+
+        def _clear_owner_ref(*args):
+            owner_obj = owner_ref()
+            widget_obj = widget_ref()
+
+            if owner_obj is None:
+                return
+
+            try:
+                current = getattr(owner_obj, owner_attr, None)
+                if widget_obj is None or current is widget_obj:
+                    setattr(owner_obj, owner_attr, None)
+            except RuntimeError:
+                setattr(owner_obj, owner_attr, None)
+            except Exception:
+                pass
+
+        widget.destroyed.connect(_clear_owner_ref)
+
+    return widget
 
 class mywindow(QtWidgets.QMainWindow):
     resized = QtCore.pyqtSignal()
@@ -769,6 +811,7 @@ class mywindow(QtWidgets.QMainWindow):
                     return
                 print("Нажата клавиша <Enter>")
                 self.w2 = mywindow2(self, cu, "Оснастка", cu.currentRow())
+                destroy_window_on_close(self.w2, self, "w2") # 11.06.2026
                 self.w2.showNormal()
                 if cu.item(cu.currentRow(), 0) != None:
                     self.w2.ui2.lineEdit.setText(cu.item(cu.currentRow(), 0).text())
@@ -780,6 +823,7 @@ class mywindow(QtWidgets.QMainWindow):
                     return
                 print("Нажата клавиша <Enter>")
                 self.w2 = mywindow2(self, cu, "Инструмент", cu.currentRow())
+                destroy_window_on_close(self.w2, self, "w2") # 11.06.2026
                 self.w2.showNormal()
                 if cu.item(cu.currentRow(), 0) != None:
                     self.w2.ui2.lineEdit.setText(cu.item(cu.currentRow(), 0).text())
@@ -808,6 +852,7 @@ class mywindow(QtWidgets.QMainWindow):
                 if tab.rowCount() == 0:
                     return
                 self.w2 = mywindow2(self, self.ui.tree, "Материал")
+                destroy_window_on_close(self.w2, self, "w2") # 11.06.2026
                 self.w2.showNormal()
                 self.w2.ui2.lineEdit.setFocus()
             if e.key() == QtCore.Qt.Key_S or e.key() == 1067:
@@ -824,14 +869,17 @@ class mywindow(QtWidgets.QMainWindow):
                     if self.is_naryad_operation(): #01.10.25
                         return CQT.msgbox('Нельзя менять РЦ в операции, которая уже участвует в наряде')
                     self.w2 = mywindow2(self, self.ui.tree, "Раб_ц")
+                    destroy_window_on_close(self.w2, self, "w2")  # 11.06.2026
                     self.w2.showNormal()
                     self.w2.ui2.lineEdit.setFocus()
                 if self.ui.tab_op.currentColumn() == 4:
                     self.w2 = mywindow2(self, self.ui.tree, "Оборудование")
+                    destroy_window_on_close(self.w2, self, "w2")  # 11.06.2026
                     self.w2.showNormal()
                     self.w2.ui2.lineEdit.setFocus()
                 if self.ui.tab_op.currentColumn() == 7:
                     self.w2 = mywindow2(self, self.ui.tree, "Профессия")
+                    destroy_window_on_close(self.w2, self, "w2")  # 11.06.2026
                     self.w2.showNormal()
                     self.w2.ui2.lineEdit.setFocus()
             if e.modifiers() == QtCore.Qt.AltModifier:
@@ -850,6 +898,7 @@ class mywindow(QtWidgets.QMainWindow):
                             CQT.msgbox("Не заполенена предыдушая запись")
                             return
                 self.w2 = mywindow2(self, self.ui.tree, "Док_оп")
+                destroy_window_on_close(self.w2, self, "w2") # 11.06.2026
                 self.w2.showNormal()
                 self.w2.ui2.lineEdit.setFocus()
             if e.modifiers() == QtCore.Qt.AltModifier:
@@ -862,6 +911,7 @@ class mywindow(QtWidgets.QMainWindow):
                 if self.ui.tab_tk_doc.currentRow() == None:
                     return
                 self.w2 = mywindow2(self, self.ui.tree, "Док_тк")
+                destroy_window_on_close(self.w2, self, "w2") # 11.06.2026
                 self.w2.showNormal()
                 self.w2.ui2.lineEdit.setFocus()
                 return
@@ -961,6 +1011,7 @@ class mywindow(QtWidgets.QMainWindow):
                 self.mark_tk_modified_status()
             if e.modifiers() == QtCore.Qt.ControlModifier and e.key() == QtCore.Qt.Key_Return:  # ввод через интер операции перехода карты
                 self.w2 = mywindow2(self, self.ui.tree, "Древо")
+                destroy_window_on_close(self.w2, self, "w2") # 11.06.2026
                 self.w2.showNormal()
                 if self.ui.tree.currentItem() == None:
                     return
@@ -986,6 +1037,7 @@ class mywindow(QtWidgets.QMainWindow):
                                 cu.selectRow(i)
                                 break
                         self.w2 = mywindow2(self, cu, "Док_тк", cu.currentRow())
+                        destroy_window_on_close(self.w2, self, "w2")  # 11.06.2026
                         self.w2.showNormal()
                         if cu.item(cu.currentRow(), 0) != None:
                             self.w2.ui2.lineEdit.setText(cu.item(cu.currentRow(), 0).text())
@@ -1000,6 +1052,7 @@ class mywindow(QtWidgets.QMainWindow):
                                 cu.selectRow(i)
                                 break
                         self.w2 = mywindow2(self, cu, "Док_оп", cu.currentRow())
+                        destroy_window_on_close(self.w2, self, "w2")  # 11.06.2026
                         self.w2.showNormal()
                         if cu.item(cu.currentRow(), 0) != None:
                             self.w2.ui2.lineEdit.setText(cu.item(cu.currentRow(), 0).text())
@@ -1014,6 +1067,7 @@ class mywindow(QtWidgets.QMainWindow):
                                 cu.selectRow(i)
                                 break
                         self.w2 = mywindow2(self, cu, "Оснастка", cu.currentRow())
+                        destroy_window_on_close(self.w2, self, "w2")  # 11.06.2026
                         self.w2.showNormal()
                         if cu.item(cu.currentRow(), 0) != None:
                             self.w2.ui2.lineEdit.setText(cu.item(cu.currentRow(), 0).text())
@@ -1025,6 +1079,7 @@ class mywindow(QtWidgets.QMainWindow):
                                 cu.selectRow(i)
                                 break
                         self.w2 = mywindow2(self, cu, "Инструмент", cu.currentRow())
+                        destroy_window_on_close(self.w2, self, "w2")  # 11.06.2026
                         self.w2.showNormal()
                         if cu.item(cu.currentRow(), 0) != None:
                             self.w2.ui2.lineEdit.setText(cu.item(cu.currentRow(), 0).text())
