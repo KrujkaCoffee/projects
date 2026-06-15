@@ -828,7 +828,7 @@ def load_schema_jpg(self:mywindow, path, x_sel = '', y_sel = '', add_prim:list=(
 def get_workers(default_val = None): #27.01.2026
     company = CFG.Config.place.Имя
     return CSQ.custom_request_c(
-        CFG.Config.project.db_users, #02.02.2026
+        CFG.Config.project.db_users,
         f"""
         SELECT 
             employee.gender AS Пол,
@@ -839,7 +839,7 @@ def get_workers(default_val = None): #27.01.2026
             GROUP_CONCAT(sb.schedule, ', ') AS "Текущее расписание перерывов"
         FROM employee
              LEFT JOIN schedule_break sb ON sb.employee_phys_ref = employee.ID_ФизЛица
-        WHERE employee.Статус != 'Увольнение'
+        WHERE employee.Статус = 'Работа'
             AND employee.Компания = {company!r}
             AND employee.Должность IN (SELECT DISTINCT имя FROM professions)
         GROUP BY employee.ID_ФизЛица""",
