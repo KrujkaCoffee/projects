@@ -2438,7 +2438,7 @@ def lazer(ima_operacii, arr_tmp):
     s = F.valm(arr_tmp[1][F.num_col_by_name_in_hat_c(arr_tmp, 'Толщина,мм')])
     lenth_slice = float(arr_tmp[1][F.num_col_by_name_in_hat_c(arr_tmp, 'Периметр, мм')])
     is_mettalics = int(arr_tmp[1][F.num_col_by_name_in_hat_c(arr_tmp, 'использовать_металликс')])
-    mettalics_time = float(arr_tmp[1][F.num_col_by_name_in_hat_c(arr_tmp, 'время_из_металликс')])
+    mettalics_time = F.valm(arr_tmp[1][F.num_col_by_name_in_hat_c(arr_tmp, 'время_из_металликс')])
     lazer = int(arr_tmp[1][F.num_col_by_name_in_hat_c(arr_tmp, 'лазер_1плазма_2')])
     Vrez = int(arr_tmp[1][F.num_col_by_name_in_hat_c(arr_tmp, 'число_резов')])
     segment = int(arr_tmp[1][F.num_col_by_name_in_hat_c(arr_tmp, 'количество_сегментов')])
@@ -2944,8 +2944,6 @@ def svarka(ima_operacii, arr_tmp):
             F.num_col_by_name_in_hat_c(arr_tmp, 'Коэффициент сложности')].replace(key, SLOV_ZAMEN[key])
         arr_tmp[1][F.num_col_by_name_in_hat_c(arr_tmp, 'Вид сварки(20-П,21-А)')] = arr_tmp[1][
             F.num_col_by_name_in_hat_c(arr_tmp, 'Вид сварки(20-П,21-А)')].replace(key, SLOV_ZAMEN[key])
-        arr_tmp[1][F.num_col_by_name_in_hat_c(arr_tmp, 'Кол-во входящих ДСЕ')] = arr_tmp[1][
-            F.num_col_by_name_in_hat_c(arr_tmp, 'Кол-во входящих ДСЕ')].replace(key, SLOV_ZAMEN[key])
         arr_tmp[1][F.num_col_by_name_in_hat_c(arr_tmp, 'Положение шва')] = arr_tmp[1][
             F.num_col_by_name_in_hat_c(arr_tmp, 'Положение шва')].replace(key, SLOV_ZAMEN[key])
         arr_tmp[1][F.num_col_by_name_in_hat_c(arr_tmp, 'Материал')] = arr_tmp[1][
@@ -2956,7 +2954,6 @@ def svarka(ima_operacii, arr_tmp):
     tolsh_arr = arr_tmp[1][F.num_col_by_name_in_hat_c(arr_tmp, 'Толщина,мм')].split(";")
     arr_slognost = arr_tmp[1][F.num_col_by_name_in_hat_c(arr_tmp, 'Коэффициент сложности')].split(";")
     arr_pol_shva = arr_tmp[1][F.num_col_by_name_in_hat_c(arr_tmp, 'Положение шва')].split(";")
-    arr_quantity = arr_tmp[1][F.num_col_by_name_in_hat_c(arr_tmp, 'Кол-во входящих ДСЕ')].split(";")
     arr_vid_svarki = arr_tmp[1][F.num_col_by_name_in_hat_c(arr_tmp, 'Вид сварки(20-П,21-А)')].split(";")
     arr_material = arr_tmp[1][F.num_col_by_name_in_hat_c(arr_tmp, 'Материал')].split(";")
 
@@ -2976,13 +2973,12 @@ def svarka(ima_operacii, arr_tmp):
 
     # km = 1 if material == '1' else 1.5
     for i in range(len(vid_arr)):
-
+        # 21.05.2026
         vid = vid_arr[0] if len(vid_arr) <= 1 else vid_arr[i]
         dlina = F.valm(dlina_arr[i])
         tolsh = F.valm(tolsh_arr[i])
         slognost = arr_slognost[0] if len(arr_slognost) <= 1 else arr_slognost[i]
         pol_shva = arr_pol_shva[0] if len(arr_pol_shva) <= 1 else arr_pol_shva[i]
-        quantity = arr_quantity[0] if len(arr_quantity) <= 1 else arr_quantity[i]
         vid_svarki = arr_vid_svarki[0] if len(arr_vid_svarki) <= 1 else arr_vid_svarki[i]
         material = arr_material[0] if len(arr_material) <= 1 else arr_material[i]
 
@@ -3575,8 +3571,8 @@ class Data_oper_norm():
             , "Вид сварки(20-П,21-А)":
                        {"type": "str", "comment": '', "vals": {20: {'val': 'Полуавтоамат', 'prim': 'Полуавтоамат'},
                                                                21: {'val': 'Аргон', 'prim': 'Аргон'}, }}
-            , "Кол-во входящих ДСЕ":
-                       {"type": "int", "comment": '', "vals": {}}
+            # , "Кол-во входящих ДСЕ": #21.05.2026 по задаче 100071184
+            #            {"type": "int", "comment": '', "vals": {}}
             , "Положение шва":
                        {"type": "int", "comment": '', "vals": {
                            1: {'val': 'нижнее', 'prim': 'нижнее в пространстве'},
