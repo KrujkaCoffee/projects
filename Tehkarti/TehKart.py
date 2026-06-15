@@ -263,6 +263,7 @@ class mywindow(QtWidgets.QMainWindow):
         self.global_param_tk_dxf = ''
         self.mat_kd_erp = ''
         self.glob_tk_title:str = ''
+        self._fl_block_all_obj_resize:bool = False
         self.SPIS_PARAMETR_DXF = ['Периметр','Врезы','Площадь']
         self.showMaximized()
 
@@ -306,20 +307,19 @@ class mywindow(QtWidgets.QMainWindow):
         #================TABLES======================
         self.ui.tbl_ii.horizontalScrollBar().valueChanged.connect(
             self.ui.tbl_ii_filtr.horizontalScrollBar().setValue)
-        tabl = self.ui.tab_op
+        tab_op = self.ui.tab_op
         hat_c = ['ID', '№', 'Операция', 'Раб.центр', 'Оборудование', 'Тп.з.', 'Тшт.', 'Проф.', 'N раб.', 'КОИД']
-        CQT.fill_wtabl([hat_c], tabl, list_column_widths=CMS.load_column_widths(self, tabl))
-
-        tabl.verticalHeader().hide()
-
-        tabl.cellChanged.connect(self.cvet_knopki)
-        tabl.cellActivated.connect(self.cvet_knopki)
-        CQT.set_color_sort_cell_table_c(tabl)
+        CQT.fill_wtabl([hat_c], tab_op, list_column_widths=CMS.load_column_widths(self, tab_op),styleSheet=CQT.MES_EDIT_CSS)
+        CMS.load_column_widths(self,tab_op)
+        tab_op.verticalHeader().hide()
+        tab_op.cellChanged.connect(self.cvet_knopki)
+        tab_op.cellActivated.connect(self.cvet_knopki)
+        CQT.set_color_sort_cell_table_c(tab_op)
 
 
         tab2 = self.ui.tap_per
         hat_c = ['ID', '№', 'Тшт.']
-        CQT.fill_wtabl([hat_c], tab2, list_column_widths=CMS.load_column_widths(self, tab2))
+        CQT.fill_wtabl([hat_c], tab2, list_column_widths=CMS.load_column_widths(self, tab2),styleSheet=CQT.MES_EDIT_CSS)
 
         tab2.verticalHeader().hide()
         tab2.cellChanged.connect(self.cvet_knopki)
@@ -328,7 +328,7 @@ class mywindow(QtWidgets.QMainWindow):
 
         tab3 = self.ui.tab_kar
         hat_c = ['ID', 'Изменен', 'Разработал', 'Примечание']
-        CQT.fill_wtabl([hat_c],tab3,list_column_widths=CMS.load_column_widths(self,tab3))
+        CQT.fill_wtabl([hat_c],tab3,list_column_widths=CMS.load_column_widths(self,tab3),styleSheet=CQT.MES_EDIT_CSS)
 
         tab3.verticalHeader().hide()
 
@@ -341,7 +341,7 @@ class mywindow(QtWidgets.QMainWindow):
         list_data_osn = [['Оснастка']]
         for i in range(9):
             list_data_osn.append([''])
-        CQT.fill_wtabl(list_data_osn, tab_per_osn, list_column_widths=CMS.load_column_widths(self, tab_per_osn),set_editeble_col_nomera={0})
+        CQT.fill_wtabl(list_data_osn, tab_per_osn, list_column_widths=CMS.load_column_widths(self, tab_per_osn),set_editeble_col_nomera={0},styleSheet=CQT.MES_EDIT_CSS)
         tab_per_osn.verticalHeader().hide()
         tab_per_osn.cellChanged.connect(self.cvet_knopki)
         tab_per_osn.cellActivated.connect(self.cvet_knopki)
@@ -351,7 +351,7 @@ class mywindow(QtWidgets.QMainWindow):
         list_data_per_ins = [['Инструмент']]
         for i in range(9):
             list_data_per_ins.append([''])
-        CQT.fill_wtabl(list_data_per_ins, tab_per_ins, list_column_widths=CMS.load_column_widths(self, tab_per_ins),set_editeble_col_nomera={0})
+        CQT.fill_wtabl(list_data_per_ins, tab_per_ins, list_column_widths=CMS.load_column_widths(self, tab_per_ins),set_editeble_col_nomera={0},styleSheet=CQT.MES_EDIT_CSS)
 
         tab_per_ins.verticalHeader().hide()
         tab_per_ins.cellChanged.connect(self.cvet_knopki)
@@ -359,7 +359,7 @@ class mywindow(QtWidgets.QMainWindow):
 
         tab_op_doc = self.ui.tab_op_doc
         hat_c = ['Документы']
-        CQT.fill_wtabl([hat_c], tab_op_doc, list_column_widths=CMS.load_column_widths(self, tab_op_doc))
+        CQT.fill_wtabl([hat_c], tab_op_doc, list_column_widths=CMS.load_column_widths(self, tab_op_doc),styleSheet=CQT.MES_EDIT_CSS)
 
         tab_op_doc.verticalHeader().hide()
 
@@ -368,7 +368,7 @@ class mywindow(QtWidgets.QMainWindow):
 
         tab_tk_doc = self.ui.tab_tk_doc
         hat_c = ['Документы']
-        CQT.fill_wtabl([hat_c], tab_tk_doc, list_column_widths=CMS.load_column_widths(self, tab_tk_doc))
+        CQT.fill_wtabl([hat_c], tab_tk_doc, list_column_widths=CMS.load_column_widths(self, tab_tk_doc),styleSheet=CQT.MES_EDIT_CSS)
 
         tab_tk_doc.verticalHeader().hide()
 
@@ -382,50 +382,16 @@ class mywindow(QtWidgets.QMainWindow):
 
         self.ui.tableW_oper_mat.clicked.connect(lambda _, x=self: osn_mat.zagr_sortament(x))
 
-        tab_buf1 = self.ui.t_buff_1
-        if F.existence_file_c(self.PUT_K_TMP + os.sep + '1.txt'):
-            spisok = F.open_file_c(self.PUT_K_TMP + os.sep + '1.txt')
-            CQT.fill_wtabl_old_c(mywindow, spisok, tab_buf1, 0, 0, (), (), 200, False, "|", 5)
 
-        tab_buf2 = self.ui.t_buff_2
-        if F.existence_file_c(self.PUT_K_TMP + os.sep + '2.txt'):
-            spisok = F.open_file_c(self.PUT_K_TMP + os.sep + '2.txt')
-            CQT.fill_wtabl_old_c(mywindow, spisok, tab_buf2, 0, 0, (), (), 200, False, "|", 5)
+        dict_buff = self.load_buff()
+        for i in range(1, 10):
+            name_tbl = f't_buff_{i}'
+            tbl_o = getattr(self.ui,name_tbl)
+            if tbl_o:
+                if dict_buff[i]:
+                    CQT.fill_wtabl(dict_buff[i],tbl_o,styleSheet=CQT.MES_CSS,hide_head_column=True,auto_type=False)
 
-        tab_buf3 = self.ui.t_buff_3
-        if F.existence_file_c(self.PUT_K_TMP + os.sep + '3.txt'):
-            spisok = F.open_file_c(self.PUT_K_TMP + os.sep + '3.txt')
-            CQT.fill_wtabl_old_c(mywindow, spisok, tab_buf3, 0, 0, (), (), 200, False, "|", 5)
 
-        tab_buf4 = self.ui.t_buff_4
-        if F.existence_file_c(self.PUT_K_TMP + os.sep + '4.txt'):
-            spisok = F.open_file_c(self.PUT_K_TMP + os.sep + '4.txt')
-            CQT.fill_wtabl_old_c(mywindow, spisok, tab_buf4, 0, 0, (), (), 200, False, "|", 5)
-
-        tab_buf5 = self.ui.t_buff_5
-        if F.existence_file_c(self.PUT_K_TMP + os.sep + '5.txt'):
-            spisok = F.open_file_c(self.PUT_K_TMP + os.sep + '5.txt')
-            CQT.fill_wtabl_old_c(mywindow, spisok, tab_buf5, 0, 0, (), (), 200, False, "|", 5)
-
-        tab_buf6 = self.ui.t_buff_6
-        if F.existence_file_c(self.PUT_K_TMP + os.sep + '6.txt'):
-            spisok = F.open_file_c(self.PUT_K_TMP + os.sep + '6.txt')
-            CQT.fill_wtabl_old_c(mywindow, spisok, tab_buf6, 0, 0, (), (), 200, False, "|", 5)
-
-        tab_buf7 = self.ui.t_buff_7
-        if F.existence_file_c(self.PUT_K_TMP + os.sep + '7.txt'):
-            spisok = F.open_file_c(self.PUT_K_TMP + os.sep + '7.txt')
-            CQT.fill_wtabl_old_c(mywindow, spisok, tab_buf7, 0, 0, (), (), 200, False, "|", 5)
-
-        tab_buf8 = self.ui.t_buff_8
-        if F.existence_file_c(self.PUT_K_TMP + os.sep + '8.txt'):
-            spisok = F.open_file_c(self.PUT_K_TMP + os.sep + '8.txt')
-            CQT.fill_wtabl_old_c(mywindow, spisok, tab_buf8, 0, 0, (), (), 200, False, "|", 5)
-
-        tab_buf9 = self.ui.t_buff_9
-        if F.existence_file_c(self.PUT_K_TMP + os.sep + '9.txt'):
-            spisok = F.open_file_c(self.PUT_K_TMP + os.sep + '9.txt')
-            CQT.fill_wtabl_old_c(mywindow, spisok, tab_buf9, 0, 0, (), (), 200, False, "|", 5)
         tbl_magaz = self.ui.tbl_magaz
         tbl_magaz.clicked.connect(lambda _, x=self: MAGAZ.tbl_magaz_click(x))
         tbl_magaz.setSelectionBehavior(1)
@@ -536,7 +502,7 @@ class mywindow(QtWidgets.QMainWindow):
         tabl_bd.setSelectionBehavior(1)
         tabl_bd.setSelectionMode(1)
         self.ui.tblw_dse.horizontalScrollBar().valueChanged.connect(
-            self.ui.tblw_dse_find.horizontalScrollBar().setValue)
+            self.ui.tblw_dse_filtr.horizontalScrollBar().setValue)
 
         self.ui.tbl_mat_edit.cellChanged[int,int].connect(self.edit_tbl_mat)
         self.ui.tbl_mat_edit.cellClicked.connect(lambda i,j : self.enter_tbl_mat( i,j,self.ui.tbl_mat_edit))
@@ -599,7 +565,7 @@ class mywindow(QtWidgets.QMainWindow):
         # self.ui.pushButton_load_doc.clicked.connect(self.dob_doc)
         # self.ui.pushButton_view_doc.clicked.connect(self.opn_doc)
 
-        self.operation_docs = TOD.OperationDocs(window=self, main_tbl=self.ui.tableWidget)
+        self.operation_docs = TOD.OperationDocs(window=self, main_tbl=self.ui.tbl_operation_docs)
         self.ui.tree.itemSelectionChanged.connect(self.operation_docs.fill_docs_table)
         self.ui.pushButton_prosm_doc.clicked.connect(self.operation_docs.show_modal)
 
@@ -778,8 +744,8 @@ class mywindow(QtWidgets.QMainWindow):
                 CMS.apply_filtr_c(self, self.ui.tbl_ii_filtr, self.ui.tbl_ii)
             if self.ui.tbl_magaz_filtr.hasFocus():
                 CMS.apply_filtr_c(self, self.ui.tbl_magaz_filtr, self.ui.tbl_magaz)
-            if self.ui.tblw_dse_find.hasFocus():
-                CMS.apply_filtr_c(self, self.ui.tblw_dse_find, self.ui.tblw_dse)
+            if self.ui.tblw_dse_filtr.hasFocus():
+                CMS.apply_filtr_c(self, self.ui.tblw_dse_filtr, self.ui.tblw_dse)
             if self.ui.tbl_mat_edit_filtr.hasFocus():
                 CMS.apply_filtr_c(self, self.ui.tbl_mat_edit_filtr, self.ui.tbl_mat_edit)
             if self.ui.tbl_formulas_filtr.hasFocus():
@@ -1679,12 +1645,15 @@ class mywindow(QtWidgets.QMainWindow):
         if CMS.kontrol_ver(self.versia, 'Техкарты') == False:
             quit()
         tabl_bd = self.ui.tblw_dse
+        t = CQT.TableContext(tabl_bd)
+
         row = False
         if tabl_bd.currentRow() != None and tabl_bd.currentRow() != -1:
             row = tabl_bd.currentRow()
-        spis_filtr = CQT.list_from_wtabl_c(self.ui.tblw_dse_find)
+            t.save_coord()
+        spis_filtr = CQT.list_from_wtabl_c(self.ui.tblw_dse_filtr)
         #stroki = CSQ.list_from_db_sql_c(self.db_naryad, 'dse', True, True)
-
+        print(f'==========LOAD DSE=========')
         stroki = CSQ.custom_request_c(self.db_dse,f'''SELECT 
             Пномер, 
             Номенклатурный_номер, 
@@ -1699,9 +1668,9 @@ class mywindow(QtWidgets.QMainWindow):
 
             Нр_техн_дет, 
             Нв_техн_раскрой 
-         FROM dse WHERE poki == {self.place.poki}''',conn=conn, cur = cur)
+         FROM dse WHERE poki == {self.place.poki}''')
         #self.set_kol_bd_dse = {0, 1, 2, 3, 6, 7, 8, 9, 10,11,12,13}
-
+        print(f'==========LOAD DSE OK========')
         """ tk = CMS.Techkards('КТ.2209018.03.04.002', self.db_dse)  # 'КЛ.2108001.29.20.001'
         if tk != None:
             tk._update_params_oper(self.DICT_OPERS)
@@ -1720,7 +1689,10 @@ class mywindow(QtWidgets.QMainWindow):
             return
         # CQT.fill_wtabl_old_c(self, stroki, tabl_bd, 0, {},
         #                  isp_hat_c=True, separ='', max_vis_row=20)
-        CQT.fill_wtabl(stroki, tabl_bd, height_row=20, auto_type=False)
+        print(f'==========FILL TBL DSE=========')
+        CQT.fill_wtabl(stroki, tabl_bd, height_row=20, auto_type=False,styleSheet=CQT.MES_CSS)
+        CMS.load_column_widths(self,tabl_bd)
+        print(f'==========FILL TBL DSE OK=========')
         tabl_bd.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
         # CQT.fill_vtable_c(self,tabl_bd,stroki,isp_hat_c = True, separ= '')
         tabl_bd.setColumnHidden(CQT.num_col_by_name_c(tabl_bd, 'Пномер'), True)
@@ -1728,11 +1700,17 @@ class mywindow(QtWidgets.QMainWindow):
         tabl_bd.setColumnHidden(CQT.num_col_by_name_c(tabl_bd, 'Доступ'), True)
 
         tabl_bd.horizontalHeader().setStretchLastSection(True)
-        #CMS.fill_filtr_c(self, self.ui.tblw_dse_find, tabl_bd)
+        #CMS.fill_filtr_c(self, self.ui.tblw_dse_filtr, tabl_bd)
+        print(f'==========SELECT row=========')
+        t = CQT.TableContext(tabl_bd)
         if row:
-            tabl_bd.setCurrentCell(row,0)
-        CMS.fill_filtr_c(self, self.ui.tblw_dse_find, tabl_bd,hidden_scroll=True) # 05.06.2025(сообщение в Проект разработка внедрение)
-        CMS.update_width_filtr(tabl_bd,self.ui.tblw_dse_find)
+            print(f'==========if row=========')
+            #tabl_bd.setCurrentCell(row,0)
+            t.restore_selected_cell()
+        print(f'==========fill_filtr_c=========')
+        CMS.fill_filtr_c(self, self.ui.tblw_dse_filtr, tabl_bd,hidden_scroll=True) # 05.06.2025(сообщение в Проект разработка внедрение)
+        print(f'==========update_width_filtr=========')
+        CMS.update_width_filtr(tabl_bd,self.ui.tblw_dse_filtr)
 
 
     @CQT.onerror
@@ -1905,12 +1883,9 @@ class mywindow(QtWidgets.QMainWindow):
         n_tk = self.ui.lineEdit_nntk
         naim_dse = self.ui.lineEdit_dse_naim
 
-        msg_default_exit = "Вы уверены, что хотите покинуть техкарту?"
-        msg_modified_exit = "В техкарте присутствуют несохранённые изменения. Вы уверены, что хотите выйти без сохранения?"
-        if self.current_tk_modified:
-            if not CQT.msgboxgYN_delay(msg_modified_exit, delay_sec=3): return
-        else:
-            if not CQT.msgboxgYN(msg_default_exit): return # 03.04.2026
+        msg = "В техкарте присутствуют несохранённые изменения. Вы уверены, что хотите выйти без сохранения?"
+        if self.current_tk_modified and not CQT.msgboxgYN_delay(msg, delay_sec=3):
+            return
 
         ima = n_tk.text() + '_' + n_dse.text() + ".txt"
         tmpf = F.put_po_umolch() + os.sep + "tmp_tk"
@@ -1919,7 +1894,10 @@ class mywindow(QtWidgets.QMainWindow):
             vosst_mk = True
             nom_mk = self.glob_tk_title.split('карте ')[-1].replace('*','')
         self.ui.tabWidget.setTabEnabled(1, False)
-        self.ui.tabWidget.setCurrentIndex(0)
+
+        with CQT.block_all_obj_resize(self):
+            self.ui.tabWidget.setCurrentIndex(0)
+
         if vosst_mk:
             relf = F.scfg('Mk') + os.sep + nom_mk + os.sep + ima.replace('.txt', '.pickle')
         else:
@@ -1958,7 +1936,7 @@ class mywindow(QtWidgets.QMainWindow):
     @CQT.onerror
     def vigruzit(self,*args):
         table_instance = self.ui.tblw_dse
-        fl_table_instance = self.ui.tblw_dse_find
+        fl_table_instance = self.ui.tblw_dse_filtr
 
         putt = F.scfg('vivod_tk')
         Path(putt).mkdir(parents=True, exist_ok=True)
@@ -2102,12 +2080,12 @@ class mywindow(QtWidgets.QMainWindow):
             if spisok_tk == ['']:
                 rez = CQT.msgboxgYN('Не найдена ТК, Создать техкарту заново?')
                 if rez:
-                    conn, cur = CSQ.connect_bd(self.db_dse,1)
+
                     CSQ.custom_request_c(
                         self.db_dse,
                         f"""UPDATE dse SET Номер_техкарты = '{n_tk.text()}' {where}""")
                     self.obnov_dse()
-                    CSQ.close_bd(conn, cur)
+
                     self.save_tk()
                 else:
                     return False
@@ -2371,7 +2349,7 @@ class mywindow(QtWidgets.QMainWindow):
         tmp = CQT.list_from_wtabl_c(buf)
         mat_preview = MAGAZ.PreviewMaterials(self, tmp)#20.06.25 ( по задаче 100055627 )
         tmp = mat_preview.call_preview_table()
-        if self.dse_nn_from_copy != self.dse_nn:
+        if not hasattr(self,'dse_nn_from_copy') or self.dse_nn_from_copy != self.dse_nn:
             for i in range(len(tmp)):
                 if not self.copy_is_approve:
                     if tmp[i][20] == '0':
@@ -2449,37 +2427,42 @@ class mywindow(QtWidgets.QMainWindow):
 
     @CQT.onerror
     def widths(self,*args):
-        tab_per_ins = self.ui.tap_per_insrt
-        tab_per_ins.setColumnWidth(0, int(tab_per_ins.width()))
-        tab_per_osn = self.ui.tap_per_osnast
-        tab_per_osn.setColumnWidth(0, int(tab_per_osn.width()))
-
-        tab2 = self.ui.tap_per
-        tab2.setColumnWidth(0, int(tab2.width() * 0.3))
-        tab2.setColumnWidth(1, int(tab2.width() * 0.3))
-        tab2.setColumnWidth(2, int(tab2.width() * 0.4) - 5)
-        tabl = self.ui.tab_op
-        tabl.setColumnWidth(0, int(tabl.width() * 0))
-        tabl.setColumnWidth(1, int(tabl.width() * 0.05))
-        tabl.setColumnWidth(2, int(tabl.width() * 0.2))
-        tabl.setColumnWidth(4, int(tabl.width() * 0.3))
-        tabl.setColumnWidth(5, int(tabl.width() * 0.05))
-        tabl.setColumnWidth(6, int(tabl.width() * 0.05))
-        tabl.setColumnWidth(7, int(tabl.width() * 0.05))
-        tabl.setColumnWidth(8, int(tabl.width() * 0.05))
-        tabl.setColumnWidth(9, int(tabl.width() * 0.05))
-        tabl.setColumnWidth(4, int(tabl.width() - tabl.columnWidth(0) - tabl.columnWidth(1) - tabl.columnWidth(2)
-                                   - tabl.columnWidth(3) - tabl.columnWidth(5) - tabl.columnWidth(6)
-                                   - tabl.columnWidth(7) - tabl.columnWidth(8) - tabl.columnWidth(9)) - 5)
-        tab_oper_mat = self.ui.tbl_oper_mat
-        tab_oper_mat.setColumnWidth(0, int(tab_oper_mat.width() * 0.3))
-        tab_oper_mat.setColumnWidth(1, int(tab_oper_mat.width() * 0.3))
-        tab_oper_mat.setColumnWidth(2, int(tab_oper_mat.width() * 0.4))
-
-        tab_doc_tk = self.ui.tab_tk_doc
-        tab_doc_tk.setColumnWidth(0, tab_doc_tk.width())
-        tab_doc_op = self.ui.tab_op_doc
-        tab_doc_op.setColumnWidth(0, tab_doc_op.width())
+        with CQT.table_updating(self.ui.tap_per_insrt):
+            tab_per_ins = self.ui.tap_per_insrt
+            tab_per_ins.setColumnWidth(0, int(tab_per_ins.width()))
+        with CQT.table_updating(self.ui.tap_per_osnast):
+            tab_per_osn = self.ui.tap_per_osnast
+            tab_per_osn.setColumnWidth(0, int(tab_per_osn.width()))
+        with CQT.table_updating(self.ui.tap_per):
+            tab2 = self.ui.tap_per
+            tab2.setColumnWidth(0, int(tab2.width() * 0.3))
+            tab2.setColumnWidth(1, int(tab2.width() * 0.3))
+            tab2.setColumnWidth(2, int(tab2.width() * 0.4) - 5)
+        with CQT.table_updating(self.ui.tab_op):
+            tabl = self.ui.tab_op
+            tabl.setColumnWidth(0, int(tabl.width() * 0))
+            tabl.setColumnWidth(1, int(tabl.width() * 0.05))
+            tabl.setColumnWidth(2, int(tabl.width() * 0.2))
+            tabl.setColumnWidth(4, int(tabl.width() * 0.3))
+            tabl.setColumnWidth(5, int(tabl.width() * 0.05))
+            tabl.setColumnWidth(6, int(tabl.width() * 0.05))
+            tabl.setColumnWidth(7, int(tabl.width() * 0.05))
+            tabl.setColumnWidth(8, int(tabl.width() * 0.05))
+            tabl.setColumnWidth(9, int(tabl.width() * 0.05))
+            tabl.setColumnWidth(4, int(tabl.width() - tabl.columnWidth(0) - tabl.columnWidth(1) - tabl.columnWidth(2)
+                                       - tabl.columnWidth(3) - tabl.columnWidth(5) - tabl.columnWidth(6)
+                                       - tabl.columnWidth(7) - tabl.columnWidth(8) - tabl.columnWidth(9)) - 5)
+        with CQT.table_updating(self.ui.tbl_oper_mat):
+            tab_oper_mat = self.ui.tbl_oper_mat
+            tab_oper_mat.setColumnWidth(0, int(tab_oper_mat.width() * 0.3))
+            tab_oper_mat.setColumnWidth(1, int(tab_oper_mat.width() * 0.3))
+            tab_oper_mat.setColumnWidth(2, int(tab_oper_mat.width() * 0.4))
+        with CQT.table_updating(self.ui.tab_tk_doc):
+            tab_doc_tk = self.ui.tab_tk_doc
+            tab_doc_tk.setColumnWidth(0, tab_doc_tk.width())
+        with CQT.table_updating(self.ui.tab_op_doc):
+            tab_doc_op = self.ui.tab_op_doc
+            tab_doc_op.setColumnWidth(0, tab_doc_op.width())
 
     @CQT.onerror
     def tree_vverh(self,*args):
@@ -2596,7 +2579,7 @@ class mywindow(QtWidgets.QMainWindow):
                 if root == '':
                     CQT.msgbox(f'Структура ТК не корректная')
                     return
-                root.setText(j, spisok[i][j])
+                root.setText(j, str(spisok[i][j]))
             tree.addTopLevelItem(root)
             tree.expandItem(root)
             n += 1
@@ -2840,7 +2823,9 @@ class mywindow(QtWidgets.QMainWindow):
             if len(n_tk.text()) < 7:
                 CQT.msgbox(f'Номер техкарты короткий')
                 return
-
+            if ' ' in n_tk.text():
+                CQT.msgbox(f'В названии ТК пробелы недопустимы')
+                return
         n_k_nn = CQT.num_col_by_name_c(tbl_dse, 'Номенклатурный_номер')
         n_k_naim = CQT.num_col_by_name_c(tbl_dse, 'Наименование')
         if tbl_dse.item(tbl_dse.currentRow(), n_k_nn) != None:
@@ -2883,12 +2868,6 @@ class mywindow(QtWidgets.QMainWindow):
             CQT.msgbox('Не заполнена графа Нормоконтроль')
             return
 
-        self.ui.tab_kar.setRowCount(0)
-        self.ui.tab_tk_doc.setRowCount(0)
-        self.ui.tab_op.setRowCount(0)
-        self.ui.tab_op_doc.setRowCount(0)
-        self.ui.tap_per.setRowCount(0)
-        self.ui.tableW_oper_mat.setRowCount(0)
 
 
         rez = self.block_tk(naim_dse.text(), n_dse.text())
@@ -2899,12 +2878,19 @@ class mywindow(QtWidgets.QMainWindow):
         else:
             self.ui.pushButton_sozd.setEnabled(True)
 
+        with CQT.block_all_obj_resize(self):
+            rez = self.load_redaktor_tk(nom_mk)
+            if rez == False:
+                return
 
-        rez = self.load_redaktor_tk(nom_mk)
-        if rez == False:
-            return
-        self.ui.tabWidget.setTabEnabled(1, True)
-        self.ui.tabWidget.setCurrentIndex(1)
+            self.ui.tab_kar.setRowCount(0)
+            self.ui.tab_tk_doc.setRowCount(0)
+            self.ui.tab_op.setRowCount(0)
+            self.ui.tab_op_doc.setRowCount(0)
+            self.ui.tap_per.setRowCount(0)
+            self.ui.tableW_oper_mat.setRowCount(0)
+            self.ui.tabWidget.setTabEnabled(1, True)
+            self.ui.tabWidget.setCurrentIndex(1)
 
         if self.ui.pushButton_sozd.text() == 'Изменить':
             #self.save_tk()
@@ -2967,7 +2953,7 @@ class mywindow(QtWidgets.QMainWindow):
             if nom_dse == '':
                 le_n_tk.setText(f'ТДТК{self.place.letter}.{F.clear_row_for_file_name_c(nom_nazv)}')
             else:
-                le_n_tk.setText(f'ТДТК{self.place.letter}.{nom_dse}')
+                le_n_tk.setText(f'ТДТК{self.place.letter}.{nom_dse.replace(" ","_")}')
             le_n_tk_km.setText('ВСН')
             self.set_glob_tk_title('')
             self.nom_tk = ''
@@ -3198,9 +3184,10 @@ class mywindow(QtWidgets.QMainWindow):
             spis_k = slov_op[i]
             spisok_zn_op.append(spis_k[3] + "|" + spis_k[2] + "|" + spis_k[0])
         #CQT.fill_vtable_c(self, tab_oper_mat, spisok_zn_op, "|", True)
-        CQT.fill_wtabl_old_c(self,spisok_zn_op,tab_oper_mat,separ='|',isp_hat_c=True)
-        tab_oper_mat.resizeColumnsToContents()
-        tab_oper_mat.horizontalHeader().setStretchLastSection(True)
+        list_spisok_zn_op = [_.split('|') for _ in spisok_zn_op]
+        #CQT.fill_wtabl_old_c(self,spisok_zn_op,tab_oper_mat,separ='|',isp_hat_c=True)
+        CQT.fill_wtabl(list_spisok_zn_op,tab_oper_mat,styleSheet=CQT.MES_CSS)
+
 
     @CQT.onerror
     def obnovit_param_tabl_pereh(self):
@@ -3414,7 +3401,9 @@ class mywindow(QtWidgets.QMainWindow):
         tabl_doc = self.ui.tab_tk_doc
         tabl_doc.clearContents()
         tabl_doc.setRowCount(9)
-        s_doc = obj.text(13).split('$')
+        s_doc = []
+        if obj is not None:
+            s_doc = obj.text(13).split('$')
         for j in range(0, len(s_doc)):
             cellinfo = QtWidgets.QTableWidgetItem(s_doc[j])
             tabl_doc.setItem(j, 0, cellinfo)
@@ -3481,7 +3470,7 @@ class mywindow(QtWidgets.QMainWindow):
         if len(list_of_dicts):
             set_editable = {i for i,k in enumerate(list_of_dicts[0].keys()) if k not in exclude_edit}
         CQT.fill_wtabl(list_of_dicts,tabl,set_editeble_col_nomera=set_editable,height_row=24,min_width_col=0,
-                       auto_type=False,list_column_widths=CMS.load_column_widths(self,tabl))
+                       auto_type=False,list_column_widths=CMS.load_column_widths(self,tabl),styleSheet=CQT.MES_EDIT_CSS)
         return
 
 
@@ -3563,6 +3552,7 @@ class mywindow(QtWidgets.QMainWindow):
         tree.setCurrentItem(root)
         self.colors_into_tree_c(145, 218, 145, 255)
         self.w2 = mywindow2(self, tree, "Древо")
+        destroy_window_on_close(self.w2, self, "w2")  # 11.06.2026
         self.w2.showNormal()
         self.w2.ui2.lineEdit.setText(self.ui.tree.currentItem().text(0))
         self.w2.ui2.lineEdit.setFocus()
@@ -3608,6 +3598,7 @@ class mywindow(QtWidgets.QMainWindow):
         tree.setCurrentItem(child1)
         self.colors_into_tree_c(145, 218, 145, 255)
         self.w2 = mywindow2(self,tree, "Древо")
+        destroy_window_on_close(self.w2, self, "w2")  # 11.06.2026
         self.w2.showNormal()
         self.w2.ui2.lineEdit.setText(self.ui.tree.currentItem().text(0))
         # self.w2.ui2.lineEdit.setFocus()
@@ -3632,6 +3623,7 @@ class mywindow(QtWidgets.QMainWindow):
         tree.setCurrentItem(child1)
         self.colors_into_tree_c(145, 218, 145, 255)
         self.w2 = mywindow2(self,tree, "Древо")
+        destroy_window_on_close(self.w2, self, "w2")  # 11.06.2026
         self.w2.showNormal()
         self.w2.ui2.lineEdit.setText(self.ui.tree.currentItem().text(0))
         self.w2.ui2.lineEdit.setFocus()
@@ -3670,13 +3662,36 @@ class mywindow(QtWidgets.QMainWindow):
         return spisok
 
     @CQT.onerror
-    def sohran_buff(self, nom, tabl):
-        item = tabl
-        stroki = CQT.list_from_wtabl_c(item, '|')
+    def load_buff(self,)->dict:
+        base_path = self.PUT_K_TMP + os.sep
+        if F.existence_file_c(base_path + '_num_buff.pickle'):
+            dict_buf = F.load_file_pickle(base_path + '_num_buff.pickle')
+        else:
+            dict_buf = dict()
+            for i in range(1, 10):
+                data = []
+                path_txt = base_path + f'{i}.txt'
+                if F.existence_file_c(path_txt):
+                    data = F.open_file_c(path_txt,separ='|')
+                dict_buf[i] = data
+        return dict_buf
+
+
+    @CQT.onerror
+    def sohran_buff(self, nom, item):
+        dict_buff = self.load_buff()
         if F.existence_file_c(self.PUT_K_TMP) == False:
             F.create_dir_c(self.PUT_K_TMP)
-        puttf = self.PUT_K_TMP + os.sep + str(nom) + ".txt"
-        F.write_file_c(puttf, stroki)
+        data = CQT.list_from_wtabl_c(item)
+        obj_name = item.objectName()
+        idx = obj_name.replace(f't_buff_','')
+        if F.is_numeric(idx):
+            dict_buff[int(idx)]= data
+            base_path = self.PUT_K_TMP + os.sep
+            F.save_file_pickle(base_path + '_num_buff.pickle',dict_buff)
+
+
+
 
     @CQT.onerror
     def get_oper_osn_path(self, operation: str) -> str:
@@ -3735,7 +3750,7 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
         combo1.setEditable(True)
         combo1.activated.connect(self.vibor_elem1)
         combo2.activated.connect(self.vibor_elem2)
-
+        CQT.connect_to_resize(self,CMS.tmp_dir())
         poki = str(self.pself.place.poki)
         cash = self.pself.xl_formulas.base_dir
         self.bd_docs_txt = str(cash / poki / 'bd_docs.txt')
@@ -3830,8 +3845,6 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
                 if list_nomen_by_vid[i]['Код']== kod_erp:
                     CQT.select_cell(tab,i,0)
                     break
-
-
 
             #custom_request_c = f'''SELECT * FROM nomen WHERE  == 0 ;'''
             #rez = CSQ.custom_request_c(self.db_mater, custom_request_c=custom_request_c, hat_c=True,conn=conn, cur = cur)
@@ -4049,10 +4062,14 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
             nk_db_nn = CQT.num_col_by_name_c(tab_v, 'Код')
             nk_db_naim = CQT.num_col_by_name_c(tab_v, 'Наименование')
             nk_db_edizm = CQT.num_col_by_name_c(tab_v, 'ЕдиницаИзмерения')
+
             nk_tblm_nn = CQT.num_col_by_name_c(tab_mat, 'Код')
             nk_tblm_naim = CQT.num_col_by_name_c(tab_mat, 'Материал')
             nk_tblm_edizm = CQT.num_col_by_name_c(tab_mat, 'Ед.Изм')
             nk_tblm_norma = CQT.num_col_by_name_c(tab_mat, 'Норма')
+
+
+
             for i in range(0, tab_mat.columnCount()):
                 if tab_mat.item(tab_mat.currentRow(), i) == None:
                     cellinfo = QtWidgets.QTableWidgetItem(tab_v.item(tab_v.currentRow(), i).text())
@@ -4073,9 +4090,11 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
                 self.pself.ui.tbl_resch_mater.setCurrentCell(0, 0)
             tab_mat.horizontalHeader().setStretchLastSection(True)
             tab_mat.resizeColumnsToContents()
+            self.close()
 
         if self.item_o == "Оснастка":
             self.cust_keyReleaseEvent(16777220,QtCore.Qt.ControlModifier)
+            self.close()
 
     @CQT.onerror
     def cust_keyReleaseEvent(self, ekey:int,modifiers:int):
@@ -4096,7 +4115,7 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
                 else:
                     cellinfo = QtWidgets.QTableWidgetItem(tab_v.item(tab_v.currentRow(), 0).text())
                     tab_doc.setItem(tab_doc.currentRow(), 0, cellinfo)
-                self.hide()
+                self.close() # 01.06.2026
         if self.item_o == "Док_тк":
             tab_v = self.ui2.tab_vib
             if tab_v.hasFocus() == False:
@@ -4108,7 +4127,7 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
                 else:
                     cellinfo = QtWidgets.QTableWidgetItem(tab_v.item(tab_v.currentRow(), 0).text())
                     tab_doc.setItem(tab_doc.currentRow(), 0, cellinfo)
-                self.hide()
+                self.close() # 11.06.2026
         if self.item_o == "Профессия":
             tab_v = self.ui2.tab_vib
             if tab_v.hasFocus() == False:
@@ -4132,7 +4151,7 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
                 else:
                     cellinfo = QtWidgets.QTableWidgetItem(tab_v.item(tab_v.currentRow(), 1).text())
                     tab_op.setItem(tab_op.currentRow(), 4, cellinfo)
-                self.hide()
+                self.close() # 11.06.2026
         if self.item_o == "Раб_ц":
             tab_v = self.ui2.tab_vib
             if tab_v.hasFocus() == False:
@@ -4144,7 +4163,7 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
                 else:
                     cellinfo = QtWidgets.QTableWidgetItem(tab_v.item(tab_v.currentRow(), 0).text())
                     tab_op.setItem(tab_op.currentRow(), 3, cellinfo)
-                self.hide()
+                self.close() # 11.06.2026
         if self.item_o == "Материал":
             tab_v = self.ui2.tab_vib
             if tab_v.hasFocus():
@@ -4529,6 +4548,7 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
                 combo2.addItems(arr_tmp)
             return
         if self.item_o == "Материал":
+            self.close()
             pass
             return
 
