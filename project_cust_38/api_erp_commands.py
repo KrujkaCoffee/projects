@@ -8,7 +8,9 @@ import base64
 import project_cust_38.Cust_config as CFG
 import hashlib
 import sys
-
+import json
+from subprocess import call as subprocess_call
+import project_cust_38.Cust_emoji as CEMOJ
 
 USER_ERP = 'mes_user'
 PASS_ERP = '89Luham'
@@ -20,6 +22,18 @@ if HOSTNAME_LOCAL_MES: #"POW-ING22":
     HOST_MES = '192.168.14.71'# AG local
 else:
     HOST_MES = '192.168.50.44'# server
+
+class _ImportDb():
+    def parce_row_dict(self,item:dict):
+        attrs = F.get_all_attrs_with_properties(self,include_private=True)
+        for key,val in item.items():
+            fix_key = str(key).replace(".", "_")
+            if fix_key not in attrs:
+                print(f'class {self.__class__.__name__} ImportDbRow attr not declared :{fix_key}' )
+            exec(f'self.{fix_key} = val')
+
+    def __repr__(self):
+        return (f"{', '.join([f'"{k}" : {v if F.is_numeric(v) else f'"{v}"'}' for k,v in self.__dict__.items()])}")
 
 class Ref_wet():
 
@@ -183,7 +197,8 @@ def get_enum(name_enum:str, erp_base_name: str = 'ERP'):
     else:
         return response.status_code, None
 
-
+def hash_data_for_api(dict_data:dict)->str:
+    return  F.hash_data(dict_data)
 
 def get_wet_request(text: str, refs: Refs_wet | None = None, lazy_method_huours=0, **kwargs):
     start = F.now('')
@@ -211,23 +226,38 @@ def get_wet_request(text: str, refs: Refs_wet | None = None, lazy_method_huours=
 
     BASE_NAME_TMP_STUKT = "lazy_wet_request"
 
-    def add_data_db(db_files: str, fl_naid_lazy: int | None, url_hash: str, file, description, file_hash, time):
+    def add_data_db(db_files: str, fl_naid_lazy: bool, sum_hash: str, file, description, file_hash, time):
         size = sys.getsizeof(file)
-        new_hash = hashlib.md5(F.to_binary_pickle(file)).hexdigest()
-        if fl_naid_lazy == None:
-            CSQ.custom_request_c(db_files, """INSERT into odata_lazy_resps (resp, resp_date, description, file, file_size, hash_file)
+        new_file_hash = hashlib.md5(F.to_binary_pickle(file)).hexdigest()
+        fl_upd = True
+        if not fl_naid_lazy:
+            try:
+                CSQ.custom_request_c(db_files, """INSERT into odata_lazy_resps (resp, resp_date, 
+                        description, file, file_size, hash_file)
                       VALUES (?, ?, ?, ? ,? ,?);""",
                                  list_of_lists_c=[
                                      [url_hash, time, description, F.to_binary_pickle(file), size, new_hash]])
         else:
             if new_hash == file_hash:
+                                     [sum_hash, time, description, F.to_binary_pickle(file), size, new_file_hash]])
+                fl_upd = False
+            except:
+                print(f'error INSERT into odata_lazy_resps')
+
+        if fl_upd:
+            if new_file_hash == file_hash: #те же данные (не изменились)
                 CSQ.custom_request_c(db_files,
-                                     f"""UPDATE odata_lazy_resps set (resp_date ) = (?) WHERE s_num == {fl_naid_lazy};""",
-                                     list_of_lists_c=[[time]])
+                                     f"""UPDATE odata_lazy_resps set (resp_date ) = (?) 
+                                     WHERE resp == ?;""",
+                                     list_of_lists_c=[[time,sum_hash]])
             else:
                 CSQ.custom_request_c(db_files,
-                                     f"""UPDATE odata_lazy_resps set (resp_date, file, file_size, hash_file ) = (?,?,?,?) WHERE s_num == {fl_naid_lazy};""",
-                                     list_of_lists_c=[[time, F.to_binary_pickle(file), size, new_hash]])
+                                     f"""UPDATE odata_lazy_resps set (resp_date, file, 
+                                     file_size, hash_file ) = (?,?,?,?) WHERE resp == ?;""",
+                                     list_of_lists_c=[[time, F.to_binary_pickle(file),
+                                                            size, new_file_hash,sum_hash]])
+
+    old_data_db = None
 
     headers = dict(Accept='application/json')
     params = dict()
@@ -237,14 +267,16 @@ def get_wet_request(text: str, refs: Refs_wet | None = None, lazy_method_huours=
         dict_data['refs'] = refs.refs
     for k, v in kwargs.items():
         dict_data[k] = v
-    url = f'{CFG.Config.project.ERB_BASE_URL}/{CFG.Config.user_config.ERP_base_name["Значение"]}/ru_RU/hs/mes/sysexchange/v1/wet_request/none'
+    url = f'{CFG.Config.project.ERB_BASE_URL}/{
+            CFG.Config.user_config.ERP_base_name["Значение"]}/ru_RU/hs/mes/sysexchange/v1/wet_request/none'
     url_hash = hashlib.md5(url.encode('utf-8')).hexdigest()
-    dict_data_hash = hashlib.md5(dict_data.__repr__().encode('utf-8')).hexdigest()
-    params_hash = hashlib.md5(params.__repr__().encode('utf-8')).hexdigest()
+    dict_data_hash = hash_data_for_api(dict_data)
+    params_hash = hash_data_for_api(params)
     text_hash = hashlib.md5(text.encode('utf-8')).hexdigest()
-    sum_hash = hashlib.md5(''.join([url_hash, dict_data_hash, params_hash, text_hash]).encode('utf-8')).hexdigest()
+    sum_hash = hashlib.md5(''.join([url_hash, dict_data_hash, params_hash, text_hash]
+                                   ).encode('utf-8')).hexdigest()
     name_tmp_stukt = f'{BASE_NAME_TMP_STUKT}_{sum_hash}'
-    fl_naid_lazy = None
+    fl_naid_lazy = False
     file_hash_lazy = None
     if lazy_method_huours > 0:
         now_date = F.now('')
@@ -254,42 +286,51 @@ def get_wet_request(text: str, refs: Refs_wet | None = None, lazy_method_huours=
         data_cach = load_tmp_stukt(name_tmp_stukt, False)
         fl_load_from_srv = True
         if data_cach:
-            delta = (F.now('') - F.strtodate(data_cach['date'])).seconds
+            delta = (F.now('') - F.strtodate(data_cach['date'])).total_seconds()
             if F.strtodate(data_cach['date']) > date_limit_half:
-                print(f'wet_req end PC {(F.now('') - start).total_seconds()}')
+                print(f'wet_req end PC {(F.now('') - start).total_seconds()} secs.')
+                old_data_db = data_cach['data']
                 return 200, data_cach['data']
 
         date_limit = F.date_add_time(now_date, hours=-lazy_method_huours)
         data = CSQ.custom_request_c(CFG.Config.project.db_files, f"""SELECT s_num, resp_date,
-        CASE WHEN datetime(resp_date) >= datetime("{date_limit}")  
-    THEN file 
-    ELSE null  
-    END AS file, 
-          hash_file FROM odata_lazy_resps 
-        where resp == "{sum_hash}" limit 1""", rez_dict=True)
+            CASE WHEN datetime(resp_date) >= datetime(?)  
+                THEN file 
+            ELSE null  
+                END AS file, 
+              hash_file FROM odata_lazy_resps 
+        where resp == ? limit 1""",
+            list_of_lists_c=[[date_limit, sum_hash]], rez_dict=True)
         if data and len(data):
-            fl_naid_lazy = data[0]['s_num']
+            fl_naid_lazy = True
             file_hash_lazy = data[0]['hash_file']
+            old_data_db = F.from_binary_pickle(data[0]['file'])
             if F.strtodate(data[0]['resp_date']) >= date_limit:
                 print(f'wet_req end DB {(F.now('') - start).total_seconds()}')
-                return 200, F.from_binary_pickle(data[0]['file'])
-
+                return 200, old_data_db
     try:
         response = requests.get(url, json=dict_data, headers=headers, params=params, auth=(USER_ERP, PASS_ERP))
     except:
-        print(f'wet_req end err resp {(F.now('')  - start).total_seconds()}')
+        print(f'wet_req end err (Code: None) resp {(F.now('')  - start).total_seconds()}')
+        if old_data_db:
+            print(f'    restored_old_data')
+            return 200, old_data_db
         return 408, None
     # print(F.convert_binary_to_data(response.content))
     if response.status_code == 200:
         rez = JS.loads(F.convert_binary_to_data(response.content))
         if lazy_method_huours > 0:
             time = F.now()
-            add_data_db(CFG.Config.project.db_files, fl_naid_lazy, sum_hash, rez, f"{text}", file_hash_lazy, time)
+            add_data_db(CFG.Config.project.db_files, fl_naid_lazy, sum_hash, rez,
+                            f"{text}", file_hash_lazy, time)
             save_tmp_stukt({"data": rez, "date": time}, name_tmp_stukt)
         print(f'wet_req end {(F.now('') - start).total_seconds()}')
         return response.status_code, rez
     else:
-        print(f'wet_req end err answ {(F.now('') - start).total_seconds()}')
+        print(f'wet_req end err (Code: {response.status_code}) answ {(F.now('') - start).total_seconds()}')
+        if old_data_db:
+            print(f'    restored_old_data')
+            return 200, old_data_db
         return response.status_code, None
 
 def get_wet_request_result(text: str, refs: Refs_wet | None = None, lazy_method_huours=0, msg_err ='None', **kwargs)->None|list[dict]:
@@ -368,3 +409,169 @@ def get_file(path:str|list = None):
         return response.status_code, JS.loads(F.convert_binary_to_data(response.content))
 
 
+def _generate_link(ref:str,TYPE_DOC:str)->tuple[str,str]:
+    c1_link = fr'/data/{TYPE_DOC}?ref={F.uuid_to_1c_ref(ref)}'
+    path = F.get_1c_executor_path()
+    path_o = F.Cust_path(path)
+    prefix = path_o.as_raw_literal()  #prefix = fr'"%programfiles%\1cv8\common\1cestart.exe" '
+    claster = CFG.Config.user_config.ERP_base.КластерСерверов
+    name_srv = CFG.Config.user_config.ERP_base.name
+    out_link = fr'e1c://server/{claster}/{name_srv}#e1cib{c1_link}'
+    line = prefix + fr'/url "{out_link}"'
+    return line, out_link
+
+
+
+def open_in_1c(ref:str,TYPE_DOC:str)->tuple[bool,str|None]:
+    line, out_link = _generate_link(ref,TYPE_DOC)
+    try:
+        subprocess_call(line, shell=True)
+        return True,None
+    except:
+        F.copy_bufer(out_link)
+        return False,out_link
+
+
+
+
+class Etap_erp(_ImportDb):
+    def __init__(self,
+                    item:dict
+                 ):
+        self.ref:str = None
+        self.НаименованиеЭтапа:str = None
+        self.Комментарий:str = None
+        self.ПометкаУдаления:bool = None
+        self.Организация:str = None
+        self.Подразделение:str = None
+        self.ref_Подразделение:str = None
+        self.Спецификация:str = None
+        self.Статус:str = None
+        self.Распоряжение:str = None
+        self.Номер:str = None
+        self.Дата:str = None
+        self.Проведен:bool = None
+        self.НЭ_НулевойЭтап:bool = None
+        self.НомерСтрокиЗП:int = None
+        self.НомерПартииЗапуска:int = None
+        self.НомерЭтапа:int = None
+        self.НомерСледующегоЭтапа:int = None
+        self.ФактическоеНачалоЭтапа:datetime.datetime = None
+        self.parce_row_dict(item)
+        if F.is_date(self.ФактическоеНачалоЭтапа,"%Y-%m-%dT%H:%M:%S"):
+            self.ФактическоеНачалоЭтапа = F.strtodate(self.ФактическоеНачалоЭтапа,"%Y-%m-%dT%H:%M:%S")
+
+    def __repr__(self):
+        return f"Etap_erp({self.НаименованиеЭтапа}, №{self.НомерЭтапа})"
+
+    @property
+    def emoj_deletion_mark(self):
+        if self.ПометкаУдаления:
+            return CEMOJ.EmojiMain.СтатусыПроизводства.error.symbol
+        return ''
+
+class Etaps_erp():
+    def __init__(self,kpl:int):
+        data_znpr = CSQ.custom_request_c(CFG.Config.project.db_kplan, f"""SELECT Ref_Key_py, НомПартии_ЗП FROM пл_оуп 
+         LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП 
+         WHERE НомПл == {kpl};""", one=True, rez_dict=True)
+        НомПартии_ЗП = data_znpr['НомПартии_ЗП']
+        ref_py = data_znpr['Ref_Key_py']
+        text = f"""ВЫБРАТЬ
+                ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЭтапПроизводства2_2.Ссылка)) КАК ref,
+                ЭтапПроизводства2_2.НаименованиеЭтапа КАК НаименованиеЭтапа,
+                ЭтапПроизводства2_2.ПометкаУдаления КАК ПометкаУдаления,
+                ЭтапПроизводства2_2.Комментарий КАК Комментарий,
+                ПРЕДСТАВЛЕНИЕ(ЭтапПроизводства2_2.Организация) КАК Организация,
+                ПРЕДСТАВЛЕНИЕ(ЭтапПроизводства2_2.Подразделение) КАК Подразделение,
+                ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЭтапПроизводства2_2.Подразделение.Ссылка)) КАК ref_Подразделение,
+                ПРЕДСТАВЛЕНИЕ(ЭтапПроизводства2_2.Спецификация) КАК Спецификация,
+                ПРЕДСТАВЛЕНИЕ(ЭтапПроизводства2_2.Статус) КАК Статус,
+                ПРЕДСТАВЛЕНИЕ(ЭтапПроизводства2_2.Распоряжение) КАК Распоряжение,
+                ЭтапПроизводства2_2.Номер КАК Номер,
+                ЭтапПроизводства2_2.Дата КАК Дата,
+                ЭтапПроизводства2_2.Проведен КАК Проведен,
+                ЭтапПроизводства2_2.НЭ_НулевойЭтап КАК НЭ_НулевойЭтап,
+                ЗаказНаПроизводство2_2Продукция.НомерСтроки КАК НомерСтрокиЗП,
+                ЭтапПроизводства2_2.НомерПартииЗапуска КАК НомерПартииЗапуска,
+                ЭтапПроизводства2_2.НомерЭтапа КАК НомерЭтапа,
+                ЭтапПроизводства2_2.НомерСледующегоЭтапа КАК НомерСледующегоЭтапа,
+                ЭтапПроизводства2_2.ФактическоеНачалоЭтапа
+            ИЗ
+                Документ.ЭтапПроизводства2_2 КАК ЭтапПроизводства2_2
+                    ЛЕВОЕ СОЕДИНЕНИЕ Документ.ЗаказНаПроизводство2_2.Продукция КАК ЗаказНаПроизводство2_2Продукция
+                    ПО (ЭтапПроизводства2_2.Спецификация = ЗаказНаПроизводство2_2Продукция.Спецификация
+                    И ЗаказНаПроизводство2_2Продукция.Ссылка = &Распоряжение)
+            ГДЕ
+                ЭтапПроизводства2_2.Распоряжение = &Распоряжение
+                И ЭтапПроизводства2_2.НомерПартииЗапуска = {НомПартии_ЗП}  """
+        refs = Refs_wet(text)
+        ref_obj = Ref_wet('Распоряжение', "Документы.ЗаказНаПроизводство2_2", ref_py)
+
+        refs.add_ref(ref_obj)
+        key, res = get_wet_request(text=text, refs=refs)
+        self.err = False
+        if key != 200:
+            self.err = True
+            raise ValueError(f'Ошибка получения данных из ЕРП')
+            return
+        self.list_etaps:list[Etap_erp]=[]
+        for it in res['data']:
+            self.list_etaps.append(Etap_erp(it))
+        self.ref_py:str = ref_py
+        self.НомПартии_ЗП:str = НомПартии_ЗП
+        return
+
+    def __repr__(self):
+        status = "error" if self.err else "ok"
+        return f"Etaps_erp(НомПартии={self.НомПартии_ЗП}, etaps={len(self.list_etaps)}, status={status})"
+
+
+    def create_new_etap(self,name:str,ref_podr:str)->tuple[int,list[str]|dict]:
+        json_data = {'name':name,
+                'ref_py':self.ref_py,
+                'НомПартии_ЗП':self.НомПартии_ЗП,
+                'Подразделение_Key':ref_podr# TODO брать реф из Справочники.СтруктураПредприятия а не из Справочники.ПодразделенияОрганизаций
+                }
+        headers = dict(Accept='application/json')
+        params = dict()
+        url = f'{CFG.Config.project.ERB_BASE_URL}/{CFG.Config.user_config.ERP_base_name['Значение']}/ru_RU/hs/mes/etaps/v1/add_etap/'
+        response = requests.post(url, json = json_data, headers=headers, params=params, auth=(USER_ERP, PASS_ERP))
+        # print(F.convert_binary_to_data(response.content))
+        if response.status_code == 200:
+            return response.status_code, json.loads(F.convert_binary_to_data(response.content))
+        return response.status_code, F.convert_binary_to_data(response.content)
+
+    def is_etap_existance(self,name_etap:str)->bool:
+        return name_etap in {_.НаименованиеЭтапа for _ in self.list_etaps}
+    
+    def get_permited_to_create_etaps(self,mes_code_podr:str):
+        DICT_ETAPI_FULL = F.deploy_dict_c(CSQ.custom_request_c(CFG.Config.project.db_naryad, f'''SELECT * FROM etaps''', rez_dict=True),
+                                          'name')
+
+        etaps_names = {_.НаименованиеЭтапа for _ in self.list_etaps}
+        
+        rez = [{'Этап': k, '_s_num': v['s_num'], '_color': v['color']} for k, v in DICT_ETAPI_FULL.items() if
+            k not in etaps_names
+            and v['poki'] == CFG.Config.place.poki and v['ДляЕРП'] 
+            and v['Опер_код_рц_для_ткп_стат'][:4] == mes_code_podr[:4]]
+        return rez
+
+    def filtered_by_podr(self, podr_name)->list[Etap_erp]:
+        text = f'''SELECT 
+                rab_c.Имя,
+                rab_c.ref_СтруктураПредприятия, 
+                rab_c.poki, 
+                rab_c.empl_Подразделение,
+                etaps.name as etaps_name,
+                use_in_estimate_plan as use_in_estimate_plan 
+             FROM rab_c 
+             INNER JOIN etaps ON etaps.s_num = rab_c.etaps_num 
+             LEFT JOIN СтруктураПредприятия ON СтруктураПредприятия.Ref =  rab_c.ref_СтруктураПредприятия 
+             WHERE rab_c.poki = {CFG.Config.place.poki} and rab_c.empl_Подразделение = "{podr_name}";'''
+
+        data_rc = CSQ.custom_request_c(CFG.Config.project.db_users, text, rez_dict=True,  
+                                       attach_dbs=CFG.Config.project.db_naryad)
+        set_refs = set([_['ref_СтруктураПредприятия'] for _ in data_rc])
+        return [_ for _ in self.list_etaps if _.ref_Подразделение in set_refs]
+        

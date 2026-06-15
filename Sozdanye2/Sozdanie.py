@@ -32,7 +32,7 @@ import composition_manage as CMPM
 from dataClass import data_app as DTCLS
 import project_cust_38.Cust_emoji as CEMOJ
 # import traceback
-
+import project_cust_38.api_erp_commands as APIERP
 
 cfg = F.load_cfg(False)  # файл конфига, находится п папке конфиг
 
@@ -1771,6 +1771,79 @@ class mywindow(QtWidgets.QMainWindow):
 
         nom_py = self.ui.tbl_vibor_nar_rasp.item(self.ui.tbl_vibor_nar_rasp.currentRow(), nk_py).text()
         nom_nar = int(self.ui.lbl_vibr_nar.text())
+
+        def check_and_add_etap_into_erp(n_nar:int):
+            err = []
+            self.stage = ''
+            def add_etap_by_fio(fio,etaps_to_add):
+                podr = DTCLS.app_self.DICT_EMPLOEE_FULL_WITH_DEL[fio]['Подразделение']
+                print(' add_etap_by_fio podr ok')
+                dolgn = DTCLS.app_self.DICT_EMPLOEE_FULL_WITH_DEL[fio]['Должность']
+                print(' add_etap_by_fio dolgn ok')
+                etap_name = DTCLS.app_self.DICT_DOLGN_ETAP[dolgn]['этап']
+                print(' add_etap_by_fio etap_name ok')
+                ref_podr = DTCLS.app_self.DICT_PODR_RC[podr]['ref_СтруктураПредприятия']
+                print(' add_etap_by_fio ref_podr ok')
+                etaps_to_add.add((etap_name,ref_podr))
+                print(' add_etap_by_fio etaps_to_add.add ok')
+                return etaps_to_add
+            fio = DTCLS.app_self.ui.lbl_ispoln1.text()
+            fio2 = DTCLS.app_self.ui.lbl_ispoln2.text()
+            self.stage = 'fio'
+            data_nar = CSQ.custom_request_c(DTCLS.PROJECT.db_kplan,
+                                       f"""SELECT знпр.№ERP, mk.НомКплан FROM naryad 
+                                       INNER JOIN mk ON mk.Пномер == naryad.Номер_мк 
+                                       INNER JOIN пл_оуп ON пл_оуп.НомПл == mk.НомКплан 
+                                       INNER JOIN знпр ON знпр.s_num == пл_оуп.Пномер_ЗП 
+                                       WHERE naryad.Пномер == {n_nar}; """,rez_dict=True,one=True,
+                                       attach_dbs=DTCLS.PROJECT.db_naryad)
+            if data_nar is None or data_nar == False:
+                err.append('err data_nar')
+                return
+            self.stage = 'data_nar'
+            kpl = data_nar['НомКплан']
+            zp = data_nar['№ERP']
+            etaps_o = APIERP.Etaps_erp(kpl)
+            if etaps_o.err:
+                err.append('err APIERP.Etaps_erp')
+                return
+            self.stage = 'etaps_o'
+            etaps_to_add= set()
+            if fio:
+                etaps_to_add = add_etap_by_fio(fio,etaps_to_add)
+            if fio2:
+                etaps_to_add = add_etap_by_fio(fio2,etaps_to_add)
+            self.stage = 'add_etap_by_fio'
+            for name_new_etap,ref_podr in etaps_to_add:
+                if  etaps_o.is_etap_existance(name_new_etap):
+                    continue
+                rez, err_data = etaps_o.create_new_etap(name_new_etap, ref_podr)
+                self.stage = 'create_new_etap'
+                table_msg = [{
+                            'ЗП': zp,
+
+                            'Наряд':n_nar,
+                            'Наименование': name_new_etap,
+
+                        }]
+
+                msg_str = f'{CEMOJ.EmojiMain.СтатусыПроизводства.success.symbol} Cоздан доп. этап'
+                if not rez or rez != 200:
+                    if err_data:
+                        msg_str = f'{CEMOJ.EmojiMain.СтатусыПроизводства.alert.symbol} Необходимо создать доп. этап вручную - ошибка: ({str(err_data)})'
+                    else:
+                        msg_str = f'{CEMOJ.EmojiMain.СтатусыПроизводства.alert.symbol} Необходимо создать доп. этап '
+                else:
+                    table_msg[0]['Номер этапа'] = err_data['ИмяЭтапа']
+                self.stage = 'table_msg'
+                template = B24.MessageBuilder(f'{DTCLS.PLACE.Имя}: {DTCLS.USER_CONFIG.User.ФИО} - Распределение наряда для {fio}/{fio2}')  # Инициализация (базовое сообщение)
+                template.add_table(table_msg)  # Добавить табличную часть
+                template.add_delimiter()  # Добавить разделитель
+                template.add_message(msg_str)  # Добавить сообщение
+                template.send_by_chat_id('chat102516')  # Итоговая отправка
+
+            return err
+
 
         if not CMS.check_execution_previous_operations(self, nom_nar, check_by_vip=False):
             CQT.msgbox(f'по наряду {nom_nar} не выполнены требования маршрута, работа ЗАБЛОКИРОВАНА')
