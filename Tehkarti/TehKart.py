@@ -4794,7 +4794,15 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
 
 rootitem1 = QtGui.QStandardItem('QAbstractItemView')
 
-app = QtWidgets.QApplication(sys.argv)
+# app = QtWidgets.QApplication(sys.argv)
+from project_cust_38.Cust_application import  SafeApplication, install_crash_guard
+app = SafeApplication(sys.argv)
+install_crash_guard(
+    app,
+    app_name='Техкарты',
+    show_popup=True,
+    user_name=F.user_name()
+)
 
 args = sys.argv[1:]
 
