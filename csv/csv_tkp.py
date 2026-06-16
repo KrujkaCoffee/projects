@@ -247,7 +247,8 @@ class mywindow(QtWidgets.QMainWindow):
             self.on_cmb_select_year_changed('По умолчанию')
 
         if self.ui.tabWidget.tabText(num_tab) == 'Структура':
-            self.ensure_header_connected()
+            #self.ensure_header_connected()03.06.2026
+            pass
 
 
     @CQT.onerror
