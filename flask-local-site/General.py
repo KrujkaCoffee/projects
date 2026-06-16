@@ -286,7 +286,9 @@ def load_projects(poki=None):
             date_add_kpl = row['Дата_внесения']
 
             otkl_dog = 0
-            if date_contract != '' and row['Упаковка'].split('/')[1] != '':
+            row['Упаковка'] = (row['Упаковка'] or '').strip('None')
+            date_dirty = row['Упаковка'].split('/')[1]
+            if date_contract != '' and date_dirty != '' and F.is_date(date_dirty,"%Y-%m-%d"):
                 otkl_dog = (F.strtodate(row['Упаковка'].split('/')[1],) - F.strtodate(date_contract,)).days
             otkl_dog = str(otkl_dog)
             pdo_prim = row['Примечание_ПДО']

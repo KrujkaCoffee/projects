@@ -3,7 +3,7 @@ import project_cust_38.Cust_Qt as CQT
 import project_cust_38.Cust_SQLite as CSQ
 import project_cust_38.Cust_mes as CMS
 from PyQt5.QtCore import QDate
-
+from data_class import Data_plan as DTCLS
 
 def zapisat(self):
     tbl = self.ui.tbl_obespechenie
@@ -32,7 +32,7 @@ def zapis_obesp_v_mk(self, spis):
     custom_request_c = f'''UPDATE mk SET Обеспечение = ? WHERE  Пномер == ?'''
     rez = CSQ.custom_request_c(self.bd_naryad, custom_request_c, list_of_lists_c=[F.to_binary_pickle(rez),nom_mk])
     if rez:
-        CQT.msgbox('Запись прошла упешно')
+        CQT.msgbox('Запись прошла успешно')
     else:
         CQT.msgbox('Ошибка записи')
     return
@@ -103,8 +103,8 @@ def load_obesp_mk(self, nom: int = ''):
                     shablon[i][nk_s_prim] = item[nk_s_prim]
                     shablon[i][nk_s_fdata] = item[nk_s_fdata]
     set_edit = {nk_s_defic,nk_s_prim}
-    CQT.fill_wtabl_old_c(self,shablon,self.ui.tbl_obespechenie,separ='',isp_hat_c=True,
-                     set_editeble_col_nomera=set_edit,min_shir_col=40)
+    CQT.fill_wtabl(shablon,self.ui.tbl_obespechenie,
+                     set_editeble_col_nomera=set_edit,styleSheet=CQT.MES_EDIT_CSS)
     CMS.fill_filtr_c(self,self.ui.tbl_obespechenie_filtr,self.ui.tbl_obespechenie)
 
 def spis_obesp_po_mk(self):
@@ -137,20 +137,24 @@ def spis_obesp_po_mk(self):
 def load_shablon_dsem(res):
     if res == None:
         return
-    spis_oper = [['НН','Наименование','Количество','Опер_имя/ед_изм','ПДата','Дефицит_кол-во','ФДата','Примечание']]
+    spis_oper = [['НН','Наименование','Количество','Опер_имя/ед_изм','Тип','ПДата','Дефицит_кол-во','ФДата','Примечание']]
     dict_mat = dict()
     for dse in res:
         for oper in dse['Операции']:
             spis_oper.append([dse['Номенклатурный_номер'],dse['Наименование'],
-                              dse['Количество'],f'{oper["Опер_номер"]}_{oper["Опер_наименование"]}','','','',''])
+                              dse['Количество'],f'{oper["Опер_номер"]}_{oper["Опер_наименование"]}','ДСЕ','','','',''])
             for material in oper['Материалы']:
-                if not material:
-                    continue
                 if material['Мат_код'] not in dict_mat:
                     dict_mat[material['Мат_код']] = [material['Мат_код'],material['Мат_наименование'],
-                                                     material['Мат_норма'],material['Мат_ед_изм'],'','','','']
+                                                     material['Мат_норма'],material['Мат_ед_изм'],'Мат.','','','','']
                 else:
                     dict_mat[material['Мат_код']][2] += material['Мат_норма']
+            for osn in oper['Опер_оснастка']:
+                if osn and osn in DTCLS.app_self.DICT_MAT:
+                    data_osn = DTCLS.app_self.DICT_MAT[osn]
+                    spis_oper.append([osn, data_osn['Наименование'],
+                                      1, f'{oper["Опер_номер"]}_{oper["Опер_наименование"]}', 'Осн.','', '',
+                                      '', ''])
     for key in dict_mat.keys():
         dict_mat[key][2]= round(dict_mat[key][2],6)
         spis_oper.append(dict_mat[key])
