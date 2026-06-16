@@ -1224,12 +1224,16 @@ def load_file_pickle(putima):
 
 
 def round_up(n, digit=0):
+    if isinstance(n,str):
+        n = valm(n)
     koef = 10 ** (digit)
     n *= koef
     if n % 1 > 0:
-        return (n // 1 + 1) / koef
+        result = (n // 1 + 1) / koef
     else:
-        return n / koef
+        result = n / koef
+
+    return int(result) if digit == 0 else result
 
 
 def generate_exel_copy_notation_text(spis):
@@ -2655,8 +2659,7 @@ def trim_collection(collection: dict | list | set):
     return cp_collection
 # -- 05.06.2025
 
-def round_up(num):
-    return int(-1 * valm(num) // 1 * -1)
+
 
 def round_down(num):
     try:
