@@ -9,6 +9,7 @@ try:
     from PyQt5.QtWinExtras import QtWin  # Windows-specific
 except ImportError:
     QtWin = None
+
 import project_cust_38.Cust_config as CFG
 CFG.load_place()
 
@@ -96,9 +97,11 @@ class mywindow(QtWidgets.QMainWindow):
                 return True
 
         if isinstance(obj, QtWidgets.QDockWidget) and event.type() == QtCore.QEvent.Resize:
-            # Сохранять только если пользователь держит кнопку мыши
             if QtWidgets.QApplication.mouseButtons() == QtCore.Qt.LeftButton:
-                CQT.on_section_resized(self, CQT.qt_tmp_dir(), obj)
+                key = f'QDockWidget:{obj.objectName()}'
+                target = getattr(self, '_resize_targets', {}).get(key)
+                if target is not None:
+                    CQT._on_resize_event(self, target)
         return super().eventFilter(obj, event)
 
 app = QtWidgets.QApplication(['', '--no-sandbox'])

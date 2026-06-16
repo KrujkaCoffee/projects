@@ -3276,6 +3276,17 @@ def is_table_colorful_edit(tbl: QtWidgets.QTableWidget) -> bool:
     """возвращает True, если таблица автоподкрашивается при редактировании"""
     return bool(tbl.property('_colorful_edit'))
 
+def is_table_not_active(tbl: QtWidgets.QTableWidget|QtWidgets.QHeaderView) -> bool:
+    if isinstance(tbl, QtWidgets.QHeaderView):
+        tbl = tbl.parent()
+    if not isinstance(tbl, QtWidgets.QTableWidget):
+        return False
+    # Проверяем, что мышь над таблицей
+    under =  tbl.underMouse()
+    if under:
+        print(f'Левая кнопка нажата И курсор над таблицей {tbl.objectName()}')
+    return not under
+
 def is_table_updating(tbl: QtWidgets.QTableWidget|QtWidgets.QHeaderView) -> bool:
     if isinstance(tbl, QtWidgets.QHeaderView):
         tbl = tbl.parent()
@@ -8560,39 +8571,388 @@ def dock_resize_orientation(self, dock):
     return Qt.Horizontal  # по умолчанию
 
 
+def debounce_qt(
+        self,
+        key: str,
+        func,
+        timeout_ms: int = 200,
+):
+    """
+    Универсальность — один метод для всех debounce-нужд (сохранение ширин, перезагрузка данных, автосохранение форм).
+    Автоматическое создание таймеров — не нужно вручную проверять существование.
+    Привязка таймера к self — таймер удалится вместе с объектом.
+
+    self.debounce_qt(
+        key='save_table_widths',
+        func=lambda: self._save_resized_sections(key),
+        timeout_ms=200
+    )
+
+    Или:
+
+    self.debounce_qt(
+        key=f'reload_filter_{table.objectName()}',
+        func=reload_data,
+        timeout_ms=500
+    )
+    """
+    if not hasattr(self, '_debounce_timers'):
+        self._debounce_timers = {}
+
+    # timer create
+    if key not in self._debounce_timers:
+        timer = QtCore.QTimer(self)
+
+        timer.setSingleShot(True)
+
+        self._debounce_timers[key] = {
+            'timer': timer,
+            'func': func,
+        }
+
+        timer.timeout.connect(
+            lambda k=key: self._debounce_timers[k]['func']()
+        )
+
+        # всегда обновляем последнюю функцию
+    self._debounce_timers[key]['func'] = func
+
+    timer = self._debounce_timers[key]['timer']
+
+    self._debounce_timers[key]['timer'].start(timeout_ms)
+
+
+@dataclass
+class ResizeTarget:
+    widget:    оbject          # сам объект (QTableWidget / QSplitter / QDockWidget)
+    obj_name:  str          # objectName — зафиксирован сразу
+    type_name: str          # тип — зафиксирован сразу
+    key:       str          # уникальный ключ для debounce
+    save_path: str          # полный путь к файлу сохранения
+
 @onerror
 def connect_to_resize(self,tmp_dir):
-    for ui_name, ui in self.__dict__.items():
+    for ui_name, ui in list(self.__dict__.items()):
         if len(ui_name) < 4 and 'ui' in ui_name:
-            for item in ui.__dict__:
+            for item, obj in list(ui.__dict__.items()):
                 if isinstance(ui.__dict__[item],QtWidgets.QTableWidget):
                     table = ui.__dict__[item]
                     table.setToolTip('Ctrl+Shift+C - Копировать таблицу\nCtrl+Shift+P - Вывод доп.табличной формы')
                     header = ui.__dict__[item].horizontalHeader()
+                    if 'filtr' in item:
+                        continue
+
+                    target = ResizeTarget(
+                        widget=obj,
+                        obj_name=obj.objectName(),
+                        type_name='QTableWidget',
+                        key=f'QTableWidget:{obj.objectName()}',
+                        save_path=f'{tmp_dir}{F.sep()}{obj.objectName()}_column_widths',
+                    )
+                    header = obj.horizontalHeader()
                     header.sectionResized.connect(
-                        lambda  : on_section_resized(self, tmp_dir))
+                        lambda *_, t=target: _on_resize_event(self, t)
+                    )
                     install_sort_guard(table) #03.04.2026
-                if isinstance(ui.__dict__[item],QtWidgets.QTreeWidget):
-                    tree = ui.__dict__[item]
-                    header = tree.header()
 
-                    def make_handler(header):
-                        return lambda idx, old, new, h=header: on_section_resized_tree(self, tmp_dir,  h, idx, old, new)
-                    #print("connect header:", header, header.objectName(), tree.objectName())
-                    header.sectionResized.connect(make_handler(header))
 
-                if isinstance(ui.__dict__[item],QtWidgets.QSplitter):
-                    splitter = ui.__dict__[item]
+                    # ── QTreeWidget ────────────────────────────────────────────────
+                elif isinstance(obj, QtWidgets.QTreeWidget):
+                    header = obj.header()
+                    target = ResizeTarget(
+                        widget=obj,
+                        obj_name=obj.objectName(),
+                        type_name='QTreeWidget',
+                        key=f'QTreeWidget:{obj.objectName()}',
+                        save_path=f'{tmp_dir}{F.sep()}{obj.objectName()}_column_widths',
+                    )
+                    header.sectionResized.connect(
+                        lambda idx, old, new, t=target: _on_resize_event(self, t)
+                    )
 
-                    splitter.splitterMoved.connect(lambda pos, idx, sp=splitter: on_section_resized(self, tmp_dir, sp))
+                    #def make_handler(header):
+                    #    return lambda idx, old, new, h=header: on_section_resized_tree(self, tmp_dir,  h, idx, old, new)
 
-                if isinstance(ui.__dict__[item], QtWidgets.QDockWidget):
-                    ui.__dict__[item].installEventFilter(self)
+                    # ── QSplitter ──────────────────────────────────────────────────
+                elif isinstance(obj, QtWidgets.QSplitter):
+                    target = ResizeTarget(
+                        widget=obj,
+                        obj_name=obj.objectName(),
+                        type_name='QSplitter',
+                        key=f'QSplitter:{obj.objectName()}',
+                        save_path=f'{tmp_dir}{F.sep()}{obj.objectName()}_column_widths',
+                    )
+                    obj.splitterMoved.connect(
+                        lambda pos, idx, t=target: _on_resize_event(self, t)
+                    )
 
-                    #def eventFilter(self, obj, event):
-                    #    if isinstance(obj, QtWidgets.QDockWidget) and event.type() == QtCore.QEvent.Resize:
-                    #        CQT.on_section_resized(self, CQT.qt_tmp_dir(), obj)
-                    #    return super().eventFilter(obj, event)
+                    # ── QDockWidget ────────────────────────────────────────────────
+                elif isinstance(obj, QtWidgets.QDockWidget):
+                    obj.installEventFilter(self)
+                    # DockWidget вызывает on_section_resized через eventFilter,
+                    # поэтому тоже сохраняем target в реестр
+                    target = ResizeTarget(
+                        widget=obj,
+                        obj_name=obj.objectName(),
+                        type_name='QDockWidget',
+                        key=f'QDockWidget:{obj.objectName()}',
+                        save_path=f'{tmp_dir}{F.sep()}{obj.objectName()}_column_widths',
+                    )
+
+                else:
+                    continue  # не нужен target — не регистрируем
+
+                # Складываем в реестр (инициализируем при первом обращении)
+                if not hasattr(self, '_resize_targets'):
+                    self._resize_targets: dict[str, ResizeTarget] = {}
+                self._resize_targets[target.key] = target
+
+
+_ALLOWED_SECTION_RESIZED_TYPES = (
+    QtWidgets.QTableWidget,
+    QtWidgets.QTreeWidget,
+    QtWidgets.QHeaderView,
+    QtWidgets.QSplitter,
+    QtWidgets.QDockWidget,
+)
+
+def set_title_for_resize_event(tbl:QtWidgets.QTableWidget|QtWidgets.QTreeWidget,title_txt=""):
+    tbl.setProperty('_column_widths_name',title_txt)
+
+
+def _on_resize_event(self, target: ResizeTarget):
+
+    """
+    Единая точка сохранения геометрии.
+    Весь контекст уже в target — никакого sender() и focus_obj_name().
+    """
+
+    def _collect_sizes(self, target: ResizeTarget) -> list:
+        """Собирает список размеров в зависимости от типа виджета."""
+        widget = target.widget
+
+        if target.type_name == 'QSplitter':
+            return widget.sizes()
+
+        if target.type_name == 'QDockWidget':
+            area = self.dockWidgetArea(widget)
+            if not area:  # виджет откреплён — игнорируем
+                return []
+            if area in (Qt.LeftDockWidgetArea, Qt.RightDockWidgetArea):
+                return [widget.width()]
+            return [widget.height()]
+
+        # QTableWidget / QTreeWidget
+        return [widget.columnWidth(i) for i in range(widget.columnCount())]
+
+
+
+    _MOUSE_LEFT = QtCore.Qt.LeftButton
+
+    # защита от дребезга сигналов в конце секунды
+    try:
+        if QtCore.QTime.currentTime().msec() > 950:
+            return
+    except Exception:
+        pass
+    
+    # ── охранные проверки ──────────────────────────────────────────────────
+    
+    if getattr(self, '_fl_block_all_obj_resize', False):
+        return
+    # только ручной ресайз мышью
+    if not (QtWidgets.QApplication.mouseButtons() & _MOUSE_LEFT):
+        return
+
+    with block_all_obj_resize(self):
+        widget = target.widget
+        
+        # виджет мог быть удалён — проверяем через sip
+        try:
+            if sip.isdeleted(widget):
+                return
+        except Exception:
+            pass
+
+        cursor_pos = QtGui.QCursor.pos()
+        global_rect = QtCore.QRect(
+            widget.mapToGlobal(QtCore.QPoint(0, 0)),
+            widget.size()
+        )
+        if not global_rect.contains(cursor_pos):
+            return
+        
+        
+        if not isinstance(widget, _ALLOWED_SECTION_RESIZED_TYPES):
+            return
+
+        title_str = ''
+
+        # специфичные проверки для таблиц
+        if target.type_name in ('QTableWidget', 'QTreeWidget'):
+            try:
+                if is_table_not_active(widget):
+                    return
+                if is_table_updating(widget):
+                    return
+                if is_table_sorting(widget):
+                    return
+
+                prop = widget.property('_column_widths_name')
+                if prop:
+                    title_str = prop
+            except RuntimeError:
+                return
+
+
+        # ── сбор размеров ─────────────────────────────────────────────────────
+        try:
+            spis_width = _collect_sizes(self, target)
+        except Exception as e:
+            print(f'_on_resize_event: не удалось собрать размеры — {e}')
+            return
+
+        if not spis_width:
+            return
+
+        # ── дебаунс → сохранение ──────────────────────────────────────────────
+        #print(f'{F.now()}  on_section_resized {target.obj_name} Заряжено')
+
+        debounce_qt(
+            self,
+            target.key,
+            partial(save_width_obj, target.save_path,  spis_width, title_str),
+            500,
+        )
+        
+
+
+
+@onerror
+def on_section_resized_tree(self, header, idx, old, new,*args):
+    #print(f"resize: {header.objectName()}  col={idx} {old}->{new}")
+    key = f'QDockWidget:{header.objectName()}'
+    target = getattr(self, '_resize_targets', {}).get(key)
+    if target is not None:
+        _on_resize_event(self, target)
+    #on_section_resized('', qt_tmp_dir(), header)
+
+
+
+
+@onerror
+def on_section_resized(self, tmp_dir: str, widget_obj=None, *args):#del
+    if isinstance(self, str):
+        msgbox(f'on_section_resized error: self->str = {self}')
+        return
+
+    def is_objects_blocked_resize(self):
+        if not hasattr(self, "_fl_block_all_obj_resize"):
+            return False
+        return self._fl_block_all_obj_resize
+
+    def allowed_to_post(obj):
+        return isinstance(obj, _ALLOWED_SECTION_RESIZED_TYPES)
+
+    # Если левая кнопка мыши не нажата — это не пользовательский ресайз
+    if not (QtWidgets.QApplication.mouseButtons() & QtCore.Qt.LeftButton):
+        return
+
+    if is_objects_blocked_resize(self):
+        return
+    with block_all_obj_resize(self):
+        try:
+            ms = QtCore.QTime.currentTime().msec()
+            # разрешаем срабатывать только если миллисекунды в первой трети секунды
+            if ms > 950:
+                return
+        except:
+            pass
+
+        if widget_obj is None:
+            try:
+                widget_obj = self.sender()
+            except RuntimeError:
+                return
+        if widget_obj is None:
+            return
+
+        if not allowed_to_post(widget_obj):
+            return
+
+        try:
+            if is_table_not_active(widget_obj):
+                return
+            if is_table_updating(widget_obj):
+                return
+            if is_table_sorting(widget_obj):
+                return
+
+
+        except RuntimeError:  # 03.04.2026
+            return
+
+        if isinstance(widget_obj, QtWidgets.QDockWidget):
+            widget_obj: QtWidgets.QDockWidget
+            if not self.dockWidgetArea(widget_obj):
+                return
+            obj_name = widget_obj.objectName()
+            tbl = widget_obj
+        elif isinstance(widget_obj, QtWidgets.QHeaderView):
+            # Получаем родительский виджет (сам QTableWidget)
+            tbl = widget_obj.parentWidget()
+            obj_name = tbl.objectName()
+            if 'filtr' in obj_name:
+                return
+        else:
+            tbl = widget_obj
+            obj_name = focus_obj_name()
+
+        try:
+            if tbl == None:
+                print('Ошибка on_section_resized obj == None')
+                return
+
+            spis_width = []
+            if isinstance(widget_obj, QtWidgets.QSplitter):
+                spis_width = tbl.sizes()
+                obj_name = tbl.objectName()
+            elif isinstance(widget_obj, QtWidgets.QDockWidget) and obj_name is not None:
+                area = self.dockWidgetArea(widget_obj)
+                if area in (Qt.LeftDockWidgetArea, Qt.RightDockWidgetArea):
+                    value = widget_obj.width()
+                else:
+                    value = widget_obj.height()
+                spis_width.append(value)
+
+            else:
+                for i in range(tbl.columnCount()):
+                    spis_width.append(tbl.columnWidth(i))
+
+            if isinstance(obj_name, str):
+                key = f'{type(widget_obj).__name__}:{obj_name}'
+                #print(f'{F.now()}  on_section_resized {obj_name} Заряжено')
+                debounce_qt(self, key,
+                            partial(save_width_obj, tmp_dir + F.sep() + obj_name + "_column_widths", spis_width), 500)
+
+                # tbl.viewport().update()
+                # print(f'{obj_name} save {spis_width}')
+            else:
+                print('Ошибка on_section_resized типа фокуса')
+        except:
+            print('on_section_resized Не сохранить параметры столбцов')#
+
+
+def save_width_obj(putf: str, spis_width: list,title_str:str=''):
+    try:
+        F.delete_file_c(putf + ".pickle")
+    except:
+        pass
+    F.save_file_pickle(putf + title_str + ".pickle", spis_width)
+
+    print(f'{F.now()} on_section_resized зАписано ')
+
+
 
 @onerror
 def adjust_last_column_width(table: QtWidgets.QTableWidget, *args):
