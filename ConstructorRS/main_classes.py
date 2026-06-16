@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+if __name__ == "__main__":
+    quit()
 
 from typing import  TYPE_CHECKING
 from dataclasses import dataclass
@@ -666,24 +668,9 @@ class Process():
         data = DTCLS.PARAMS_FIELDS_DB.apply_alias_list(data)
 
         def fnc_clear_res(self, s_num_docs:str):
-            print(f"\n=== ВЫЗОВ fnc_clear_res ===")
-            print(f"Параметр s_num_docs: {s_num_docs}")
-
-            # Добавляем трассировку
-            import traceback
-            print("Стек вызовов в fnc_clear_res:")
-            for line in traceback.format_stack()[-10:]:
-                print(f"  {line.strip()}")
-
-            # Оригинальный код функции
             order: OrderDocs = DTCLS.dict_orders_docs[s_num_docs]
             process: Process = order.get_process()
             process.clear_res()
-            # Проверяем, не вызывает ли что-то обновление таблицы
-            print("=== ПРОВЕРКА ПОСЛЕ ВЫПОЛНЕНИЯ ===")
-
-            # Если функция что-то делает с таблицей, добавьте принты
-
 
 
         @CQT.onerror
@@ -2328,7 +2315,7 @@ class TreeRes():
             hover_item_color="#d8dee3",
             on_drop_access=self.on_drDr,
             one_root=True,
-            on_header_resized = CQT.on_section_resized_tree
+            on_header_resized = on_section_resized_tree
 
             )
         CMS.load_column_widths(self, self.tree_gui)
@@ -3817,6 +3804,8 @@ class ErrorsTreeDoc():
     def add_err(self, doc:TreeDoc,text:str):
         self.list_errs.append({'Элемент':doc.еrror_name(),'Значение':text})
 
+def on_section_resized_tree(h, idx, old, new):
+    CQT.on_section_resized_tree(DTCLS.app_self, h, idx, old, new)
 
 
 def fnc_oform_tbl_select_dse(tbl:CQT.QTableWidget):

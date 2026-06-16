@@ -1,4 +1,6 @@
 from __future__ import annotations
+if __name__ == "__main__":
+    quit()
 import base64
 import copy
 
@@ -345,7 +347,7 @@ def load_dse_structure(self:mywindow):
         CQT.msgbox(f'Ошибка получения данных из ЕРП')
         return
     if not dse['data']:
-        CQT.msgbox(f'Иерархия ресурсных-пусто')
+        CQT.msgbox(f'Иерархия дсе-пусто')
         return
     list_dse =  compute_levels(dse['data'])
     list_dse =  oform(list_dse)
@@ -698,6 +700,8 @@ def insert_dockW(self:mywindow, dock:QtWidgets.QDockWidget,btn:QtWidgets.QPushBu
         dock.setGeometry(g)
         btn.setText("📌")
 
+
+
 @CQT.onerror
 def fill_tree_add_res(self: mywindow,*args):
 
@@ -715,7 +719,7 @@ def fill_tree_add_res(self: mywindow,*args):
         # branch_icon_if_can_close='./Mkarti/icons/1.ico',
         selected_item_color = '#D0D0D0',
         hover_item_color="#E6EEF5",
-        on_header_resized = CQT.on_section_resized_tree
+        on_header_resized = CLSS.on_section_resized_tree
 
     )
     tree.header().blockSignals(True)
@@ -742,7 +746,7 @@ def fill_tree_add_dse(self: mywindow,*args):
         # branch_icon_if_can_close='./Mkarti/icons/1.ico',
         selected_item_color='#D0D0D0',
         hover_item_color="#E6EEF5",
-        on_header_resized = CQT.on_section_resized_tree
+        on_header_resized = CLSS.on_section_resized_tree
     )
     tree.header().blockSignals(True)
     tree.hideColumn(CQT.num_col_by_name_c(tree,'Ref'))
