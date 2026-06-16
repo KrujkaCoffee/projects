@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import dataclasses
 import logging
@@ -7010,7 +7010,7 @@ class Composition(_ImportDb):
         self.rc: str | None = None
         self.comment:int|None = None
         self.pozs: list[Composition_poz]|None = None
-
+        self.poki: int =  None
         self._fl_edited:bool = False
 
         self.parce_row_dict(item)
@@ -7122,9 +7122,9 @@ class Composition(_ImportDb):
     def upload(self):
         data = [self.path,self.signed,self.name,self.count,self.comment,self.given_out,
                 self.material_name,self.material_thickness, self.coupled, self.local_num, self.local_count,
-                self.finished, self.oper_code, self.rc]
+                self.finished, self.oper_code, self.rc, self.poki]
         fields = f'''path, signed, name, count, comment, given_out, 
-                        material_name, material_thickness, coupled, local_num, local_count, finished, oper_code, rc'''
+                        material_name, material_thickness, coupled, local_num, local_count, finished, oper_code, rc, poki'''
         if self.id is None:
             result = CSQ.custom_request_c(CFG.Config.project.db_naryad,f"""INSERT INTO naryad_composit_files 
                               ({fields})
@@ -7158,8 +7158,9 @@ class Composition(_ImportDb):
             self.pozs.append(Composition_poz(self,item))
 
 class Compositions():
-    def __init__(self,filtr_nars:list[int]|None=None):
+    def __init__(self,poki:int,filtr_nars:list[int]|None=None):
         self.comps:list[Composition] = []
+        self.poki:int = poki
         self._load_from_db(filtr_nars)
 
     def template(self)->list[dict]:
@@ -7171,8 +7172,10 @@ class Compositions():
         if filtr_nars is not None:
             filtr_str = f'''inner join naryad_composit_poz on naryad_composit_poz.id_file = naryad_composit_files.id
             inner join naryad_composit_poz_snum_nars on naryad_composit_poz_snum_nars.id_poz = naryad_composit_poz.id
-            where naryad_composit_poz_snum_nars.snum_nar in ({CSQ.prepare_list_to_tuple(filtr_nars)})'''
-
+            where naryad_composit_poz_snum_nars.snum_nar in ({CSQ.prepare_list_to_tuple(filtr_nars)}) and naryad_composit_files.poki = {self.poki}'''
+        else:
+            filtr_str = f'''where naryad_composit_files.poki = {self.poki}'''
+            
         text = f"""
             SELECT naryad_composit_files.* from 
                 naryad_composit_files {filtr_str};
@@ -7183,8 +7186,10 @@ class Compositions():
             self.comps.append(Composition(item))
 
     @staticmethod
-    def add_new_comp()->Composition:
-        return Composition({})
+    def add_new_comp(poki:int)->Composition:
+        comp = Composition({})
+        comp.poki = poki
+        return comp
 
     
     def find_by_name(self,name:str)->Composition|None:
@@ -7198,6 +7203,8 @@ class Compositions():
         for comp in self.comps:
             if comp.id == id:
                 return comp
+            
+            
 class Couple_nar_poz(_ImportDb):
     def __init__(self,item:dict):
         self.id:int|None = None

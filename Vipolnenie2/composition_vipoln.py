@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 
 def load_user_compositions(list_nars:list[int])->CMS.Compositions:
-    return CMS.Compositions(list_nars)
+    return CMS.Compositions(CFG.Config.place.poki, list_nars)
 
 def fill_table_compositions():
     tbl_comp:CQT.QtWidgets.QTableWidget = DTCLS.app_self.ui.tbl_compositions
