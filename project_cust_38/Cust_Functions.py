@@ -1082,12 +1082,12 @@ def transpose_list_of_lists(list_list:list):
 def tmp_dir_win()->str:
     return tempfile.gettempdir()
 
-def save_tmp_win_dir_file(file_bytes:bytes,extention:str=None):
+def save_tmp_win_dir_file(file_bytes:bytes,extention:str=None)->str:
     tmpfile = tempfile.NamedTemporaryFile(delete=False, suffix=extention)
     tmpfile.write(file_bytes)
     tmpfile.close()
-    temp_file_name = tmpfile.name
-    return temp_file_name
+    temp_file_putf = tmpfile.name
+    return temp_file_putf
 
 def dir_workdesc_c():
     if existence_file_c(os.path.join(os.path.join(os.path.expanduser('~')), 'Desktop')):
