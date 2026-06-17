@@ -1868,6 +1868,31 @@ def list_to_dict(list_of_lists, key_to_dict=''):
 def dict_to_param_val(data:dict,key_name:str,val_name:str)->list[dict]:
     return [{key_name:k,val_name:v} for k,v in data.items()]
 
+
+def sort_dict_by_key(d: dict, fnc) -> dict:
+    return sort_dict_by_sample(d, sorted(list(d.keys()), key=fnc))
+
+def sort_dict_by_sample(d: dict, sample:list|dict|tuple) -> dict:
+    # приводим sample к списку ключей
+    if isinstance(sample, dict):
+        sample_keys = list(sample.keys())
+    else:
+        sample_keys = list(sample)
+
+    res = {}
+
+    # сначала ключи в порядке sample
+    for k in sample_keys:
+        if k in d:
+            res[k] = d[k]
+
+    # потом остальные
+    for k in d:
+        if k not in res:
+            res[k] = d[k]
+
+    return res
+
 def dict_to_list(dicton: dict, transponir=False):
     '''словарь в спискок в две колонки'''
     if transponir:
