@@ -1418,6 +1418,7 @@ def dateStrToStr(date, format=None,format_out="%Y-%m-%d",onerror='None')->str|DT
                    "%d.%m.%Y",
                    "%Y-%m-%d",
                    "%d.%m.%y",
+                   "%d.%m.%Y %H:%M:%S",
                    "%d\n%m\n%y",
                    }
     if date is None:
@@ -1493,13 +1494,12 @@ def date_add_seconds(date:str|datetime.datetime,seconds:int, format="%Y-%m-%d %H
     return d2
 
 
-def date_add_time(date, time: str = '', format_time="%H:%M", hours: int = 0, minutes: int = 0, seconds: int = 0): # 06.05.2026
+def date_add_time(date, time: str = '', format_time="%H:%M", hours: int = 0, minutes: int = 0):
     # date в DT либо time с формато либо hours:int=0,minutes:int=0
     if time != '':
         hours += DT.strptime(time, format_time).hour
         minutes += DT.strptime(time, format_time).minute
-        seconds += DT.strptime(time, format_time).second # 06.05.2026
-    date += timedelta(hours=hours, minutes=minutes, seconds=seconds)
+    date += timedelta(hours=hours, minutes=minutes)
     return date
 
 def delta_days(date1,date2,only_work_days=False):
@@ -1509,7 +1509,7 @@ def delta_days(date1,date2,only_work_days=False):
         daygenerator = (date1 + timedelta(x + 1) for x in range((date2 - date1).days)) # generate all days from d1 to d2
     return timedelta(days= sum(1 for day in daygenerator if day.weekday() < 5)) 
 
-def add_days(date1:datetime.datetime,time_delta:timedelta,only_work_days=False):
+def add_days(date1:datetime.datetime,time_delta:timedelta,only_work_days=False)->datetime.datetime:
     if not only_work_days:
         return date1 + time_delta
     else:
@@ -1544,8 +1544,8 @@ def add_months(sourcedate:datetime.datetime, months: int):
     return DT(year, month, day)
 
 
-def date_add_days(date: str, days, format="%Y-%m-%d %H:%M:%S", format_out="%Y-%m-%d %H:%M:%S"):
-    if type(date) == type(" "):
+def date_add_days(date: str|datetime.datetime, days, format="%Y-%m-%d %H:%M:%S", format_out="%Y-%m-%d %H:%M:%S"):
+    if isinstance(date,str):
         date = strtodate(date, format=format)
     rez = date + timedelta(days=days)
     if format_out == '':
@@ -1596,7 +1596,10 @@ def date_add_period(date: str = now(), format_in="%Y-%m-%d %H:%M:%S", vid: str =
         return result
     else:
         return datetostr(result, format_out)
-    
+
+def start_of_day(dt):
+    """Приводит datetime к началу дня (00:00:00)"""
+    return dt.replace(hour=0, minute=0, second=0, microsecond=0)
     
 def start_end_dates_c(date: str = now(), format_in="%Y-%m-%d %H:%M:%S", vid: str = 'y', format_out="%Y-%m-%d %H:%M:%S"):
     """y,m,n,d"""
@@ -1971,7 +1974,7 @@ def deploy_dict_c(
         list_dicts: list[dict],
         name_key_column: str | tuple,
         keep_key: bool = False
-) -> dict[dict]:
+) -> dict[any,dict]:
     '''список словарей в словарь словарей по ключу. ключ не вкладывается на 2 уровень
 
     Args:
