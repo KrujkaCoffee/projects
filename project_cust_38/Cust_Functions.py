@@ -362,6 +362,10 @@ class Cust_path:
         self.path_str = self._normalize(path)
         self.path = pathlib.Path(self.path_str)
 
+    def clean_and_normalize_path_part(self):
+        self.path_str = clean_and_normalize_path_part(self.path_str)
+        self.path = pathlib.Path(self.path_str)
+
     def as_raw_literal(self) -> str:
         return f'"{str(self.path)}"' 
     
