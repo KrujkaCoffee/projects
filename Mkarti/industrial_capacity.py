@@ -132,6 +132,8 @@ def check_val(txt):
     return False
 
 def cellChanged(self, row, col): #26.01.2026
+    if CQT.is_table_updating(self.ui.tbl_rc):
+        return
     if CMS.user_access(self.bd_naryad, 'rab_mesta_edit', F.user_name()) == False:
         return
 
