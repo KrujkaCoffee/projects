@@ -1141,18 +1141,18 @@ def print_badtypes(obj):
 
 
 def to_binary_pickle(obj):
-    return pickle.dumps(obj)
+    return pickle.dumps(obj,pickle.HIGHEST_PROTOCOL)
 
 
 def from_binary_pickle(blob):
     try:
         return pickle.loads(blob)
-    except:
-        print('Не корректные данные from_binary_pickle')
-        return
+    except Exception as e:
+        print('Ошибка pickle:', type(e), e)
+        raise
 
 
-def load_file_pickle(putima):
+def load_file_pickle(putima)->dict:
     try:
         with open(putima, 'rb') as f:
             return pickle.load(f)
