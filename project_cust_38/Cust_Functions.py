@@ -1352,6 +1352,25 @@ def strtodateold(str, format="%d.%m.%Y %H:%M:%S"):
     return DT.strptime(str, format)
 
 
+def get_day_name(day):
+    """
+    Возвращает название дня недели по номеру.
+
+    Args:
+        day: int или str (1-7), где 1 = Понедельник, 7 = Воскресенье
+
+    Returns:
+        str: Название дня недели или None если номер некорректен
+    """
+    dict_dned = {'1': 'Пн', '2': 'Вт', '3': 'Ср', '4': 'Чт',
+                 '5': 'Пт', '6': 'Сб', '7': 'Вс'}
+
+    # Преобразуем int в str
+    key = str(day)
+
+    # Возвращаем название дня или None
+    return dict_dned.get(key)
+
 def strtodate(str, format="%Y-%m-%d %H:%M:%S"):#"%d.%m.%Y"   "%Y-%m-%dT%H:%M:%S"
     if len(format) > 11:
         if len(str) < 11:
