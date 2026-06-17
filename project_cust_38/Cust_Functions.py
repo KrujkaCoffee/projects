@@ -2051,6 +2051,50 @@ def deploy_dict_c(
 
     return result
 
+def undeploy_dict_c(
+        dict_dicts: dict[dict],
+        name_key_column: str | tuple,
+        value_name: str = 'value'
+) -> list[dict]:
+    '''словарь словарей в список словарей, ключ переносится внутрь
+
+    Args:
+        dict_dicts: исходный словарь
+        name_key_column: имя ключа или кортеж имен для составного ключа
+        value_name: имя поля для простого значения (если value не dict)
+
+    Returns:
+        список словарей
+    '''
+    if not dict_dicts:
+        return []
+
+    result = []
+
+    for main_key, value in dict_dicts.items():
+
+        # составной ключ
+        if isinstance(name_key_column, tuple):
+            if not isinstance(main_key, tuple) or len(main_key) != len(name_key_column):
+                continue
+
+            key_part = dict(zip(name_key_column, main_key))
+
+        # простой ключ
+        else:
+            key_part = {name_key_column: main_key}
+
+        # если вложенный dict
+        if isinstance(value, dict):
+            item = key_part | value
+
+        # если простое значение
+        else:
+            item = key_part | {value_name: value}
+
+        result.append(item)
+
+    return result
 def get_key_index_dict(dictionary, target_key):
     """
     Возвращает порядковый номер (индекс) ключа в словаре.
