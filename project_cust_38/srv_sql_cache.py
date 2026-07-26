@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pprint
 import zlib
 
 import copy
@@ -20,7 +21,6 @@ import shutil
 from typing import Any, Iterable, Mapping, Sequence
 
 import project_cust_38.Cust_Functions as F  # noqa
-import project_cust_38.Cust_SQLite as CSQ   # noqa
 
 try:
     import Cust_postgresql_cache as CPG
@@ -120,14 +120,16 @@ class _CacheUtils:
             try:
                 return datetime.datetime.strptime(text, fmt)
             except Exception as e:
+                logger.error('\n\nОшибка конвертации даты')
                 traceback.print_exc()
-                print(e)
-                pass
+                logger.error('\n\n')
         try:
             return datetime.datetime.fromisoformat(text)
         except Exception as e:
             traceback.print_exc()
-            print(e)
+            logger.error('\n\nОшибка конвертации даты')
+            traceback.print_exc()
+            logger.error('\n\n')
             return None
 
     @staticmethod
@@ -209,7 +211,6 @@ class _CacheUtils:
 
 class CacheBuilder:
     def __init__(self):
-        self.db = F.scfg('files')
         self.utils = _CacheUtils()
 
     def write_cache_entry(self, request_key: str, payload, response_headers=None, *, SrvHeaders):  # noqa
@@ -232,8 +233,8 @@ class CacheBuilder:
         try:
             with open(tmp_path, 'wb') as desc:
                 pickle.dump(entry, desc, protocol=4) # noqa
+            os.replace(tmp_path, path)
         except Exception: pass
-        os.replace(tmp_path, path)
         return entry
 
     def get_valid_local_entry(self, request_key: str):
@@ -278,7 +279,7 @@ class CacheBuilder:
             return False
         if pathlib.Path(norm).name.lower() in _DB_FILES_BASENAMES:
             return True
-        return bool(self.db and self.db == norm)
+        return False
 
     def cacheable_request(self, bd: str, custom_request_c: str, attach_dbs=(), function_db_path: typing.Callable = None):
         if not self.is_cacheable_sql(custom_request_c):
@@ -532,12 +533,12 @@ class FileRequestCache:
             pass
 
     def clear(self) -> None:
-        conn, cur = CPG.connect_pg(CPG.PostgresConfig())
         drop_1 = CPG.custom_request_pg(
-        f'DELETE FROM {REQUEST_CACHE_META_TABLE}', conn=conn, cur=cur)
+        f'DELETE FROM {REQUEST_CACHE_META_TABLE}')
         drop_2 = CPG.custom_request_pg(
-        f'DELETE FROM {REQUEST_CACHE_TABLES_TABLE}', conn=conn, cur=cur)
-        print('[srv_sql_cache.clear] drop status:}', str(drop_1), str(drop_2))
+        f'DELETE FROM {REQUEST_CACHE_TABLES_TABLE}')
+        logger.debug(f'Удаление строк из таблицы {REQUEST_CACHE_META_TABLE} Статус: {drop_1}')
+        logger.debug(f'Удаление строк из таблицы {REQUEST_CACHE_TABLES_TABLE} Статус: {drop_2}')
 
     def get_entry_meta(self, request_key: str) -> dict[str, Any] | None:
         sql = f"""
@@ -563,11 +564,9 @@ class FileRequestCache:
         WHERE request_key = {request_key!r}
         """
         meta = CPG.custom_request_pg(sql, one=True, rez_dict=True)
-        print('META RESPONSE:',str( (meta or {}).keys()))
         if not meta:
+            logger.warning(f'Строки по ключу: {request_key!r} не найдены')
             return None
-        # if not meta.get('payload_bytes'):
-        #     return None
         return meta
 
     def get_entry_payload(self, request_key: str):
@@ -619,7 +618,7 @@ class FileRequestCache:
             current_dependency_fingerprint = self.current_dependency_fingerprint(str(entry.get('request_key') or ''))
             if current_dependency_fingerprint and current_dependency_fingerprint != stored_dependency_fingerprint:
                 return False
-        logger.info(f'[is_entry_fresh]stored_dependency_fingerprint: {stored_dependency_fingerprint}')
+        logger.debug(f'Серверный фингерпринт {stored_dependency_fingerprint}')
 
         last_refresh = self.utils.parse_dt(entry.get('last_refresh_at')) or self.utils.parse_dt(entry.get('updated_at'))
         if last_refresh is None:
@@ -694,7 +693,7 @@ class FileRequestCache:
         )
 
         if not isinstance(dependency_rows, list):
-            print(f'[compute_policy] не соответствующий тип данных ответа {dependency_rows}')
+            logger.warning(f'Получен некорректный ответ при запросе информации о таблице: \n{pprint.pformat(dependency_rows)}\n\n')
             return {
                 'cache_enabled': False,
                 'cache_lifetime_sec': lifetime_sec,
@@ -754,7 +753,8 @@ class FileRequestCache:
             rez_dict=True,
         )
         if not isinstance(dependency_rows, list):
-            print(f'[compute_policy] не соответствующий тип данных ответа {dependency_rows}')
+            logger.warning(f'Получен некорректный ответ при запросе информации о таблице: \n{pprint.pformat(dependency_rows)}\n\n')
+
             return {
                 'cache_enabled': False,
                 'cache_lifetime_sec': lifetime_sec,
@@ -780,7 +780,7 @@ class FileRequestCache:
 
     def compute_policy_old(self, *, table_keys: Sequence[str],
                        default_lifetime_sec: int = DEFAULT_CACHE_LIFETIME_SEC) -> dict[str, Any]:
-        logger.info(f'[compute_policy] {table_keys} \n default_lifetime_sec: {default_lifetime_sec}')
+        logger.debug(f'[compute_policy] {table_keys} \n default_lifetime_sec: {default_lifetime_sec}')
         lifetime_sec = int(default_lifetime_sec)
         stale_candidates: list[datetime.datetime] = []
         dependency_rows: list[dict[str, Any]] = []
@@ -792,7 +792,9 @@ class FileRequestCache:
                 one=True
             )
             if not isinstance(row, dict):
-                print(f'[compute_policy] не соответствующий тип данных ответа {row}')
+                logger.warning(
+                    f'Получен некорректный ответ при запросе информации о таблице: \n{pprint.pformat(dependency_rows)}\n\n')
+
                 continue
 
             if not row.get('cache_enabled'):
@@ -836,7 +838,7 @@ class FileRequestCache:
             }
         # payload_bytes = self.serialize_payload(payload)
         payload_bytes, payload_is_compressed = self.serialize_payload(payload)
-        logger.info(f'[store_entry] {request_key} compressed {payload_is_compressed}')
+        logger.debug(f'Ключ: {request_key} статус компрессии: {payload_is_compressed}')
 
         meta_record = {
             'request_key': request_key,
@@ -868,28 +870,22 @@ class FileRequestCache:
             else:
                 placeholders.append('%s')
         placeholders = ','.join(placeholders)
-        # placeholders = ','.join('%s' for _ in cols)
         update_sql = ', '.join(f'{col}=excluded.{col}' for col in cols if col != 'request_key')
 
         sql = f"INSERT INTO {REQUEST_CACHE_META_TABLE} ({', '.join(cols)}) VALUES ({placeholders}) ON CONFLICT(request_key) DO UPDATE SET {update_sql};"
         start_insert_main_data = time.time()
         insert_cache_meta = CPG.custom_request_pg(sql, params=tuple(meta_record[col] for col in cols))
-        logger.info(f'[store_entry] {time.time() - start_insert_main_data} insert_cache_meta result: {insert_cache_meta}')
-        # delete_cache_table = CSQ.custom_request_c(repo.db_files, f'DELETE FROM {REQUEST_CACHE_TABLES_TABLE} WHERE request_key = {request_key!r}')
+        logger.debug(f'Запись метоаданных за: {time.time() - start_insert_main_data} Статус: {insert_cache_meta}')
         start_drop_main_data = time.time()
 
         insert_cache_tables = CPG.custom_request_pg(f'DELETE FROM {REQUEST_CACHE_TABLES_TABLE} WHERE request_key = {request_key!r}')
-        logger.info(f'[store_entry] {time.time() - start_drop_main_data} drop_cache_tables result: {insert_cache_tables}')
+        logger.debug(f'Удаление старого кэш-ключа за: {time.time() - start_drop_main_data} Статус: {insert_cache_tables}')
         insert_fields_results = []
         if table_keys:
             rows = [[request_key, table_key] for table_key in dict.fromkeys(str(item) for item in table_keys if item not in (None, ''))]
-            # CSQ.custom_request_c(repo.db_files, f'INSERT INTO {REQUEST_CACHE_TABLES_TABLE}(request_key, table_key) VALUES ({mask})', list_of_lists_c=rows)
             a = CPG.custom_request_pg(f'INSERT INTO {REQUEST_CACHE_TABLES_TABLE}(request_key, table_key) VALUES (%s, %s)', params=rows)
             insert_fields_results.append(a)
-        logger.info(f'[store_entry] insert_fields_results results: {insert_fields_results}')
-        # entry = meta_record
-        # entry['payload'] = payload
-        # return entry
+        logger.debug(f'Вставленные в {REQUEST_CACHE_TABLES_TABLE!r} ключи: {insert_fields_results}')
         return {
             'request_key': request_key,
             'db_key': db_key,
@@ -911,7 +907,8 @@ class FileRequestCache:
 
         state_delete_payload_1 = CPG.custom_request_pg( f'DELETE FROM {REQUEST_CACHE_TABLES_TABLE} WHERE request_key = {request_key!r}')
         state_delete_payload_2 = CPG.custom_request_pg(f'DELETE FROM {REQUEST_CACHE_META_TABLE} WHERE request_key = {request_key!r}')
-        print(f'[delete_entry]  {state_delete_payload_1} {state_delete_payload_2}')
+        logger.info(f'Удаление строк из таблицы: {REQUEST_CACHE_TABLES_TABLE} Статус: {state_delete_payload_1}')
+        logger.info(f'Удаление строк из таблицы: {REQUEST_CACHE_META_TABLE} Статус: {state_delete_payload_2}')
 
     def invalidate_by_table_keys(self, table_keys: Sequence[str], *, notes: str = '') -> int:
         keys = [str(item) for item in table_keys if item not in (None, '')]
@@ -919,7 +916,7 @@ class FileRequestCache:
             return 0
         joined = ','.join(repr(k) for k in keys)
         rows = CPG.custom_request_pg( f'SELECT DISTINCT request_key FROM {REQUEST_CACHE_TABLES_TABLE} WHERE table_key IN ({joined})', rez_dict=True) or []
-        logger.info(f'[invalidate_by_table_keys] result rows {rows}')
+        logger.debug(f'Найдены ключи: {rows}')
         request_keys = [row['request_key'] for row in rows if row.get('request_key')]
         if not request_keys:
             return 0
@@ -927,7 +924,7 @@ class FileRequestCache:
         joined_req = ','.join(repr(k) for k in request_keys)
         set_notes = '' if not notes else f", notes = CASE WHEN notes = '' THEN {notes!r} ELSE notes END"
         update_invalidated = CPG.custom_request_pg(f"UPDATE {REQUEST_CACHE_META_TABLE} SET invalidated_at = {now!r}, updated_at = {now!r}{set_notes} WHERE request_key IN ({joined_req})")
-        logger.info(f'[invalidate_by_table_keys] update inv rows {update_invalidated}')
+        logger.debug(f'Статус обновления метки инвалидации: {update_invalidated}')
         return len(request_keys)
     ###
     def invalidate_by_table_names(self, table_names, notes: str = '', return_details: bool = False):
@@ -968,7 +965,7 @@ class FileRequestCache:
             """,
             rez_dict=True,
         ) or []
-        print('[invalidate_by_table_names] result rows: ', rows)
+        logger.debug(f'\n\nИнвалированые строки таблиц: \n{pprint.pformat(rows)}\n\n\n')
 
         table_keys = []
         seen_keys = set()

@@ -123,6 +123,7 @@ class SourceOfTheHalffactoryReceipt:
 
     @classmethod
     def find_by_code(cls, code: str):
+        code = str(code).strip()
         req_text = f"""
                     ВЫБРАТЬ
                         РесурсныеСпецификации.Код КАК Код,
@@ -133,7 +134,7 @@ class SourceOfTheHalffactoryReceipt:
                         РесурсныеСпецификации.ПометкаУдаления = ЛОЖЬ
                          И РесурсныеСпецификации.Код = "{code}"
                     """
-        key, data_rez = APIERP.get_wet_request(req_text, lazy_method_huours=LAZY_METHOD_HUOURS)
+        key, data_rez = APIERP.get_wet_request(req_text)
         if key != 200:
             raise ConnectionError(f'Ошибка получения данных РесурсныеСпецификации из ERP')
 
@@ -2360,7 +2361,22 @@ class Nomenclature():
         new_cod = data["Код"]
         return True, data
 
-
+    @property
+    def is_name_into_erp(self)->bool:
+        req_text = f"""
+            ВЫБРАТЬ
+                Номенклатура.Ссылка КАК Ссылка
+            ИЗ
+                Справочник.Номенклатура КАК Номенклатура
+            ГДЕ
+                Номенклатура.Наименование = "{self.Наименование}"
+            """
+        key, data_rez = APIERP.get_wet_request(req_text)
+        if key != 200:
+            raise ConnectionError(f'Ошибка (Код {key}) получения данных из ERP')
+        if not data_rez['data']:
+            return False
+        return True
 
 
 def test_fnc():

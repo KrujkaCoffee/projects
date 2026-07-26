@@ -1,4 +1,3 @@
-
 import datetime
 import sys
 import typing
@@ -9,6 +8,7 @@ import dataclasses
 
 import config
 import project_cust_38.Cust_emoji as CEMOJ
+
 try:
     from PyQt5 import QtWidgets
 except:
@@ -23,6 +23,19 @@ except:
 
 LAZY_LOAD_TIME = 0
 
+
+class AttrLifespan(dict):
+    def __setitem__(self, key, value):
+        from types import SimpleNamespace
+        if key[:2] != '__' and '__qualname__' in self:
+            cls_name = self['__qualname__']
+            if cls_name not in globals():
+                globals()[self['__qualname__']] = SimpleNamespace()
+            instance = globals()[self['__qualname__']]
+            setattr(instance, key, value)
+        return super().__setitem__(key, value)
+
+
 class SingletonMeta(type):
     __instances = {}
 
@@ -33,12 +46,17 @@ class SingletonMeta(type):
         return cls.__instances[cls]
 
     @classmethod
+    def __prepare__(mcls, name, bases, **kwargs):
+        return AttrLifespan()
+
+    @classmethod
     def clear_instance(mcs, cls):
         """Удаляет сохранённый экземпляр класса"""
         if cls in mcs.__instances:
             del mcs.__instances[cls]
 
-class ConfigMeta(SingletonMeta): #18.08.25
+
+class ConfigMeta(SingletonMeta):  # 18.08.25
     def __init__(cls, name, bases, attrs, **kwargs):
         super().__init__(name, bases, attrs)
         cls.post_init_settings(cls)
@@ -48,8 +66,9 @@ class ConfigMeta(SingletonMeta): #18.08.25
         if hasattr(CSQ.custom_request_c, 'config'):
             setattr(CSQ.custom_request_c, 'config', config)
 
+
 class Desc:
-    def __init__(self, *, is_dynamic: bool=False, sep: str = '|', default = None) -> None:
+    def __init__(self, *, is_dynamic: bool = False, sep: str = '|', default=None) -> None:
         self.is_dynamic = is_dynamic
         self.default = default
         self.sep = sep
@@ -92,7 +111,7 @@ class BaseConfig(metaclass=SingletonMeta):
     _CONFIG_DB = F.scfg('BD_users')
     if _CONFIG_DB == '':
         print(f'BD_users not defined')
-        F.win_msgbox(message='[Cust_config] База данных конфигураций недоступна') #21.11.25
+        F.win_msgbox(message='[Cust_config] База данных конфигураций недоступна')  # 21.11.25
         quit(1)
     __table__ = 'app_config'
     _key_col = 'name'
@@ -112,7 +131,7 @@ class BaseConfig(metaclass=SingletonMeta):
         else:
             self._get_vertical()
 
-    def _get_horizontal(self, name = None):
+    def _get_horizontal(self, name=None):
         select = name if name else '*'
         where = f' WHERE {self._key_col} = ("{self._val_col}")'
         count_articles = CSQ.custom_request_c(
@@ -121,6 +140,7 @@ class BaseConfig(metaclass=SingletonMeta):
             rez_dict=True, one=True
         )
         if not isinstance(count_articles, dict) or count_articles['cnt'] == 0:
+            print(f'Приложение "{self._val_col}" не найдено в таблице "{self.__table__}"')
             self.is_disabled = True
             return
         result = CSQ.custom_request_c(
@@ -137,7 +157,7 @@ class BaseConfig(metaclass=SingletonMeta):
         for key, value in result.items():
             setattr(self, key, value)
 
-    def _get_vertical(self, name = None):
+    def _get_vertical(self, name=None):
         where = f'WHERE {self._key_col} = ("{name}")' if name else ''
         query = f'SELECT * FROM {self.__table__} {where}'
         result = CSQ.custom_request_c(
@@ -167,6 +187,7 @@ class BaseConfig(metaclass=SingletonMeta):
     def __getitem__(self, key):
         return self.__dict__.get(key)
 
+
 T = typing.TypeVar('T')
 
 
@@ -195,6 +216,7 @@ class VerticalConfig(BaseConfig, typing.Generic[T]):
 
 class HorizontalConfig(BaseConfig):
     horizontal = True
+
     def __init__(self):
         super().__init__(module=F.name_of_executable_file_c())
 
@@ -221,28 +243,94 @@ class ProjectConfig(VerticalConfig['ProjectConfig']):
     db_kplan: str = Desc()
     db_users: str = Desc()
     db_resxml: str = Desc()
-    db_nomen: str = Desc() #10.11.25
+    db_nomen: str = Desc()  # 10.11.25
     db_dse: str = Desc()
     db_flet: str = Desc()
     db_act: str = Desc()
     ERB_BASE_URL: str = Desc()
     tk_temp_folder: str = Desc()
     mk_temp_folder: str = Desc()
-    tk_storage_reestr: str = Desc() #10.11.25
+    tk_storage_reestr: str = Desc()  # 10.11.25
 
 
 class AppConfig(HorizontalConfig):
     __table__ = 'app_config'
     version: str = Desc(is_dynamic=True)
     last_update: str = Desc(is_dynamic=True, default='')
-    module: str = Desc() #18,08.25
+    module: str = Desc()  # 18,08.25
     params: list = Desc(sep='|')
     path: str = Desc()
-    is_ui: bool = Desc() #11.11.25 Для функций с ветвлением графического/консольного вывода
+    is_ui: bool = Desc()  # 11.11.25 Для функций с ветвлением графического/консольного вывода
+
+
+class TableRuntimeState:
+    """
+    Runtime-состояния QTableWidget.
+    """
+    UPDATING = 'updating'  # общий bulk-update/fill
+    CLEARING = 'clearing'  # clear()/setRowCount(0)
+    FILLING = 'filling'  # заполнение таблицы данными
+    RESTORING_SELECTION = 'restoring_selection'  # возврат current/selection
+    EDIT_SYNC = 'edit_sync'  # внутренняя синхронизация itemChanged
+    DISPOSING = 'disposing'  # явная очистка runtime-контроллеров
+    SORTING = 'sorting'  # сортировка/layout model
+    REPAINTING = 'repainting'  # запланированное обновление viewport
+
+
+@dataclasses.dataclass(frozen=True)
+class TableRuntimePolicy:
+    """Политика runtime-поведения таблиц."""
+    hide_table_default: bool = True
+    block_table_signals: bool = True
+    block_header_signals: bool = True
+
+    block_cell_widget_signals: bool = False
+
+    restore_selection: bool = True
+    restore_scroll: bool = True
+    force_viewport_update: bool = True
+
+    repaint_on_exit: bool = False
+    process_events_on_exit: bool = False
+
+    dispose_table_context_on_clear: bool = True
+    debug: bool = False
 
 
 class User_emploee():
     def __init__(self, fio: str, user_db: str):
+        if F.is_unique_identifier(fio):
+            where = f"""WHERE employee.ID_ФизЛица == "{fio}" """
+            where_slice = f"""WHERE КадроваяИстория.ФизическоеЛицо_Key == "{fio}" """
+
+        else:
+            where = f"""WHERE employee.ФИО == "{fio}" """
+            where_slice = f"""WHERE ФизическиеЛица.Наименование = "{fio}" """
+
+        slice = f"""
+        WITH slice AS (
+            SELECT *
+              FROM (
+                       SELECT КадроваяИстория.ФизическоеЛицо_Key,
+                                КадроваяИстория.Должность_Key,
+                                Должности.Наименование as Должность_Наименование,
+                                КадроваяИстория.Подразделение_Key,
+                                КадроваяИстория.Организация_Key,
+                                КадроваяИстория.Сотрудник_Key,
+                                КадроваяИстория.Период,
+                                КадроваяИстория.id,
+                              ROW_NUMBER() OVER (PARTITION BY КадроваяИстория.ФизическоеЛицо_Key ORDER BY КадроваяИстория.Период DESC) AS rn
+                         FROM КадроваяИстория
+                         inner join ФизическиеЛица ON ФизическиеЛица.ФизическоеЛицо_Key = КадроваяИстория.ФизическоеЛицо_Key
+                         inner join Должности ON Должности.Ref_Key = КадроваяИстория.Должность_Key
+                        {where_slice} 
+                   )
+                   AS ranked
+             WHERE rn = 1
+             ORDER BY id
+)
+"""
+
         fields = f"""
         employee.ФИО as ФИО,
         employee.Пномер as Пномер,
@@ -259,43 +347,48 @@ class User_emploee():
         ФизическиеЛица.Отчество as Отчество,
         ФизическиеЛица.Пол as Пол,
         ФизическиеЛица.login as login,
-        ФизическиеЛица.id_bitrix as id_bitrix
+        ФизическиеЛица.id_bitrix as id_bitrix,
+        slice.Должность_Key as current_Должность_Key,
+        slice.Должность_Наименование as current_Должность,
+        slice.Подразделение_Key as current_Подразделение_Key,
+        slice.Организация_Key as current_Организация_Key,
+        slice.Сотрудник_Key as current_Сотрудник_Key
         """
-        if F.is_unique_identifier(fio):
-            data = CSQ.custom_request_c(user_db, f"""SELECT {fields}
-             FROM employee 
-            LEFT JOIN ФизическиеЛица ON ФизическиеЛица.ФизическоеЛицо_Key = employee.ID_ФизЛица
-            WHERE employee.ID_ФизЛица == "{fio}";""",
-                                        rez_dict=True)
-        else:
-            data = CSQ.custom_request_c(user_db, f"""SELECT {fields} FROM employee 
-             LEFT JOIN ФизическиеЛица ON ФизическиеЛица.ФизическоеЛицо_Key = employee.ID_ФизЛица
-            WHERE employee.ФИО == "{fio}";""", rez_dict=True)
+
+        data = CSQ.custom_request_c(user_db, f""" {slice} SELECT {fields} FROM employee 
+         LEFT JOIN ФизическиеЛица ON ФизическиеЛица.ФизическоеЛицо_Key = employee.ID_ФизЛица
+         LEFT JOIN slice on slice.ФизическоеЛицо_Key = ФизическиеЛица.ФизическоеЛицо_Key
+        {where};""", rez_dict=True)
+
         if len(data) == 0:
             raise Exception('не найден ФИО в БД')
         self.user_db = user_db
-        self.ФИО:str|None = None
-        self.ФИОк:str|None = None
-        self.Пномер:int|None = None
-        self.Должность:str|None = None
-        self.Статус:str|None = None
-        self.Подразделение:str|None = None
-        self.Режим:str|None = None
-        self.Компания:str|None = None
-        self.ID_ФизЛица:str|None = None
-        self.ВидЗанятости:str|None = None
-        self.Фамилия:str|None = None
-        self.Имя:str|None = None
-        self.Отчество:str|None = None
-        self.ДатаИзмененияДолжности:str|None = None
-        self.Пол:str|None = None
-        self.login:str|None = None
-        self.id_bitrix:int|None = None
+        self.ФИО: str | None = None
+        self.ФИОк: str | None = None
+        self.Пномер: int | None = None
+        self.Должность: str | None = None
+        self.Статус: str | None = None
+        self.Подразделение: str | None = None
+        self.Режим: str | None = None
+        self.Компания: str | None = None
+        self.ID_ФизЛица: str | None = None
+        self.ВидЗанятости: str | None = None
+        self.Фамилия: str | None = None
+        self.Имя: str | None = None
+        self.Отчество: str | None = None
+        self.ДатаИзмененияДолжности: str | None = None
+        self.Пол: str | None = None
+        self.login: str | None = None
+        self.id_bitrix: int | None = None
+        self.current_Должность_Key: str | None = None
+        self.current_Подразделение_Key: str | None = None
+        self.current_Организация_Key: str | None = None
+        self.current_Сотрудник_Key: str | None = None
         self.history = []
 
         truth_record = None
         for record in data:
-            if record['Статус'] == 'Работа':
+            if record['Статус'] == 'Работа' or record['Должность'] == record['current_Должность']:
                 truth_record = record
                 break
         if not truth_record:
@@ -303,11 +396,12 @@ class User_emploee():
 
         for key in truth_record.keys():
             exec(f'self.{key.replace(".", "_")} = record[key]')
-        #fix=============
+        # fix=============
         if self.login:
             self.login = self.login.split(F.sep())[-1]
-        self.ФИОк = f'{self.Фамилия} {self.Имя[0]}.{self.Отчество[0]}.'
-        #================
+        postfix = f'.{self.Отчество[0]}' if self.Отчество else ''
+        self.ФИОк = f'{self.Фамилия} {self.Имя[0]}{postfix}'  # 22.06.2026
+        # ================
         for item in data:
             self.history.append(item)
 
@@ -336,43 +430,45 @@ class User_emploee():
     def __str__(self):
         return f'{self.ФИО} {self.Должность} {self.ID_ФизЛица}'
 
+
 def tmp_dir():
     ima_module = F.name_of_executable_file_c().split('.')[0]
-    if F.existence_file_c(os.sep.join([F.put_po_umolch() ,'mes_tmp'])) == False:
-        F.create_dir_c(os.sep.join([F.put_po_umolch() ,'mes_tmp']))
-    if F.existence_file_c(os.sep.join([F.put_po_umolch() ,'mes_tmp' , ima_module])) == False:
-        F.create_dir_c(os.sep.join([F.put_po_umolch() ,'mes_tmp' , ima_module]))
-    return os.sep.join([F.put_po_umolch() ,'mes_tmp' , ima_module])
+    if F.existence_file_c(os.sep.join([F.put_po_umolch(), 'mes_tmp'])) == False:
+        F.create_dir_c(os.sep.join([F.put_po_umolch(), 'mes_tmp']))
+    if F.existence_file_c(os.sep.join([F.put_po_umolch(), 'mes_tmp', ima_module])) == False:
+        F.create_dir_c(os.sep.join([F.put_po_umolch(), 'mes_tmp', ima_module]))
+    return os.sep.join([F.put_po_umolch(), 'mes_tmp', ima_module])
 
 
 class Erp_base():
-    def __init__(self,name:str,db_users:str):
-        self.s_num:int|None = None
-        self.name:str|None = None
-        self.КластерСерверов:str|None = None
-        
-        data = CSQ.custom_request_c(db_users,f"""
+    def __init__(self, name: str, db_users: str):
+        self.s_num: int | None = None
+        self.name: str | None = None
+        self.КластерСерверов: str | None = None
+
+        data = CSQ.custom_request_c(db_users, f"""
     SELECT s_num,
        name,
        КластерСерверов
   FROM bases_ERP WHERE name = "{name}";
-""",rez_dict=True,one=True)
+""", rez_dict=True, one=True)
         if data:
             for key in data.keys():
                 exec(f'self.{key.replace(".", "_")} = data[key]')
-            
 
 
-def save_tmp_stukt(data,name):
+def save_tmp_stukt(data, name):
     puth_name = tmp_dir() + os.sep + name + '.pickle'
-    F.save_file_pickle(puth_name,data)
+    F.save_file_pickle(puth_name, data)
 
-def load_tmp_stukt(ima,default_val = None):
+
+def load_tmp_stukt(ima, default_val=None):
     puth_name = tmp_dir() + os.sep + ima + '.pickle'
     if F.existence_file_c(puth_name) == True:
         val = F.load_file_pickle(puth_name)
         return val
     return default_val
+
 
 def load_place():
     User_config.load_config(Config.user_config)
@@ -389,47 +485,47 @@ class System_changes():
     B24_DIR = fr'Z:\Data'
     B24_PFILE = B24_DIR + F.sep() + B24_FILE_NAME
     DICT_APP_COMPARE = {
-        'МКарты':{'МКарты','Сайт','ВебПриложение','Рейтинг','Установщик','Этапы'},
-        'Просмотр':{'Просмотр',},
-        'Техкарты':{'Техкарты',},
-        'Создание2':{'Создание2','Установщик'},
-        'Выполнение2':{'Выполнение2',},
-        'csv':{'csv',},
-        'АРМ_оператора':{'АРМ_оператора',},
-        'Этапы':{'Этапы',},
-        'Аутсорс':{'Аутсорс',},
-        'Рейтинг':{'Рейтинг',},
-        'Установщик':{'Установщик',},
-        'КонструкторРС':{'КонструкторРС',},
-        'Сайт':{'Сайт',},
-        'ВебПриложение':{'ВебПриложение',},
-        'АРМ_складского_работника':{'АРМ_складского_работника',},
+        'МКарты': {'МКарты', 'Сайт', 'ВебПриложение', 'Рейтинг', 'Установщик', 'Этапы'},
+        'Просмотр': {'Просмотр', },
+        'Техкарты': {'Техкарты', },
+        'Создание2': {'Создание2', 'Установщик'},
+        'Выполнение2': {'Выполнение2', },
+        'csv': {'csv', },
+        'АРМ_оператора': {'АРМ_оператора', },
+        'Этапы': {'Этапы', },
+        'Аутсорс': {'Аутсорс', },
+        'Рейтинг': {'Рейтинг', },
+        'Установщик': {'Установщик', },
+        'КонструкторРС': {'КонструкторРС', },
+        'Сайт': {'Сайт', },
+        'ВебПриложение': {'ВебПриложение', },
+        'АРМ_складского_работника': {'АРМ_складского_работника', },
 
     }
-    DICT_TYPES = { 'Мелкие улучшения':CEMOJ.EmojiMain.ОперацииПроизводства.assembly.symbol,
-                   'Развитие процессов':CEMOJ.EmojiMain.ПоказателиМетрики.thrive.symbol
+    DICT_TYPES = {'Мелкие улучшения': CEMOJ.EmojiMain.ОперацииПроизводства.assembly.symbol,
+                  'Развитие процессов': CEMOJ.EmojiMain.ПоказателиМетрики.thrive.symbol
 
-    }
-    def __init__(self,window):
+                  }
+
+    def __init__(self, window):
         self.db_users = Config.project.db_users
         self.app_self = window
-        self.data_setup:datetime.datetime = None
-        self.set_passed_news:set = None
+        self.data_setup: datetime.datetime = None
+        self.set_passed_news: set = None
         self.app = Config.app.app
         self.b24_source = False
-        #self.clear_cache()
+        # self.clear_cache()
         if F.existence_file_c(self.PFILE):
             data = F.load_file_pickle(self.PFILE)
             self.data_setup = data['data_setup']
         else:
-            self.data_setup = self.yesterday_end_day(F.date_add_days(F.now(),-7,format_out=''))
-        
+            self.data_setup = self.yesterday_end_day(F.date_add_days(F.now(), -7, format_out=''))
 
     def show_hot(self):
         self.get_news_b24()
         if self.show_news(no_empty_msg=True):
             self.save_cache()
-            
+
     @staticmethod
     def show(window):
         obj = System_changes(window)
@@ -447,22 +543,20 @@ class System_changes():
         self_ui.action_system_changes.triggered.connect(lambda _: cls.show(window))
         self_ui.menu.addSeparator()
 
-
-
     @staticmethod
-    def yesterday_end_day(start:datetime.datetime=F.now('')):
-        return F.start_end_dates_c(F.date_add_time(start,hours=-28),vid='d',format_in='',format_out='')[1]
-    
-    def get_news_b24(self,hot= True)->list[dict]:
+    def yesterday_end_day(start: datetime.datetime = F.now('')):
+        return F.start_end_dates_c(F.date_add_time(start, hours=-28), vid='d', format_in='', format_out='')[1]
+
+    def get_news_b24(self, hot=True) -> list[dict]:
         self.news = []
         if self.data_setup == self.yesterday_end_day() and hot:
-            return 
-        
+            return
+
         news = []
         self.b24_source = True
         if F.existence_file_c(self.B24_PFILE):
             news = F.load_file_pickle(self.B24_PFILE)
-        
+
         max_date = self.yesterday_end_day()
         for row in news:
             if row['ПРОЦЕНТ ВЫПОЛНЕНИЯ'] != '1':
@@ -477,17 +571,17 @@ class System_changes():
                     date_end = F.strtodate(date_end_str)
                     if not hot or (date_end > self.data_setup and date_end < max_date):
                         self.news.append({
-                            '№':row['НОМЕР'],
-                            'Тип':self.DICT_TYPES[row['ТИП']],
-                              'Дата': F.dateStrToStr(row['ДАТА ОКОНЧАНИЯ'],format_out="%d.%m.%y"),
-                              'Инициатор':row['ПОСТАНВОЩИК'],
-                              'Описание':row['НАЗВАНИЕ ЗАДАЧИ'],
-                              'Результат':row['ОПИСАНИЕ']
-                              } 
-)
+                            '№': row['НОМЕР'],
+                            'Тип': self.DICT_TYPES[row['ТИП']],
+                            'Дата': F.dateStrToStr(row['ДАТА ОКОНЧАНИЯ'], format_out="%d.%m.%y"),
+                            'Инициатор': row['ПОСТАНВОЩИК'],
+                            'Описание': row['НАЗВАНИЕ ЗАДАЧИ'],
+                            'Результат': row['ОПИСАНИЕ']
+                        }
+                        )
         return self.news
-    
-    def get_news(self)->list[dict]:
+
+    def get_news(self) -> list[dict]:
         news = CSQ.custom_request_c(self.db_users, f"""SELECT system_change.id as №,
                                 system_change.date_time as Дата,
                                 ФизическоеЛица.Фамилия as Инициатор,
@@ -497,64 +591,63 @@ class System_changes():
                                  INNER JOIN ФизическоеЛица ON
                                  ФизическоеЛица.id == system_change.customer 
                                  WHERE system_change.app == "{self.app}" and 
-                                datetime(system_change.date_time) >= datetime("{F.datetostr(self.data_setup)}")""", rez_dict=True)
+                                datetime(system_change.date_time) >= datetime("{F.datetostr(self.data_setup)}")""",
+                                    rez_dict=True)
         for row in news:
-            row['Дата'] = F.dateStrToStr(row['Дата'],format_out="%d.%m.%y")
+            row['Дата'] = F.dateStrToStr(row['Дата'], format_out="%d.%m.%y")
         self.news = news
         return news
 
-    def show_news(self,no_empty_msg:bool=True):
-        def func_oform(tbl:QtWidgets.QTableWidget):
+    def show_news(self, no_empty_msg: bool = True):
+        def func_oform(tbl: QtWidgets.QTableWidget):
 
             nf = CQT.nums_col_by_name_dict(tbl)
             with CQT.table_updating(tbl):
                 for i in range(tbl.rowCount()):
-                    tbl.setRowHeight(i,88)
+                    tbl.setRowHeight(i, 88)
                     for j in range(tbl.columnCount()):
-                        if j in (nf['Описание'],nf['Результат']):
-                            CQT.font_cell_size_format(tbl,i,j,12)
+                        if j in (nf['Описание'], nf['Результат']):
+                            CQT.font_cell_size_format(tbl, i, j, 12)
                         else:
-                            CQT.font_cell_size_format(tbl,i,j,14)
+                            CQT.font_cell_size_format(tbl, i, j, 14)
                 tbl.resizeColumnsToContents()
                 dlg = tbl.window()
                 dlg.showMaximized()
                 tbl.columnWidth(nf['Результат'])
                 CQT.select_cell(tbl, tbl.rowCount() - 1, 0)
-            tbl.setColumnWidth(nf['Описание'],round(tbl.width()*0.3))
-            tbl.setColumnWidth(nf['Результат'],round(tbl.width()*0.3))
-                
-        
+            tbl.setColumnWidth(nf['Описание'], round(tbl.width() * 0.3))
+            tbl.setColumnWidth(nf['Результат'], round(tbl.width() * 0.3))
+
         if self.news:
-            CQT.msgboxg_get_table_ok_inf(self.app_self,f' Что нового',
-                                         self.news,func_oform_tbl=func_oform,
+            CQT.msgboxg_get_table_ok_inf(self.app_self, f' Что нового',
+                                         self.news, func_oform_tbl=func_oform,
                                          style_icon=CEMOJ.EmojiMain.ПерсоналРоли.training.symbol,
                                          styleSheet=CQT.WHATS_NEW_CSS
-                                         
+
                                          )
             return True
         if not no_empty_msg:
             CQT.msgbox(f'Изменений пока нет')
         return False
 
-
     def save_cache(self):
         if self.b24_source:
             self.data_setup = self.yesterday_end_day()
         else:
             self.data_setup = F.now('')
-        data = {'data_setup':self.data_setup}
-        F.save_file_pickle(self.PFILE,data)
-        
+        data = {'data_setup': self.data_setup}
+        F.save_file_pickle(self.PFILE, data)
+
     def clear_cache(self):
         F.delete_file_c(self.PFILE)
 
 
-class User_config(metaclass=SingletonMeta): # noqa
+class User_config(metaclass=SingletonMeta):  # noqa
     def __init__(self, common_config: ProjectConfig = None):
-        self.common_config = common_config #18.07.25
-        self.window_app = None 
-        self.cust_windowTitle:str|None = None
-        self.user_mode:bool|None = None
+        self.common_config = common_config  # 18.07.25
+        self.window_app = None
+        self.cust_windowTitle: str | None = None
+        self.user_mode: bool | None = None
         orgnizations = CSQ.custom_request_c(ProjectConfig().db_naryad,
                                             f"""SELECT Имя FROM places""",
                                             hat_c=False, one_column=True)
@@ -562,8 +655,11 @@ class User_config(metaclass=SingletonMeta): # noqa
         path_files = F.sep().join([F.path_to_execut_file_c(), 'css'])
 
         erp_bases = CSQ.custom_request_c(ProjectConfig().db_users,
-                                         f"""SELECT name FROM bases_ERP""",
-                                            hat_c=False, one_column=True)
+                                         f"""SELECT name FROM bases_ERP where type_base = 'erp'; """,
+                                         hat_c=False, one_column=True)
+        do_bases = CSQ.custom_request_c(ProjectConfig().db_users,
+                                         f"""SELECT name FROM bases_ERP where type_base = 'do'; """,
+                                         hat_c=False, one_column=True)
 
         list_thems = []
         if os.path.exists(path_files):
@@ -586,6 +682,14 @@ class User_config(metaclass=SingletonMeta): # noqa
                 'Default_val': 'ERP',
                 'type': 'combo_box',
                 'list': erp_bases,
+                'necessary_reload': True,
+            },'DO_base_name': {
+                'Параметр': 'Имя базы Документооборот',
+                'Значение': '',
+                'Примечание': 'Имя, с которой взаимодействует приложение',
+                'Default_val': 'DMCorp',
+                'type': 'combo_box',
+                'list': do_bases,
                 'necessary_reload': True,
             },
             'Organization': {
@@ -611,15 +715,16 @@ class User_config(metaclass=SingletonMeta): # noqa
         self.__data_config_sample = data_config_sample
         self.reset_tbl_filtrs = None
         self.ERP_base_name = None
-        self.ERP_base:Erp_base|None = None
+        self.DO_base_name = None
+        self.ERP_base: Erp_base | None = None
+        self.DO_base: Erp_base | None = None
         self.css_theme = None
         self.Organization = None
-        self.User:User_emploee|None = None
-
+        self.User: User_emploee | None = None
 
         self.load_config()
         try:
-            self.User = User_emploee(F.user_full_namre(),self.common_config.db_users)
+            self.User = User_emploee(F.user_full_namre(), self.common_config.db_users)
         except:
             pass
 
@@ -627,17 +732,23 @@ class User_config(metaclass=SingletonMeta): # noqa
         super().__setattr__(key, value)
         if value is None:
             return
-        if key in ('User','cust_windowTitle','window_app'):
+        if key in ('User', 'cust_windowTitle', 'window_app'):
             self.update_window_title()
 
-    def init_employee(self, fio_or_ref: str):
-        self.User = User_emploee(fio_or_ref, self.common_config.db_users) #10.03.2026
+    def init_employee(self, fio_or_ref: str) -> bool:
+
+        try:
+            new_user = User_emploee(fio_or_ref, self.common_config.db_users)  # 10.03.2026
+        except:
+            return False
+        self.User = new_user
+        return True
 
     def clear_employee(self):
         self.User = None
 
     @property
-    def is_developer(self): #18.07.25
+    def is_developer(self):  # 18.07.25
         if self.user_mode:
             if F.is_date(self.user_mode, "%Y-%m-%d"):
                 if F.now("%Y-%m-%d") == self.user_mode:
@@ -647,17 +758,25 @@ class User_config(metaclass=SingletonMeta): # noqa
         current_login = F.user_name()
         return current_login in self.common_config.developers.split('|')
 
+    def set_uset_mode(self):
+        self.user_mode = F.now("%Y-%m-%d")
+
+    @property
+    def _is_developer_by_user(self):  # 18.07.25
+
+        current_login = self.User.login
+        return current_login in self.common_config.developers.split('|')
+
     def set_not_dev(self):
         self.common_config.developers = self.common_config.developers.replace(F.user_name(), '')
-
 
     def load_config(self=None):
         app_args = F.parse_args(sys.argv)
         if 'UserMode' in app_args:
             self.user_mode = app_args['UserMode']
-        data = load_tmp_stukt('user_config', copy.deepcopy(self.__data_config_sample)) #02.03.2026
+        data = load_tmp_stukt('user_config', copy.deepcopy(self.__data_config_sample))  # 02.03.2026
         if app_args:
-            for k,v in app_args.items():
+            for k, v in app_args.items():
                 if k in data and 'Значение' in data[k]:
                     data[k]['Значение'] = v
         data_config = copy.deepcopy(self.__data_config_sample)
@@ -665,16 +784,19 @@ class User_config(metaclass=SingletonMeta): # noqa
             if param in data:
                 dic['Значение'] = data[param]['Значение']
             if dic['Значение'] == '':
-                if dic['Default_val']=='':
-                    if isinstance(dic['list'],list):
+                if dic['Default_val'] == '':
+                    if isinstance(dic['list'], list):
                         dic['Значение'] = dic['list'][0]
                 else:
                     dic['Значение'] = dic['Default_val']
             dic['list'] = str(dic['list'])
             exec(f'self.{param} = {dic}')
         self._data_config = data_config
+
         if self.ERP_base_name is not None:
-            self.ERP_base = Erp_base(self.ERP_base_name['Значение'],self.common_config.db_users)
+            self.ERP_base = Erp_base(self.ERP_base_name['Значение'], self.common_config.db_users)
+        if self.DO_base_name is not None:
+            self.DO_base = Erp_base(self.DO_base_name['Значение'], self.common_config.db_users)
 
     def save_config(self, new_tbl: dict):
         data_config = copy.deepcopy(self.__data_config_sample)
@@ -689,36 +811,47 @@ class User_config(metaclass=SingletonMeta): # noqa
         tbl = F.list_of_lists_to_list_of_dicts(tbl)
         return tbl
 
+    def set_sub_window_title(self, sub_self, sub_window_name: str | None = None):
+        sub_title = ''
+        if self.window_app:
+            sub_title = self.window_app.name_module
+        if sub_window_name is None:
+            sub_window_name = getattr(sub_self, 'NAME_MODULE_BASE', None)
+        if sub_window_name:
+            sub_title = f'{sub_title} - {sub_window_name}'
+        sub_self.setWindowTitle(sub_title)
+
     def update_window_title(self):
         if self.window_app is None:
             return
         erp_tool_tip = f'База 1С: "{self.ERP_base_name["Значение"]}"'
         login = user_str = ''
-        if self.User: #10.03.2026
+        if self.User:  # 10.03.2026
             if self.User.login:
                 login = f'/{self.User.login}'
             user_str = f" {self.User.ФИО}{login}"
         cust_windowTitle = ''
         if self.cust_windowTitle:
-            cust_windowTitle = f'{50*' '}{self.cust_windowTitle}'
-        self.window_app.name_module = (f'Приложение "{self.window_app.NAME_MODULE_BASE}":'
-                              f' {user_str}'
-                              f' ({self.Organization["Значение"]})    {erp_tool_tip}{cust_windowTitle}')
+            cust_windowTitle = f'{50 * ' '}{self.cust_windowTitle}'
+        dev_smbl = CEMOJ.EmojiMain.ОборудованиеИнструменты.robot.symbol if self.is_developer else ''
+        self.window_app.name_module = (f'{dev_smbl}Приложение "{self.window_app.NAME_MODULE_BASE}":'
+                                       f' {user_str}'
+                                       f' ({self.Organization["Значение"]})    {erp_tool_tip}{cust_windowTitle}')
         self.set_tooltip(self.window_app)
 
-    def load_user_config(self, window,addit_obj=None):
-        
+    def load_user_config(self, window, addit_obj=None):
+
         self.load_config()
         window.APP_ARGS = Config.app_args
         self.window_app = window
-        
+
         window.ERP_base_name = f'{self.ERP_base_name["Значение"]}'
         window.USER_CONFIG: User_config = self
         CQT.load_css(window)
+        CQT.install_qt_russian_locale(QtWidgets.QApplication.instance())
 
-        window.place:Place = Config.place
-        window.project:ProjectConfig = Config.project
-
+        window.place: Place = Config.place
+        window.project: ProjectConfig = Config.project
 
         self.check_system_change_info(window)
         if addit_obj:
@@ -727,16 +860,13 @@ class User_config(metaclass=SingletonMeta): # noqa
             addit_obj.place: Place = Config.place
             addit_obj.project: ProjectConfig = Config.project
 
-
-    def check_system_change_info(self,window):
+    def check_system_change_info(self, window):
         if not Config.app.is_ui:
             return
         if not hasattr(window.ui, 'action_system_changes'):
             System_changes.add_action_config(window, window.ui)
             system_changes = System_changes(window)
             system_changes.show_hot()
-        
-
 
     def set_tooltip(self, window):
         window.setWindowTitle(f"{window.name_module}")
@@ -801,24 +931,31 @@ class User_config(metaclass=SingletonMeta): # noqa
                 if fl_reload:
                     break
             if fl_reload:
+                app = QtWidgets.QApplication.instance()
+                top_level = app.topLevelWidgets()
+                open_windows = sum(1 for w in top_level if w.isVisible())
+                if open_windows == 0:
+                    return True
                 CQT.msgbox(f'Перезапустить приложение')
                 quit()
             self.load_user_config(window)
+
 
 class CodeNaryad:
     Плановая: int = None
     НеподтвержденныйВнеплан: int = None
     ПодтвержденныйВнеплан: int = None
     Простой: int = None
-    _dev:bool|None = None
-    def __init__(self, poki, bd: str,dev:bool|None = None):
+    _dev: bool | None = None
+
+    def __init__(self, poki, bd: str, dev: bool | None = None):
         self._dev = dev
-        
+
         lazy_load_time = LAZY_LOAD_TIME if self._dev else 0
         code_naryads = CSQ.custom_request_c(
             bd,
             f'SELECT name, code FROM коды_веплана_для_наряда WHERE poki = {poki}',
-            hat_c=False,lazy_method_hours= lazy_load_time
+            hat_c=False, lazy_method_hours=lazy_load_time
         )
         if isinstance(code_naryads, list):
             for k, v in code_naryads:
@@ -830,19 +967,21 @@ class CodeNaryad:
 class Evaluation_department_podrazdel_for_reports:
     Имя: str = None
 
-    def __init__(self, eval_podr, bd_kplan: str,dev:bool|None = None):
+    def __init__(self, eval_podr, bd_kplan: str, dev: bool | None = None):
         self._dev = dev
 
         lazy_load_time = LAZY_LOAD_TIME if self._dev else 0
         data = CSQ.custom_request_c(
             bd_kplan,
-            f'SELECT Имя FROM podrazdel WHERE Пномер = {eval_podr}', one_column=True,one=True,
-            hat_c=False,lazy_method_hours=lazy_load_time
+            f'SELECT Имя FROM podrazdel WHERE Пномер = {eval_podr}', one_column=True, one=True,
+            hat_c=False, lazy_method_hours=lazy_load_time
         )
         if data != False:
-            self.Имя = data #11.11.25
+            self.Имя = data  # 11.11.25
         else:
-            logging.info('[Cust_config.Evaluation_department_podrazdel_for_reports] Не удалось инициализировать имя оценочного подразделения из-за недоступности БД')
+            logging.info(
+                '[Cust_config.Evaluation_department_podrazdel_for_reports] Не удалось инициализировать имя оценочного подразделения из-за недоступности БД')
+
 
 @dataclasses.dataclass
 class Place(metaclass=SingletonMeta):
@@ -855,7 +994,7 @@ class Place(metaclass=SingletonMeta):
     doc_prefix: str = None
     ИспПроверкуВнесенияТрудозатрат: int = None
     ИспПроверкуТехартыВнесениеВидаИВесаТО: int = None
-    ИспПроверкуНаВнесенныйТипПланаОтделомТО: bool = None # 09.02.2026
+    ИспПроверкуНаВнесенныйТипПланаОтделомТО: bool = None  # 09.02.2026
     РодительВидаРабот: str = None
     ИспользоватьФильтрМКПоплану: int = None
     prefix_projects_localnet_path: str = None
@@ -863,18 +1002,18 @@ class Place(metaclass=SingletonMeta):
     УИД_ЕРП_Отдел_снабжения: str = None
     evaluation_department: Evaluation_department_podrazdel_for_reports = None
     КодыНарядов: CodeNaryad = None
-    limit_time_on_naryad: int = None #15.08.25
-    КодГруппыРесурсных: str = None #20.08.2025
-    use_month_closing_block_for_naryads: int = None #10.09.2025  100060031 Сергей Козырьков12:36 необходимо снять блок по периоду на время закрытия предыдущих МК в месе,Тренировка,отработка возможных ошибок сотрудников. на срок до 22.09.
-    auto_change_state_kplan: int = None #18.09.2025  100060322  Дмитрий Никандров09:43, как только выстроим цепочку работы с конструкторами, технологами мы сопоставим статусы и донесем до вас.
-    autoload_fact_kpl_onoff: int = None #26.09.2025 100060640  тобы в ганте увидеть, что начались работы
-    apply_ratio_on_calc_plan_norm: int = None #27.01.2026 100065475 выключение/выключение коэффициентов для подгрузки норм позиции
-    ref_top_storage: str = None #17.02.2026 основной склад
-    _dev:bool|None = None
+    limit_time_on_naryad: int = None  # 15.08.25
+    КодГруппыРесурсных: str = None  # 20.08.2025
+    use_month_closing_block_for_naryads: int = None  # 10.09.2025  100060031 Сергей Козырьков12:36 необходимо снять блок по периоду на время закрытия предыдущих МК в месе,Тренировка,отработка возможных ошибок сотрудников. на срок до 22.09.
+    auto_change_state_kplan: int = None  # 18.09.2025  100060322  Дмитрий Никандров09:43, как только выстроим цепочку работы с конструкторами, технологами мы сопоставим статусы и донесем до вас.
+    autoload_fact_kpl_onoff: int = None  # 26.09.2025 100060640  тобы в ганте увидеть, что начались работы
+    apply_ratio_on_calc_plan_norm: int = None  # 27.01.2026 100065475 выключение/выключение коэффициентов для подгрузки норм позиции
+    ref_top_storage: str = None  # 17.02.2026 основной склад
+    _dev: bool | None = None
 
-    def __init__(self, organization_name: str | None = None,dev:bool|None = None) -> None:
+    def __init__(self, organization_name: str | None = None, dev: bool | None = None) -> None:
         self._dev = dev
-        
+
         lazy_load_time = LAZY_LOAD_TIME if self._dev else 0
 
         if not organization_name:
@@ -887,30 +1026,32 @@ class Place(metaclass=SingletonMeta):
                     app = QtWidgets.QApplication(sys.argv)
                 widget = QtWidgets.QMainWindow()
                 CQT.msgbox('Не выбрана организация')
-                user_config.gui_load(widget)
+                if user_config.gui_load(widget):
+                    return self.__init__(organization_name=organization_name, dev=dev)
                 return
             organization_name = user_config.Organization.get('Значение')
         # db_naryad = F.scfg('Naryad')
         db_naryad = ProjectConfig().db_naryad
         row = CSQ.custom_request_c(db_naryad,
-                    f"""SELECT * FROM places WHERE Имя = "{organization_name}";""",
+                                   f"""SELECT * FROM places WHERE Имя = "{organization_name}";""",
                                    one=True,
-                                   rez_dict=True,lazy_method_hours=lazy_load_time)
+                                   rez_dict=True, lazy_method_hours=lazy_load_time)
         if not row:
-            F.win_msgbox(f'Ошибка',f'Организация "{organization_name}" не обнаружена')
+            F.win_msgbox(f'Ошибка', f'Организация "{organization_name}" не обнаружена')
             raise ValueError('')
-        self.КодыНарядов = CodeNaryad(row['poki'], db_naryad,self._dev)
+        self.КодыНарядов = CodeNaryad(row['poki'], db_naryad, self._dev)
         self.evaluation_department = Evaluation_department_podrazdel_for_reports(
-            row['evaluation_department_podrazdel_for_reports'],ProjectConfig().db_kplan,self._dev)
+            row['evaluation_department_podrazdel_for_reports'], ProjectConfig().db_kplan, self._dev)
 
         for key in row.keys():
             exec(f'self.{str(key).replace(".", "_")} = row[key]')
 
 
-class Config(metaclass=ConfigMeta): #18.08.25
+class Config(metaclass=ConfigMeta):  # 18.08.25
+    table_runtime: TableRuntimePolicy = TableRuntimePolicy()
     project: ProjectConfig = ProjectConfig()
     app: AppConfig = AppConfig()
     user_config: User_config = User_config(common_config=project)  # 18.07.25
     app_args: dict = F.parse_args(sys.argv)
-    place: Place = Place(dev = user_config.is_developer)
+    place: Place = Place(dev=user_config.is_developer)
 

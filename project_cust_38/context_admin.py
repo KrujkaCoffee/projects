@@ -386,48 +386,17 @@ class ContextAdminRepo:
         cols = list(data.keys())
         placeholders = ','.join('%s' for _ in cols)
         sql = f"INSERT INTO {ADMIN_TABLES['schema_manifest']} ({', '.join(cols)}) VALUES ({placeholders}) RETURNING generated_at_utc;"
-        conn, cur = CPG.connect_pg(CPG.PostgresConfig())
-        try:
-            last_rowid = CPG.custom_request_pg(
-                sql,
-                one_column=True,
-                one=True,
-                params=list(data.values())
-            )
-        finally:
-            CPG.close_pg(conn, cur)
-        print('[write_manifest] returning: ', last_rowid)
-        print('db_files', self.db_files)
-        print('LAST_ROWID:', last_rowid)
+        last_rowid = CPG.custom_request_pg(
+            sql,
+            one_column=True,
+            one=True,
+            params=list(data.values())
+        )
+        logger.info(f'Запись лога манифеста окончена, номер созданной строки: {last_rowid}')
         return last_rowid
-
-    def table_exists_in_db_old(self, db_path: str, table_name: str) -> bool:
-        return bool(CSQ.custom_request_c(
-            db_path,
-            'SELECT COUNT(*) FROM sqlite_master WHERE type = "table" AND name = ?',
-            list_of_lists_c=(table_name,)
-        ))
 
     def table_exists_in_db(self, db_path: str, table_name: str) -> bool:
         read_db_path = self._schema_read_db_path(db_path)
-
-        if self._can_direct_sqlite_schema_read(read_db_path):
-            try:
-                rows = self._read_sqlite_schema_rows(
-                    read_db_path,
-                    'SELECT COUNT(*) FROM sqlite_master WHERE type = "table" AND name = ?',
-                    (table_name,),
-                )
-                return bool(rows and int(rows[0][0] or 0) > 0)
-            except Exception as e:
-                logger.error(
-                    '[table_exists_in_db] direct sqlite schema read error db=%r table=%r err=%r',
-                    read_db_path,
-                    table_name,
-                    e,
-                )
-                return False
-
         count = CSQ.custom_request_c(
             read_db_path,
             'SELECT COUNT(*) FROM sqlite_master WHERE type = "table" AND name = ?',
@@ -441,32 +410,8 @@ class ContextAdminRepo:
         except Exception:
             return False
 
-    def list_tables_in_db_old(self, db_path: str) -> list[str]:
-        return CSQ.custom_request_c(
-            db_path,
-            'SELECT name FROM sqlite_master WHERE type = "table" AND name != "sqlite_sequence" ORDER BY name',
-            one_column=True,
-            hat_c=False
-        ) or []
-
     def list_tables_in_db(self, db_path: str) -> list[str]:
         read_db_path = self._schema_read_db_path(db_path)
-
-        if self._can_direct_sqlite_schema_read(read_db_path):
-            try:
-                rows = self._read_sqlite_schema_rows(
-                    read_db_path,
-                    'SELECT name FROM sqlite_master WHERE type = "table" AND name != "sqlite_sequence" ORDER BY name',
-                )
-                return [row[0] for row in rows]
-            except Exception as e:
-                logger.error(
-                    '[list_tables_in_db] direct sqlite schema read error db=%r err=%r',
-                    read_db_path,
-                    e,
-                )
-                return []
-
         return CSQ.custom_request_c(
             read_db_path,
             'SELECT name FROM sqlite_master WHERE type = "table" AND name != "sqlite_sequence" ORDER BY name',
@@ -529,25 +474,11 @@ class ContextAdminRepo:
     def bootstrap_table_fields(self, *, db_path: str, table_name: str, table_key: str) -> int:
         read_db_path = self._schema_read_db_path(db_path)
         sql = f'PRAGMA table_info({_quote_sqlite_ident(table_name)})'
-
-        if self._can_direct_sqlite_schema_read(read_db_path):
-            try:
-                rows = self._read_sqlite_schema_rows(read_db_path, sql)
-            except Exception as e:
-                logger.error(
-                    '[bootstrap_table_fields] direct sqlite schema read error db=%r table=%r err=%r',
-                    read_db_path,
-                    table_name,
-                    e,
-                )
-                rows = []
-        else:
-            rows = CSQ.custom_request_c(
-                read_db_path,
-                sql,
-                hat_c=False,
-            ) or []
-
+        rows = CSQ.custom_request_c(
+            read_db_path,
+            sql,
+            hat_c=False,
+        ) or []
         count = 0
         for row in rows:
             cid, field_name, db_type, notnull, default_value, pk = row
@@ -570,13 +501,6 @@ class ContextAdminRepo:
             count += 1
 
         return count
-
-    def bootstrap_table_fields_old(self, *, db_path: str, table_name: str, table_key: str) -> int:
-        rows = CSQ.custom_request_c(
-            db_path,
-            f'PRAGMA table_info("{table_name}")',
-            hat_c=False
-        ) or []
 
         count = 0
         current_field_names: list[str] = []
@@ -1023,29 +947,7 @@ class ContextAdminRepo:
 
         return db_path
 
-    def _can_direct_sqlite_schema_read(self, db_path: str) -> bool:
+    @staticmethod
+    def can_direct_sqlite_schema_read(db_path: str) -> bool:
         db_path = _normalize_path(db_path)
-        return _is_server_process() and bool(db_path) and not db_path.startswith('SRV:')
-
-    def _read_sqlite_schema_rows(self, db_path: str, sql: str, params: tuple = ()) -> list[tuple]:
-        db_path = _normalize_path(db_path)
-        uri = f'file:{pathlib.Path(db_path).resolve().as_posix()}?mode=ro'
-
-        conn = sqlite3.connect(uri, uri=True, timeout=2)
-        try:
-            conn.execute('PRAGMA query_only = ON')
-            cur = conn.execute(sql, params)
-            return cur.fetchall()
-        finally:
-            conn.close()
-
-
-if __name__ == '__main__':
-    from project_cust_38 import Cust_SQLite as CSQ
-    from project_cust_38 import Cust_config as CFG
-
-    b = ContextAdminRepo().get_srv_nickname('C://DB_srv//DB_kplan.db')
-    print(b)
-    b = CSQ.custom_request_c(CFG.Config.project.db_kplan, 'DELETE FROM gant_poz_val_by_day where val_minutes = 3333.6')
-    a = CSQ.custom_request_c(CFG.Config.project.db_kplan, 'SELECT * FROM gant_poz_val_by_day where id_poz = 7131')
-    print(a)
+        return bool(db_path) and not db_path.startswith('SRV:')

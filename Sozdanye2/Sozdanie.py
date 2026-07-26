@@ -33,8 +33,8 @@ from dataClass import data_app as DTCLS
 import project_cust_38.Cust_emoji as CEMOJ
 # import traceback
 import project_cust_38.api_erp_commands as APIERP
-
-cfg = F.load_cfg(False)  # файл конфига, находится п папке конфиг
+from project_cust_38.sub_mes.kro.manage_kro import Kro_manager as MKRO
+cfg = F.load_cfg(False)  # файл конфига, находится в папке конфиг
 
 
 
@@ -70,10 +70,12 @@ class mywindow(QtWidgets.QMainWindow):
         self.name_module = f'{self.NAME_MODULE_BASE}'
         self.USER_CONFIG: CFG.User_config = None
         self.place: CFG.Place = None
-
+        if CMS.kontrol_ver(self.versia, "Создание2") == False:
+            sys.exit()
         CFG.Config.user_config.load_user_config(self)
         self.app_icons()
         DTCLS.app_self = self
+        DTCLS.init_data()
         CQT.connect_to_resize(self, CMS.tmp_dir())
         CQT.QtCore.QTimer.singleShot(50, lambda: CQT.load_resize_splitters(self, CMS.tmp_dir()))
         CMS.add_action_config_save_tbl_filtrs(self, self.ui)
@@ -93,11 +95,15 @@ class mywindow(QtWidgets.QMainWindow):
             btn_login=self.ui.btn_login,
             btn_logout=self.ui.btn_logout,
         )
+        if self.USER_CONFIG.is_developer:
+            dev_menu = CMS.ActionDevMenu(self)
+            dev_menu.add_action('action_tmp', self.action_tmp)
         if 'btn':
             self.ui.btn_comp_add_file.clicked.connect(lambda: CMPM.btn_comp_add_file(self))
             self.ui.btn_comp_delete_file.clicked.connect(lambda: CMPM.btn_comp_delete_file(self))
             self.ui.btn_comp_dse.clicked.connect(lambda: CMPM.btn_comp_dse(self))
             self.ui.btn_comp_dse_cr_nar.clicked.connect(lambda: CMPM.btn_comp_dse_cr_nar(self))
+            self.ui.btn_fr_comp_dse_nars_delete.clicked.connect(lambda: CMPM.btn_fr_comp_dse_nars_delete(self))
             self.ui.btn_show_comp_file.clicked.connect(lambda: CMPM.btn_show_comp_file(self))
             self.ui.btn_update_files.clicked.connect(lambda: CMPM.btn_update_files(self))
             self.ui.btn_create_comp.clicked.connect(lambda: MTXCMP.create_comp(self))
@@ -119,6 +125,7 @@ class mywindow(QtWidgets.QMainWindow):
             self.ui.btn_edit_add_addition_fio.clicked.connect(self.edit_add_addition_fio)
             self.ui.btn_edit_delete_naruad.clicked.connect(self.edit_delete_naruad)
             self.ui.btn_edit_check_naruad.clicked.connect(self.edit_check_naruad)
+            self.ui.btn_edit_check_naruad_preliminary.clicked.connect(lambda: self.edit_check_naruad(True))
             self.ui.btn_edit_check_vneplan.clicked.connect(self.edit_check_vneplan)
             self.ui.btn_anal_load_txt_erp.clicked.connect(lambda _, x=self: compare.load_txt(x))
             self.ui.btn_anal_load_txt_mes.clicked.connect(lambda _, x=self: compare.load_txt_mes(x))
@@ -296,7 +303,6 @@ class mywindow(QtWidgets.QMainWindow):
         # self.ui.action_peresilniy.triggered.connect(self.create_peresilniy)
         self.ui.action_open_zayavky.triggered.connect(self.open_zayavk)
         self.ui.action_reset_pass.triggered.connect(lambda _, x=self: self.auth_manager.reset_user_pass())
-
         # =======loads
 
         self.DICT_EMPLOEE_FULL = dict()
@@ -345,7 +351,7 @@ class mywindow(QtWidgets.QMainWindow):
         CMS.dict_rc(self, self.bd_users)
         self.DICT_RC_FULL = F.deploy_dict_c(spis_rc, 'Код')
 
-        dict_tip = CSQ.custom_request_c(self.db_naryd, """SELECT * FROM Тип_мк""", rez_dict=True)
+        dict_tip = CSQ.custom_request_c(self.db_naryd, """SELECT * FROM Тип_мк1""", rez_dict=True)
         self.DICT_TIP_MK = F.deploy_dict_c(dict_tip, 'Имя')
 
         spis_status = CSQ.custom_request_c(self.db_naryd, f'SELECT DISTINCT jurnal.Статус FROM jurnal', hat_c=False, one_column=True)
@@ -367,8 +373,12 @@ class mywindow(QtWidgets.QMainWindow):
         # self.zaversh_naruad()
         self.ui.tab_4.setEnabled(False)
         self.ui.tab_11.setEnabled(True)
+        LIST_KATEG_VNEPLAN = CSQ.custom_request_c(self.db_naryd, f'SELECT * FROM category_vnepl WHERE poki = {CFG.Config.place.poki}',
+                             rez_dict=True)
         self.DICT_KATEG_VNEPLAN = F.deploy_dict_c( # 21.05.2026
-            CSQ.custom_request_c(self.db_naryd, f'SELECT * FROM category_vnepl WHERE poki = {CFG.Config.place.poki}', rez_dict=True), 'value')
+            LIST_KATEG_VNEPLAN, 'value')
+        self.DICT_KATEG_VNEPLAN_BY_CODE = F.deploy_dict_c( # 21.05.2026
+            LIST_KATEG_VNEPLAN, 'kod')
         self.DICT_PROFESSIONS = dict()
         CMS.dict_professions(self, self.bd_users)
 
@@ -406,13 +416,16 @@ class mywindow(QtWidgets.QMainWindow):
         # =====================временно
         # OFFself.write_date_podtv()
         self.fix_error()
+        #self.dev_add_vnepl_nars()
+    def action_tmp(self,*args):
+        #self.dev_add_vnepl_nars()
+        pass
 
     def load_users(self):
         """Загрузить список сотрудников в листбокс"""
         cmb = self.ui.lbx_spis_sotr
         dict_dolgn_etap = {'$'.join([_['Должность'], _['Подразделение'], _['Производство']]): _ for _ in
                            self.LIST_DOLGN_ETAP}
-
         cmb.addItem('')
 
         for fio, vals in self.DICT_EMPLOEE_FULL.items():
@@ -899,8 +912,8 @@ class mywindow(QtWidgets.QMainWindow):
             self.DICT_ACCESS_PROJ_MONTH[month].add(item['ПУ'])
 
     @CQT.onerror
-    @CQT.progress_decorator
-    def tab_clcik(self, nom, hook_prog_bar, *args):
+    def tab_clcik(self, nom, *args):
+        raise Exception('test')
         hook_prog_bar.set(10)
         hook_prog_bar.text('Обработка')
         if CMS.kontrol_ver(self.versia, self.NAME_MODULE_BASE) == False:
@@ -1597,21 +1610,20 @@ class mywindow(QtWidgets.QMainWindow):
     @CQT.onerror
     def select_all_dse(self, *args):
         tbl = self.ui.tbl_dse
-        tbl.blockSignals(True)
-        nk_check = CQT.num_col_by_name_c(tbl, 'Чек')
-        self.glob_etap = set()
-        self.set_rc_check_dse = set()
-        shift = (QtWidgets.QApplication.keyboardModifiers() & QtCore.Qt.ShiftModifier) == QtCore.Qt.ShiftModifier
+        with QtCore.QSignalBlocker(tbl): #07.07.2026
+            nk_check = CQT.num_col_by_name_c(tbl, 'Чек')
+            self.glob_etap = set()
+            self.set_rc_check_dse = set()
+            shift = (QtWidgets.QApplication.keyboardModifiers() & QtCore.Qt.ShiftModifier) == QtCore.Qt.ShiftModifier
 
-        for i in range(tbl.rowCount()):
-            if not shift and tbl.isRowHidden(i):
-                continue
-            # if tbl.isRowHidden(i) == False:
-            tbl.cellWidget(i, nk_check).setChecked(True)
-            tbl.item(i, nk_check).setText('1')
-            self.rc_outsource_is_selected()
-        self.raschet_naruada_time_tmp()
-        tbl.blockSignals(False)
+            for i in range(tbl.rowCount()):
+                if not shift and tbl.isRowHidden(i):
+                    continue
+                # if tbl.isRowHidden(i) == False:
+                tbl.cellWidget(i, nk_check).setChecked(True)
+                tbl.item(i, nk_check).setText('1')
+                self.rc_outsource_is_selected()
+            self.raschet_naruada_time_tmp()
     # --- 16.06.25 по задаче (100055264)
 
     @CQT.onerror
@@ -1772,79 +1784,6 @@ class mywindow(QtWidgets.QMainWindow):
         nom_py = self.ui.tbl_vibor_nar_rasp.item(self.ui.tbl_vibor_nar_rasp.currentRow(), nk_py).text()
         nom_nar = int(self.ui.lbl_vibr_nar.text())
 
-        def check_and_add_etap_into_erp(n_nar:int):
-            err = []
-            self.stage = ''
-            def add_etap_by_fio(fio,etaps_to_add):
-                podr = DTCLS.app_self.DICT_EMPLOEE_FULL_WITH_DEL[fio]['Подразделение']
-                print(' add_etap_by_fio podr ok')
-                dolgn = DTCLS.app_self.DICT_EMPLOEE_FULL_WITH_DEL[fio]['Должность']
-                print(' add_etap_by_fio dolgn ok')
-                etap_name = DTCLS.app_self.DICT_DOLGN_ETAP[dolgn]['этап']
-                print(' add_etap_by_fio etap_name ok')
-                ref_podr = DTCLS.app_self.DICT_PODR_RC[podr]['ref_СтруктураПредприятия']
-                print(' add_etap_by_fio ref_podr ok')
-                etaps_to_add.add((etap_name,ref_podr))
-                print(' add_etap_by_fio etaps_to_add.add ok')
-                return etaps_to_add
-            fio = DTCLS.app_self.ui.lbl_ispoln1.text()
-            fio2 = DTCLS.app_self.ui.lbl_ispoln2.text()
-            self.stage = 'fio'
-            data_nar = CSQ.custom_request_c(DTCLS.PROJECT.db_kplan,
-                                       f"""SELECT знпр.№ERP, mk.НомКплан FROM naryad 
-                                       INNER JOIN mk ON mk.Пномер == naryad.Номер_мк 
-                                       INNER JOIN пл_оуп ON пл_оуп.НомПл == mk.НомКплан 
-                                       INNER JOIN знпр ON знпр.s_num == пл_оуп.Пномер_ЗП 
-                                       WHERE naryad.Пномер == {n_nar}; """,rez_dict=True,one=True,
-                                       attach_dbs=DTCLS.PROJECT.db_naryad)
-            if data_nar is None or data_nar == False:
-                err.append('err data_nar')
-                return
-            self.stage = 'data_nar'
-            kpl = data_nar['НомКплан']
-            zp = data_nar['№ERP']
-            etaps_o = APIERP.Etaps_erp(kpl)
-            if etaps_o.err:
-                err.append('err APIERP.Etaps_erp')
-                return
-            self.stage = 'etaps_o'
-            etaps_to_add= set()
-            if fio:
-                etaps_to_add = add_etap_by_fio(fio,etaps_to_add)
-            if fio2:
-                etaps_to_add = add_etap_by_fio(fio2,etaps_to_add)
-            self.stage = 'add_etap_by_fio'
-            for name_new_etap,ref_podr in etaps_to_add:
-                if  etaps_o.is_etap_existance(name_new_etap):
-                    continue
-                rez, err_data = etaps_o.create_new_etap(name_new_etap, ref_podr)
-                self.stage = 'create_new_etap'
-                table_msg = [{
-                            'ЗП': zp,
-
-                            'Наряд':n_nar,
-                            'Наименование': name_new_etap,
-
-                        }]
-
-                msg_str = f'{CEMOJ.EmojiMain.СтатусыПроизводства.success.symbol} Cоздан доп. этап'
-                if not rez or rez != 200:
-                    if err_data:
-                        msg_str = f'{CEMOJ.EmojiMain.СтатусыПроизводства.alert.symbol} Необходимо создать доп. этап вручную - ошибка: ({str(err_data)})'
-                    else:
-                        msg_str = f'{CEMOJ.EmojiMain.СтатусыПроизводства.alert.symbol} Необходимо создать доп. этап '
-                else:
-                    table_msg[0]['Номер этапа'] = err_data['ИмяЭтапа']
-                self.stage = 'table_msg'
-                template = B24.MessageBuilder(f'{DTCLS.PLACE.Имя}: {DTCLS.USER_CONFIG.User.ФИО} - Распределение наряда для {fio}/{fio2}')  # Инициализация (базовое сообщение)
-                template.add_table(table_msg)  # Добавить табличную часть
-                template.add_delimiter()  # Добавить разделитель
-                template.add_message(msg_str)  # Добавить сообщение
-                template.send_by_chat_id('chat102516')  # Итоговая отправка
-
-            return err
-
-
         if not CMS.check_execution_previous_operations(self, nom_nar, check_by_vip=False):
             CQT.msgbox(f'по наряду {nom_nar} не выполнены требования маршрута, работа ЗАБЛОКИРОВАНА')
             return
@@ -1964,21 +1903,164 @@ class mywindow(QtWidgets.QMainWindow):
         self.select_tbl_projs_raspred()
         CQT.clear_tbl(self.ui.tbl_vibor_rabotn_rasp)
         #=============ДОБАВЛЕНИЕ Внеплановых этапов======================
-        try:
-            errs = check_and_add_etap_into_erp(nom_nar)
-            if errs:
-                template = B24.MessageBuilder(
-                    f'{DTCLS.PLACE.Имя}: {DTCLS.USER_CONFIG.User.ФИО} - Распределение наряда для {fio}/{fio2}')  # Инициализация (базовое сообщение)
-                template.add_message(
-                    f'ошибка stage = "{self.stage}" err: {str(errs)} в check_and_add_etap_into_erp для наряда {nom_nar}')  # Добавить сообщение
-                template.send_by_chat_id('chat90445')  # Итоговая отправка
-        except:
-            template = B24.MessageBuilder(
-                f'{DTCLS.PLACE.Имя}: {DTCLS.USER_CONFIG.User.ФИО} - Распределение наряда для {fio}/{fio2}')  # Инициализация (базовое сообщение)
-            template.add_message(f'ошибка stage = "{self.stage}" в check_and_add_etap_into_erp для наряда {nom_nar}')  # Добавить сообщение
-            template.send_by_chat_id('chat90445')  # Итоговая отправка
+        self.add_vnepl_nars(nar.Пномер,nar.ФИО,nar.ФИО2)
         #===============================================================
         CQT.msgbox(f'Наряд №{nom_nar} успешно распределен')
+
+    def dev_add_vnepl_nars(self):
+        if not DTCLS.USER_CONFIG.is_developer:
+            return
+
+        noms_nar = [179637
+                    ]
+        for nom_nar in noms_nar:
+            rez = CSQ.custom_request_c(self.db_naryd,f"""SELECT ФИО, ФИО2 FROM naryad WHERE Пномер={nom_nar}""",rez_dict=True,one=True)
+            self.add_vnepl_nars(nom_nar,rez['ФИО'],rez['ФИО2'],check_mode=True)
+
+    def add_vnepl_nars(self,nom_nar:int,fio:str,fio2:str,check_mode=False):
+        dt_date_start_app = CMS.get_last_entry_time()
+        str_date_start_app = F.datetostr(dt_date_start_app,'%Y-%m-%d %H:%M')
+        ID_CHAT_COMMON = 'chat102516'
+        ID_CHAT_DEV = 'chat90445'
+        EMO_ALERT = CEMOJ.EmojiMain.СтатусыПроизводства.alert.symbol
+        EMO_SUCCESS = CEMOJ.EmojiMain.СтатусыПроизводства.success.symbol
+        def check_and_add_etap_into_erp(n_nar:int,fio:str=None,fio2:str=None):
+            err = {'msg_out':False,'texts':[], 'msg_tbl' : None}
+            self.stage = ''
+            def add_etap_by_fio(fio,etaps_to_add):
+                podr = DTCLS.app_self.DICT_EMPLOEE_FULL_WITH_DEL[fio]['Подразделение']
+                print(' add_etap_by_fio podr ok')
+                dolgn = DTCLS.app_self.DICT_EMPLOEE_FULL_WITH_DEL[fio]['Должность']
+                print(' add_etap_by_fio dolgn ok')
+                etap_name = DTCLS.app_self.DICT_DOLGN_ETAP[dolgn]['этап']
+                print(' add_etap_by_fio etap_name ok')
+                if not DTCLS.app_self.DICT_ETAPS[etap_name]['ДляЕРП']:
+                    return etaps_to_add
+                ref_podr = DTCLS.app_self.DICT_PODR_RC[podr]['ref_СтруктураПредприятия']
+                print(' add_etap_by_fio ref_podr ok')
+                etaps_to_add.add((etap_name,ref_podr,podr,dolgn))
+                print(' add_etap_by_fio etaps_to_add.add ok')
+                return etaps_to_add
+            if fio is None:
+                fio = DTCLS.app_self.ui.lbl_ispoln1.text()
+            if fio2 is None:
+                fio2 = DTCLS.app_self.ui.lbl_ispoln2.text()
+            self.stage = 'fio'
+            data_nar = CSQ.custom_request_c(DTCLS.PROJECT.db_kplan,
+                                       f"""SELECT знпр.№ERP, знпр.№проекта, mk.НомКплан, mk.Пномер FROM naryad 
+                                       INNER JOIN mk ON mk.Пномер == naryad.Номер_мк 
+                                       INNER JOIN пл_оуп ON пл_оуп.НомПл == mk.НомКплан 
+                                       INNER JOIN знпр ON знпр.s_num == пл_оуп.Пномер_ЗП 
+                                       WHERE naryad.Пномер == {n_nar}; """,rez_dict=True,one=True,
+                                       attach_dbs=DTCLS.PROJECT.db_naryad)
+            if data_nar is None or data_nar == False:
+                err['texts'].append('err data_nar')
+                return err
+            self.stage = 'data_nar'
+            kpl = data_nar['НомКплан']
+            zp = data_nar['№ERP']
+            np = data_nar['№проекта']
+            num_mk = data_nar['Пномер']
+
+            table_msg = [{
+                'ЗП': zp,
+                'Проект': np,
+                'МК': num_mk,
+                'Наряд': n_nar,
+
+            }]
+
+            err['msg_tbl'] = table_msg
+
+            self.stage = 'Etaps_erp'
+            try:
+                etaps_o = APIERP.Etaps_erp(kpl)
+            except APIERP.NotFoundNomenclature as e:
+                err['texts'].append('err APIERP.Etaps_erp Номенклатура привязанная к КПЛ занесена некорректно')
+                return err
+            except Exception as e:
+                err['texts'].append(f'err APIERP.Etaps_erp {e}')
+                return err
+            self.stage = 'Etaps_erp results'
+            if etaps_o.err:
+                err['texts'].append('err APIERP.Etaps_erp')
+                return err
+            if etaps_o.is_empty_notnull:
+                err['texts'].append(f'Не созданы этапы по НомПартии_ЗП={etaps_o.НомПартии_ЗП}, ЗП={etaps_o.num_zp}')
+                err['msg_out'] = True
+                return err
+            if etaps_o.is_deleted:
+                err['texts'].append(f'Не обнаружено активных(не удаленных) этапов по НомПартии_ЗП={etaps_o.НомПартии_ЗП}, ЗП={etaps_o.num_zp}')
+                err['msg_out'] = True
+                return err
+            self.stage = 'etaps_o'
+            etaps_to_add= set()
+            if fio:
+                etaps_to_add = add_etap_by_fio(fio,etaps_to_add)
+            if fio2:
+                etaps_to_add = add_etap_by_fio(fio2,etaps_to_add)
+            self.stage = 'add_etap_by_fio'
+            if not etaps_to_add:
+                return err
+            for name_new_etap, ref_podr, podr, dolgn in etaps_to_add:
+                if  etaps_o.is_etap_existance(name_new_etap):
+                    print(f'etap {name_new_etap} is existance')
+                    continue
+                if not check_mode:
+                    rez, err_data = etaps_o.create_new_etap(name_new_etap, ref_podr)
+                else:
+                    rez, err_data = (200, [])
+                self.stage = 'create_new_etap'
+                table_msg = [{
+                            'ЗП': zp,
+                            'Проект':np,
+                            'МК':num_mk,
+                            'Наряд':n_nar,
+                            'Наименование': name_new_etap
+
+                        }]
+                err['msg_tbl'] = table_msg
+
+                msg_str = f'{EMO_SUCCESS} Cоздан доп. этап'
+                if not rez or rez != 200:
+                    if err_data:
+                        msg_str = f'{EMO_ALERT} Необходимо создать доп. этап вручную - ошибка: ({str(err_data)})'
+                    else:
+                        msg_str = f'{EMO_ALERT} Необходимо создать доп. этап '
+                else:
+                    table_msg[0]['Номер этапа'] = err_data['ИмяЭтапа']
+                self.stage = 'table_msg'
+                template = B24.MessageBuilder(f'app_s {str_date_start_app} {DTCLS.PLACE.Имя}: {DTCLS.USER_CONFIG.User.ФИО} - Распределение наряда для {fio}/{fio2}')  # Инициализация (базовое сообщение)
+                template.add_table(table_msg)  # Добавить табличную часть
+                template.add_delimiter()  # Добавить разделитель
+                template.add_message(msg_str)  # Добавить сообщение
+                if not check_mode:
+                    template.send_by_chat_id(ID_CHAT_COMMON)  # Итоговая отправка
+                else:
+                    template.send_by_chat_id(ID_CHAT_DEV)  # Итоговая отправка
+            return err
+
+        try:
+            errs = check_and_add_etap_into_erp(nom_nar,fio=fio,fio2=fio2)
+            if errs['texts']:
+
+                list_errs_text = '\n'.join(errs['texts'])
+                template = B24.MessageBuilder(
+                    f'app_s {str_date_start_app} {DTCLS.PLACE.Имя}: {DTCLS.USER_CONFIG.User.ФИО} - Распределение наряда для {fio}/{fio2}')  # Инициализация (базовое сообщение)
+                template.add_message(
+                    f'{EMO_ALERT} err: {list_errs_text} для наряда {nom_nar} (Стадия вычисления = "{self.stage}" )')  # Добавить сообщение
+                if errs['msg_tbl']:
+                    template.add_table(errs['msg_tbl'])  # Добавить табличную часть
+                if errs['msg_out']:
+                    template.send_by_chat_id(ID_CHAT_COMMON)
+                else:
+                    template.send_by_chat_id(ID_CHAT_DEV)  # Итоговая отправка
+        except:
+            template = B24.MessageBuilder(
+                f'app_s {str_date_start_app} {DTCLS.PLACE.Имя}: {DTCLS.USER_CONFIG.User.ФИО} - Распределение наряда для {fio}/{fio2}')  # Инициализация (базовое сообщение)
+            template.add_message(f'ошибка stage = "{self.stage}" в check_and_add_etap_into_erp для наряда {nom_nar}')  # Добавить сообщение
+
+            template.send_by_chat_id(ID_CHAT_DEV)  # Итоговая отправка
 
     @CQT.onerror
     def zapoln_table_rabont_po_prof(self, prof):
@@ -2407,13 +2489,16 @@ class mywindow(QtWidgets.QMainWindow):
                                         CQT.msgbox(f'Профессия {oper["Опер_профессия_код"]} не найдена в БД')
 
         set_group = set()
+
         for _ in set_code_profs:
             if _ in self.DICT_PROFESSIONS:
                 set_group.update(self.DICT_PROFESSIONS[_]['Группа_в_распред'].split(';')) #14.08.25
             else:
                 CQT.msgbox(f'{_} не отмечена как основная')
         if set_group == {''}:
-            CQT.msgbox(f'{set_code_profs} не образуют группу учета в БД ')
+            CQT.msgbox(f'Наряд необходимо пересоздать, т.к. проф.:\n'
+                       f' {','.join( [self.DICT_PROFESSIONS[_]['имя'] for _ in set_code_profs if _ in self.DICT_PROFESSIONS] )}'
+                       f'\nне образуют группу учета в БД ')
 
         set_prof = set()
         for prof_code in list(self.DICT_PROFESSIONS.keys()):  # ++ 06.08.25
@@ -2473,30 +2558,34 @@ class mywindow(QtWidgets.QMainWindow):
         tbl = self.ui.tbl_red_zhur
         if tbl.currentRow() == -1:
             return
-        nk_vneplan = CQT.num_col_by_name_c(tbl, 'Внеплан')
-        vneplan_status = tbl.item(tbl.currentRow(), nk_vneplan).text()
+        with CQT.table_updating(self.ui.tbl_red_zhur): #07.07.2026
 
-        nk_nom_nar = CQT.num_col_by_name_c(tbl, 'Пномер')
-        nom_nar = tbl.item(tbl.currentRow(), nk_nom_nar).text()
+            nk_vneplan = CQT.num_col_by_name_c(tbl, 'Внеплан')
+            vneplan_status = tbl.item(tbl.currentRow(), nk_vneplan).text()
 
-        if vneplan_status == '0':
-            CQT.msgbox(f'Наряд {nom_nar} не является внеплановым')
-            return
+            nk_nom_nar = CQT.num_col_by_name_c(tbl, 'Пномер')
+            nom_nar = tbl.item(tbl.currentRow(), nk_nom_nar).text()
 
-        vneplan_val = CSQ.custom_request_c(self.db_naryd,
-                                           f"""SELECT Внеплан FROM naryad WHERE Пномер == {int(nom_nar)}""",
-                                           one=True)
-        if vneplan_val[-1][0] == 1:
-            new_status = 2
-        else:
-            new_status = 1
-        custom_request_c = f'''UPDATE naryad SET Внеплан = {new_status} WHERE Пномер == {int(nom_nar)}'''
-        CSQ.custom_request_c(self.db_naryd, custom_request_c)
+            if vneplan_status == '0':
+                CQT.msgbox(f'Наряд {nom_nar} не является внеплановым')
+                return
 
-        tbl.item(tbl.currentRow(), nk_vneplan).setText(str(new_status))
+            vneplan_val = CSQ.custom_request_c(self.db_naryd,
+                                               f"""SELECT Внеплан FROM naryad WHERE Пномер == {int(nom_nar)}""",
+                                               one=True)
+            if vneplan_val[-1][0] == 1:
+                new_status = 2
+            else:
+                new_status = 1
+            custom_request_c = f'''UPDATE naryad SET Внеплан = {new_status} WHERE Пномер == {int(nom_nar)}'''
+            CSQ.custom_request_c(self.db_naryd, custom_request_c)
+
+            tbl.item(tbl.currentRow(), nk_vneplan).setText(str(new_status))
+            self.load_table_korr_naruad_by_rc()
+
 
     @CQT.onerror
-    def edit_check_naruad(self, *args):
+    def edit_check_naruad(self, preliminary:bool = False, *args):
         # if not CMS.user_access(self.db_naryd, 'создание_корректировка_подтвердить_наряд',
         #                       CMS.name_by_empl_c(self.glob_login)):
         #    return
@@ -2519,40 +2608,76 @@ class mywindow(QtWidgets.QMainWindow):
         summ_fvrem = round(fvrem + fvrem2, 1)
         nk_primech = CQT.num_col_by_name_c(tbl, 'Примечание')
         primech = tbl.item(tbl.currentRow(), nk_primech).text()
-
-        if not CMS.check_execution_previous_operations(self, nom_nar, check_by_vip=False):
-            CQT.msgbox(f'по наряду {nom_nar} не выполнены требования маршрута, работа ЗАБЛОКИРОВАНА')
+        t = CQT.TableContext(tbl)
+        row = t.current_row()
+        if row.no_selection:
             return
-        if not CQT.msgboxgYN(f'Подтверждаю, что наряд №{nom_nar} выполнен качественно и в полном объеме'):
-            return
+        vneplan_val = int(row.value('Внеплан'))
+        vneplan = vneplan_val in (CFG.CodeNaryad.ПодтвержденныйВнеплан, CFG.CodeNaryad.НеподтвержденныйВнеплан)
 
         rez = self.check_podtv_naruad(int(nom_nar))
         if rez:
-            CQT.msgbox(f'Наряд №{nom_nar} уже подтвержден')
+            CQT.msgbox(f'{CEMOJ.EmojiMain.Эмоции.easemented.symbol}Наряд №{nom_nar} уже подтвержден')
             self.load_table_korr_naruad()
             return
+
+        if not CMS.check_execution_previous_operations(self, nom_nar, check_by_vip=False):
+            CQT.msgbox(f'{CEMOJ.EmojiMain.Эмоции.confused.symbol}по наряду {nom_nar} не выполнены требования маршрута, работа ЗАБЛОКИРОВАНА')
+            return
+
 
         rez = self.check_zaversh_naruad(int(nom_nar))
         if rez == False:
-            CQT.msgbox(f'Наряд №{nom_nar} еще не завершен всеми работниками, подтверждение не возможно')
+            CQT.msgbox(f'{CEMOJ.EmojiMain.Эмоции.confused.symbol}Наряд №{nom_nar} еще не завершен всеми работниками, подтверждение не возможно')
             self.load_table_korr_naruad()
-
             return
-        if nom_pr == 'ПРОСТОЙ' and zadanie == 'ПРОСТОЙ':
-            if primech.strip().lower() == 'прочее' or primech.strip() == '':
-                CQT.msgbox('Не указана причина в примечании')
+
+        if not CQT.msgboxgYN(f'Подтверждаю, что наряд №{nom_nar} выполнен качественно и в полном объеме'):
+            return
+
+        if vneplan:
+            if preliminary:
+                rez = self.set_preliminary_confirmation(int(nom_nar))
+                if not rez:
+                    CQT.msgbox(f'{CEMOJ.EmojiMain.Эмоции.confused.symbol}Ошибка при предварительном подтверждении')
+                    return
+                succ, msg = rez
+                if not succ:
+                    CQT.msgbox(f'{CEMOJ.EmojiMain.Эмоции.confused.symbol}Ошибка при предварительном подтверждении:\n{msg}')
+                    return
+                CQT.msgbox(f'{CEMOJ.EmojiMain.Эмоции.easemented.symbol}Предварительное подтверждение выполнено')
                 return
-            custom_request_c = f'''UPDATE naryad SET Подтвержд_вып = 1, Подтвержд_вып_дата = "{F.now()}", 
-            Подтвержд_вып_фио = "{self.glob_ima}", Твремя = {summ_fvrem} WHERE Пномер == {int(nom_nar)}'''
+            else:
+                rez = self.check_preliminary_confirmation(int(nom_nar))
+                if not rez:
+                    CQT.msgbox(f'{CEMOJ.EmojiMain.Эмоции.confused.symbol}Ошибка при проверке предварительного подтверждения!')
+                    return
+                succ, msg = rez
+                if not succ:
+                    CQT.msgbox(f'{CEMOJ.EmojiMain.Эмоции.confused.symbol}{msg}')
+                    return
+
+        if CFG.Config.user_config.is_developer and 'shift' in CQT.get_key_modifiers(self):
+            ...
         else:
-            custom_request_c = f'''UPDATE naryad SET Подтвержд_вып = 1, Подтвержд_вып_дата = "{F.now()}", 
-            Подтвержд_вып_фио = "{self.glob_ima}" WHERE Пномер == {int(nom_nar)}'''
-        CSQ.custom_request_c(self.db_naryd, custom_request_c)
+            if nom_pr == 'ПРОСТОЙ' and zadanie == 'ПРОСТОЙ':
+                if primech.strip().lower() == 'прочее' or primech.strip() == '':
+                    CQT.msgbox('Не указана причина в примечании')
+                    return
+                custom_request_c = f'''UPDATE naryad SET Подтвержд_вып = 1, Подтвержд_вып_дата = "{F.now()}", 
+                Подтвержд_вып_фио = "{self.glob_ima}", Твремя = {summ_fvrem} WHERE Пномер == {int(nom_nar)}'''
+            else:
+                custom_request_c = f'''UPDATE naryad SET Подтвержд_вып = 1, Подтвержд_вып_дата = "{F.now()}", 
+                Подтвержд_вып_фио = "{self.glob_ima}" WHERE Пномер == {int(nom_nar)}'''
+            CSQ.custom_request_c(self.db_naryd, custom_request_c)
 
 
-        CQT.msgbox(f'Наряд №{nom_nar} успешно подтвержден')
-        self.load_table_korr_naruad()
-        self.load_mk()
+        CQT.msgbox(f'{CEMOJ.EmojiMain.Эмоции.easemented.symbol}Наряд №{nom_nar} успешно подтвержден')
+        with CQT.table_updating(self.ui.tbl_red_zhur): #07.07.2026
+            self.load_table_korr_naruad_by_rc()
+
+        # self.load_table_korr_naruad()
+        # self.load_mk()
 
     @CQT.onerror
     def edit_delete_naruad(self, *args):
@@ -2778,6 +2903,78 @@ class mywindow(QtWidgets.QMainWindow):
         return False
 
     @CQT.onerror
+    def set_preliminary_confirmation(self, nom_nar: int)->tuple[bool,str]|None:
+        current_podr_ref = DTCLS.USER_CONFIG.User.current_Подразделение_Key
+        current_user_ref = DTCLS.USER_CONFIG.User.ID_ФизЛица
+        kat_vnepl_data = CSQ.custom_request_c(self.db_naryd, f"""
+                    SELECT Внеплан, Категория_внепл  FROM naryad WHERE Пномер = {nom_nar}""", rez_dict=True, one=True)
+        if kat_vnepl_data is None:
+            return
+        kat_vnepl = kat_vnepl_data['Категория_внепл']
+
+        if kat_vnepl not in DTCLS.app_self.DICT_KATEG_VNEPLAN_BY_CODE:
+            return
+        preliminary_confirmations = DTCLS.app_self.DICT_KATEG_VNEPLAN_BY_CODE[kat_vnepl][
+            'name_preliminary_confirmations']
+        if not preliminary_confirmations:
+            return False, 'Не требуется предварительное подтверждение'
+        dict_preliminary_confirmations = {k: None for k in preliminary_confirmations.split(';')}
+        if current_podr_ref not in dict_preliminary_confirmations: #current_podr_ref = preliminary_confirmations
+            return False, 'Подразделение пользователя не содержится в списке предварительных подтверждений'
+        rez = CSQ.custom_request_c(self.db_naryd, f"""INSERT INTO naryad_preliminary_confirmation
+                    (id_nar, ref_podr, user)
+                              VALUES (?, ?, ?)""",list_of_lists_c=[[nom_nar,current_podr_ref,current_user_ref]])
+        if rez:
+            return True, ''
+        return False, 'Ошибка записи в БД'
+
+    @CQT.onerror
+    def preliminary_confirmation_necessity(self, nom_nar: int)->bool:
+        kat_vnepl_data = CSQ.custom_request_c(self.db_naryd, f"""
+                    SELECT Внеплан, Категория_внепл  FROM naryad WHERE Пномер = {nom_nar}""", rez_dict=True, one=True)
+        if kat_vnepl_data is None:
+            return False
+        kat_vnepl = kat_vnepl_data['Категория_внепл']
+
+        if kat_vnepl not in DTCLS.app_self.DICT_KATEG_VNEPLAN_BY_CODE:
+            return False
+        preliminary_confirmations = DTCLS.app_self.DICT_KATEG_VNEPLAN_BY_CODE[kat_vnepl][
+            'name_preliminary_confirmations']
+        if not preliminary_confirmations:
+            return False
+        return True
+
+
+    @CQT.onerror
+    def check_preliminary_confirmation(self, nom_nar: int)->tuple[bool,str]|None:
+        kat_vnepl_data = CSQ.custom_request_c(self.db_naryd, f"""
+            SELECT Внеплан, Категория_внепл  FROM naryad WHERE Пномер = {nom_nar}""",rez_dict=True,one=True)
+        if kat_vnepl_data is None:
+            return
+        kat_vnepl = kat_vnepl_data['Категория_внепл']
+
+        if kat_vnepl not in DTCLS.app_self.DICT_KATEG_VNEPLAN_BY_CODE:
+            return
+        preliminary_confirmations = DTCLS.app_self.DICT_KATEG_VNEPLAN_BY_CODE[kat_vnepl]['name_preliminary_confirmations']
+        if not preliminary_confirmations:
+            return True, ''
+        dict_preliminary_confirmations = {k:None for k in preliminary_confirmations.split(';')}
+        for preliminary_confirmation in dict_preliminary_confirmations.keys():
+            dict_preliminary_confirmations[preliminary_confirmation] = CSQ.custom_request_c(self.db_naryd,f"""
+                    SELECT id,
+                           id_nar,
+                           ref_podr,
+                           date,
+                           user
+                      FROM naryad_preliminary_confirmation WHERE id_nar = {nom_nar} and date IS NOT NULL ;
+                    """, rez_dict=True,one=True)
+
+        list_not_confirm = [DTCLS.main_module.DICT_Подразделения_by_ref[k].Наименование for k,v in dict_preliminary_confirmations.items() if not v]
+        if list_not_confirm:
+            return False , 'Подразделения:\n' + ',\n'.join(list_not_confirm) + '\nпредварительно не подтвердили этот наряд.'
+        return True, ''
+
+    @CQT.onerror
     def check_zaversh_naruad(self, nom_nar: int, conn='', cur=''):
         custom_request_c = f'''SELECT 
              naryad.ФИО, naryad.Фвремя, naryad.ФИО2, naryad.Фвремя2, naryad.Твремя
@@ -2947,9 +3144,8 @@ class mywindow(QtWidgets.QMainWindow):
         tbl = self.ui.tbl_red_zhur
 
         def return_old_val(r, c, val):
-            tbl.blockSignals(True)
-            tbl.item(r, c).setText(str(val))
-            tbl.blockSignals(False)
+            with QtCore.QSignalBlocker(tbl):
+                tbl.item(r, c).setText(str(val))
 
         def access_change_koef_sl_type_mk(self, nom_mk: int, koef_user, old_koef_user):
             query = CSQ.custom_request_c(self.db_naryd,
@@ -3402,7 +3598,7 @@ class mywindow(QtWidgets.QMainWindow):
        END AS Номер_заказа, 
        
        
-                 naryad.Пномер, naryad.Дата, naryad.Автор, "" as Этап, "" as РЦ, naryad.Номер_мк,
+                 naryad.Пномер, naryad.Дата, naryad.Автор, "" as Этап, "" as РЦ, naryad.Номер_мк, "" as КРО,
 naryad.Внеплан, naryad.Компл_ФИО, naryad.Задание, naryad.Примечание, 
                                                  naryad.Твремя, naryad.Операции, naryad.ДСЕ_ID , naryad.Профессии, naryad.Аутсорсинг , mk.Количество AS "Кол. изделий"
                                                  FROM naryad 
@@ -3427,10 +3623,17 @@ naryad.Внеплан, naryad.Компл_ФИО, naryad.Задание, naryad.�
         )
         mk_rows_by_pk = F.deploy_dict_c(mk_rows, 'Номер_мк')
         cache = {}
+
+        kro_manager_o = MKRO()
+
         for item in rez:
             operations = item['Операции'].split('|')
             dse_ids = item['ДСЕ_ID'].split('|')
             nom_mk = item['Номер_мк']
+            # ======================Заполняем поле КРО==================================
+            mk_num = int(nom_mk)
+            item['КРО'] = kro_manager_o.get_kro_info_by_mk(mk_num,[int(_) for _ in dse_ids])
+            # ==============================================================================
             if nom_mk not in cache:
                 row_mk = mk_rows_by_pk[nom_mk]
                 res = row_mk.pop('data')
@@ -3456,22 +3659,31 @@ naryad.Внеплан, naryad.Компл_ФИО, naryad.Задание, naryad.�
             item['РЦ'] = ','.join(rcs)
         self.ui.te_comment.setText('')
         CQT.fill_wtabl(rez, tbl, auto_type=False, list_column_widths=CMS.load_column_widths(self, tbl))
-        nf_etap = CQT.num_col_by_name_c(tbl, 'Этап')
-        col_out = CQT.num_col_by_name_c(tbl, 'Аутсорсинг')
-        for i in range(tbl.rowCount()):
-            is_outsource = tbl.item(i, col_out).text()
+
+        def fnc_open_kro(t: CQT.TableContext, i: int, name_clm: str, self: mywindow, *args):
+            mk = int(t.get_row(i).value('Номер_мк'))
+            kro_manager_o.start_sub_app_kro(self, mk)
+
+        t = CQT.TableContext(tbl)
+
+
+        for row in t.rows():
+            is_outsource = row.value("Аутсорсинг")
             if is_outsource == '1':
                 rgb = self.DICT_RC_FULL['020201']['Цвет']
                 new_rgb = F.align_colors(rgb.split(','), saturation_percent=-36, level_percent=8, sep_out='')
-                CQT.set_color_row_wtab_c(tbl, i, *new_rgb)
+                row.set_color_background(*new_rgb)
             else:
-                etap = tbl.item(i, nf_etap).text()
+                etap = row.value('Этап')
                 if etap in self.DICT_ETAPS:
                     color = self.DICT_ETAPS[etap]['color']
                     new_rgb = F.align_colors(F.hex_to_rgb(color[1:]), saturation_percent=-36, level_percent=8, sep_out='')
-                    CQT.set_color_row_wtab_c(tbl, i, *new_rgb)
-        if CQT.num_col_by_name_c(tbl, 'ДСЕ_ID'):
-            tbl.setColumnHidden(CQT.num_col_by_name_c(tbl, 'ДСЕ_ID'), True)
+                    row.set_color_background(*new_rgb)
+
+        if 'ДСЕ_ID' in t.nf:
+            t.hide('ДСЕ_ID')
+
+        t.add_column_events('КРО', on_double_click=fnc_open_kro, parent_self=self)
 
         CMS.fill_filtr_c(self, self.ui.tbl_filtr_vibor_nar_rasp, tbl, hidden_scroll=True)
         CMS.load_column_widths(self, tbl)
@@ -5039,19 +5251,25 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
     @CQT.onerror
     def tbl_red_zhur_click(self, *args):
         text = ''
-        tbl = self.ui.tbl_red_zhur
-        if tbl.currentRow() == -1:
+        t = CQT.TableContext(self.ui.tbl_red_zhur)
+        row_o = t.current_row()
+        if row_o.no_selection:
             pass
         else:
-            r = tbl.currentRow()
-            nk_zad = CQT.num_col_by_name_c(tbl, 'Задание')
-            nk_prim = CQT.num_col_by_name_c(tbl, 'Примечание')
-            nk_kolvo = CQT.num_col_by_name_c(tbl, 'Опер_колво')
-            zad = tbl.item(r, nk_zad).text()
-            prim = tbl.item(r, nk_prim).text()
-            kolvo = tbl.item(r, nk_kolvo).text()
+            zad = row_o.value('Задание')
+            prim = row_o.value('Примечание')
+            kolvo = row_o.value('Опер_колво')
+            s_num_nar = int(row_o.value('Пномер'))
+            code_vneplan = int(row_o.value('Внеплан'))
             text = f'    Количество: {kolvo} \n    Задание: {zad} \n    Примечание: {prim}'
+
+            self.ui.btn_edit_check_naruad_preliminary.setEnabled(False)
+            if (code_vneplan in (CFG.CodeNaryad.НеподтвержденныйВнеплан, CFG.CodeNaryad.Простой)
+                    and self.preliminary_confirmation_necessity(s_num_nar)):
+                self.ui.btn_edit_check_naruad_preliminary.setEnabled(True)
+
         self.ui.lbl_red_info.setText(text)
+
 
     @CQT.onerror
     def tbl_dse_dblclick(self, *args):
@@ -5180,7 +5398,7 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
        THEN знпр.№проекта 
        ELSE mk.Номер_проекта 
        END AS Номер_проекта, 
-       
+       "" as КРО,
         CASE WHEN napravl_deyat.Псевдоним IS NOT NULL 
        THEN napravl_deyat.Псевдоним 
        ELSE mk.Вид 
@@ -5211,23 +5429,30 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
         WHERE mk.Статус {var} AND plan.poki == {self.place.poki}  ORDER BY mk.Приоритет ASC;'''
 
         list_mk = CSQ.custom_request_c(self.db_naryd, custom_request_c, attach_dbs=(self.db_kplan))
+        if list_mk is None:
+            CQT.msgbox(f'Не удалось загрузить данные, попробуй позже')
+            return
 
         spis = [list_mk[0]]
 
+
+        kro_manager_o = MKRO()
+        nk_nom_mk = F.num_col_by_name_in_hat_c(spis, 'Пномер')
+        nk_kro = F.num_col_by_name_in_hat_c(spis, 'КРО')
         for i in range(1, len(list_mk)):
             if 'shift' in CQT.get_key_modifiers(self):
                 if not self.check_dost_proj_moth(list_mk[i][5], self.glob_ima):
                     continue
-
+            mk_num = int(list_mk[i][nk_nom_mk])
+            list_mk[i][nk_kro] = kro_manager_o.get_kro_info_by_mk(mk_num)
             spis.append(list_mk[i])
+
+
+
 
         nk_res = F.num_col_by_name_in_hat_c(spis, 'Ресурсная')
         spis_wt_res = CPY.deepcopy(spis)
 
-        if spis == False:
-            CQT.msgbox(f'Не удалось загрузить данные, попробуй позже')
-            return
-        nk_nom_mk = F.num_col_by_name_in_hat_c(spis, 'Пномер')
 
         if self.ui.chk_progress.isChecked():
             conn_res, cur_res = CSQ.connect_bd(self.db_resxml)
@@ -5285,9 +5510,13 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
                 menu_builder.add_menu(f'{CEMOJ.EmojiMain.ДокументыДанные.database.symbol}\tВыгрузить задание на резку выбранные',
                                       fnc_upload_cut_programm)
 
+            def fnc_open_kro(t: CQT.TableContext, i: int, name_clm: str, self: mywindow, *args):
+                mk = int(t.get_row(i).value('Пномер'))
+                kro_manager_o.start_sub_app_kro(self, mk)
 
             t = CQT.TableContext(tabl_sp_mk)
             t.add_column_events('Пномер',on_context_menu=fnc_context,parent_self=self)
+            t.add_column_events('КРО', on_double_click=fnc_open_kro, parent_self=self)
         # tmp_spis = spis_wt_res
         # for i in range(len(tmp_spis)):
         #    for j in range(len(tmp_spis[i])):
@@ -5379,7 +5608,10 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
         CQT.msgboxg_get_table_ok_inf(self,'Список РЦ',tbl_data,styleSheet=CQT.MES_CSS)
 
 
-app = QtWidgets.QApplication(sys.argv)
+# app = QtWidgets.QApplication(sys.argv)
+from project_cust_38.Cust_application import install_crash_guard, SafeApplication
+app = SafeApplication(sys.argv)
+install_crash_guard(app, app_name='Создание', show_popup=True, user_name=F.user_name())
 
 args = sys.argv[1:]
 myappid = 'Powerz.BAG.SystCreateWork.1.0.3'  # !!!
@@ -5391,10 +5623,6 @@ app.setStyle('Fusion')
 application = mywindow()
 from project_cust_38.widget_spy import install_pyqt_event_hook
 install_pyqt_event_hook(app)
-# ======================================================
-versia = application.versia
-if CMS.kontrol_ver(versia, "Создание2") == False:
-    sys.exit()
-# =========================================================
+
 application.show()
 sys.exit(app.exec())

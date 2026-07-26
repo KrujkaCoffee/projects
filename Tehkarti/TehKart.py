@@ -1178,7 +1178,7 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.lbl_diapaz_reit_old.setText(last_month)
 
 
-    @CQT.onerror
+    # @CQT.onerror
     def tab_click(self, ind,*args):
         print(int)
         self.widths()
@@ -1435,8 +1435,14 @@ class mywindow(QtWidgets.QMainWindow):
         if not CMS.user_access(self.db_naryad,'тк_tbl_mat_edit_full',F.user_name(),msg=False):
             return CQT.msgbox('Нет доступа') # 11.07.25
         tbl_name = self.ui.cmb_mat_tbl.currentText()
-        if tbl_name == 'ТехнологическиеВиды':
-            CMS.TypesWorkingByDirections().insert_technological_type(type_name='')
+        if tbl_name == 'ТехнологическиеВиды': #22.06.2026
+            manufacturing_scope = CMS.calc_napr_deyat(poki=CFG.Config.place.poki)
+            if not manufacturing_scope: return
+            __unpack_keys = ('Пномер', 'Имя', 'Псевдоним', 'Примечание')
+            data_for_fill = [{k: v for k, v in item.items() if k in __unpack_keys} for item in manufacturing_scope if item['Пномер'] != 1]
+            answer = CQT.msgboxg_get_table(self, 'Выберите направление', data_for_fill, ExtendedSelection=False)
+            if not answer: return
+            CMS.TypesWorkingByDirections().insert_technological_type(type_name='', napr_pk=answer['Пномер'])
         if tbl_name == 'ВидыНоменклатуры':
             gui_instance = CMS.GUITypesNomenclature()
             gui_instance.get_table_choicer_for_insert_nomen_type(self)
@@ -1444,6 +1450,8 @@ class mywindow(QtWidgets.QMainWindow):
             list_columns = CSQ.list_of_columns_c(self.db_mater,tbl_name)
             CSQ.custom_request_c(self.db_mater,f"""INSERT INTO {tbl_name} ({str(list_columns[1])}) VALUES (?);""",list_of_lists_c=[['']])
         self.select_tbl_mat_edit()
+        if self.ui.tbl_mat_edit.rowCount() >= 1:
+            CQT.select_cell(self.ui.tbl_mat_edit, self.ui.tbl_mat_edit.rowCount() - 1, 0)
 
     @CQT.onerror
     def edit_mat_del_row(self,*args):
@@ -3093,7 +3101,7 @@ class mywindow(QtWidgets.QMainWindow):
         if self.place.ИспПроверкуТехартыВнесениеВидаИВесаТО:
             if not KPT.check_plan_responce_sort_c_weight(self):
                 self.ui.tblw_dse.setEnabled(False)
-                return False
+                #return False#16.06.2026 по 100070295
         self.ui.tblw_dse.setEnabled(True)
         self.load_zagolovok_dse(po_mk)
         if F.user_full_namre() in self.DICT_EMPLOEE_FULL:
@@ -3479,7 +3487,7 @@ class mywindow(QtWidgets.QMainWindow):
         self.slovar_drev()
 
     @CQT.onerror
-    def slovar_drev(self, level_c='xxx', kod_par=''):
+    def slovar_drev(self, level_c:str|int='xxx', kod_par=''):
         spisok = {}
         it = QtWidgets.QTreeWidgetItemIterator(self.ui.tree)
         while it.value():
@@ -3850,6 +3858,7 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
             for i in range(len(list_nomen_by_vid)):
                 if list_nomen_by_vid[i]['Код']== kod_erp:
                     CQT.select_cell(tab,i,0)
+                    tab.setRowHidden(i, False)
                     break
 
             #custom_request_c = f'''SELECT * FROM nomen WHERE  == 0 ;'''
@@ -4793,7 +4802,94 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
         return tpz
 
 
+def compact_window_if_small_screen(
+        app: QtWidgets.QApplication,
+        window: QtWidgets.QWidget,
+        threshold: int = 1400,
+        factor: float = 0.90,
+) -> bool:
+    if app is None or window is None:
+        return False
 
+    property_name = '_cqt_small_screen_compact_applied'
+    if window.property(property_name):
+        return True
+
+    screen = window.screen() or app.screenAt(QtGui.QCursor.pos()) or app.primaryScreen()
+    if screen is None or screen.availableGeometry().width() >= threshold:
+        return False
+
+    factor = max(0.75, min(float(factor), 1.0))
+    window.setProperty(property_name, True)
+
+    def scale_value(value: int, minimum: int = 0) -> int:
+        if value <= 0:
+            return value
+        return max(minimum, int(round(value * factor)))
+
+    widgets = [window, *window.findChildren(QtWidgets.QWidget)]
+    fonts_to_scale = []
+    for widget in widgets:
+        if widget is window or widget.testAttribute(QtCore.Qt.WA_SetFont):
+            fonts_to_scale.append((widget, QtGui.QFont(widget.font())))
+
+    for widget, font in fonts_to_scale:
+        if font.pointSizeF() > 0:
+            font.setPointSizeF(max(7.0, font.pointSizeF() * factor))
+        elif font.pixelSize() > 0:
+            font.setPixelSize(scale_value(font.pixelSize(), minimum=9))
+        widget.setFont(font)
+
+    layouts = [window.layout(), *window.findChildren(QtWidgets.QLayout)]
+    processed_layouts = set()
+    for layout in layouts:
+        if layout is None or id(layout) in processed_layouts:
+            continue
+        processed_layouts.add(id(layout))
+        left, top, right, bottom = layout.getContentsMargins()
+        layout.setContentsMargins(
+            scale_value(left),
+            scale_value(top),
+            scale_value(right),
+            scale_value(bottom),
+        )
+        if layout.spacing() >= 0:
+            layout.setSpacing(scale_value(layout.spacing()))
+
+    widget_size_max = 16777215
+    for widget in widgets:
+        minimum = widget.minimumSize()
+        if minimum.width() > 0 or minimum.height() > 0:
+            widget.setMinimumSize(
+                scale_value(minimum.width()),
+                scale_value(minimum.height()),
+            )
+
+        maximum = widget.maximumSize()
+        max_width = maximum.width()
+        max_height = maximum.height()
+        if 0 < max_width < widget_size_max or 0 < max_height < widget_size_max:
+            widget.setMaximumSize(
+                scale_value(max_width, minimum=1) if max_width < widget_size_max else max_width,
+                scale_value(max_height, minimum=1) if max_height < widget_size_max else max_height,
+            )
+
+    def scale_icon_size(widget) -> None:
+        icon_size = widget.iconSize()
+        if icon_size.isValid() and not icon_size.isEmpty():
+            widget.setIconSize(QtCore.QSize(
+                scale_value(icon_size.width(), minimum=1),
+                scale_value(icon_size.height(), minimum=1),
+            ))
+
+    for widget in window.findChildren(QtWidgets.QAbstractButton):
+        scale_icon_size(widget)
+    for widget in window.findChildren(QtWidgets.QTabBar):
+        scale_icon_size(widget)
+    for widget in window.findChildren(QtWidgets.QToolBar):
+        scale_icon_size(widget)
+
+    return True
 
 # if not F.test_path():
 #    exit()
@@ -4822,7 +4918,7 @@ app.setStyle(S[1])
 application = mywindow()
 from project_cust_38.widget_spy import install_pyqt_event_hook
 install_pyqt_event_hook(app)
-
+compact_window_if_small_screen(app, application,  factor=0.64)
 #=============================================================
 versia = application.versia
 if F.is_frozen()== False:

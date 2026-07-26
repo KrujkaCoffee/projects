@@ -976,14 +976,16 @@ def btn_tkp_load_strukt(self:mywindow,*args):
         poki = self.place.poki
         DICT_DSE = CSQ.custom_request_c(self.db_dse, f'''SELECT * FROM dse WHERE poki = {poki}''', rez_dict=True)
         self.DICT_DSE_save_mk = F.deploy_dict_c(DICT_DSE, 'Номенклатурный_номер')
-        for i in range(self.ui.table_razr_MK.rowCount()):
+        list_dse = CQT.list_from_wtabl_c(self.ui.table_razr_MK, rez_dict=True)
+        for i, item in enumerate(list_dse):
+            is_pki = item['ПКИ']
             if расчет_по_статистике:
-                if self.ui.table_razr_MK.item(i,nf_kod_erp).text() == '':
+                kod_erp = item['Код ERP']
+                if kod_erp == '':
                     continue
                 list_opers = list(self.Data_plan.DICT_ETAPS_NAME.keys())
                 CQT.add_combobox(self, self.ui.table_razr_MK, i, nf_name_oper_potr_mat, list_opers, True,
                                  select_oper_potrebl)
-                kod_erp = self.ui.table_razr_MK.item(i,nf_kod_erp).text()
                 etap = None
                 if kod_erp in self.DICT_NOMEN:
                     vid = self.DICT_NOMEN[kod_erp]['Вид']
@@ -993,8 +995,9 @@ def btn_tkp_load_strukt(self:mywindow,*args):
                     select_oper_potrebl(self, etap, i, nf_name_oper_potr_mat)
                     self.ui.table_razr_MK.cellWidget(i, nf_name_oper_potr_mat).setCurrentText(etap)
             else:
-
-                dse = self.ui.table_razr_MK.item(i,nf_name_dse).text()
+                # dse = item['Обозначение'] if is_pki else item['Обозначение_аналог']
+                dse = item['Обозначение_аналог']
+                # dse = self.ui.table_razr_MK.item(i,nf_name_dse).text()
                 tk_obj = CMS.Techkards(dse, self.db_dse,DICT_OP_NAME=self.DICT_OP_NAME)
                 if tk_obj == None:
                     CQT.msgbox(f'Не найдена техкарта {dse}')

@@ -22,6 +22,8 @@ import sys
 import io
 import os
 import time
+import statistics
+import project_cust_38.calc_alloy_prices as CALC_ALLOY
 
 
 if TYPE_CHECKING:
@@ -855,7 +857,7 @@ class Fcns():
 @dataclass
 class Data_1с:
     DEBUG = '11.12.2025'
-    if  F.now("%d.%m.%Y") != DEBUG:
+    if  F.now("%d.%m.%Y") != DEBUG and api_srv_config.IS_PROD:
         code,  nomen_names  = APIERP.get_wet_request(f'''ВЫБРАТЬ
             ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(Номенклатура.Ссылка)) КАК Ref,
             Номенклатура.Код + " " + Номенклатура.Наименование КАК Descr
@@ -1308,20 +1310,24 @@ def compare_res_1c_v1(refKey_zp:str):
 
     CFG = CMS.CFG
 
-    def get_list_res(refKey_zp:str):
-        text = f"""  ВЫБРАТЬ
-    ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЗаказНаПроизводство2_2Продукция.Спецификация.Ссылка)) КАК refKey_res,
+    def get_list_res(refKey_zp: str):
+        text = f"""ВЫБРАТЬ
+	ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЗаказНаПроизводство2_2Продукция.Спецификация.Ссылка)) КАК refKey_res,
+	ЗаказНаПроизводство2_2.Номер КАК НомерЗП,
+	ЗаказНаПроизводство2_2Продукция.Спецификация КАК Спецификация,
+	ЗаказНаПроизводство2_2Продукция.Спецификация.Наименование КАК Спецификация_ЕРП,
+	ЗаказНаПроизводство2_2Продукция.Спецификация.Код КАК Спецификация_код_ЕРП,
     ЗаказНаПроизводство2_2Продукция.Номенклатура.Наименование КАК НоменклатураНаименование,
     ЗаказНаПроизводство2_2Продукция.Количество КАК Количество,
-    ЗаказНаПроизводство2_2Продукция.НомерСтроки КАК НомерСтроки,
-    ЗаказНаПроизводство2_2Продукция.Ссылка.Номер КАК НомерЗП
+    ЗаказНаПроизводство2_2Продукция.НомерСтроки КАК НомерСтроки
 ИЗ
-    Документ.ЗаказНаПроизводство2_2.Продукция КАК ЗаказНаПроизводство2_2Продукция
+	Документ.ЗаказНаПроизводство2_2 КАК ЗаказНаПроизводство2_2
+ЛЕВОЕ СОЕДИНЕНИЕ Документ.ЗаказНаПроизводство2_2.Продукция КАК ЗаказНаПроизводство2_2Продукция 
+	ПО ЗаказНаПроизводство2_2Продукция.Ссылка = ЗаказНаПроизводство2_2.Ссылка
 ГДЕ
-    ЗаказНаПроизводство2_2Продукция.Ссылка.Ссылка = &Ссылка;
-                                                               """
+	ЗаказНаПроизводство2_2.Ссылка = &Распоряжение"""
         refs = APIERP.Refs_wet(text)
-        ref_obj = APIERP.Ref_wet('Ссылка', 'Документы.ЗаказНаПроизводство2_2', refKey_zp)
+        ref_obj = APIERP.Ref_wet('Распоряжение', 'Документы.ЗаказНаПроизводство2_2', refKey_zp)
 
         refs.add_ref(ref_obj)
         key, res = APIERP.get_wet_request(text=text, refs=refs)
@@ -1333,29 +1339,28 @@ def compare_res_1c_v1(refKey_zp:str):
             err.append(f'ТЧ ЗаказНаПроизводство2_2 пусто')
             return False, err
 
-
         return True, res['data']
 
-    def get_count_null_etap(refKey_zp:str):
-        text = f"""  ВЫБРАТЬ
-    ЭтапПроизводства2_2.Распоряжение КАК Распоряжение,
-    ЭтапПроизводства2_2.НЭ_НулевойЭтап КАК НЭ_НулевойЭтап
-
-    ИЗ Документ.ЭтапПроизводства2_2 КАК ЭтапПроизводства2_2
-    ГДЕ
-         ЭтапПроизводства2_2.НЭ_НулевойЭтап = ИСТИНА И ЭтапПроизводства2_2.Распоряжение.Ссылка = &Ссылка;
-                                                               """
-        refs = APIERP.Refs_wet(text)
-        ref_obj = APIERP.Ref_wet('Ссылка', 'Документы.ЗаказНаПроизводство2_2', refKey_zp)
-
-        refs.add_ref(ref_obj)
-        key, res = APIERP.get_wet_request(text=text, refs=refs)
-
-        if key != 200:
-            err.append(f'Ошибка получения данных из ЕРП ЭтапПроизводства2_2')
-            return False, err
-
-        return len(res['data'])
+    # def get_count_null_etap(refKey_zp:str):
+    #     text = f"""  ВЫБРАТЬ
+    # ЭтапПроизводства2_2.Распоряжение КАК Распоряжение,
+    # ЭтапПроизводства2_2.НЭ_НулевойЭтап КАК НЭ_НулевойЭтап
+    #
+    # ИЗ Документ.ЭтапПроизводства2_2 КАК ЭтапПроизводства2_2
+    # ГДЕ
+    #      ЭтапПроизводства2_2.НЭ_НулевойЭтап = ИСТИНА И ЭтапПроизводства2_2.Распоряжение.Ссылка = &Ссылка;
+    #                                                            """
+    #     refs = APIERP.Refs_wet(text)
+    #     ref_obj = APIERP.Ref_wet('Ссылка', 'Документы.ЗаказНаПроизводство2_2', refKey_zp)
+    #
+    #     refs.add_ref(ref_obj)
+    #     key, res = APIERP.get_wet_request(text=text, refs=refs)
+    #
+    #     if key != 200:
+    #         err.append(f'Ошибка получения данных из ЕРП ЭтапПроизводства2_2')
+    #         return False, err
+    #
+    #     return len(res['data'])
 
     def upd_kpl_data(tbl_kpl_name, field_kpl_name, val_name,НомПл):
         if isinstance(val_name, str):
@@ -1368,10 +1373,10 @@ def compare_res_1c_v1(refKey_zp:str):
     max_width = 200
     err = []
 
-    offset_to_zero_stage = 0
-    count_null_etap = get_count_null_etap(refKey_zp)
-    if count_null_etap:
-        offset_to_zero_stage = 1
+    # offset_to_zero_stage = 0
+    # count_null_etap = get_count_null_etap(refKey_zp)
+    # if count_null_etap:
+    #     offset_to_zero_stage = 1
     succ, list_res = get_list_res(refKey_zp)
     if not succ:
         return answ, list_res, max_width
@@ -1380,8 +1385,6 @@ def compare_res_1c_v1(refKey_zp:str):
         err.append(f'Документ {list_res[0]['НомерЗП']} не может быть учтен в МЕС. Неопознан префикс')
     CFG.SingletonMeta.clear_instance(CFG.Place)
     CFG.Config.place = CFG.Place(DICT_ORGANIZTIONS[pref]['Имя'])
-
-    fl_recalc_data_etaps_from_erp = False
 
     for row in list_res:
         refKey_res = row['refKey_res']
@@ -1395,9 +1398,6 @@ def compare_res_1c_v1(refKey_zp:str):
         СпецификацияОписание:str = res_erp_obj.Описание
         dict_СпецификацияОписание = res_erp_obj.dict_description_self()
 
-        НомПартии_ЗП = НомерСтроки + offset_to_zero_stage
-
-        
         if res_erp_obj.is_predv:
             err.append(f'Для {НоменклатураНаименование} выбрана предварительная спецификация {СпецификацияНаименование}')
             continue
@@ -1418,23 +1418,19 @@ def compare_res_1c_v1(refKey_zp:str):
                             пл_топ.НомПл,  
                             знпр.s_num as знпр_s_num,
                             пл_оуп.Номенклатура_ЕРП,   
-                                    пл_оуп.НомПартии_ЗП, знпр.data_etaps_from_erp, 
-                                    пл_топ.Спецификация_ЕРП as Спецификация_ЕРП_пл_топ, 
-                                    пл_топ.Спецификация_код_ЕРП as Спецификация_код_ЕРП_пл_топ, 
-                                    mk.Пномер  as  Пномер_mk,
-                                    mk.Тип as Тип_mk
-                                 FROM знпр  
-                                 INNER JOIN пл_оуп ON пл_оуп.Пномер_ЗП == знпр.s_num 
-                                 INNER JOIN пл_топ ON пл_топ.НомПл == пл_оуп.НомПл 
-                                 INNER JOIN mk ON mk.НомКплан == пл_оуп.НомПл 
-                                  WHERE mk.Пномер == {num_mk}  ;""",
-                                                rez_dict=True, one=True, attach_dbs=(db_naryad))
+                            пл_топ.Спецификация_ЕРП as Спецификация_ЕРП_пл_топ, 
+                            пл_топ.Спецификация_код_ЕРП as Спецификация_код_ЕРП_пл_топ, 
+                            mk.Пномер  as  Пномер_mk,
+                            mk.Тип as Тип_mk
+                         FROM знпр  
+                         INNER JOIN пл_оуп ON пл_оуп.Пномер_ЗП == знпр.s_num 
+                         INNER JOIN пл_топ ON пл_топ.НомПл == пл_оуп.НомПл 
+                         INNER JOIN mk ON mk.НомКплан == пл_оуп.НомПл 
+                          WHERE mk.Пномер == {num_mk}  ;""",
+                                                rez_dict=True, one=True, attach_dbs=db_naryad)
             НомПл = kpl['НомПл']
             if kpl['Номенклатура_ЕРП'] != НоменклатураНаименование:
                 upd_kpl_data('пл_оуп','Номенклатура_ЕРП',НоменклатураНаименование,НомПл)
-            if kpl['НомПартии_ЗП'] not in ('', 0, None) and kpl['НомПартии_ЗП'] != НомПартии_ЗП:
-                upd_kpl_data('пл_оуп','НомПартии_ЗП',НомПартии_ЗП,НомПл)
-                fl_recalc_data_etaps_from_erp = kpl['знпр_s_num']
 
             fl_naid = True
             fl_res_match = True
@@ -1445,35 +1441,30 @@ def compare_res_1c_v1(refKey_zp:str):
                 upd_kpl_data('пл_топ','Спецификация_код_ЕРП',СпецификацияКод.strip(),НомПл)
             fl_res_name = True
         else:
-            list_poz_mes = CSQ.custom_request_c(db_kplan, f"""SELECT 
-                            пл_топ.НомПл,  
-                            пл_оуп.Номенклатура_ЕРП,   
-                                    пл_оуп.НомПартии_ЗП, знпр.data_etaps_from_erp, 
-                                    пл_топ.Спецификация_ЕРП as Спецификация_ЕРП_пл_топ, 
-                                    пл_топ.Спецификация_код_ЕРП as Спецификация_код_ЕРП_пл_топ, 
-                                    mk.Пномер  as  Пномер_mk 
-
-                                 FROM знпр  
-                                 INNER JOIN пл_оуп ON пл_оуп.Пномер_ЗП == знпр.s_num 
-                                 INNER JOIN пл_топ ON пл_топ.НомПл == пл_оуп.НомПл 
-                                 INNER JOIN mk ON mk.НомКплан == пл_оуп.НомПл 
-                                  WHERE знпр.Ref_Key_py == "{refKey_zp}" 
-                                  and mk.Тип == 1;""",
-                                                rez_dict=True, attach_dbs=(db_naryad))
+            list_poz_mes = CSQ.custom_request_c(db_kplan, f"""
+                SELECT 
+                    пл_топ.НомПл,  
+                    пл_оуп.Номенклатура_ЕРП,   
+                    пл_топ.Спецификация_ЕРП as Спецификация_ЕРП_пл_топ, 
+                    пл_топ.Спецификация_код_ЕРП as Спецификация_код_ЕРП_пл_топ, 
+                    mk.Пномер  as  Пномер_mk 
+                FROM знпр  
+                INNER JOIN пл_оуп ON пл_оуп.Пномер_ЗП == знпр.s_num 
+                INNER JOIN пл_топ ON пл_топ.НомПл == пл_оуп.НомПл 
+                INNER JOIN mk ON mk.НомКплан == пл_оуп.НомПл 
+                WHERE знпр.Ref_Key_py == "{refKey_zp}" 
+                    and mk.Тип == 1;""", rez_dict=True, attach_dbs=db_naryad)
+            mes_res_code = mes_res_name = ''
             for kpl in list_poz_mes:
                 НомПл = kpl['НомПл']
-                if kpl['Номенклатура_ЕРП'] == НоменклатураНаименование and  kpl['НомПартии_ЗП'] == НомерСтроки + offset_to_zero_stage:
+                mes_res_code = str(kpl['Спецификация_код_ЕРП_пл_топ']).strip()
+                mes_res_name = str(kpl['Спецификация_ЕРП_пл_топ']).strip()
+                if mes_res_code == str(СпецификацияКод).strip():
+                    fl_res_kod = True
+                if kpl['Номенклатура_ЕРП'] == НоменклатураНаименование:
                     num_mk = kpl['Пномер_mk']
                     fl_naid = True
-                    dict_etaps_from_erp = F.from_binary_pickle(kpl['data_etaps_from_erp'])
-                    ref_res_mes = dict_etaps_from_erp[str(kpl['НомПартии_ЗП'])]
-                    if ref_res_mes['Спецификация_Key'] == refKey_res:
-                        fl_res_match = True
-                    if ref_res_mes['Спецификация'].strip() == СпецификацияКод.strip():
-                        fl_res_kod = True
-
-                    
-                    if kpl['Спецификация_ЕРП_пл_топ'] == СпецификацияНаименование and kpl['Спецификация_код_ЕРП_пл_топ'].strip() == СпецификацияКод.strip():
+                    if mes_res_name == СпецификацияНаименование and mes_res_code == СпецификацияКод.strip():
                         fl_res_name = True
                     else:
                         if fl_naid and fl_res_kod:
@@ -1483,18 +1474,14 @@ def compare_res_1c_v1(refKey_zp:str):
                                 upd_kpl_data('пл_топ', 'Спецификация_код_ЕРП', СпецификацияКод.strip(), НомПл)
                             fl_res_name = True
                     break
-            if fl_naid == False:
-                err.append(f'{НоменклатураНаименование} Не найдена в МЕС где НомПартии_ЗП = {НомерСтроки + offset_to_zero_stage} (сверить с КПЛ пл_оуп.Номенклатура_ЕРП)')
-            if fl_res_match == False:
-                err.append(f'Для {НоменклатураНаименование}  в МЕС и в 1С не соответстувют ресурсные по ссылкам.')
-            if ref_res_mes and  fl_res_kod == False:
+            if mes_res_code and fl_res_kod == False:
                 err.append(f'Для ресурсной {СпецификацияНаименование} в МЕС и в 1С не соответстувют коды'
-                           f' ({ref_res_mes['Спецификация'].strip()} и {СпецификацияКод.strip()}).')
+                           f' ({mes_res_code!r} и {СпецификацияКод.strip()}).')
             if fl_res_name == False:
                 err.append(f'Для ресурсной {СпецификацияНаименование} в МЕС и в 1С не соответстувют наименования'
-                           f' (МЕС: {kpl['Спецификация_ЕРП_пл_топ']} ).')
+                           f' (МЕС: {mes_res_name} ).')
 
-        if fl_naid and fl_res_match and fl_res_kod and fl_res_name:
+        if fl_naid and fl_res_kod and fl_res_name:
             code, data = res_erp_obj.load_tch(CMS.TchNamesResSpecERP.Трудозатраты,{'ВидРабот'})
             if code != 200:
                 err.extend(data)
@@ -1535,12 +1522,7 @@ def compare_res_1c_v1(refKey_zp:str):
                 err.append(f'{СпецификацияНаименованиеМК} Различий в трудоемкости не обнаружено')
             else:
                 answ.extend(list_dict_compare)
-            
 
-    if fl_recalc_data_etaps_from_erp:
-        m = ERP.OrdersComposit()
-        resp = CMS.make_dict_etaps_from_erp(m, refKey_zp)
-        CMS.update_data_etaps_from_erp(db_kplan, resp, fl_recalc_data_etaps_from_erp)
 
     if answ:
         max_width = calc_table_width(answ)
@@ -1598,3 +1580,10 @@ def eval_1c_nd_price_calculation_v1(ref:str, RefKeyND:str, tch:list[dict])->tupl
 
 
     return 500,[],['Непредвиденная ошибка']
+
+def calc_alloy_price(data_mats_prices:list[dict],alloy_composition:list[dict],
+                     analog_threshold:float)->tuple[float,list[str]]:
+
+    rez = CALC_ALLOY.calc_alloy_price(data_mats_prices,alloy_composition,analog_threshold)
+    return rez
+

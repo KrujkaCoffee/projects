@@ -36,7 +36,7 @@ class ProdCalendar:
                  locale: str = 'ru',
                  base_url: str = 'https://isdayoff.ru',
                  format_date: str = '%Y.%m.%d'
-                 ) -> NoReturn:
+                 ) -> NoReturn | None:
         self.format_date = format_date
         self.locale = self._is_valid_locale(locale)
         self.base_url = base_url

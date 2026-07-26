@@ -14,40 +14,243 @@ import traceback
 import zlib
 import colorsys
 import re
+import unicodedata
+import html
 import base64
 import tempfile
 import pythoncom
+import threading
 from time import sleep as time_sleep
 import ctypes
-import json #18.08.25
+import json  # 18.08.25
 import hashlib
 import inspect
+import importlib
 from functools import wraps
+from typing import Any, Generic, TypeVar, overload
 import uuid
-import win32com #27.02.2026
+import win32com  # 27.02.2026
 import winreg
+from collections.abc import MutableMapping
+from types import ModuleType
+
+
 try:
     print(f'import config try...')
     import config
+
     print(f'import config success')
 except:
     print(f'import config err')
-    
+
 try:
     import pyperclip
     import json as js
     from jsonlines import open as jslopen
     import calendar
-    
+
     from win32com.client import Dispatch
-    from win32com.shell import shell, shellcon # 30.07.25
+    from win32com.shell import shell, shellcon  # 30.07.25
     from dateutil.relativedelta import relativedelta
     from decimal import Decimal, getcontext
 except:
     pass
 
-if __name__ == 's__main__':
+if __name__ == '__main__':
     exit()
+
+# ++27.02.2026
+
+_NOT_LOADED = object()
+_MODIFIED_CFG:dict|None = os.environ.get('MODIFIED_CFG', None)
+class LazyModule:
+    """
+    Ленивый import proxy для безопасного импорта
+
+    Пример:
+        CFG = LazyModule("project_cust_38.Cust_config")
+        CFG.Config
+    """
+
+    __slots__ = (
+        "_module_name",
+        "_module",
+        "_lock",
+        "_namespace",
+        "_global_name",
+    )
+
+    def __init__(
+        self,
+        module_name: str,
+        *,
+        namespace: MutableMapping[str, Any] | None = None,
+        global_name: str | None = None,
+    ) -> None:
+        if not module_name:
+            raise ValueError("module_name не может быть пустым")
+
+        object.__setattr__(self, "_module_name", module_name)
+        object.__setattr__(self, "_module", _NOT_LOADED)
+        object.__setattr__(self, "_lock", threading.RLock())
+        object.__setattr__(self, "_namespace", namespace)
+        object.__setattr__(self, "_global_name", global_name)
+
+    @property
+    def __name__(self) -> str:
+        return object.__getattribute__(self, "_module_name")
+
+    def _load(self) -> ModuleType:
+        module = object.__getattribute__(self, "_module")
+
+        if module is not _NOT_LOADED:
+            return module
+
+        lock = object.__getattribute__(self, "_lock")
+
+        with lock:
+            module = object.__getattribute__(self, "_module")
+
+            if module is not _NOT_LOADED:
+                return module
+
+            module_name = object.__getattribute__(self, "_module_name")
+            module = importlib.import_module(module_name)
+
+            object.__setattr__(self, "_module", module)
+
+            namespace = object.__getattribute__(self, "_namespace")
+            global_name = object.__getattribute__(self, "_global_name")
+
+            if namespace is not None and global_name is not None:
+                # Аккуратно заменяем F на настоящий модуль,
+                # но только если F всё ещё указывает на этот proxy.
+                if namespace.get(global_name) is self:
+                    namespace[global_name] = module
+
+            return module
+
+    def resolve(self) -> ModuleType:
+        """
+        Явно получить настоящий модуль.
+        """
+        return self._load()
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._load(), name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name.startswith("_"):
+            object.__setattr__(self, name, value)
+            return
+
+        setattr(self._load(), name, value)
+
+    def __delattr__(self, name: str) -> None:
+        if name.startswith("_"):
+            object.__delattr__(self, name)
+            return
+
+        delattr(self._load(), name)
+
+    def __dir__(self) -> list[str]:
+        return sorted(set(dir(self._load())))
+
+    def __repr__(self) -> str:
+        module_name = object.__getattribute__(self, "_module_name")
+        module = object.__getattribute__(self, "_module")
+
+        if module is _NOT_LOADED:
+            return f"<LazyModule {module_name!r}, not loaded>"
+
+        return repr(module)
+
+#02.07.2026
+def find_via_exe_name(app_name: str, roots: tuple[str, ...] | None = None):
+    if roots is None:
+        roots = (
+            os.path.join(os.environ.get("PROGRAMDATA", ""), r"Microsoft\Windows\Start Menu\Programs"),
+            os.path.join(os.environ.get("APPDATA", ""), r"Microsoft\Windows\Start Menu\Programs"),
+        )
+    shell = win32com.client.Dispatch("WScript.Shell")
+
+    def resolve_lnk(lnk_path: pathlib.Path):
+        s = shell.CreateShortcut(str(lnk_path))
+        return s.TargetPath, s.Arguments, s.WorkingDirectory
+
+    for root in roots:
+        p = pathlib.Path(root)
+        if not p.exists():
+            continue
+        for lnk in p.rglob("*.lnk"):
+            target, args, workdir = resolve_lnk(lnk)
+            if target and target.endswith(app_name):
+                return target
+    return None
+
+
+def find_via_uninstall_registry(display_name_substr: str):
+    uninstall_roots = (
+        (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
+        (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"),
+        (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
+    )
+    for root, subkey in uninstall_roots:
+        try:
+            with winreg.OpenKey(root, subkey) as k:
+                i = 0
+                while True:
+                    try:
+                        child_name = winreg.EnumKey(k, i)
+                    except OSError:
+                        break
+                    i += 1
+                    try:
+                        with winreg.OpenKey(k, child_name) as ck:
+                            try:
+                                display_name, _ = winreg.QueryValueEx(ck, "DisplayName")
+                            except OSError:
+                                continue
+                            if display_name_substr.lower() not in display_name.lower():
+                                continue
+                            for value_name in ("InstallLocation", "DisplayIcon"):
+                                try:
+                                    val, _ = winreg.QueryValueEx(ck, value_name)
+                                    if val:
+                                        return val.strip('"')
+                                except OSError:
+                                    continue
+                            try:
+                                uninstall_str, _ = winreg.QueryValueEx(ck, "UninstallString")
+                                if uninstall_str:
+                                    return uninstall_str.strip('"')
+                            except OSError:
+                                continue
+                    except OSError:
+                        continue
+        except OSError:
+            continue
+    return None
+
+
+def get_bitrix24_executor_path():
+    raw = find_via_uninstall_registry("Bitrix24")
+    if raw:
+        candidate = pathlib.Path(raw)
+        if candidate.is_file() and candidate.suffix.lower() == ".exe":
+            exe_dir = candidate.parent
+        elif candidate.is_dir():
+            exe_dir = candidate
+        else:
+            exe_dir = candidate.parent
+        found = list(exe_dir.rglob("Bitrix24.exe"))
+        if found:
+            return str(found[0])
+
+    print('[find_via_uninstall_registry] неудачный поиск Bitrix24.exe')
+    return find_via_exe_name("Bitrix24.exe")
+
+
 
 # ++27.02.2026
 
@@ -132,20 +335,22 @@ def file_into_blob(pathf):
     with open(pathf, 'rb') as file:
         return file.read()
 
-def pack_byte_file(data):
+def pack_byte_file(data)->bytes:
     compressed_data = zlib.compress(data, zlib.Z_BEST_COMPRESSION)
-    print(f"Оригинальный размер: {sys.getsizeof(data)}")
+    print(f"Оригинальный размер: {get_size_of_object(data)}")
     # Оригинальный размер: 
-    print(f"Сжатый размер: {sys.getsizeof(compressed_data)}")
+    print(f"Сжатый размер: {get_size_of_object(compressed_data)}")
     # Сжатый размер: 
     return compressed_data
 
+def get_size_of_object(data:bytes)->int:
+    return sys.getsizeof(data)
 
 def unpack_byte_file(data):
     decompressed_data = zlib.decompress(data)
-    print(f"Сжатый размер: {sys.getsizeof(data)}")
+    print(f"Сжатый размер: {get_size_of_object(data)}")
     # Сжатый размер: 1024
-    print(f"Распакованный размер: {sys.getsizeof(decompressed_data)}")
+    print(f"Распакованный размер: {get_size_of_object(decompressed_data)}")
     # Распакованный размер: 1000033
     return decompressed_data
 
@@ -358,6 +563,12 @@ class StatisticDecorator:
 
 class Cust_path:
     def __init__(self, path: str):
+        if not isinstance(path,str):
+            try:
+                path = str(Cust_path(path.__file__).parent)
+            except:
+                raise Exception(f'Cant convert to string type "{path}" of class:')
+
         self.original = path
         self.path_str = self._normalize(path)
         self.path = pathlib.Path(self.path_str)
@@ -367,8 +578,18 @@ class Cust_path:
         self.path = pathlib.Path(self.path_str)
 
     def as_raw_literal(self) -> str:
-        return f'"{str(self.path)}"' 
-    
+        return f'"{str(self.path)}"'
+
+    def rename_file(self, new_name: str) -> None:
+        """
+        Меняет только имя файла, сохраняя путь.
+
+        Пример:
+        C:/temp/test.txt -> C:/temp/new.txt
+        """
+        self.path = self.path.with_name(new_name)
+        self.path_str = str(self.path)
+        
     @staticmethod
     def _normalize(path: str) -> str:
         """
@@ -443,6 +664,21 @@ class Cust_path:
 
     def __repr__(self):
         return f"Cust_path('{self.path}')"
+
+def path_to_caller_file_c(end_sep=True):
+    caller_globals = sys._getframe(1).f_globals
+    caller_file = caller_globals.get('__file__', False)
+
+    if not caller_file:
+        # нет __file__ — интерактивный режим / exec / динамический модуль
+        return os.getcwd() + os.sep if end_sep else os.getcwd()
+    elif getattr(sys, 'frozen', False):
+        return os.path.dirname(sys.executable) + os.sep
+    else:
+        tmp = os.path.abspath(caller_file).split(os.sep)
+        tmp.pop()
+        return os.sep.join(tmp) + os.sep if end_sep else os.sep.join(tmp)
+
 
 def path_to_execut_file_c(end_sep = True):
     is_subprocess = not getattr(sys.modules['__main__'], '__file__', False) # 21.11.25
@@ -538,7 +774,14 @@ def load_cfg(log=True): #21.11.25
         put_conf = path_to_execut_file_c() + 'Config' + os.sep + 'CFG.cfg'
         if not existence_file_c(put_conf):
             put_conf = get_parent_dir(path_to_execut_file_c()) + os.sep + 'Config' + os.sep + 'CFG.cfg'
-        if existence_file_c(put_conf) == True:
+        if not existence_file_c(put_conf):
+            if _MODIFIED_CFG:
+                return json.loads(_MODIFIED_CFG)
+
+            print(f'    Файл настроек не найден по {put_conf}') if log else None
+            msg = f'Файл настроек не найден по {put_conf}'
+            return
+        else:
             try:
                 cfg = config.Config(put_conf)
                 print(f'    {put_conf}', end='\n') if log else None  # файл конфига, находится п папке конфиг
@@ -564,33 +807,6 @@ def load_cfg(log=True): #21.11.25
                             break
                         else:
                             pass
-                            ## Если не сработало, пытаемся активировать диск
-                            #if path.startswith('\\\\'):
-                            #    # Для UNC-путей (\\server\share)
-                            #    try:
-                            #        # Создаем временный файловый дескриптор
-                            #        with open(os.path.join(path, 'dummy.txt'), 'w') as f:
-                            #            pass
-                            #        os.remove(os.path.join(path, 'dummy.txt'))
-                            #        return True
-                            #    except:
-                            #        pass
-                            #
-                            ## Для буквенных дисков (Z:\)
-                            #elif ':' in path:
-                            #    drive = path.split(':')[0] + ':'
-                            #    try:
-                            #        ctypes.windll.kernel32.SetErrorMode(0x8007)
-                            #        ctypes.windll.kernel32.GetDiskFreeSpaceExW(drive, None, None, None)
-                            #        time.sleep(1)  # Даем время на инициализацию
-                            #        return os.path.exists(path)
-                            #    except:
-                            #        pass
-                            #if existence_file_c(path):
-                            #    tmp_dict[key] = path
-                            #    print(f'        Для {key} принят {path}') if log else None
-                            #    fl = True
-                            #    break
 
                     if fl == False:
                         print(f'    Не верный путь для {key}') if log else None
@@ -605,9 +821,6 @@ def load_cfg(log=True): #21.11.25
                     tmp_dict[key] = cfg_dict[key]
             print('=====Успешно=====') if log else None
             return tmp_dict
-        else:
-            print(f'    Файл настроек не найден по {put_conf}') if log else None
-            msg = f'Файл настроек не найден по {put_conf}'
 
     except:
         print(f'    Не открыть файл CFG.cfg {path_to_execut_file_c()}') if log else None
@@ -734,8 +947,36 @@ def run_file_c(putf, proverka=True):
     if proverka == True:
         if existence_file_c(putf) == False:
             return
-    return subprocess.Popen(["start", "", f"{putf}"], shell=True) #29.07.25
+    try:
+        os.startfile(f"{putf}")
+        print("✅ Файл открыт") #subprocess.Popen(["start", "", f"{putf}"], shell=True)
+        return True
+    except OSError as e:
+        if e.winerror in (22, 1155):
+            # Нет ассоциации - показываем диалог
+            print("⚠️ Нет программы по умолчанию, показываю диалог...")
+            subprocess.run([
+                'rundll32.exe',
+                'shell32.dll,OpenAs_RunDLL',
+                putf
+            ], shell=False)
 
+            return True
+        else:
+            print(f"❌ Ошибка при открытии (код {e.winerror}): {e}")
+            return False
+
+
+def open_in_bitrix24(url: str, dialog_id: str | int = None):
+    """открыть чат в Bitrix Desktop по dialog_id"""
+    from urllib.parse import urlparse, parse_qs
+    parsed = urlparse(url)
+
+    domain = parsed.hostname  # bitrix24.kelast.ru
+    query = parse_qs(parsed.query)
+    if dialog_id is None:
+        dialog_id = query.get("IM_DIALOG", [""])[0]  # chat103961 или id пользователя например 3076
+    os.startfile(f'bx://v2/{domain}/botContext/dialogId/{dialog_id}')
 
 def run_file_os_c(putf,normalize=True):
     if normalize:
@@ -1116,7 +1357,7 @@ def create_label_c(file, dir, ima_yar, put_ico=''):
 
 
 def save_file_pickle(putima, obj):
-    with open(putima, 'wb') as f:
+    with open(putima, 'wb+') as f:
         pickle.dump(obj, f)
 
 
@@ -1706,6 +1947,8 @@ def list_txt_table_c(spis):
         rez.append(sep)
     return rez
 
+def is_module(obj):
+    return isinstance(obj, ModuleType)
 
 def is_bool(string: str):
     if string.lower() in {'true','false','0','1'}:
@@ -1893,6 +2136,10 @@ def sort_dict_by_sample(d: dict, sample:list|dict|tuple) -> dict:
 
     return res
 
+def reverse_dict(original:dict)->dict:
+    reversed_dict = {value: key for key, value in original.items()}
+    return  reversed_dict
+
 def dict_to_list(dicton: dict, transponir=False):
     '''словарь в спискок в две колонки'''
     if transponir:
@@ -1994,6 +2241,43 @@ def deploy_dict_old(list_dicts: list, name_key_column: str):
                 rez[dic[name_key_column]] = val
     return rez
 
+
+
+def grouping_list_dicts(data: list[dict], keys:str|list[str], remove_duplicates: bool = False) -> dict:
+    """
+    Группирует список словарей по значению(ям) заданных ключей.
+
+    :param data: список словарей для группировки (значения str/int/float/bool/None/bytes)
+    :param keys: имя ключа (str) или список ключей (list) для группировки
+    :param remove_duplicates: удалять дубликаты словарей внутри каждой группы
+    :return: словарь {ключ_группировки: [словари]}
+    :raises GroupingKeyError: если ключ группировки отсутствует в словаре
+    """
+    is_single = isinstance(keys, str)
+    key_list = [keys] if is_single else list(keys)
+
+    result: dict = {}
+    for item in data:
+        try:
+            group_key = item[key_list[0]] if is_single else tuple(item[k] for k in key_list)
+        except KeyError as e:
+            raise ValueError(f"grouping_list_dicts error: Количество аргументов должно совпадать со количеством полей."
+                             f"\nОшибка при обработке элемента:\n {e.args[0]} {str(item)}" )
+
+        result.setdefault(group_key, []).append(item)
+
+    if remove_duplicates:
+        for group_key, items in result.items():
+            seen = set()
+            deduped = []
+            for it in items:
+                fingerprint = frozenset(it.items())  # все значения хэшируемые
+                if fingerprint not in seen:
+                    seen.add(fingerprint)
+                    deduped.append(it)
+            result[group_key] = deduped
+
+    return result
 
 def deploy_dict_c(
         list_dicts: list[dict],
@@ -2108,7 +2392,21 @@ def get_key_index_dict(dictionary, target_key):
             return index
     return None
 
-def insert_key_to_dicts(list_of_dicts, insert_index, new_key, default_value=None)->list[dict]:
+def insert_key_to_dict(original_dict, insert_index, new_key, default_value=None)->dict:
+    # Создаем новый словарь с элементами вставленными в нужном порядке
+    new_dict = {}
+    # Добавляем элементы до insert_index
+    for i, (key, value) in enumerate(original_dict.items()):
+        if i == insert_index:
+            new_dict[new_key] = default_value
+        new_dict[key] = value
+    # Если insert_index находится после всех элементов
+    if insert_index >= len(original_dict) or insert_index == -1:
+        new_dict[new_key] = default_value
+    return new_dict
+    
+
+def insert_key_to_dicts(list_of_dicts, insert_index:int=-1, new_key:str='', default_value=None)->list[dict]:
     """
     Вставляет новый ключ в указанную позицию каждого словаря в списке.
 
@@ -2260,11 +2558,14 @@ def paste_bufer(text=''):
     return text + pyperclip.paste()
 
 
-def boolm(str:str):
+def boolm(str:str)->bool:
+    if str is None:
+        return False
     if str.lower() in {'false','0',''}:
         return False
     if str.lower() in {'true','1'}:
         return True
+    raise Exception(f"boolm Не могу распознать '{str}'")
 
 def valm(ch):
     if isinstance(ch,bool):
@@ -2272,7 +2573,11 @@ def valm(ch):
     if ch == 'None':
         return 0
     if isinstance(ch,str):
-        boolmval  =  boolm(ch)
+        boolmval = None
+        try:
+            boolmval  =  boolm(ch)
+        except:
+            pass
         if boolmval != None:
             return int(boolmval)
         ch = ch.replace(',', '.')
@@ -2502,11 +2807,118 @@ def clear_for_filename_c(ima: str):
     return ima
 
 
-def load_file_convert_to_binary(put_filename, output_b64_string=False):
+def sanitize_text(
+        text: str,
+        *,
+        multiline: bool = False,
+        max_length: int | None = None,
+        strip_html: bool = True,
+) -> str:
+    """
+    Очищает текст перед записью в БД.
+
+    :param text:        Входная строка.
+    :param multiline:   False (по умолчанию) — сворачивает всё в одну строку,
+                        удаляет переносы и лишние пробелы.
+                        True — сохраняет логические переносы строк,
+                        но нормализует их и чистит внутри каждой строки.
+    :param max_length:  Если задано — обрезает итоговую строку до N символов.
+    :param strip_html:  True (по умолчанию) — вырезает HTML-теги (защита от XSS).
+                        False — экранирует их в HTML-сущности.
+    :return:            Очищенная строка.
+    """
+    if not isinstance(text, str):
+        raise TypeError(f"Ожидается str, получен {type(text).__name__!r}")
+
+    # ── 1. Нормализация Unicode: NFC — каноническая форма ─────────────────────
+    #   Предотвращает хранение «двойников»: é (U+00E9) vs e + ́ (U+0065 U+0301)
+    text = unicodedata.normalize("NFC", text)
+
+    # ── 2. Null-байты и управляющие символы ───────────────────────────────────
+    #   \x00 ломает многие драйверы (PostgreSQL, MySQL).
+    #   Оставляем: \t (горизонтальная табуляция), \n (LF), \r (CR).
+    #   Всё остальное из диапазона C0/C1 (U+0000–U+001F, U+007F–U+009F) — удаляем.
+    text = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]", "", text)
+
+    # ── 3. Нормализация переносов строк: CRLF / CR → LF ───────────────────────
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+
+    # ── 4. Табуляция → пробел ─────────────────────────────────────────────────
+    text = text.replace("\t", " ")
+
+    # ── 5. HTML-теги / XSS ────────────────────────────────────────────────────
+    if strip_html:
+        # Вырезаем теги полностью: <script>alert(1)</script> → alert(1)
+        text = re.sub(r"<[^>]+>", "", text)
+    else:
+        # Экранируем: < → &lt;  > → &gt;  & → &amp;  " → &quot;  ' → &#x27;
+        text = html.escape(text, quote=True)
+
+    # ── 6. Защита от SQL-инъекций ─────────────────────────────────────────────
+    #   ВАЖНО: параметризованные запросы всегда в приоритете.
+    #   Этот шаг — дополнительный рубеж, НЕ замена bind-переменным.
+    #
+    #   6a. Одиночная кавычка → двойная (стандарт ANSI SQL)
+    text = text.replace("'", "''")
+    #
+    #   6b. Обратный слэш (опасен в MySQL при определённых режимах)
+    text = text.replace("\\", "\\\\")
+    #
+    #   6c. Обнуляем классические инъекционные паттерны:
+    #       --   /*…*/  ;   xp_  UNION SELECT  DROP TABLE  и т.д.
+    sql_patterns = [
+        r"--[^\n]*",  # однострочный SQL-комментарий
+        r"/\*[\s\S]*?\*/",  # многострочный SQL-комментарий
+        r";\s*(?=\S)",  # точка с запятой внутри выражения
+        r"\bxp_\w+",  # extended stored procedures (MSSQL)
+        r"\bEXEC(?:UTE)?\s*\(",  # EXEC(...)
+        r"\bUNION\s+(?:ALL\s+)?SELECT\b",  # UNION SELECT
+        r"\bDROP\s+(?:TABLE|DATABASE|SCHEMA)\b",
+        r"\bTRUNCATE\s+TABLE\b",
+        r"\bINSERT\s+INTO\b",
+        r"\bDELETE\s+FROM\b",
+        r"\bUPDATE\s+\w+\s+SET\b",
+        r"\bALTER\s+TABLE\b",
+        r"\bCREATE\s+(?:TABLE|DATABASE|SCHEMA|PROCEDURE|FUNCTION|TRIGGER)\b",
+        r"\bGRANT\s+.+\bTO\b",
+        r"\bSLEEP\s*\(",  # Time-based blind SQLi
+        r"\bBENCHMARK\s*\(",  # MySQL time-based
+        r"\bWAITFOR\s+DELAY\b",  # MSSQL time-based
+        r"\bLOAD_FILE\s*\(",  # MySQL file read
+        r"\bINTO\s+(?:OUT|DUMP)FILE\b",  # MySQL file write
+        r"\bINFORMATION_SCHEMA\b",
+        r"\bSYS\.TABLES\b",
+    ]
+    for pattern in sql_patterns:
+        text = re.sub(pattern, " ", text, flags=re.IGNORECASE)
+
+    # ── 7. Пробельная нормализация ─────────────────────────────────────────────
+    if multiline:
+        # Обрабатываем строки по отдельности
+        lines = text.split("\n")
+        lines = [re.sub(r" {2,}", " ", line).strip() for line in lines]
+        # Схлопываем 3+ пустые строки подряд в одну пустую
+        text = re.sub(r"\n{3,}", "\n\n", "\n".join(lines))
+    else:
+        # Убираем все переносы, схлопываем пробелы
+        text = text.replace("\n", " ")
+        text = re.sub(r" {2,}", " ", text)
+
+    # ── 8. Финальный trim ─────────────────────────────────────────────────────
+    text = text.strip()
+
+    # ── 9. Ограничение длины ──────────────────────────────────────────────────
+    if max_length is not None and len(text) > max_length:
+        text = text[:max_length].rstrip()
+
+    return text
+
+def load_file_convert_to_binary(put_filename, output_b64_string=False)->bytes|object:
     if output_b64_string:
         blob = _convert_to_binary_data(put_filename)
         return base64.b64encode(blob).decode('utf-8') 
     return _convert_to_binary_data(put_filename)
+
 
 
 def save_binary_convert_to_file(data, put_filename):
@@ -2536,6 +2948,8 @@ def convert_data_to_binary(data):
     # Преобразование данных в двоичный формат
     return str.encode(data)
 
+def hash_data(dict_data:dict)->str:
+    return  hashlib.md5(json.dumps(dict_data, sort_keys=True, ensure_ascii=False).encode('utf-8')).hexdigest()
 
 def sep():
     return os.sep
@@ -2962,13 +3376,51 @@ def get_class_properties(cls_or_obj)->dict:
 
     return result
 
-
-def get_all_attrs_with_properties(obj, include_private=False, prefer_properties=False) -> dict:
+def get_all_attrs_with_properties(obj, include_private=False, prefer_properties=True) -> dict:
     """
-    Возвращает словарь {attr_name: value} для всех атрибутов экземпляра, включая property.
+    Возвращает словарь ``{attr_name: value}`` для всех атрибутов объекта,
+    включая вычисляемые ``property``.
 
-    :param include_private: если False — пропускает имена, начинающиеся с "_"
-    :param prefer_properties: если True — property имеет приоритет над обычными атрибутами
+    Parameters
+    ----------
+    obj : object
+        Экземпляр любого класса.
+    include_private : bool, optional
+        Если ``False`` (по умолчанию) — атрибуты, имена которых начинаются
+        с ``_``, игнорируются.
+    prefer_properties : bool, optional
+        Управляет приоритетом при конфликте имён между ``property`` и
+        обычным атрибутом экземпляра (редкий случай, когда в ``__dict__``
+        объекта вручную записано значение с тем же именем, что и у property).
+
+        - ``False`` — побеждает значение из ``__dict__``
+          (``vars(obj)``). Property используется только как fallback для имён,
+          которых нет в ``__dict__``.
+        - ``True`` (по умолчанию)  — побеждает результат вызова property (``getattr``).
+
+    Returns
+    -------
+    dict
+        Ключи — имена атрибутов; значения — их текущие значения.
+        Если property выбросил исключение, значение будет строкой
+        вида ``"<error: ...>"``.
+
+    Examples
+    --------
+    >>> class Doc:
+    ...     def __init__(self, title):
+    ...         self._title = title
+    ...         self.author = "Иван"
+    ...
+    ...     @property
+    ...     def title(self):
+    ...         return self._title.upper()
+    ...
+    >>> doc = Doc("акт")
+    >>> get_all_attrs_with_properties(doc)
+    {'author': 'Иван', 'title': 'АКТ'}
+    >>> get_all_attrs_with_properties(doc, include_private=True)
+    {'_title': 'акт', 'author': 'Иван', 'title': 'АКТ'}
     """
     result = {}
 
@@ -2977,40 +3429,38 @@ def get_all_attrs_with_properties(obj, include_private=False, prefer_properties=
 
     cls = type(obj)
 
-    # Собираем все property из MRO
-    properties = {}
-    for base in cls.__mro__:
-        for name, prop in vars(base).items():
-            if isinstance(prop, property) and allowed(name):
-                properties[name] = prop
+    # Собираем имена всех property из MRO.
+    # Итерируем от object к потомку (reversed), чтобы более специфичные классы
+    # перекрывали родительские — и в итоге в словаре остаётся "ближайшее" property.
+    property_names: set[str] = set()
+    for base in reversed(cls.__mro__):
+        for name, val in vars(base).items():
+            if isinstance(val, property) and allowed(name):
+                property_names.add(name)
 
-    # Обрабатываем в зависимости от предпочтений
-    if not prefer_properties:
-        # Сначала property
-        for name, prop in properties.items():
-            try:
-                result[name] = getattr(obj, name)
-            except Exception as e:
-                result[name] = f"<error: {e}>"
+    def _get_property(name: str):
+        try:
+            return getattr(obj, name)
+        except Exception as e:
+            return f"<error: {e}>"
 
-        # Затем обычные атрибуты (кроме тех, что уже есть в properties)
-        for name, value in vars(obj).items():
-            if allowed(name) and name not in properties:
-                result[name] = value
-    else:
-        # Сначала обычные атрибуты
+    if prefer_properties:
+        # instance-атрибуты как база, property перезаписывают их
         for name, value in vars(obj).items():
             if allowed(name):
                 result[name] = value
-
-        # Затем property (перезаписывают обычные атрибуты)
-        for name, prop in properties.items():
-            try:
-                result[name] = getattr(obj, name)
-            except Exception as e:
-                result[name] = f"<error: {e}>"
+        for name in property_names:
+            result[name] = _get_property(name)
+    else:
+        # property как fallback, instance-атрибуты перезаписывают всё
+        for name in property_names:
+            result[name] = _get_property(name)
+        for name, value in vars(obj).items():
+            if allowed(name):
+                result[name] = value  # перекрывает и property-имена
 
     return result
+
 
 def parse_args(argv:list)->dict:
     result = {}

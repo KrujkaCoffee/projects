@@ -8,7 +8,9 @@ import os
 import traceback
 import time
 import zlib
+from typing import NamedTuple
 from urllib.parse import quote
+
 
 os.environ['MES_IS_SERVER'] = '1'
 
@@ -30,8 +32,14 @@ sys.stderr = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 logging.basicConfig(format='%(asctime)s -  %(message)s', level=logging.INFO, encoding='utf8')
 logger = logging.getLogger('waitress')
 logger.setLevel(logging.INFO)
-msg_format = '\n{lines}\nКлиент: {user}\nВ модуле: {module}\nСделал запрос: {query}\n{lines}\n'
+msg_format = """
+IP:     {address} [{method}]
+Клиент: {user} 
+Модуль: {module}
+Запрос: {query}
+"""
 DB_PATH = pathlib.Path(r'C://DB_srv//').absolute()
+message_separator: str = '\n' + '=' * 80 + '\n'
 
 url_map = Map()
 route_handlers = {}
@@ -57,15 +65,15 @@ def route(rule):
         def wrapper_route(*args, **kwargs):
             self = args[0] if args else None
             try:
+                logger.info(message_separator)
                 start = time.time()
-                logger.info(f'[PG] start connection { time.time() - start:.2f}s')
-                logger.info('start request')
                 result = func(*args, **kwargs)
-                logger.info(f'end: {time.time() - start}')
+                logger.info(f'HTTP Запрос обработан за: {time.time() - start}')
                 if isinstance(result, Response):
                     if self is not None:
                         for key, value in getattr(self, 'headers', {}).items():
                             result.headers[key] = value
+                    logger.info(message_separator)
                     return result
                 payload = b'' if result is _NO_PAYLOAD else pickle.dumps(result)
                 size_payload = len(payload)
@@ -73,15 +81,16 @@ def route(rule):
                     compress_level = choose_compress_level(size_payload)
                     payload = zlib.compress(payload, level=compress_level)
                     self.headers[CCS.SrvHeaders.CONTENT_IS_COMPRESS_ZLIB.value] = '1'
-                    logger.info(f'[route] compress payload level {compress_level}')
+                    logger.debug(f'Тело ответа было сжато на уровен: {compress_level}')
                 response = Response(payload, status=200)
                 if self is not None:
                     for key, value in getattr(self, 'headers', {}).items():
                         response.headers[key] = value
-
+                logger.info(message_separator)
                 return response
             except Exception as e:
-                logger.error(f'Ошибка: {e}')
+                logger.error(f'Ошибка запроса', exc_info=e)
+                logger.info(message_separator)
                 return Response('Error', status=502)
         return wrapper_route
 
@@ -95,12 +104,15 @@ class HTTPSrv:
         self.request_cache = SQLCACHE.FileRequestCache()
         self.client_can_accept_compress = False
 
-    def dispatch_query(self, msg: dict):
+        self.current_context = None
+
+    def dispatch_query(self, msg: dict, address, method):
         message = msg_format.format(
             user=msg.get('client'),
             module=msg.get('module'),
             query=msg.get('custom_request_c'),
-            lines='=' * 80
+            address=address,
+            method=method
         )
         logger.info(message)
 
@@ -196,27 +208,25 @@ class HTTPSrv:
             return None, False
         start_entry_calc = time.time()
         entry = self.request_cache.get_entry_meta(request_key)
-        logger.info(f'[try_serve_from_cache] entry calc 1 {time.time()-start_entry_calc:.2f}s')
+        logger.debug(f'Запрос последнего снапшота payload завершен за: {time.time()-start_entry_calc:.2f}s')
 
         start_check_fresh = time.time()
         if not entry or not self.request_cache.is_entry_fresh(entry):
-            logger.info('[try_serve_from_cache] Данные кэша устаревшие')
+            logger.debug('Данные кэша устаревшие')
             return entry, False
-        logger.info(f'[try_serve_from_cache] check_entry_fresh {time.time()-start_check_fresh:.2f}s')
+        logger.debug(f'Проверка СЕРВЕРНОГО кэша на актуальность завершена за: {time.time()-start_check_fresh:.2f}s')
         client_body_hash = request_headers.get(CCS.SrvHeaders.CLIENT_BODY_HASH.value, '')
         client_cached_at = request_headers.get(CCS.SrvHeaders.CLIENT_CACHED_AT.value, '')
         start_check_client_fresh = time.time()
         if self.request_cache.is_client_fresh(entry, client_body_hash=client_body_hash, client_cached_at=client_cached_at):
             start_touch = time.time()
-            logger.info(f'[try_serve_from_cache] check_client_fresh {time.time() - start_check_client_fresh:.2f}s')
+            logger.debug(f'Проверка КЛИЕНТСКОГО кэша на актуальность завершена за: {time.time() - start_check_client_fresh:.2f}s')
 
             self.request_cache.touch_entry(request_key, refresh=False, verified=True)
             start_calc_entry = time.time()
             entry = self.request_cache.get_entry_meta(request_key) or entry
             self._set_cache_headers(request_key=request_key, entry=entry, status=SQLCACHE.CACHE_STATUS.CLIENT_FRESH, data_sent='0')
-            logger.info('[try_serve_from_cache] Данные клиента свежие')
-            logger.info(f'[try_serve_from_cache] touch {time.time() - start_touch:.2f}s')
-            logger.info(f'[try_serve_from_cache] entry calc 2 {time.time() - start_calc_entry:.2f}s')
+            logger.debug('Данные клиента свежие')
             return _NO_PAYLOAD, True
         # raw = self.request_cache.get_entry_payload(request_key)
         payload_entry = self.request_cache.get_entry_payload_record(request_key)
@@ -251,6 +261,10 @@ class HTTPSrv:
         try:
             return CSQ.custom_request_c('', custom_request_c, conn=conn, cur=cur, hat_c=hat_c, list_of_lists_c=list_of_lists_c,
                                         rez_dict=rez_dict, one=one, one_column=one_column)
+        except Exception as e:
+            logger.error('Ошибка SQL', exc_info=e)
+            self.headers[CCS.SrvHeaders.SYNTAX_ERROR.value] = '1'
+            self.headers[CCS.SrvHeaders.EXCEPTION_MESSAGE.value] = quote(str(e))
         finally:
             CSQ.close_bd(conn, cur)
 
@@ -266,7 +280,7 @@ class HTTPSrv:
         table_keys = [record['table_key'] for record in table_records if record.get('table_key')]
         start_compute_after = time.time()
         policy = self.request_cache.compute_policy(table_keys=table_keys)
-        logger.info(f'[store_cache_after_read]compute {time.time() - start_compute_after:.2f} ')
+        logger.debug(f'Формирование фингерпринта завершено за: {time.time() - start_compute_after:.2f} ')
         store_start = time.time()
         entry = self.request_cache.store_entry(
             request_key=request_key,
@@ -287,7 +301,7 @@ class HTTPSrv:
             stale_after_dt=policy.get('stale_after_dt'),
             notes=f'server_cache:{status.lower()}',
         )
-        logger.info(f'[store_cache_after_read]store  {time.time() - store_start:.2f} ')
+        logger.debug(f'Запись снапшота завершена за: {time.time() - store_start:.2f} ')
 
         self._set_cache_headers(request_key=request_key, entry=entry, status=status, data_sent='1')
 
@@ -302,7 +316,7 @@ class HTTPSrv:
 
     def run_invalidation_hook(self, bd, custom_request_c, attach_dbs, client='', module='', result=None):
         if result is False or not CTXADM.is_sql_write(custom_request_c):
-            logger.info('[run_invalidation_hook] is not sql write')
+            logger.debug('SQL не содержит операций [создания / обновления / удаления]')
             return
         try:
             response = self.admin_repo.mark_sql_write_invalidated(
@@ -316,15 +330,24 @@ class HTTPSrv:
             if self.request_cache is not None and affected_tables:
                 self.request_cache.invalidate_by_table_keys(affected_tables, notes=f'invalidated:{client}:{module}')
             if affected_tables:
-                logger.info('[context_admin] invalidated tables=%s sources=%s variants=%s',
+                logger.debug('Профиль инвалидации tables=%s sources=%s variants=%s',
                             response.get('affected_tables'),
                             response.get('affected_sources'),
                             response.get('affected_variants'))
             else:
-                logger.info('[context_admin] not affected_tables')
+                logger.debug('Инвалидация не затронула ни одной таблицы')
         except Exception as e:
             traceback.print_exc()
-            logger.error(f'[context_admin] hook error: {e}')
+            logger.error(f'Ошибка при выполнении инвалидации кэш таблиц', exc_info=e)
+
+    def is_uncacheble_sql(self, query: str) -> bool:
+        uncacheble_prefixes = ('PRAGMA', 'EXPLAIN')
+        uncacheble_content = ('sqlite_master', 'SqlEvents', 'WidgetEvents', 'exchange', 'table_info(')
+        if any(query.strip().startswith(k) for k in uncacheble_prefixes):
+            return True
+        if any(k.lower() in query.lower() for k in uncacheble_content):
+            return True
+        return False
 
     def use_db(self, bd, zapros='', shapka=True, spisok_spiskov=(()), rez_dict=False, one=False, module='', client='',
                one_column=False, hat_c='', custom_request_c='', list_of_lists_c='', attach_dbs: tuple = (), _request: Request | None = None):
@@ -335,17 +358,24 @@ class HTTPSrv:
         if list_of_lists_c == '':
             list_of_lists_c = spisok_spiskov
         request_headers = self.request_headers(_request)
-        logger.info(f'[use_db] HEADERS {request_headers}')
+        logger.debug(f'Заголовки клиента {request_headers}')
         self.client_can_accept_compress = False
         if CCS.SrvHeaders.CAN_ACCEPT_COMPRESS.value in request_headers and request_headers[CCS.SrvHeaders.CAN_ACCEPT_COMPRESS.value] == '1':
             self.client_can_accept_compress = True
-        logger.info('[use_db]  client can accept compress: %s' % self.client_can_accept_compress)
+        logger.debug('Запрашивающий клиент поддерживает компрессию: %s' % self.client_can_accept_compress)
 
-
-        start_cache_bypass = time.time()
         cache_bypass = self.is_cache_bypass(bd=bd, custom_request_c=custom_request_c, attach_dbs=attach_dbs)
-        logger.info(f'[use_db] cache bypass { time.time() - start_cache_bypass:.2f}s')
-        if zapros.strip().startswith('EXPLAIN') or 'SqlEvents' in zapros or 'WidgetEvents' in zapros or 'exchange' in zapros:
+        # return self.execute_sql(
+        #     bd=bd,
+        #     custom_request_c=custom_request_c,
+        #     hat_c=hat_c,
+        #     list_of_lists_c=list_of_lists_c,
+        #     rez_dict=rez_dict,
+        #     one=one,
+        #     one_column=one_column,
+        #     attach_dbs=attach_dbs,
+        # )
+        if self.is_uncacheble_sql(zapros):
             return self.execute_sql(
                 bd=bd,
                 custom_request_c=custom_request_c,
@@ -357,7 +387,7 @@ class HTTPSrv:
                 attach_dbs=attach_dbs,
             )
         if 'DB_srv_test' in bd:
-            logger.info('[use_db] Пропуск кэша для тестовой базы')
+            logger.info('Пропуск кэша для тестовой базы')
             return self.execute_sql(
                 bd=bd,
                 custom_request_c=custom_request_c,
@@ -384,15 +414,14 @@ class HTTPSrv:
                 attach_dbs=attach_dbs,
                 request_headers=request_headers,
             )
-            logger.info(f'[use_db] cache resolve {time.time() - start_cache_resolve:.2f}s')
+            logger.debug(f'Запрос серверного ключа кэша завершен за: {time.time() - start_cache_resolve:.2f}s')
 
             start_server_from_cache = time.time()
             prev_entry, cache_hit = self.try_serve_from_cache(request_key=request_key, request_headers=request_headers)
-            logger.info(f'[use_db] try servr from {time.time() - start_server_from_cache:.2f}s')
+            logger.debug(f'Запрос серверного снапшота кэша завершен за: {time.time() - start_server_from_cache:.2f}s')
 
-            logger.info(f'[cache_hit] {cache_hit}')
             if cache_hit:
-                logger.info('[CACHED]')
+                logger.info('Возврат кэшированной записи')
                 return prev_entry
         else:
             self.headers[CCS.SrvHeaders.CACHE_STATUS.value] = SQLCACHE.CACHE_STATUS.BYPASS
@@ -410,12 +439,12 @@ class HTTPSrv:
                 one_column=one_column,
                 attach_dbs=attach_dbs,
             )
-            logger.info(f'[use_db] sql {time.time() - start_sql:.2f}s')
+            logger.debug(f'Обработка SQL завершена за: {time.time() - start_sql:.2f}s')
 
             start_inv = time.time()
             self.run_invalidation_hook(bd=bd, custom_request_c=custom_request_c, attach_dbs=attach_dbs,
                                        client=client, module=module, result=res)
-            logger.info(f'[use_db] invalidation {time.time() - start_inv:.2f}s')
+            logger.debug(f'Инвалидация кэш записей завершена за: {time.time() - start_inv:.2f}s')
 
             if not cache_bypass and SQLCACHE.is_cacheable_sql(custom_request_c):
                 status = SQLCACHE.CACHE_STATUS.REFRESH if prev_entry else SQLCACHE.CACHE_STATUS.MISS
@@ -433,15 +462,16 @@ class HTTPSrv:
                     payload=res,
                     status=status,
                 )
-                logger.info(f'[use_db] store_cache_after_read {time.time() - start_store_cache_after_read:.2f}s')
+                logger.debug(f'Запись кэш снапшота завершена: {time.time() - start_store_cache_after_read:.2f}s')
 
             return res
         except (sqlite3.OperationalError, sqlite3.IntegrityError, sqlite3.ProgrammingError, sqlite3.DataError) as e:
-            logger.error(f'Ошибка: {e}')
+            logger.error(f'Произошла ошибка при обработке SQL запроса', exc_info=e)
+
             self.headers[CCS.SrvHeaders.SYNTAX_ERROR.value] = '1'
             self.headers[CCS.SrvHeaders.EXCEPTION_MESSAGE.value] = quote(str(e))
         except Exception as e:
-            logger.error(f'Ошибка: {e}')
+            logger.error(f'Произошла ошибка при обработке HTTP запроса', exc_info=e)
             self.headers[CCS.SrvHeaders.SYNTAX_ERROR.value] = '1'
             self.headers[CCS.SrvHeaders.EXCEPTION_MESSAGE.value] = quote(str(e))
 
@@ -475,7 +505,7 @@ class HTTPSrv:
     @route('/')
     def db_request(self, request: Request):
         data = pickle.loads(request.data)
-        self.dispatch_query(data)
+        self.dispatch_query(data, address=request.remote_addr, method=request.method)
         return self.use_db(**data, _request=request)
 
     @route('/cache/invalidate')
@@ -498,8 +528,7 @@ class HTTPSrv:
                 )
 
             notes = str(payload.get('notes') or 'external_tcl_invalidation')
-            logger.info('[external_invalidate] payload=%s', payload)
-            logger.info('[external_invalidate] table_names=%s', table_names)
+            logger.debug('Завершена инвалидация запросов таблиц: table_names=%s', table_names)
 
             ok = False
             if self.request_cache is not None:
@@ -517,7 +546,7 @@ class HTTPSrv:
                 content_type='application/json; charset=utf-8',
             )
         except Exception as e:
-            logger.error('[external_invalidate] error: %s', e)
+            logger.error(f'route=/cache/invalidate Произошла ошибка ', exc_info=e)
             body = {'ok': False, 'error': str(e)}
             return Response(
                 json.dumps(body, ensure_ascii=False),
@@ -530,11 +559,12 @@ def background_task(HOST, PORT):
     import os
     try:
         CPG.get_process_conn(CPG.PostgresConfig())
-        logger.info('[PG] process connection warmed')
-    except Exception as e:
-        logger.error(f'[PG] warm connect error: {e}')
+        logger.info('Подключение POSGRESQL успешно создано')
 
-    logger.info(f"Процесс создан с pid: {os.getpid()}")
+    except Exception as e:
+        logger.error('Ошибка создания соединения POSTGRESQL на серверный процесс', exc_info=e)
+
+    logger.info(f"Серверный процесс {HOST}:{PORT} создан с pid: {os.getpid()}")
     serve(HTTPSrv(), host=HOST, port=PORT, threads=1,
           channel_timeout=660,
           cleanup_interval=30,
@@ -559,7 +589,7 @@ def run(HOST: str, PORT: int | str):
     import multiprocessing
     HOST = "192.168.100.135"
 
-    print('START SERVER')
+    logger.info(f'Старт сервера: HOST: {HOST}')
     table_ports = {
         20002: [5200, 5201, 5202, 5203, 5204, 5205, 5206, 5207, 5208],
         20006: [5600, 5601, 5602, 5603, 5604, 5605, 5606, 5607, 5608],
@@ -587,20 +617,20 @@ def run(HOST: str, PORT: int | str):
                         process.kill()
                         time.sleep(2)
                     except Exception as e:
-                        print(e)
+                        logger.error(f'Ошибка завершения серверного процесса: {HOST}:{PORT}', exc_info=e)
                     try:
                         logger.info("Попытка создаия процесса")
                         process = multiprocessing.Process(target=background_task, args=(host, port))
                         process.start()
                         time.sleep(2)
                     except Exception as e:
-                        logger.error(f"Ошибка создания процесса: {e}")
+                        logger.error(f'Ошибка создания серверного процесса: {HOST}:{PORT}', exc_info=e)
                 cleaned_process.append((process, host, port))
             started_process = cleaned_process
     except KeyboardInterrupt:
         logger.info("Перезапуск...")
     except Exception as e:
-        print(f'Работа сервера завершена: {e}')
+        logger.info(f'Работа сервера завершена')
     finally:
         for process, host, port in started_process:
             process.kill()

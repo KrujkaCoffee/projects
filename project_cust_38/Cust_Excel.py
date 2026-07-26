@@ -1,4 +1,5 @@
 import copy
+import re
 from builtins import range
 from typing import Generator, Iterable, Any
 from datetime import datetime
@@ -205,6 +206,26 @@ def pechat_table(spisok,row,column, orient_g_v = 'v', zag_bold = True, otstup_l=
     wb.close()
     app.quit()
 
+_EXCEL_ILLEGAL_CHARS_RE = re.compile(r'[\x00-\x08\x0B-\x0C\x0E-\x1F]')
+
+
+def clean_text_for_excel(value, *, replacement: str = " "):
+    """ подготовка значения для записи в Excel/openpyxl."""
+    if value is None:
+        return None
+
+    if not isinstance(value, str):
+        return value
+
+    text = value.replace('\r\n', '\n').replace('\r', '\n')
+    text = _EXCEL_ILLEGAL_CHARS_RE.sub(replacement, text)
+
+    text = text.replace('\ufeff', '')      # BOM
+    text = text.replace('\u00A0', ' ')     # неразрывный пробел
+
+    return text
+
+
 @CQTPD
 def save_table_colour(tbl,putf:str,wb_name_wout_exe:str,ws_name:str,row:int=1,column:int=1,hat:list=None,wo_hide_rows_cols=False,print_hat_tbl=True,hook_prog_bar=None):
     wb_name = wb_name_wout_exe + ".xlsx"
@@ -236,7 +257,7 @@ def save_table_colour(tbl,putf:str,wb_name_wout_exe:str,ws_name:str,row:int=1,co
                 font.size = 10
                 font.bold = True
                 val = hat[i][j]
-                sheet.range((row_tmp + i, column_tmp + j)).value = val
+                sheet.range((row_tmp + i, column_tmp + j)).value = clean_text_for_excel(val)
                 sheet.range((row_tmp + i, column_tmp + j)).api.WrapText = True
         row+=len(hat)+2
 
@@ -270,7 +291,7 @@ def save_table_colour(tbl,putf:str,wb_name_wout_exe:str,ws_name:str,row:int=1,co
             size = font.pointSize()
             bold = font.bold()
 
-            sheet.range((row_tmp + i - koef_hide, column_tmp)).value = name_head_row
+            sheet.range((row_tmp + i - koef_hide, column_tmp)).value = clean_text_for_excel(name_head_row)
             sheet.range((row_tmp + i - koef_hide, column_tmp)).api.WrapText = True
             #sheet.Range((row_tmp + i, column_tmp)).color = (r, g, b)
 
@@ -312,7 +333,7 @@ def save_table_colour(tbl,putf:str,wb_name_wout_exe:str,ws_name:str,row:int=1,co
             r, g, b, a = col_obj.color().getRgb()
             size = font.pointSize()
             bold = font.bold()
-            sheet.range((row_tmp,column_tmp+j-koef_hide)).value = name_head_col
+            sheet.range((row_tmp,column_tmp+j-koef_hide)).value = clean_text_for_excel(name_head_col)
             sheet.range((row_tmp,column_tmp+j-koef_hide)).api.WrapText = True
             #sheet.Range((row_tmp + i, column_tmp)).color = (r, g, b)
 
@@ -377,7 +398,7 @@ def save_table_colour(tbl,putf:str,wb_name_wout_exe:str,ws_name:str,row:int=1,co
                             pass
                 else:
                     sheet.range((row_tmp+i-koef_hide, column_tmp + j)).number_format = "@"
-                sheet.range((row_tmp+i-koef_hide, column_tmp + j-koef_hide_c)).value = val
+                sheet.range((row_tmp+i-koef_hide, column_tmp + j-koef_hide_c)).value = clean_text_for_excel(val)
                 sheet.range((row_tmp+i-koef_hide, column_tmp + j-koef_hide_c)).api.WrapText = True
                 if r==g==b==0:
                     pass
@@ -476,7 +497,7 @@ def save_table_colour_openpyxl(tbl, putf: str, wb_name_wout_exe: str, ws_name: s
                     bold=True,
                     name='Arial'
                 )
-                cell.value = val
+                cell.value = clean_text_for_excel(val)
                 cell.alignment = Alignment(wrap_text=True, horizontal='center')
                 # font.size = 10
                 # font.bold = True
@@ -513,7 +534,7 @@ def save_table_colour_openpyxl(tbl, putf: str, wb_name_wout_exe: str, ws_name: s
             size = font.pointSize()
             bold = font.bold()
             cell = sheet.cell(row=row_tmp + i - koef_hide, column=column_tmp)
-            cell.value = name_head_row
+            cell.value = clean_text_for_excel(name_head_row)
             cell.alignment = Alignment(wrap_text=True)
             font_color = f"{r:02X}{g:02X}{b:02X}"
             cell.font = Font(size=size, bold=bold, color=font_color, name='Arial')
@@ -552,7 +573,7 @@ def save_table_colour_openpyxl(tbl, putf: str, wb_name_wout_exe: str, ws_name: s
             row_index = row_tmp
             column_index = column_tmp + j - koef_hide
             cell = sheet.cell(row=row_index, column=column_index)
-            cell.value = name_head_col
+            cell.value = clean_text_for_excel(name_head_col)
             cell.alignment = Alignment(wrap_text=True)
             font_color = f"{r:02X}{g:02X}{b:02X}"
             cell.font = Font(color=font_color, size=size, bold=bold, name='Arial')
@@ -611,7 +632,7 @@ def save_table_colour_openpyxl(tbl, putf: str, wb_name_wout_exe: str, ws_name: s
                             pass
                 else:
                     sheet.cell(row=row_index, column=column_index).number_format = '@'
-                cell.value = val
+                cell.value = clean_text_for_excel(val)
                 cell.font = Font(color=font_color, size=size, bold=bold, name='Arial')
                 cell.alignment = Alignment(wrap_text=True)
                 if r == g == b == 0:

@@ -4,9 +4,13 @@ import ipaddress
 import subprocess
 import socket
 import copy
+import sys
+from datetime import datetime, timedelta #28.10.25
+
 
 if socket.gethostname() == 'SRV-MES':#"POW-ING22":
-    logging.basicConfig(filename=r'C:\srv_mes\srv_mes\db_logs\Reiting.log', level=logging.INFO, force=True, encoding='utf-8')
+    now = datetime.now().strftime('%Y-%m')
+    logging.basicConfig(filename=rf'C:\srv_mes\srv_mes\db_logs\Reiting_{now}.log', level=logging.INFO, force=True, encoding='utf-8')
     _orig_print = builtins.print
 
     def logging_print(*args, **kwargs):
@@ -20,7 +24,6 @@ if socket.gethostname() == 'SRV-MES':#"POW-ING22":
 
 import typing
 import pprint
-from datetime import datetime, timedelta #28.10.25
 from dateutil.relativedelta import relativedelta
 from collections import defaultdict
 
@@ -57,8 +60,48 @@ import user_calendar
 # dict_prices['a7aeaba7-6da4-11ea-8432-00d861c603dc']
 # tmp_list = [_ for _ in prices if _['Номенклатура_Key'] == 'a7aeaba7-6da4-11ea-8432-00d861c603dc']
 
+import logging
+import traceback
+from datetime import datetime, timezone
 
+import requests
 
+logger = logging.getLogger("Reiting")
+logger.setLevel(logging.INFO)
+
+console_handler = logging.StreamHandler()
+
+class ErrorRequestHandler(logging.Handler):
+    def __init__(self):
+        super().__init__(level=logging.ERROR)
+        self.sender = CB24.B24Sender()
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            trace = None
+
+            if record.exc_info:
+                trace = "".join(traceback.format_exception(*record.exc_info))
+            elif record.stack_info:
+                trace = record.stack_info
+            msg = f"""
+{record.getMessage()}
+[B]Модуль[/B]:             {record.module}
+[B]Ошибка в строке[/B]:    {record.lineno}
+[B]Трэйс[/B]:              
+{trace}
+            """
+            self.sender.send_msg_by_chat_id(
+                'chat77068',
+                msg
+            )
+
+        except Exception:
+            self.handleError(record)
+
+error_request_handler = ErrorRequestHandler()
+logger.addHandler(console_handler)
+logger.addHandler(error_request_handler)
 
 def load_ip_hostnames() -> list[dict]:
 
@@ -161,6 +204,138 @@ class DbCacheCleaner:
             print("=" * 40 + "\n")
 
 # -- 28.10.25
+
+## ++ 24.06.2026
+
+def fill_worker_history(full_update: bool = False):
+    where = ''
+    if not full_update:
+        period_date_format = '%Y-%m-%dT%H:%M:%S'
+        last_period = CSQ.custom_request_c(
+            db_users,
+            "SELECT Период FROM КадроваяИстория ORDER BY strftime('%Y-%m-%d %H:%M:%S', replace(Период, 'T', ' ')) DESC LIMIT 1",
+            one_column=True,
+            one=True,
+            hat_c=False
+        )# 2022-09-17T00:00:05
+        if not F.is_date(last_period, period_date_format):
+            logger.warning('Не корректная дата')
+            return
+        dt = F.strtodate(last_period, period_date_format)
+        str_date_1c = f"ДАТАВРЕМЯ({dt.strftime('%Y, %m, %d, %H, %M, %S')})"
+        where = f"ГДЕ КадроваяИсторияСотрудников.Период >= {str_date_1c}"
+    query = f"""
+    ВЫБРАТЬ
+        КадроваяИсторияСотрудников.Период КАК Период,
+        УНИКАЛЬНЫЙИДЕНТИФИКАТОР(КадроваяИсторияСотрудников.Сотрудник) КАК Сотрудник_Key,
+        УНИКАЛЬНЫЙИДЕНТИФИКАТОР(КадроваяИсторияСотрудников.ГоловнаяОрганизация) КАК ГоловнаяОрганизация,
+        УНИКАЛЬНЫЙИДЕНТИФИКАТОР(КадроваяИсторияСотрудников.ФизическоеЛицо) КАК ФизическоеЛицо_Key,
+        УНИКАЛЬНЫЙИДЕНТИФИКАТОР(КадроваяИсторияСотрудников.Организация) КАК Организация_Key,
+        УНИКАЛЬНЫЙИДЕНТИФИКАТОР(КадроваяИсторияСотрудников.Подразделение) КАК Подразделение_Key,
+        УНИКАЛЬНЫЙИДЕНТИФИКАТОР(КадроваяИсторияСотрудников.Должность) КАК Должность_Key,
+        КадроваяИсторияСотрудников.ВидСобытия КАК Событие,
+        КадроваяИсторияСотрудников.ГоловнойСотрудник КАК ГоловнойСотрудник
+    ИЗ
+        РегистрСведений.КадроваяИсторияСотрудников КАК КадроваяИсторияСотрудников
+    {where}
+    """
+
+    code, result_1c = APIERP.get_wet_request(
+        text=query,
+    )
+
+    fields_for_fill = (
+        'ФизическоеЛицо_Key',
+        'Должность_Key',
+        'Подразделение_Key',
+        'Организация_Key',
+        'Сотрудник_Key',
+        'Событие',
+        'Период'
+    )
+    keys = ','.join(fields_for_fill)
+    quests = ','.join('?' for _ in fields_for_fill)
+    if code != 200 or not result_1c:
+        logger.warning('Некорректный ответ 1С')
+        return
+
+    body = [[item[key] for key in fields_for_fill] for item in result_1c['data']]
+
+    is_done = CSQ.custom_request_c(
+        db_users,
+        f'INSERT INTO КадроваяИстория({keys}) VALUES({quests}) ON CONFLICT({keys}) DO NOTHING',
+        list_of_lists_c=body
+    )
+    logger.info(f'Найдена {len(body)} новых записей. Статус insert: {is_done}')
+
+def fill_professions():
+    current_date = F.now('ДАТАВРЕМЯ(%Y, %m, %d)') #06.07.2026
+    query = f"""
+ВЫБРАТЬ РАЗЛИЧНЫЕ
+    ШтатноеРасписание.Владелец КАК Организация,
+    УНИКАЛЬНЫЙИДЕНТИФИКАТОР(
+        Должности.Ссылка
+    ) КАК Ref_Key,
+    Должности.Наименование КАК Наименование,
+    Должности.НаименованиеКраткое КАК НаименованиеКраткое,
+    ШтатноеРасписание.Подразделение КАК Подразделение,
+    УНИКАЛЬНЫЙИДЕНТИФИКАТОР(
+        ШтатноеРасписание.Подразделение
+    ) КАК Подразделение_Key,
+    УНИКАЛЬНЫЙИДЕНТИФИКАТОР(
+        ШтатноеРасписание.Владелец
+    ) КАК Организация_Key
+ИЗ
+    Справочник.ШтатноеРасписание КАК ШтатноеРасписание
+        ВНУТРЕННЕЕ СОЕДИНЕНИЕ Справочник.Должности КАК Должности
+        ПО ШтатноеРасписание.Должность = Должности.Ссылка
+ГДЕ
+    ШтатноеРасписание.Утверждена = ИСТИНА
+	    И ШтатноеРасписание.ДатаУтверждения <= {current_date}
+    И ШтатноеРасписание.ПометкаУдаления = ЛОЖЬ
+    И Должности.ПометкаУдаления = ЛОЖЬ
+    И ШтатноеРасписание.Владелец
+        <> ЗНАЧЕНИЕ(Справочник.Организации.ПустаяСсылка)
+    И ШтатноеРасписание.Подразделение.ПометкаУдаления = ЛОЖЬ
+    И ШтатноеРасписание.ГруппаПозицийПодразделения = ЛОЖЬ
+    И ШтатноеРасписание.КоличествоСтавок > 0
+СГРУППИРОВАТЬ ПО 
+	ШтатноеРасписание.Владелец,
+	Должности.Ссылка,
+	Должности.Наименование,
+	Должности.НаименованиеКраткое,
+	ШтатноеРасписание.Подразделение
+    """
+    organization_keys = CSQ.custom_request_c(db_naryad, "SELECT Организация_Key FROM places", one_column=True, hat_c=False)
+    unique_keys = ('Ref_Key', 'Организация_Key', 'Подразделение_Key')
+    update_keys = ('НаименованиеКраткое', 'Наименование')
+    fields_for_fill = (*unique_keys, *update_keys)
+    code, result_1c = APIERP.get_wet_request(
+        text=query,
+    )
+    if code != 200 or not result_1c or not result_1c['data']:
+        return
+    keys = ','.join(fields_for_fill)
+    unique_keys_str = ','.join(unique_keys)
+    excluded = ','.join(f'{k} = excluded.{k}' for k in update_keys)
+    quests = ','.join('?' for _ in fields_for_fill)
+
+    body = [[item[key] for key in fields_for_fill]
+            for item in result_1c['data'] if item['Организация_Key'] in organization_keys]
+
+    query = f"""
+        INSERT INTO Должности({keys}) VALUES({quests}) 
+        ON CONFLICT({unique_keys_str})
+        DO UPDATE SET {excluded}
+    """
+    is_done = CSQ.custom_request_c(
+        db_users,
+        query,
+        list_of_lists_c=body
+    )
+    logger.info(f'Обновление таблицы "Должности" статус: {is_done}')
+
+## -- 24.06.2026
 
 
 # ++ 02.02.26
@@ -747,10 +922,15 @@ def upload_two_years_docs_releases(month=False):
     m = ERP.OrdersComposit()
     name_tmp_file_releases = CMS.tmp_dir() + F.sep() + 'tmp_file_dict_docs_vip.pickle'
     name_tmp_file_dict_nomens = CMS.tmp_dir() + F.sep() + 'name_tmp_file_dict_nomens.pickle'
-    if F.existence_file_c(name_tmp_file_releases):
+
+    tmp_is_empty = False
+    try:
         dict_docs_vip = F.load_file_pickle(name_tmp_file_releases)
         dict_nomens = F.load_file_pickle(name_tmp_file_dict_nomens)
-    else:
+    except:
+        tmp_is_empty = True
+
+    if tmp_is_empty:
         list_vids_names = m.get_response(doc_name='Catalog_ВидыНоменклатуры',
                                          wet_filtr=f"?$filter=Parent_Key eq guid'f193e0db-9ed7-11e7-80c5-4ccc6a67082d'&$select= "
                                                    f" Description, Ref_Key")
@@ -772,7 +952,7 @@ def upload_two_years_docs_releases(month=False):
         ref_key_skl = m.get_response(doc_name='Catalog_Склады',
                                      wet_filtr=f"?$filter=DeletionMark eq false and Description eq "
                                                f" 'Склад готовой продукции Пауэрз'&$select= Ref_Key")[0]['Ref_Key']
-        this_year = F.now("%Y")
+        this_year = F.now("%Y") # todo
         if month == False:
 
             begin_year = F.start_end_dates_c(F.date_add_days(F.now(), -365), format_out="%Y-%m-%d 00:00:01")[0]
@@ -896,8 +1076,11 @@ def calc_fact_naruads_for_kpl():
     list_places =  CSQ.custom_request_c(USRCNF.Config.project.db_naryad, f'''SELECT poki  
              FROM places WHERE autoload_fact_kpl_onoff = 1'''
                                              , one_column=True,hat_c=False)
+
+    DICT_DATA_DOLGN_ETAP = CMS.prepare_dolg_etap_for_calc_pozition_fact_kpl()
     for poki in list_places:
 
+        DICT_NAPRAVLENIE_poki = F.deploy_dict_c(CMS.calc_dict_napravlenie(poki=poki), 'Пномер')
         DICT_VID_RABOT = CMS.calc_dict_vid_rabot(poki)
         NAPR_DEYAT = CMS.calc_napr_deyat(poki)
         DICT_NAPR_DEYAT = F.deploy_dict_c(NAPR_DEYAT, 'Пномер')
@@ -909,25 +1092,48 @@ def calc_fact_naruads_for_kpl():
          FROM plan INNER JOIN
         status_poz ON status_poz.Пномер = plan.Статус 
         WHERE plan.poki == {poki} and plan.МК > 0  AND status_poz.Имя IN (
-        "Изготовление");""",one_column=True,hat_c=False)
+        "Изготовление","К производству");""",one_column=True,hat_c=False)
+        start = F.now('')
 
+        DICT_DATA_FOR_JURNAL = CMS.prepare_data_for_jurnal_for_calc_pozition_fact_kpl(list_poz)
+        POZ_DICT_MK_DATA = CMS.prepare_pozs_for_calc_pozition_fact_kpl(list_poz)
+        POZ_DICT_LIST_NARS = CMS.prepare_list_nars_for_calc_pozition_fact_kpl(list_poz)
+        DICT_DAY_PLAN_ETAP_JURNAL = CMS.prepare_day_plan_etap_jurnal_for_calc_pozition_fact_kpl(list_poz)
+        pr = USRCNF.Config.project
+        pozs = CMS.Pozitions(list_poz, pr.db_kplan, pr.db_naryad, pr.db_resxml, pr.db_users, None,
+                             list_names_preload_tbls=['пл_топ'])
+        DICT_OPERS = CMS.calc_dicts_opers(poki)
+        FIELDS_DB_INFO = CMS.Fields_db_info(poki=poki)
+        cnter = 1
+        cnt = len(list_poz)
         for kpl in list_poz :
             result = CMS.calc_pozition_fact_kpl(None, kpl,
                                    DICT_GROUP_PODR_VID_RAB_FOR_PLAN,
                                    DICT_VID_RABOT,
                                    DICT_NAPR_DEYAT,
                                    DICT_VID_PO_NAPR,
-                                   DICT_NAPRAVLENIE,
+                                   DICT_NAPRAVLENIE_poki,
                                    DICT_NAPR_DEYAT_NAME,
                                    DICT_DOLGN_ETAP,
                                    DICT_EMPLOEE_FULL_WITH_DEL,
                                    DICT_OP_NAME,
                                    DICT_CLD,
                                    DICT_PODR,
-                                   repaint_graf=False)
+                                    FIELDS_DB_INFO,
+                                                dict_data_for_jurnal=DICT_DATA_FOR_JURNAL, pozs=pozs,
+                                                DICT_OPERS=DICT_OPERS,
+                                                POZ_DICT_MK_DATA=POZ_DICT_MK_DATA,
+                                                POZ_DICT_LIST_NARS=POZ_DICT_LIST_NARS,
+                                                DICT_DAY_PLAN_ETAP_JURNAL=DICT_DAY_PLAN_ETAP_JURNAL,
+                                                DICT_DATA_DOLGN_ETAP=DICT_DATA_DOLGN_ETAP
+                                   )
             if result is None:
                 print(f'kpl {kpl} err CMS.calc_pozition_fact_kpl')
+            else:
+                print(f'{kpl} recalcied fact_kpl (poki={poki}) success {cnter}/{cnt}')
+                cnter += 1
             F.sleep(0.2)
+        F.microseconds_passed(start, len(list_poz))
     print(f'=======  END calc_fact_naruads_for_kpl    =======')
 # ========================calc обновление статусов КПЛ ТЧ=================
 def check_and_calc_plan_kpl():
@@ -1142,7 +1348,7 @@ def check_and_calc_plan_kpl():
     for item in list_proj:
         resp = m.get_response(doc_name='Document_ЗаказНаПроизводство2_2',
                               wet_filtr=f"?$filter= Ref_Key eq guid'{item['Ref_Key_py']}'&$select=Статус, Date, ДатаПотребности, Комментарий")
-        if len(resp) == 0:
+        if len(resp) == 0: # todo
             print(f"Ошибка загрузки Document_ЗаказНаПроизводство2_2  по Ref_Key eq guid'{item['Ref_Key_py']}")
             continue
         if 'Статус' in resp[0]:
@@ -1194,21 +1400,48 @@ def check_and_calc_plan_kpl():
             # CMS.send_info_mk_b24(None,
             #                     msg1 + f"Комментарий\n    было {item['Комментарий']}\n    стало {resp[0]['Комментарий']}" + msg2,
             #                     id_chat)
-        if date_otgr != item['Дата_отгрузки_ПУ']:
-            CSQ.custom_request_c(db_kplan,
-                                 f"""UPDATE знпр SET (Дата_отгрузки_ПУ) = ("{date_otgr}") WHERE s_num = {item['s_num']};""")
-            CSQ.custom_request_c(db_kplan,
-                                 f"""UPDATE пл_оуп SET (Дата_отгрузки_ПУ) = ("{date_otgr}") WHERE Пномер_ЗП = {item['s_num']};""")
-            CMS.send_info_mk_b24(None,
-                                 msg1 + f"Дата_отгрузки_ПУ\n    было {item['Дата_отгрузки_ПУ']}\n    стало {date_otgr}" + msg2,
-                                 id_chat)
+        # if date_otgr != item['Дата_отгрузки_ПУ']:
+        #     CSQ.custom_request_c(db_kplan,
+        #                          f"""UPDATE знпр SET (Дата_отгрузки_ПУ) = ("{date_otgr}") WHERE s_num = {item['s_num']};""")
+        #     CSQ.custom_request_c(db_kplan,
+        #                          f"""UPDATE пл_оуп SET (Дата_отгрузки_ПУ) = ("{date_otgr}") WHERE Пномер_ЗП = {item['s_num']};""")
+        #     CMS.send_info_mk_b24(None,
+        #                          msg1 + f"Дата_отгрузки_ПУ\n    было {item['Дата_отгрузки_ПУ']}\n    стало {date_otgr}" + msg2,
+        #                          id_chat)
     # ===================================================================================
 
     # ==================================CHECK_ETAPS_ERP==============================
-    list_proj = CSQ.custom_request_c(db_kplan, f"""SELECT s_num, Статус_поз_ЕРП, 
-      №ERP, Дата_заявки_на_произв, Ref_Key_py 
-                    FROM знпр 
-               WHERE s_num > 0 and Статус_поз_ЕРП != '' and Этапы_ЕРП = {1}  and  №ERP != "-";""", rez_dict=True)  #
+    retry_statuses = ', '.join(
+        str(status.value)
+        for status in CMS.ErpStagesLoadResult.AUTO_RETRY_STATUSES
+    )
+    list_proj = CSQ.custom_request_c( # 24.06.2026
+        db_kplan,
+        f"""
+        SELECT 
+            знпр.s_num,
+            знпр.Статус_поз_ЕРП,
+            знпр.№ERP,
+            знпр.Дата_заявки_на_произв,
+            знпр.Ref_Key_py,
+            знпр.Этапы_ЕРП,
+            пл_оуп.НомПл
+        FROM знпр
+        INNER JOIN пл_оуп ON знпр.s_num = пл_оуп.Пномер_ЗП
+        WHERE знпр.s_num > 0
+          AND знпр.Статус_поз_ЕРП != ''
+          AND знпр.№ERP != '-'
+          AND знпр.Этапы_ЕРП IN ({retry_statuses});
+        """,
+        rez_dict=True
+    )
+    # list_proj = CSQ.custom_request_c(db_kplan, f"""SELECT знпр.s_num, знпр.Статус_поз_ЕРП,
+    #   знпр.№ERP, знпр.Дата_заявки_на_произв, знпр.Ref_Key_py , пл_оуп.НомПл
+    #                 FROM знпр
+    #                 inner join пл_оуп ON знпр.s_num = пл_оуп.Пномер_ЗП
+    #            WHERE знпр.s_num > 0 and знпр.Статус_поз_ЕРП != '' and (знпр.Этапы_ЕРП = {1} OR data_etaps_from_erp IN (?, ?))  and  знпр.№ERP != "-";""",
+    #                                  rez_dict=True,
+    #                                  list_of_lists_c=[[F.to_binary_pickle({}), F.to_binary_pickle(None)]])
 
     #conn_b24 = CMS.Msg_b24.make_conn()
     m = ERP.OrdersComposit()
@@ -1594,6 +1827,21 @@ def update_napravl_deyat():
                             ГДЕ
                                 НаправленияДеятельности.Наименование = "Направления деятельности Келаст")
                 ;
+                 ////////////////////////////////////////////////////////////////////////////////
+                ВЫБРАТЬ
+                    НаправленияДеятельности.Ссылка КАК Ссылка
+                ПОМЕСТИТЬ ВременнаяТаблица_Т
+                ИЗ
+                    Справочник.НаправленияДеятельности КАК НаправленияДеятельности
+                ГДЕ
+                    НаправленияДеятельности.Ссылка В ИЕРАРХИИ
+                            (ВЫБРАТЬ
+                                НаправленияДеятельности.Ссылка КАК Ссылка
+                            ИЗ
+                                Справочник.НаправленияДеятельности КАК НаправленияДеятельности
+                            ГДЕ
+                                НаправленияДеятельности.Наименование = "Направления деятельности ТатКуз")
+                ;
                 
                 ////////////////////////////////////////////////////////////////////////////////
                 ВЫБРАТЬ
@@ -1612,6 +1860,15 @@ def update_napravl_deyat():
                     1
                 ИЗ
                     ВременнаяТаблица_К КАК ВременнаяТаблица_К
+                
+                ОБЪЕДИНИТЬ ВСЕ
+                
+                ВЫБРАТЬ
+                    ВременнаяТаблица_Т.Ссылка,
+                    7,
+                    3
+                ИЗ
+                    ВременнаяТаблица_Т КАК ВременнаяТаблица_Т
                 ;
                 
                 ////////////////////////////////////////////////////////////////////////////////
@@ -1708,7 +1965,103 @@ def update_napravl_deyat():
                 print(f'Изменен:{data_edit}')
 
     except Exception as e:
-        print(f"[update_napravl_deyat] Ошибка: {e}")
+        logger.error('Ошибка при попытке обновить db_kplan.napravl_deyat', exc_info=e)
+
+    print()
+    print('=' * 26)
+
+
+def update_organization_structure():
+    print('=' * 26)
+    print()
+    print('Обновление СтруктураПредприятия из 1С')
+
+    def get_data_from_erp(ref_org:str)->dict[dict]|None:
+        text = f"""
+            ВЫБРАТЬ
+                ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(СтруктураПредприятия.Ссылка)) КАК Ref,
+                СтруктураПредприятия.ПометкаУдаления КАК for_deletion,
+                ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(СтруктураПредприятия.Родитель)) КАК РодительRef,
+                СтруктураПредприятия.Код КАК Код,
+                СтруктураПредприятия.Наименование КАК Наименование
+            ИЗ
+                Справочник.СтруктураПредприятия КАК СтруктураПредприятия
+            ГДЕ
+                СтруктураПредприятия.Ссылка В ИЕРАРХИИ (&Ссылка) И СтруктураПредприятия.ПометкаУдаления = ЛОЖЬ
+                """
+        refs = APIERP.Refs_wet(text)
+        ref_obj = APIERP.Ref_wet('Ссылка', 'Справочники.СтруктураПредприятия', ref_org)
+        refs.add_ref(ref_obj)
+        key, data_rez = APIERP.get_wet_request(text=text, refs=refs)
+        if key != 200:
+            print(f' Ошибка получения данных update_organization_structure код ({key}) из ERP')
+            return None
+
+        return F.deploy_dict_c(data_rez['data'],'Ref')
+    def get_data_from_mes(poki:int)->dict[dict]:
+        data_podrs = CSQ.custom_request_c(USRCNF.Config.project.db_users, f'''SELECT * 
+                     FROM СтруктураПредприятия WHERE poki = {poki};''', rez_dict=True)
+        return F.deploy_dict_c(data_podrs,'Ref')
+
+    try:
+        data_organizations = CSQ.custom_request_c(USRCNF.Config.project.db_naryad, f'''SELECT poki, СтруктураПредприятия_Key 
+                 FROM places''' , rez_dict=True)
+
+        for org_data in data_organizations:
+            poki = org_data['poki']
+            data_podrs_mes = get_data_from_mes(poki)
+            if data_podrs_mes is None or data_podrs_mes == False:
+                continue
+            data_podrs_1C = get_data_from_erp(org_data['СтруктураПредприятия_Key'])
+            if data_podrs_1C is None:
+                continue
+
+            set_ref_1c = set(data_podrs_1C.keys())
+            set_ref_mes = set(data_podrs_mes.keys())
+            set_delete = set_ref_mes - set_ref_1c
+            set_add = set_ref_1c - set_ref_mes
+            dict_edit = dict()
+            #===========DELETE==============================
+            for ref in set_delete:
+                if ref not in dict_edit:
+                    dict_edit[ref] = dict()
+                dict_edit[ref]['for_deletion'] = 1
+                print(f'ref {ref}  set deleted')
+            # ===========EDIT=============================
+            for ref, item_mes in data_podrs_mes.items():
+                item_1c = data_podrs_1C[ref]
+                SET_COMPARE = {"Наименование","Код","РодительRef"}
+
+                for name_field in SET_COMPARE:
+                    if item_1c[name_field] != item_mes[name_field]:
+                        dict_edit[ref][name_field] = item_1c[name_field]
+                        print(f'ref {ref} set {name_field} = "{item_1c[name_field]}"')
+                if item_mes['for_deletion']:
+                    dict_edit[ref]['for_deletion'] = 0
+
+            for ref, data_edit in dict_edit.items():
+                list_fields = list(data_edit.keys())
+                list_vals = list(data_edit.values())
+                CSQ.custom_request_c(USRCNF.Config.project.db_users, f'''UPDATE СтруктураПредприятия
+                                SET  ({','.join(list_fields)})
+                                    = ({CSQ.questions_for_mask(list_fields)})
+                                            WHERE Ref == "{ref}" ;''',list_of_lists_c=[list_vals])
+            # ===========ADD=============================
+            if set_add:
+                list_add = []
+                for ref in set_add:
+                    name = data_podrs_1C[ref]['Наименование']
+                    code = data_podrs_1C[ref]['Код']
+                    parent_ref = data_podrs_1C[ref]['РодительRef']
+                    Ref = ref
+                    list_add.append([Ref,name,code,parent_ref,poki])
+                    print(f'ref {Ref}, "{name}", poki {poki} added')
+                CSQ.custom_request_c(USRCNF.Config.project.db_users, f'''INSERT INTO 
+                СтруктураПредприятия(Ref, Наименование, Код, РодительRef, poki) 
+                                      VALUES ({CSQ.questions_for_mask(list_add[0])});''', list_of_lists_c=list_add)
+                pass
+    except Exception as e:
+        logger.error('Ошибка при попытке обновить db_users.СтруктураПредприятия', exc_info=e)
 
     print()
     print('=' * 26)
@@ -1800,43 +2153,46 @@ def update_podrazdeleniya():
                                       VALUES (?, ?, ?);''', list_of_lists_c=list_add)
 
     except Exception as e:
-            print(f"[update_podrazdeleniya] Ошибка: {e}")
+        logging.error('Ошибка обновления подразделений db_users.Подразделения', exc_info=e)
 
-    print()
-    print('=' * 26)
+    logger.info('\n' + ('=' * 26))
 
 
 #---23.09.25
+try:
+    db_users = F.bdcfg('BD_users')
+    db_naryad = F.bdcfg('Naryad')
+    db_act = F.bdcfg('BDact')
+    BD_dse = F.scfg('BD_dse')
+    db_mater = F.bdcfg('nomenklatura_erp')
+    spis_empolee = F.load_file(F.tcfg('employee'))
+    db_kplan = F.bdcfg('DB_kplan')
+    db_resxml = F.bdcfg('db_resxml')
+    # DICT_EMPLOEE = CMS.dict_emploee(db_users)
+    DICT_EMPLOEE = CMS.dict_emploee_full(db_users)
+    custom_request_c = f'''SELECT * FROM professions INNER JOIN vid_rab_po_dolg 
+    ON vid_rab_po_dolg.Вид_работ = professions.вид_работ,
+     group_vid_rab_for_plan ON group_vid_rab_for_plan.name=vid_rab_po_dolg.group_for_plan WHERE Вкл = 1 and group_vid_rab_for_plan.composite = 0'''
+    SPIS_prof = CSQ.custom_request_c(db_users, custom_request_c, hat_c=False, rez_dict=True)
+    LIST_PROFESSIONS = SPIS_prof
+    DICT_PROFESSIONS = F.deploy_dict_c(SPIS_prof, 'код')
+    DICT_VID_RABOT = F.deploy_dict_c(SPIS_prof, 'вид_работ')
+    DICT_PRICE_BRAK = CMS.DICT_PRICE_BRAK(db_naryad)
 
-db_users = F.bdcfg('BD_users')
-db_naryad = F.bdcfg('Naryad')
-db_act = F.bdcfg('BDact')
-BD_dse = F.scfg('BD_dse')
-db_mater = F.bdcfg('nomenklatura_erp')
-spis_empolee = F.load_file(F.tcfg('employee'))
-db_kplan = F.bdcfg('DB_kplan')
-db_resxml = F.bdcfg('db_resxml')
-# DICT_EMPLOEE = CMS.dict_emploee(db_users)
-DICT_EMPLOEE = CMS.dict_emploee_full(db_users)
-custom_request_c = f'''SELECT * FROM professions INNER JOIN vid_rab_po_dolg 
-ON vid_rab_po_dolg.Вид_работ = professions.вид_работ,
- group_vid_rab_for_plan ON group_vid_rab_for_plan.name=vid_rab_po_dolg.group_for_plan WHERE Вкл = 1 and group_vid_rab_for_plan.composite = 0'''
-SPIS_prof = CSQ.custom_request_c(db_users, custom_request_c, hat_c=False, rez_dict=True)
-LIST_PROFESSIONS = SPIS_prof
-DICT_PROFESSIONS = F.deploy_dict_c(SPIS_prof, 'код')
-DICT_VID_RABOT = F.deploy_dict_c(SPIS_prof, 'вид_работ')
-DICT_PRICE_BRAK = CMS.DICT_PRICE_BRAK(db_naryad)
-
-DICT_GROUP_PODR_VID_RAB_FOR_PLAN = CMS.calc_dict_group_podr_vid_rab_for_plan()
-VID_PO_NAPR = CMS.TypesWorkingByDirections().get_old_view_response()  # DB_kplan.виды_по_направлению 18.07.25
-DICT_VID_PO_NAPR = F.deploy_dict_c(VID_PO_NAPR, 'Пномер')
-DICT_EMPLOEE_FULL_WITH_DEL = CMS.dict_emploee_full_with_del(USRCNF.Config.project.db_users)
-LIST_NAPRAVLENIE = CMS.calc_dict_napravlenie()
-DICT_NAPRAVLENIE = F.deploy_dict_c(LIST_NAPRAVLENIE, 'Пномер')
-DICT_DOLGN_ETAP = F.deploy_dict_c(CSQ.custom_request_c(USRCNF.Config.project.db_naryad, f"""
-    SELECT * FROM dolgn_etap""", rez_dict=True), "Должность")
-DICT_CLD = CMS.DICT_CLD_KPLAN(USRCNF.Config.project.db_kplan)
-DICT_PODR = F.deploy_dict_c(CMS.calc_dict_podr(), 'Имя')
+    DICT_GROUP_PODR_VID_RAB_FOR_PLAN = CMS.calc_dict_group_podr_vid_rab_for_plan()
+    VID_PO_NAPR = CMS.TypesWorkingByDirections().get_old_view_response()  # DB_kplan.виды_по_направлению 18.07.25
+    DICT_VID_PO_NAPR = F.deploy_dict_c(VID_PO_NAPR, 'Пномер')
+    DICT_EMPLOEE_FULL_WITH_DEL = CMS.dict_emploee_full_with_del(USRCNF.Config.project.db_users)
+    LIST_NAPRAVLENIE = CMS.calc_dict_napravlenie()
+    DICT_NAPRAVLENIE = F.deploy_dict_c(LIST_NAPRAVLENIE, 'Пномер')
+    DICT_DOLGN_ETAP = F.deploy_dict_c(CSQ.custom_request_c(USRCNF.Config.project.db_naryad, f"""
+        SELECT * FROM dolgn_etap""", rez_dict=True), "Должность")
+    DICT_CLD = CMS.DICT_CLD_KPLAN(USRCNF.Config.project.db_kplan)
+    DICT_PODR = F.deploy_dict_c(CMS.calc_dict_podr(), 'Имя')
+except Exception as e:
+    logger.error('Ошибка запроса справочников', exc_info=e)
+    time.sleep(160)
+    sys.exit(1)
 
 
 
@@ -1866,6 +2222,7 @@ vrem = 600
 #quit()
 #nomen_erp.obn_mat_erp_file(db_mater)
 #check_and_calc_plan_kpl()
+#calc_fact_naruads_for_kpl()
 #quit()
 
 while True:
@@ -1879,6 +2236,16 @@ while True:
         counter_timer_middle = 0
 
         try:
+            fill_worker_history()
+        except Exception as e:
+            logger.error('Ошибка обновления таблицы db_users.КадроваяИстория', exc_info=e)
+
+        try:
+            fill_professions()
+        except Exception as e:
+            logger.error('Ошибка обновления таблицы db_users.Должности', exc_info=e)
+
+        try:
             print()  #25.01.2026
             print('===' * 30)
             print('Создание перерывов старт')
@@ -1887,37 +2254,27 @@ while True:
             print('===' * 30)
             print('Создание перерывов финиш')
         except Exception as e:
-            print(e)
+            logger.error('Создание перерывов ошибка', exc_info=e)
         ## обновление update_napravl_deyat
         try:
             if CALC_SINCHRONS:
                 update_napravl_deyat()
-        except:
-            print(f'Не удачная попытка обновление update_napravl_deyat')
+        except Exception as e:
+            logger.error('Ошибка при попытке обновить db_kplan.napravl_deyat', exc_info=e)
 
         ## обновление dolgn_etap
         try:
             if CALC_SINCHRONS:
                 update_dolgn_etap()
-        except:
-            print(f'Не удачная попытка обновление dolgn_etap')
+        except Exception as e:
+            logger.error(f'Ошибка при обновлении db_naryad.dolgn_etap', exc_info=e)
+
         ## обновление видов работ
         try:
             if CALC_SINCHRONS:
                 update_vid_rab_from_1c()
         except:
             print(f'Не удачная попытка обновление видов работ')
-
-        ## обновление сотрудников
-        try:
-            if CALC_SINCHRONS:
-                update_podrazdeleniya()
-                update_employee_registr_states_from_1c()
-                update_emploee_to_db_from_1c(True)
-            if CALC_user_calendar:
-                user_calendar.main()
-        except:
-            print(f'Не удачная попытка обновления сотрудников')
 
         # обновление месячного отчета
         try:
@@ -1935,16 +2292,27 @@ while True:
             """Чистка кэша БД"""
             DbCacheCleaner.clean()
         except Exception as e:
-            print(f"Ошибка чистки кэша БД : {e}")
+            logger.error(f'Ошибка чистки временных таблиц', exc_info=e)
 
     if counter_timer_2h >= count_reset_2h:
         counter_timer_2h = 0
+        ## обновление сотрудников
+        try:
+            if CALC_SINCHRONS:
+                update_organization_structure()
+                update_podrazdeleniya()
+                update_employee_registr_states_from_1c()
+                update_emploee_to_db_from_1c(True)
+            if CALC_user_calendar:
+                user_calendar.main()
+        except Exception as e:
+            logger.error(f'Неудачная попытка обновления сотрудников', exc_info=e)
+
         try:
             print('\n')
             calc_fact_naruads_for_kpl()
-        except:
-            print(f'Не удачная попытка обновления Факт нарядов для плана')
-
+        except Exception as e:
+            logger.error(f'Неудачная попытка обновления Факт нарядов для плана', exc_info=e)
 
 
     if counter_timer >= count_reset:
@@ -1956,9 +2324,8 @@ while True:
             if CALC_SINCHRONS:
                 print('\n')
                 check_and_calc_plan_kpl()
-            pass
-        except:
-            print(f'Не удачная попытка обновления статусов КПЛ ТЧ')
+        except Exception as e:
+            logger.error('Неудачная попытка обновления статусов КПЛ ТЧ', exc_info=e)
 
         # # обновление материалов 23.09.25
         # try:
@@ -1974,8 +2341,8 @@ while True:
             if CALC_SINCHRONS:
                 upload_two_years_docs_releases(True)
             pass
-        except:
-            print(f'Не удачная попытка обновления выпусков')
+        except Exception as e:
+            logger.error(f'Неудачная попытка обновления выпусков', exc_info=e)
 
     try:
         print(f'#==={F.now()}====#')
@@ -2053,9 +2420,11 @@ while True:
 
         # CMS.list_calc_tehnologs(F.bdcfg('Naryad'),F.bdcfg('BD_users'),F.bdcfg('db_resxml'),BD_dse) #Отключено жо момента как нач ТО доработает методу управления выработкой( обрабатывается в модуле ТК )
 
-
+    except KeyboardInterrupt:
+        logger.info('Перезагрузка...')
+        sys.exit()
     except Exception as e:
-        print(e)
+        logger.error('Критическая ошибка в основном цикле', exc_info=e) # 24.06.2026
         import traceback
         tb_to_str = traceback.print_exc()
         print(tb_to_str)

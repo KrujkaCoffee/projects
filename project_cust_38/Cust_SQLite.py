@@ -3,6 +3,8 @@ import os.path
 import sqlite3
 import re
 import datetime as DT
+import typing
+
 import project_cust_38.Cust_Functions as F
 import project_cust_38.Cust_client_socket as CSQS
 
@@ -21,6 +23,10 @@ if F.now("%Y-%m-%d") == '2026-04-08':
 
 WAIT_TIME = 2
 RE_COUNT_SRV = 4
+
+DB_NAMES = CSQS.Servers # Содержит алиасы всех серверов БД
+
+# Пример result = CSQ.custom_request_c(CSQ.DB_NAMES.db_users,'DELETE from app_config')
 
 
 def resolve_srv_target(bd: str):
@@ -341,7 +347,7 @@ def dict_zero_val_row(db,tbl_name):
     return row
 
 def dict_types_tbl(db,tbl_name,as_str:bool=False)->dict[str,type]:
-    list_dicts = custom_request_c(db, custom_request_c=f"""SELECT  name, type FROM pragma_table_info('{tbl_name}') --{F.now()}""",
+    list_dicts = custom_request_c(db, custom_request_c=f"""SELECT  name, type FROM pragma_table_info('{tbl_name}') --s{F.now()}""",
                                   rez_dict=True)
     objs = {
         'INTEGER':int,
@@ -552,16 +558,55 @@ def sanitize_sql_input(text: str) -> str:
 
     return text
 
+def make_parameters_for_return_many(parameters: list): # 25.06.2026
+    new_list_parameters = []
+    for item in parameters:
+        new_list_parameters.extend(item)
+    return new_list_parameters
 
 # @F.StatisticDecorator #18.08.25
 
-def custom_request_c(bd, custom_request_c, conn='', hat_c=True, list_of_lists_c=[[]],
-                     rez_dict=False, one=False, cur='',
-                     one_column=False, returning=False, attach_dbs: tuple | str=(),
-                     lazy_method_hours: float = 0, debug:bool = True):
-    '''sqlite_insert_with_param = """INSERT INTO sqlitedb_developers
+def custom_request_c(
+        bd: CSQS.Servers | str,
+        custom_request_c: str,
+        conn='',
+        hat_c=True,
+        list_of_lists_c: list[list[typing.Any]] | list[typing.Any] = None,
+        rez_dict=False,
+        one=False,
+        cur='',
+        one_column=False,
+        attach_dbs: tuple | str=(),
+        lazy_method_hours: float = 0,
+        debug: bool = True
+) -> bool | None | list[dict] | list[list] | list | object|dict[str]:
+    """
+        Пример RETURNING(many):
+            INSERT: # Вернет вставленные строки
+                result = CSQ.custom_request_c(
+                    bd,
+                    'INSERT INTO app_config(app, last_update) VALUES (?, ?),(?, ?),(?, ?) RETURNING *',
+                    list_of_lists_c=[['test', '22'], ['test2', '33'], ['test3', '44']],
+                    rez_dict=True
+                )
+            UPDATE: # Вернет обновленные строки
+                result = CSQ.custom_request_c(
+                    bd,
+                    'UPDATE app_config SET last_update = 22 where app IN ("МКарты", "csv", "Сайт") RETURNING *',
+                    rez_dict=True
+                )
+            DELETE: # Вернет удаленые строки
+                result = CSQ.custom_request_c(
+                    bd,
+                    'DELETE from app_config WHERE app LIKE "%о%" RETURNING *',
+                    rez_dict=True
+                )
+
+
+
+    sqlite_insert_with_param = '''INSERT INTO sqlitedb_developers
                               (id, name, email, joining_date, salary)
-                              VALUES (?, ?, ?, ?, ?);"""
+                              VALUES (?, ?, ?, ?, ?);'''
         UPDATE users
                 SET  (field1, field2, field3)
                     = ('value1', 'value2', 'value3')
@@ -576,7 +621,9 @@ def custom_request_c(bd, custom_request_c, conn='', hat_c=True, list_of_lists_c=
             data = excluded.data,
             date = excluded.date;
 
-                            '''
+    """
+    if list_of_lists_c is None:
+        list_of_lists_c = [[]]
 
     def calc_tupe_query(request) -> str:
         return custom_request_c.replace('\n', '').strip().split(' ')[0].upper()
@@ -623,7 +670,6 @@ def custom_request_c(bd, custom_request_c, conn='', hat_c=True, list_of_lists_c=
             "sql": custom_request_c,
             "params": convert(list_of_lists_c),
             "attach": attach_dbs,
-            'returning':returning,
             'hat_c':hat_c,
             'rez_dict':rez_dict,
             'one_column':one_column,
@@ -671,6 +717,7 @@ def custom_request_c(bd, custom_request_c, conn='', hat_c=True, list_of_lists_c=
     try:
         if conn == '' or conn == False:
             conn = sqlite3.connect(bd, timeout=4)
+            conn.autocommit = True
             close = True
         else:
             close = False
@@ -694,7 +741,11 @@ def custom_request_c(bd, custom_request_c, conn='', hat_c=True, list_of_lists_c=
             result = True
         if 'INSERT' == type_query:
             if check_operator_returning(custom_request_c):
-                cur.execute(custom_request_c, list_of_lists_c)
+                if len(list_of_lists_c) > 0 and isinstance(list_of_lists_c[0], list):
+                    list_of_lists_c = make_parameters_for_return_many(list_of_lists_c)
+                    cur.execute(custom_request_c, list_of_lists_c)
+                else:
+                    cur.execute(custom_request_c, list_of_lists_c)
                 returning = True
             else:
                 cur.executemany(custom_request_c, list_of_lists_c)
@@ -702,10 +753,9 @@ def custom_request_c(bd, custom_request_c, conn='', hat_c=True, list_of_lists_c=
                 result = True
         if 'UPDATE' == type_query:
             if check_operator_returning(custom_request_c):
-                if list_of_lists_c == [[]]:
-                    cur.execute(custom_request_c)
-                else:
-                    cur.execute(custom_request_c, list_of_lists_c)
+                if len(list_of_lists_c) > 0 and isinstance(list_of_lists_c[0], list):
+                    list_of_lists_c = make_parameters_for_return_many(list_of_lists_c)
+                cur.execute(custom_request_c, list_of_lists_c)
                 returning = True
             else:
                 if list_of_lists_c == [[]]:
@@ -719,10 +769,9 @@ def custom_request_c(bd, custom_request_c, conn='', hat_c=True, list_of_lists_c=
                 result = True
         if 'DELETE' == type_query:
             if check_operator_returning(custom_request_c):
-                if list_of_lists_c == [[]]:
-                    cur.execute(custom_request_c)
-                else:
-                    cur.execute(custom_request_c, list_of_lists_c)
+                if len(list_of_lists_c) > 0 and isinstance(list_of_lists_c[0], list):
+                    list_of_lists_c = make_parameters_for_return_many(list_of_lists_c)
+                cur.execute(custom_request_c, list_of_lists_c)
                 returning = True
             else:
                 if list_of_lists_c == [[]]:
@@ -739,8 +788,12 @@ def custom_request_c(bd, custom_request_c, conn='', hat_c=True, list_of_lists_c=
                 cur.execute(custom_request_c)
             else:
                 if isinstance(list_of_lists_c, (list, tuple)):
-                    if type(list_of_lists_c[0]) == list or type(list_of_lists_c[0]) == tuple:
-                        cur.execute(custom_request_c, (list_of_lists_c[0][0],))
+                    first_element = list_of_lists_c[0]
+                    if isinstance(first_element, (list, tuple)):
+                        if len(first_element) == 1: # todo поддержка старых запросов [[elem]]
+                            cur.execute(custom_request_c, (list_of_lists_c[0][0],))
+                        else:
+                            cur.execute(custom_request_c, first_element)
                     else:
                         cur.execute(custom_request_c,(list_of_lists_c[0],))
                 else:
@@ -893,10 +946,14 @@ def connect_bd(bd, timeout_=6):
         RETRY_COUNT -= 1
         try:
             conn = sqlite3.connect(bd, timeout=timeout_)
+            conn.rollback()
             cur = conn.cursor()
             conn.isolation_level = None
             break
-        except:
+        except Exception as e:
+            import sys
+
+            print(e, sys.exc_info())
             cur and cur.close()
             conn and conn.close()
             if RETRY_COUNT == 1:

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 import project_cust_38.api_erp_commands as APIERP
 from PyQt5.QtWidgets import QLabel
 import  project_cust_38.Cust_emoji as CEMOJ
+from data_class import Data_plan as DTCLS
 try:
     import project_cust_38.Cust_resource_creator as CRES
 except Exception as e:
@@ -264,6 +265,12 @@ class OrderMold:
                 exec(f'self.{str(key).replace(".", "_")} = self._row[key]')
         self.order_stage = Stages_order_mold(self.order_stage)
         print()
+
+    @property
+    def clear_nn(self)->str:
+        if not self.tkp_name_proc_docs or '_' not in self.tkp_name_proc_docs:
+            return ''
+        return self.tkp_name_proc_docs.split('_')[0]
 
     def is_modify(self):
         return self._modify
@@ -911,7 +918,7 @@ def load_form_rs_for_molding(self:mywindow, *args):
     CQT.fill_wtabl(data, tbl,load_links=True,selectionBehavior='SelectRows',selectionMode='SingleSelection',
                    sortingEnabled=True,list_column_widths=CMS.load_column_widths(self,tbl),
                    save_column_sort_hh=True,aliases_header=orders.ADDIT_ALIASES)
-    CMS.fill_filtr_c(self,self.ui.tbl_list_orders_mold_filtr,tbl,hidden_scroll=True)
+
     self._ttkz_tmp_settings.clear()
     self._ttkz_tmp_settings.update_lbl_info()
     oform_tbl(self,data)
@@ -920,7 +927,8 @@ def load_form_rs_for_molding(self:mywindow, *args):
     self.ui.fr_data_mold.setVisible(False)
     if not selected_row == -1:
         load_order_data(self)
-    print()
+    CMS.fill_filtr_c(self, self.ui.tbl_list_orders_mold_filtr, tbl, hidden_scroll=True)
+
 
 
 @CQT.onerror
@@ -1063,6 +1071,9 @@ def calc_stage(self:mywindow):
             stage = stage_field -1
     if stage == 3 and not order_obj.load_tch().data:
         stage = 2
+    #if CFG.Config.user_config.is_developer:
+    #    if s_num == 54:
+    #        stage = 2
     self._ttkz_tmp_settings.current_order = order_obj
     self._ttkz_tmp_settings.current_snum = int(row['s_num'])
     self._ttkz_tmp_settings.allow_stage = stage
@@ -1228,7 +1239,7 @@ def load_order_data(self: mywindow, edit_etap_num=9,add_params:dict|None=None):
                 ГДЕ
                     Номенклатура.ПометкаУдаления = ЛОЖЬ 
                     И Номенклатура.ВидНоменклатуры.Родитель.Наименование = "Таткуз" 
-                    И Номенклатура.ВидНоменклатуры.Наименование = "Отливка арматуры";"""
+                    И Номенклатура.ВидНоменклатуры.Наименование В ("АЛ.Отливка арматуры (Серийное пр-во)", "ЛЗ.Отливка арматуры (Литье Заказчика)");"""
             key, data_rez = APIERP.get_wet_request(wet_req_text)
             if key != 200:
                 CQT.msgbox(f'Ошибка получения данных код ({key}) из ERP')
@@ -1249,6 +1260,68 @@ def load_order_data(self: mywindow, edit_etap_num=9,add_params:dict|None=None):
                 pass
             def fnc_select_tbl(tbl):
                 pass
+            if CQT.msgboxgYN('Выбрать из списка или создать номенклатуру на формовку?',
+                             f'{CEMOJ.EmojiMain.ДокументыДанные.document_new.symbol}Создать',
+                             f'{CEMOJ.EmojiMain.ДокументыДанные.folder.symbol}Выбрать',app_self=DTCLS.app_self):
+                Артикул = self._ttkz_tmp_settings.current_order.clear_nn
+                if not Артикул:
+                    succ, Артикул = CQT.get_dialog_choose_text(DTCLS.app_self,
+                                               f'У процесса docs не подходящий номер:\n'
+                                               f'"{self._ttkz_tmp_settings.current_order.tkp_name_proc_docs}"\n'
+                                               f'Введите корректный номенклатурный номер:',
+                                                               placeholderText="Формат: ЛЗ.2602179.02",info_point_size=10)
+                    if not succ:
+                        return
+                Наименование: str = f'{Артикул} Формовка для отливки'
+
+
+
+                ТипНоменклатуры: CRES.TypeNomen = CRES.TypeNomenData.find_by_ref("57507687-e857-4627-84a6-131b6dc5555a")
+
+                ВидНоменклатуры: CRES.VidNomem = CRES.VidNomemData.find_by_ref("fba2f460-d008-11f0-a47b-30e1716be59f")
+                ВариантОформленияПродажи: CRES.SalesOptions = CRES.SalesOptionsData.find_by_ref("6ed82cef-39f7-4beb-bf6e-4c0cef820047")
+                ГруппаДоступа: CRES.AccessGroup = CRES.AccessGroupData.find_by_ref("e8a9ad83-3132-11e8-80cf-4ccc6a67082d")
+                ЕдиницаИзмерения: CRES.PackagingUnits = CRES.PackagingUnitsData.find_by_ref("dd2c9714-019f-11e7-80c0-4ccc6a67082d")
+                ЕдиницаДляОтчетов: CRES.PackagingUnits = CRES.PackagingUnitsData.find_by_ref("dd2c9714-019f-11e7-80c0-4ccc6a67082d")
+                СтавкаНДС: CRES.NDS_rates = CRES.NDS_ratesData.find_by_ref("f3ede067-dd6e-11f0-a483-30e1716be59f")
+                ГруппаАналитическогоУчета: CRES.NomenAnalysisGroups = CRES.NomenAnalysisGroupsData.find_by_ref("44f63a89-d4a5-11ef-85f9-00d861dd2b4a")
+                ГруппаФинансовогоУчета: CRES.FinancialAccountingGroup = CRES.FinancialAccountingGroupData.find_by_ref("d5db7acf-a9a5-11f0-a46f-30e1716be59f")
+
+
+
+                new_nomen = CRES.Nomenclature(
+                    Наименование = Наименование,
+                    Артикул = Артикул,
+                    ТипНоменклатуры = ТипНоменклатуры,
+
+                    ВидНоменклатуры = ВидНоменклатуры,
+                    ВариантОформленияПродажи = ВариантОформленияПродажи,
+                    ГруппаДоступа = ГруппаДоступа,
+                    ЕдиницаИзмерения = ЕдиницаИзмерения,
+                    ЕдиницаДляОтчетов = ЕдиницаДляОтчетов,
+                    СтавкаНДС = СтавкаНДС,
+                    ГруппаАналитическогоУчета = ГруппаАналитическогоУчета,
+                    ГруппаФинансовогоУчета = ГруппаФинансовогоУчета
+                )
+                if not new_nomen.check_data():
+                    CQT.msgbox(f'Проверка данных номенклатуры не пройдена!')
+                    return
+                if new_nomen.is_name_into_erp:
+                    CQT.msgbox(f'Наименование "{new_nomen.Наименование}" уже есть в базе 1С!')
+                    return
+                succ, data = new_nomen.create_nomen()
+                if not succ:
+                    errs = ''
+                    if data['ЕстьОшибки']:
+                        errs = str(data['Ошибки'])
+                    CQT.msgbox(f'Ошибка создания номенклатуры на стороне 1С! {errs}')
+                    return
+                res_code = data["Код"]
+                tbl.item(i, j).setText(res_code)
+                tbl.cellWidget(i, j).deleteLater()
+                CQT.add_label_link(tbl, i, nf_val, res_code, res_code, fcn_select_name_nomen_for_forming, self)
+                CQT.msgbox(f'Номенклатура\nКод: "{res_code}"\n Наим-ие: "{Наименование}"\nсоздана!')
+                return
 
             wet_req_text = f"""ВЫБРАТЬ
                     Номенклатура.Наименование КАК Наименование,
@@ -1284,7 +1357,7 @@ def load_order_data(self: mywindow, edit_etap_num=9,add_params:dict|None=None):
             ):
 
         def fnc_chk(btn:CQT.QtWidgets.QPushButton,dialog:CQT.Dialog_tbl,tbl:CQT.QtWidgets.QTableWidget):
-            if btn.text() == 'Ввод':
+            if dialog.is_btn_yes_role(btn):
                 nf = CQT.nums_col_by_name_dict(tbl)
                 for i in range(tbl.rowCount()):
                     val = tbl.item(i,nf['Кол-во']).text().strip()
@@ -1853,14 +1926,15 @@ def get_mat_data(DICT_NOMEN:dict, some_code:int|str, check_in_erp=False):
             ВЫБРАТЬ
                 РесурсныеСпецификации.Наименование КАК  Наименование,
                 РесурсныеСпецификации.ОсновноеИзделиеНоменклатура.ЕдиницаИзмерения.Наименование КАК ЕдиницаИзмерения,
-                "Полуфабрикаты производимые в процессе" КАК Материалы_Статья_калькуляции,
+                "Полуфабрикаты (работы) производимые в процессе" КАК Материалы_Статья_калькуляции,
                 "Произвести по спецификации" КАК Способы_получения_материала,
                 РесурсныеСпецификации.ОсновноеИзделиеНоменклатура.Код КАК КодНоменклатура,
                 РесурсныеСпецификации.Код  КАК КодИсточник
             ИЗ
                 Справочник.РесурсныеСпецификации КАК РесурсныеСпецификации
             ГДЕ
-                РесурсныеСпецификации.Код = "{some_code}";"""
+                РесурсныеСпецификации.ПометкаУдаления = ЛОЖЬ
+                И РесурсныеСпецификации.Код = "{some_code}";"""
 
         key, data_rez = APIERP.get_wet_request(wet_req_text)
         if key != 200:
@@ -2048,7 +2122,7 @@ def upload_1c_res_product_tch(self:mywindow):
 
                 СпособПолучения = CRES.MethodOfObtainingMaterialspecificationsData.find_by_name(dict_nomen['Способы_получения_материала'])
                 СтатьяКалькуляции = CRES.ArticulationArticlesData.find_by_name(dict_nomen['Материалы_Статья_калькуляции'])
-                if СтатьяКалькуляции.name == 'Полуфабрикаты производимые в процессе':
+                if СтатьяКалькуляции.name == 'Полуфабрикаты (работы) производимые в процессе':
                     ИсточникПолученияПолуфабриката = CRES.SourceOfTheHalffactoryReceipt.find_by_code(dict_nomen['КодИсточник'])
                 else:
                     ИсточникПолученияПолуфабриката = CRES.SourceOfTheHalffactoryReceipt()

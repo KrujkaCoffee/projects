@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import datetime
+from builtins import bool
 
 import project_cust_38.Cust_Qt as CQT
 import project_cust_38.Cust_Functions as F
@@ -9,428 +10,410 @@ import project_cust_38.Cust_SQLite  as CSQ
 import kal_plan as KPL
 import gui_kal_plan as GKPL
 import project_cust_38.Cust_mes as CMS
-
+import project_cust_38.Cust_emoji as CEMOJ
+from data_class import Data_plan as DTCLS
+from functools import partial
 from typing import TYPE_CHECKING
+import plotly.graph_objects as go
 if TYPE_CHECKING:
     from MKart import mywindow
 
 
 
 
+def generate_diagram(selected_napr):
+    # =================add_ui============================
+    self = DTCLS.app_self
+    parent_for_grafic = self.ui.fr_diagram_summ
 
-def hover_tbl_pl_gaf_svod(self, event):
-    tbl = self.ui.tbl_pl_gaf_svod
-    row, column = CQT.get_hover_row_col(self, tbl, event)
-    if row == None or column == None:
-        return
-    val = tbl.item(row, column).text()
-    if val != '':
-        set_tooltip_val(self, tbl, row+1, column)
-    else:
-        set_tooltip_val(self, tbl, row+1, column, True)
+    napr_name = self.Data_plan.DICT_NAPRAVLENIE_BY_NAME[selected_napr]['name_for_file_graf_pad_mosh']
+
+    g_hande = KPL.Gant_handler(False)
+
+    pass
+
+    """try:
+        self.parent_for_grafic.removeWidget(self.browser)
+    except:
+        pass
+    self.browser = QtWebEngineWidgets.QWebEngineView(self)
+    self.parent_for_grafic.addWidget(self.browser)
+
+    CQT.output_gant(self, fig, self.browser, selected_napr, tmp_dir())"""
+
+
+@CQT.onerror
+def pl_mode_upd(*args):
+    tabw = DTCLS.app_self.ui.tab_pl_graf_context
+    tab_name = tabw.currentWidget().objectName()
+    if tab_name == 'tab_pl_graf':
+        load_tbl_gant(DTCLS.app_self, False, True)
+    if tab_name == 'tab_summ_diagram':
+        load_svod(DTCLS.app_self)
+    if tab_name == 'tab_workload':
+        KPL.update_graf_site_and_get_local(DTCLS.app_self)
 
 
 @CQT.onerror
 @F.time_of_exec_cls_func_args_c
-def load_tbl_gant(self:mywindow):
-    def load_tabels(self:mywindow) -> dict:
-        tbls = []
-        tbl = self.ui.tbl_kal_pl
-        nk_pnom = CQT.num_col_by_name_c(tbl,'plan.Пномер')
-        nk_local_graf = CQT.num_col_by_name_c(tbl, 'plan.local_graf')
-        for i in range(tbl.rowCount()):
-            if not tbl.isRowHidden(i):
-                tbls.append(tbl.item(i,nk_pnom).text())
-        query = CSQ.custom_request_c(self.db_kplan,f"""SELECT plan.Пномер, plan.Позиция, plan.local_graf, plan.Приоритет, plan.fact_jurnal_blolb_data,  
-        пл_оуп.№проекта, пл_оуп.№ERP, napravl_deyat.Псевдоним as Направление_деят, 
-            napravlenie.name as Направление  FROM plan INNER JOIN
-        пл_оуп ON пл_оуп.НомПл = plan.Пномер,
-        napravl_deyat ON napravl_deyat.Пномер = plan.Направление_деятельности, 
-            napravlenie ON napravlenie.Пномер = napravl_deyat.Направление 
-         WHERE plan.Пномер in ({','.join(tbls)}) and plan.poki = {self.place.poki} ORDER BY plan.Приоритет DESC""",rez_dict=True)
-        if query == False or len(query) == 0:
-            return False
-        for item in query:
-            if item['local_graf'] == '':
-                datat_bin = CMS.update_local_graf(self, True, int(item['Пномер']), False )
-                print(f"Создан локальный график на {item['Пномер']}")
-                #tbl.item(i, nk_local_graf).setText(str(datat_bin))
-        return query
+def load_tbl_gant(self:mywindow,warn_msg:bool = True,restore_selected_cell:bool=False)->bool:
+    dirty_list_kpls = []
+    t_kpl = CQT.TableContext(DTCLS.app_self.ui.tbl_kal_pl)
 
-    def generate_full_table(self,query:dict):
-        list_errs = []
-        set_dates = set()
-        dict_dates_vals = dict()
-        for item in query:
-            if item['local_graf'] == None or F.from_binary_pickle(item['local_graf']) == None:
-                print()
-                print(f'Пномер {item["Пномер"]}, №проекта {item["№проекта"]} - Не сформирован локальный график')
-                datat_bin = CMS.update_local_graf(self, True, int(item['Пномер']), False)
-                if datat_bin == None:
-                    msg = f"Ошибка генерации графика {str(item['Пномер'])}"
-                    print(msg)
-                    list_errs.append({'Ошибка':msg})
-                    continue
-                print(f"Line {int(item['Пномер'])} update")
-                item['local_graf'] = datat_bin
-                print(f"Создан локальный график на {item['Пномер']}")
-            tbl_gant = F.from_binary_pickle(item['local_graf'])
-            try:
-                for date in tbl_gant[0]['data'].keys():
-                    set_dates.add(date)
-                    dict_dates_vals[date] = {'Выходные':tbl_gant[0]['data'][date]['Выходные'],'День недели':tbl_gant[0]['data'][date]['День недели']}
-            except:
-                CQT.msgbox(f"Ошибка генерации {str(item['Пномер'])}")
-        list_dates = list(set_dates)
-        list_dates = sorted(list_dates)
-        dict_form = []
-        for item in query:
-            tbl_gant = F.from_binary_pickle(item['local_graf'])
-            free_shablon = dict()
-            for key in tbl_gant[0]['data'].keys():
-                free_shablon = tbl_gant[0]['data'][key]['podr']
-                break
-            for key in free_shablon.keys():
-                free_shablon[key] = ''
-
-            dict_tmp_table = dict()
-            for date in list_dates:
-                if date not in tbl_gant[0]['data'].keys():
-                    dict_tmp_table[date] = {'Выходные':dict_dates_vals[date]['Выходные'],
-                                            'День недели':dict_dates_vals[date]['День недели'],
-                                            'podr':free_shablon}
-                else:
-                    dict_tmp_table[date] = tbl_gant[0]['data'][date]
-            tmp_list = []
-            #query[i]['local_graf'] = dict_tmp_table
-            dict_replace_by_days = {}
-            if item['fact_jurnal_blolb_data']:
-                fact_jurnal_blolb_data = F.from_binary_pickle(item['fact_jurnal_blolb_data'])
-                if fact_jurnal_blolb_data is not None:
-                    dict_replace_by_days = fact_jurnal_blolb_data
-
-            dict_form.append({'pnom':item['Пномер'],
-                              'proj':f"{item['№проекта']} {item['№ERP']}",
-                              'poz':item['Позиция'],
-                              'napr_deya':item['Направление_деят'] ,
-                              'napr': item['Направление'],
-                              'data':dict_tmp_table,
-                                'dict_replace_by_days':dict_replace_by_days })
-        if list_errs:
-            CQT.msgboxg_get_table_ok_inf(self,f'Ошибки генерации таблицы',list_errs)
-            return
-        return dict_form
-
-    #list_of_tbls = load_tabels(self) 04.02.2026 убрано при переработке под локальный
-
-    tbl = self.ui.tbl_kal_pl
-    kpl_nums = []
-    t = CQT.TableContext(tbl)
-    for row in t.rows():
-        if not tbl.isRowHidden(row.i):
-            kpl_nums.append(row.value('plan.Пномер'))
-    list_of_tbls = CMS.load_dict_poz_from_sql(kpl_nums)
-
-    count = len(list_of_tbls)
-    i = 1
-    for item in list_of_tbls:
-        if item['local_graf'] == '':
-            print(f'{i} from {count} update_local_graf')
-            datat_bin = CMS.update_local_graf(None, True, int(item['Пномер']), False)
-            print(f"    Создан локальный график на {item['Пномер']}")
-            item['local_graf'] = datat_bin
-
-    if not list_of_tbls:
-        CQT.msgbox(f'Ошибка')
-        return
-
-    dict_form = generate_full_table(self,list_of_tbls)
-    if dict_form is None:
-        return
-    self.current_kpl_table = 'tbl_pl_gaf'
-    CMS.fill_gant_table(self, self.ui.tbl_pl_gaf, self.ui.tbl_pl_gaf_filtr, dict_form)
-
-
-
-def show_svod(self):
-    #if self.ui.fr_pl_gaf.isHidden():
-    #    self.ui.fr_pl_gaf.setHidden(False)
-    #    self.ui.fr_svod.setHidden(True)
-    #else:
-    #    self.ui.fr_pl_gaf.setHidden(True)
-    #    self.ui.fr_svod.setHidden(False)
-    self.ui.fr_svod.setHidden(False)
-    self.ui.tbl_pl_gaf_svod.setHidden(False)
-    load_svod(self)
-
-
-
-
-def set_tooltip_val(self,tbls='',r='',c='',clear=False):
-    if tbls == "":
-        tbls = self.ui.tbl_pl_gaf_svod
-    if clear:
-        CQT.statusbar_text(self, '')
-        tbls.setToolTip('')
-        return
-    CQT.summ_selct_tbl(self,tbls)
-    max_mosh, podr, date_tmp = get_max_mosh_frow_tbl(self,r,c)
-    info = f'Максимальная мощность {podr} на {date_tmp} : {max_mosh} н-ч.'
-    tbls.setToolTip(info)
-    CQT.statusbar_text(self,
-                       f'{self.glob_kpl_summ_selct_tbl} |  {info}')
-
-def get_max_mosh_frow_tbl(self,i='',j=''):
-    tbls = self.ui.tbl_pl_gaf_svod
-    if i == '':
-        i = tbls.currentRow()+1
-    if j == '':
-        j = tbls.currentColumn()
-    if i == -1 or j == -1:
-        return None,None,None
-    rez_list = CQT.list_from_wtabl_c(tbls, hat_c=True)
-
-    date_tmp = ".".join(rez_list[0][j].split('\n')[:-1])
-    podr = rez_list[i][0].replace('факт_', '').replace('план_', '')
-    max_mosh = 0
-    try:
-        max_mosh = round(self.KPLAN_max_mosh[F.strtodate(date_tmp, f"%d.%m.%y")][podr] * self.selected_napr_koef)
-    except:
-        pass
-    return max_mosh, podr, date_tmp
-
-
-
-
-def oform_tbl_svod(self:mywindow,rez_list:list =''):
-    tbls = self.ui.tbl_pl_gaf_svod
-
-    if rez_list == '':
-        rez_list = CQT.list_from_wtabl_c(tbls,hat_c=True)
-    tbl = self.ui.tbl_pl_gaf
-    for j in range(1, self.count_tbl_field):#HORIZONTAL HEADER TABLE FIELDS
-        CQT.set_color_text_header_wtab_horisontal_c(tbls, j, 11, 11, 11, self.val_masht * 0.9, False)
-        for i in range(1,len(rez_list)):
-            CQT.font_cell_size_format(tbls, i - 1, j, self.val_masht)
-    for j in range(self.count_tbl_field, len(rez_list[0])):#HORIZONTAL HEADER GANT FIELDS
-        if self.dict_tbls_kpl_info['tbl_pl_gaf'][1][j] == 1:
-            CQT.set_color_text_header_wtab_horisontal_c(tbls, j, 180, 11, 11, self.val_masht*0.8, True)
-        else:
-            CQT.set_color_text_header_wtab_horisontal_c(tbls, j, 11, 11, 11, self.val_masht*0.7, False)
-            #CQT.set_color_text_header_wtab_horisontal_c(tbls, j, 11, 11, 11, self.val_masht * 0.8, False)
-        for i in range(1,len(rez_list)):
-            CQT.font_cell_size_format(tbls, i - 1, j, self.val_masht*0.8)
-            if rez_list[i][j] > 0:
-                max_mosh, podr, date_tmp =  get_max_mosh_frow_tbl(self,i,j)
-                if rez_list[i][j]>max_mosh:
-                    CQT.set_font_color_wtab_c(tbls, i - 1, j, 244, 244, 244)
-                    CQT.font_cell_size_format(tbls,i - 1, j, 0, True)
-                    CQT.set_color_wtab_c(tbls, i - 1, j, 233, 33, 33)
-                    #CQT.set_color_text_header_wtab_horisontal_c(tbls, j, 250, 3, 3, self.val_masht * 0.8, True)
-                else:
-                    podr = rez_list[i][0].replace('факт_', '').replace('план_', '')
-                    r = 233
-                    g = 233
-                    b = 233
-                    if podr in self.Data_plan.DICT_PODR:
-                        r, g, b = self.Data_plan.DICT_PODR[podr]['Цвет'].split(";")
-                    CQT.set_color_wtab_c(tbls, i - 1, j, int(r), int(g), int(b))
-            else:
-                CQT.set_font_color_wtab_c(tbls, i - 1, j, 233, 233, 233)
-
-    for i in range(1, len(rez_list)):
-        podr = rez_list[i][0].replace('факт_', '').replace('план_', '')
-        r = 233
-        g = 233
-        b = 233
-        if podr in self.Data_plan.DICT_PODR:
-            r, g, b = self.Data_plan.DICT_PODR[podr]['Цвет'].split(";")
-        CQT.set_color_text_header_wtab_vertical_c(tbls, i - 1, r, g, b, self.val_masht * 0.8, True)
-
-
-    CMS.update_width_filtr(tbl, tbls)
-
-    #fields_hide = ['Этап', 'Пномер', "Проект", "Поз.", "Напр.",'Напр_д.']
-    #for field in fields_hide:
-    #    try:
-    #        tbls.setColumnHidden(CQT.num_col_by_name_c(tbls, field), True)
-    #    except:
-    #        pass
-
-
-@CQT.onerror
-def dbl_clk_select_etap(self):
-    self.current_kpl_table = 'tbl_pl_gaf'
-    def get_down_to_local():
-        try:
-            cell = self.dict_tbls_kpl_info[KPL.calc_current_ifo_tbl_name(self)][r + 1][c]
-            if cell == '':
-                return
-            name_kol = cell[0]['Имя_нз'][0]
-        except:
-            return
-        # date = F.strtodate(".".join(tbl.horizontalHeaderItem(c).text().split('\n')[:-1]), f"%d.%m.%y")
-        date = tbl.horizontalHeaderItem(c).text()
-
-        table_new = CQT.list_from_wtabl_c(self.ui.tbl_kal_pl, '', True)
-        new_hat_c = ['' for _ in table_new[0]]
-        nk_pnom = CQT.num_col_by_name_c(self.ui.tbl_kal_pl, 'plan.Пномер')
-        new_hat_c[nk_pnom] = pnom
-        CMS.fill_filtr_c(self, tbl_filtr, self.ui.tbl_kal_pl, [new_hat_c])
-        CMS.update_width_filtr(self.ui.tbl_kal_pl, tbl_filtr)
-        CMS.apply_filtr_c(self, tbl_filtr, self.ui.tbl_kal_pl)
-        not_hidden_row = 0
-        for i in range(self.ui.tbl_kal_pl.rowCount()):
-            if not self.ui.tbl_kal_pl.isRowHidden(i):
-                not_hidden_row = i
-                break
-        # self.ui.tbl_kal_pl.setCurrentCell(not_hidden_row,CQT.num_col_by_name_c(self.ui.tbl_kal_pl,name_kol))
-        KPL.btn_pl_mode(self)
-        CQT.select_cell(self.ui.tbl_kal_pl, not_hidden_row, CQT.num_col_by_name_c(self.ui.tbl_kal_pl, name_kol))
-        # tbl.clearSelection()
-
-        list_local_gant = CQT.list_from_wtabl_c(self.ui.tbl_preview, '', True)
-        nk_etap = CQT.num_col_by_name_c(self.ui.tbl_preview, 'Этап')
-        for i in range(len(list_local_gant)):
-            if list_local_gant[i][nk_etap] == etap:
-                for j in range(len(list_local_gant[0])):
-                    if list_local_gant[0][j] == date:
-                        CQT.select_cell(self.ui.tbl_preview, i - 1, j)
-                        return
-
-    list_for_copy_filtr = ['Этап'
-,'Пномер'
-,'Проект'
-,'Поз.'
-,'Напр.']
-    tbl = self.ui.tbl_pl_gaf
-    tbl_filtr = self.ui.tbl_filtr_kal_pl
-    r = tbl.currentRow()
-    c = tbl.currentColumn()
-    pnom = tbl.item(r,CQT.num_col_by_name_c(tbl,'Пномер')).text()
-    etap = tbl.item(r,CQT.num_col_by_name_c(tbl,'Этап')).text()
-
-    if self.dict_tbls_kpl_info[KPL.calc_current_ifo_tbl_name(self)][0][c] in list_for_copy_filtr:
-        self.ui.tbl_pl_gaf_filtr.item(0,c).setText(self.ui.tbl_pl_gaf.item(r,c).text())
-        return
-    get_down_to_local()
-
-
-
-def dbl_clk_svod_select_etap(self):
-    tbls = self.ui.tbl_pl_gaf_svod
-    tbl_filtr = self.ui.tbl_pl_gaf_filtr
-    r = tbls.currentRow()
-    c = tbls.currentColumn()
-    etap = tbls.item(r,0).text()
-    date = F.strtodate(".".join(tbls.horizontalHeaderItem(c).text().split('\n')[:-1]), f"%d.%m.%y")
-    self.ui.fr_svod.setHidden(True)
-    self.ui.fr_pl_gaf.setHidden(False)
-    table_new = CQT.list_from_wtabl_c(self.ui.tbl_pl_gaf,'',True)
-    new_hat_c = ['' for _ in table_new[0]]
-    nk_etap = CQT.num_col_by_name_c(self.ui.tbl_pl_gaf,'Этап')
-    new_hat_c[nk_etap] = etap
-    CMS.fill_filtr_c(self,tbl_filtr,self.ui.tbl_pl_gaf,[new_hat_c])
-    GKPL.apply_field_filter_hat_name(tbl_filtr)
-
-    for j in range(1, len(self.dict_tbls_kpl_info[KPL.calc_current_ifo_tbl_name(self)][0])):
-        if self.dict_tbls_kpl_info[KPL.calc_current_ifo_tbl_name(self)][1][j] == 1:
-            CQT.set_color_text_header_wtab_horisontal_c(tbl_filtr, j, 200, 11, 11, self.val_masht * 0.5, False)
-        else:
-            CQT.set_color_text_header_wtab_horisontal_c(tbl_filtr, j, 11, 11, 11, self.val_masht * 0.5, False)
-    CMS.update_width_filtr(self.ui.tbl_pl_gaf, tbl_filtr)
-    CMS.apply_filtr_c(self,self.ui.tbl_pl_gaf_filtr,self.ui.tbl_pl_gaf)
-    not_hidden_row = 0
-    for i in range(self.ui.tbl_pl_gaf.rowCount()):
-        if not self.ui.tbl_pl_gaf.isRowHidden(i):
-            not_hidden_row= i
-            break
-    #self.ui.tbl_pl_gaf.setCurrentCell(not_hidden_row,CQT.num_col_by_name_c(self.ui.tbl_pl_gaf,tbls.horizontalHeaderItem(c).text()))
-    CQT.select_cell(self.ui.tbl_pl_gaf,not_hidden_row,CQT.num_col_by_name_c(self.ui.tbl_pl_gaf,tbls.horizontalHeaderItem(c).text()))
-    #tbls.clearSelection()
-def get_max_mosh_from_db(self):
-    list_tables = CSQ.get_list_of_tables_c(self.db_kplan)
-    dict_days = dict()
-    for tbl_name in list_tables:
-        if F.is_date(tbl_name,'m_cld_%Y_%m_%d'):
-            dict_month = CSQ.custom_request_c(self.db_kplan,f"""SELECT * FROM {tbl_name}""")
-            for i in range(3,len(dict_month[0])):
-                if F.is_date(dict_month[0][i],'d_%Y_%m_%d'):
-                    dict_day = dict()
-                    for j in range(3,len(dict_month)):
-                        dict_day[dict_month[j][1]] = dict_month[j][i]
-                    dict_days[F.strtodate(dict_month[0][i],'d_%Y_%m_%d')] = dict_day
-    self.KPLAN_max_mosh = dict_days
-
-@CQT.onerror
-def load_svod(self:mywindow):
-
-    self.current_kpl_table = 'tbl_pl_gaf_svod'
-    tbl = self.ui.tbl_pl_gaf
-    tbls =  self.ui.tbl_pl_gaf_svod
-
-    rez_list = [self.dict_tbls_kpl['tbl_pl_gaf'][0]]
-    dict_info = {(_[0],_[1]):_ for _ in self.dict_tbls_kpl_info['tbl_pl_gaf'][3:]}
-    dict_etapov = dict()
-    dict_type_row = dict()
-
-    t = CQT.TableContext(tbl)
-    for row in t.rows():
+    set_napr_deyt = set()
+    for row in t_kpl.rows():
         if not row.is_hidden():
-            kpl = int(row.value('Пномер'))
-            etap = row.value('Этап')
-            data_list = dict_info[(etap,kpl)]
-            fl_replaced_vals = bool([_ for  i, _ in  enumerate(data_list) if isinstance(_,list)
-                                     and [x for x in _ if x['_type_replace_by_days']]])
-            dict_type_row[(etap,kpl)]= fl_replaced_vals
-            if etap not in dict_etapov:
-                dict_etapov[etap] = []
-            dict_etapov[etap].append(data_list)
+            dirty_list_kpls.append(int(row.value('plan.Пномер')))
+            napr_d = row.value('plan.Направление_деятельности')
+            if napr_d:
+                set_napr_deyt.add(napr_d)
+    dict_napr_d = DTCLS.DICT_NAPR_DEYAT_NAME
+    dict_napr = DTCLS.DICT_NAPRAVLENIE
 
-    templt_podr = []
-    for name, item in self.Data_plan.DICT_PODR.items():
-        templt_podr.append([f'план_{name}',item['Порядок']])
-        templt_podr.append([f'факт_{name}',item['Порядок']])
+    if warn_msg:
+        set_napr = set([dict_napr[dict_napr_d[_]['Направление']]['alias'] for _ in set_napr_deyt])
+        if len(set_napr)>1:
+            if not CQT.msgboxgYN(f'Будет загружен план для направлений:\n{", ".join(list(set_napr))}'):
+                return False
 
-    templt_podr = sorted(templt_podr,key=lambda x: x[0])
-    templt_podr = sorted(templt_podr,key=lambda x: x[1])
+    self.ui.fr_main_mode.setVisible(False)  # для заполнения
+    list_kpls = [_ for _ in dirty_list_kpls if _ > 0]
+    if not list_kpls:
+        return False
+
+    min_day = self.ui.de_vol_pl.dateTime().toPyDateTime()
+    max_day = self.ui.de_vol_pl_end.dateTime().toPyDateTime()
+    gant_o = CMS.Gant(DTCLS.DICT_CLD, DTCLS.FIELDS_DB_INFO, min_day, max_day)
+    gant_o.load(list_kpls,forced_recalc= 'shift' in CQT.get_key_modifiers(DTCLS.app_self) )
+    DTCLS.current_vol_gant = gant_o
+    gant_o.oforml_table(DTCLS.app_self,DTCLS.app_self.ui.tbl_pl_gaf,DTCLS.app_self.ui.tbl_pl_gaf_filtr,
+                        restore_selected_cell=restore_selected_cell)
 
 
-    for etap,__ in templt_podr:
-        if etap not in dict_etapov:
-            continue
-        tmp_row = copy.deepcopy(["" for _ in self.list_for_hat])
-        tmp_row[0] = etap
-        dict_rows = dict_etapov[etap]
+    return True
 
-        for j in range(self.count_tbl_field,len(self.dict_tbls_kpl_info['tbl_pl_gaf'][0])):
-            summ_chas = 0
-            for row in dict_rows:
-                if row[j] != '':
-                    k = (row[0], row[1])
-                    replaced_vals_type_row = dict_type_row[k]
-                    summ_vol = 0
-                    if replaced_vals_type_row:
-                        if len(row[j])>1:
-                            summ_vol+= row[j][-1]['По дню']
-                    else:
-                        for oper in row[j]:
-                            if oper['_type_replace_by_days']:
-                                continue
-                            vol = oper['Время_час']
-                            summ_vol+=vol
-                    summ_chas += summ_vol
-            tmp_row.append(round(summ_chas))
-        rez_list.append(tmp_row)
-    self.dict_tbls_kpl_info[self.current_kpl_table] = rez_list
-    CQT.fill_wtabl(rez_list, tbls, min_width_col= int( 4 * 0.8),
-                   height_row=self.val_masht * 2, colorful_edit=False, auto_type=False, head_column=0,
-                   set_editeble_col_nomera={}, hide_head_column=False)
 
-    oform_tbl_svod(self,rez_list)
-    with CQT.table_updating(tbls):
-        CQT._load_tbl(tbl,tbls,True,len(dict_etapov))
-    self.ui.splitter_svod.setSizes([499, 0])
+
+@CQT.onerror
+def show_svod_tbl(*args):
+    load_svod(DTCLS.app_self,True)
+
+
+@CQT.onerror
+def click_tab_pl_graf_context(*args):
+    tabw = DTCLS.app_self.ui.tab_pl_graf_context
+    tab_name = tabw.currentWidget().objectName()
+    if tab_name=='tab_summ_diagram':
+        if not DTCLS.app_self.ui.lout_diagram_summ.property('_loaded'):
+            load_svod(DTCLS.app_self)
+    if tab_name=='tab_workload':
+        KPL.update_graf_site_and_get_local(DTCLS.app_self)
+
+
+@CQT.onerror
+def load_svod(self:mywindow,as_table:bool=False):
+    FL_ALL = False
+
+    g_handle = KPL.Gant_handler(False)
+    if g_handle is None:
+        CQT.msgbox(f'Не выбрана строка в таблице')
+        return
+
+    gant = DTCLS.current_vol_gant
+
+
+    #=====вариант загрузки всех позиций====================
+    if FL_ALL :
+        list_id_pozitions = CSQ.custom_request_c(DTCLS.db_kplan,f"""SELECT Пномер FROM plan WHERE 
+          Статус IN ({', '.join([str(i) for i, _ in self.Data_plan.DICT_STATUS_POZ.items() if _['for_reports']])}) 
+           and poki == {DTCLS.PLACE.poki}""",hat_c=False,one_column=True)
+        min_day = gant.min_day
+        max_day = gant.max_day
+    else:
+        t_kpl = CQT.TableContext(DTCLS.app_self.ui.tbl_pl_gaf)
+        list_id_pozitions = list(set([ int(_.value("_id_poz")) for _ in t_kpl.rows()]))
+        min_day = min([_.min_day_agr() for num, _ in gant.dict_pozitions.items() if num in list_id_pozitions])
+        max_day = max([_.max_day_agr() for num, _ in gant.dict_pozitions.items() if num in list_id_pozitions])
+    #====================================================
+    CLD_DAYS = {k: v for k, v in DTCLS.DICT_CLD.items() if min_day <= k <= max_day}
+
+
+
+
+    agr = CMS.Gant_agregator()
+    data = agr.load(min_day,max_day,list_id_pozitions)
+    set_dt = set()
+    shabl_podrs = {k:0 for k in CLD_DAYS[min_day].dict_podrs.keys()}
+    tbl_top = DTCLS.FIELDS_DB_INFO.tables_db.get_table('пл_топ')
+    for it in data:
+        it['day_dt'] = F.strtodate(it['day_dt'],"%Y-%m-%d %H:%M:%S")
+        set_dt.add(it['day_dt'])
+        it['holyday'] = CLD_DAYS[it['day_dt']].is_holyday
+        it['weekend'] = CLD_DAYS[it['day_dt']].day_week == 7
+        name_podr = DTCLS.DICT_PODR_BY_ID[it['etap_podrazdel']]['Имя']
+        tbl_o = DTCLS.FIELDS_DB_INFO.tables_db.get_table(name_podr)
+        it['max_time'] = CLD_DAYS[it['day_dt']].dict_podrs[name_podr]
+        it['etap_podrazdel'] = tbl_o.alias
+        it['etap_podrazdel_order'] = tbl_o.order
+        it['filler'] = False
+        #[_ for _ in data if F.datetostr(_['day_dt'],"%d.%m.%Y") == '09.03.2026' ]
+    #[_ for _ in data if _['id_poz'] == 7086 and _['etap_podrazdel'] == 'пл_сб']
+    #sum([_['val_minutes']/60 for _ in data if _['id_poz'] == 7086 and _['etap_podrazdel'] == 'пл_сб'])
+    #[_ for _ in data if F.datetostr(_['day_dt'],"%d.%m.%Y") == '07.04.2026' and _['etap_podrazdel'] == 'пл_сб']
+    #sum([_['val_minutes']/60 for _ in data if F.datetostr(_['day_dt'],"%d.%m.%Y") == '07.04.2026' and _['etap_podrazdel'] == 'пл_сб'])
+
+
+    if as_table:
+        def fnc_oform_filter(tbl:CQT.QtWidgets.QTableWidget,tblf:CQT.QtWidgets.QTableWidget):
+            CMS.fill_filtr_c(DTCLS.app_self,tblf,tbl, combo_dict={'Этап':None})
+            pass
+        CQT.msgboxg_get_table_ok_inf(self,'Таблица сводного плана',[{
+                                                                'Дата':F.datetostr(_['day_dt'],"%d.%m.%Y"),
+                                                                'Этап':_['etap_podrazdel'],
+                                                                'КПЛ':_['id_poz'],
+                                                                'Статус':_['state'],
+                                                                'Напр.д.':_['napr_d'],
+                                                                'Позиция':_['poz'],
+                                                                'Колич.':_['count'],
+                                                                'Проект':_['np'],
+                                                                'ЗП':_['zp'],
+                                                                'Время,час.':round(_['val_minutes']/60 ,2),
+                                                                'Предел,час.':round(_['max_time'] ,2),
+                                                                     } for _ in data],
+                                                    styleSheet=CQT.MES_CSS,load_summ=True,func_oform_filtr=fnc_oform_filter)
+        return
+
+    for dt, dt_data in CLD_DAYS.items():
+        if dt not in set_dt:
+            data.append({'day_dt':dt,'holyday':dt_data.is_holyday,'weekend':dt_data.day_week==7,'max_time':0,
+                         'etap_podrazdel':tbl_top.alias,'etap_podrazdel_order':tbl_top.order,'val_minutes':0,
+                         'filler' :True})
+
+    def create_heatmap_figure(data: list[dict]):
+
+        # --- 1. сортировки ---
+        stages = sorted(
+            {(row['etap_podrazdel_order'], row['etap_podrazdel']) for row in data},
+            key=lambda x: x[0]
+        )
+        stages = [_[-1] for _ in stages]
+
+        dates = sorted({row['day_dt'] for row in data})
+        dates_str = [F.datetostr(d, "%d.%m.%Y") for d in dates]
+
+        stage_index = {s: i for i, s in enumerate(stages)}
+        date_index = {d: i for i, d in enumerate(dates)}
+
+        # --- 2. АГРЕГАЦИЯ (ВАЖНО) ---
+        agg = {}
+
+        for row in data:
+            key = (row['etap_podrazdel'], row['day_dt'])
+
+            plan = (row['val_minutes'] or 0) / 60
+            cap = row['max_time'] or 0
+
+            if key not in agg:
+                agg[key] = {
+                    "plan": 0.0,
+                    "cap": cap
+                }
+
+            agg[key]["plan"] += plan
+            agg[key]["cap"] = max(agg[key]["cap"], cap)
+            agg[key]["filler"] = row['filler']
+
+        # --- 3. матрицы ---
+        z = [[None for _ in dates] for _ in stages]
+        text = [["" for _ in dates] for _ in stages]
+        tool_text = [["" for _ in dates] for _ in stages]
+
+        # --- 4. заполняем из agg ---
+        for (stage, day), val in agg.items():
+
+            i = stage_index[stage]
+            j = date_index[day]
+
+            plan = val["plan"]
+            cap = val["cap"]
+
+            load = None
+            if not val["filler"]:
+                load = plan / cap if cap > 0 else 2
+
+            z[i][j] = load
+
+            if cap > 0:
+                percent = int(load * 100)
+                text[i][j] = f"{plan:.0f}<br>из<br>{cap:.0f}<br>{percent}%"
+                tool_text[i][j] = f"{plan:.2f} час. из {cap:.2f} ({percent}%)"
+            else:
+                tool_text[i][j] = f"{plan:.2f} час. из 0"
+                if not val["filler"]:
+                    text[i][j] = f"{plan:.0f}<br>из<br>{cap:.0f}<br>{200}%"
+        # --- 5. heatmap ---
+        fig = go.Figure()
+
+        custom_dates = [
+            [dates_str[j] for j in range(len(dates))]
+            for i in range(len(stages))
+        ]
+
+
+        fig.add_trace(go.Heatmap(
+            z=z,
+            x=list(range(len(dates))),
+            y=stages,
+            zmin=0,
+            zmax=2,
+            text=text,
+            name='Загрузка',
+            texttemplate="%{text}",
+            textfont=dict(size=8),
+            colorscale=[
+                [0.0, "rgb(71,135,223)"],  # мягкий синий
+                [0.5, "rgb(102,183,61)"],  # приглушённый зелёный (как в Excel)
+                [1.0, "rgb(248,105,107)"]  # мягкий красный
+            ],
+            colorbar=dict(
+                title='Загрузка, %',
+                tickvals=[0, 1, 2],
+                ticktext=['0%', '100%', '200%']
+            ),
+            hovertemplate=(
+                "Этап: %{y}<br>"
+                "Дата: %{x}<br>"
+                "%{customdata}<extra></extra>"
+            ),
+            customdata=[
+                [
+                    [tool_text[i][j], dates_str[j]]
+                    for j in range(len(dates))
+                ]
+                for i in range(len(stages))
+            ],
+            hoverongaps=False
+        ))
+
+        # подписи раз в неделю
+        tickvals = list(range(0, len(dates), 7))
+        ticktext = [
+            F.datetostr(dates[i], "%d.%m")
+            for i in tickvals
+        ]
+        # --- 6. оси ---
+        fig.update_layout(
+            margin=dict(l=80, r=40, t=40, b=80),
+            xaxis=dict(
+                tickmode='array',
+                tickvals=tickvals,
+                ticktext=ticktext,
+                tickangle=-45
+            ),
+            yaxis=dict(automargin=True)
+        )
+
+        # --- 7. выходные ---
+        holiday_map = {}
+        weekend_map = {}
+        for row in data:
+            d = row['day_dt']
+            if d not in holiday_map:
+                holiday_map[d] = row['holyday']
+            if d not in weekend_map:
+                weekend_map[d] = row['weekend']
+
+        shapes = []
+
+        for j, d in enumerate(dates):
+            if holiday_map.get(d) == 1:
+                shapes.append(dict(
+                    type="rect",
+                    xref="x",
+                    yref="paper",
+                    x0=j - 0.5,
+                    x1=j + 0.5,
+                    y0=0,
+                    y1=1,
+                    fillcolor="rgba(120,120,120,0.15)",
+                    line=dict(width=0),
+                    layer="above"
+                ))
+            if weekend_map.get(d) == 1:
+                shapes.append(dict(
+                    type="line",
+                    xref="x",
+                    yref="paper",
+                    x0=j - 0.5,
+                    x1=j - 0.5,
+                    y0=0,
+                    y1=1,
+                    line=dict(color="rgba(0,0,0,0.45)", width=2),
+                    layer="above"
+                ))
+
+        for j in range(len(dates) + 1):
+            shapes.append(dict(
+                type="line",
+                xref="x",
+                yref="paper",
+                x0=j - 0.5,
+                x1=j - 0.5,
+                y0=0,
+                y1=1,
+                line=dict(color="rgba(0,0,0,0.25)", width=1),
+                layer="above"
+            ))
+
+        fig.update_yaxes(autorange="reversed")
+        fig.update_xaxes(showgrid=False)
+        fig.update_layout(shapes=shapes)
+
+        return fig
+    fig = create_heatmap_figure(data)
+
+    parent_for_grafic = DTCLS.app_self.ui.lout_diagram_summ
+
+    if self.Data_plan.BROWSER_DIAGRAM_SUMM is None:
+        self.Data_plan.BROWSER_DIAGRAM_SUMM = CQT.QtWebEngineWidgets.QWebEngineView(self)
+        parent_for_grafic.addWidget(self.Data_plan.BROWSER_DIAGRAM_SUMM)
+
+    parent_for_grafic.setProperty("_loaded","true")
+    CQT.output_gant(self, fig, self.Data_plan.BROWSER_DIAGRAM_SUMM, 'svod_gr', CMS.tmp_dir())
+@CQT.onerror
+def dbl_clk_select_etap(self:mywindow):
+
+    if KPL.is_local_gant_hidden(self):
+        return
+    g_handle = KPL.Gant_handler(False)
+    if g_handle.current_row is None :
+        return
+
+    t = CQT.TableContext(self.ui.tbl_preview)
+    if g_handle.cld_day not in t.nf:
+        return
+    for row in t.rows():
+        if row.value('_tbl_name') == g_handle.tbl_db.name and row.value('_type_day') == g_handle.type_day.name:
+            t.tbl.setProperty(f'_selected_column', t.nf[g_handle.cld_day])
+            t.tbl.setProperty(f'_selected_row', row.i)
+            t.restore_selected_cell()
+            break
+
+def _________________refactored___________________():pass#^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 def save_diapazon_month(self: mywindow):
     str_d = F.datetostr(self.ui.de_vol_pl.date().toPyDate()) + ';' + F.datetostr(self.ui.de_vol_pl_end.date().toPyDate())
     CMS.save_tmp_path('pl_diapazon_month',str_d)

@@ -227,7 +227,13 @@ class CrashReporter(QtCore.QObject):
             full_tb_text = "".join(
                 traceback.format_exception(exc_type, exc_value, exc_tb)
             )
-
+            server_report = '=== SERVER REPORT START ===\n\n\n'
+            try:
+                import pprint
+                from project_cust_38 import Cust_client_socket as CCS
+                snapshot = CCS.HttpSessionTelemetry().snapshot()
+                server_report += pprint.pformat(snapshot)
+            except:...
             header = (
                 f"=== CRASH REPORT ===\n"
                 f"Приложение: {self.app_name}\n"
@@ -243,7 +249,9 @@ class CrashReporter(QtCore.QObject):
                 header
                 + onerror_text
                 + "\n=== FULL TRACEBACK ===\n"
-                + full_tb_text,
+                + full_tb_text
+                + server_report
+                + "\n=== SERVER REPORT END ===\n"
             )
 
             try:

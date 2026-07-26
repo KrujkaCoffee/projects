@@ -408,7 +408,7 @@ def check_rs(self:mywindow,*args):
 
     @CQT.onerror
     def fnc_progress(btn:QtWidgets.QPushButton,dialog:CQT.Dialog_tbl,tbl:QtWidgets.QTableWidget):
-        if btn.text() == 'Начать':
+        if dialog.is_btn_yes_role(btn):
 
             fn = CQT.nums_col_by_name_dict(tbl)
             tree = DTCLS.current_process.tree_res

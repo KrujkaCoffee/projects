@@ -32,7 +32,7 @@ from functools import partial
 import  project_cust_38.Cust_emoji as CEMOJ
 import  composition_vipoln as CMPM
 from app_dataclasses import data_app as DTCLS
-
+from project_cust_38.sub_mes.kro.manage_kro import Kro_manager as MKRO
 
 
 
@@ -81,7 +81,6 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.btn_print_nar.clicked.connect(self.print_nar)
         self.ui.btn_print_nar_settings.clicked.connect(self.on_click_btn_print_nar_settings)
         self.ui.btn_group_manage.clicked.connect(partial(GRM.btn_group_manage,self))
-        self.ui.btn_seletc_base_doc.clicked.connect(self.on_click_btn_seletc_base_doc)
         self.ui.btn_reset_gr.clicked.connect(partial(GRM.btn_reset_gr,self))
         self.ui.bnt_group_cancel.clicked.connect(partial(GRM.bnt_group_cancel,self))
         self.ui.bnt_group_ok.clicked.connect(partial(GRM.bnt_group_ok,self))
@@ -89,6 +88,7 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.bnt_gr_nar_remove.clicked.connect(partial(GRM.bnt_nar_remove,self))
         self.ui.btn_crash_header.clicked.connect(partial(GRM.btn_crash_header,self))
         self.ui.btn_test_apply_gr.clicked.connect(partial(GRM.btn_test_apply_gr,self))
+        self.ui.btn_create_vneplan.clicked.connect(self.create_vneplan_from_btn)
         if not DTCLS.USER_CONFIG.is_developer:
             self.ui.btn_test_apply_gr.setHidden(True)
         #===================CHECKBOX
@@ -110,9 +110,11 @@ class mywindow(QtWidgets.QMainWindow):
         self.glob_otk_kontrol = None
         self.glob_list_otk_brak = [['Кат_1','Кат_2','Кат_3','Тип','Кол_во']]
         self.nar_info:CLSS.Naryad_info | None = None
+        self.mode:str|None=None
         # =======tbls
         self.ui.tbl_naryadi.cellDoubleClicked[int,int].connect(self.load_naruad)
         self.ui.tbl_naryadi.clicked.connect(self.tbl_naryadi_click)
+        self.ui.tbl_compositions.clicked.connect(self.tbl_compositions_click)
         self.ui.tbl_chert.cellDoubleClicked[int, int].connect(self.otkrit_kd)
         self.ui.tbl_td.cellDoubleClicked[int, int].connect(self.otkrit_td)
         self.ui.tbl_nar_in_groups.cellDoubleClicked[int, int].connect(partial(GRM.tbl_nar_in_groupsDoubleClicked))
@@ -136,6 +138,14 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.peresilniy.triggered.connect(self.create_peresilniy)
         self.ui.ved_komplekt.triggered.connect(self.create_ved_komplekt)
         self.ui.zayav_pererabotchik.triggered.connect(self.create_zayav_pererab)
+
+        if self.USER_CONFIG.is_developer:
+            dev_menu = CMS.ActionDevMenu(self)
+            dev_menu.add_action('Пересчет подытогов', self.update_poditogs)
+            dev_menu.add_action('Выставить на паузу не закрытые наряды', self.autostop_nars)
+            dev_menu.add_action('Установить время начала нарядов', self.move_start_nars)
+
+
         # ============DB
         self.db_naryd = F.bdcfg('Naryad')
         self.bd_naryad = self.db_naryd
@@ -166,7 +176,13 @@ class mywindow(QtWidgets.QMainWindow):
         self.DICT_VIDS_NOMEN = F.deploy_dict_c(list_nomens, 'name')
         self.DICT_VIDS_NOMEN_BY_REF = F.deploy_dict_c(list_nomens, 'Ref_Key')
         self.DICT_PRICE_BRAK = CMS.DICT_PRICE_BRAK(self.db_naryd)
-        self.DICT_TYPE_PROSTOI =F.deploy_dict_c( CSQ.custom_request_c(self.db_naryd,f"""SELECT * FROM category_vnepl WHERE poki = {self.place.poki} and use = 1""", rez_dict=True),"value")
+        list_prostys = CSQ.custom_request_c(self.db_naryd,f"""SELECT * FROM category_vnepl WHERE poki = {self.place.poki} and use = 1""", rez_dict=True)
+        self.DICT_TYPE_PROSTOI =F.deploy_dict_c(
+            list_prostys
+            ,"value")
+        self.DICT_TYPE_PROSTOI_BY_CODE =F.deploy_dict_c(
+            list_prostys
+            ,'kod')
         # 21.05.2026
         self.DICT_DOLGN_ETAP = F.deploy_dict_c(
             CSQ.custom_request_c(self.db_naryd, f"""SELECT * FROM dolgn_etap""", rez_dict=True), 'Должность')
@@ -174,7 +190,7 @@ class mywindow(QtWidgets.QMainWindow):
 
         self.ui.le_Nparol.setVisible(False)
         self.ui.le_Nparol2.setVisible(False)
-        self.ui.fr_add_info_prost.setVisible(False)
+
         self.ui.tbl_chert.setSelectionBehavior(1)
         CQT.set_color_sort_cell_table_c(self.ui.tbl_chert, r=80, g=200, b=110)
         self.ui.tbl_td.setSelectionBehavior(1)
@@ -187,13 +203,11 @@ class mywindow(QtWidgets.QMainWindow):
         self.start_up()
         # ====ВРЕМЕННО
         self.ui.cmb_dolgn.setCurrentIndex(4)
-        #self.proverka_zakritiya_naryadov_po_jurnaly()
+
         #self.ui.cmb_fio.setCurrentIndex(3)
         #self.ui.le_parol.setText('2022')
         #userm.log_in(self)
         #self.ui.btn_nekomplect.setEnabled(False)
-        #self.update_poditogs()
-        #self.autostop_nars() #выставить на паузу не закрытые наряды
 
 
     def log_in(self):
@@ -216,7 +230,7 @@ class mywindow(QtWidgets.QMainWindow):
         self.fill_cmb_abstract()
         self.toggle_visible_btn_group_manage()
     def toggle_visible_btn_group_manage(self,forced_hide=False):
-        if not forced_hide and  (F.user_name() in ('a.belyakov' 's.kozyrkov', 'm.moyamsin', 'a.a.fedorov') or (
+        if not forced_hide and  (F.user_name() in ('a.belyakov' 's.kozyrkov', 'm.moyamsin') or (
                 USRCNF.Config.place.poki == 1 and USRCNF.Config.user_config.User and
                 USRCNF.Config.user_config.User.Подразделение in ('Сборочный цех Производства',
                                                                  'Отдел комплектации',
@@ -254,7 +268,7 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.le_basa.setText('')
         self.ui.le_premia.setText('')
         self.ui.le_brak.setText('')
-        self.ui.le_nom_nar_prost.setText('')
+
 
         self.ui.lbl_ostalos.setText('')
         self.ui.lbl_tek_nar.setText('')
@@ -349,9 +363,10 @@ class mywindow(QtWidgets.QMainWindow):
                 return
 
     @CQT.onerror
-    def update_poditogs(self):
+    def update_poditogs(self,*args):
         start = "2026-06-01 04:18:36"
         end = "2026-06-02 04:18:36"
+
         end_str = ''
         if end:
             end_str = f' AND datetime(Дата) < datetime("{end}")'
@@ -360,6 +375,9 @@ class mywindow(QtWidgets.QMainWindow):
         str_add = ''
         if list_nar:
             str_add = f' AND Номер_наряда IN ({", ".join([str(_) for _ in list_nar])})'
+
+        if not CQT.msgboxgYN(f'Обновить подытоги у нарядов WHERE datetime(Дата) > datetime("{start}") {end_str}'):
+            return
         list_users = CSQ.custom_request_c(self.db_naryd,f"""SELECT DISTINCT ФИО, Номер_наряда FROM jurnal
          WHERE datetime(Дата) > datetime("{start}") {end_str}  {str_add} ORDER BY Номер_наряда;""",rez_dict=True)
 
@@ -489,7 +507,8 @@ class mywindow(QtWidgets.QMainWindow):
 
             self.ui.lbl_ostalos.setText('')
         if name == 'Управление нарядом':
-            self.load_naruad()
+            if not self.load_naruad():
+                self.select_default_tab()
         if name == 'Статистика':
             if self.glob_login == "":
                 pass
@@ -1021,9 +1040,18 @@ class mywindow(QtWidgets.QMainWindow):
 
     @CQT.onerror
     def tbl_naryadi_click(self,*args):
+        self.set_current_mode_select(self.ui.tbl_naryadi)
         CQT.statusbar_text(self)
         self.time_ostalos_po_nar()
-        self.ui.fr_add_info_prost.setVisible(False)
+
+        #F.sleep(3)
+
+
+    @CQT.onerror
+    def tbl_compositions_click(self,*args):
+        self.set_current_mode_select(self.ui.tbl_compositions)
+        CQT.statusbar_text(self)
+
         #F.sleep(3)
 
 
@@ -1253,8 +1281,15 @@ class mywindow(QtWidgets.QMainWindow):
         label.setOpenLinks(False)
         return pre_form.format(text=''.join(result_parts))
 
+    def set_current_mode_select(self,obj):
+        self.mode = None
+        if obj is self.ui.tbl_naryadi:
+            self.mode = 'BY_NARYAD'
+        if obj is self.ui.tbl_compositions:
+            self.mode = 'BY_COMPOSITION'
+
     @CQT.onerror
-    def load_naruad(self,*args):
+    def load_naruad(self,*args)->bool|None:
         def fill_cmbs_type_brak(self):
             self.ui.cmb_brak_type1.clear()
             self.ui.cmb_brak_type2.clear()
@@ -1276,27 +1311,31 @@ class mywindow(QtWidgets.QMainWindow):
         tab = self.ui.tabWidget_2
         tbl_comp = self.ui.tbl_compositions
         tbl = self.ui.tbl_naryadi
-
-        t_comp = CQT.TableContext(tbl_comp)
-        row = t_comp.current_row()
-        composition = None
         nom_nar = '-'
-        if not row.no_selection:
-            id_comp = int(row.value('id'))
-            composition = DTCLS.user_compositions.find(id_comp)
-            set_nar = composition.get_set_nars(set([_['Пномер'] for _ in DTCLS.table_nar]))
-            if not set_nar:
-                CQT.msgbox(f'Ошибка загрузки нарядов')
-                return
-            for nar in set_nar:
-                nom_nar = nar
-                break
+        composition = None
 
-        else:
+        if self.mode == 'BY_COMPOSITION':
+            t_comp = CQT.TableContext(tbl_comp)
+            row = t_comp.current_row()
+
+            if not row.no_selection:
+                id_comp = int(row.value('id'))
+                composition = DTCLS.user_compositions.find(id_comp)
+                if not composition.is_coupled:
+                    CQT.msgbox(f'Раскрой еще не имеет всех связей с нарядами',app_self=self)
+                    return
+                set_nar = composition.get_set_nars(set([_['Пномер'] for _ in DTCLS.table_nar]))
+                if not set_nar:
+                    CQT.msgbox(f'Ошибка загрузки нарядов',app_self=self)
+                    return
+                for nar in set_nar:
+                    nom_nar = nar
+                    break
+        if self.mode == 'BY_NARYAD':
             t = CQT.TableContext(tbl)
             row = t.current_row()
             if row.no_selection:
-                CQT.msgbox('Не выбран наряд')
+                CQT.msgbox('Не выбран наряд',app_self=self)
                 return
             if t.current_column_name() == 'Статус_ЧПУ':
                 dir = row.value('Статус_ЧПУ')
@@ -1308,14 +1347,15 @@ class mywindow(QtWidgets.QMainWindow):
                 tab.setCurrentIndex(CQT.number_table_by_name_c(tab, 'Доступные наряды'))
                 return
             nom_nar = int(nom_nar)
-
+        if nom_nar =='-':
+            return
         nar_obj = CMS.Naryads(nom_nar,self.db_naryd,self.DICT_DOLGN_ETAP,self.bd_users,self.DICT_EMPLOEE_FULL_WITH_DEL)
         conn, cur = CSQ.connect_bd(self.db_naryd)
         if self.check_dostupnosti_nar(nom_nar) == False:
             self.zapoln_tabl_naryadov()
             CSQ.close_bd(conn,cur)
             tab.setCurrentIndex(CQT.number_table_by_name_c(tab, 'Доступные наряды'))
-            CQT.msgbox('Наряд недоступен')
+            CQT.msgbox('Наряд недоступен',app_self=self)
             return
         else:
             CSQ.close_bd(conn,cur)
@@ -1364,8 +1404,8 @@ class mywindow(QtWidgets.QMainWindow):
             self.ui.btn_nachat.setText('Начать')
 
         self.ui.btn_nachat.setEnabled(self.nar_info.state is not CLSS.States_nar.started)
-        tab.setCurrentIndex(CQT.number_table_by_name_c(tab, 'Управление нарядом'))
-
+        #tab.setCurrentIndex(CQT.number_table_by_name_c(tab, 'Управление нарядом'))
+        return True
     @CQT.onerror
     def transform_current_user_for_sql(self):
         """
@@ -1397,140 +1437,154 @@ class mywindow(QtWidgets.QMainWindow):
         cur_row.set_color_background(*clr,col_name='Приоритет')
 
     @CQT.onerror
-    def zapoln_tabl_naryadov(self,*args):
-        tbl = self.ui.tbl_naryadi
-        if self.glob_login == "":
-            CQT.msgbox('Необходимо войти')
-            return
-
+    def load_tabl_naryadov(self,all=False):
         user = self.transform_current_user_for_sql()
         ref_user = DTCLS.USER_CONFIG.User.ID_ФизЛица
         postfix = '((mk.Статус != "Закрыта" AND mk.Дата_завершения == "") OR (mk.Пномер = 0)) AND'
-        if 'shift' in CQT.get_key_modifiers(self):
+        if all:
             postfix = ''
         custom_request_c = f'''
-            SELECT 
-                COALESCE( groups.name, "") as Группа,
-                naryad.Пномер, 
-                naryad.Дата, 
-                naryad.Номер_мк, 
-                naryad.Задание, 
-                naryad.ФИО, 
-                naryad.ФИО2, 
-                naryad.Твремя, 
-                naryad.Норма_времени AS "Норматив время", 
-                "" AS "Время", 
-                naryad.Компл_номер_тара,
-                naryad.Компл_адрес, 
-                naryad.Примечание, 
-                naryad.Внеплан,
-                CASE WHEN mk.Приоритет IS NOT NULL and mk.Приоритет != ""
-                   THEN mk.Приоритет
-                   ELSE plan.Приоритет 
-                END AS Приоритет,
-                
-                naryad.Коэфф_сложности, 
-                naryad.Виды_работ, 
-                naryad.Опер_время, 
-                mk.Статус_ЧПУ, 
-                zagot.Прим_резка, 
-                naryad.ФИО_для_ОТК , 
-                naryad.Операции  , 
-                naryad.Распред_ФИО , 
-                naryad.Кол_повт_приемок AS "Кол_во повт. приёмок",
-                plan.Позиция as "Позиция",
-                пл_оуп.Номенклатура_ЕРП as "Номенклатура_ЕРП",
-                CASE 
-                    WHEN знпр.№ERP IS NOT NULL 
-                    THEN знпр.№ERP 
-                    ELSE пл_оуп.№ERP  
-                END AS "Номер_заказа", 
-                CASE WHEN знпр.№проекта IS NOT NULL 
-                   THEN знпр.№проекта 
-                   ELSE пл_оуп.№проекта 
-                END AS Номер_проекта,
-                COALESCE( groups.id, "") as _id,
-                COALESCE( groups.summ, "") as _gr_summ
-            FROM naryad 
-            INNER JOIN mk ON mk.Пномер = naryad.Номер_мк 
-            LEFT JOIN plan ON mk.НомКплан = plan.Пномер
-            LEFT JOIN пл_оуп ON mk.НомКплан = пл_оуп.НомПл
-            LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП
-            INNER JOIN коды_веплана_для_наряда ON коды_веплана_для_наряда.code = naryad.Внеплан
-            INNER JOIN zagot ON zagot.Ном_МК = naryad.Номер_мк 
-            LEFT JOIN naryad_groups ON  (naryad_groups.id_nar = naryad.Пномер AND naryad_groups.fio IN ({user}))
-            LEFT JOIN groups ON (groups.id == naryad_groups.id_group AND groups.user_ref == "{ref_user}")
-            WHERE коды_веплана_для_наряда.poki = {self.place.poki} AND {postfix}  naryad.Подтвержд_вып_дата == "" AND
-                         ((naryad.ФИО IN ({user}) AND naryad.Фвремя == "") 
-                        OR (naryad.ФИО2 IN ({user}) AND naryad.Фвремя2 == ""));'''
-        rez = CSQ.custom_request_c(self.db_naryd, custom_request_c, rez_dict=True, attach_dbs=USRCNF.Config.project.db_kplan) #04.09.25
+                    SELECT 
+                        COALESCE( groups.name, "") as Группа,
+                        naryad.Пномер, 
+                        naryad.Дата, 
+                        plan.Позиция as "Позиция",
+                        пл_оуп.Номенклатура_ЕРП as "Номенклатура_ЕРП",
+                        CASE 
+                            WHEN знпр.№ERP IS NOT NULL 
+                            THEN знпр.№ERP 
+                            ELSE пл_оуп.№ERP  
+                        END AS "Номер_заказа", 
+                        CASE WHEN знпр.№проекта IS NOT NULL 
+                           THEN знпр.№проекта 
+                           ELSE пл_оуп.№проекта 
+                        END AS Номер_проекта,
+                        
+                        naryad.Задание, 
+                        naryad.ФИО, 
+                        naryad.ФИО2, 
+                        "" as КРО,
+                        naryad.Твремя, 
+                        naryad.Норма_времени AS "Норматив время", 
+                        "" AS "Время", 
+                        naryad.Компл_номер_тара,
+                        naryad.Компл_адрес, 
+                        naryad.Примечание, 
+                        naryad.Внеплан,
+                        naryad.Номер_мк, 
+                        CASE WHEN mk.Приоритет IS NOT NULL and mk.Приоритет != ""
+                           THEN mk.Приоритет
+                           ELSE plan.Приоритет 
+                        END AS Приоритет,
+                        naryad.Коэфф_сложности, 
+                        naryad.Виды_работ, 
+                        naryad.Опер_время, 
+                        mk.Статус_ЧПУ, 
+                        zagot.Прим_резка, 
+                        naryad.ФИО_для_ОТК , 
+                        naryad.Операции  , 
+                        naryad.Распред_ФИО , 
+                        naryad.Кол_повт_приемок AS "Кол_во повт. приёмок",
+                        naryad.ДСЕ_ID,
+                        COALESCE( groups.id, "") as _id,
+                        COALESCE( groups.summ, "") as _gr_summ
+                    FROM naryad 
+                    INNER JOIN mk ON mk.Пномер = naryad.Номер_мк 
+                    LEFT JOIN plan ON mk.НомКплан = plan.Пномер
+                    LEFT JOIN пл_оуп ON mk.НомКплан = пл_оуп.НомПл
+                    LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП
+                    INNER JOIN коды_веплана_для_наряда ON коды_веплана_для_наряда.code = naryad.Внеплан
+                    INNER JOIN zagot ON zagot.Ном_МК = naryad.Номер_мк 
+                    LEFT JOIN naryad_groups ON  (naryad_groups.id_nar = naryad.Пномер AND naryad_groups.fio IN ({user}))
+                    LEFT JOIN groups ON (groups.id == naryad_groups.id_group AND groups.user_ref == "{ref_user}")
+                    WHERE коды_веплана_для_наряда.poki = {self.place.poki} AND {postfix}  naryad.Подтвержд_вып_дата == "" AND
+                                 ((naryad.ФИО IN ({user}) AND naryad.Фвремя == "") 
+                                OR (naryad.ФИО2 IN ({user}) AND naryad.Фвремя2 == ""));'''
+        rez = CSQ.custom_request_c(self.db_naryd, custom_request_c, rez_dict=True,
+                                   attach_dbs=USRCNF.Config.project.db_kplan)  # 04.09.25
         if rez == False or rez == None:
             CQT.msgbox(f'БД недоступна, пробуй еще')
             return
         for i in range(len(rez)):
-            if rez[i]['ФИО'] != '' and  rez[i]['ФИО2'] !='':
-                rez[i]['Норматив время'] = round(rez[i]['Норматив время']/2,2)
+            if rez[i]['ФИО'] != '' and rez[i]['ФИО2'] != '':
+                rez[i]['Норматив время'] = round(rez[i]['Норматив время'] / 2, 2)
             rez[i]['Время'] = F.miutes_to_time(rez[i]['Норматив время'])
-        self.ui.label_12.setText(f'План работ для на {F.now()}')
-        if len(rez)>0:
-            rez = F.sort_by_column_c(rez,'Приоритет',type_compare='numeric')
+        if len(rez) > 0:
+            rez = F.sort_by_column_c(rez, 'Приоритет', type_compare='numeric')
+        return rez
 
+
+
+    @CQT.onerror
+    def zapoln_tabl_naryadov(self,*args):
+        tbl = self.ui.tbl_naryadi
+        tblf = self.ui.tbl_naryadi_filtr
+        if self.glob_login == "":
+            CQT.msgbox('Необходимо войти',app_self=self)
+            return
+
+        rez = self.load_tabl_naryadov('shift' in CQT.get_key_modifiers(self))
+        # ======================Заполняем поле КРО==================================
+        kro_manager_o = MKRO()
+
+        for item in rez:
+            dse_ids = item['ДСЕ_ID'].split('|')
+            nom_mk = item['Номер_мк']
+
+            mk_num = int(nom_mk)
+            if mk_num != 0:
+                item['КРО'] = kro_manager_o.get_kro_info_by_mk(mk_num,[int(_) for _ in dse_ids])
+
+        def fnc_open_kro(t: CQT.TableContext, i: int, name_clm: str, self: mywindow, *args):
+            mk = int(t.get_row(i).value('Номер_мк'))
+            kro_manager_o.start_sub_app_kro(self, mk)
+
+        # ==============================================================================
+        self.ui.label_12.setText(f'План работ для на {F.now()}')
         DTCLS.user_compositions = CMPM.load_user_compositions([_['Пномер'] for _ in rez])
         DTCLS.table_nar = copy.deepcopy(rez)
 
-        rez.insert(0,{
-                        'Группа': '',
-                      'Пномер':'-',
-                      'Дата':'-',
-                      'Номер_мк':'-',
-                      'Задание':'ПРОСТОЙ',
-                      'ФИО':CMS.name_by_empl_c(self.glob_login),
-                      'ФИО2':'',
-                      'Твремя':'1',
-                      'Норматив время': '1',
-                      'Время': '1',
-                      'Компл_номер_тара':'',
-                      'Компл_адрес':'',
-                      'Примечание':'ПРОСТОЙ',
-                      'Внеплан':'-',
-                      'Номер_проекта':'-',
-                      'Позиция': '-',
-                      'Номер_заказа':'-',
-                      'Номенклатура_ЕРП': '-', # 04.09.25 по задаче 100059700
-                      'Приоритет':'',
-                      'Коэфф_сложности':'0.01',
-                      'Виды_работ':'-',
-                      'Опер_время':'',
-                      'Статус_ЧПУ':'',
-                      'Прим_резка':'',
-                      'ФИО_для_ОТК':'',
-                      'Операции':'',
-                      'Распред_ФИО':'',
-                        '_id':'',
-                        '_gr_summ':'',
-        })
+
         t = CQT.TableContext(tbl)
         if t.count:
             t.save_coord()
-        CQT.fill_wtabl(rez, tbl,auto_type=False,font_size=12,styleSheet=CQT.MES_EDIT_CSS,selectionBehavior='SelectRows')
+        aliases = {'Пномер': 'Пномер',
+                    'Дата': 'Дата',
+                    'Номер_мк': 'МК',
+                    'ФИО': 'ФИО',
+                    'ФИО2': 'ФИО2',
+                    'Твремя': 'Твремя',
+                    'Время': 'Время',
+                    'Примечание': 'Примечание',
+                    'Внеплан': 'Внеплан',
+                    'Приоритет': 'Приоритет',
+                    'Коэфф_сложности': 'k-сложн.',
+                    'Статус_ЧПУ': 'ЧПУ раскрой',
+                    'Прим_резка': 'Примеч. Резка',
+                    'Распред_ФИО': 'Распределил',
+                    'Кол_во повт. приёмок': 'повт. приемок',
+                    'Позиция': 'Поз.',
+                    'Номенклатура_ЕРП': 'Номенклатура',
+                    'Номер_заказа': 'Заказ',
+                    'Номер_проекта': 'Проект',
+                    }
+        CQT.fill_wtabl(rez, tbl,auto_type=True,font_size=12,styleSheet=CQT.MES_EDIT_CSS,
+                       selectionBehavior='SelectRows',sortingEnabled=True,aliases_header=aliases,
+                       list_column_widths=CMS.load_column_widths(self,tbl))
+
+
+
         t = CQT.TableContext(tbl)
         clr = CMS.Color_tbl(10)
         gr_emoj = CEMOJ.EmojiMain.ДокументыДанные.folder.symbol
         with CQT.table_updating(t):
             hide_fields = {'Норматив время','Компл_номер_тара','Компл_адрес','Задание','Виды_работ',
-                           'Опер_время','ФИО_для_ОТК','Операции','_id','_gr_summ'}
+                           'Опер_время','ФИО_для_ОТК','Операции','_id','_gr_summ','ДСЕ_ID'}
             for column_name in hide_fields:
                 t.hide(column_name)
 
-            CQT.add_btn(tbl, 0, t.nf['Дата'], 'СОЗДАТЬ', True, self.create_prostoi_nar, '')
-            spis_prost = list(self.DICT_TYPE_PROSTOI.keys())
-
-            CQT.add_combobox('',tbl, 0, t.nf['ФИО2'], spis_prost, False,self.select_type_prost)
-
             self.lbl_tek_narayd(CMS.name_by_empl_c(self.glob_login))
-            self.ui.cmb_nom_nar_prost.clear()
-            self.ui.cmb_nom_nar_prost.addItem('')
-            self.ui.cmb_nom_nar_prost.addItems([ str(_['Пномер']) for _ in rez if _['Задание'] != 'ПРОСТОЙ'])
+
             fl_gr_found = False
             for row in t.rows():
                 if 'Повт.Приёмка' in row.value('Примечание'):
@@ -1545,8 +1599,11 @@ class mywindow(QtWidgets.QMainWindow):
             tbl.resizeColumnsToContents()
             CMS.load_column_widths(self,tbl)
         t.restore_selected_cell()
+        t.add_column_events('КРО', on_double_click=fnc_open_kro, parent_self=self)
         CMPM.fill_table_compositions()
-
+        CQT.fill_filtr_c(self,tblf,tbl,hidden_scroll=True, show_header=False,
+                         combo_dict={'Распред_ФИО':None,'Внеплан':None},
+                         check_box_dict={'Номер_заказа':None,'Номер_проекта':None})
 
 
     def check_zav_nar(self,nom_nar,fio):
@@ -1555,116 +1612,235 @@ class mywindow(QtWidgets.QMainWindow):
         if len(rez) == 1 or query == False:
             return False
         return True
-    def select_type_prost(self, text, row, col):
-        koef= 0.01
-        if text in self.DICT_TYPE_PROSTOI:
-            koef = self.DICT_TYPE_PROSTOI[text]['Коэффициент_наряда']
-        self.ui.tbl_naryadi.item(0,CQT.num_col_by_name_c(self.ui.tbl_naryadi,'Коэфф_сложности')).setText(str(koef))
-        self.ui.fr_add_info_prost.setVisible(True)
 
-        view_nom_nar_lbl = self.DICT_TYPE_PROSTOI[text].get('kod') != 18
-
-        self.ui.btn_seletc_base_doc.setHidden(False)
-        self.ui.cmb_nom_nar_prost.setHidden(True)
-        self.ui.le_base_nar.setHidden(not view_nom_nar_lbl)
-
-        default_mk, default_nar = '№ МК', '№ Нар'
-        self.ui.le_base_nk.setText(default_mk)
-        self.ui.le_base_nk.setProperty('default', default_mk)
-        self.ui.le_base_nar.setText(default_nar)
-        self.ui.le_base_nar.setProperty('default', default_nar)
+    @CQT.onerror
+    def create_vneplan_from_btn(self):
+        if not self.glob_login:
+            return
+        s_num_cur_nar = ''
+        t_nars = CQT.TableContext(self.ui.tbl_naryadi)
+        row_nar = t_nars.current_row()
+        if not row_nar.no_selection:
+            s_num_cur_nar = row_nar.value('Пномер')
 
 
-    def create_prostoi_nar(self,row,col):
-        comment_column = CQT.num_col_by_name_c(self.ui.tbl_naryadi, 'ФИО2')
-        primech = self.ui.tbl_naryadi.cellWidget(row,comment_column).currentText() #10.03.2026
-        pk_nar = self.ui.le_base_nar.text()
-        pk_mk = self.ui.le_base_nk.text()
-        if primech not in self.DICT_TYPE_PROSTOI:
-            CQT.blink_obj_c(self,2,self.ui.tbl_naryadi,'Не указана причина простоя')
-            return False
-        dop_prim_prost =''
-        num_bad_bar = 0
-        code_category = self.DICT_TYPE_PROSTOI[primech].get('kod')
-        if code_category == 18:  # Финишный ОТК
-            if pk_mk == self.ui.le_base_nk.property('default'):
-                CQT.blink_obj_c(self, 2, self.ui.le_base_nk,
-                                'Не указан номер МК')
-                return False
-        if primech == "Ошибка нормирования и технологии":
-            if pk_nar == self.ui.le_base_nar.property('default'):
-                CQT.blink_obj_c(self, 2, self.ui.le_base_nar,
-                                'Не указан номер наряда, в котором не хватает времени/операции')
-                return False
-            if self.ui.le_nom_nar_prost.text().strip() == '':
-                CQT.blink_obj_c(self, 2, self.ui.le_nom_nar_prost, 'Не указано примечание о том что не хватает времени/операции')
-                return False
-            dop_prim_prost = self.ui.le_nom_nar_prost.text().strip()
-            # num_bad_bar = self.ui.cmb_nom_nar_prost.currentText()
-            num_bad_bar = self.ui.le_base_nar.text()
+        template = [
+            {'_name':'code_category','Параметр':'Причина простоя','Значение':''},
+            {'_name':'pk_mk','Параметр':'Номер МК','Значение':''},
+            {'_name':'num_bad_nar','Параметр':'Номер наряда','Значение':s_num_cur_nar},
+            {'_name':'dop_prim_prost','Параметр':'Коммент к наряду','Значение':''},
+        ]
+
+        @CQT.onerror
+        def fnc_oform(tbl,*args):
+            t =  CQT.TableContext(tbl)
+            t.set_editable('Значение')
+            t.hide_if_not_dev(USRCNF)
+            row_code_category = t.find_row({'_name': 'code_category'},True)
+            list_category = list(DTCLS.app_self.DICT_TYPE_PROSTOI.keys())
+            list_cod_category = [DTCLS.app_self.DICT_TYPE_PROSTOI[_]['kod'] for _ in list_category]
+
+            def oform_rows(row_o:CQT.TableRow):
+                value = row_o.value('Значение')
+                t = row_o.ctx
+                row_value_pk_mk = t.find_row({'_name': 'pk_mk'}, True)
+                row_bad_nar = t.find_row({'_name': 'num_bad_nar'}, True)
+                row_prim_prost = t.find_row({"_name": "dop_prim_prost"}, True)
+                row_value_pk_mk.hide()
+                row_bad_nar.hide()
+                row_prim_prost.hide()
+                if not F.is_numeric(value):
+                    return
+                if int(value) == 18:
+                    row_value_pk_mk.hide(False)
+                    def fnc_select_mk(lbl:CQT.InteractiveLabelInstance,self:mywindow,i,j,row_o:CQT.TableRow,*args):
+                        custom_request_c = f'''SELECT mk.Пномер, Тип_мк.Имя as Тип,  mk.Дата, mk.Статус,  mk.Номенклатура,
+                                    CASE WHEN знпр.№ERP IS NOT NULL 
+                                   THEN знпр.№ERP 
+                                   ELSE mk.Номер_заказа 
+                                   END AS Номер_заказа, 
+
+                                    CASE WHEN знпр.№проекта IS NOT NULL 
+                                   THEN знпр.№проекта 
+                                   ELSE mk.Номер_проекта 
+                                   END AS Номер_проекта, 
+                                   '' as КРО,
+                                   CASE WHEN napravl_deyat.Псевдоним IS NOT NULL 
+                                   THEN napravl_deyat.Псевдоним 
+                                   ELSE mk.Вид 
+                                   END AS Вид, 
+                                    mk.На_удал as "На удаление", 
+                                       mk.Ресурсная_дата, mk.Примечание, mk.Основание,
+                                     mk.Прогресс, 
+
+                                    mk.Приоритет AS Приоритет,
+                                   plan.Приоритет  AS "Приоритет КПЛ",
+
+
+                                    CASE WHEN napravlenie.name IS NOT NULL 
+                                   THEN napravlenie.name 
+                                   ELSE mk.Направление 
+                                   END AS Направление, 
+
+
+                                     mk.Вес, mk.Количество,  mk.Дата_завершения,  mk.Коэф_парал, 
+                                      mk.Искл_план_рм, тип_дорезок.Имя AS тип_дорезок, тип_доработок.Имя AS тип_доработок,
+                                       mk.НомКплан as "Номер КПЛ", mk.ФИО as "Создал"  FROM mk 
+                                      LEFT JOIN plan ON plan.Пномер = mk.НомКплан  
+                                      LEFT JOIN napravl_deyat ON napravl_deyat.Пномер = plan.Направление_деятельности 
+                                      LEFT JOIN napravlenie ON napravlenie.Пномер = napravl_deyat.Направление  
+                                     LEFT JOIN пл_оуп ON пл_оуп.НомПл = mk.НомКплан 
+                                     INNER JOIN пл_отк ON пл_отк.НомПл = пл_оуп.НомПл
+                                     LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП 
+                                     LEFT JOIN Тип_мк ON Тип_мк.Пномер = mk.Тип 
+                                     LEFT JOIN дорезки_мк ON дорезки_мк.Номер_мк = mk.Пномер
+                                     LEFT JOIN тип_дорезок ON тип_дорезок.Пномер = дорезки_мк.Причина
+                                     LEFT JOIN тип_доработок ON тип_доработок.Пномер = mk.Тип_доработки
+                                     WHERE mk.Статус == "Открыта" AND пл_отк.Контр_покрытие_ФИО = '' and plan.poki = {DTCLS.place.poki};'''
+                        data_mk = CSQ.custom_request_c(self.bd_naryad, custom_request_c, '', True,
+                                                       attach_dbs=(self.db_kplan),
+                                                       rez_dict=True)
+
+
+                        template= [_ for _ in data_mk]
+                        rez_mk = CQT.msgboxg_get_table(self,'Выбор наряда',template,selectRows=True,
+                                                        ExtendedSelection=False,styleSheet=CQT.MES_CSS,
+                                                        selection_from_tbl=True)
+                        if not rez_mk:
+                            return
+                        num_mk = rez_mk['Пномер']
+                        row_o.set_value('Значение' ,num_mk)
+                        lbl.set_text(num_mk)
+
+
+                    widg = CQT.add_interactive_label(tbl, row_value_pk_mk.i, row_value_pk_mk.nf['Значение'], row_value_pk_mk.value('Значение'),
+                                                     parent_self=self)
+                    widg.add_button(CEMOJ.EmojiMain.СтатусыПроизводства.ellipsis.symbol, 'Выбрать',
+                                    fnc_select_mk,
+                                    cell_val=row_value_pk_mk, img_path=F.sep().join([F.path_to_execut_file_c(),
+                                                                                 'icons', 'btn_select']))
+                if int(value) == 2:
+
+                    def fnc_select_nar(lbl:CQT.InteractiveLabelInstance,self:mywindow,i,j,row_o:CQT.TableRow,*args):
+                        list_nars = self.load_tabl_naryadov()
+                        set_permited_keys = {
+                            'Группа',
+                            'Пномер',
+                            'Дата',
+                            'Номер_мк',
+
+                            'ФИО',
+                            'ФИО2',
+                            'Твремя',
+                            'Норматив время',
+                            'Время',
+
+                            'Примечание',
+                            'Внеплан',
+                            'Приоритет',
+
+                            'Позиция',
+                            'Номенклатура_ЕРП',
+                            'Номер_заказа',
+                            'Номер_проекта',
+                        }
+                        template= [{k:v for k,v in _.items() if k in set_permited_keys} for _ in list_nars]
+                        rez_nar = CQT.msgboxg_get_table(self,'Выбор наряда',template,selectRows=True,
+                                                        ExtendedSelection=False,styleSheet=CQT.MES_CSS,
+                                                        selection_from_tbl=True)
+                        if not rez_nar:
+                            return
+                        num_nar = rez_nar['Пномер']
+                        row_o.set_value('Значение' ,num_nar)
+                        lbl.set_text(num_nar)
+
+
+                    selected_nar = row_bad_nar.value('Значение')
+                    widg = CQT.add_interactive_label(tbl, row_bad_nar.i, row_bad_nar.nf['Значение'], selected_nar, parent_self=self)
+                    widg.add_button(CEMOJ.EmojiMain.СтатусыПроизводства.ellipsis.symbol, 'Выбрать',
+                                    fnc_select_nar,
+                                    cell_val=row_bad_nar, img_path=F.sep().join([F.path_to_execut_file_c(),
+                                                                          'icons', 'btn_select']))
+
+                    row_bad_nar.hide(False)
+                    row_prim_prost.hide(False)
+
+
+            def fnc_select_category(self, value, row, col, row_o:CQT.TableRow, *args):
+                if value:
+                    row_o.tbl.item(row, col).setText(str(value))
+                else:
+                    row_o.tbl.item(row, col).setText('')
+                oform_rows(row_o)
+
+            CQT.add_combobox(DTCLS.app_self,t.tbl,row_code_category.i,t.nf['Значение'],list_category, first_void=True,
+                             list_data=list_cod_category,return_data=True,conn_func=fnc_select_category,addit_data=row_code_category)
+
+            oform_rows(row_code_category)
+        @CQT.onerror
+        def fnc_ok(btn: QtWidgets.QPushButton, dialog: CQT.Dialog_tbl, tbl: QtWidgets.QTableWidget):
+            if dialog.is_btn_yes_role(btn):
+                t = CQT.TableContext(tbl)
+                for row in t.rows():
+                    name= row.value("_name")
+                    value = row.value("Значение")
+
+                    if name == "code_category":
+                        if not value or not F.is_numeric(value):
+                            CQT.msgbox(f'Не указана причина простоя',app_self=self)
+                            return
+                        if int(value) == 18:#Финишный ОТК
+                            row_pk_mk = t.find_row({"_name":"pk_mk"},True)
+                            value_pk_mk = row_pk_mk.value("Значение")
+                            if not F.is_numeric(value_pk_mk):
+                                CQT.msgbox(f'Не указан номер МК',app_self=self)
+                                return
+                        elif int(value) == 2:#Ошибка нормирования и технологии
+                            row_bad_nar = t.find_row({"_name": "num_bad_nar"},True)
+                            value_bad_bar = row_bad_nar.value("Значение")
+                            if not F.is_numeric(value_bad_bar):
+                                CQT.msgbox(f'Не указан номер наряда, в котором не хватает времени/операции',app_self=self)
+                                return
+                            row_prim_prost = t.find_row({"_name": "dop_prim_prost"},True)
+                            value_prim_prost = row_prim_prost.value("Значение")
+                            if not value_prim_prost.strip():
+                                CQT.msgbox(f'Не указан комментарий, где не хватает времени/операции',app_self=self)
+                                return
+
+                dialog.accept()
+            else:
+                dialog.reject()
+
+        @CQT.onerror
+        def fnc_validate_data(data:list[dict],*args):
+            return F.deploy_dict_c(data,'_name')
+
+        rez:dict[str,dict] = CQT.msgboxg_get_table(self,'Создание внепланового наряда',template,styleSheet=CQT.MES_EDIT_CSS,
+                              func_oform_tbl=fnc_oform,not_standart_close=True,func_btn0=fnc_ok,func_validate=fnc_validate_data)
+
+        if not rez:
+            return
+        primech_code = int(rez['code_category']['Значение'])
+        primech_name = DTCLS.app_self.DICT_TYPE_PROSTOI_BY_CODE[primech_code]['value']
+        koeff_nar = DTCLS.app_self.DICT_TYPE_PROSTOI_BY_CODE[primech_code]['Коэффициент_наряда']
+        dop_prim_prost = rez['dop_prim_prost']['Значение']
+        num_bad_bar = rez['num_bad_nar']['Значение'] if rez['num_bad_nar']['Значение'] else 0
+        pk_mk = rez['pk_mk']['Значение']
+
         rez  = CMS.create_nar_prosoy(self.glob_login,
-                                     primech,
-                                     self.DICT_TYPE_PROSTOI[primech]['Коэффициент_наряда'],
+                                     primech_name,
+                                     koeff_nar,
                                      dop_prim_prost,
                                      num_bad_bar,
                                      pk_mk=pk_mk,
-                                     code_category=self.DICT_TYPE_PROSTOI[primech]['kod'])
-        if rez == False:
-            CQT.msgbox(f'Неудачно!, попробуй еще.')
+                                     code_category=primech_code)
+        if not rez:
+            CQT.msgbox(f'Ошибка при записи данных')
             return
-        self.ui.le_nom_nar_prost.setText('')
-        self.ui.le_base_nar.setText(self.ui.le_base_nar.property('default'))
-        self.ui.le_base_nk.setText(self.ui.le_base_nk.property('default'))
         self.zapoln_tabl_naryadov()
-        CQT.msgbox('Наряд успешно создан')
+        CQT.msgbox(f'Наряд {rez} успешно создан',app_self=self)
 
-    def on_click_btn_seletc_base_doc(self, *args, **kwargs): #17.03.2026
-        db_kplan = USRCNF.Config.project.db_naryad
-        col = CQT.num_col_by_name_c(self.ui.tbl_naryadi, 'ФИО2')
-        text = self.ui.tbl_naryadi.cellWidget(0, col).currentText()
 
-        if self.DICT_TYPE_PROSTOI[text].get('kod') == 18:
-
-            result = CSQ.custom_request_c(
-                db_kplan,
-                f"""
-                    SELECT mk.Пномер AS "НомерМК", пл_отк.НомПл AS "НомерКПЛ",
-                        CASE WHEN знпр.№ERP IS NOT NULL 
-                           THEN знпр.№ERP 
-                           ELSE mk.Номер_заказа 
-                           END AS Номер_заказа, 
-
-                            CASE WHEN знпр.№проекта IS NOT NULL 
-                           THEN знпр.№проекта 
-                           ELSE mk.Номер_проекта 
-                           END AS Номер_проекта
-                    FROM пл_отк 
-                    INNER JOIN пл_оуп ON пл_оуп.НомПл = пл_отк.НомПл
-                    INNER JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП
-                    INNER JOIN mk ON пл_отк.НомПл = mk.НомКплан 
-                    WHERE mk.Статус = "Открыта" AND пл_отк.Контр_покрытие_ФИО = ''
-                """,
-                rez_dict=True,
-                attach_dbs=USRCNF.Config.project.db_kplan
-            )
-            result = CQT.msgboxg_get_table(self, 'Выберите МК-основание', result,
-                                           ExtendedSelection=False, selectRows=True,
-                                           btn0_name='Выбрать')
-            if not result:
-                return
-            self.ui.le_base_nk.setText(result['НомерМК'])
-        else:
-            tbl = self.ui.tbl_naryadi
-            data = CQT.list_from_wtabl_c(tbl, rez_dict=True) or []
-            if not data:
-                return
-            result = CQT.msgboxg_get_table(self, 'Выберите наряд-основание', data[1:], ExtendedSelection=False,
-                                           selectRows=True,
-                                           btn0_name='Выбрать')
-            if not result:
-                return
-            self.ui.le_base_nk.setText(result['Номер_мк'])
-            self.ui.le_base_nar.setText(result['Пномер'])
 
     #+++ 15.07.25 по задаче 100056733
     def get_current_abstract_name(self, nom_nar: int | str):
@@ -1806,18 +1982,96 @@ class mywindow(QtWidgets.QMainWindow):
         CQT.msgbox('Наряд успешно запущен')
 
         self.clear_naryad_bar()
-        tab = self.ui.tabWidget_2
-        tab.setCurrentIndex(CQT.number_table_by_name_c(tab, 'Доступные наряды'))
+        self.select_default_tab()
         if not self.ui.chk_come_back.isChecked():  # если стоит галочка вернуться обратно то...
             self.load_naruad()
 
+    def select_default_tab(self):
+        tab = self.ui.tabWidget_2
+        tab.setCurrentIndex(CQT.number_table_by_name_c(tab, 'Доступные наряды'))
 
-    def autostop_nars(self):
-        time_to_pase = '2026-06-05 15:30:00'
+    def move_start_nars(self,*args):
+
+        date = '2026-06-17'
+        smena = 2
+
+
+        if smena == 1:
+            new_time_start = f'{date} 07:00:01'
+            start_date =  f'{date} 07:15:01'
+            end_date = f'{date} 10:28:08'
+        else:
+            new_time_start = f'{date} 15:30:01'
+            start_date = f'{date} 15:45:01'
+            end_date = f'{date} 18:58:08'
+
+        list_emploee_with_del = CMS.list_emploee_full_with_del(self.bd_users)
+        DICT_EMPLOEE_FULL_WITH_DEL = F.deploy_dict_c(list_emploee_with_del, 'ФИО')
+        #
+        #list_fix = CSQ.custom_request_c(USRCNF.Config.project.db_naryad,
+        #                     f"""SELECT *
+        #                    FROM jurnal WHERE  Примечание  LIKE "Автовосстановление старта с 2026-06-17%" and Статус = "Начат"
+        #                        """, rez_dict=True)
+        #for it in list_fix:
+        #    CSQ.custom_request_c(USRCNF.Config.project.db_naryad,
+        #                         f"""UPDATE jurnal
+        #                    SET  (Дата)
+        #                        = (?)
+        #                                WHERE Пномер == {it['Пномер']} """,
+        #                         list_of_lists_c=[[new_time_start]])
+        #    nar = CMS.Naryads(it['Номер_наряда'], self.db_naryd, self.DICT_DOLGN_ETAP, self.bd_users,
+        #                      DICT_EMPLOEE_FULL_WITH_DEL)
+        #    nar.recalc_jur_n_time(it['ФИО'])
+        #return
+
+
+
+        if not CQT.msgboxgYN(f'Установить время начала нарядов на "{new_time_start}" WHERE Datetime(Дата)'
+                             f' BETWEEN "{start_date}" AND "{end_date}"'):
+            return
+
+        list_starts = CSQ.custom_request_c(USRCNF.Config.project.db_naryad,
+                                           f"""SELECT DISTINCT ФИО 
+                    FROM jurnal WHERE Datetime(Дата)
+                    BETWEEN "{start_date}" AND "{end_date}" and Статус = "Начат"
+                        """, rez_dict=True)
+
+
+        cnt = len(list_starts)
+        cntr = 0
+        for it in list_starts:
+            cntr += 1
+            print(f'check {cntr}/{cnt}')
+            first_row = CSQ.custom_request_c(USRCNF.Config.project.db_naryad,
+                                           f"""SELECT  Пномер, Номер_наряда,  Дата
+                    FROM jurnal WHERE Datetime(Дата)
+                    BETWEEN "{start_date}" AND "{end_date}" AND Статус = "Начат" AND ФИО="{it['ФИО']}" ORDER BY  Дата LIMIT 1
+                        """, rez_dict=True,one=True)
+            CSQ.custom_request_c(USRCNF.Config.project.db_naryad,
+                                 f"""UPDATE jurnal
+                SET  (Дата, Примечание)
+                    = (?, ?)
+                            WHERE Пномер == {first_row['Пномер']} """, list_of_lists_c=[[new_time_start, f'Автовосстановление старта с {first_row['Дата']}']])
+            nar = CMS.Naryads(first_row['Номер_наряда'], self.db_naryd, self.DICT_DOLGN_ETAP, self.bd_users,
+                              DICT_EMPLOEE_FULL_WITH_DEL)
+            nar.recalc_jur_n_time(it['ФИО'])
+            print(f'    moved nar {cntr}/{cnt}', end='\n\n')
+            pass
+
+
+    def autostop_nars(self,*args):
+        time_to_pase = '2026-06-17 15:30:00'
+        start_date = '2026-06-17 06:00:00'
+        end_date = '2026-06-17 15:15:00'
+
+        if not CQT.msgboxgYN(f'Приостановить наряды на "{time_to_pase}" WHERE Datetime(Дата) '
+                          f'BETWEEN "{start_date}" AND "{end_date}" and Статус = "Начат"'):
+            return
+
         list_starts = CSQ.custom_request_c(USRCNF.Config.project.db_naryad,
                                            f"""SELECT DISTINCT Номер_наряда, ФИО 
             FROM jurnal WHERE Datetime(Дата)
-            BETWEEN "2026-06-05 06:00:00" AND "2026-06-05 15:15:00" and Статус = "Начат"
+            BETWEEN "{start_date}" AND "{end_date}" and Статус = "Начат"
                 """,rez_dict=True)
         cnt = len(list_starts)
         cntr = 0
@@ -1892,7 +2146,7 @@ class mywindow(QtWidgets.QMainWindow):
                     jur_obj = CMS.Jurnal_nar(self.db_naryd,it['Номер_наряда'], user=abstract_name)
                 jur_obj.select_last_fragment()
                 jur_obj.add_new_row(self.DICT_EMPL_FULL, abstract_name, time_to_pase, 'Приостановлен',
-                                    f'Авто остановка', is_idle)
+                                    f'Авто остановка {time_to_pase}', is_idle)
                 print(f'    added_pause {cntr}/{cnt}',end='\n\n')
 
     @CQT.onerror

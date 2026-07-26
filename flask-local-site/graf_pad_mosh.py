@@ -50,8 +50,15 @@ def graf_html(poki):
 
 
     for napr in list_d_napr:
-        mosch = round(napr['summ_mosch'] / summ_mosh * 100,1)
-        mosch_plan = round(napr['summ_mosch_plan'] / summ_mosh_plan * 100,1)
+        mosch = 0
+        mosch_plan = 0
+        try:
+            if summ_mosh:
+                mosch = round(napr['summ_mosch'] / summ_mosh * 100,1)
+            if summ_mosh_plan:
+                mosch_plan = round(napr['summ_mosch_plan'] / summ_mosh_plan * 100,1)
+        except:
+            print("error graf_html calc mosch")
         napr['data_color'] = [f'{napr["alias"]} ', napr["color_16"], f'Доля {mosch}/{mosch_plan}%']
 
 
@@ -89,7 +96,8 @@ def graf_html(poki):
 
     for i, napr in enumerate(list_d_napr):
         data_inf= napr['data_color']
-
+        if 'list_napr' not in napr:
+            continue
 
 
         scatt_std = go.Scatter(x=list(napr['list_napr']['std'].keys()), y=list(napr['list_napr']['std'].values()),

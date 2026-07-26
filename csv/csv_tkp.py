@@ -22,16 +22,6 @@ from functools import partial
 CQT.convert_UI_into_PY_c()
 cfg = config.Config(r'Config\CFG.cfg')
 
-#class mywindow2(QtWidgets.QDialog):  # диалоговое окно
-#    def __init__(self,parent=None,item_o="",p1=0,p2=0):
-#        self.item_o = item_o
-#        self.p1 = p1
-#        self.p2 = p2
-#        self.myparent = parent
-#        super(mywindow2, self).__init__()
-#        self.ui2 = Ui_Dialog()
-#        self.ui2.setupUi(self)
-#        self.setWindowModality(QtCore.Qt.ApplicationModal)
 
 
 class mywindow(QtWidgets.QMainWindow):
@@ -240,10 +230,9 @@ class mywindow(QtWidgets.QMainWindow):
         print(id(tbl.horizontalHeader()))
         if self.ui.tabWidget.tabText(num_tab) == 'Список ТКП':
             data = ['По умолчанию'] + [str(datetime.now().year - num) for num in range(3)]
-            self.ui.cmb_select_year.blockSignals(True)#
-            self.ui.cmb_select_year.clear()
-            self.ui.cmb_select_year.addItems(data)
-            self.ui.cmb_select_year.blockSignals(False)  #
+            with QtCore.QSignalBlocker(self.ui.cmb_select_year):
+                self.ui.cmb_select_year.clear()
+                self.ui.cmb_select_year.addItems(data)
             self.on_cmb_select_year_changed('По умолчанию')
 
         if self.ui.tabWidget.tabText(num_tab) == 'Структура':
@@ -256,15 +245,15 @@ class mywindow(QtWidgets.QMainWindow):
         if e.key() == 67 and e.modifiers() == (QtCore.Qt.ControlModifier | QtCore.Qt.ShiftModifier):
             if CQT.focus_is_QTableWidget():
                 CQT.copy_bufer_table(QtWidgets.QApplication.focusWidget())
-        if self.ui.tbl_anal_dse_filtr.hasFocus():
-            if e.key() == 16777220 or e.key() == 16777221:
-                CMS.apply_filtr_c(self, self.ui.tbl_anal_dse_filtr, self.ui.tbl_anal_dse)
-        if self.ui.tbl_anal_mat_filtr.hasFocus():
-            if e.key() == 16777220 or e.key() == 16777221:
-                CMS.apply_filtr_c(self, self.ui.tbl_anal_mat_filtr, self.ui.tbl_anal_mat)
-        if self.ui.tbl_list_tkp_filtr.hasFocus():
-            if e.key() == 16777220 or e.key() == 16777221:
-                CMS.apply_filtr_c(self, self.ui.tbl_list_tkp_filtr, self.ui.tbl_list_tkp)
+        # if self.ui.tbl_anal_dse_filtr.hasFocus():
+        #     if e.key() == 16777220 or e.key() == 16777221:
+        #         CMS.apply_filtr_c(self, self.ui.tbl_anal_dse_filtr, self.ui.tbl_anal_dse)
+        # if self.ui.tbl_anal_mat_filtr.hasFocus():
+        #     if e.key() == 16777220 or e.key() == 16777221:
+        #         CMS.apply_filtr_c(self, self.ui.tbl_anal_mat_filtr, self.ui.tbl_anal_mat)
+        # if self.ui.tbl_list_tkp_filtr.hasFocus():
+        #     if e.key() == 16777220 or e.key() == 16777221:
+        #         CMS.apply_filtr_c(self, self.ui.tbl_list_tkp_filtr, self.ui.tbl_list_tkp)
         if self.ui.tableWidget.hasFocus() == True:
             if self.ui.tableWidget.currentRow() != -1:
                 if e.key() == QtCore.Qt.Key_Delete:
@@ -307,25 +296,20 @@ class mywindow(QtWidgets.QMainWindow):
         data = CMS.load_tmp_stukt('nomen_config')
         if data:
             val_chk_nomen_desc, val_chk_nomen_add_r, val_chk_nomen_unit, val_chk_nomen_maker, val_chk_nomen_describe = data
+        block_widgets = (
+            self.ui.chk_nomen_desc,
+            self.ui.chk_nomen_unit,
+            self.ui.chk_nomen_maker,
+            self.ui.chk_nomen_describe,
+            self.ui.chk_nomen_add_r
+        )
+        with CQT.block_signals_keep_state(*block_widgets):
+            self.ui.chk_nomen_desc.setChecked(val_chk_nomen_desc)
+            self.ui.chk_nomen_unit.setChecked(val_chk_nomen_unit)
+            self.ui.chk_nomen_maker.setChecked(val_chk_nomen_maker)
+            self.ui.chk_nomen_describe.setChecked(val_chk_nomen_describe)
+            self.ui.chk_nomen_add_r.setChecked(val_chk_nomen_add_r)
 
-
-        self.ui.chk_nomen_desc.blockSignals(True)
-        self.ui.chk_nomen_unit.blockSignals(True)
-        self.ui.chk_nomen_maker.blockSignals(True)
-        self.ui.chk_nomen_describe.blockSignals(True)
-        self.ui.chk_nomen_add_r.blockSignals(True)
-
-        self.ui.chk_nomen_desc.setChecked(val_chk_nomen_desc)
-        self.ui.chk_nomen_unit.setChecked(val_chk_nomen_unit)
-        self.ui.chk_nomen_maker.setChecked(val_chk_nomen_maker)
-        self.ui.chk_nomen_describe.setChecked(val_chk_nomen_describe)
-        self.ui.chk_nomen_add_r.setChecked(val_chk_nomen_add_r)
-
-        self.ui.chk_nomen_desc.blockSignals(False)
-        self.ui.chk_nomen_unit.blockSignals(False)
-        self.ui.chk_nomen_maker.blockSignals(False)
-        self.ui.chk_nomen_describe.blockSignals(False)
-        self.ui.chk_nomen_add_r.blockSignals(False)
 
     @CQT.onerror
     def obnov_puti(self):
@@ -759,7 +743,10 @@ class mywindow(QtWidgets.QMainWindow):
         CQT.msgbox('Сохранено')
 
 
-app = QtWidgets.QApplication([])
+from project_cust_38.Cust_application import SafeApplication, install_crash_guard
+app = SafeApplication(sys.argv)
+install_crash_guard(app, app_name='csv', user_name=F.user_name())
+# app = QtWidgets.QApplication([])
 
 myappid = 'Powerz.BAG.CSV.SustControlWork.0.0.0'  # !!!
 QtWin.setCurrentProcessExplicitAppUserModelID(myappid)

@@ -93,8 +93,8 @@ def load_obesp_mk(self, nom: int = ''):
     nk_s_fdata = F.num_col_by_name_in_hat_c(shablon, 'ФДата')
     nk_s_oper = F.num_col_by_name_in_hat_c(shablon, 'Опер_имя/ед_изм')
     custom_request_c = f'''SELECT Обеспечение FROM mk WHERE Пномер == {nom}'''
-    rez = CSQ.custom_request_c(self.bd_naryad, custom_request_c)
-    if rez[-1][0] != '':
+    rez = CSQ.custom_request_c(self.bd_naryad, custom_request_c, hat_c=False, one_column=True, one=True) # 15.07.2026 ошибка при клике на вкладку обеспечение
+    if rez != '' and rez != b'':
         for item in F.from_binary_pickle(rez[-1][0]):
             for i in range(1,len(shablon)):
                 if item[nk_s_nn] == shablon[i][nk_s_nn] and item[nk_s_oper] == shablon[i][nk_s_oper]:

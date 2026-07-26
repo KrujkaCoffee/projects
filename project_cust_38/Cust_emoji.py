@@ -21,6 +21,7 @@ class EmojiItem:
 class Эмоции:
     """Категория статусов производства"""
     confused: ClassVar[EmojiItem] = EmojiItem('😕', 'confused', 'emoj', 'Растерянное лицо')
+    easemented: ClassVar[EmojiItem] = EmojiItem('😌', 'easemented', 'emoj', 'Облегченное лицо')
 
 class СтатусыПроизводства:
 
@@ -60,6 +61,7 @@ class ОперацииПроизводства:
     dse: ClassVar[EmojiItem] = EmojiItem('🔩', 'dse', 'operations', 'Деталь или материал')
     res: ClassVar[EmojiItem] = EmojiItem('📘', 'res', 'operations', 'Ресурсная спецификация')
     trd: ClassVar[EmojiItem] = EmojiItem('⏱️', 'trd', 'operations', 'Трудозатраты')
+    purchased: ClassVar[EmojiItem] = EmojiItem('🛒', 'purchased', 'operations', 'Покупнина')
 
 
 class ПоказателиМетрики:
@@ -90,7 +92,9 @@ class ОборудованиеИнструменты:
 
 class ПерсоналРоли:
     """Категория персонала и ролей"""
-
+    access_denied: ClassVar[EmojiItem] = EmojiItem('🔒', 'access_denied', 'personnel', 'Замок')
+    access_granted: ClassVar[EmojiItem] = EmojiItem('🔓', 'access_granted', 'personnel', 'Доступ открыт')
+    key: ClassVar[EmojiItem] = EmojiItem('🔑', 'key', 'personnel', 'Ключ')
     operator: ClassVar[EmojiItem] = EmojiItem('👨‍💼', 'operator', 'personnel', 'Оператор')
     engineer: ClassVar[EmojiItem] = EmojiItem('👨‍🔧', 'engineer', 'personnel', 'Инженер')
     supervisor: ClassVar[EmojiItem] = EmojiItem('👔', 'supervisor', 'personnel', 'Руководитель')
@@ -116,10 +120,12 @@ class ДокументыДанные:
     extradition: ClassVar[EmojiItem] = EmojiItem('📤', 'extradition', 'documents', 'Выдача')
     shipment: ClassVar[EmojiItem] = EmojiItem('🚚', 'shipment', 'documents', 'Отгрузка')
     document: ClassVar[EmojiItem] = EmojiItem('📄', 'document', 'documents', 'Документ')
+    image: ClassVar[EmojiItem] = EmojiItem('🖼️', 'image', 'documents', 'Изображение')
     pushpin: ClassVar[EmojiItem] = EmojiItem('📍', 'pushpin', 'documents', 'булавка')
     pushpin2: ClassVar[EmojiItem] = EmojiItem('📌', 'pushpin2', 'documents', 'кнопка')
     magnifying: ClassVar[EmojiItem] = EmojiItem('🔍', 'magnifying', 'documents', 'Подбор')
     soon: ClassVar[EmojiItem] = EmojiItem('🔜', 'soon', 'documents', 'Скоро')
+    document_new: ClassVar[EmojiItem] = EmojiItem('🆕', 'document_new', 'documents', 'Новый документ')
     shuffle: ClassVar[EmojiItem] = EmojiItem('🔀', 'shuffle', 'documents', 'Перераспределение')
     folder: ClassVar[EmojiItem] = EmojiItem('📂', 'folder', 'documents', 'Папка')
     folder_closed: ClassVar[EmojiItem] = EmojiItem('📁', 'folder_closed', 'documents', 'Закрытая папка')
@@ -143,6 +149,8 @@ class ДокументыДанные:
     pencil2: ClassVar[EmojiItem] = EmojiItem('🖉', 'pencil2', 'documents', 'Изменяемый2')
     pencil_note: ClassVar[EmojiItem] = EmojiItem('📝', 'pencil_note', 'documents', 'Редактирование')
     black_medium_small_square: ClassVar[EmojiItem] = EmojiItem('◾', 'Black_Medium_Small_Square', 'documents', 'Редактирование')
+    document_sign: ClassVar[EmojiItem] = EmojiItem('✍️', 'document_sign', 'documents', 'Подписать документ')
+    document_sign2: ClassVar[EmojiItem] = EmojiItem('🖊️', 'document_sign2', 'operations', 'Подписать')
 
 class EmojiMain:
     """

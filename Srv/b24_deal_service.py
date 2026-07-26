@@ -1,4 +1,3 @@
-﻿import base64
 import difflib
 import enum
 import os
@@ -9,15 +8,24 @@ import json
 import inspect
 import time
 import hashlib
+import base64
+import typing
 from functools import reduce
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
+from decimal import Decimal, InvalidOperation
 from typing import Any, Optional
-import sys, io
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-sys.stderr = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+from enum import Enum
+import dataclasses
+import sys
 
 import requests
+
+from project_cust_38 import Cust_SQLite as CSQ
+import project_cust_38.Cust_odata_erp as ERP
+import project_cust_38.Cust_b24 as CB24
+from project_cust_38 import Cust_config as CFG
+from project_cust_38 import Cust_Functions as F
+from unittest.mock import patch
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -25,8 +33,9 @@ logger.setLevel(logging.INFO)
 console_handler = logging.StreamHandler()
 console_handler.setLevel(logging.INFO)
 
-file_handler = logging.FileHandler('deal_service_error.log', encoding='utf-8')
-file_handler.setLevel(logging.INFO)
+current_mark = datetime.now(timezone.utc).strftime('%Y%m')
+file_handler = logging.FileHandler(f'deal_service_error_{current_mark}.log', encoding='utf-8')
+file_handler.setLevel(logging.ERROR)
 
 formatter = logging.Formatter('%(asctime)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
 console_handler.setFormatter(formatter)
@@ -35,11 +44,7 @@ file_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 logger.addHandler(file_handler)
 
-from project_cust_38 import Cust_SQLite as CSQ
-import project_cust_38.Cust_odata_erp as ERP
-import project_cust_38.Cust_b24 as CB24
-from project_cust_38 import Cust_config as CFG
-from project_cust_38 import Cust_Functions as F
+
 
 def log_prefix_decorator(event_name: str, target: str):
     def decorator(func):
@@ -94,7 +99,6 @@ def log_prefix_decorator(event_name: str, target: str):
             "MOVED_TIME": "2024-12-17T18:24:29+03:00",
 """
 
-from unittest.mock import patch
 
 patch('project_cust_38.Cust_config.AppConfig')
 patch('project_cust_38.Cust_config.User_config')
@@ -137,9 +141,6 @@ class CRM:
 
     def __init__(self):
         self.url = concat_url(self.BASE_URL, self.TOKEN)
-
-    def find_status(self):
-        ...
 
     def deal_status_all(self):
         response = requests.get(
@@ -191,6 +192,8 @@ INTERVAL_DAYS = 14
 status_key = 'STAGE_ID'
 closed_key = 'CLOSED'
 ref_key_pk = 'UF_CRM_1712643377'
+
+DEBUG = False
 
 
 def set_client_order_close_state(
@@ -365,23 +368,38 @@ class Bucket1C:
 
     def get_last_mark(self, items: list[dict], key_name: str = 'МаксВерсияДанных'):
         last_mark = ''
-        for item in items:
-            mark = item[key_name]
-            if mark is None:
+        last_num = None
+        for item in items or []:
+            if not isinstance(item, dict):
                 continue
-            if not last_mark:
-                last_mark = mark
+            mark = item.get(key_name)
+            if mark is None:
                 continue
             try:
                 num = decode_1c_data_version_attribute(mark)
-                num_prev = decode_1c_data_version_attribute(last_mark)
             except Exception as e:
-                print()
-            if num > num_prev:
+                logging.warning(f'Bucket1C: не удалось декодировать DataVersion {mark!r}: {e}')
+                continue
+            if last_num is None or num > last_num:
                 last_mark = mark
+                last_num = num
         return last_mark
 
+    def mark_is_newer(self, left_mark: str, right_mark: str) -> bool:
+        """True если left_mark строго новее right_mark. При ошибке сравнения не рискуем."""
+        if not left_mark:
+            return False
+        if not right_mark:
+            return True
+        try:
+            return decode_1c_data_version_attribute(left_mark) > decode_1c_data_version_attribute(right_mark)
+        except Exception as e:
+            logging.warning(f'Bucket1C: не удалось сравнить DataVersion {left_mark!r} и {right_mark!r}: {e}')
+            return False
+
     def get_deals_by_relation_zk_kp(self, data_version: str = ''):
+        from project_cust_38 import api_erp_commands as AEC
+
         commerc_mark = commerc_ssilc = zk_mark = kp_version = zk_version = ''
         if data_version:
             kp_version = f'И КоммерческоеПредложениеКлиенту.ВерсияДанных >= "{data_version}"'
@@ -710,18 +728,34 @@ class Bucket1C:
         # if not self.check_deals_keys(): # TODO если ключи не совпадают пересобрать выборку
         #     self.__deals_list = self.dict_deals_by_id(self.get_all_deals())
         if self.ZK_KP_DEALS_mark:
-            last_updates = self.get_deals_by_relation_zk_kp(self.ZK_KP_DEALS_mark)
-            for item in last_updates['data']:
+            prev_mark = self.ZK_KP_DEALS_mark
+            last_updates = self.get_deals_by_relation_zk_kp(prev_mark)
+            update_items = last_updates.get('data', []) if isinstance(last_updates, dict) else []
+            for item in update_items:
                 deal_id = item['ID']
-                if str(deal_id) not in self.__zk_kp_deals_list:
-                    self.__zk_kp_deals_list[str(deal_id)] = item
+                deal_key = str(deal_id)
+
+                if deal_key in self.__zk_kp_deals_list:
+                    try:
+                        if decode_1c_data_version_attribute(item.get('МаксВерсияДанных')) <= decode_1c_data_version_attribute(prev_mark):
+                            continue
+                    except Exception:
+                        pass
+
+                if deal_key not in self.__zk_kp_deals_list:
+                    self.__zk_kp_deals_list[deal_key] = item
                     self.zk_kp_deal_id_modified.add(deal_id)
                     continue
 
                 for key, val in item.items():
                     if val not in ('', '0', None):
-                        self.__zk_kp_deals_list[str(deal_id)][key] = val
+                        self.__zk_kp_deals_list[deal_key][key] = val
                 self.zk_kp_deal_id_modified.add(deal_id)
+
+            updates_mark = self.get_last_mark(update_items)
+            if self.mark_is_newer(updates_mark, self.ZK_KP_DEALS_mark):
+                self.ZK_KP_DEALS_mark = updates_mark
+                logging.info(f'Bucket1C: ZK/KP DataVersion продвинут до {self.ZK_KP_DEALS_mark!r}')
         put_config_data(self.KEY_1C_LAST_MODIFY_ZK_KP_MARK, self.ZK_KP_DEALS_mark, filename='./deal_bucket.pickle')
         put_config_data(self.KEY_1C_LAST_MODIFY_ZK_KP_DATA, self.__zk_kp_deals_list, filename='./deal_bucket.pickle')
         return self.__zk_kp_deals_list
@@ -803,7 +837,8 @@ def bad_attempt_upgrade_values():
     response = CSQ.custom_request_c(
         db_files,
         'SELECT * FROM exchange WHERE finished = 0',
-        rez_dict=True
+        rez_dict=True,
+        debug=DEBUG
     )
     if isinstance(response, list):
         return response
@@ -838,6 +873,8 @@ class Client1c:
                        select: list[str] = ('ТКП_Тип_Key', 'ВидНоменклатуры/Description', 'Организация/Description', 'Сделка/Ref_Key',
                                             'Сделка/ПБ24_id_bitrix', 'Сделка/DataVersion', 'Сделка/ПБ24_СтадияБ24_Key', 'Сделка/Description')
                        ):
+        from project_cust_38 import api_erp_commands as AEC
+
         query = """
         ВЫБРАТЬ
             ПЕРВЫЕ 9000
@@ -1087,15 +1124,7 @@ def update_organization_and_type_tkp(task: dict):
     # resp_1c = update_inconsistencies_1c(b24_id=b24_id, ref_stage_1c=ref_stage_1c, stage_id_b24=stage_id_b24)
     return resp_b24 # and resp_1c
 
-from project_cust_38 import api_erp_commands as AEC
 
-
-def get_config_data(filename: str = './deal_config.pickle'):
-    try:
-        with open(filename, 'rb') as f:
-            return pickle.load(f)
-    except FileNotFoundError:
-        return {}
 def get_last_data_version(queue: str):
     data_version = ''
     try:
@@ -1124,153 +1153,6 @@ def put_last_data_version(queue: str, data_version: str):
         except Exception: ...
 
 def get_last_changes_date_and_sum_ZK_TKP(queue: str, bucket: B24Bucket):
-    # data_version = get_last_data_version(queue=queue)
-    # commerc_mark = commerc_ssilc = zk_mark = ''
-    # data_version = ''
-    # if data_version:
-    #     commerc_mark = f'И КоммерческоеПредложениеКлиенту.ВерсияДанных >= "{data_version}"'
-    #     commerc_ssilc = f'И КоммерческоеПредложениеКлиентуТовары.Ссылка.ВерсияДанных >= "{data_version}"'
-    #     zk_mark = f'И ЗаказКлиента.ВерсияДанных >= "{data_version}"'
-    # query = f"""
-    # ВЫБРАТЬ
-    #     МАКСИМУМ(КоммерческоеПредложениеКлиенту.Дата) КАК Дата,
-    #     КоммерческоеПредложениеКлиенту.Сделка.ПБ24_id_bitrix КАК СделкаПБ24_id_bitrix
-    # ПОМЕСТИТЬ ВТ_КППоДатеУник
-    # ИЗ
-    #     Документ.КоммерческоеПредложениеКлиенту КАК КоммерческоеПредложениеКлиенту
-    # ГДЕ
-    #     КоммерческоеПредложениеКлиенту.Сделка.ПБ24_id_bitrix > 0
-    #     И КоммерческоеПредложениеКлиенту.СуммаДокумента > 0
-    #     И КоммерческоеПредложениеКлиенту.ПометкаУдаления = ЛОЖЬ
-    #     И КоммерческоеПредложениеКлиенту.Проведен = ИСТИНА
-    #     {commerc_mark}
-    #
-    # СГРУППИРОВАТЬ ПО
-    #     КоммерческоеПредложениеКлиенту.Сделка.ПБ24_id_bitrix
-    # ;
-    #
-    # ////////////////////////////////////////////////////////////////////////////////
-    # ВЫБРАТЬ
-    #     МАКСИМУМ(КоммерческоеПредложениеКлиентуТовары.СрокПоставки) КАК СрокПоставки,
-    #     КоммерческоеПредложениеКлиентуТовары.Ссылка КАК Ссылка
-    # ПОМЕСТИТЬ ВТ_ДатыИзКП
-    # ИЗ
-    #     Документ.КоммерческоеПредложениеКлиенту.Товары КАК КоммерческоеПредложениеКлиентуТовары
-    # ГДЕ
-    #     КоммерческоеПредложениеКлиентуТовары.Ссылка.Сделка.ПБ24_id_bitrix > 0
-    #     И КоммерческоеПредложениеКлиентуТовары.Ссылка.СуммаДокумента > 0
-    #     И КоммерческоеПредложениеКлиентуТовары.Ссылка.ПометкаУдаления = ЛОЖЬ
-    #     И КоммерческоеПредложениеКлиентуТовары.Ссылка.Проведен = ИСТИНА
-    #     И КоммерческоеПредложениеКлиентуТовары.Ссылка.ВариантУказанияСрокаПоставки = ЗНАЧЕНИЕ(Перечисление.ВариантыСроковПоставкиКоммерческихПредложений.УказываетсяНаОпределеннуюДату)
-    #     {commerc_ssilc}
-    #
-    # СГРУППИРОВАТЬ ПО
-    #     КоммерческоеПредложениеКлиентуТовары.Ссылка
-    # ;
-    #
-    # ////////////////////////////////////////////////////////////////////////////////
-    # ВЫБРАТЬ
-    #     ЗаказКлиента.Ссылка КАК Ссылка,
-    #     ЗаказКлиента.НеОтгружатьЧастями КАК НеОтгружатьЧастями
-    # ПОМЕСТИТЬ ВТ_ЗКОтбор
-    # ИЗ
-    #     Документ.ЗаказКлиента КАК ЗаказКлиента
-    # ГДЕ
-    #     ЗаказКлиента.Сделка.ПБ24_id_bitrix > 0
-    #     И ЗаказКлиента.ПометкаУдаления = ЛОЖЬ
-    #     И ЗаказКлиента.Проведен = ИСТИНА
-    #     {zk_mark}
-    # ;
-    #
-    # ////////////////////////////////////////////////////////////////////////////////
-    # ВЫБРАТЬ
-    #     ЗаказКлиента.Ссылка КАК Ссылка,
-    #     ЗаказКлиента.ДатаОтгрузки КАК ДатаОтгрузки,
-    #     ЗаказКлиента.НеОтгружатьЧастями КАК НеОтгружатьЧастями
-    # ПОМЕСТИТЬ ВТ_ЗКСоед
-    # ИЗ
-    #     ВТ_ЗКОтбор КАК ВТ_ЗКОтбор
-    #         ЛЕВОЕ СОЕДИНЕНИЕ Документ.ЗаказКлиента КАК ЗаказКлиента
-    #         ПО ВТ_ЗКОтбор.Ссылка = ЗаказКлиента.Ссылка
-    # ГДЕ
-    #     ЗаказКлиента.НеОтгружатьЧастями = ИСТИНА
-    #
-    # ОБЪЕДИНИТЬ ВСЕ
-    #
-    # ВЫБРАТЬ
-    #     ЗаказКлиентаТовары.Ссылка.Ссылка,
-    #     МАКСИМУМ(ЗаказКлиентаТовары.ДатаОтгрузки),
-    #     ЗаказКлиентаТовары.Ссылка.НеОтгружатьЧастями
-    # ИЗ
-    #     ВТ_ЗКОтбор КАК ВТ_ЗКОтбор
-    #         ЛЕВОЕ СОЕДИНЕНИЕ Документ.ЗаказКлиента.Товары КАК ЗаказКлиентаТовары
-    #         ПО ВТ_ЗКОтбор.Ссылка = ЗаказКлиентаТовары.Ссылка
-    # ГДЕ
-    #     ЗаказКлиентаТовары.Ссылка.НеОтгружатьЧастями = ЛОЖЬ
-    #
-    # СГРУППИРОВАТЬ ПО
-    #     ЗаказКлиентаТовары.Ссылка.Ссылка,
-    #     ЗаказКлиентаТовары.Ссылка.НеОтгружатьЧастями
-    # ;
-    #
-    # ////////////////////////////////////////////////////////////////////////////////
-    # ВЫБРАТЬ
-    #     СУММА(ВТ_ЗКСоед.Ссылка.СуммаДокумента) КАК СуммаЗК,
-    #     МАКСИМУМ(ВТ_ЗКСоед.ДатаОтгрузки) КАК ДатаОтгрузкиЗК,
-    #     ВТ_ЗКСоед.Ссылка.Сделка.ПБ24_id_bitrix КАК СсылкаСделкаПБ24_id_bitrixЗК,
-    #     МАКСИМУМ(ВТ_ЗКСоед.Ссылка.ВерсияДанных) КАК ВерсияДанныхЗК
-    # ПОМЕСТИТЬ ВТ_ЗКГр
-    # ИЗ
-    #     ВТ_ЗКСоед КАК ВТ_ЗКСоед
-    #
-    # СГРУППИРОВАТЬ ПО
-    #     ВТ_ЗКСоед.Ссылка.Сделка.ПБ24_id_bitrix
-    # ;
-    #
-    # ////////////////////////////////////////////////////////////////////////////////
-    # ВЫБРАТЬ
-    # КоммерческоеПредложениеКлиенту.Статус КАК Статус,
-    #     КоммерческоеПредложениеКлиенту.Ссылка КАК Ссылка,
-    #     КоммерческоеПредложениеКлиенту.Сделка.ПБ24_id_bitrix КАК ID,
-    #     КоммерческоеПредложениеКлиенту.Сделка.Ссылка КАК СделкаСсылка,
-    #     КоммерческоеПредложениеКлиенту.ВерсияДанных КАК ВерсияДанныхКП,
-    #     КоммерческоеПредложениеКлиенту.СуммаДокумента КАК СуммаДокументаКП,
-    #     КоммерческоеПредложениеКлиенту.Сделка.ПБ24_СтадияБ24.Код КАК СделкаПБ24_СтадияБ24Код,
-    #     ВТ_ДатыИзКП.СрокПоставки КАК СрокПоставкиПоКП,
-    #     ВТ_ЗКГр.СуммаЗК КАК СуммаЗК,
-    #     ВТ_ЗКГр.ДатаОтгрузкиЗК КАК ДатаОтгрузкиЗК,
-    #     ВТ_ЗКГр.ВерсияДанныхЗК КАК ВерсияДанныхЗК,
-    #     ВЫБОР
-    #         КОГДА ЕСТЬNULL(ВТ_ЗКГр.ВерсияДанныхЗК, КоммерческоеПредложениеКлиенту.ВерсияДанных) > КоммерческоеПредложениеКлиенту.ВерсияДанных
-    #             ТОГДА ЕСТЬNULL(ВТ_ЗКГр.ВерсияДанныхЗК, КоммерческоеПредложениеКлиенту.ВерсияДанных)
-    #         ИНАЧЕ КоммерческоеПредложениеКлиенту.ВерсияДанных
-    #     КОНЕЦ КАК МаксВерсияДанных
-    # ИЗ
-    #     ВТ_КППоДатеУник КАК ВТ_КППоДатеУник
-    #         ЛЕВОЕ СОЕДИНЕНИЕ Документ.КоммерческоеПредложениеКлиенту КАК КоммерческоеПредложениеКлиенту
-    #             ЛЕВОЕ СОЕДИНЕНИЕ ВТ_ДатыИзКП КАК ВТ_ДатыИзКП
-    #             ПО (ВТ_ДатыИзКП.Ссылка = КоммерческоеПредложениеКлиенту.Ссылка)
-    #         ПО (ВТ_КППоДатеУник.Дата = КоммерческоеПредложениеКлиенту.Дата)
-    #             И (ВТ_КППоДатеУник.СделкаПБ24_id_bitrix = КоммерческоеПредложениеКлиенту.Сделка.ПБ24_id_bitrix)
-    #         ЛЕВОЕ СОЕДИНЕНИЕ ВТ_ЗКГр КАК ВТ_ЗКГр
-    #         ПО (ВТ_ЗКГр.СсылкаСделкаПБ24_id_bitrixЗК = КоммерческоеПредложениеКлиенту.Сделка.ПБ24_id_bitrix)
-    #
-    # СГРУППИРОВАТЬ ПО
-    #     КоммерческоеПредложениеКлиенту.Ссылка,
-    #     КоммерческоеПредложениеКлиенту.Сделка.ПБ24_id_bitrix,
-    #     КоммерческоеПредложениеКлиенту.СуммаДокумента,
-    #     КоммерческоеПредложениеКлиенту.Сделка.ПБ24_СтадияБ24.Код,
-    #     ВТ_ДатыИзКП.СрокПоставки,
-    #     ВТ_ЗКГр.СуммаЗК,
-    #     ВТ_ЗКГр.ДатаОтгрузкиЗК,
-    #     ВТ_ЗКГр.ВерсияДанныхЗК,
-    #     КоммерческоеПредложениеКлиенту.ВерсияДанных
-    #
-    # УПОРЯДОЧИТЬ ПО
-    #     МаксВерсияДанных ASC
-    # """
-    # last_mark = data_version
-    # code, response = AEC.get_wet_request(text=query)
     data = {}
     data_b24 = bucket.deals
     bucket_1c = Bucket1C()
@@ -1425,7 +1307,6 @@ def update_stage_b24_on_date_1c(*, b24_id: int | str, old_val: str, new_val: str
     credentials = {'FIELDS': {'STAGE_ID': new_val}}
     return crm.deal_update(b24_id, credentials)
 
-from enum import Enum
 
 class EntityType(Enum):
     ENTITY_TYPE_ID_ORDER_SUPPLIER = 1072        # 1104
@@ -1631,10 +1512,9 @@ class CRMOrders:
                         continue
                     if key in form and not compare(value, form[key]):
                         msg.append(f'Несоответствие ключа: {key!r} Значение из тригера: {value} Значение из постобработки {form[key]}')
-                from project_cust_38 import Cust_b24 as B24
                 message = '[B]Распоряжение на доставку тест обработки[/B]\n' + '\n'.join(msg)
 
-                B24.B24Sender().send_msg_by_chat_id('chat85751', message)
+                CB24.B24Sender().send_msg_by_chat_id('chat85751', message)
                 prepared_data.update(form)
             case _:
                 print('НЕ НАЙДЕНО')
@@ -1819,15 +1699,11 @@ class DependenciesNomenclature:
         self.list_nomen_types = CSQ.custom_request_c(
             CFG.Config.project.db_nomen,
             f'SELECT name, Ref_Key, ЕстьПараметры FROM ВидыНоменклатуры',
-            rez_dict=True
+            rez_dict=True,
+            debug=DEBUG
         )
         self.dict_nomen_types_by_ref = F.deploy_dict_c(self.list_nomen_types, 'Ref_Key')
 
-
-def current_iso_date():
-    tz = timezone(timedelta(hours=3))
-    current_time = datetime.now(tz)
-    return current_time.isoformat()
 
 def get_config_data(filename: str = './deal_config.pickle'):
     try:
@@ -1836,16 +1712,6 @@ def get_config_data(filename: str = './deal_config.pickle'):
     except FileNotFoundError:
         return {}
 
-def put_config_data(key, data, filename: str = 'now'):
-    prev_data = get_config_data(filename=filename)
-    with open(filename, 'wb+') as f:
-        try:
-            prev_data[key] = data
-            pickle.dump(prev_data, f)
-        except Exception as e:
-            print(e)
-
-import dataclasses
 
 @dataclasses.dataclass
 class RelationAttribute:
@@ -2100,7 +1966,6 @@ class RecursiveResponse:
         data = response.json()['value']
         return data
 
-import typing
 ServiceName = typing.TypeVar('ServiceName', bound=str)
 
 class Emoji:
@@ -2280,7 +2145,8 @@ def sync_nomen_mes(task):
                 CFG.Config.project.db_nomen,
                 f'SELECT Ref_Key FROM nomen WHERE Ref_Key = {ref_key!r}',
                 one=True,
-                rez_dict=True
+                rez_dict=True,
+                debug=DEBUG
             )
             if not resp: # Создать
                 body = [code,
@@ -2306,7 +2172,7 @@ def sync_nomen_mes(task):
                         ,Закупочная_цена
                         ,Вид_Ref_Key
                         ,Вид,
-                        Ref_Key) VALUES ({','.join('?' * len(body))})""", list_of_lists_c=[body])
+                        Ref_Key) VALUES ({','.join('?' * len(body))})""", list_of_lists_c=[body], debug=DEBUG)
                 return 201 if result else 500
             else:
                 body = [ # Редактировать
@@ -2331,7 +2197,7 @@ def sync_nomen_mes(task):
                         СхемаОбеспечения = ?,
                         Вид_Ref_Key = ?,
                         Закупочная_цена = ?,
-                        Вид = ? WHERE Ref_Key = {ref_key!r}""", list_of_lists_c=body)
+                        Вид = ? WHERE Ref_Key = {ref_key!r}""", list_of_lists_c=body, debug=DEBUG)
                 return 200 if result else 500
     return 500
 
@@ -2437,7 +2303,7 @@ def send_nomen_message(
                              list_of_lists_c=[
                                  pickle.dumps(MessageStatus(message_id=message_id, services=current_status)),
                                  exchange_id
-                             ])
+                             ], debug=DEBUG)
         if not is_written:
             return sender.send_msg_by_chat_id(chat_id=chat_id, message_id=message_id, msg='')
 
@@ -2550,7 +2416,9 @@ def checking_positions_for_closed_mk(task: Task) -> bool:
         CFG.Config.project.db_kplan,
         query_find_kpl,
         one_column=True,
-        rez_dict=True)
+        rez_dict=True,
+        debug=DEBUG
+    )
     if not isinstance(kpl_items, list):
         return False
     pk_kpl = [kpl for kpl in kpl_items]
@@ -2560,7 +2428,9 @@ def checking_positions_for_closed_mk(task: Task) -> bool:
         CFG.Config.project.db_naryad,
         f"""SELECT Пномер, НомКплан as "КПЛ", Статус FROM mk
         WHERE НомКплан IN ({kpl_nums}) AND Статус != 'НаУдаление';""",
-        rez_dict=True)
+        rez_dict=True,
+        debug=DEBUG
+    )
     list_open_mk = []
     for item in list_if_status:
         if item['Дата_завершения'] == "":
@@ -2586,7 +2456,9 @@ def checking_positions_for_closed_mk(task: Task) -> bool:
         for pnum in pk_kpl:
             CSQ.custom_request_c(
                 CFG.Config.project.db_kplan,
-                f"""UPDATE plan SET Статус = 4 WHERE Пномер = {pnum}""")
+                f"""UPDATE plan SET Статус = 4 WHERE Пномер = {pnum}""",
+                debug=DEBUG
+            )
     sender = CB24.B24Sender()
     result = sender.send_msg_table(
        title=message_template,
@@ -2633,6 +2505,742 @@ def update_status_mes(task: Task):
         message_id=message_id
     )
     return all(status.is_success for status in current_status.values())
+
+
+
+ERP_PRODUCTION_ORDER_OBJECT = 'ДокументОбъект.ЗаказНаПроизводство2_2'
+ERP_PRODUCTION_STAGE_OBJECT = 'ДокументОбъект.ЭтапПроизводства2_2'
+ERP_STAGES_NEED_REFRESH = 1
+PRODUCTION_QTY_CONTROL_SCALE = Decimal('10')
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class ProductionOrderQuantityDiff:
+    changed: bool
+    score: int
+    erp_lines: tuple[dict, ...]
+    mes_lines: tuple[dict, ...]
+    erp_total: Decimal
+    mes_total: Decimal
+    erp_qty_x10_sum: Decimal
+    mes_qty_x10_sum: Decimal
+    erp_position_qty_x10_sum: Decimal
+    mes_position_qty_x10_sum: Decimal
+    row_count_changed: bool
+    total_changed: bool
+    qty_x10_changed: bool
+    position_qty_x10_changed: bool
+    line_changes: tuple[dict, ...]
+
+
+
+
+
+
+
+
+
+
+def get_chat_id_by_document_prefix(prefix: str, chat_action: str = None) -> str | None:
+    action_where = ''
+    if chat_action:
+        action_where = f' AND place_chat_info.name = {chat_action!r}'
+
+    query = f"""
+    SELECT place_chat_info.chat_id
+    FROM places 
+    INNER JOIN place_chat_info ON place_chat_info.poki = places.poki 
+    WHERE substr(doc_prefix, 1, 2) = {prefix!r} {action_where}
+    """
+    return CSQ.custom_request_c(
+        CSQ.DB_NAMES.db_naryad, query, hat_c=False, one=True, one_column=True, debug=DEBUG) or None
+
+class ProductionOrderEventHandler:
+    def resolve_order_ref_key_from_production_event(self, credentials: dict) -> str:
+        """
+            Принимает
+                @GUID - Ref_Key этапа связанного с ЗНПР
+
+        Возвращает Ref_Key ЗаказаНаПроизводство2_2"""
+        object_name = credentials.get('obj_full_name')
+        object_guid = str(credentials.get('GUID') or '').strip()
+
+        if object_name == ERP_PRODUCTION_ORDER_OBJECT:
+            if not object_guid:
+                raise ValueError('Для события ЗП не передан GUID')
+            return object_guid
+
+        if object_name != ERP_PRODUCTION_STAGE_OBJECT:
+            raise ValueError(f'Неизвестный тип производственного события: {object_name!r}')
+
+        if not object_guid:
+            raise ValueError('Для события этапа не передан GUID этапа')
+
+        client = ERP.OrdersComposit()
+        code, response = client.get_response(
+            doc_name='Document_ЭтапПроизводства2_2',
+            wet_filtr=(
+                f"?$filter=Ref_Key eq guid'{object_guid}'"
+                f"&$select=Распоряжение_Key"
+            ),
+            with_cod=True,
+        )
+        if code != 200:
+            raise ConnectionError(
+                'Не удалось определить ЗП по изменённому этапу. '
+                f'Код ERP: {code}; ответ: {response}; Ref_Key этапа: {object_guid}'
+            )
+        if not isinstance(response, list):
+            raise TypeError(
+                'ERP вернула некорректный ответ при поиске ЗП по этапу: '
+                f'ожидался list, получен {type(response).__name__}; ответ: {response}'
+            )
+        if not response:
+            raise ValueError(
+                'Этап производства не найден в ERP по переданному GUID. '
+                f'Для события этапа 1С должна передать GUID этапа и желательно order_GUID=Распоряжение_Key. '
+                f'Ref_Key этапа: {object_guid}'
+            )
+
+        resolved = response[0].get('Распоряжение_Key')
+        if not resolved:
+            raise ValueError(
+                'У изменённого этапа ERP не заполнено Распоряжение_Key, '
+                'поэтому MES не может определить родительскую ЗП. '
+                f'Ref_Key этапа: {object_guid}'
+            )
+        return str(resolved)
+
+    def save_production_change_task_result(
+            self,
+            task: Task,
+            result: dict,
+            *,
+            chat_accepted: bool | None = None,
+    ) -> bool:
+        """Сохраняет результат consumer в exchange.message_status для последующей отладки."""
+        payload = dict(result)
+        payload.setdefault('task_id', task.pk)
+        payload.setdefault('queue', 'MES.ERP/ЗП.Этапы.КонтрольИзменений')
+        payload['updated_at'] = F.now()
+
+        fields = ['message_status = ?']
+        params = [pickle.dumps(payload)]
+        if chat_accepted is not None:
+            fields.append('chat_accepted = ?')
+            params.append(int(bool(chat_accepted)))
+        params.append(task.pk)
+
+        saved = CSQ.custom_request_c(
+            db_files,
+            f"UPDATE exchange SET {', '.join(fields)} WHERE id = ?",
+            list_of_lists_c=params,
+            debug=DEBUG
+        )
+        if saved is False or saved is None:
+            logger.error(
+                '[ERP_PRODUCTION_CHANGE] Не удалось сохранить результат задачи id=%s',
+                task.pk,
+            )
+            return False
+        return True
+
+    def find_mes_production_order(self, order_ref_key: str) -> dict | None:
+        rows = CSQ.custom_request_c(
+            CFG.Config.project.db_kplan,
+            """
+            SELECT
+                s_num,
+                Ref_Key_py,
+                №ERP,
+                №проекта,
+                Статус_поз_ЕРП,
+                Дата_заявки_на_произв,
+                Этапы_ЕРП
+            FROM знпр
+            WHERE lower(Ref_Key_py) = lower(?);
+            """,
+            list_of_lists_c=[order_ref_key],
+            rez_dict=True,
+            debug=DEBUG
+        )
+        if not isinstance(rows, list):
+            raise ConnectionError('Не удалось прочитать таблицу знпр')
+        return rows[0] if rows else None
+
+
+    def load_mes_production_positions(self, order_s_num: int) -> list[dict]:
+        rows = CSQ.custom_request_c(
+            CFG.Config.project.db_kplan,
+            """
+            SELECT DISTINCT
+                пл_оуп.НомПл,
+                пл_оуп.НомПартии_ЗП,
+                пл_оуп.Количество,
+                пл_оуп.№проекта,
+                plan.Позиция,
+                plan.poki
+            FROM пл_оуп
+            LEFT JOIN plan
+                   ON plan.Пномер = пл_оуп.НомПл
+            WHERE пл_оуп.Пномер_ЗП = ?
+            ORDER BY пл_оуп.НомПл;
+            """,
+            list_of_lists_c=[order_s_num],
+            rez_dict=True,
+            debug=DEBUG
+        )
+        if not isinstance(rows, list):
+            raise ConnectionError('Не удалось определить связанные позиции календарного плана')
+        return rows
+
+
+    def mark_production_stages_need_refresh(self, order_s_num: int, *, is_test: bool = False) -> bool:
+        if is_test:
+            logger.info(
+                '[ERP_PRODUCTION_CHANGE][TEST] Пропущена запись Этапы_ЕРП = 1 '
+                f'для знпр.s_num={order_s_num}'
+            )
+            return True
+        result = CSQ.custom_request_c(
+            CFG.Config.project.db_kplan,
+            """
+            UPDATE знпр
+            SET Этапы_ЕРП = ?
+            WHERE s_num = ?;
+            """,
+            list_of_lists_c=[ERP_STAGES_NEED_REFRESH, order_s_num],
+            debug=DEBUG
+        )
+        return result is not False and result is not None
+
+    def build_stage_change_message(
+            self,
+            credentials: dict,
+            order_row: dict,
+            positions: list[dict],
+            previous_status: Any,
+    ) -> str:
+        lines = [
+            '[B]ERP → MES: изменён этап производства[/B]',
+            '',
+            f'№ERP: {order_row.get("№ERP") or "—"}',
+            f'Проект: {order_row.get("№проекта") or "—"}',
+            '',
+            '[B]Диспетчеру ПДО необходимо:[/B]',
+            '1. Проверить состав этапов по ЗП.',
+            '2. Корректность номера партии пл_оуп.НомПартии_ЗП',
+        ]
+        if positions:
+            lines.extend(['', f'[B]Связанные позиции календарного плана: {len(positions)}[/B]'])
+            max_pos = 8
+            for position in positions[:max_pos]:
+                lines.append(
+                    f'• КПЛ {position.get("НомПл") or "—"} | '
+                    f'партия {position.get("НомПартии_ЗП") or "—"} | '
+                    f'количество {position.get("Количество") or "—"} | '
+                    f'позиция {position.get("Позиция") or "—"}'
+                )
+            if len(positions) > max_pos:
+                lines.append(f'...и ещё {len(positions) - max_pos} позиций.')
+        return '\n'.join(lines)
+
+
+    def send_production_change_message(self, task: Task, message: str) -> bool | None:
+        chat_id = TEST_CHAT if task.is_test else task.chat_id
+        if not chat_id:
+            logger.info(
+                '[ERP_PRODUCTION_CHANGE] Чат Битрикс не настроен. '
+                'Сообщение сохранено только в журнале:\n%s',
+                message,
+            )
+            return None
+        try:
+            result = CB24.B24Sender().send_msg_by_chat_id(chat_id=chat_id, msg=message)
+            return bool(result)
+        except Exception as ex:
+            logger.error(
+                '[ERP_PRODUCTION_CHANGE] Ошибка отправки сообщения в Битрикс',
+                exc_info=ex,
+                stack_info=True,
+            )
+            return False
+
+    def load_erp_production_order_quantities(self, order_ref_key: str) -> list[dict]:
+        """Читает из ERP только номер строки и количество табличной части «Продукция»."""
+        from project_cust_38 import api_erp_commands as APIERP
+
+        request_text = """
+            ВЫБРАТЬ
+                ЗаказНаПроизводство2_2Продукция.НомерСтроки КАК LineNumber,
+                ЗаказНаПроизводство2_2Продукция.Количество КАК Количество
+            ИЗ
+                Документ.ЗаказНаПроизводство2_2.Продукция
+                    КАК ЗаказНаПроизводство2_2Продукция
+            ГДЕ
+                ЗаказНаПроизводство2_2Продукция.Ссылка = &Ссылка
+            УПОРЯДОЧИТЬ ПО
+                ЗаказНаПроизводство2_2Продукция.НомерСтроки
+        """
+
+        refs = APIERP.Refs_wet(request_text)
+        refs.add_ref(
+            APIERP.Ref_wet(
+                name_var='Ссылка',
+                path_conf_1c='Документы.ЗаказНаПроизводство2_2',
+                ref_key=order_ref_key,
+            )
+        )
+        code, response = APIERP.get_wet_request(
+            request_text,
+            refs,
+            lazy_method_huours=0,
+        )
+        if code != 200:
+            raise ConnectionError(
+                f'Ошибка чтения табличной части ЗП из ERP. Код ответа: {code}; ответ: {response}'
+            )
+        if not isinstance(response, dict):
+            raise TypeError(
+                'Некорректный ответ ERP по табличной части ЗП: '
+                f'ожидался dict, получен {type(response).__name__}'
+            )
+
+        rows = response.get('data')
+        if not isinstance(rows, list):
+            raise TypeError('В ответе ERP отсутствует список data по табличной части ЗП')
+
+        result = []
+        for sequence, row in enumerate(rows, start=1):
+            if not isinstance(row, dict):
+                raise TypeError(
+                    'Некорректная строка табличной части ЗП: '
+                    f'ожидался dict, получен {type(row).__name__}'
+                )
+            try:
+                source_position = int(row.get('LineNumber'))
+            except (TypeError, ValueError):
+                source_position = sequence
+            result.append({
+                'sequence': sequence,
+                'source_position': source_position,
+                'quantity': self.normalize_production_quantity(row.get('Количество')),
+            })
+
+        return sorted(result, key=lambda item: (item['source_position'], item['sequence']))
+
+    def normalize_production_quantity(self, value: Any) -> Decimal:
+        text_value = str(0 if value is None else value).strip().replace(',', '.')
+        if text_value == '':
+            text_value = '0'
+        try:
+            return Decimal(text_value).normalize()
+        except (InvalidOperation, ValueError) as ex:
+            raise ValueError(f'Некорректное количество продукции: {value!r}') from ex
+
+    def load_mes_production_order_quantities(self, order_s_num: int) -> list[dict]:
+        rows = CSQ.custom_request_c(
+            CFG.Config.project.db_kplan,
+            """
+            SELECT
+                пл_оуп.НомПл,
+                пл_оуп.НомПартии_ЗП,
+                пл_оуп.Количество,
+                пл_оуп.№проекта,
+                plan.Позиция
+            FROM пл_оуп
+            LEFT JOIN plan
+                   ON plan.Пномер = пл_оуп.НомПл
+            WHERE пл_оуп.Пномер_ЗП = ?
+            ORDER BY
+                CASE
+                    WHEN пл_оуп.НомПартии_ЗП IS NULL
+                         OR TRIM(CAST(пл_оуп.НомПартии_ЗП AS TEXT)) = ''
+                    THEN 1 ELSE 0
+                END,
+                CAST(пл_оуп.НомПартии_ЗП AS INTEGER),
+                пл_оуп.НомПл;
+            """,
+            list_of_lists_c=[order_s_num],
+            rez_dict=True,
+            debug=DEBUG
+        )
+        if not isinstance(rows, list):
+            raise ConnectionError('Не удалось прочитать связанные позиции ЗП из MES')
+
+        result = []
+        for sequence, row in enumerate(rows, start=1):
+            source_position = row.get('НомПартии_ЗП')
+            try:
+                source_position = int(source_position)
+            except (TypeError, ValueError):
+                source_position = None
+            result.append({
+                'sequence': sequence,
+                'source_position': source_position,
+                'quantity': self.normalize_production_quantity(row.get('Количество')),
+                'kpl': row.get('НомПл'),
+                'project': row.get('№проекта'),
+                'plan_position': row.get('Позиция'),
+            })
+        return result
+
+    def compare_production_order_quantities(
+            self,
+            erp_lines: list[dict],
+            mes_lines: list[dict],
+    ) -> ProductionOrderQuantityDiff:
+        erp_total = sum((row['quantity'] for row in erp_lines), start=Decimal(0))
+        mes_total = sum((row['quantity'] for row in mes_lines), start=Decimal(0))
+
+        erp_control = self.calc_production_quantity_control(erp_lines)
+        mes_control = self.calc_production_quantity_control(mes_lines)
+
+        row_count_changed = erp_control['row_count'] != mes_control['row_count']
+        total_changed = erp_total != mes_total
+        qty_x10_changed = erp_control['qty_x10_sum'] != mes_control['qty_x10_sum']
+        position_qty_x10_changed = (
+                erp_control['position_qty_x10_sum'] != mes_control['position_qty_x10_sum']
+        )
+
+        changes = []
+        max_count = max(len(erp_lines), len(mes_lines))
+        for index in range(max_count):
+            erp_row = erp_lines[index] if index < len(erp_lines) else None
+            mes_row = mes_lines[index] if index < len(mes_lines) else None
+
+            if erp_row is None:
+                changes.append({
+                    'kind': 'missing_in_erp',
+                    'sequence': index + 1,
+                    'erp_quantity': None,
+                    'mes_quantity': mes_row['quantity'],
+                    'erp_position': None,
+                    'mes_position': mes_row.get('source_position'),
+                    'kpl': mes_row.get('kpl'),
+                    'project': mes_row.get('project'),
+                    'plan_position': mes_row.get('plan_position'),
+                })
+                continue
+
+            if mes_row is None:
+                changes.append({
+                    'kind': 'missing_in_mes',
+                    'sequence': index + 1,
+                    'erp_quantity': erp_row['quantity'],
+                    'mes_quantity': None,
+                    'erp_position': erp_row.get('source_position'),
+                    'mes_position': None,
+                    'kpl': None,
+                    'project': None,
+                    'plan_position': None,
+                })
+                continue
+
+            if erp_row['quantity'] != mes_row['quantity']:
+                changes.append({
+                    'kind': 'quantity_changed',
+                    'sequence': index + 1,
+                    'erp_quantity': erp_row['quantity'],
+                    'mes_quantity': mes_row['quantity'],
+                    'erp_position': erp_row.get('source_position'),
+                    'mes_position': mes_row.get('source_position'),
+                    'kpl': mes_row.get('kpl'),
+                    'project': mes_row.get('project'),
+                    'plan_position': mes_row.get('plan_position'),
+                })
+
+        # Баллы нужны только для быстрой оценки масштаба события в сообщении.
+        # 3 — изменилось число строк, 2 — изменилась общая контрольная сумма,
+        # 2 — изменилось распределение количества по порядку, 1 — каждое
+        # конкретное отличие по порядковой позиции.
+        score = (
+                abs(len(erp_lines) - len(mes_lines)) * 3
+                + int(qty_x10_changed) * 2
+                + int(position_qty_x10_changed) * 2
+                + len(changes)
+        )
+        return ProductionOrderQuantityDiff(
+            changed=bool(row_count_changed or qty_x10_changed or position_qty_x10_changed or changes),
+            score=score,
+            erp_lines=tuple(erp_lines),
+            mes_lines=tuple(mes_lines),
+            erp_total=erp_total,
+            mes_total=mes_total,
+            erp_qty_x10_sum=erp_control['qty_x10_sum'],
+            mes_qty_x10_sum=mes_control['qty_x10_sum'],
+            erp_position_qty_x10_sum=erp_control['position_qty_x10_sum'],
+            mes_position_qty_x10_sum=mes_control['position_qty_x10_sum'],
+            row_count_changed=row_count_changed,
+            total_changed=total_changed,
+            qty_x10_changed=qty_x10_changed,
+            position_qty_x10_changed=position_qty_x10_changed,
+            line_changes=tuple(changes),
+        )
+
+    def quantity_to_text(self, value: Decimal | Any) -> str:
+        try:
+            decimal_value = value if isinstance(value, Decimal) else self.normalize_production_quantity(value)
+            if decimal_value == decimal_value.to_integral():
+                return str(int(decimal_value))
+            return format(decimal_value, 'f').rstrip('0').rstrip('.')
+        except Exception:
+            return str(value)
+
+    def quantity_x10_mark(self, value: Decimal | Any) -> Decimal:
+        quantity = value if isinstance(value, Decimal) else self.normalize_production_quantity(value)
+        return (quantity * PRODUCTION_QTY_CONTROL_SCALE).normalize()
+
+    def calc_production_quantity_control(self, lines: list[dict]) -> dict[str, Decimal | int]:
+        qty_x10_sum = Decimal(0)
+        position_qty_x10_sum = Decimal(0)
+
+        for position, row in enumerate(lines, start=1):
+            mark = self.quantity_x10_mark(row.get('quantity'))
+            qty_x10_sum += mark
+            position_qty_x10_sum += Decimal(position) * mark
+
+        return {
+            'row_count': len(lines),
+            'qty_x10_sum': qty_x10_sum.normalize(),
+            'position_qty_x10_sum': position_qty_x10_sum.normalize(),
+        }
+
+    def build_order_quantity_change_message(
+            self,
+            credentials: dict,
+            order_row: dict,
+            diff: ProductionOrderQuantityDiff,
+            previous_status: Any,
+    ) -> str:
+        lines = [
+            '[B]ERP → MES: Изменение количества продукции документе "Заказ на производство"[/B]',
+            '',
+            f'№ERP: {order_row.get("№ERP") or "—"}',
+            f'Проект: {order_row.get("№проекта") or "—"}',
+        ]
+
+        if diff.line_changes:
+            lines.extend(['', '[B]Различия по порядковым позициям:[/B]'])
+
+        lines.extend([
+            '',
+            '[B]Оператору производственного учёта / ПДО:[/B]',
+            '1. Проверить состав этапов по ЗП.',
+            '2. Корректность номера партии пл_оуп.НомПартии_ЗП',
+            '3. Проверить соответствие строк ЗП позициям КПЛ'
+        ])
+        return '\n'.join(lines)
+
+
+    def production_change_diff_payload(self, diff: ProductionOrderQuantityDiff) -> dict:
+        """Преобразует Decimal в простой сериализуемый результат endpoint."""
+        line_changes = []
+        for change in diff.line_changes:
+            row = dict(change)
+            for key in ('erp_quantity', 'mes_quantity'):
+                if row.get(key) is not None:
+                    row[key] = self.quantity_to_text(row[key])
+            line_changes.append(row)
+        return {
+            'changed': diff.changed,
+            'score': diff.score,
+            'erp_row_count': len(diff.erp_lines),
+            'mes_row_count': len(diff.mes_lines),
+            'erp_total_quantity': self.quantity_to_text(diff.erp_total),
+            'mes_total_quantity': self.quantity_to_text(diff.mes_total),
+            'erp_qty_x10_sum': self.quantity_to_text(diff.erp_qty_x10_sum),
+            'mes_qty_x10_sum': self.quantity_to_text(diff.mes_qty_x10_sum),
+            'erp_position_qty_x10_sum': self.quantity_to_text(diff.erp_position_qty_x10_sum),
+            'mes_position_qty_x10_sum': self.quantity_to_text(diff.mes_position_qty_x10_sum),
+            'row_count_changed': diff.row_count_changed,
+            'total_changed': diff.total_changed,
+            'qty_x10_changed': diff.qty_x10_changed,
+            'position_qty_x10_changed': diff.position_qty_x10_changed,
+            'line_changes': line_changes,
+            'comparison_basis': (
+                'Количество строк, Σ(Количество×10), Σ(Порядок×Количество×10) '
+                'и количество по порядковым позициям; наименование номенклатуры не сравнивается'
+            ),
+        }
+
+
+# Обработчик ЗНПР/Этапы знпр
+def process_erp_production_change(task: Task) -> bool:
+    credentials = dict(task.credentials or {})
+    object_name = credentials.get('obj_full_name')
+    handler = ProductionOrderEventHandler()
+    base_result = {
+        'state': 'processing',
+        'ok': False,
+        'event_type': object_name,
+        'object_guid': credentials.get('GUID'),
+    }
+    if object_name == ERP_PRODUCTION_STAGE_OBJECT:
+        base_result['stage_ref_key'] = credentials.get('GUID')
+        base_result['order_ref_key_source'] = (
+            'event.order_GUID' if credentials.get('order_GUID') else 'stage.Распоряжение_Key'
+        )
+
+    try:
+        try:
+            order_ref_key = handler.resolve_order_ref_key_from_production_event(credentials)
+        except ValueError as ex:
+            handler.save_production_change_task_result(task, {
+                **base_result,
+                'state': 'rejected',
+                'error': str(ex),
+                'detail': 'Событие отклонено из-за некорректных входных данных',
+            })
+            return True
+
+        base_result['order_ref_key'] = order_ref_key
+        order_row = handler.find_mes_production_order(order_ref_key)
+
+        if order_row is None:
+            result = {
+                **base_result,
+                'state': 'completed',
+                'ok': True,
+                'matched_order': False,
+                'confirmed_change': False,
+                'refresh_marked': False,
+                'notification_sent': False,
+                'notification_skipped': True,
+                'detail': 'ЗП по Ref_Key не найдена в MES',
+            }
+            handler.save_production_change_task_result(task, result, chat_accepted=True)
+            return True
+
+        order_s_num = int(order_row['s_num'])
+        previous_status = order_row.get('Этапы_ЕРП')
+        num_erp = order_row.get('№ERP') or ''
+        base_result.update({
+            'matched_order': True,
+            'order_s_num': order_s_num,
+            'order_number': num_erp,
+            'project': order_row.get('№проекта'),
+            'previous_status': previous_status,
+        })
+        chat_id = get_chat_id_by_document_prefix(prefix=num_erp[:2], chat_action='Занесение новых проектов в МЕС')
+        if not chat_id:
+            result = {
+                **base_result,
+                'state': 'completed',
+                'ok': True,
+                'matched_order': False,
+                'confirmed_change': False,
+                'refresh_marked': False,
+                'notification_sent': False,
+                'notification_skipped': True,
+                'detail': 'Не найден чат для оповещения',
+            }
+            handler.save_production_change_task_result(task, result, chat_accepted=True)
+            return True
+        task.chat_id = chat_id
+        if object_name == ERP_PRODUCTION_STAGE_OBJECT:
+            if not handler.mark_production_stages_need_refresh(order_s_num, is_test=task.is_test):
+                raise ConnectionError('Не удалось установить Этапы_ЕРП = 1')
+
+            positions = handler.load_mes_production_positions(order_s_num)
+            message = handler.build_stage_change_message(
+                credentials,
+                order_row,
+                positions,
+                previous_status,
+            )
+            notified = handler.send_production_change_message(task, message)
+            delivery_ok = notified is not False
+            notification_sent = notified is True
+            result = {
+                **base_result,
+                'state': 'completed' if delivery_ok else 'retrying',
+                'ok': True,
+                'confirmed_change': True,
+                'refresh_marked': True,
+                'current_status': ERP_STAGES_NEED_REFRESH,
+                'affected_positions': len(positions),
+                'notification_sent': notification_sent,
+                'notification_skipped': notified is None,
+                'detail': (
+                    'Изменение этапа принято; снимок этапов поставлен '
+                    'на повторную загрузку'
+                ),
+            }
+            handler.save_production_change_task_result(task, result, chat_accepted=notification_sent)
+            return delivery_ok
+
+        erp_lines = handler.load_erp_production_order_quantities(order_ref_key)
+        mes_lines = handler.load_mes_production_order_quantities(order_s_num)
+        diff = handler.compare_production_order_quantities(erp_lines, mes_lines)
+        comparison = handler.production_change_diff_payload(diff)
+
+        if not diff.changed:
+            logger.info(
+                '[ERP_PRODUCTION_CHANGE] ЗП %s была записана в ERP, '
+                'но количество продукции по порядковым строкам не изменилось',
+                order_row.get('№ERP') or order_ref_key,
+            )
+            handler.save_production_change_task_result(task, {
+                **base_result,
+                'state': 'completed',
+                'ok': True,
+                'confirmed_change': False,
+                'refresh_marked': False,
+                'notification_sent': False,
+                'comparison': comparison,
+                'detail': (
+                    'ЗП записана в ERP, но контрольные суммы количества '
+                    'между ERP и MES не изменились'
+                ),
+            })
+            return True
+
+        if not handler.mark_production_stages_need_refresh(order_s_num, is_test=task.is_test):
+            raise ConnectionError('Не удалось установить Этапы_ЕРП = 1')
+
+        message = handler.build_order_quantity_change_message(
+            credentials,
+            order_row,
+            diff,
+            previous_status,
+        )
+        notified = handler.send_production_change_message(task, message)
+        delivery_ok = notified is not False
+        notification_sent = notified is True
+        result = {
+            **base_result,
+            'state': 'completed' if delivery_ok else 'retrying',
+            'ok': True,
+            'confirmed_change': True,
+            'refresh_marked': True,
+            'current_status': ERP_STAGES_NEED_REFRESH,
+            'affected_positions': len(mes_lines),
+            'notification_sent': notification_sent,
+            'notification_skipped': notified is None,
+            'comparison': comparison,
+            'detail': (
+                'Изменение количества подтверждено; этапы поставлены '
+                'на повторную загрузку'
+            ),
+        }
+        handler.save_production_change_task_result(task, result, chat_accepted=notification_sent)
+        return delivery_ok
+
+    except Exception as ex:
+        logger.error(
+            '[ERP_PRODUCTION_CHANGE] Ошибка обработки производственного события',
+            exc_info=ex,
+            stack_info=True,
+        )
+        handler.save_production_change_task_result(task, {
+            **base_result,
+            'state': 'retrying',
+            'ok': False,
+            'error': str(ex),
+            'detail': 'Временная ошибка обработки; служба повторит задачу',
+        })
+        return False
 
 commands = {
     'bitrix24.Сделка.Завершение': {
@@ -2700,6 +3308,7 @@ commands = {
         'new_task_format': True,
         'services': None
     },
+
     'MES.Номенклатура/СинхронизацияПолей': {
         'producer': None,
         'consumer': update_nomenclature,
@@ -2713,66 +3322,17 @@ commands = {
             'DOCs': sync_nomen_tflex_docs
         }
     },
+    'MES.ERP/ЗП.Этапы.КонтрольИзменений': {
+        'producer': None,
+        'consumer': process_erp_production_change,
+        'check': True,
+        'chat_id': '',
+        'interval': 60,
+        'new_task_format': True,
+        'services': None,
+    },
 
 }
-# commands = {
-#     'bitrix24.Сделка.ОбновлениеТипТКП/Организация': {
-#         'producer': get_deal_values_by_data_version_mark,
-#         'consumer': update_organization_and_type_tkp,
-#         'check': True,
-#         'chat_id': None,
-#         'interval': 60 * 60 * 2,
-#         'new_task_format': False,
-#         'services': None
-#     },
-# }
-# commands = {
-#     "bitrix24.РаспоряжениеНаДоставку/Упаковка.СинхронизацияТабличнойЧастиУпаковки": {
-#         # https://bitrix24.kelast.ru/company/personal/user/3076/tasks/task/view/100059053/
-#         'producer': None,
-#         'consumer': update_delivery_order_pack_attributes,
-#         'check': True,
-#         'chat_id': None,
-#         'interval': 60 * 3 - 1,
-#         'new_task_format': True,
-#         'services': None
-#     },
-# }
-# commands = {
-#     'bitrix24.ЗаказПоставщику.СинхронизацияЗаказа/ТабличнойЧасти': { # https://bitrix24.kelast.ru/company/personal/user/3076/tasks/task/view/100056637/?MID=888366#com888366
-#         'producer': None,
-#         'consumer': update_order_supplier_attributes,
-#         'check': True,
-#         'chat_id': None,
-#         'interval': 60 * 3 - 1,
-#         'new_task_format': False,
-#         'services': None
-#     },
-    # 'MES.Номенклатура/СинхронизацияПолей': {
-    #     'producer': None,
-    #     'consumer': update_nomenclature,
-    #     'check': True,
-    #     'chat_id': 'chat59299',
-    #     'interval': 60 * 3 - 1,
-    #     'new_task_format': True,
-    #     'services': {
-    #         'MES': sync_nomen_mes,
-    #         'Bitrix24': sync_nomen_b24,
-    #         'TFLEX.Docs': sync_nomen_tflex_docs
-    #     }
-    # },
-    # "MES.plan/ОбновлениеСтатусаПозиции": {
-    #     # https://bitrix24.kelast.ru/company/personal/user/3076/tasks/task/view/100059053/
-    #     'producer': None,
-    #     'consumer': checking_positions_for_closed_mk,
-    #     'check': True,
-    #     'chat_id': None,
-    #     'interval': 60 * 60 * 24,
-    #     'new_task_format': True,
-    #     'services': None
-    # },
-# }
-
 
 def check_commands():
     return
@@ -2792,7 +3352,7 @@ def check_new_actions(new: dict, old: dict):
             json_old = pickle.loads(old[key]['data'])
             if json_old != value:
                 pk = old[key]['id']
-                CSQ.custom_request_c(db_files, f'DELETE FROM exchange WHERE id = {pk}')
+                CSQ.custom_request_c(db_files, f'DELETE FROM exchange WHERE id = {pk}', debug=DEBUG)
                 yield key, value
         else:
             yield key, value
@@ -2819,7 +3379,8 @@ def check_values():
             db_files,
             f'SELECT key, data, id FROM exchange WHERE queue = {queue!r} AND key IN ({search_keys})',
             rez_dict=True,
-            hat_c=False
+            hat_c=False,
+            debug=DEBUG
         )
         if isinstance(response, list):
             response = F.deploy_dict_c(response, 'key')
@@ -2832,7 +3393,8 @@ def check_values():
                     db_files,
                     'INSERT INTO exchange(key, queue, data) '
                     'VALUES (?, ?, ?)',
-                    list_of_lists_c=body
+                    list_of_lists_c=body,
+                    debug=DEBUG
                 )
                 msg =  f'[{queue}]События успешно сохранены' if is_done else f'[{queue}]Не удалось сохранить события'
                 logging.info(msg)
@@ -2842,8 +3404,8 @@ def handle_tasks():
     logging.info('Выполнение накопленных событий...')
     for queue, (fn_info, fn_handle, check, chat_key, interval, new_task_format, services_key) in commands.items():
         logging.info(f'[{queue}]Старт обработки')
-        query = f'SELECT * FROM exchange WHERE queue = {queue!r} AND finished IN ("", 0) OR finished IS NULL'
-        last_tasks = CSQ.custom_request_c(db_files, query, rez_dict=True)
+        query = f'SELECT * FROM exchange WHERE queue = {queue!r} AND (finished IN ("", 0) OR finished IS NULL)'
+        last_tasks = CSQ.custom_request_c(db_files, query, rez_dict=True, debug=DEBUG)
         stat = {'y': 0, 'n': 0}
         is_new_task_format = commands[queue][new_task_format]
         chat_id = commands[queue][chat_key]
@@ -2877,10 +3439,7 @@ def handle_tasks():
                             except Exception as e:
                                 logger.error(f'Ошибка при хэшировании задачи: {e}', exc_info=e, stack_info=True)
                         cp_data = copy.deepcopy(data)
-                        cp_data2 = copy.deepcopy(data)
                         finished = commands[queue][fn_handle](cp_data)
-                        if not finished:
-                            finished = commands[queue][fn_handle](cp_data2)
                     except Exception as e:
                         logging.error('Ошибка выполнения задачи', exc_info=e, stack_info=True)
                         finished = False
@@ -2892,7 +3451,7 @@ def handle_tasks():
                 for pk, is_finished in result.items():
                     body.append([is_finished, pk])
                 query = f'UPDATE exchange SET finished = ? WHERE id = ?'
-                is_done = CSQ.custom_request_c(db_files, query, rez_dict=True, list_of_lists_c=body)
+                is_done = CSQ.custom_request_c(db_files, query, rez_dict=True, list_of_lists_c=body, debug=DEBUG)
                 if is_done:
                     logging.info(f"[{queue}]Обработка прошла успешно, обработано: \nУдачно: {stat['y']}\nНеудачно: {stat['n']}{PREFIX_LOG}\n\n")
             else:
@@ -2916,14 +3475,9 @@ def main():
 
 def decode_1c_data_version_attribute(base64_string: str):
     """Декодировать атрибут DataVersion 1С в число"""
-    import base64
     decoded_bytes = base64.b64decode(base64_string)
     result_integer = int.from_bytes(decoded_bytes, byteorder='big')
     return result_integer
-
-
-
-### TODO END
 
 
 if __name__ == '__main__':

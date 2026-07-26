@@ -48,6 +48,8 @@ def load_table_db(self):
     update_list_projects(self)
 
 def edit_primech(self,row,column):
+    if CQT.is_table_updating(self.ui.tbl_selector_proj_view):
+        return
     current_primech = self.ui.tbl_selector_proj_view.item(row, CQT.num_col_by_name_c(self.ui.tbl_selector_proj_view,
                                                                                   'Примечание')).text()
     np = self.ui.tbl_selector_proj_view.item(row, CQT.num_col_by_name_c(self.ui.tbl_selector_proj_view,

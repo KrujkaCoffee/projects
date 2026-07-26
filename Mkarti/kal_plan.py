@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import datetime
 import os
@@ -7,10 +7,13 @@ import pathlib #27.10.25
 import pprint
 import sys
 import hashlib
+from builtins import dict
+
 import project_cust_38.Cust_Functions as F
 import project_cust_38.Cust_SQLite as CSQ
 import project_cust_38.Cust_Qt as CQT
 import project_cust_38.Cust_mes as CMS
+from lxml.etree import DTD
 from project_cust_38 import Cust_config as CFG
 from PyQt5.QtCore import QDate
 from PyQt5 import QtGui, QtCore, QtWidgets
@@ -22,66 +25,3148 @@ import project_cust_38.Cust_Excel as CEX
 import project_cust_38.Erp_connector_plan as ERP
 from pl_graf_pad_mosh import generate as GEN_PLG
 import project_cust_38.Cust_odata_erp as CODAT
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, TypeVar, Dict
 import project_cust_38.api_erp_commands as APIERP
 import project_cust_38.Cust_b24 as CB24
 import project_cust_38.Cust_emoji as CEMOJ
 from data_class import Data_plan as DTCLS
 from functools import partial
+from project_cust_38.sub_mes.kro.manage_kro import Kro_manager as MKRO
 if TYPE_CHECKING:
     from MKart import mywindow
 
-LIST_HIDE_FIELDS = ['plan.local_graf','пл_оуп.№Пл_Пр']
+
+
 # exclude LIST_FREEZE_FIELDS 10.11.25
 FOLDER_CLOSED = f'{CEMOJ.EmojiMain.ДокументыДанные.folder_closed.symbol}{CEMOJ.EmojiMain.ДокументыДанные.plus_circled.symbol}'
 FOLDER_OPEN = f'{CEMOJ.EmojiMain.ДокументыДанные.folder.symbol}{CEMOJ.EmojiMain.ДокументыДанные.minus_circled.symbol}'
 DOC_EMOJI = f'    {CEMOJ.EmojiMain.ДокументыДанные.document.symbol}'
+FIELDS_S_NUM_WITH_DATA = {6,}
+FIELDS_S_NUM_WITH_DATA_INT = {6,}
+
+
+"""
+Оптимизировано представление динамически подгружаемых полей для плана
+добавлена возможность включать в план абстрактные калькулируемые поля
+ускорена загрузка данных для таблиц
+проверены и настроены проверки при заполнении и изменении данных в позиции.
+введена система псевдонимов для этапов и полей плана
+оптимизирован принцип загрузки и применения пользовательских настроек
+улучшен интерфейс настройки полей из плана. (имена этапов, имена полей, описание полей, порядок полей)
+введены контекстные меню и интерактивные ссылки на объекты 1с (ЗК, ЗП и т.д.)
+повышена скорость работы с гантом и табелями за счет агрегации таблиц
+изменена архитектура построения полей таблицы плана для добавления новых полей
+улучена визуальная часть для уплотнения и информативности таблиц 
+добавлены автофильтры в основную таблицу
+улучшен вывод таблиц в стаканах при месячном планировании
+ускорена загрузка данных выбранной позиции, при работе со стаканом месяца
+"""
+
+
+class Check_field_rule(CMS._ImportDb):
+    def __init__(self, it):
+        self.id: int = None
+        self.name: str = None
+        self.descr: str = None
+        self.priority: int = None
+        self.parce_row_dict(it)
+
+
+
+class Check_field_rules():
+    def __init__(self):
+        self.dict_rules: dict[int, Check_field_rule] = dict()
+        data = CSQ.custom_request_c(DTCLS.db_kplan, f"""SELECT * FROM info_fields_kpl_check_rules""",
+                                    rez_dict=True)
+        for it in data:
+            rule = Check_field_rule(it)
+            self.dict_rules[rule.id] = rule
+    @staticmethod
+    def add_to_db(id_field:int,id_rule:int,comment=None):
+        list_of_lists = [id_field, id_rule, comment]
+        CSQ.custom_request_c(DTCLS.db_kplan,f'''INSERT INTO info_fields_kpl_check_rules_val
+         (field,rule,comment) VALUES ({CSQ.questions_for_mask(list_of_lists)})''',list_of_lists_c=[list_of_lists])
+
+    def find(self,id:int)->Check_field_rule|None:
+        return self.dict_rules.get(id,None)
+
+    def find_by_name(self,name:str)->Check_field_rule|None:
+        for r in self.dict_rules.values():
+            if r.name==name :
+                return r
+
+DTCLS.CHECK_FIELD_RULES = Check_field_rules()
+
+
+
+DTCLS.FIELDS_DB_INFO = CMS.Fields_db_info(DTCLS.CHECK_FIELD_RULES)
+
+
+def _________manage_kpl_________________________():pass
+
+
 
 @CQT.onerror
-def update_db_info_fields_kpl(self: mywindow):
-    result = []
-    list_db = F.deploy_dict_c(CSQ.custom_request_c(self.db_kplan, f"""SELECT case when table_kpl = '' then name else  table_kpl 
-     || "." || name end as name, nickname FROM info_fields_kpl;""", rez_dict=True), 'name')
-    selected_tbls, list_conf = load_db(self, only_hat=True)
-    if selected_tbls == False:
+def btn_config_limit_gant(*args):
+    template = [{
+        '_name':_.name,
+        'Имя':_.alias,
+        'Нормо-час':_.default_hours_day_gant
+                 } for _ in DTCLS.FIELDS_DB_INFO.tables_db.tabels_ordered]
+
+    def fnc_check(btn, dialog, tbl, *args):
+        list_err = []
+        if dialog.is_btn_yes_role(btn):
+            t = CQT.TableContext(tbl)
+            for row in t.rows():
+                val_str = row.value('Нормо-час')
+                if  not val_str:
+                    list_err.append(f'{row.value("Имя")}: не заполнено')
+                if not F.is_numeric(val_str):
+                    list_err.append(f'{row.value("Имя")}: не число')
+            if list_err:
+                CQT.msgbox(f"{'\n'.join(list_err)}",app_self=DTCLS.app_self)
+                return
+            dialog.accept()
+        else:
+            dialog.reject()
+
+    def fnc_valid(data:list[dict])->dict:
+        get_t = DTCLS.FIELDS_DB_INFO.tables_db.get_table
+        return {_['_name']:F.valm(_['Нормо-час']) for _ in data if
+                    get_t(_['_name']).default_hours_day_gant != F.valm(_['Нормо-час'])}
+
+    def fnc_oform(tbl,*args):
+        t= CQT.TableContext(tbl)
+        t.hide_if_not_dev(CFG)
+        t.set_editable('Нормо-час')
+
+    rez = CQT.msgboxg_get_table(DTCLS.app_self,"Настройки нормо-час. по этапам:",template,'Применить',
+                          not_standart_close=True,func_btn0=fnc_check, func_validate=fnc_valid, func_oform_tbl=fnc_oform,
+                          styleSheet=CQT.MES_EDIT_CSS,)
+    if not rez:
+        return
+    get_t = DTCLS.FIELDS_DB_INFO.tables_db.get_table
+    for name_tbl, new_val in rez.items():
+        tbl_db = get_t(name_tbl)
+        tbl_db.update_default_hours_day_gant(new_val)
+
+
+@CQT.onerror
+def btn_config_fields(*args):
+
+    dict_result_change = {'Этап плана':dict(),
+                          '_s_num':dict(),
+                          }
+    fl_edit = False
+    def fnc_get_data(data):
+        return data
+    def fnc_oform(tbl: QtWidgets.QTableWidget, *args):
+
+        def fnc_dbl_clc_edit_row(t:CQT.TableContext,i:int,f:str):
+            def fnc_check_edit_row(tbl_data:list[dict]):
+                rez = [{_['Параметр']: CSQ.sanitize_sql_input(_['Значение']) for _ in tbl_data}]
+                return rez
+            def fnc_oform_edit_row(tbl:QtWidgets.QTableWidget):
+                t = CQT.TableContext(tbl)
+                for row in t.rows():
+                    row.set_editable('Значение')
+            def fnc_check_select(btn, dialog, tbl):
+                t = CQT.TableContext(tbl)
+                if dialog.is_btn_yes_role(btn):
+                    for row in t.rows():
+                        param = row.value('Параметр')
+                        val = row.value('Значение').strip()
+                        if param == 'Таблица':
+                            pass
+                        if param == 'Поле':
+                            if len(val)<1:
+                                CQT.msgbox('Поле должно иметь название')
+                                return
+                            pass
+                        if param == 'Таблица':
+                            pass
+                    dialog.accept()
+                else:
+                    dialog.reject()
+
+            curr_row = t.get_row(i)
+            Таблица_val = curr_row.value('Таблица')
+            Поле_val = curr_row.value('Поле')
+            Описание_val = curr_row.value('Описание')
+            template = [
+                {'Параметр':'Таблица','Значение':Таблица_val},
+                {'Параметр':'Поле','Значение':Поле_val},
+                {'Параметр':'Описание','Значение':Описание_val},
+            ]
+            rez = CQT.msgboxg_get_table(DTCLS.app_self,'Настройка имен',template,func_validate=fnc_check_edit_row,
+                                        func_oform_tbl=fnc_oform_edit_row,show_filtr=False,styleSheet=CQT.MES_EDIT_CSS,
+                                        not_standart_close=True,func_btn0=fnc_check_select)
+
+            if not rez:
+                return
+            rez = rez[0]
+            tbl_mes = curr_row.value('Этап плана')
+            s_num = int(curr_row.value('_s_num'))
+            dict_result_change['_s_num'][s_num] = dict()
+            if Таблица_val != rez['Таблица']:
+                dict_result_change['Этап плана'][tbl_mes] = rez['Таблица']
+                for row in t.rows():
+                    if row.value('Этап плана') == tbl_mes:
+                        row.set_value('Таблица',rez['Таблица'])
+            if Поле_val != rez['Поле']:
+                curr_row.set_value('Поле',rez['Поле'])
+                dict_result_change['_s_num'][s_num]['field_alias'] = rez['Поле']
+            if Описание_val != rez['Описание']:
+                curr_row.set_value('Описание',rez['Описание'])
+                dict_result_change['_s_num'][s_num]['description'] = rez['Описание']
+
+
+
+        t = CQT.TableContext(tbl)
+        t.add_column_events('Корр.',on_double_click=fnc_dbl_clc_edit_row)
+        with CQT.table_updating(tbl):
+            for row in t.rows():
+                f = DTCLS.FIELDS_DB_INFO.dict_fields[row.value('_name_mes')]
+                clr = f.table_color
+                new_clr = clr.align_colors(level_percent=-1,saturation_percent=-1,copy=True)
+                row.set_color_font(*new_clr.rgb)
+                add_switcher(row)
+                row.set_font_format(bold=True,col_name='Таблица')
+                row.set_font_format(bold=True,col_name='Поле')
+                row.set_font_format(bold=True,col_name='Описание')
+        t.hide_if_not_dev(CFG)
+
+    def fnc_toggle_view(tbl: QtWidgets.QTableWidget, val: bool, i: int, j: int):
+        tbl.item(i,j).setText(str(val))
+        tbl.setProperty('_fl_edit','True')
+    def add_switcher(row:CQT.TableRow):
+        enable = True
+        #if F.boolm(row.value('_system')):
+        #    enable = False
+        CQT.add_check_box_switcher(row.tbl, row.i, row.nf['Видимость'], F.boolm(row.value('Видимость')),
+                                   fnc_toggle_view, enabled=enable)
+
+    def fnc_drdr(tbl: QtWidgets.QTableWidget, row_from: int, row_to: int):
+        if isinstance(row_from,int) and isinstance(row_to,int):
+            with CQT.table_updating(tbl):
+                t = CQT.TableContext(tbl)
+                row = t.get_row(row_to)
+                add_switcher(row)
+                tbl.setProperty('_fl_edit','True')
+
+    dict_cnf = DTCLS.FIELDS_DB_INFO.dict_fields.values()
+    EDIT_EMOJ = CEMOJ.EmojiMain.ДокументыДанные.pencil_note.symbol
+
+    template = [{'Корр.':EDIT_EMOJ,'Таблица':data.table_alias,'Поле':data.field_alias, '_system':data.is_system,
+                 '_name_mes':data.name_mes,'Этап плана':data.table_mes,'_s_num':data.s_num,
+                 'Видимость':not data.is_hidden,'_idx':data.usr_idx,'Описание':data.description}
+                        for i,data in enumerate(dict_cnf) if (not data.sys_hide and data.enable)]
+
+    rez_data_table, dict_prop = CQT.msgboxg_get_table(DTCLS.app_self,f'Настройка порядка и отображения',template,'Завершить',
+                        styleSheet=CQT.MES_CSS,showMaximized=True,func_validate=fnc_get_data,func_oform_tbl=fnc_oform,
+                                selectRows=True,fnc_drag_drop=fnc_drdr,property_in_rez=True)
+
+    if not rez_data_table:
+        return
+
+    if '_fl_edit' in dict_prop:
+        if F.boolm(dict_prop['_fl_edit']):
+            fl_edit = True
+
+    fl_update_db = False
+
+    for tbl_mes, val in dict_result_change['Этап плана'].items():
+        rez = CSQ.custom_request_c(CFG.Config.project.db_kplan, f"""UPDATE podrazdel
+                        SET  (alias)
+                            = (?)
+                                WHERE Имя = "{tbl_mes}" ;""", list_of_lists_c=[val])
+        if not rez:
+            CQT.msgbox(f'Ошибка обновления таблицы {tbl_mes}')
+        fl_edit = True
+        fl_update_db = True
+    for s_num , data_name_mes in dict_result_change['_s_num'].items():
+        if 'field_alias' in data_name_mes:
+            val = data_name_mes['field_alias']
+            rez = CSQ.custom_request_c(CFG.Config.project.db_kplan, f"""UPDATE info_fields_kpl
+                                    SET  (alias_usr)
+                                        = (?)
+                                            WHERE s_num = {s_num} ;""", list_of_lists_c=[val])
+            if not rez:
+                CQT.msgbox(f'Ошибка обновления поля {s_num}')
+            fl_edit = True
+            fl_update_db = True
+        if 'description' in data_name_mes:
+            val = data_name_mes['description']
+            rez = CSQ.custom_request_c(CFG.Config.project.db_kplan, f"""UPDATE info_fields_kpl
+                                    SET  (nickname)
+                                        = (?)
+                                            WHERE s_num = {s_num} ;""", list_of_lists_c=[val])
+            if not rez:
+                CQT.msgbox(f'Ошибка обновления описаня для {s_num}')
+            fl_edit = True
+            fl_update_db = True
+
+    if not fl_edit:
+        return
+
+    for idx, it in enumerate(rez_data_table):
+        name = it['_name_mes']
+        hidden = not F.boolm(it['Видимость'])
+
+        dict_fields = DTCLS.FIELDS_DB_INFO.dict_fields
+        f = dict_fields[name]
+        f.usr_idx = idx
+        f.usr_hide = hidden
+
+    DTCLS.FIELDS_DB_INFO.fix_indx()
+    DTCLS.FIELDS_DB_INFO.save_user_data()
+    if fl_update_db:
+        DTCLS.FIELDS_DB_INFO = CMS.Fields_db_info(DTCLS.CHECK_FIELD_RULES)
+    update_list_fields(False)
+    load_table_db(DTCLS.app_self)
+
+def ______________PKK________________________________():pass
+
+
+def ______________SETTINGS________________________________():pass
+def download_pkk(nom_file:int)->str|None:
+    rez = CSQ.custom_request_c(DTCLS.db_fiels,
+                               f'''SELECT file_name, file FROM project_cards WHERE s_nom = {nom_file}''',
+                               one=True)
+    if len(rez) <= 1:
+        CQT.msgbox(f'Файл s_num {nom_file} в project_cards не найден')
+        return
+    file_blob_compr = rez[-1][1]
+    file_name = rez[-1][0]
+    file_blob = F.unpack_byte_file(file_blob_compr)
+    return F.save_tmp_win_dir_file(file_blob, F.keep_extention_c(file_name))
+
+def pre_del_file_pkk(t: CQT.TableContext, lbl: CQT.InteractiveLabelInstance, app_self, i, j, *args):
+    row = t.get_row(i)
+    row.set_value('Значение', '')
+    lbl.set_text('')
+
+def del_file_pkk(id:int)->bool:
+
+    linked_kpl = CSQ.custom_request_c(DTCLS.db_kplan,
+                                      f'''SELECT НомПл, ПКК FROM пл_оуп WHERE ПКК = ?''',
+                                      rez_dict=True, list_of_lists_c=[[id]])
+    if linked_kpl is None or isinstance(linked_kpl, bool) and not linked_kpl:
+        return False
+
+    if len(linked_kpl) < 2:
+        rez = CSQ.custom_request_c(DTCLS.db_fiels,
+                                   f'''DELETE FROM project_cards WHERE
+                                                        s_nom = {id}''')
+
+    return True
+
+def show_file_pkk(t: CQT.TableContext, lbl: CQT.InteractiveLabelInstance, app_self, i, j, *args):
+    row = t.get_row(i)
+    if row.no_selection:
+        return
+    val = row.value('Значение')
+    if not val:
+        return
+    if not F.is_numeric(val):
+        return
+    id = int(val)
+    tmp_file = download_pkk(id)
+    if tmp_file:
+        F.run_file_os_c(tmp_file)
+
+
+def pre_add_file_pkk(t: CQT.TableContext, lbl: CQT.InteractiveLabelInstance, app_self, i, j,
+                 *args):
+    MAX_FIRE_SIZE_MB = 5
+
+    dir = CMS.load_tmp_path('kpl_pkk')
+    file_path = CQT.f_dialog_name(DTCLS.app_self, 'Выбрать файл с карточкой проекта', dir, '*', True)
+    if file_path == '.':
+        return
+
+    CMS.save_tmp_path('kpl_pkk', file_path, True)
+
+    file_founding = F.load_file_convert_to_binary(file_path)
+    size = sys.getsizeof(file_founding)
+    if size > 1048576 * MAX_FIRE_SIZE_MB:
+        CQT.msgbox(f'Размер файла должен быть не более {MAX_FIRE_SIZE_MB} мб')
+        return
+    row = t.get_row(i)
+    row.set_value('Значение', file_path)
+    lbl.set_text(CEMOJ.ДокументыДанные.document.symbol)
+
+def upload_pkk(link:str)->int|None:
+    MAX_FIRE_SIZE_MB = 5
+    file_founding = F.load_file_convert_to_binary(link)
+    size = sys.getsizeof(file_founding)
+    if size > 1048576 * MAX_FIRE_SIZE_MB:
+        CQT.msgbox(f'Размер файла должен быть не более {MAX_FIRE_SIZE_MB} мб')
+        return
+    hash = hashlib.sha1(file_founding).hexdigest()
+    file_founding = F.pack_byte_file(file_founding)
+    print(f'size {size}')
+
+    def get_id(size, hash) -> int:
+        id_file = CSQ.custom_request_c(DTCLS.db_fiels,
+                                       f'''SELECT s_nom FROM project_cards WHERE size = {size} AND hash = "{hash}"''',
+                                       one_column=True, one=True, hat_c=False)
+        return id_file
+
+    id_file = get_id(size, hash)
+    name = link.split(F.sep())[-1]
+    if not id_file:
+        CSQ.custom_request_c(DTCLS.db_fiels,
+                             """INSERT INTO  project_cards(file_name,size,hash,file) VALUES (?,?,?,?);""",
+                             list_of_lists_c=[[name, size, hash, file_founding]])
+        id_file = get_id(size, hash)
+    return id_file
+
+def add_file_pkk(row: CQT.TableRow, lbl: CQT.InteractiveLabelInstance, app_self, i, j,
+                 *args):
+    MAX_FIRE_SIZE_MB = 5
+    update_db = False
+    num_poz = 0
+
+    if row is None:
+        update_db = False
+    else:
+        num_poz = int(row.value('Значение'))
+
+    file_path = row.value('Значение')
+
+    file_founding = F.load_file_convert_to_binary(file_path)
+    size = sys.getsizeof(file_founding)
+    if size > 1048576 * MAX_FIRE_SIZE_MB:
+        CQT.msgbox(f'Размер файла должен быть не более {MAX_FIRE_SIZE_MB} мб')
+        return
+    hash = hashlib.sha1(file_founding).hexdigest()
+    file_founding = F.pack_byte_file(file_founding)
+    print(f'size {size}')
+
+    def get_id(size, hash) -> int:
+        id_file = CSQ.custom_request_c(DTCLS.db_fiels,
+                                       f'''SELECT s_nom FROM project_cards WHERE size = {size} AND hash = "{hash}"''',
+                                       one_column=True, one=True, hat_c=False)
+        return id_file
+
+    id_file = get_id(size, hash)
+    name = file_path.split(F.sep())[-1]
+    if not id_file:
+        CSQ.custom_request_c(DTCLS.db_fiels,
+                             """INSERT INTO  project_cards(file_name,size,hash,file) VALUES (?,?,?,?);""",
+                             list_of_lists_c=[[name, size, hash, file_founding]])
+        id_file = get_id(size, hash)
+
+    if update_db:
+        CSQ.custom_request_c(DTCLS.db_kplan, f"""UPDATE пл_оуп SET ПКК = {id_file} WHERE  НомПл = {num_poz};""")
+
+
+
+
+def add_widget_pkk(t: CQT.TableContext, row: CQT.TableRow):
+    s_nom_project_cards = row.value('Значение')
+
+    widg = CQT.add_interactive_label(t.tbl, row.i, row.nf['Значение'], row.value('Значение'),
+                                     parent_self=DTCLS.app_self)
+    if F.is_numeric(s_nom_project_cards) and int(s_nom_project_cards)>0:
+        widg.set_text(CEMOJ.ДокументыДанные.document.symbol)
+    else:
+        row.set_value("Значение",'')
+
+    widg.add_button(CEMOJ.EmojiMain.Статусы.ellipsis.symbol, 'Выбрать ПКК',
+                    partial(pre_add_file_pkk, t),
+                    cell_val=None, img_path=F.sep().join([F.path_to_execut_file_c(),
+                                                          'icons', 'btn_select']))
+    widg.add_button(CEMOJ.EmojiMain.СтатусыПроизводства.error.symbol, 'Удалить ПКК',
+                    partial(pre_del_file_pkk, t),
+                    cell_val=None)
+
+
+def ______________EDIT_________________________________():pass
+
+def check_edit_permission()->tuple[bool,str]:
+    tbl = DTCLS.app_self.ui.tbl_kal_pl
+    t = CQT.TableContext(tbl)
+    row = t.current_row()
+    if row.no_selection:
+        return False, ''
+    name_field = t.current_column_name()
+    DICT_FIELDS = DTCLS.FIELDS_DB_INFO.dict_fields
+    field_o:CMS.Field_db_info = DICT_FIELDS[name_field]
+
+    fl_check_field = True
+    msg_err = ''
+
+    if not field_o.hand_editable:
+        msg_err = f'Корректировка поля запрещена'
+        fl_check_field = False
+        return fl_check_field, msg_err
+
+    fl_access = CMS.access_kpl_tbl(DTCLS.app_self.Data_plan.DICT_INFO_FIELDS_KPL, field_o.name_mes)
+    if fl_access == False:
+        msg_err = f'Нет доступа'
+        fl_check_field = False
+
+    return fl_check_field, msg_err
+@CQT.onerror
+def tbl_kal_pl_cellChanged(self: mywindow, *args):
+    tbl = self.ui.tbl_kal_pl
+    msg_err = ''
+    t = CQT.TableContext(tbl)
+
+    row = t.current_row()
+    if row.no_selection:
+        return
+
+    name_field = t.current_column_name()
+    DICT_FIELDS = DTCLS.FIELDS_DB_INFO.dict_fields
+    field_o:CMS.Field_db_info = DICT_FIELDS[name_field]
+    DTCLS.current_podr_for_edit = field_o.table_mes
+    fl_check_field, msg_err = check_edit_permission()
+
+    s_num_kpl = int(row.value('plan.Пномер'))
+    poz = CMS.Pozition(s_num_kpl, DTCLS.db_kplan, DTCLS.bd_naryad, DTCLS.db_resxml, DTCLS.db_users, self)
+
+    new_val = row.value(name_field)
+    data_row = load_db(self, s_num_kpl)
+    old_val = data_row[name_field]
+
+    checker_o = CMS.Checker_val_fields(poz,DTCLS.DICT_ITERS_FOR_CHECK_FIELDS)
+
+    fl_update_val = False
+    if fl_check_field:
+        new_val = checker_o.fix_value_field(new_val, field_o)
+        fl_update_val = checker_o.check_value_field(new_val, field_o)
+        dict_checked = checker_o.get_results()
+        msg_err = dict_checked[field_o.name_mes].msg
+
+    fl_return_back = False
+    if fl_check_field and fl_update_val:
+        s_num = int(
+            data_row[field_o.parent_tbale.source_table_primary_name.name_mes
+            ])  # поле которое имеет ссылку на УИД по которому можно найти запись ячейки в ее таблице.
+        rez = CSQ.custom_request_c(self.db_kplan, f"""UPDATE {field_o.select_db_tbl_name} SET ({field_o.field_mes})
+                = (?) WHERE {field_o.parent_tbale.table_primary_name} 
+          == {s_num};""", list_of_lists_c=[new_val])
+        if rez:
+            with QtCore.QSignalBlocker(tbl):
+                row.set_value(name_field, str(new_val))
+                oforml_row_plan_tbl(row)
+                new_val_dict = delta_dict = {field_o.name_mes :new_val}
+                old_val_dict  = {field_o.name_mes :old_val}
+                post_edit_handling(delta_dict,old_val_dict,new_val_dict,s_num_kpl)
+                obj_jur = CMS.Logs(self.bd_files)
+                obj_jur.add_note(s_num, name_field, new_val, 'tbl_kal_pl')
+        else:
+            msg_err = f'Ошибка записи в БД'
+            fl_return_back = True
+    else:
+        fl_return_back = True
+
+    if fl_return_back:
+        with QtCore.QSignalBlocker(tbl):
+            row.set_value(name_field, str(old_val))
+        CQT.msgbox(msg_err)
+        return
+
+
+def check_edit_poz(old_list:dict,dict_edit_new:dict,poz:CMS.Pozition)->bool:
+    tbl_edit = DTCLS.app_self.ui.tbl_pl_add_poz
+    checker_o = CMS.Checker_val_fields(poz,DTCLS.DICT_ITERS_FOR_CHECK_FIELDS)
+    DICT_FIELDS = DTCLS.FIELDS_DB_INFO.dict_fields
+    for key in dict_edit_new.keys():
+        val = dict_edit_new[key]
+        if str(val) == str(old_list[key]):
+            continue
+
+        field_o = DICT_FIELDS[key]
+        val = checker_o.fix_value_field(val,field_o)
+        succ = checker_o.check_value_field(val,field_o)
+
+
+    dict_checked = checker_o.get_results()
+    #======end for==============
+
+    list_errors=[{'Поле':DICT_FIELDS[nf],'Содержимое':_.msg} for nf, _ in dict_checked.items() if not _.success ]
+
+    if list_errors:
+        CQT.msgboxg_get_table_ok_inf(DTCLS.app_self, 'Результаты проверки:', list_errors,
+                                     WindowTitle=f'{CEMOJ.EmojiMain.Эмоции.confused} Ошибки при проверке',
+                                     styleSheet=CQT.MES_CSS)
+        return False
+    return True
+@CQT.onerror
+def fnc_click_load_tbl_edit_poz(ind:QtCore.QModelIndex):
+    if DTCLS.app_self.ui.tbl_kal_pl.currentRow() == -1:
+        CQT.msgbox(f'Не выбрана строка плана')
+        return
+    t = CQT.TableContext(DTCLS.app_self.ui.tbl_select_etap_edit_poz)
+    item = t.tbl.item(ind.row(), ind.column())
+    data = CQT.getCustData(item,modifier=101)
+    DTCLS.current_podr_for_edit = data
+    attach_tbl_pl_add_poz_validator(DTCLS.app_self, DTCLS.app_self.ui.tbl_pl_add_poz)
+    load_edit_poz(DTCLS.app_self)
+    print('load_edit_poz start_fnc_click_load_tbl_edit_poz')
+    return
+
+
+@CQT.onerror
+def load_tbl_edit_poz(self: mywindow):
+    podrs = DTCLS.FIELDS_DB_INFO.tables_db.tabels_ordered
+    dict_podr = {i: _ for i, _ in enumerate(podrs)}
+
+    tbl_select_podr = self.ui.tbl_select_etap_edit_poz
+    columns = 25
+    rows = F.round_up(len(dict_podr) / columns)
+    templ = [[''] * columns for _ in range(rows)]
+
+    # templ.insert(0,  [str(_) for _ in range(columns)]) 01.06.2026
+    CQT.fill_wtabl(templ, tbl_select_podr, auto_type=False, hide_head_column=True, hide_head_rows=True,
+                   selectionMode='SingleSelection', styleSheet=CQT.MES_CSS, height_row=24)
+    t = CQT.TableContext(tbl_select_podr)
+    with CQT.table_updating(t.tbl):
+        indx = 0
+        fl_exit = False
+        for row in t.rows():
+            if fl_exit:
+                break
+            for j, key in enumerate(row.nf.keys()):
+                it = dict_podr[indx]
+                row.set_value(key, it.alias)
+                row.set_data(key, it.name)
+                row.setToolTip(key, it.descr)
+                clr = it.color.rgb
+                row.set_color_font(*clr, col_name=key)
+                row.set_font_format(bold=True, col_name=key)
+                indx += 1
+                if indx == len(dict_podr):
+                    fl_exit = True
+                    break
+
+        t.tbl.resizeColumnsToContents()
+        row = t.get_row(0)
+        for column, idx in t.nf.items():
+            data = row.data(column)
+            if data:
+                wdth = t.tbl.columnWidth(idx)
+                if wdth < 50:
+                    t.tbl.setColumnWidth(idx, 50)
+            else:
+                t.tbl.setColumnWidth(idx, 5)
+
+        t.set_cursor(CQT.Cursors.pointinghand.get())
+    t.resizeHeigtToContents()
+    return
+
+
+@CQT.onerror
+def load_edit_poz(self: mywindow):
+    podr = DTCLS.current_podr_for_edit
+    t = CQT.TableContext(self.ui.tbl_kal_pl)
+    row = t.current_row()
+    if row.no_selection:
+        CQT.msgbox(f'Не выбрана строка плана')
+        return
+    if podr is None or podr == "":
+        CQT.clear_tbl(self.ui.tbl_pl_add_poz)
+        return
+    podr_o = DTCLS.FIELDS_DB_INFO.tables_db.get_table(podr)
+    if podr_o is None:
+        CQT.msgbox(f'Ошибка сопоставления подразделений')
+        return
+    pnom = row.value('plan.Пномер')
+    if pnom == '-1':
+        return
+    poz = CMS.Pozition(pnom,
+                       CFG.Config.project.db_kplan,
+                       CFG.Config.project.db_naryad,
+                       CFG.Config.project.db_resxml,
+                       CFG.Config.project.db_users,
+                       self
+                       )
+    poz.load_kpl_table('пл_оуп')
+    data_oup = poz.dict_tables['пл_оуп']
+
+    dict_from_db = get_line_to_edit_podr(self, pnom,podr_o)
+    list_fix_names = []
+    DICT_FIELDS = DTCLS.FIELDS_DB_INFO.dict_fields
+    for k,v in dict_from_db[0].items():
+        name = f'{podr_o.name}.{k}'
+        if name in DICT_FIELDS:
+            if DICT_FIELDS[name].for_edit:
+                field_o = DICT_FIELDS[name]
+                list_fix_names.append({
+                                        '_s_num':field_o.usr_idx,
+                                        '_Name':name,
+                                       'Параметр':field_o.name_alias,
+                                       'Значение':v,
+                                       'Описание':field_o.description})
+        else:
+            raise ValueError(f'Неверное имя столбца:{name}')
+    if podr_o.name == 'пл_оуп':
+        tbl_znpr_o = DTCLS.FIELDS_DB_INFO.tables_db.get_table('знпр')
+        field_np_o = tbl_znpr_o.find_field('№проекта')
+        val = data_oup[field_np_o.field_mes]
+        list_fix_names.insert(1,{
+            '_s_num': field_np_o.s_num,
+            '_Name': field_np_o.name_mes,
+            'Параметр': field_np_o.name_alias,
+            'Значение': val,
+            'Описание': field_np_o.description})
+    list_fix_names.sort(key=lambda x: x["_s_num"])  # Сортировка по номерам полей
+    CQT.fill_wtabl(list_fix_names, self.ui.tbl_pl_add_poz,
+                   auto_type=False,styleSheet=CQT.MES_EDIT_CSS,height_row=44,
+                   )
+
+    t = CQT.TableContext(self.ui.tbl_pl_add_poz)
+    def fnc_switch(field_o:CMS.Field_db_info,row:CQT.TableRow,tbl:CQT.QtWidgets.QTableWidget,new_val:bool,i,j):
+        with CQT.table_updating(tbl):
+            if str(F.valm(new_val)) == str(field_o.is_bool):
+                row.set_value('Значение','1')
+            else:
+                row.set_value('Значение', '0')
+        pass
+
+    t.hide_if_not_dev(CFG)
+    for row in t.rows():
+        name = row.value("_Name")
+        field_o = DICT_FIELDS[name]
+        if field_o.sys_hide:
+            row.hide(True)
+        if field_o.is_bool:
+            is_on = row.value('Значение') == str(field_o.is_bool)
+            CQT.add_check_box_switcher(t.tbl,row.i,row.nf['Значение'], is_on,partial(fnc_switch,field_o,row))
+    def fnc_select_date(lbl:CQT.InteractiveLabelInstance,self,i,j,tbl:QtWidgets.QTableWidget,*args):
+        suc, rez = CQT.get_data_dialog_choose(self,'')
+        if not suc:
+            return
+        date = rez['date_from']
+        date_str = F.datetostr(date,"%Y-%m-%d")
+        lbl.set_text(date_str)
+        tbl.item(i,j).setText(date_str)
+
+    for row in t.rows():
+        name = row.value("_Name")
+        field_o = DICT_FIELDS[name]
+        if field_o.field_mes == podr_o.table_primary_name:
+            row.set_editable('Значение', False)
+        else:
+            if 'дата' not in field_o.field_mes.lower():
+                row.set_editable('Значение', True)
+            else:
+                row.set_editable('Значение', False)
+                widg = CQT.add_interactive_label(t.tbl, row.i, row.nf['Значение'], row.value('Значение'),
+                                                 parent_self=self)
+                widg.add_button(CEMOJ.EmojiMain.Статусы.ellipsis.symbol, 'Выбрать дату', fnc_select_date,
+                                cell_val=t.tbl, img_path=F.sep().join([F.path_to_execut_file_c(),
+                                                                      'icons', 'btn_select']))
+
+    if podr == 'plan':
+        for row in t.rows():
+            name = row.value("_Name")
+
+            if name == 'plan.Направление_деятельности':
+
+                widg = CQT.add_interactive_label(t.tbl, row.i, t.nf['Значение'], '',
+                                                 parent_self=self)
+                widg.add_button(CEMOJ.EmojiMain.Статусы.ellipsis.symbol, 'Выбрать', on_clicked=fnc_select_nd,
+                                cell_val=(t,row), img_path=F.sep().join([F.path_to_execut_file_c(),
+                                                                          'icons', 'btn_select']))
+                napr_val = row.value('Значение')
+                if F.is_numeric(napr_val):
+                    if int(napr_val) in self.Data_plan.DICT_NAPR_DEYAT:
+                        name_napr = self.Data_plan.DICT_NAPR_DEYAT[int(napr_val)]['Псевдоним']
+                        widg.set_text(name_napr)
+
+
+
+            if name == 'plan.Статус':
+
+                list_status = []
+                for key in self.Data_plan.DICT_STATUS_POZ.keys():
+                    list_status.append(self.Data_plan.DICT_STATUS_POZ[key]['Имя'])
+
+                CQT.add_combobox(self, self.ui.tbl_pl_add_poz, row.i, t.nf['Значение'], list_status, first_void=False,
+                                 conn_func=select_status)
+                try:
+                    row.widget('Значение').setCurrentText(
+                        self.Data_plan.DICT_STATUS_POZ[int(row.value('Значение'))]['Имя'])
+                except:
+                    pass
+
+            if name == 'plan.Статус_норм':
+                list_status_norm = []
+                for key in self.Data_plan.DICT_STATUS_NORM.keys():
+                    list_status_norm.append(self.Data_plan.DICT_STATUS_NORM[key]['Имя'])
+
+                CQT.add_combobox(self, self.ui.tbl_pl_add_poz, row.i, t.nf['Значение'], list_status_norm, first_void=False,
+                                 conn_func=select_status_norm)
+                try:
+                    row.widget('Значение').setCurrentText(
+                        self.Data_plan.DICT_STATUS_NORM[int(row.value('Значение'))]['Имя'])
+                except:
+                    pass
+
+            if name == 'plan.Этапы_ЕРП':
+                list_etapi_erp = []
+                for key in self.Data_plan.DICT_STATUS_ETAPI_ERP.keys():
+                    list_etapi_erp.append(self.Data_plan.DICT_STATUS_ETAPI_ERP[key]['Имя'])
+                CQT.add_combobox(self, self.ui.tbl_pl_add_poz, row.i, t.nf['Значение'], list_etapi_erp, first_void=False,
+                                 conn_func=select_etapi_erp)
+                try:
+                    row.widget('Значение').setCurrentText(
+                        self.Data_plan.DICT_STATUS_ETAPI_ERP[int(row.value('Значение'))]['Имя'])
+                except:
+                    pass
+
+    if podr == 'пл_топ':
+        for row in t.rows():
+            name = row.value("_Name")
+            if name == 'пл_топ.Вид':
+                widget = CMS.TypesWorkingByDirections().change_vid_po_napr(  # 25.08.25
+                    self,
+                    self.ui.tbl_pl_add_poz,
+                    row.i,
+                    row.nf['Значение'],
+                )
+                if int(row.value('Значение')) in self.Data_plan.DICT_VID_PO_NAPR:
+                    lbl:CQT.QtWidgets.QLabel = widget.label
+                    lbl.setText(
+                        self.Data_plan.DICT_VID_PO_NAPR[int(row.value('Значение'))]['Имя'])
+
+            if name  in ('пл_топ.Отв_технолог', 'пл_топ.Отв_по_ресурсной'):
+                field_o = DICT_FIELDS[name]
+                def fnc_select_accountable_tech(lbl: CQT.InteractiveLabelInstance, app_self, i, j, tbl: CQT.QtWidgets.QTableWidget):
+                    def fnc_oform(tbl):
+                        t = CQT.TableContext(tbl)
+                        t.hide_if_not_dev(CFG)
+
+                    tmpl = [{
+                        '_Пномер': _['Пномер'],
+                        '': CEMOJ.ПерсоналРоли.engineer.symbol,
+                        'Должность': _['Должность'],
+                        'ФИО': name,
+                    } for name, _ in DTCLS.app_self.DICT_EMPLOEE_FULL.items() if
+                        _['Подразделение'] == 'Технологический отдел Производства' and _['Компания'] == CFG.Config.place.Имя]
+                    t = CQT.TableContext(tbl)
+                    row = t.get_row(i)
+                    rez = CQT.msgboxg_get_table(DTCLS.app_self, f'Выбор {field_o.field_alias}', tmpl, styleSheet=CQT.MES_CSS,
+                                                selectRows=True, ExtendedSelection=False, func_oform_tbl=fnc_oform,
+                                                selection_from_tbl=True)
+                    if not rez:
+                        return
+
+                    row.set_value('Значение', rez['ФИО'])
+                    lbl.set_text(rez['ФИО'])
+
+
+                widg = CQT.add_interactive_label(t.tbl, row.i, t.nf['Значение'], '',
+                                                 parent_self=self)
+                widg.add_button(CEMOJ.EmojiMain.Статусы.ellipsis.symbol, 'Выбрать', on_clicked=fnc_select_accountable_tech,
+                                cell_val=t.tbl, img_path=F.sep().join([F.path_to_execut_file_c(),
+                                                                       'icons', 'btn_select']))
+
+    if podr == 'пл_оуп':
+        for row in t.rows():
+            name = row.value("_Name")
+            if name == 'пл_оуп.№ERP':
+                Пномер_ЗП = data_oup['Пномер_ЗП']
+                ref_zp = None
+                if F.is_numeric(Пномер_ЗП) and Пномер_ЗП:
+                    ref_zp = CSQ.custom_request_c(self.db_kplan,f"""SELECT 
+                                               Ref_Key_py 
+                                        FROM знпр WHERE s_num == {Пномер_ЗП}; """,one_column=True,
+                                                  one=True,hat_c=False)
+                if F.is_unique_identifier(Пномер_ЗП):
+                    ref_zp = Пномер_ЗП
+                widg = CQT.add_interactive_label(t.tbl, row.i, row.nf['Значение'], row.value('Значение'),
+                                                 parent_self=self)
+                widg.add_button(CEMOJ.EmojiMain.Статусы.ellipsis.symbol, 'Выбрать ЗП', select_py,
+                                cell_val=None, img_path=  F.sep().join([F.path_to_execut_file_c(),
+                                                                                  'icons','btn_select']))
+                if ref_zp:
+                    add_btns_select_poz_after_py(self,t.tbl,ref_zp)
+
+            if name == 'пл_оуп.ПКК':
+                add_widget_pkk(t,row)
+
+    if podr == 'пл_компл':
+        for row in t.rows():
+            name = row.value("_Name")
+            if name == 'пл_компл.Статус_тара':
+                list_status_tara = dict()
+                for key in self.Data_plan.DICT_STATUS_TARA_NAME.keys():
+                    list_status_tara[key] = self.Data_plan.DICT_STATUS_TARA_NAME[key]['prim']
+
+                CQT.add_combobox(self, self.ui.tbl_pl_add_poz, row.i, row.nf['Значение'], list_status_tara,
+                                 first_void=False,
+                                 conn_func=select_status_tara)
+                try:
+                    row.set_value ('Значение',
+                        self.Data_plan.DICT_STATUS_TARA_NUM[int(row.value('Значение'))]['name'])
+                except:
+                    pass
+
+def ______________NEW_________________________________():pass
+
+@CQT.onerror
+def load_tbl_add_new_poz(self: mywindow, *args)->bool:
+    def fill_val(list_fields:list[dict], name:str,value:str='')->list[dict]:
+        for it in list_fields:
+            if it['_Name'] == name:
+                it['Значение'] = value
+                break
+        return list_fields
+
+    list_fields = [{'_s_num':_.usr_idx,
+        '_order': _.insert_order,
+        '_Name': _.name_mes,
+     'Параметр': _.name_alias,
+     'Значение': '',
+     'Описание': _.description} for _ in DTCLS.FIELDS_DB_INFO.list_fields if _.for_insert]
+
+    list_fields.sort(key=lambda x:x["_order"])#Сортировка по порядку
+    # ===========================
+    t = CQT.TableContext(self.ui.tbl_kal_pl)
+    cur_row = t.current_row()
+    if not  cur_row.no_selection and CQT.get_key_modifiers(self) == ['shift']:
+        num_kpl = int(cur_row.value('plan.Пномер'))
+        if num_kpl <0:
+            CQT.msgbox(f'Не выбрана строка позиции в плане')
+            return
+        poz = CMS.Pozition(num_kpl, self.db_kplan, self.bd_naryad, self.db_resxml, self.db_users, self)
+        poz.load_kpl_table('пл_оуп')
+        nom_pr = poz.dict_tables['пл_оуп']['№проекта_base']
+        nom_pr_znpr = poz.dict_tables['пл_оуп']['№проекта']
+        nd = poz.Направление_деятельности
+        state = poz.Статус
+        nom_pu = poz.dict_tables['пл_оуп']['№ERP']
+        nom_pkk = poz.dict_tables['пл_оуп']['ПКК'] if F.is_numeric(poz.dict_tables['пл_оуп']['ПКК']) and int(poz.dict_tables['пл_оуп']['ПКК']) else ''
+        ref_Key_py = poz.dict_tables['пл_оуп']['Ref_Key_py']
+        list_fields = fill_val(list_fields, 'знпр.№проекта', nom_pr_znpr)
+        list_fields = fill_val(list_fields, 'plan.Направление_деятельности', nd)
+        list_fields = fill_val(list_fields, 'plan.Статус', state)
+        list_fields = fill_val(list_fields, 'пл_оуп.№проекта', nom_pr)
+        list_fields = fill_val(list_fields, 'знпр.№ERP', nom_pu)
+        list_fields = fill_val(list_fields, 'пл_оуп.ПКК', nom_pkk)
+        list_fields = fill_val(list_fields, 'знпр.Ref_Key_py', ref_Key_py)
+
+
+    # ===========================
+    CQT.fill_wtabl(list_fields, self.ui.tbl_pl_add_poz,auto_type=False,
+                   styleSheet=CQT.MES_EDIT_CSS,selectionMode='SingleSelection', height_row=44,
+                   )
+
+    DICT_FIELDS = DTCLS.FIELDS_DB_INFO.dict_fields
+    t_pl = CQT.TableContext(self.ui.tbl_pl_add_poz)
+    with CQT.table_updating(t_pl.tbl):
+        for row in t_pl.rows():
+            name = row.value("_Name")
+            val = row.value("Значение")
+            if name in DICT_FIELDS:
+                clr = DICT_FIELDS[name].table_color
+                clr = clr.align_colors(level_percent=-30, saturation_percent=-20,copy=True)
+                row.set_color_font(*clr.rgb,col_name='Параметр')
+                row.set_font_format(bold=True,col_name='Параметр')
+
+            if name=='знпр.Ref_Key_py':
+                if row.value("Значение"):
+                    add_btns_select_poz_after_py(self,t_pl.tbl,row.value("Значение"))
+                row.hide()
+            if name in ('пл_оуп.Номенклатура_ЕРП',
+                       'пл_оуп.Количество',
+                       'пл_ко.Вес_ВО',
+                       'пл_оуп.Вес_кг',
+
+                       'пл_оуп.ПКК',
+                       'пл_оуп.№проекта',
+                       'plan.Позиция'):
+                row.set_editable("Значение",True)
+            if name=='plan.Направление_деятельности':
+                val_str = ''
+                if val and int(val) in self.Data_plan.DICT_NAPR_DEYAT:
+                    val_str = self.Data_plan.DICT_NAPR_DEYAT[int(val)]['Псевдоним']
+
+                widg = CQT.add_interactive_label(t_pl.tbl, row.i, t_pl.nf["Значение"], val_str,
+                                                 parent_self=self)
+                widg.add_button(CEMOJ.EmojiMain.Статусы.ellipsis.symbol, 'Выбрать', on_clicked=fnc_select_nd,
+                                cell_val=(t,row), img_path=F.sep().join([F.path_to_execut_file_c(),
+                                                                          'icons', 'btn_select']))
+
+            if name == 'знпр.№ERP':
+                int_lbl = widg = CQT.add_interactive_label(t_pl.tbl, row.i, t_pl.nf["Значение"], row.value('Значение'),
+                                                 parent_self=self)
+                widg.add_button(CEMOJ.EmojiMain.Статусы.ellipsis.symbol, 'Выбрать ЗП', select_py,
+                                cell_val=None, img_path=F.sep().join([F.path_to_execut_file_c(),
+                                                                      'icons', 'btn_select']))
+
+                if row.value("Значение"):
+                    int_lbl.set_text(row.value("Значение"))
+
+
+            if name == 'plan.Статус':
+                new_val = None
+                if val and int(val) in self.Data_plan.DICT_STATUS_POZ:
+                    new_val = self.Data_plan.DICT_STATUS_POZ[int(val)]['Имя']
+                CQT.add_combobox(self, t_pl.tbl, row.i, t_pl.nf["Значение"],
+                                 [_ for _ in list(self.Data_plan.DICT_STATUS_POZ_NAME.keys()) if
+                                  _ in ('Резерв', 'Подготовка', "Долгосрочный")],
+                                 first_void=True,
+                                 conn_func=select_status,current_text=new_val)
+            if name == 'пл_оуп.ПКК':
+                add_widget_pkk(t_pl,row)
+
+        CMS.load_column_widths(self,t_pl.tbl)
+        t_pl.hide_if_not_dev(CFG)
+    return True
+
+
+def check_add_poz(list_add:dict)->bool:
+    postfix_erp = ''
+    msg_erp = ''
+    if list_add['знпр.№ERP']:
+        postfix_erp = f"""AND 
+               пл_оуп.№ERP = "{list_add['знпр.№ERP']}"""
+        msg_erp = f"\nERP: '{list_add['знпр.№ERP']}',"
+
+    DICT_FIELDS = DTCLS.FIELDS_DB_INFO.dict_fields
+
+    checker_o = CMS.Checker_val_fields(None,DTCLS.DICT_ITERS_FOR_CHECK_FIELDS)
+    for key in list_add.keys():
+        val = list_add[key]
+        if key not in ('знпр.№ERP'):
+            if val:
+                if '*' == str(val)[0]:
+                    CQT.msgbox(f'{key} не указан')
+                    return False
+        field_o = DICT_FIELDS[key]
+        val = checker_o.fix_value_field(val, field_o)
+        if  field_o.name_mes not in ('plan.Статус'):
+            succ = checker_o.check_value_field(val, field_o)
+
+    dict_checked = checker_o.get_results()
+
+    list_errors = [{'Поле': DICT_FIELDS[nf], 'Содержимое': _.msg} for nf, _ in dict_checked.items() if not _.success]
+
+    if list_errors:
+        CQT.msgboxg_get_table_ok_inf(DTCLS.app_self, 'Результаты проверки:', list_errors,
+                                     WindowTitle=f'{CEMOJ.EmojiMain.Эмоции.confused} Ошибки при проверке',
+                                     styleSheet=CQT.MES_CSS)
+        return False
+
+
+    rez = CSQ.custom_request_c(DTCLS.db_kplan, f"""SELECT plan.Пномер ,plan.Дата_внесения, plan.Позиция, 
+            пл_оуп.№проекта, пл_оуп.№ERP ,  status_poz.Имя as Статус, пл_оуп.Количество
+                FROM plan 
+              INNER JOIN пл_оуп ON пл_оуп.НомПл = plan.Пномер 
+              INNER JOIN status_poz ON status_poz.Пномер = plan.Статус 
+             WHERE plan.Позиция = "{list_add['plan.Позиция']}" AND  plan.Статус IN (1, 2, 3, 5, 7, 8, 9) AND  
+              пл_оуп.№проекта = "{list_add['пл_оуп.№проекта']}" {postfix_erp} """,rez_dict=True)
+    if rez:
+        if not CQT.msgboxg_get_table(DTCLS.app_self,
+            f"Уже существует позиции в базе",rez,'Продолжить','Отмена',yesNoMode=True,styleSheet=CQT.MES_CSS):
+            return False
+
+    return True
+
+
+
+
+def ______________OK_________________________________():pass
+
+
+@CQT.onerror
+def fill_oup_fields_from_znpr(self: mywindow, num_kpl):
+    req = f"""SELECT  знпр.s_num, 
+            знпр.Год, 
+            знпр.Дата_заявки_на_произв, 
+            знпр.№ERP, 
+            знпр.№проекта, 
+            знпр.Статус_поз_ЕРП, 
+            знпр.Заказ_клиента, 
+            знпр.Дата_отгрузки_ПУ, 
+            знпр.ЗП_келаст_КЭ, 
+            знпр.Этапы_ЕРП, 
+
+            знпр.Ref_Key_py
+            FROM знпр WHERE s_num IN (SELECT Пномер_ЗП FROM пл_оуп WHERE НомПл = {int(num_kpl)})"""
+    row_znpr = CSQ.custom_request_c(self.db_kplan, req, rez_dict=True)
+    row_znpr = row_znpr[0]
+    list_data = [row_znpr['Дата_заявки_на_произв'],
+                 row_znpr['№ERP'],
+                 row_znpr['№проекта'],
+                 row_znpr['Дата_отгрузки_ПУ']
+                 ]
+    CSQ.custom_request_c(self.db_kplan, f"""UPDATE пл_оуп SET (Дата_заявки_на_произв,№ERP,№проекта,Дата_отгрузки_ПУ)
+         = ({CSQ.questions_for_mask(list_data)}
+         ) WHERE НомПл = {int(num_kpl)}""", list_of_lists_c=[list_data])
+
+
+def post_edit_handling(delta_dict:dict, old_val_dict:dict, new_val_dict:dict,pnom:int):
+    podr = DTCLS.current_podr_for_edit
+    if podr is None:
+        raise ValueError(f'podr == None')
+    if podr == 'plan' and 'plan.Фдата_получения_КД' in delta_dict:
+        if old_val_dict['plan.Фдата_получения_КД'] != new_val_dict['plan.Фдата_получения_КД']:
+            obj_msg = CMS.Msg_b24(DTCLS.db_kplan, DTCLS.bd_naryad, DTCLS.db_resxml, DTCLS.db_users, pnom)
+            obj_msg.send_msg('obtained_kd')
+
+    if podr == 'пл_топ' and 'пл_топ.Вид' in delta_dict:
+        if old_val_dict['пл_топ.Вид'] != new_val_dict['пл_топ.Вид']:
+            obj_msg = CMS.Msg_b24(DTCLS.db_kplan, DTCLS.bd_naryad, DTCLS.db_resxml, DTCLS.db_users, pnom)
+            obj_msg.send_msg('recalc_time_technolog')
+
+    if podr == 'пл_топ' and 'пл_топ.Спецификация_код_ЕРП' in delta_dict:
+        if old_val_dict['пл_топ.Спецификация_код_ЕРП'] != new_val_dict['пл_топ.Спецификация_код_ЕРП']:
+            obj_msg = CMS.Msg_b24(DTCLS.db_kplan, DTCLS.bd_naryad, DTCLS.db_resxml, DTCLS.db_users, pnom)
+            obj_msg.send_msg('obtained_kod_res')
+
+    if podr == 'пл_оуп':
+        if 'пл_оуп.Пномер_ЗП' in delta_dict:
+            if str(new_val_dict['пл_оуп.Пномер_ЗП']) != '0':
+                fill_oup_fields_from_znpr(DTCLS.app_self, pnom)
+
+        if 'пл_оуп.№ERP' in delta_dict:
+            if old_val_dict['пл_оуп.№ERP'] != new_val_dict['пл_оуп.№ERP']:
+                py = new_val_dict['пл_оуп.№ERP']
+                obj_msg = CMS.Msg_b24(DTCLS.db_kplan, DTCLS.bd_naryad, DTCLS.db_resxml, DTCLS.db_users, pnom)
+                obj_msg.send_msg('reset_py', additional_str=py)
+
+        if 'пл_оуп.ПКК' in delta_dict:
+            if not new_val_dict['пл_оуп.ПКК']:
+                old_pkk = old_val_dict['пл_оуп.ПКК']
+                if F.is_numeric(old_pkk):
+                    del_file_pkk(int(old_pkk))
+def load_client_order_num(ref:str)->str|None:
+    text = f"""
+                    ВЫБРАТЬ
+            ЗаказКлиента.Номер КАК Номер,
+            ЗаказКлиента.Дата КАК Дата
+        ИЗ
+            Документ.ЗаказКлиента КАК ЗаказКлиента
+        ГДЕ
+            ЗаказКлиента.Ссылка = &Ссылка
+                    """
+
+    refs = APIERP.Refs_wet(text)
+    ref_obj = APIERP.Ref_wet('Ссылка', 'Документы.ЗаказКлиента', ref)
+    refs.add_ref(ref_obj)
+    key, res = APIERP.get_wet_request(text=text, refs=refs)
+    if key != 200:
+        CQT.msgbox(f'Ошибка получения данных ЗаказКлиента из ЕРП ')
+        return
+    data = res['data'][0]
+    year = F.dateStrToStr(data["Дата"],"%Y-%m-%dT%H:%M:%S","%Y")
+    num = f'{year} {data["Номер"]}'
+    update_client_order_num(num,ref)
+    return num
+def update_client_order_num(num,ref):
+    CSQ.custom_request_c(DTCLS.db_kplan,f"""UPDATE знпр SET client_order_num = '{num}' 
+            where client_order_Key='{ref}';""")
+    print(f'update_client_order_num: {num}, {ref}')
+
+def btn_pl_ok_add_poz_click(self, *args):
+    def add_py_from_erp(Ref_Key_py, nom_proj):
+        m = CODAT.OrdersComposit()
+        code, list_data = m.get_response(doc_name='Document_ЗаказНаПроизводство2_2',
+                                         wet_filtr=f"?$filter= Ref_Key eq guid'{Ref_Key_py}'"
+                                                   f" &$select=Date,Number,Комментарий,Статус,ДатаПотребности,ДокументОснование,ДокументОснование_Type",
+                                         with_cod=True)
+        if code != 200:
+            CQT.msgbox(f'Ошибка связи с ЕРП  Document_ЗаказНаПроизводство2_2  код {code}')
+            return False
+        if len(list_data) == 0:
+            CQT.msgbox(f"Не найден в ЕРП ЗП с Ref_Key_py {Ref_Key_py}")
+            return False
+
+        if list_data[0]['ДокументОснование_Type'] not in (
+                'StandardODATA.Document_ЗаказКлиента', 'StandardODATA.Document_ЗаказНаСборку',
+                'StandardODATA.Document_ЗаказНаВнутреннееПотребление', 'StandardODATA.Document_ЗаказДавальца2_5'):
+            CQT.msgbox(
+                f"Основание для {self.place.doc_prefix}:\n{list_data[0]['ДокументОснование_Type']}.\n Нужен Заказа клиента/Заказ на сборку/ЗНВП")
+            return
+
+        client_order = list_data[0]['ДокументОснование']
+        sb_order = ''
+        znvp_order = ''
+        zDav_order = ''
+
+        if list_data[0]['ДокументОснование_Type'] == 'StandardODATA.Document_ЗаказНаСборку':
+            sb_order = list_data[0]['ДокументОснование']
+            code, data_sb = m.get_response(doc_name=f"Document_ЗаказНаСборку(guid'{sb_order}')",
+                                           wet_filtr=f"?$select=ДокументОснование_Key,Номенклатура_Key", with_cod=True)
+            if code != 200:
+                CQT.msgbox(f'Ошибка связи с ЕРП Document_ЗаказНаСборку код {code}')
+                return False
+            client_order = data_sb['ДокументОснование_Key']
+
+        if list_data[0]['ДокументОснование_Type'] == 'StandardODATA.Document_ЗаказНаВнутреннееПотребление':
+            znvp_order = list_data[0]['ДокументОснование']
+            client_order = ''
+
+        if list_data[0]['ДокументОснование_Type'] == 'StandardODATA.Document_ЗаказДавальца2_5':
+            zDav_order = list_data[0]['ДокументОснование']
+            client_order = ''
+
+        year = F.datetostr(F.strtodate(list_data[0]['Date'], "%Y-%m-%dT%H:%M:%S"), "%Y")
+        date = F.datetostr(F.strtodate(list_data[0]['Date'], "%Y-%m-%dT%H:%M:%S"), "%Y-%m-%d")
+        date_otgr = F.datetostr(F.strtodate(list_data[0]['ДатаПотребности'], "%Y-%m-%dT%H:%M:%S"), "%Y-%m-%d")
+        list_to_add = [int(year), date, list_data[0]['Number'], nom_proj, list_data[0]['Статус'],
+                       '', date_otgr, '', 1, Ref_Key_py, list_data[0]['Комментарий'], sb_order, client_order,
+                       znvp_order, zDav_order]
+
+        CSQ.custom_request_c(self.db_kplan, f"""INSERT INTO знпр (Год, 
+                        Дата_заявки_на_произв, 
+                        №ERP, 
+                        №проекта, 
+                        Статус_поз_ЕРП, 
+                        Заказ_клиента, 
+                        Дата_отгрузки_ПУ, 
+                        ЗП_келаст_КЭ, 
+                        Этапы_ЕРП,
+                        Ref_Key_py,
+                        Комментарий,
+                        sb_order_Key,
+                        client_order_Key,
+                        znvp_order_Key,
+                        zDav_order_Key
+                        ) VALUES ({CSQ.questions_for_mask(list_to_add)})""", list_of_lists_c=[list_to_add])
+
+        if client_order:
+            load_client_order_num(client_order)
+
+    def apply_edit_tabel(self, list_sql):
+        for custom_request_c in list_sql:
+            CSQ.custom_request_c(self.db_kplan, custom_request_c)
+        CMS.agregate_m_cld()
+        CQT.msgbox(f'Успешно.')
+
+    @CQT.onerror
+    def add_new_poz(self: mywindow)->tuple[bool,int|None]:
+        tbl = self.ui.tbl_pl_add_poz
+        list_wet = CQT.list_from_wtabl_c(tbl, rez_dict=True)
+        list_add = {_['_Name']: _['Значение'] for _ in list_wet}
+        list_add = F.trim_collection(list_add)  # 05.06.2025
+        if 'пл_оуп.ПКК' not in list_add:
+            CQT.msgbox(f'Таблица не содержит необходимых данных')
+            CMS.send_err_msg_dev_chat('Ошибка редактирования поля',
+                                      [
+                                          {'k': 'user', 'v': DTCLS.USER_CONFIG.User.ФИОк},
+                                          {'k': 'poki', 'v': DTCLS.PLACE.poki},
+                                          {'k': 'kpl', 'v': 'New'},
+                                          {'k': 'podr', 'v': str(list_add)},
+                                          {'k': 'err',
+                                           'v': f'Таблица не содержит необходимых данных'},
+                                      ])
+            return False,None
+
+        link = None
+        if not F.is_numeric(list_add['пл_оуп.ПКК']):
+            link = copy.copy(list_add['пл_оуп.ПКК'])
+            pkk_id = ""
+            list_add['пл_оуп.ПКК'] = pkk_id
+
+
+        if not check_add_poz(list_add):
+            return  False, None
+
+        pkk_id = 0
+        if link:
+            pkk_id = upload_pkk(link)
+            if not pkk_id:
+                CQT.msgbox(f'Ошибка добавления ПКК')
+                return False, None
+
+        list_add['пл_оуп.ПКК'] = pkk_id
+        s_num_py = 0
+        if F.is_unique_identifier(list_add['знпр.Ref_Key_py']):
+            list_add['пл_оуп.№проекта'] = list_add['знпр.№проекта']
+            list_py_from_mes = CSQ.custom_request_c(self.db_kplan, f"""SELECT Ref_Key_py FROM знпр WHERE 
+             Ref_Key_py = "{list_add['знпр.Ref_Key_py']}";""", rez_dict=True)
+            if len(list_py_from_mes) == 0:
+                add_py_from_erp(list_add['знпр.Ref_Key_py'], list_add['знпр.№проекта'])
+
+            list_py_from_mes = CSQ.custom_request_c(self.db_kplan,
+                                                    f"""SELECT s_num FROM знпр WHERE Ref_Key_py 
+                                                         = "{list_add['знпр.Ref_Key_py']}";""",
+                                                    rez_dict=True)
+            if len(list_py_from_mes) == 0:
+                CQT.msgbox(f"Не найден в МЕС ЗП с Ref_Key_py {list_add['знпр.Ref_Key_py']}")
+                return False, None
+            s_num_py = list_py_from_mes[0]['s_num']
+
+        pnom = CSQ.custom_request_c(self.db_kplan, f"""INSERT INTO plan(Дата_внесения,
+                    Позиция,
+                    Направление_деятельности,
+                    Статус,
+                    poki
+                    )
+                    VALUES (?,?,?,?,?) RETURNING Пномер;""",
+                                list_of_lists_c=[F.now("%Y-%m-%d"), list_add['plan.Позиция'],
+                                                list_add['plan.Направление_деятельности'],
+                                                int(list_add['plan.Статус']), self.place.poki],
+                                            one=True,one_column=True,hat_c=False)
+
+        list_podr = [_ for _ in CSQ.get_list_of_tables_c(self.db_kplan) if _.startswith('пл_')]
+        for podr in list_podr:
+            CSQ.custom_request_c(self.db_kplan, f"""INSERT INTO {podr}(
+                        НомПл
+                        )
+                        VALUES (?);""", list_of_lists_c=[[pnom]])
+
+        vals = [
+            list_add['пл_оуп.№проекта'],
+            s_num_py,
+            list_add['пл_оуп.Количество'],
+            list_add['пл_оуп.ПКК'],
+            list_add['пл_оуп.Номенклатура_ЕРП'],
+            list_add['пл_оуп.Номенклатура_ЕРП_ref'],
+            list_add['пл_оуп.Вес_кг'].replace(',', '.'),
+
+        ]
+
+        resp = CSQ.custom_request_c(self.db_kplan, f"""UPDATE пл_оуп SET(
+               №проекта,
+               Пномер_ЗП,
+               Количество,
+               ПКК,
+               Номенклатура_ЕРП, 
+               Номенклатура_ЕРП_ref, 
+               Вес_кг
+
+               ) =
+                ({"?, ".join([""] * len(vals)) + "?"}) WHERE НомПл == {pnom};""", list_of_lists_c=vals)
+
+        if s_num_py != 0:
+            fill_oup_fields_from_znpr(self, pnom)
+
+        if 'пл_ко.Вес_ВО' in list_add:
+            vals = [list_add['пл_ко.Вес_ВО'].replace(',', '.'),
+                    ]
+
+            CSQ.custom_request_c(self.db_kplan, f"""UPDATE пл_ко SET(
+                           Вес_ВО
+                           ) =
+                            (?) WHERE НомПл == {pnom};""", list_of_lists_c=vals)
+
+
+        obj_msg = CMS.Msg_b24(self.db_kplan, self.bd_naryad, self.db_resxml, self.db_users, pnom)
+        obj_msg.send_msg('add_new_poz')
+
+        return True, pnom
+
+    @CQT.onerror
+    def edit_poz(self: mywindow)->tuple[bool,int|None]:
+        @CQT.onerror
+        def fill_changes_into_user_tbl(delta_dict, pnom):
+
+
+            DICT_FIELDS=DTCLS.FIELDS_DB_INFO.dict_fields
+            tbl = self.ui.tbl_kal_pl
+            with CQT.table_updating(tbl):
+                t = CQT.TableContext(tbl)
+                row = t.find_row({'plan.Пномер':pnom},True)
+                if row is None:
+                    return
+                for field in delta_dict.keys():
+                    if field in DICT_FIELDS:
+                        field_o = DICT_FIELDS[field]
+                        if field_o.tbl_idx:
+                            if field_o.s_num in FIELDS_S_NUM_WITH_DATA:
+                                row.set_data(field, delta_dict[field])
+                            else:
+                                row.set_value(field, str(delta_dict[field]))
+                oforml_row_plan_tbl(row)
+
+        def get_val(t,name)->str|None:
+            row = t.find_row({'_Name': name}, True)
+            if row is None:
+                return None
+            return row.value('Значение')
+
+        def add_ref_zp(num_pr: str, ref_zp: str) -> int:
+            def get_zp(ref_zp) -> dict | None | False:
+                py_from_mes = CSQ.custom_request_c(self.db_kplan,
+                f"""SELECT Ref_Key_py, s_num FROM знпр WHERE Ref_Key_py = "{ref_zp}";""",
+                                                   rez_dict=True, one=True)
+                return py_from_mes
+
+            zp_from_db = get_zp(ref_zp)
+            if not zp_from_db:
+                add_py_from_erp(ref_zp, num_pr)
+                zp_from_db = get_zp(ref_zp)
+
+            return zp_from_db['s_num']
+
+        tbl = self.ui.tbl_pl_add_poz
+        podr = DTCLS.current_podr_for_edit
+        if podr is None or podr == '':
+            return False, None
+        table_o = DTCLS.FIELDS_DB_INFO.tables_db.get_table(podr)
+        if table_o is None:
+            return False, None
+        name_field = table_o.table_primary_full_name
+        t = CQT.TableContext(tbl)
+        str_val = get_val(t,name_field)
+        if str_val is None:
+            CQT.msgbox(f'Для корректировки таблицы "{table_o.alias}" нужно включить в основной таблице поле "{name_field}"')
+            CMS.send_err_msg_dev_chat('Ошибка редактирования поля',
+                                      [
+                                          {'k':'user','v':DTCLS.USER_CONFIG.User.ФИОк},
+                                          {'k':'poki','v':DTCLS.PLACE.poki},
+                                          {'k':'kpl','v':DTCLS.current_id_poz_kpl},
+                                          {'k':'podr','v':podr},
+                                          {'k':'name_field','v':name_field},
+                                          {'k':'err','v':f'Для корректировки таблицы "{table_o.alias}" нужно включить в основной таблице поле "{name_field}"'},
+                                      ])
+            return False,None
+        pnom = int(str_val)
+
+        old_val_dict = get_line_to_edit_podr(self, pnom,table_o)
+        if not old_val_dict:
+            return False, None
+        old_val_dict = {f'{table_o.name}.{k}':str(_) for k, _ in old_val_dict[0].items()}
+        new_val_dict = {_['_Name']: _['Значение'] for _ in CQT.list_from_wtabl_c(tbl, hat_c=True, rez_dict=True)}
+        new_val_dict = {k: int(v) if DTCLS.FIELDS_DB_INFO.dict_fields[k].s_num in FIELDS_S_NUM_WITH_DATA_INT else v for k,v in new_val_dict.items()}
+
+        poz = CMS.Pozition(pnom,DTCLS.db_kplan,DTCLS.bd_naryad,DTCLS.db_resxml,DTCLS.db_users,DTCLS.app_self)
+        data_oup = None
+        if podr == 'пл_оуп':
+            poz.load_kpl_table('пл_оуп')
+            data_oup = poz.dict_tables['пл_оуп']
+            old_val_dict['знпр.№проекта'] = data_oup['№проекта']
+            if new_val_dict['знпр.№проекта']:
+                new_val_dict['пл_оуп.№проекта'] = new_val_dict['знпр.№проекта']
+            if F.is_unique_identifier(new_val_dict['пл_оуп.Пномер_ЗП']):
+                ref_zp = new_val_dict['пл_оуп.Пномер_ЗП']
+                s_num_zp = add_ref_zp(new_val_dict['пл_оуп.№проекта'], ref_zp)
+                if not s_num_zp:
+                    CQT.msgbox(f"Не найден в МЕС ЗП с Ref_Key_py {ref_zp}")
+                    return False, None
+                new_val_dict['пл_оуп.Пномер_ЗП'] = str(s_num_zp)
+
+            link = None
+            if not F.is_numeric(new_val_dict['пл_оуп.ПКК']):
+                link = copy.copy(new_val_dict['пл_оуп.ПКК'])
+                pkk_id = 0
+                new_val_dict['пл_оуп.ПКК'] = pkk_id
+
+
+
+        if not check_edit_poz(old_val_dict,new_val_dict,poz):
+            return False, None
+
+        if podr == 'пл_оуп':
+            if link:
+                pkk_id = upload_pkk(link)
+                if not pkk_id:
+                    CQT.msgbox(f'Ошибка добавления ПКК')
+                    return False, None
+                new_val_dict['пл_оуп.ПКК'] = pkk_id
+
+        old_val_dict.pop(name_field)
+        new_val_dict.pop(name_field)
+        delta_dict = dict()
+
+        obj_jur = CMS.Logs(self.bd_files)
+        for key in new_val_dict.keys():
+            if str(new_val_dict[key]) != str(old_val_dict[key]):
+                delta_dict[key] = new_val_dict[key]
+                obj_jur.add_note(pnom, key, new_val_dict[key], 'tbl_kal_pl')
+
+        if not delta_dict:
+            return False, None
+
+        if podr == 'plan':
+            if 'plan.Направление_деятельности' in delta_dict:
+                if F.is_numeric(delta_dict['plan.Направление_деятельности']):
+                    delta_dict['napravl_deyat.Псевдоним'] = DTCLS.DICT_NAPR_DEYAT[int(delta_dict['plan.Направление_деятельности'])]['Псевдоним']
+
+        dict_tbls:dict[CMS.Table_db_info,list[CMS.Field_db_info]] = dict()
+        for it in delta_dict.keys():
+            field_mes_o = DTCLS.FIELDS_DB_INFO.dict_fields[it]
+            tbl_o = DTCLS.FIELDS_DB_INFO.tables_db.get_table(field_mes_o.table_mes)
+
+            if tbl_o not in dict_tbls:
+                dict_tbls[tbl_o] = []
+            dict_tbls[tbl_o].append(field_mes_o)
+
+        for tbl_o, list_fields_o in dict_tbls.items():
+            if not list_fields_o:
+                continue
+            tmp_pnom = pnom
+            prim_key = tbl_o.table_primary_name
+            if tbl_o.name == 'знпр':
+                if data_oup is None:
+                    continue
+
+                if 'Ref_Key_py' in data_oup and data_oup['Ref_Key_py']:
+                    prim_key = 'Ref_Key_py'
+                    tmp_pnom = f'"{data_oup['Ref_Key_py']}"'
+                else:
+                    continue
+            list_vals = [delta_dict[_.name_mes] for _ in list_fields_o]
+            list_fields = [_.field_mes for _ in list_fields_o]
+
+            rez = CSQ.custom_request_c(self.db_kplan, f"""UPDATE {tbl_o.name} SET({','.join(list_fields)}) =
+             ({'?,'.join(['' for _ in list_fields]) + '?'}) WHERE {prim_key} = {tmp_pnom};""", list_of_lists_c=list_vals)
+            print(f'{rez}: updated- {tbl_o.name}')
+        fill_changes_into_user_tbl(delta_dict, pnom)
+
+        post_edit_handling(delta_dict,old_val_dict,new_val_dict,pnom)
+
+
+        CQT.msgbox(f'Успешно')
+        return True, pnom
+
+    if DTCLS.EDIT_TABEL_MODE:
+        list_sql = check_edit_tabel(self)
+        if list_sql:
+            apply_edit_tabel(self, list_sql)
+        gui_mode_off()
+        return None, None # 18.06.2026
+
+    if DTCLS.ADD_POZ_MODE:
+        succ, pnom = add_new_poz(self)
+        if succ:
+            update_local_graf(True,pnom,not is_local_gant_hidden(self) )
+            load_table_db(self)
+            CQT.msgbox(f'Успешно')
+            gui_mode_off()
+
+    if DTCLS.EDIT_POZ_MODE:
+        succ, pnom  = edit_poz(self)
+        if succ:
+            if pnom != None:
+                update_local_graf( True,pnom,not is_local_gant_hidden(self))
+                gui_mode_off()
+
+    if DTCLS.SETTINGS_PL_MODE:
+        gui_mode_off()
+
+def ______________TABEL________________________________():pass
+def check_edit_tabel(self)->list|None:
+    month = DTCLS.edit_tabel_current_month
+    if month == '':
+        return
+    list_month = CSQ.custom_request_c(self.db_kplan,
+                    f"""SELECT * FROM {month}""",rez_dict=True)
+    list_new = CQT.list_from_wtabl_c(self.ui.tbl_pl_add_poz, '', True,rez_dict=True)
+    if len(list_month) != len(list_new):
+        CQT.msgbox(f'Данные таблицы не совпадают с БД')
+        return
+
+    list_changes = []
+    list_sql = []
+    dict_compare_new = dict()
+    dict_compare_old = dict()
+    DICT_TABELS = DTCLS.FIELDS_DB_INFO.tables_db.dict_tabels_by_names
+    for it in list_new:
+        podr = it['Подразделение']
+        if podr not in DICT_TABELS:
+            continue
+        for k,v in it.items():
+            if F.is_date(k,"d_%Y_%m_%d"):
+                dict_compare_new[(podr,k)] = v
+
+    for it in list_month:
+        podr = it['Подразделение']
+        if podr not in DICT_TABELS:
+            continue
+        for k,v in it.items():
+            if F.is_date(k,"d_%Y_%m_%d"):
+                dict_compare_old[(podr,k)] = v
+
+    for k,v in dict_compare_new.items():
+        if k in dict_compare_old:
+            old_val = dict_compare_old[k]
+            if v != old_val:
+                podr = k[0]
+                podr_alias = DICT_TABELS[podr].alias
+                date = k[1]
+                date_gui = F.dateStrToStr(date,
+                                          "d_%Y_%m_%d","%d.%m.%Y",'err')
+                list_changes.append(
+                    f'Для "{podr_alias}" от {date_gui} '
+                    f'      было: {old_val}, стало: {v}')
+                list_sql.append(
+                    f"""UPDATE {month} SET {date} = {v} 
+                            WHERE Подразделение = '{podr}'""")
+
+    if list_changes == []:
+        CQT.msgbox(f'Изменений не найдено')
+        return
+    list_changes.insert(0,'Изменения')
+    rez = CQT.msgboxg_get_table(DTCLS.app_self,'Внести изменения?',list_changes,
+                                'Да','Нет',styleSheet=CQT.MES_CSS,
+                                selectRows=True,yesNoMode=True)
+    if not rez:
+        return
+    return list_sql
+
+def show_tabel(self):
+    def gui_edit_tabel_on():
+        self.ui.fr_pl_etap.setHidden(True)
+        self.ui.fr_pl_add_poz.setHidden(False)
+        self.ui.fr_gant_local.setHidden(True)
+        CQT.clear_tbl(self.ui.tbl_select_etap_edit_poz)
+        self.ui.tbl_pl_add_poz.clear()
+        self.ui.tbl_pl_add_poz.setHidden(False)
+        self.ui.btn_pull_poz_show.setHidden(True)
+        self.ui.btn_pl_mode.setHidden(True)
+        DTCLS.EDIT_TABEL_MODE = True
+    @CQT.onerror
+    def edit_tabel(self,*args):
+        month =DTCLS.edit_tabel_current_month
+        list_month = CSQ.custom_request_c(self.db_kplan, f"""SELECT * FROM {month}""")
+        set_editeble_columns = set()
+        aliases = dict()
+        for i in range(len(list_month[0])):
+            if F.is_date(list_month[0][i], "d_%Y_%m_%d"):
+                set_editeble_columns.add(list_month[0][i])
+                date = F.strtodate(list_month[0][i], "d_%Y_%m_%d")
+                aliases[list_month[0][i]] = F.datetostr(date,"%d.%m.%Y")
+        list_dict_month = F.list_of_lists_to_list_of_dicts(list_month)
+        list_dict_month = F.insert_key_to_dicts(list_dict_month,1,'Этап','')
+        tabels = DTCLS.FIELDS_DB_INFO.tables_db
+        for it in list_dict_month:
+            podr = it['Подразделение']
+            podr_o = tabels.get_table(podr)
+            if podr_o:
+                it['Этап'] = podr_o.alias
+            else:
+                it['Этап'] = ''
+
+        CQT.fill_wtabl(list_dict_month, self.ui.tbl_pl_add_poz, set_editeble_col_nomera=set_editeble_columns,
+                       colorful_edit=True,styleSheet=CQT.MES_EDIT_CSS,aliases_header=aliases)
+        t = CQT.TableContext(self.ui.tbl_pl_add_poz)
+        t.hide('Подразделение')
+        t.hide('Пномер')
+        for row in t.rows():
+            if row.value('Примечание') == 'Выходные':
+                row.set_editable(value=False)
+                row_dayweek = t.find_row({'Примечание':'День недели'},first=True)
+                for k in row.nf.keys():
+                    if F.is_date(k, "d_%Y_%m_%d"):
+                        val_vih = row.value(k)
+                        if F.is_numeric(val_vih):
+                            if val_vih == '0':
+                                row.set_value(k,CEMOJ.ПерсоналРоли.workday.symbol)
+                            else:
+                                if row_dayweek:
+                                    if row_dayweek.value(k) in ('6','7'):
+                                        row.set_value(k, CEMOJ.ПерсоналРоли.weekend.symbol)
+                                    else:
+                                        row.set_value(k, CEMOJ.ПерсоналРоли.holiday.symbol)
+                                else:
+                                    row.set_value(k, CEMOJ.ПерсоналРоли.weekend.symbol)
+
+            if row.value('Примечание') == 'День недели':
+                row.set_editable(value=False)
+                for k in row.nf.keys():
+                    if F.is_date(k, "d_%Y_%m_%d"):
+                        num_day = row.value(k)
+                        if F.is_numeric(num_day):
+                            row.set_value(k, F.get_day_name(num_day))
+                            if num_day in ('6', '7'):
+                                row.set_color_font(222,22,22,col_name=k)
+                                row.set_font_format(bold=True,col_name=k)
+            podr = row.value('Подразделение')
+            etap_o = tabels.get_table(podr)
+            if etap_o:
+                clr = etap_o.color
+                fix_col = clr.align_colors(level_percent=-20, saturation_percent=-10,copy=True)
+                row.set_color_font(*fix_col.rgb, col_name='Этап')
+                row.set_font_format(bold=True, col_name='Этап')
+
+    if not DTCLS.EDIT_TABEL_MODE:
+        def fnc_oform(tbl:QtWidgets.QTableWidget):
+            t = CQT.TableContext(tbl)
+            t.hide_if_not_dev(CFG)
+
+        list_month = [{'cld':_, 'dt': F.strtodate(_.replace('m_cld_',''),"%Y_%m_%d")} for _
+                      in CSQ.get_list_of_tables_c(self.db_kplan) if 'm_cld_' in _]
+        template = [{'_cld':_['cld'], 'Год':_['dt'].year, 'Месяц': F.month_rus_from_date(_['dt'],rodit_padej=False)}
+                    for _ in list_month]
+        rez = CQT.msgboxg_get_table(self,'Выбор месяца',template,styleSheet=CQT.MES_CSS,selectRows=True,
+                                    ExtendedSelection=False,
+                                    selection_from_tbl=True,func_oform_tbl=fnc_oform)
+        if not rez:
+            return
+        DTCLS.edit_tabel_current_month = rez['_cld']
+        gui_edit_tabel_on()
+        edit_tabel(self)
+
+    else:
+        gui_mode_off()
+
+def gui_mode_off():
+    self = DTCLS.app_self
+    self.ui.fr_settings_pl.setHidden(True)
+    self.ui.btn_pull_poz_show.setHidden(False)
+    self.ui.btn_pl_mode.setHidden(False)
+    CQT.clear_tbl(self.ui.tbl_pl_add_poz)
+    self.ui.tbl_pl_add_poz.setHidden(True)
+    self.ui.tbl_select_etap_edit_poz.setHidden(True)
+    self.ui.fr_pull_poz.setHidden(True)
+    self.ui.fr_pl_graf.setHidden(True)
+    self.ui.fr_pl_tables.setHidden(False)
+    self.ui.fr_pl_add_poz.setHidden(True)
+    self.ui.fr_pl_etap.setHidden(True)
+    self.ui.fr_gant_local.setHidden(False)
+    DTCLS.SETTINGS_PL_MODE = False
+    DTCLS.EDIT_TABEL_MODE = False
+    DTCLS.edit_tabel_current_month = None
+    DTCLS.ADD_POZ_MODE = False
+    DTCLS.EDIT_POZ_MODE = False
+
+def _____________________LOAD_DB____________________():pass
+@CQT.onerror
+def load_db(self: mywindow, pnom: bool | int = False, only_hat=False) -> None | dict:
+    def check_tabels(self: mywindow):
+        list_pnoms = CSQ.custom_request_c(self.db_kplan, f"""SELECT Пномер FROM plan""", one_column=True, hat_c=False)
+        list_tbls = CSQ.get_list_of_tables_c(self.db_kplan)
+        for tbl in list_tbls:
+            if 'пл_' == tbl[:3]:
+                list_nompl = CSQ.custom_request_c(self.db_kplan, f"""SELECT НомПл  FROM {tbl}""", one_column=True,
+                                                  hat_c=False)
+                differ_list = [[_] for _ in list_pnoms if _ not in list_nompl]
+                if len(differ_list) > 0:
+                    count_fields = len(CSQ.custom_request_c(self.db_kplan, f'select * from {tbl} Limit 1')[0])
+                    for i in range(len(differ_list)):
+                        for _ in range(count_fields - 1):
+                            differ_list[i].append('')
+                    CSQ.custom_request_c(self.db_kplan,
+                                         f"""INSERT INTO  {tbl} VALUES({','.join(["?" for _ in range(count_fields)])})""",
+                                         list_of_lists_c=differ_list)
+
+    name_gr_field = 'plan.Группа'
+    sort_by = ''
+    if DTCLS.FIELDS_DB_INFO.use_groups:
+        sort_by = f' ORDER BY plan.Пномер, {name_gr_field}'
+
+    limit = ''
+    if only_hat:
+        limit = ' Limit 1'
+
+    # check_tabels(self)
+
+    poki = f'plan.poki == {self.place.poki}'
+    addit_kpls_where = ''
+    addit_kpls = []
+    if DTCLS.USER_CONFIG.is_developer:
+        #addit_kpls = [5596,4337]
+        pass
+    if addit_kpls:
+        addit_kpls_where = f' OR plan.Пномер in ({CSQ.prepare_list_to_tuple(addit_kpls)}) '
+    postfix = f'WHERE {poki} and status_poz.Имя NOT IN  ("Завершена","Приостановлена","На удаление")'
+    if self.ui.chk_kpl_zaversch.isChecked():
+        postfix = f'WHERE {poki}'
+    if pnom:
+        postfix = f'WHERE {poki} and plan.Пномер == {int(pnom)}'
+    fl_one_row = False
+    if pnom:
+        fl_one_row = True
+    postfix = postfix + addit_kpls_where
+
+    update_list_fields(fl_one_row)
+    rez_list_tabels = [f'{_.select_db} AS "{_.name_mes}"' for _ in
+                       DTCLS.FIELDS_DB_INFO.dict_fields.values() if _.is_loaded]
+    list_join = sorted([ (v.join_order, f'{k} ON {k}.{v.table_primary_name} '
+                                 f'= {v.source_table_for_join.name_mes}')
+       for k,v in DTCLS.FIELDS_DB_INFO.tables_db.dict_tables.items() if v.source_table_for_join
+                   ] ,key= lambda x:x[0])
+
+
+    list_join = [_[1] for _ in list_join]
+    str_join = ', \n'.join(list_join)
+    str_field = ', \n'.join(rez_list_tabels)
+
+
+    text_req = f"""SELECT
+    {str_field}
+    FROM plan
+    LEFT JOIN 
+    {str_join}
+    {postfix} {limit} {sort_by} ;--{F.now()}
+    """
+
+    text_req =  text_req.replace('status_poz.Имя AS ', 'status_poz.Пномер AS ') # TODO удалить заплатку после 09.06.2026
+
+    list_db = CSQ.custom_request_c(self.db_kplan, text_req, attach_dbs=(self.bd_naryad), rez_dict=True)  # 18.07.25
+    if not list_db:
+        CQT.msgbox(f'Ошибка в динамическом запросе')
+        return
+
+
+
+    if DTCLS.FIELDS_DB_INFO.use_groups:
+        shabl_row = {k: "" for k in list_db[0].keys()}
+        list_groups = sorted(
+            set([item[name_gr_field].strip() for item in list_db if item[name_gr_field].strip() != '']))
+        for gr in list_groups:
+            tmp_row = copy.deepcopy(shabl_row)
+            tmp_row[name_gr_field] = gr
+            tmp_row['plan.ТипГр'] = ''
+            tmp_row['plan.Статус'] = 'Группа'
+            tmp_row['plan.Пномер'] = '-1'
+            list_db.append(tmp_row)
+
+        list_db.sort(key=lambda x: (x[name_gr_field] in ('', None), x[name_gr_field] or '', int(x['plan.Пномер'])))
+        for item in list_db:
+            state_gr = item['plan.Статус']
+            if state_gr == 'Группа':
+                item['plan.ТипГр'] = FOLDER_CLOSED
+            else:
+                item_group = item[name_gr_field].strip()
+                if item_group:
+                    item['plan.ТипГр'] = DOC_EMOJI
+    if fl_one_row and pnom:
+        return list_db[0]
+
+    DTCLS.list_dict_from_db = list_db
+    DTCLS.dict_dict_from_db = F.deploy_dict_c(DTCLS.list_dict_from_db, 'plan.Пномер', True)
+
+
+@CQT.onerror
+def oforml_row_plan_tbl(row: CQT.TableRow, *args):
+    if 'cust.client_order' in row.nf:
+        ref_zk = row.value("cust.client_order")
+        if ref_zk and '|' in ref_zk:
+            ref, num = ref_zk.split('|')
+            row.set_data("cust.client_order",ref)
+            row.set_value('cust.client_order',num)
+
+    if 'пл_оуп.№проекта' in row.nf:
+        CQT.font_cell_size_format(row.tbl, row.i, row.nf['пл_оуп.№проекта'], underline=True)
+
+    if 'plan.Направление_деятельности' in row.nf:
+
+        try:
+            napr_name = row.value('plan.Направление_деятельности')
+            name = napr_name
+            if F.is_numeric(napr_name) and int(napr_name) in DTCLS.DICT_NAPR_DEYAT:
+
+                name = DTCLS.DICT_NAPR_DEYAT[int(napr_name)]['Имя']
+
+            row.set_value('plan.Направление_деятельности', name)
+
+
+        except:
+            pass
+
+    if 'napravl_deyat.Псевдоним' in row.nf:
+        r, g, b = 240, 240, 240
+        try:
+            napr_name = row.value('napravl_deyat.Псевдоним')
+            p_name = napr_name
+            if F.is_numeric(napr_name) and int(napr_name) in DTCLS.DICT_NAPR_DEYAT:
+                r, g, b = DTCLS.DICT_NAPR_DEYAT[int(napr_name)]['Цвет'].split(';')
+                p_name = DTCLS.DICT_NAPR_DEYAT[int(napr_name)]['Псевдоним']
+            else:
+                r, g, b = DTCLS.DICT_NAPR_DEYAT_PSDNAME[napr_name]['Цвет'].split(';')
+            CQT.set_color_wtab_c(row.tbl, row.i, row.nf['napravl_deyat.Псевдоним'], r, g, b)
+            row.set_value('napravl_deyat.Псевдоним', p_name)
+        except:
+            pass
+
+
+    if 'napravlenie.Направление' in row.nf:
+        r, g, b = 10, 10, 10
+        try:
+            napr_val = None
+            napr_name = row.value('plan.Направление_деятельности')
+            if F.is_numeric(napr_name) and int(napr_name) in DTCLS.DICT_NAPR_DEYAT:
+                napr_val = int(napr_name)
+            else:
+                if napr_name in DTCLS.DICT_NAPR_DEYAT_NAME:
+                    napr_val = DTCLS.DICT_NAPR_DEYAT_NAME[napr_name]['Направление']
+            if napr_val is not None:
+                if napr_val in DTCLS.DICT_NAPRAVLENIE:
+                    clr_str = DTCLS.DICT_NAPRAVLENIE[napr_val]['Цвет']
+                    if clr_str:
+                        clr = CMS.Color(clr_str)
+                        r,g,b = clr.rgb
+        except:
+            pass
+        row.set_color_font(r, g, b, col_name='napravlenie.Направление')
+
+
+
+    if 'пл_оуп.ПКК' in row.nf:
+        pkk_val = row.value('пл_оуп.ПКК')
+        if F.is_numeric(pkk_val) and pkk_val != '0':
+            row.ctx.add_column_events('пл_оуп.ПКК', on_double_click=open_pkk)
+            row.set_data('пл_оуп.ПКК', pkk_val)
+            row.set_value('пл_оуп.ПКК', CEMOJ.ДокументыДанные.document.symbol)
+        else:
+            row.set_value('пл_оуп.ПКК', '')
+    if 'plan.Статус_норм' in row.nf:
+        state = row.value('plan.Статус_норм')
+        if state in DTCLS.DICT_STATUS_NORM_NAME:
+            r, g, b = DTCLS.DICT_STATUS_NORM_NAME[state]['color'].split(';')
+            CQT.set_color_wtab_c(row.tbl, row.i, row.nf['plan.Статус_норм'], r, g, b)
+    if 'plan.Статус' in row.nf:
+        state_num  = row.value('plan.Статус',get_cust_content=True)
+        DICT_STATUS = DTCLS.DICT_STATUS_POZ
+        if state_num not in DICT_STATUS:
+            if state_num == 'Группа':
+                row.set_font_format(bold=True, col_name='plan.Группа')
+                row.set_font_format(bold=True, col_name='plan.Статус')
+                row.set_font_format(bold=True, col_name='plan.ТипГр', size=14)
+            else:
+                CQT.msgbox(f'Ошибка! статус код "{state_num}" not found')
+        else:
+            name = DICT_STATUS[state_num]['Имя']
+            r, g, b = DICT_STATUS[state_num]['color'].split(';')
+            part_emo = DICT_STATUS[state_num]['emoj']
+            CQT.set_color_wtab_c(row.tbl, row.i, row.nf['plan.Статус'], r, g, b)
+            emoj = eval(f'CEMOJ.EmojiMain.{part_emo}')
+            row.set_value('plan.Статус', f'{emoj} {name}')
+
+
+    if 'plan.МК' in row.nf:
+        mk = row.value('plan.МК')
+        if mk == '0':
+            CQT.set_color_wtab_c(row.tbl, row.i, row.nf['plan.МК'], 206, 128, 128)
+    DICT_FIELDS = DTCLS.FIELDS_DB_INFO.dict_fields
+    for clmn in row.nf.keys():
+        if clmn in DICT_FIELDS:
+            if DICT_FIELDS[clmn].is_bool:
+                max_val = str(DICT_FIELDS[clmn].is_bool)
+                val = row.value(clmn)
+                row.set_font_format(bold=True,col_name=clmn )
+                if val == max_val:
+                    row.set_value(clmn, CEMOJ.СтатусыПроизводства.success)
+                else:
+                    row.set_value(clmn, '')
+
+
+
+
+@CQT.progress_decorator
+def load_table_db(self, hook_prog_bar=None):
+    if 'shift' in CQT.get_key_modifiers(self):
+        DTCLS.FIELDS_DB_INFO = CMS.Fields_db_info(DTCLS.CHECK_FIELD_RULES)
+
+    def fill_kro(data: list[dict]) -> list[dict] | None:
+
+        DTCLS.KRO_MANAGER = MKRO()
+
+        dict_gr_poz_mk = DTCLS.KRO_MANAGER.calc_dict_gr_poz_mk()
+        # ======================Заполняем поле КРО==================================
+
+        for it in data:
+            kpl_num = int(it["plan.Пномер"])
+            if kpl_num not in dict_gr_poz_mk:
+                continue
+            list_mk_kros = []
+            for kpl_data in dict_gr_poz_mk[kpl_num]:
+                mk = kpl_data['mk']
+                kro_str = DTCLS.KRO_MANAGER.get_kro_info_by_mk(mk)
+                if kro_str:
+                    list_mk_kros.append(kro_str)
+
+            it['cust.kro'] = '\n'.join(list_mk_kros)
+
+        # ========================================================
+        return data
+
+    def fill_client_order(data: list[dict]) -> list[dict] | None:
+        list_kpls = [_['plan.Пномер'] for _ in data]
+        list_refs_zc = CSQ.custom_request_c(CFG.Config.project.db_kplan, f"""
+                SELECT DISTINCT пл_оуп.НомПл, знпр.client_order_Key,  знпр.client_order_num
+                  FROM знпр
+                       INNER JOIN
+                       пл_оуп ON пл_оуп.Пномер_ЗП == знпр.s_num
+                 WHERE client_order_Key != "" and пл_оуп.НомПл IN ({CSQ.prepare_list_to_tuple(list_kpls)});
+        """, rez_dict=True)
+        dict_refs_zp = F.deploy_dict_c(list_refs_zc,'НомПл')
+        for it in data:
+            if it["plan.Пномер"] not in dict_refs_zp:
+                continue
+            data_zk = dict_refs_zp[it["plan.Пномер"]]
+            if not data_zk['client_order_num']:
+                data_zk['client_order_num'] = load_client_order_num(data_zk['client_order_Key'])
+            it['cust.client_order'] = data_zk['client_order_Key'] + '|' + data_zk['client_order_num']
+        return data
+
+    def fill_Дата_прих_ордера_гп(data: list[dict],fl_order,fl_moving) -> list[dict] | None:
+        list_kpls = [_['plan.Пномер'] for _ in data]
+        list_refs_zp = CSQ.custom_request_c(CFG.Config.project.db_kplan, f"""
+                SELECT DISTINCT пл_оуп.НомПл, знпр.Ref_Key_py, знпр.Год, знпр.№ERP
+                  FROM знпр
+                       INNER JOIN
+                       пл_оуп ON пл_оуп.Пномер_ЗП == знпр.s_num
+                 WHERE Ref_Key_py != "" and пл_оуп.НомПл IN ({CSQ.prepare_list_to_tuple(list_kpls)});
+        """, rez_dict=True,lazy_method_hours= 0.1)
+        dict_refs_zp = F.deploy_dict_c(list_refs_zp, 'НомПл')
+        unic_set_refs = set([_['Ref_Key_py'] for _ in list_refs_zp])
+        dict_ref_alias = {k: f'lnk{i}' for i, k in enumerate(unic_set_refs)}
+        list_lnks = ', '.join(['&' + _ for _ in dict_ref_alias.values()])
+        #[_ for _ in data if _['plan.Пномер'] == 8851]
+        #[_ for _ in list_refs_zp if _['НомПл'] == 8851]
+        text = f"""
+            ВЫБРАТЬ
+                ЭтапПроизводства2_2ВыходныеИзделия.Ссылка.Распоряжение.Ссылка КАК ЗП,
+                ЭтапПроизводства2_2ВыходныеИзделия.Номенклатура.Представление КАК Номенклатура,
+                МАКСИМУМ(ПриходныйОрдерНаТоварыТовары.Ссылка.Дата) КАК ДатаОрдер,
+                СУММА(ПриходныйОрдерНаТоварыТовары.КоличествоУпаковок) КАК КоличествоУпаковокОрдер,
+                СУММА(ДвижениеПродукцииИМатериаловТовары.КоличествоУпаковок) КАК КоличествоУпаковокДвижение,
+                МАКСИМУМ(ДвижениеПродукцииИМатериаловТовары.Ссылка.Дата) КАК ДатаДвижение
+            ПОМЕСТИТЬ ВТ
+            ИЗ
+                Документ.ЭтапПроизводства2_2.ВыходныеИзделия КАК ЭтапПроизводства2_2ВыходныеИзделия
+                    ЛЕВОЕ СОЕДИНЕНИЕ Документ.ДвижениеПродукцииИМатериалов.Товары КАК ДвижениеПродукцииИМатериаловТовары
+                        ЛЕВОЕ СОЕДИНЕНИЕ Документ.ПриходныйОрдерНаТовары.Товары КАК ПриходныйОрдерНаТоварыТовары
+                        ПО (ПриходныйОрдерНаТоварыТовары.Ссылка.Распоряжение = ДвижениеПродукцииИМатериаловТовары.Ссылка)
+                            И (ПриходныйОрдерНаТоварыТовары.Номенклатура = ДвижениеПродукцииИМатериаловТовары.Номенклатура)
+                            И (ПриходныйОрдерНаТоварыТовары.Ссылка.Проведен = ИСТИНА)
+                            И (ПриходныйОрдерНаТоварыТовары.Ссылка.ПометкаУдаления = ЛОЖЬ)
+                    ПО (ЭтапПроизводства2_2ВыходныеИзделия.Ссылка = ДвижениеПродукцииИМатериаловТовары.Ссылка.Распоряжение)
+                        И (ЭтапПроизводства2_2ВыходныеИзделия.Номенклатура = ДвижениеПродукцииИМатериаловТовары.Номенклатура)
+                        И (ДвижениеПродукцииИМатериаловТовары.Ссылка.Проведен = ИСТИНА)
+                        И (ДвижениеПродукцииИМатериаловТовары.Ссылка.ПометкаУдаления = ЛОЖЬ)
+            ГДЕ
+
+             ЭтапПроизводства2_2ВыходныеИзделия.Ссылка.Распоряжение.Ссылка В ({list_lnks})
+
+        СГРУППИРОВАТЬ ПО
+            ЭтапПроизводства2_2ВыходныеИзделия.Ссылка.Распоряжение.Ссылка,
+            ЭтапПроизводства2_2ВыходныеИзделия.Номенклатура.Представление,
+            ПриходныйОрдерНаТоварыТовары.Ссылка.ПометкаУдаления,
+            ПриходныйОрдерНаТоварыТовары.Ссылка.Проведен,
+            ДвижениеПродукцииИМатериаловТовары.Ссылка,
+            ДвижениеПродукцииИМатериаловТовары.Номенклатура
+        ;
+        
+        ////////////////////////////////////////////////////////////////////////////////
+        ВЫБРАТЬ
+            ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ВТ.ЗП)) КАК Ref_Key,
+            ВТ.Номенклатура КАК Номенклатура,
+            ВТ.КоличествоУпаковокДвижение КАК КоличествоУпаковокДвижение,
+            ВТ.ДатаДвижение КАК ДатаДвижение,
+            ВТ.ДатаОрдер КАК ДатаОрдер,
+            ВТ.КоличествоУпаковокОрдер КАК КоличествоУпаковокОрдер
+        ИЗ
+            ВТ КАК ВТ
+        """
+        refs = APIERP.Refs_wet(text)
+        for k, link in dict_ref_alias.items():
+            ref_obj = APIERP.Ref_wet(link, 'Документы.ЗаказНаПроизводство2_2', k)
+            refs.add_ref(ref_obj)
+        key, res = APIERP.get_wet_request(text=text, refs=refs, lazy_method_huours=0.25)
+        if key != 200:
+            CQT.msgbox(f'Ошибка получения данных ЗаказНаПроизводство2_2 из ЕРП ')
+            return
+        erp_list_zp = res['data']
+        erp_dict_zp = {(_['Ref_Key'], _['Номенклатура']): _ for _ in erp_list_zp}
+
+        for item in data:
+            nomen = item['пл_оуп.Номенклатура_ЕРП']
+            kpl = item['plan.Пномер']
+            count_poz = item['пл_оуп.Количество']
+            if kpl in dict_refs_zp:
+                ref = dict_refs_zp[kpl]['Ref_Key_py']
+                k_item = (ref, nomen)
+                if k_item in erp_dict_zp:
+                    data_erp_poz = erp_dict_zp[k_item]
+                    count_moving = data_erp_poz['КоличествоУпаковокДвижение']
+                    date_moving = ''
+                    date_order = ''
+                    if data_erp_poz['ДатаДвижение']:
+                        date_moving = F.dateStrToStr(data_erp_poz['ДатаДвижение'], "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d", '')
+                    count_order = data_erp_poz['КоличествоУпаковокОрдер']
+                    if data_erp_poz['ДатаОрдер']:
+                        date_order = F.dateStrToStr(data_erp_poz['ДатаОрдер'], "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d", '')
+                    if fl_order and date_order:
+                        if count_order == count_poz:
+                            item['cust.Дата_прих_ордера_гп'] = date_order
+                        else:
+                            item['cust.Дата_прих_ордера_гп'] = f'{date_order}-{count_order} шт.'
+                    if fl_moving and date_moving:
+                        if count_moving == count_poz:
+                            item['cust.Дата_движение_гп'] = date_moving
+                        else:
+                            item['cust.Дата_движение_гп'] = f'{date_moving}-{count_moving} шт.'
+
+        return data
+
+    def oforml_groups(self):
+        tbl: QtWidgets.QTableWidget = self.ui.tbl_kal_pl
+        t = CQT.TableContext(tbl)
+        with CQT.table_updating(t):
+            if not DTCLS.FIELDS_DB_INFO.use_groups:
+                t.hide('plan.ТипГр')
+            else:
+                t.hide('plan.ТипГр', False)
+                t.set_width('plan.ТипГр', 100)
+
+
+    def oforml_table(self):
+
+        def fncContextMenu_predv_res(t: CQT.TableContext, i: int, j: int, builder: CQT.ContextMenuBuilder):
+            builder.add_menu(f'{CEMOJ.EmojiMain.ОборудованиеИнструменты.link} Выбрать РС',
+                             partial(fcn_pred_spec_erp, i, j))
+            builder.add_menu(f'{CEMOJ.EmojiMain.СтатусыПроизводства.error} Очистить РС',
+                             partial(fcn_pred_spec_erp, i, j, True))
+            pass
+
+        @CQT.onerror
+        def fnc_dblclick_link(t: CQT.TableContext, i, name_clmn: str, *args):
+            def open_link(ref, doc_name) -> bool:
+                succ, link = APIERP.open_in_1c(ref, doc_name)
+                if not succ:
+                    CQT.msgbox(f'Ошибка открытия ссылки, скопирована в буфер обмена')
+                return succ
+
+            row = t.get_row(i)
+            if row.no_selection:
+                return
+
+            val = row.value(name_clmn).strip()
+            if not val:
+                return
+
+            if name_clmn == 'cust.client_order':
+                ref_zk = row.value(name_clmn, get_cust_content=True)
+                open_link(ref_zk, 'Документ.ЗаказКлиента')
+                return
+
+            text = None
+            doc_name = None
+
+            poz = CMS.Pozition(int(row.value('plan.Пномер')), DTCLS.db_kplan, DTCLS.bd_naryad, DTCLS.db_resxml,
+                               DTCLS.db_users, DTCLS.app_self)
+
+            poz.load_kpl_table('пл_оуп')
+            checker = CMS.Checker_val_fields(poz,DTCLS.DICT_ITERS_FOR_CHECK_FIELDS)
+            field_o = DTCLS.FIELDS_DB_INFO.dict_fields[name_clmn]
+            if not checker.check_value_field(val, field_o):
+                return
+
+            if name_clmn == 'знпр.№ERP':
+                ref_zp = poz.dict_tables['пл_оуп']['Ref_Key_py']
+                open_link(ref_zp, 'Документ.ЗаказНаПроизводство2_2')
+                return
+
+            if name_clmn == 'пл_топ.Предв_спецификация_ЕРП':
+                text = f"""
+                    ВЫБРАТЬ
+                        ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(РесурсныеСпецификации.Ссылка)) КАК Ref
+                    ИЗ
+                        Справочник.РесурсныеСпецификации КАК РесурсныеСпецификации
+                    ГДЕ
+                        РесурсныеСпецификации.Код = "{val}"
+                        ИЛИ РесурсныеСпецификации.Наименование = "{val}"
+                    """
+                doc_name = 'Справочник.РесурсныеСпецификации'
+
+            if name_clmn == 'пл_топ.Спецификация_ЕРП':
+                text = f"""
+                    ВЫБРАТЬ
+                        ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(РесурсныеСпецификации.Ссылка)) КАК Ref
+                    ИЗ
+                        Справочник.РесурсныеСпецификации КАК РесурсныеСпецификации
+                    ГДЕ
+                         РесурсныеСпецификации.Наименование = "{val}"
+                    """
+                doc_name = 'Справочник.РесурсныеСпецификации'
+
+            if name_clmn == 'пл_топ.Спецификация_код_ЕРП':
+                text = f"""
+                    ВЫБРАТЬ
+                        ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(РесурсныеСпецификации.Ссылка)) КАК Ref
+                    ИЗ
+                        Справочник.РесурсныеСпецификации КАК РесурсныеСпецификации
+                    ГДЕ
+                         РесурсныеСпецификации.Код = "{val}"
+                    """
+                doc_name = 'Справочник.РесурсныеСпецификации'
+
+            if name_clmn == 'пл_оуп.Номенклатура_ЕРП':
+                text = f"""
+                        ВЫБРАТЬ
+                            ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(Номенклатура.Ссылка)) КАК Ref
+                        ИЗ
+                            Справочник.Номенклатура КАК Номенклатура
+                        ГДЕ
+                            Номенклатура.Наименование = "{val}"
+                        """
+                doc_name = 'Справочник.Номенклатура'
+            if text:
+                succ, rez = APIERP.get_wet_request(text)
+                if succ != 200:
+                    CQT.msgbox(f'{CEMOJ.EmojiMain.Эмоции.confused} Ошибка связи с ЕРП, Код: {succ}', app_self=self)
+                    return
+                if not rez['data']:
+                    CQT.msgbox(f'{CEMOJ.EmojiMain.Эмоции.confused} Не найдено в ЕРП', app_self=self)
+                    return
+                ref = rez['data'][0]['Ref']
+                open_link(ref, doc_name)
+                return
+            else:
+                if CQT.is_link_like(val):
+                    CQT.lbl_linkActivated(val)
+
+        @CQT.onerror
+        def fncContextMenuZnprNpr(t: CQT.TableContext, row: int, col: int,
+                                  menu_builder: CQT.ContextMenuBuilder):
+
+            def fnc_edit_num_pr(self: mywindow, s_num_poz: int, change: bool = True):
+                poz = CMS.Pozition(s_num_poz)
+                poz.load_kpl_table('пл_оуп')
+                start_text = None
+                if change:
+                    start_text = poz.dict_tables['пл_оуп']['№проекта']
+                succ, text = CQT.get_dialog_choose_text(self, f'Новый номер проекта:', placeholderText='...',
+                                                        start_text=start_text)
+                if not succ:
+                    return
+                new_np = text["text"].strip()
+                if len(new_np) < 4:
+                    CQT.msgbox(f'Не корректное значение')
+                    return
+
+                if poz.dict_tables['пл_оуп']['№проекта'] == new_np:
+                    CQT.msgbox(f'Номер проекта не изменился')
+                    return
+                poz.dict_tables['пл_оуп']['№проекта'] = new_np
+                if not poz.update_znpr():
+                    CQT.msgbox(f'Ошибка изменения ЗНПР')
+                    return
+                update_plan_main_tbl(self)
+
+            row_o = t.get_row(row)
+
+            s_num_poz = row_o.value('plan.Пномер')
+
+            if t.tbl.item(row, col).text() == '' or t.tbl.item(row, t.nf['знпр.№ERP']).text() == '':
+                return
+            field_o = DTCLS.FIELDS_DB_INFO.dict_fields['знпр.№проекта']
+            if field_o.accessed:
+                emoji: CEMOJ.EmojiItem = CEMOJ.EmojiMain.ДокументыДанные.pencil2
+
+                fnc = partial(fnc_edit_num_pr, self, int(s_num_poz), change=True)
+                menu_builder.add_menu(f'{emoji.symbol} {"Изменить"}',
+                                      fnc)
+
+                emoji: CEMOJ.EmojiItem = CEMOJ.EmojiMain.ДокументыДанные.document
+                fnc = partial(fnc_edit_num_pr, self, int(s_num_poz), change=False)
+                menu_builder.add_menu(f'{emoji.symbol} {"Ввести новый"}',
+                                      fnc)
+
+
+        def fnc_open_kro(t: CQT.TableContext, i: int, name_clm: str, self: mywindow, *args):
+
+            poz_id = int(t.get_row(i).value('plan.Пномер'))
+
+            DTCLS.KRO_MANAGER.start_sub_app_kro(self, poz = poz_id)
+
+
+
+        tbl = self.ui.tbl_kal_pl
+        it = 0
+        t = CQT.TableContext(self.ui.tbl_kal_pl)
+
+
+        #------------ROWS-----------------------------
+        with CQT.table_updating(t):
+
+            for row in t.rows():
+                oforml_row_plan_tbl(row)
+        # ------------ROWS-----------------------------
+
+        for idx_iter, (name, field_o) in enumerate(dict_fields_o.items()):
+
+            if not field_o.is_loaded:
+                continue
+
+            if name in t.nf:
+
+                if field_o.is_hidden:
+                    t.hide(name)
+
+                if field_o.tbl_idx is not None:
+
+                    CQT.set_color_text_header_wtab_horisontal_c(self.ui.tbl_kal_pl, field_o.tbl_idx,
+                                                                *field_o.table_color.rgb,
+                                                                blod=True)
+
+
+                    if name == 'plan.ТипГр':
+
+                        t.add_column_events(name, on_context_menu=fncContextMenuGr)
+
+                    if name == 'знпр.№проекта' and field_o.accessed:
+                        t.add_column_events(name,
+                                            on_context_menu=fncContextMenuZnprNpr)
+                    if name == 'cust.kro' and field_o.accessed:
+
+                        t.add_column_events(name, on_double_click=fnc_open_kro, parent_self=self)
+
+                    if field_o.is_linklike:
+
+                        on_context_menu = None
+                        if name == 'пл_топ.Предв_спецификация_ЕРП' and field_o.accessed and field_o.hand_editable:
+                            on_context_menu = fncContextMenu_predv_res
+
+
+                        t.add_column_events(field_o.name_mes, on_double_click=fnc_dblclick_link,
+                                            on_context_menu=on_context_menu)
+                        t.set_color_font(*CMS.Colors.link_blue.rgb, col_name= name)
+
+
+
+
+            hook_prog_bar.set(40 + round(it / t.tbl.rowCount() * 30))
+            it += 1
+
+
+        if self.ui.chk_paint_dates.isChecked():
+            fl_paint_npr = False
+            if 'пл_оуп.№проекта' in t.nf:
+                fl_paint_npr = True
+
+            dict_nkpl_for_paint = dict()
+            dict_pairs_fields = {
+                name + '.' + _['Имя_начала_этапа']: name + '.' + _['Имя_начала_этапа'].replace('Пдата',
+                                                                                               'Фдата').replace(
+                    'ПДата', 'ФДата') for name, _ in
+                self.Data_plan.DICT_PODR.items() if _['Имя_начала_этапа']}
+
+            for i, item in enumerate(DTCLS.list_dict_from_db):
+                for field, val in item.items():
+                    if field in dict_pairs_fields:
+                        if F.is_date(val, "%Y-%m-%d") and F.strtodate(val, "%Y-%m-%d") <= F.now(''):
+                            if i not in dict_nkpl_for_paint:
+                                dict_nkpl_for_paint[i] = set()
+                            dict_nkpl_for_paint[i].add(field)
+            clr_bad = CMS.Color_tbl(0)
+            for i_row, set_fields in dict_nkpl_for_paint.items():
+                if fl_paint_npr:
+                    CQT.set_color_wtab_c(tbl, i_row, t.nf['пл_оуп.№проекта'], clr_bad.r, clr_bad.g, clr_bad.b)
+                CQT.set_color_wtab_c(tbl, i_row, t.nf['plan.Пномер'], clr_bad.r, clr_bad.g, clr_bad.b)
+                for field in set_fields:
+                    CQT.set_color_wtab_c(tbl, i_row, t.nf[field], clr_bad.r, clr_bad.g, clr_bad.b)
+        # после цикла for name, field_o...
+
+    def fcn_pred_spec_erp(i, j, clear=False, *args):
+        def fnc_oform_tbl_res(tbl):
+            pass
+
+        def fnc_select_tbl_res(tbl):
+            pass
+
+        tbl = DTCLS.app_self.ui.tbl_kal_pl
+        t = CQT.TableContext(tbl)
+        res_code = ''
+
+        if not clear:
+            nom_pr = tbl.item(i, t.nf['пл_оуп.№проекта']).text()
+            wet_req_text = f"""
+                     ВЫБРАТЬ
+                         РесурсныеСпецификации.Наименование КАК Наименование,
+                         РесурсныеСпецификации.Код КАК Код,
+                         РесурсныеСпецификации.Статус КАК Статус,
+                         РесурсныеСпецификации.Описание КАК Описание
+                     ИЗ
+                         Справочник.РесурсныеСпецификации КАК РесурсныеСпецификации
+                     ГДЕ
+                         РесурсныеСпецификации.ПометкаУдаления = ЛОЖЬ
+                         И РесурсныеСпецификации.ЭтоГруппа = ЛОЖЬ
+                         И РесурсныеСпецификации.Наименование ПОДОБНО "%ТКПА_%"
+                         И РесурсныеСпецификации.Наименование ПОДОБНО "%{nom_pr}%"
+                     """
+            key, data_rez = APIERP.get_wet_request(wet_req_text)
+            if key != 200:
+                CQT.msgbox(f'Ошибка получения данных из ERP. Код: {key}')
+                return
+            if not data_rez['data']:
+                CQT.msgbox(f'Не найдены подходящие РС для проекта "{nom_pr}"')
+                return
+            if data_rez['data']:
+                data_rez['data'].insert(0, {k: '' for k in data_rez['data'][0].keys()})
+            result = CQT.msgboxg_get_table(DTCLS.app_self, f'Выбор ресурсной', data_rez['data'], 'Выбор',
+                                           func_oform_tbl=fnc_oform_tbl_res,
+                                           func_btn0=fnc_select_tbl_res,
+                                           ExtendedSelection=False, selectRows=True, styleSheet=CQT.ERP_CSS,
+                                           sortingEnabled=True)
+            if result:
+                res_code = result['Код']
+            else:
+                return
+        with QtCore.QSignalBlocker(tbl):
+            tbl.item(i, j).setText(res_code)
+            tbl_kal_pl_cellChanged(DTCLS.app_self)
+
+
+
+    debug = False
+    hook_prog_bar.open()
+    if CFG.Config.user_config.is_developer and debug:
+        self.setHidden(False)
+    hook_prog_bar.set(0)
+    hook_prog_bar.text("Загрузка данных")
+    DTCLS.FIELDS_DB_INFO.use_groups = self.ui.chk_kpl_groups.isChecked()
+
+    load_db(self)
+
+    if DTCLS.list_dict_from_db is None:
+        CQT.msgbox(f'Ошибка получения данных')
+        return
+    list_dict_from_db = DTCLS.list_dict_from_db
+    if list_dict_from_db == False:
         CQT.msgbox(f'Ошибка загрузки таблиц')
         return
-    for str_name in selected_tbls[0]:
-        if str_name not in list_db:
+    fields_from_db = list(list_dict_from_db[0].keys())
+
+
+    if 'cust.Дата_прих_ордера_гп' in fields_from_db or 'cust.Дата_движение_гп' in fields_from_db:
+        rez = fill_Дата_прих_ордера_гп(list_dict_from_db,'cust.Дата_прих_ордера_гп' in fields_from_db,
+                                       'cust.Дата_движение_гп' in fields_from_db )
+        if rez is not None:
+            list_dict_from_db = rez
+    if 'cust.client_order' in fields_from_db:
+        rez = fill_client_order(list_dict_from_db)
+        if rez is not None:
+            list_dict_from_db = rez
+    if 'cust.kro' in fields_from_db:
+        rez = fill_kro(list_dict_from_db)
+        if rez is not None:
+            list_dict_from_db = rez
+
+
+    dict_fields_o = DTCLS.FIELDS_DB_INFO.dict_fields
+    editeble_col_nomera = []
+    hook_prog_bar.set(20)
+    hook_prog_bar.text("Применение прав")
+    for i, name_field in enumerate(fields_from_db):
+        field_o = dict_fields_o[name_field]
+        if field_o.hand_editable:
+            if field_o.accessed or DTCLS.USER_CONFIG.is_developer:
+                editeble_col_nomera.append(name_field)
+        hook_prog_bar.set(20 + round(i / len(list_dict_from_db[0]) * 10))
+    hook_prog_bar.text("Заполнение данными")
+
+    @CQT.onerror
+    def fncContextMenuGr( t: CQT.TableContext, row: int, col: int,
+                         menu_builder: CQT.ContextMenuBuilder):
+
+        cfg = CFG.Config.project
+
+        row_o = t.get_row(row)
+
+        s_num_poz = row_o.value('plan.Пномер')
+        col_name = t.name_by_idx(col)
+        def fnc_set_state(self: mywindow, s_num_state: int, list_s_num: tuple[int]):
+            r, g, b = self.Data_plan.DICT_STATUS_POZ[s_num_state]['color'].split(';')
+            state_name = self.Data_plan.DICT_STATUS_POZ[s_num_state]['Имя']
+            CSQ.custom_request_c(cfg.db_kplan,
+                                 f"""UPDATE plan SET (Статус) = ({s_num_state}) 
+                                 WHERE Пномер in ({CSQ.prepare_list_to_tuple(list_s_num)})""")
+            with CQT.table_updating(t.tbl):
+                for row_tbl in range(t.tbl.rowCount()):
+                    if int(t.tbl.item(row_tbl, t.nf['plan.Пномер']).text()) in list_s_num:
+                        t.tbl.item(row_tbl, t.nf['plan.Статус']).setText(state_name)
+                        CQT.set_color_wtab_c(t.tbl, row_tbl, t.nf['plan.Статус'], r, g, b)
+
+        def chek_state_poz(self: mywindow, num_state: int, s_num_poz: int, poz: CMS.Pozition = None, msg=True) -> bool:
+
+            val_str = self.Data_plan.DICT_STATUS_POZ[int(num_state)]['Имя']
+            if val_str in ('К производству', 'Завершена', 'Изготовление'):
+                if poz is None:
+                    poz = CMS.Pozition(s_num_poz, self.db_kplan, self.bd_naryad, self.db_resxml,
+                                       self.db_users, '')
+                if 'пл_оуп' not in poz.dict_tables:
+                    poz.load_kpl_table('пл_оуп')
+                if poz.dict_tables['пл_оуп']['№ERP'] in ('', 0, '-'):
+                    if msg:
+                        CQT.msgbox(f'Статус без №ERP не может быть {val_str}')
+                    return False
+            return True
+
+        field_o = DTCLS.FIELDS_DB_INFO.dict_fields['plan.Статус']
+        if field_o.accessed:
+            gr = row_o.value('plan.Группа')
+            if t.tbl.item(row, col).text() == CMS.DOC_EMOJI:
+                s_num_pozs = [s_num_poz]
+
+            else:
+                s_num_pozs = CSQ.custom_request_c(cfg.db_kplan,
+                                                  f"""SELECT Пномер FROM plan WHERE Группа == "{gr}";""",
+                                                  hat_c=False, one_column=True
+                                                  )
+            pozitions = CMS.Pozitions(s_num_pozs, cfg.db_kplan, cfg.db_naryad,
+                                      cfg.db_resxml, cfg.db_users, self
+                                      )
+            pozitions.load_kpl_table('пл_оуп')
+            list_states = [data_state['Пномер'] for data_state in self.Data_plan.DICT_STATUS_POZ_NAME.values()]
+
+            for poz in pozitions.dict_pozs.values():
+                for state, data_state in self.Data_plan.DICT_STATUS_POZ_NAME.items():
+                    s_num_state = data_state['Пномер']
+                    if not chek_state_poz(self, s_num_state, poz.Пномер, poz, msg=False):
+                        if s_num_state in list_states:
+                            list_states.remove(s_num_state)
+            if list_states:
+                menu_builder.add_submenu(f"Сменить статус    ")
+            for state_num in list_states:
+                data_state = self.Data_plan.DICT_STATUS_POZ[state_num]
+
+                emoji: CEMOJ.EmojiItem = eval(f'CEMOJ.EmojiMain.{data_state["emoj"]}')
+                fnc = partial(fnc_set_state, self, state_num, tuple(pozitions.dict_pozs.keys()))
+                menu_builder.add_menu(f'{emoji.symbol} {data_state["Имя"]}',
+                                      fnc)
+
+    @CQT.onerror
+    def fncContextMenuHeader(t: CQT.TableContext, i: int, j: int, menu_builder: CQT.ContextMenuBuilder) -> None:
+        menu_builder.add_menu(f'{CEMOJ.ОборудованиеИнструменты.machine.symbol} Настройка полей',
+                              btn_config_fields)
+
+    set_user_data_names = set([DTCLS.FIELDS_DB_INFO.find(_).name_mes for _ in FIELDS_S_NUM_WITH_DATA])
+
+    list_user_data = [{k:row[k] for k in set_user_data_names if k in row}
+                        for row in list_dict_from_db]
+    # self.show()
+    CQT.fill_wtabl(list_dict_from_db, self.ui.tbl_kal_pl, auto_type=False, set_editeble_col_nomera=editeble_col_nomera,
+                   height_row=20, sortingEnabled=not self.ui.chk_kpl_groups.isChecked(), load_links=False,
+                    parent_self=self, aliases_header=DTCLS.FIELDS_DB_INFO.get_aliases(),
+                   styleSheet=CQT.MES_EDIT_CSS,dict_or_list_user_data=list_user_data)
+
+    t = CQT.TableContext(self.ui.tbl_kal_pl)
+
+
+    DTCLS.FIELDS_DB_INFO.fill_tbl_idx(t)
+
+
+    with CQT.table_updating(self.ui.tbl_kal_pl):
+
+        hook_prog_bar.text("Свертка полей")
+
+
+        if self.ui.tbl_filtr_kal_pl.columnCount() < 1:
+            btn_clear_filtr(self, False)
+
+
+        hook_prog_bar.set(40)
+        hook_prog_bar.text("Применение цветовой темы")
+
+        oforml_table(self)
+
+        CMS.load_column_widths(self, self.ui.tbl_kal_pl)
+
+        hook_prog_bar.set(90)
+        hook_prog_bar.text("Заполнение фильтров")
+        oforml_groups(self)
+
+
+    t.add_header_events(fncContextMenuHeader)
+
+    def fncDrdrop(t: CQT.TableContext, new_nf):
+        edited_field = {k: new_nf[k] for k, v in t.nf.items() if new_nf[k] != v}
+        if not edited_field:
+            return
+
+        dict_fields = DTCLS.FIELDS_DB_INFO.dict_fields
+        for name, idx in edited_field.items():
+            f = dict_fields[name]
+            f.usr_idx = idx
+
+        DTCLS.FIELDS_DB_INFO.fix_indx()
+        DTCLS.FIELDS_DB_INFO.save_user_data()
+        load_table_db(DTCLS.app_self)
+
+    t.add_header_drdrop(fncDrdrop)
+
+    if not  KPLUF.apply_select_filtr(self):
+        old_cust_filtr = CQT.get_spis_znach_for_filtr(self, self.ui.tbl_filtr_kal_pl, self.ui.tbl_kal_pl)
+        fill_filtr_main_tbl_pl(old_cust_filtr)
+        CMS.update_width_filtr(self.ui.tbl_kal_pl, self.ui.tbl_filtr_kal_pl)
+        CMS.apply_filtr_c(self, self.ui.tbl_filtr_kal_pl, self.ui.tbl_kal_pl, False)
+
+
+    close_all_groups(self)
+    hook_prog_bar.close()
+    self.ui.tbl_kal_pl.setVisible(True)
+
+    print(f'reload ok')
+
+
+def fill_filtr_main_tbl_pl(dict_vals:dict|list=None):
+    self = DTCLS.app_self
+    dict_cmb_filter = {k.name_mes: None for k in DTCLS.FIELDS_DB_INFO.list_fields if k.is_bool}
+    dict_chck_filter = {k.name_mes: None for k in DTCLS.FIELDS_DB_INFO.list_fields if k.is_state}
+
+    CQT.fill_filtr_c(self, self.ui.tbl_filtr_kal_pl, self.ui.tbl_kal_pl, spis_znach=dict_vals,
+                     hidden_scroll=True,
+                     USER_CONFIG_reset_tbl_filtrs_forsed_off=self.ui.chk_kpl_groups.isChecked(),
+                     check_box_dict=dict_chck_filter,  # таблица для нескольких значений
+                     combo_dict=dict_cmb_filter, show_header=True,save_data=True)
+
+def _____________________gant_manage_________________________():pass
+class Plan_filter_cfg():
+    def __init__(self):
+        self.group_mode:bool = None
+        self.dict_filter:dict = dict()
+
+
+
+class Gant_handler():
+    def __init__(self,local_mode:bool=True, by_hover:CQT.QtGui.QMouseEvent|None=None,forced_row:CQT.TableRow|None=None):# :CMS.Gant
+
+        self.local_mode:bool=local_mode
+        if self.local_mode:
+            self.gant: CMS.Gant = DTCLS.current_gant
+        else:
+            self.gant: CMS.Gant = DTCLS.current_vol_gant
+
+        self._mouse_moving_block_gant_mode: GPL.Mouse_moving_block_gant_modes | None = None
+        self._by_hover:CQT.QtGui.QMouseEvent|None = by_hover
+        if self.local_mode:
+            self.t:CQT.TableContext = CQT.TableContext(DTCLS.app_self.ui.tbl_preview)
+        else:
+            self.t: CQT.TableContext = CQT.TableContext(DTCLS.app_self.ui.tbl_pl_gaf)
+        self.current_row: CQT.TableRow | None = None
+        self.cld_day: CMS.Month_cld_day | None = None
+        self.poz_gant: CMS.Poz_gant | None = None
+        self.type_day: CMS.Type_day_gant | None = None
+        self.tbl_db: CMS.Table_db_info | None = None
+        self.min_date_block:datetime.datetime|None = None
+        self.max_date_block:datetime.datetime|None = None
+        self.left_idx_net:int|None = None
+        self.right_idx_net:int|None = None
+        self.link_blocks_moving:bool|None
+        if self.gant is None:
+            return
+        if self._by_hover:
+            i,j = self._get_hover_coords()
+            if i is None:
+                return
+            curr_clmn = self.t.name_by_idx(j)
+            self.current_row = self.t.get_row(i)
+        else:
+
+            curr_clmn = self.t.current_column_name()
+            if forced_row:
+                self.current_row: CQT.TableRow = forced_row
+            else:
+                self.current_row: CQT.TableRow = self.t.current_row()
+                if self.current_row.no_selection:
+                    return
+
+        if isinstance(curr_clmn, CMS.Month_cld_day):
+            self.cld_day = curr_clmn
+        try:
+            id_poz = int(self.current_row.value('_id_poz'))
+        except:
+            return
+        if id_poz == -1:
+            return
+        if id_poz not in self.gant.dict_pozitions:
+            return
+        self.poz_gant:CMS.Poz_gant = self.gant.dict_pozitions[id_poz]
+        self.type_day = CMS.Types_day_gant.find(self.current_row.value('_type_day'))
+        self.tbl_db = DTCLS.FIELDS_DB_INFO.tables_db.get_table(
+            self.current_row.value("_tbl_name"))
+        self.min_date_block, self.max_date_block = self.poz_gant.dict_agregate_etaps[
+                        self.tbl_db.name][self.type_day]
+        self.left_idx_net = 0
+        self.right_idx_net = len(self.t.nf)-1
+        for k,v in self.t.nf.items():
+            if not isinstance(k,str):
+                self.left_idx_net = v
+                break
+        self.link_blocks_moving = DTCLS.app_self.ui.chk_link_gant_blocks.isChecked()
+
+    def __repr__(self):
+        mode = "hover" if self._by_hover else "click"
+        poz = self.poz_gant.poz_id if self.poz_gant else None
+        day = self.cld_day.dt_datetime.strftime("%Y-%m-%d") if self.cld_day else None
+        type_name = self.type_day.name if self.type_day else None
+        tbl = self.tbl_db.name if self.tbl_db else None
+        return f"Gant_handler(mode={mode}, poz={poz}, day={day}, type={type_name}, tbl={tbl})"
+    def _get_hover_coords(self):
+        pos = self._by_hover.pos()
+
+        row_h = self.t.tbl.rowAt(pos.y())
+        column_h = self.t.tbl.columnAt(pos.x())
+
+        # если курсор вне ячеек
+        if row_h < 0 or column_h < 0:
+            return None, None
+        return row_h,column_h
+
+    @property
+    def list_selected_rows(self)->list[CQT.TableRow]:
+        selected_ranges = self.t.tbl.selectedRanges()  # список QTableWidgetSelectionRange
+        unique_rows = set()
+        [[unique_rows.add(r) for r in range(_.topRow(), _.bottomRow() + 1)] for _ in selected_ranges ]
+        return sorted([self.t.get_row(_) for _ in unique_rows], key=lambda x:x.i)
+    @property
+    def count_selected_rows(self)->int:
+        return len(self.list_selected_rows)
+    @property
+    def get_power_hour_current_etap(self)->float|int:
+        if self.tbl_db.name not in self.cld_day.dict_podrs:
+            return 0
+        return self.cld_day.dict_podrs[self.tbl_db.name]
+
+    @property
+    def is_block_replaced_dates(self)->bool:
+        for dt_day , day_gant in self.poz_gant.dict_days.items():
+            if self.min_date_block <=  dt_day <= self.max_date_block:
+                if day_gant.is_replaced(self.tbl_db.name,self.type_day):
+                    return True
+        return False
+
+    @property
+    def block_count_hours(self)->float|int:
+        return self.poz_gant.get_etap_gant_summ_minutes(
+            self.tbl_db, self.type_day
+        ) / 60
+
+    @property
+    def selected_cell(self)->CMS.Cell_etap_gant|None:
+        cell = self.gant.get_value(self.poz_gant,
+                            self.cld_day,
+                            self.tbl_db,
+                            self.type_day,
+                            as_cell_o=True)
+        return cell
+    @property
+    def block_selected(self)->bool:
+        if self.cld_day and self.min_date_block and self.max_date_block:
+            return  self.min_date_block <= self.cld_day.dt_datetime <= self.max_date_block
+        return False
+    @property
+    def left_block_idx(self)->int:
+        for k,i in self.t.nf.items():
+            if isinstance(k,CMS.Month_cld_day) and k.dt_datetime == self.min_date_block:
+                return i
+
+    @property
+    def right_block_idx(self) -> int:
+        for k, i in self.t.nf.items():
+            if isinstance(k,CMS.Month_cld_day) and k.dt_datetime == self.max_date_block:
+                return i
+    def set_new_date(self,start:bool,dt_new_date:datetime.datetime)->bool:
+        new_date = F.datetostr(dt_new_date,"%Y-%m-%d")
+        if start:
+            name_field = self.tbl_db.start_plan_name_field
+        else:
+            name_field = self.tbl_db.end_plan_name_field
+        table = self.tbl_db.name
+        name_field_snom = self.tbl_db.table_primary_name
+        return CSQ.custom_request_c(DTCLS.db_kplan,
+                             f"""UPDATE {table} SET {name_field} = "{new_date}" 
+                    WHERE {name_field_snom} == {self.poz_gant.poz_id};""")
+
+    def select_block_range(self):
+        self.current_row.tbl.setRangeSelected(
+            CQT.QtWidgets.QTableWidgetSelectionRange(self.current_row.i, self.left_block_idx,
+                                                     self.current_row.i, self.right_block_idx),
+            True
+        )
+
+    def get_list_cld_days_selected(self)->list[CMS.Month_cld_day]:
+        selection_cells = CQT.get_selected_cells_coordinates(self.t.tbl)
+        return [d for d in  [self.t.name_by_idx(_[1]) for _ in selection_cells] if isinstance(d,CMS.Month_cld_day)]
+
+    def load_poz(self, load_loacal_graf=False,row_dates_etaps=None,load_day_plan=False)->CMS.Pozition:
+        return CMS.Pozition(self.poz_gant.poz_id, parent_self= DTCLS.app_self ,
+                            load_loacal_graf=load_loacal_graf,
+                            row_dates_etaps=row_dates_etaps,load_day_plan=load_day_plan)
+
+@CQT.onerror
+def select_block():
+    g_handler = Gant_handler()
+    if g_handler is None or g_handler.cld_day is None:
+        return
+    if g_handler.block_selected:
+        g_handler.select_block_range()
+
+
+@CQT.onerror
+def clck_tbl_preview(self, tbl):
+    self.current_kpl_table = 'tbl_preview'
+    CQT.summ_selct_tbl(self, tbl)
+    if DTCLS.MOUSE_MOVING_BLOCK_GANT:
+        GPL.mouse_moving_stop()
+    else:
+        select_block()
+
+@CQT.onerror
+def show_fact_etap_by_current_day(self):
+    self.current_kpl_table = 'tbl_preview'
+    g_handler:Gant_handler=Gant_handler()
+
+    if g_handler.cld_day is None:
+        return
+    if g_handler.type_day is not CMS.Types_day_gant.fact:
+        return
+    row_name = f'{g_handler.type_day.full_text}_{g_handler.tbl_db.name}'.lower()
+
+    result = CMS.recalc_fact_by_date(
+        self.Data_plan.DICT_GROUP_PODR_VID_RAB_FOR_PLAN,
+        self.DICT_VID_RABOT,
+        self.Data_plan.DICT_NAPR_DEYAT,
+        self.Data_plan.DICT_VID_PO_NAPR,
+        self.Data_plan.DICT_NAPRAVLENIE,
+        self.Data_plan.DICT_NAPR_DEYAT_NAME,
+        self.Data_plan.DICT_DOLGN_ETAP,
+        self.Data_plan.DICT_EMPLOEE_FULL_WITH_DEL,
+        self.DICT_OP_NAME,
+        g_handler.poz_gant.poz_id,
+        date_calc=g_handler.cld_day.dt_datetime)
+    if result is None:
+        return
+    poz, dict_fact_jur, dict_summ_time, dict_jur_data = result
+
+    if row_name in dict_jur_data:
+        CQT.msgboxg_get_table_ok_inf(self, 'Расшифровка дня', dict_jur_data[row_name], load_summ=True)
+
+
+
+@CQT.onerror
+def plan_day_edit_recalc(self: mywindow, *args):
+    if not CMS.user_access(rule= 'мкарт_управление_планированием_только_ПДО'):
+        return
+    g_handler = Gant_handler()
+    if g_handler is None:
+        return
+    if g_handler.cld_day is None:
+        CQT.msgbox(f'Не выбран этап в ганте')
+        return
+    if g_handler.count_selected_rows > 1:
+        CQT.msgbox(f'Нужно выбрать одну строку')
+        return
+    poz = g_handler.load_poz(False, None, True)
+    dict_fact_jur = poz.recalc_get_day_plan_as_fact(g_handler.tbl_db.name)
+    if dict_fact_jur == None or not dict_fact_jur:
+        CQT.msgbox(f'Работ пока нет')
+        return
+    update_local_graf( True, self.pnom_kplan_select, True)
+    CQT.msgbox(f'Успешно')
+
+@CQT.onerror
+def save_val_chk_link_gant_blocks(*args):
+    chk_link_blocks: CQT.QtWidgets.QCheckBox = DTCLS.app_self.ui.chk_link_gant_blocks
+    CMS.save_tmp_stukt(chk_link_blocks.isChecked() ,'_chk_link_gant_blocks')
+
+@CQT.onerror
+def oforml_gant_manage():
+    chk_link_blocks:CQT.QtWidgets.QCheckBox = DTCLS.app_self.ui.chk_link_gant_blocks
+    chk_link_blocks.setText(CEMOJ.EmojiMain.ОборудованиеИнструменты.link.symbol)
+    chk_link_blocks.blockSignals(True)
+    chk_link_blocks.setChecked(CMS.load_tmp_stukt('_chk_link_gant_blocks',False))
+    chk_link_blocks.blockSignals(False)
+
+
+
+@CQT.onerror
+def update_local_graf(update=False,pnom:int = 0,fill_gant=True,
+                      DICT_CLD:dict[datetime.datetime,CMS.Month_cld_day]=None, *args):
+    self = DTCLS.app_self
+    if DICT_CLD is None :
+        DICT_CLD = DTCLS.DICT_CLD
+    min_day =  self.ui.de_vol_pl.dateTime().toPyDateTime()
+    max_day =  self.ui.de_vol_pl_end.dateTime().toPyDateTime()
+    gant_o = CMS.Gant(DICT_CLD,DTCLS.FIELDS_DB_INFO,min_day,max_day)
+    if pnom is None or pnom == 0:
+        if self is None:
+            raise ValueError(f'update_local_graf: self is None')
+        if not self.is_main_mode():
+            raise ValueError(f'update_local_graf: pnom == 0 and not self.is_main_mode()')
+        t = CQT.TableContext(self.ui.tbl_kal_pl)
+        cur_row = t.current_row()
+        if cur_row.no_selection:
+            raise ValueError(f'update_local_graf: not pnom and no_selection')
+        pnom = int(cur_row.value('plan.Пномер'))
+
+    gant_o.load([pnom])
+
+    if (self.is_main_mode() and 'shift' in CQT.get_key_modifiers(self)) or update:
+        gant_o.recalc([pnom])
+
+    if gant_o.recalced_naprs_id:
+        set_naprs_d = set([DTCLS.DICT_NAPR_DEYAT[_]['Направление'] for _ in gant_o.recalced_naprs_id.keys()])
+        for napr_d in set_naprs_d:
+            napr_d_name = DTCLS.DICT_NAPRAVLENIE[napr_d]['name']
+            update_graf_pad_moshn(DTCLS.app_self,selected_napr=napr_d_name)
+
+
+    DTCLS.current_gant = gant_o
+
+    def connect_context_blocks():
+        t_preview = CQT.TableContext(self.ui.tbl_preview)
+        CQT.add_context_menu(t_preview.tbl, DTCLS.app_self, partial(GPL.fnc_context_menu_gant))
+
+
+    if self and fill_gant:
+
+        gant_o.oforml_table(self,self.ui.tbl_preview)
+        oforml_gant_manage()
+        connect_context_blocks()
+
+
+def _____________________etc_________________________():pass
+
+
+def select_row(self: mywindow):
+    if DTCLS.EDIT_POZ_MODE:
+        CQT.clear_tbl(self.ui.tbl_pl_add_poz)
+    if is_local_gant_hidden(self):
+        return
+    prepare_local_gant_and_poz_info(self)
+
+def prepare_local_gant_and_poz_info(self,forced_kpl_id:int|None = None):
+    set_current_id_poz_kpl(forced_kpl_id)
+    if DTCLS.current_id_poz_kpl:
+        update_local_graf(pnom=DTCLS.current_id_poz_kpl)
+    GPL.fill_select_poz_kpl(self,forced_kpl_id)
+    self.ui.btn_pl_send_dates_into_ERP.setEnabled(False)
+    self.ui.tab_addit_info_poz_gant.blockSignals(True)
+    self.ui.tab_addit_info_poz_gant.setCurrentIndex(0)
+    self.ui.tab_addit_info_poz_gant.blockSignals(False)
+
+def set_current_id_poz_kpl(forced_kpl_id:int|None = None):
+    DTCLS.current_id_poz_kpl = None
+    DTCLS.current_gant = None
+    if forced_kpl_id:
+        DTCLS.current_id_poz_kpl = forced_kpl_id
+        return
+    tbl = DTCLS.app_self.ui.tbl_kal_pl
+    nf_kpl = CQT.num_col_by_name_c(tbl,'plan.Пномер',False)
+    if nf_kpl:
+        id_poz = int(tbl.item(tbl.currentRow(),nf_kpl).text())
+        if id_poz>0:
+            DTCLS.current_id_poz_kpl = id_poz
+@CQT.onerror
+def open_pkk(t:CQT.TableContext,i:int,name_clmn:str):
+    DTCLS.app_self.current_kpl_table = 'tbl_preview'
+    row = t.current_row()
+    if row.no_selection:
+        return
+    val = row.value(name_clmn,get_cust_content=True)
+    if not F.is_numeric(val):
+        return
+    nom_file = int(val)
+    tmp_name = download_pkk(nom_file)
+    if tmp_name:
+        F.run_file_os_c(tmp_name)
+
+
+@CQT.onerror
+def add_user_into_rule(self: mywindow, *args):
+    logins_all = set([_['login'] for _ in self.DICT_EMPLOEE_FULL_BY_SNUM.values() if _['login']])
+
+    data_fields = [
+        {
+            's_num': _.s_num,
+            'name_mes': _.name_mes,
+            'name_alias': _.name_alias,
+            'table_alias': _.table_alias,
+
+        }
+        for _ in DTCLS.FIELDS_DB_INFO.list_fields]
+    fields = CQT.msgboxg_get_table(self, "Выбери поле", data_fields, styleSheet=CQT.MES_CSS, selectRows=True,
+                                   selection_from_tbl=True, ExtendedSelection=True)
+    if not fields:
+        return
+
+    list_users = list(self.DICT_EMPLOEE_FULL_BY_SNUM.values())
+
+    users = CQT.msgboxg_get_table(self, "Выбери юзеров", list_users, styleSheet=CQT.MES_CSS, selectRows=True,
+                                  ExtendedSelection=True)
+    if not users:
+        return
+    set_in_templ = set([_['login'] for _ in users if _])
+
+    report = []
+    report_data = {}
+
+    for field in fields:
+        s_num_field = field['s_num']
+        name_field = field['name_mes']
+
+        str_old = CSQ.custom_request_c(DTCLS.db_kplan, f"""SELECT 
+                  users_rule
+                     FROM info_fields_kpl WHERE s_num ={s_num_field}; """, hat_c=False, one=True, one_column=True)
+        set_old = set([_ for _ in str_old.split(';') if _ and _ in logins_all])
+
+        set_in = copy.copy(set_in_templ)
+
+        new_union = set_in.union(set_old)
+        set_delta = new_union - set_old
+
+        if set_delta:
+            report_data[s_num_field] = new_union
+            for it in users:
+                if it['login'] in set_delta:
+                    report.append({'s_num': s_num_field, 'name_field': name_field, 'user': it['login'],
+                                   'add': CEMOJ.СтатусыПроизводства.success.symbol, 'comment': ''})
+                else:
+                    report.append({'s_num': s_num_field, 'name_field': name_field, 'user': it['login'],
+                                   'add': '', 'comment': 'Уже был в правиле'})
+        else:
+            report.append({'s_num': s_num_field, 'name_field': name_field, 'user': 'некого',
+                           'add': '', 'comment': 'Уже все в правиле'})
+    if not CQT.msgboxg_get_table(self, 'Итого к добавлению', report, yesNoMode=True, styleSheet=CQT.MES_CSS):
+        return
+    for s_num_field, set_logins in report_data.items():
+        str_new_rule = ';'.join(sorted(list(set_logins)))
+        rez = CSQ.custom_request_c(DTCLS.db_kplan, f"""UPDATE info_fields_kpl SET (users_rule) =
+                (?) WHERE s_num = {s_num_field}""",
+                                   list_of_lists_c=[[str_new_rule]])
+        if not rez:
+            CQT.msgbox(f'Ошибка записи')
+            return
+
+    CQT.msgbox(f'Успешно')
+
+
+def _____________________refactored_________________________():pass#^^^^^^
+@CQT.onerror
+def test_fnc(*args):
+    def upadte_ref_nomens():
+        wet_req_text = f"""
+            ВЫБРАТЬ
+            Номенклатура.Наименование КАК Наименование,
+             ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(Номенклатура.ССЫЛКА)) КАК ref
+        ИЗ
+            Справочник.Номенклатура КАК Номенклатура    ГДЕ Номенклатура.ПометкаУдаления = ЛОЖЬ
+        """
+        key, data_rez = APIERP.get_wet_request(wet_req_text,lazy_method_huours=1)
+        if key != 200:
+            CQT.msgbox(f'Ошибка получения данных код ({key}) из ERP')
+            return
+        DICT_nomen = F.deploy_dict_c(data_rez['data'], 'Наименование')
+
+        list_nomen = CSQ.custom_request_c(CFG.Config.project.db_kplan,
+                             f"""SELECT НомПл,Номенклатура_ЕРП,Номенклатура_ЕРП_ref 
+                                FROM пл_оуп WHERE Номенклатура_ЕРП is not null""",rez_dict=True)
+        list_free = []
+        for it in list_nomen:
+            if it['Номенклатура_ЕРП'] not in DICT_nomen :
+                list_free.append({'Номенклатура_ЕРП':it["Номенклатура_ЕРП"],
+                                  'НомПл':it["НомПл"],
+
+                                  })
+
+                continue
+            ref = DICT_nomen[it['Номенклатура_ЕРП']]
+            if ref == it['Номенклатура_ЕРП_ref']:
+                continue
+            CSQ.custom_request_c(CFG.Config.project.db_kplan,f""" UPDATE пл_оуп
+            SET  (Номенклатура_ЕРП_ref)
+                    = ("{ref}")
+                            WHERE НомПл == {it['НомПл']} ;
+                """)
+        F.save_file_pickle('list_free.pickle',list_free)
+    #upadte_ref_nomens()
+
+    pass
+    return
+
+@CQT.onerror
+def fill_id_kpl_into_new_tbls_plan(*args):
+    list_ids = CSQ.custom_request_c(DTCLS.db_kplan,f"""SELECT Пномер FROM plan""",one_column=True,hat_c=False)
+    for name, tbl in DTCLS.FIELDS_DB_INFO.tables_db.dict_tabels_by_names.items():
+        if tbl.poki != DTCLS.PLACE.poki:
+            continue
+        CSQ.custom_request_c(DTCLS.db_kplan,
+                             f"""INSERT INTO {tbl.name}
+         ({tbl.table_primary_name}) VALUES (?);""",list_of_lists_c=[[_] for _ in list_ids])
+
+
+
+
+
+
+@CQT.onerror
+def recalc_kpl(*args):
+    list_not_filled_nums = CSQ.custom_request_c(DTCLS.db_kplan,
+                        f"""SELECT plan.Пномер
+            FROM plan
+            WHERE plan.poki = 1;""",one_column=True,hat_c=False)
+    gant_o = CMS.Gant(DTCLS.DICT_CLD, DTCLS.FIELDS_DB_INFO, None, None)
+    gant_o.load(list_not_filled_nums, forced_recalc=True)
+
+
+@CQT.onerror
+def update_db_info_fields_kpl(*args):
+    self: mywindow = DTCLS.app_self
+    result = []
+    list_err = []
+    list_db = []
+    for name, data_podr in self.Data_plan.DICT_PODR_POKI.items():
+
+        dict_fields = CSQ.dict_types_tbl(self.db_kplan,name)
+        for field in dict_fields.keys():
+            field_name = f'{name}.{field}'
+            if field_name not in list_db:
+                list_db.append(field_name)
+
+    for str_name in list_db:
+        if str_name not in DTCLS.FIELDS_DB_INFO.dict_fields:
             if '.' in str_name:
                 tbl, field = str_name.split('.')
             else:
                 tbl = ''
                 field = str_name
-            print(f"table_kpl {tbl}, name {field}, nickname {str_name}")
             if CSQ.custom_request_c(self.db_kplan,
-                                 f"""INSERT INTO info_fields_kpl (table_kpl,name,nickname) VALUES ("{tbl}","{field}","{str_name}");"""):
-            
+                                 f"""INSERT INTO info_fields_kpl (table_kpl,name,nickname,alias_db,alias_usr) 
+                                 VALUES ("{tbl}","{field}","{str_name}","{str_name}","{field}");"""):
                 result.append(str_name)
+            else:
+                list_err.append(str_name)
     if len(result):
         CQT.msgbox(f'Успешно {pprint.pformat(result)}')
     else:
         CQT.msgbox(f'Новых полей не найдено')
+    if list_err:
+        CQT.msgbox(f'Ошибки в {pprint.pformat(list_err)}')
 
 @CQT.onerror
-def recalc_and_fil_fact(self: mywindow, *args):
-    def calc_pozition_fact_kpl_ws_msg(self, pozition_num, msg=True, repaint_graf=True, infotable=False):
+@CQT.progress_decorator
+def recalc_and_fil_fact(self: mywindow,hook_prog_bar=None, *args):
+
+    def calc_pozition_fact_kpl_ws_msg(self, pozition_num, msg=True, repaint_graf=True, infotable=False,
+                                      dict_data_for_jurnal:dict|None=None,pozs:CMS.Pozitions|None=None,
+                                      DICT_OPERS:dict|None=None,
+                                      POZ_DICT_MK_DATA:dict|None=None,
+                                      POZ_DICT_LIST_NARS:dict|None=None,
+                                      DICT_DAY_PLAN_ETAP_JURNAL: dict | None = None,
+                                      DICT_DATA_DOLGN_ETAP: dict | None = None
+                                      )->list[dict]:
         result = CMS.calc_pozition_fact_kpl(self, pozition_num,
-                            self.Data_plan.DICT_GROUP_PODR_VID_RAB_FOR_PLAN,
+                            DTCLS.DICT_GROUP_PODR_VID_RAB_FOR_PLAN,
                             self.DICT_VID_RABOT,
-                            self.Data_plan.DICT_NAPR_DEYAT,
-                            self.Data_plan.DICT_VID_PO_NAPR,
-                            self.Data_plan.DICT_NAPRAVLENIE,
-                            self.Data_plan.DICT_NAPR_DEYAT_NAME,
-                            self.Data_plan.DICT_DOLGN_ETAP,
-                            self.Data_plan.DICT_EMPLOEE_FULL_WITH_DEL,
+                            DTCLS.DICT_NAPR_DEYAT,
+                            DTCLS.DICT_VID_PO_NAPR,
+                            DTCLS.DICT_NAPRAVLENIE,
+                            DTCLS.DICT_NAPR_DEYAT_NAME,
+                            DTCLS.DICT_DOLGN_ETAP,
+                            DTCLS.DICT_EMPLOEE_FULL_WITH_DEL,
                             self.DICT_OP_NAME,
-                            self.Data_plan.DICT_CLD,
-                            self.Data_plan.DICT_PODR,
-                            repaint_graf)
+                            DTCLS.DICT_CLD,
+                            DTCLS.DICT_PODR,
+                            DTCLS.FIELDS_DB_INFO,
+                            dict_data_for_jurnal,
+                                            pozs=pozs,
+                                            DICT_OPERS=DICT_OPERS,
+                                            POZ_DICT_MK_DATA=POZ_DICT_MK_DATA,
+                                            POZ_DICT_LIST_NARS=POZ_DICT_LIST_NARS,
+                                            DICT_DAY_PLAN_ETAP_JURNAL = DICT_DAY_PLAN_ETAP_JURNAL,
+                                            DICT_DATA_DOLGN_ETAP = DICT_DATA_DOLGN_ETAP
+
+                            )
         if result is None:
-            return
-        dict_jur_data, rez_update_row_etaps = result
+            return []
+        dict_jur_data, rez_update_row_etaps, infotable_mini_data = result
         if infotable:
             list_compare = []
             for etap, val_etap in dict_jur_data.items():
@@ -99,41 +3184,73 @@ def recalc_and_fil_fact(self: mywindow, *args):
 
                          'oper': oper, 'Подытог_нормы_для_плана_минут': time})
             if not CQT.msgboxg_get_table(self, 'info', list_compare, load_summ=True, yesNoMode=True):
-                return
+                return []
+
+        if rez_update_row_etaps:
+            if repaint_graf:
+                update_local_graf(True,pozition_num,True)
 
         if msg:
             if rez_update_row_etaps:
                 CQT.msgbox(f'Успешно')
             else:
                 CQT.msgbox(f'Новых работ не обнаружено')
-                
+        return infotable_mini_data
         
     tbl = self.ui.tbl_kal_pl
+    hook_prog_bar.set(1)
+    hook_prog_bar.text('Построение запроса')
     if 'shift' in CQT.get_key_modifiers(self):
-        row = CQT.get_dict_line_form_tbl(tbl)
-        if 'plan.Пномер' not in row:
-            return
-        nf_pnum = CQT.num_col_by_name_c(tbl, 'plan.Пномер')
-        nf_stat = CQT.num_col_by_name_c(tbl, 'plan.Статус')
         list_pnums = []
-        for i in range(tbl.rowCount()):
-            if not tbl.isRowHidden(i):
-                if tbl.item(i, nf_stat).text() in (
-                        'Долгосрочный',
-                        'Резерв',
-                        'Завершена',
-                        'Приостановлена',
-                        'На удаление',
-                        'Перепроверка',):
+        t = CQT.TableContext(tbl)
+        for row in t.rows():
+            if not row.is_hidden():
+                state = row.value('plan.Статус',get_cust_content=True)
+                if state in (9,1,4,5,6,8):
                     continue
-                list_pnums.append(int(tbl.item(i, nf_pnum).text()))
-        if not CQT.msgboxgYN(f'Учитываются только статусы (Подготовка, Изготовление, К производству)\n\n'
-                             f'Это займет около {round(len(list_pnums) * 4 / 60, 1)} минут\n\nпродолжить?'):
+                list_pnums.append(int(row.value('plan.Пномер')))
+
+
+        if not CQT.msgboxgYN(f'{len(list_pnums)} шт. Учитываются только статусы (Подготовка, Изготовление, К производству)\n\n'
+                             f'Это займет около {round((10 + len(list_pnums) * 0.46) / 60, 1)} минут\n\nпродолжить?'):
             return
+        hook_prog_bar.set(3)
+        hook_prog_bar.text('Подготовка данных')
+
+
+
+        DICT_DATA_DOLGN_ETAP = CMS.prepare_dolg_etap_for_calc_pozition_fact_kpl()
+        DICT_DATA_FOR_JURNAL = CMS.prepare_data_for_jurnal_for_calc_pozition_fact_kpl(list_pnums)
+        POZ_DICT_MK_DATA = CMS.prepare_pozs_for_calc_pozition_fact_kpl(list_pnums)
+        POZ_DICT_LIST_NARS = CMS.prepare_list_nars_for_calc_pozition_fact_kpl(list_pnums)
+        DICT_DAY_PLAN_ETAP_JURNAL = CMS.prepare_day_plan_etap_jurnal_for_calc_pozition_fact_kpl(list_pnums)
+        pr = CFG.Config.project
+        pozs = CMS.Pozitions(list_pnums, pr.db_kplan, pr.db_naryad, pr.db_resxml, pr.db_users, self,
+                         list_names_preload_tbls=['пл_топ'])
+
+
+        start = F.now('')
+        cnter = 1
+        cnt = len(list_pnums)
+        hook_prog_bar.set(10)
+        hook_prog_bar.text('Расчет позиций')
+        infotable_mini_data = []
         for pozition_num in list_pnums:
-            calc_pozition_fact_kpl_ws_msg(self, pozition_num, False, False,infotable=False)
-            print(f'{pozition_num} recalced success')
-        CQT.msgbox(f'Звершено')
+            infotable_mini_data_poz = calc_pozition_fact_kpl_ws_msg(self, pozition_num, False, False,infotable=False,
+                                          dict_data_for_jurnal=DICT_DATA_FOR_JURNAL,pozs=pozs,
+                                          DICT_OPERS=DTCLS.app_self.DICT_OP,POZ_DICT_MK_DATA=POZ_DICT_MK_DATA,
+                                          POZ_DICT_LIST_NARS=POZ_DICT_LIST_NARS,
+                                          DICT_DAY_PLAN_ETAP_JURNAL= DICT_DAY_PLAN_ETAP_JURNAL,
+                                          DICT_DATA_DOLGN_ETAP = DICT_DATA_DOLGN_ETAP
+                                          )
+            print(f'{pozition_num} recalcied success {cnter}/{cnt}')
+            cnter+=1
+            hook_prog_bar.set(10+round(90*cnter/cnt))
+            hook_prog_bar.text(f'Расчет позиции №{cnter} из {cnt}')
+            infotable_mini_data.extend(infotable_mini_data_poz)
+        F.microseconds_passed(start,len(list_pnums))
+        CQT.msgboxg_get_table_ok_inf(self,"Результат расчета факт. часов по нарядам:",infotable_mini_data,
+                                     styleSheet=CQT.MES_CSS)
 
     else:
         row = CQT.get_dict_line_form_tbl(tbl)
@@ -144,22 +3261,41 @@ def recalc_and_fil_fact(self: mywindow, *args):
 
 
 @CQT.onerror
-def update_graf_site_and_get_local(self: mywindow):
-    if not self.selected_napr:
-        CQT.msgbox(f'Выбрано не одно направление')
-        return
-    update_graf_pad_moshn(self, self.selected_napr)
-    GEN_PLG(self, self.selected_napr)
+def fill_napr_into_cmb_select_napr(self: mywindow):
+    dict_napr = dict()
+    dict_napr['none'] = ''
+    dict_napr[None] = 'Все'
+    dict_napr_add = {_['name']: _['alias'] for _ in self.Data_plan.DICT_NAPRAVLENIE.values()
+                                            if _['poki'] == CFG.Config.place.poki}
+    dict_napr.update(dict_napr_add)
+
+    CQT.fill_list_combobx(self,self.ui.cmb_select_napr,list(dict_napr.values()),
+                          list_data=list(dict_napr.keys()),current_text='')
 
 
-@CQT.progress_decorator
 @CQT.onerror
-def update_graf_pad_moshn(self: mywindow, selected_napr=None, hook_prog_bar=None, *args):
-    if 'KPLAN_max_mosh' not in self.__dict__:
-        VPL.get_max_mosh_from_db(self)
+def pl_graf_context_as_tbl(*args):
+    self = DTCLS.app_self
+    selected_napr = self.ui.cmb_select_napr.currentData(CQT.Qt.UserRole)
+    if selected_napr == 'none':
+        return
+    update_graf_pad_moshn(self, selected_napr,as_table=True)
+
+@CQT.onerror
+def update_graf_site_and_get_local(self: mywindow):
+    selected_napr = self.ui.cmb_select_napr.currentData(CQT.Qt.UserRole)
+    if selected_napr == 'none':
+        return
+    update_graf_pad_moshn(self, selected_napr)
+    GEN_PLG(self, selected_napr)
+
+
+
+@CQT.onerror
+def update_graf_pad_moshn(self: mywindow, selected_napr=None, as_table=False,  *args):
 
     @CQT.onerror
-    def save_graf_pad_moshn(self: mywindow, napr, percent, name_for_file, resp, max_date, *args):
+    def save_graf_pad_moshn(self: mywindow, napr, percent, name_for_file, resp, max_date,data_norms, *args):
         def calc_vol_by_date(date_nach, date_end, mosh, curr_date):
             if not F.is_date(date_nach, "%Y-%m-%d"):
                 return 0
@@ -176,7 +3312,7 @@ def update_graf_pad_moshn(self: mywindow, selected_napr=None, hook_prog_bar=None
             else:
                 return 0
 
-        def calc_graf_pad_moshn(self: mywindow, napr, percent, resp, max_date, *args):
+        def calc_graf_pad_moshn(self: mywindow, napr, percent, resp, max_date, dict_data_norms, *args):
             list_err = []
             """
             O:\Журналы и графики\Ведомости для передачи
@@ -204,53 +3340,40 @@ def update_graf_pad_moshn(self: mywindow, selected_napr=None, hook_prog_bar=None
                    "summ_napr_rezerv_d": [],
                    }
             # max_date = F.add_months(F.strtodate(F.start_end_dates_c(vid='m')[1]),15)
-            list_dates = []
+
             start_date = F.add_months(F.strtodate(F.now("%Y-%m-%d")), -1)
-            date = start_date
             max_date = F.strtodate(max_date,"%Y-%m-%d")
-            while True:
-                if date > max_date:
-                    break
-                list_dates.append(date)
-                date = F.date_add_days(date, 1, format_out='')
+            list_dates = [_ for _ in DTCLS.DICT_CLD.keys() if  start_date <= _ <= max_date]
             podr_eval_name = 'план_' + self.place.evaluation_department.Имя
             dict_moshn = dict()
             for item in resp:
-                dict_form = F.from_binary_pickle(item['local_graf'])
-                if dict_form is None:
-                    list_err.append({'КПЛ':item["Пномер"],'': f'Ошибка выгрузки ганта. Нужно перегрузить гант.'})
-                    continue
-                dict_replace_by_days = None
-                if item['fact_jurnal_blolb_data']:
-                    dict_replace_by_days = F.from_binary_pickle(item['fact_jurnal_blolb_data'])
+                data_norms = []
                 kpl = item['Пномер']
-                for i in range(len(dict_form)):
-                    for date_data, data in dict_form[i]['data'].items():
-                        if date_data not in dict_moshn:
-                            dict_moshn[date_data] = dict()
-                        if kpl not in dict_moshn[date_data]:
-                            dict_moshn[date_data][kpl] = 0
-                        if podr_eval_name in data['podr']:
-                            for elem in data['podr'][podr_eval_name]:
-                                dict_moshn[date_data][kpl] += elem['Время_час']
-                if dict_replace_by_days :
-                    if podr_eval_name in dict_replace_by_days:
-                        for date_repl, val_repl in dict_replace_by_days[podr_eval_name].items():
-                            date_repl_obj = F.strtodate(date_repl,"%d\n%m\n%y")
-                            if date_repl_obj not in dict_moshn:
-                                dict_moshn[date_repl_obj] = dict()
-                            dict_moshn[date_repl_obj][kpl] = round(val_repl/60,2)
+                if kpl in dict_data_norms:
+                    data_norms = dict_data_norms[kpl]
+                for it in data_norms:
+                    date_data = F.strtodate(it['day_dt'],"%Y-%m-%d")
+                    norma = it['val_minutes']
+                    if date_data not in dict_moshn:
+                        dict_moshn[date_data]=dict()
+                    if kpl not in dict_moshn[date_data]:
+                        dict_moshn[date_data][kpl] = 0
+                    dict_moshn[date_data][kpl] += norma
+
+            for date_dt, val_date in dict_moshn.items():
+                for kpl, norm in val_date.items():
+                    dict_moshn[date_dt][kpl] = round(norm/60,2)
+
             if list_err and selected_napr: #07.11.25
                 CQT.msgboxg_get_table_ok_inf(self,'Ошибки',list_err)
                 return
             for date in list_dates:
                 summ_napr = 0
                 max_napr = 0
-                if date in self.KPLAN_max_mosh: #self.Data_plan.DICT_GROUP_VID_RAB_FOR_PLAN self.Data_plan.DICT_PODR_POKI
-                    max_napr = 0
-                    #for podr in [k for k, _ in self.Data_plan.DICT_GROUP_VID_RAB_FOR_PLAN.items() if _['estimated']]
-                    for podr in list({v['Имя'] for k,v in self.Data_plan.DICT_GROUP_PODR_VID_RAB_FOR_PLAN.items() if v['poki'] == self.place.poki and v['estimated']}):
-                        max_napr += round(self.KPLAN_max_mosh[date][podr] * percent / 100, 2)
+
+                #for podr in [k for k, _ in self.Data_plan.DICT_GROUP_VID_RAB_FOR_PLAN.items() if _['estimated']]
+                for podr in list({v['Имя'] for k,v in self.Data_plan.DICT_GROUP_PODR_VID_RAB_FOR_PLAN.items() if v['poki'] == self.place.poki and v['estimated']}):
+                    max_napr += round(DTCLS.DICT_CLD[date].dict_podrs[podr] * percent / 100, 2)
                 summ_napr_skd = 0
                 summ_napr_std = 0
                 summ_napr_autsors = 0
@@ -311,16 +3434,21 @@ def update_graf_pad_moshn(self: mywindow, selected_napr=None, hook_prog_bar=None
                 F.save_file(F.dir_workdesc_c() + F.sep() + f'{napr}_{F.now("%Y_%m_%d")}.txt', list_wo_kd_td)
             return list_of_lists
 
-        data = calc_graf_pad_moshn(self, napr, percent, resp, max_date)
+        dict_data_norms = dict()
+        for it in data_norms:
+            id = it['id_poz']
+            if id not in dict_data_norms:
+                dict_data_norms[id] = []
+            dict_data_norms[id].append(it)
+        data = calc_graf_pad_moshn(self, napr, percent, resp, max_date,dict_data_norms)
         name_file = f'gr_pad_mosh_{name_for_file}.txt'
         F.save_file(F.scfg('BD_selector') + F.sep() + name_file, data)
 
-    hook_prog_bar.open()
-    hook_prog_bar.set(0)
-    hook_prog_bar.text('Получение дат')
+    #TODO add tatkuz
     SET_estimated_podr = {v['Имя'] for k,v in self.Data_plan.DICT_GROUP_PODR_VID_RAB_FOR_PLAN.items() if v['estimated']}
     dict_estimated_podr_filtr = {k:v for k,v in self.Data_plan.DICT_PODR_POKI.items() if k in SET_estimated_podr}
-    list_fields_and_tabels =  [[', '.join([f"{k}.{_['Имя_начала_этапа']} AS Пдата_нач" , f"{k}.{_['Имя_конца_этапа']} AS Пдата_зав", f"{k}.{_['Имя_поля'].split(';')[0]} AS Нчас"]),
+    list_fields_and_tabels =  [[', '.join([f"{k}.{_['Имя_начала_этапа']} AS Пдата_нач" ,
+                        f"{k}.{_['Имя_конца_этапа']} AS Пдата_зав", f"{k}.{_['Имя_поля'].split(';')[0]} AS Нчас"]),
                             f'{k} ON {k}.НомПл == пл_оуп.НомПл,' ] for k, _ in dict_estimated_podr_filtr.items()]
 
     prefix = """SELECT plan.Пномер, napravlenie.name, 
@@ -335,13 +3463,8 @@ def update_graf_pad_moshn(self: mywindow, selected_napr=None, hook_prog_bar=None
                      napravlenie ON napravlenie.Пномер == napravl_deyat.Направление,
                      napravl_deyat ON napravl_deyat.Пномер == plan.Направление_деятельности
 
-                    WHERE plan.poki = {self.place.poki} and status_poz.Имя IN (
-                    "Долгосрочный",
-                    "Резерв", 
-                    "Подготовка", 
-                    "Изготовление", 
-                    "К производству", 
-                    "Перепроверка")"""
+                    WHERE plan.poki = {self.place.poki} and status_poz.Пномер IN (
+    {', '.join([str(i) for i, _ in self.Data_plan.DICT_STATUS_POZ.items() if _['for_reports']])})"""
     reqs = [f"""{prefix}
                     {item[0]}
                     {middle}
@@ -354,11 +3477,10 @@ def update_graf_pad_moshn(self: mywindow, selected_napr=None, hook_prog_bar=None
                                 rez_dict=True)
     max_date = F.now("%Y-%m-%d")
 
-
     dict_pozs = dict()
     for item in resp:
-        pass
-        if F.is_date(item['Пдата_зав'],"%Y-%m-%d") and F.strtodate(item['Пдата_зав'],"%Y-%m-%d") > F.strtodate(max_date,"%Y-%m-%d" ):
+        if (F.is_date(item['Пдата_зав'],"%Y-%m-%d") and
+                F.strtodate(item['Пдата_зав'],"%Y-%m-%d") > F.strtodate(max_date,"%Y-%m-%d" )):
             max_date = item['Пдата_зав']
 
         if item['Пномер'] not in dict_pozs:
@@ -369,36 +3491,71 @@ def update_graf_pad_moshn(self: mywindow, selected_napr=None, hook_prog_bar=None
                 'Фдата_получения_КД':F.now("%Y-%m-%d"),
             }
         if F.is_date(item['Пдата_нач'], "%Y-%m-%d"):
-            if dict_pozs[item['Пномер']]['Пдата_нач'] == None or F.strtodate(item['Пдата_нач'],"%Y-%m-%d") <  F.strtodate(dict_pozs[item['Пномер']]['Пдата_нач'],"%Y-%m-%d"):
+            if (dict_pozs[item['Пномер']]['Пдата_нач'] == None or
+                    F.strtodate(item['Пдата_нач'],"%Y-%m-%d") <
+                    F.strtodate(dict_pozs[item['Пномер']]['Пдата_нач'],"%Y-%m-%d")):
                 dict_pozs[item['Пномер']]['Пдата_нач'] = item['Пдата_нач']
+
         if F.is_date(item['Пдата_зав'], "%Y-%m-%d"):
-            if dict_pozs[item['Пномер']]['Пдата_зав'] == None or F.strtodate(item['Пдата_зав'],"%Y-%m-%d") >  F.strtodate(dict_pozs[item['Пномер']]['Пдата_зав'],"%Y-%m-%d"):
+            if (dict_pozs[item['Пномер']]['Пдата_зав'] == None or
+                    F.strtodate(item['Пдата_зав'],"%Y-%m-%d") >
+                    F.strtodate(dict_pozs[item['Пномер']]['Пдата_зав'],"%Y-%m-%d")):
                 dict_pozs[item['Пномер']]['Пдата_зав'] = item['Пдата_зав']
+
         if F.is_date(item['Фдата_получения_КД'], "%Y-%m-%d"):
-            if F.strtodate(item['Фдата_получения_КД'],"%Y-%m-%d") > F.strtodate(dict_pozs[item['Пномер']]['Фдата_получения_КД'],"%Y-%m-%d"):
+            if (F.strtodate(item['Фдата_получения_КД'],"%Y-%m-%d") >
+                    F.strtodate(dict_pozs[item['Пномер']]['Фдата_получения_КД'],"%Y-%m-%d")):
                 dict_pozs[item['Пномер']]['Фдата_получения_КД'] = item['Фдата_получения_КД']
+
         if F.is_numeric(item['Нчас']):
             dict_pozs[item['Пномер']]['Нчас'] += F.valm(item['Нчас'])
 
-    list_num_poz = list(dict_pozs.keys())
-    list_num_poz_blolb_data = CSQ.custom_request_c(self.db_kplan, f"""SELECT plan.Пномер,
-                        plan.local_graf, plan.fact_jurnal_blolb_data FROM plan  
+    start_date = F.add_months(F.strtodate(F.now("%Y-%m-%d")), -1)
+    agr = CMS.Gant_agregator()
+    #===============фильтр по evaluation_department_podrazdel_for_reports для отчетов====================
+    list_main_etaps = [_.id for _ in DTCLS.FIELDS_DB_INFO.tables_db.tabels if
+                       _.name == self.place.evaluation_department.Имя and _.poki in (None,CFG.Config.place.poki)]
+    #==============================================================================================
+    data_norms = agr.load(start_date,F.strtodate(max_date,"%Y-%m-%d"),list(dict_pozs.keys()),list_main_etaps)
 
-                        WHERE plan.Пномер IN ({CSQ.prepare_list_to_tuple(list_num_poz)});""", rez_dict=True)
-    dict_num_poz_blolb_data = F.deploy_dict_c(list_num_poz_blolb_data,'Пномер')
-    for item in resp:
-        item['local_graf'] =  dict_num_poz_blolb_data[item['Пномер']]['local_graf']
-        item['fact_jurnal_blolb_data'] =  dict_num_poz_blolb_data[item['Пномер']]['fact_jurnal_blolb_data']
+    #set_resp = set([_['Пномер'] for _ in resp])
+    #set_norms = set([_['id_poz'] for _ in data_norms])
+    #delta = set_resp- set_norms
+
+    if as_table:
+        def fnc_oform_filter(tbl:CQT.QtWidgets.QTableWidget,tblf:CQT.QtWidgets.QTableWidget):
+            CMS.fill_filtr_c(DTCLS.app_self,tblf,tbl, combo_dict={'Этап':None})
+            pass
+
+        CQT.msgboxg_get_table_ok_inf(self,'Таблица графика загрузки плана',[{
+                                        'Дата':_['day_dt'],
+                                        'Этап': DTCLS.DICT_PODR_BY_ID[
+                                                    _['etap_podrazdel']]['Имя'],
+                                        'КПЛ':_['id_poz'],
+                                        'Статус':_['state'],
+                                        'Напр.д.':_['napr_d'],
+                                        'Позиция':_['poz'],
+                                        'Колич.':_['count'],
+                                        'Проект':_['np'],
+                                        'ЗП':_['zp'],
+                                        'Время,час.':round(_['val_minutes']/60 ,2),
+                                        'Предел,час.':round(
+                                            DTCLS.DICT_CLD[F.strtodate(_['day_dt'],"%Y-%m-%d")].dict_podrs[
+                                                DTCLS.DICT_PODR_BY_ID[
+                                                    _['etap_podrazdel']]['Имя']] ,2),
+                                             } for _ in data_norms],
+                            styleSheet=CQT.MES_CSS,load_summ=True,
+                                     func_oform_filtr=fnc_oform_filter,showFullScreen=True)
+        return
 
     cnter = 0
     for napr, percent, name_for_file in [[_['name'], _['val'], _['name_for_file_graf_pad_mosh']] for _ in
                                          self.Data_plan.DICT_NAPRAVLENIE.values() if _['poki'] == self.place.poki]:
         cnter += 1
         if selected_napr == None or selected_napr == napr:
-            hook_prog_bar.set(10 + round((cnter / len(self.Data_plan.DICT_NAPRAVLENIE)) * 90))
-            hook_prog_bar.text(f'Расчет по {napr}')
-            save_graf_pad_moshn(self, napr, percent, name_for_file, [_ for _ in resp if _['name'] == napr], max_date)
-    hook_prog_bar.close()
+
+            save_graf_pad_moshn(self, napr, percent, name_for_file, [_ for _ in resp if _['name'] == napr], max_date,data_norms)
+
 
 
 @CQT.onerror
@@ -448,7 +3605,7 @@ def check_kpl_by_erp(self: mywindow, hook_prog_bar=None):
     days = (F.now('') - F.strtodate(begin_year)).days
 
     list_poz = CSQ.custom_request_c(self.db_kplan, f"""SELECT plan.Пномер, знпр.Ref_Key_py, знпр.Год, пл_оуп.НомПл, 
-    пл_оуп.№ERP, пл_оуп.Номенклатура_ЕРП, пл_оуп.Количество, пл_оуп.НомПартии_ЗП, пл_топ.Спецификация_ЕРП, пл_оуп.Дата_отгрузки_ПУ, 
+    пл_оуп.№ERP, пл_оуп.Номенклатура_ЕРП, пл_оуп.Количество, пл_топ.Спецификация_ЕРП, пл_оуп.Дата_отгрузки_ПУ, 
        пл_оуп.№проекта, status_poz.Имя as status, пл_оуп.Дата_заявки_на_произв FROM пл_оуп 
         INNER JOIN plan ON plan.Пномер == пл_оуп.НомПл
         INNER JOIN пл_топ ON пл_топ.НомПл == пл_оуп.НомПл
@@ -590,7 +3747,6 @@ def check_kpl_by_erp(self: mywindow, hook_prog_bar=None):
         ref = poz['Ref_Key_py']
         nomen = poz['Номенклатура_ЕРП']
         count_poz = poz['Количество']
-        num_line_py = poz['НомПартии_ЗП']
         spec_erp = poz['Спецификация_ЕРП']
         date_otgruz = poz['Дата_отгрузки_ПУ']
 
@@ -621,17 +3777,7 @@ def check_kpl_by_erp(self: mywindow, hook_prog_bar=None):
                     f"{nomen}\n     количество не совпадает с ЕРП в {self.place.doc_prefix} \n{py} {date_poz_erp}\n      "
                     f"ЕРП: \n{dict_poz_erp[nomen]['Количество']}\n        и MES: \n{count_poz}"})
 
-            tmp_num_line_py = int(dict_poz_erp[nomen]['LineNumber'])
 
-            if ref in DICT_NULL_ETAPS:
-
-                num_first_etap = DICT_NULL_ETAPS[ref]
-                if  int(dict_poz_erp[nomen]['LineNumber']) >= num_first_etap:
-                    tmp_num_line_py = 1 + int(dict_poz_erp[nomen]['LineNumber'])
-
-            if tmp_num_line_py != num_line_py:
-                CSQ.custom_request_c(self.db_kplan, f"""UPDATE пл_оуп SET НомПартии_ЗП = ? WHERE НомПл = ?""",
-                                         list_of_lists_c=[[tmp_num_line_py, item['НомПл']]])
 
             if dict_poz_erp[nomen]['Description_РесурсныеСпецификации'] != spec_erp:
                 list_err.append({'КПЛ':s_num,'Содержание':
@@ -674,15 +3820,19 @@ def update_date_kplmk_from_narmk(self: mywindow):
 @CQT.onerror
 def apply_recalc_dates_etaps(self: mywindow, *args):
     tbl = self.ui.tbl_kal_pl
-    nf_s_num = CQT.num_col_by_name_c(tbl, 'plan.Пномер')
-    row = tbl.currentRow()
-    if row == -1:
-        CQT.msgbox(f'Не выбрана строка')
+    t = CQT.TableContext(tbl)
+    cur_row = t.current_row()
+    if cur_row.no_selection:
+        CQT.msgbox(f'Не выбрана строка КПЛ')
         return
-    CMS.Pozition.set_flag_recalc_dates(self.db_kplan, int(tbl.item(row, nf_s_num).text()), 0)
-    if CQT.num_col_by_name_c(tbl, 'plan.Потребность_пересч_сроков') == None:
+
+    num_kpl = int(cur_row.value('plan.Пномер'))
+    CMS.Pozition.set_flag_recalc_dates(self.db_kplan, num_kpl, 0)
+    if 'plan.Потребность_пересч_сроков' not in t.nf:
         return
-    CQT.set_val_tbl_by_name(self.ui.tbl_kal_pl, self.ui.tbl_kal_pl.currentRow(), 'plan.Потребность_пересч_сроков', '0')
+    cur_row.set_value('plan.Потребность_пересч_сроков','0')
+    with CQT.table_updating(t):
+        oforml_row_plan_tbl(cur_row)
 
 
 @CQT.onerror
@@ -790,7 +3940,6 @@ def checking_positions_for_closed_mk(window: QtWidgets.QWidget, poz_nums: list[i
     return True
 #-- 29.10.25
 
-
 @CQT.onerror
 def set_stat_closed(self: mywindow, *args): #22.10.25
     def check_fields(tbl):
@@ -812,6 +3961,9 @@ def set_stat_closed(self: mywindow, *args): #22.10.25
         if tbl.currentRow() == -1: return
         list_of_poz = [CQT.get_dict_line_form_tbl(tbl)]
 
+    if not CQT.msgboxgYN(f'Установить на поз. {[str(_['plan.Пномер']) for _ in  list_of_poz]} '
+                         f'статус "{self.Data_plan.DICT_STATUS_POZ[4]['Имя']}";'):
+        return
     list_poz_nums = [_['plan.Пномер'] for _ in list_of_poz]
     if not checking_positions_for_closed_mk(window=self, poz_nums=list_poz_nums): #29.10.25
         return
@@ -831,29 +3983,40 @@ def find_field_reset(self):
 def find_field(self: mywindow):
 
     def find_in_tbl(tbl):
+        def select():
+            CQT.select_cell(tbl, 0, f.tbl_idx)
+            if self.ui.tbl_kal_pl.rowCount() > 0:
+                CQT.select_cell(self.ui.tbl_kal_pl, 0, f.tbl_idx)
+
         fl = False
-        for j in range(self.find_field_counter, tbl.columnCount()):
-            if tbl.isColumnHidden(j):
+        val = self.ui.le_pl_find_field.text().lower().strip()
+        FIELDS = DTCLS.FIELDS_DB_INFO.list_fields
+        for f in FIELDS:
+            if f.tbl_idx is None or not f.tbl_idx:
                 continue
-            if self.ui.le_pl_find_field.text().lower() in tbl.horizontalHeaderItem(
-                    j).text().lower():
+            if val in f.field_alias.lower():
                 fl = True
-                CQT.select_cell(tbl, 0, j)
-                if self.ui.tbl_kal_pl.rowCount() > 0:
-                    CQT.select_cell(self.ui.tbl_kal_pl, 0, j)
-                self.find_field_counter = j + 1
-                break
+                select()
+                self.find_field_counter = f.tbl_idx + 1
+        if fl==False:
+            for f in FIELDS:
+                if f.tbl_idx is None or not f.tbl_idx:
+                    continue
+                if val in f.description.lower():
+                    fl = True
+                    select()
+                    self.find_field_counter = f.tbl_idx + 1
+        if fl==False:
+            for f in FIELDS:
+                if val in f.field_alias.lower():
+                    fl = True
+                    CQT.msgbox(f'Поле "{f.field_alias} ({f.description})" скрыто')
         if fl == False:
             self.find_field_counter = 0
 
     if self.ui.le_pl_find_field.text() == '':
         return
-    if not "find_field_counter" in self.__dict__:
-        self.find_field_counter = 0
-    
-    if self.regim == 'cnf':
-        find_in_tbl(self.ui.tbl_pl_add_poz)
-        return
+    self.find_field_counter = getattr(self,"find_field_counter",0)
     find_in_tbl(self.ui.tbl_filtr_kal_pl)
 
 
@@ -915,7 +4078,7 @@ def get_stat_proiv(self: mywindow, vid):
 @CQT.onerror
 def btn_pl_kopy_norm_etap_buff(self: mywindow):
     tbl = self.ui.tbl_kal_pl
-
+    row_o = CQT.TableContext(tbl).current_row()
     DICT_SOPOST_ETAPOV_VO = {
         'Лазерная резка': 'пл_заг.Нчас_заг',
         'Токарка+фрезеровка': 'пл_мех.Нчас_мехобр',
@@ -1071,7 +4234,8 @@ def btn_pl_kopy_norm_etap_buff(self: mywindow):
             otkl = round(abs(proizv / stat_proizv) * 100, 1)
         else:
             otkl = round(abs(stat_proizv / proizv) * 100, 1)
-
+    with CQT.table_updating(row_o.ctx):
+        oforml_row_plan_tbl(row_o)
     CQT.msgbox(
         f'По {vid}:\n\nСредняя производительность {round(stat_proizv)} кг/п-см\n\nВ текущей выборке производительность {proizv} при весе {ves} кг.'
         f' \n кг/п-см отклонение {round(otkl - 100)}%.\n\n Поэтапно(н-час) :\n{row}')
@@ -1123,17 +4287,17 @@ def check_set_fininsh_py(self: mywindow):
 def generate_dict_norm(self: mywindow):
     tmp_list = [['str', 'poz']]
     for name_tbl, item in self.Data_plan.DICT_PODR.items():
-        if item['Имя_поля'] != '':
-
+        if item['Имя_поля']:
+            order = item['Порядок'] or 0
             for name_field in item['Имя_поля'].split(';'):
                 str_full_name = '.'.join([name_tbl, name_field])
-                tmp_list.append([str_full_name, item['Порядок']])
+                tmp_list.append([str_full_name, order])
     dict_norm = {_[0]: 0 for _ in F.sort_by_column_c(tmp_list, 'poz')[1:]}
     return dict_norm
 
 
 @CQT.onerror
-def dict_norm_from_res(self, res, dict_norm='', koef_vneplana=1, koef_pogr_norm=1, count_izd=None, list_log=None,
+def dict_norm_from_res(self:mywindow, res, dict_norm='', koef_vneplana=1, koef_pogr_norm=1, count_izd=None, list_log=None,
                        s_num_mk: int = 0):
     def prepare_fact_as_list_opers(s_num_mk):
 
@@ -1513,51 +4677,24 @@ def add_zp_kpl(self: mywindow):
 
 @CQT.onerror
 def btn_norm_fact_by_opers(self: mywindow):
-
-
-    def tmp_log_calc(res,tmp_log):
-        for dse in res:
-            for oper in dse['Операции']:
-                pass
-                kal_pl_podr = self.DICT_VAR_OPER[oper['Опер_наименование']][0]['kal_pl_podr'].split("|")
-                tpz = oper['Опер_Тпз']
-                tsht = oper['Опер_Тшт_ед']
-                for podr_per in kal_pl_podr:
-                    podr, per = podr_per.split("%")
-                    if 'пл_сб' in podr:
-                        tsht_per = round(oper['Опер_Тшт']*int(per)/100,3)
-                        tmp_log.append({"МК": mk,
-                            "dse":f"{dse['Наименование']} {dse['Номенклатурный_номер']}",
-                            "кол_во_заказ_по_структуре":dse['кол_во_инф']['кол_во_заказ_по_структуре'],
-                                        "Опер_Тпз":tpz,
-                                        "Опер_Тшт": tsht_per,
-                                        "Опер_Тшт_ед": tsht,
-                                        "Опер_Тпз+Опер_Тшт*N": tsht_per+tpz
-                                        })
-                    tpz = 0
-                    tsht = 0
-        return tmp_log
     def calc_top(self, dict_norm, data_top):
         # t(в часах)=колво ДСЕ*0,4+2
         dict_norm['пл_топ.Нчас_ТД'] = (data_top['Число_ДСЕ'] * 0.4 + 2) * 60
         return dict_norm
     list_log = False
     tbl = self.ui.tbl_kal_pl
-    if tbl.currentRow() == -1:
+    t = CQT.TableContext(tbl)
+    cur_row = t.current_row()
+    if cur_row.no_selection:
         CQT.msgbox(f'Не выбрана позиция')
         return
-    row = CQT.get_dict_line_form_tbl(tbl)
-    p_nom = row['plan.Пномер']
+    p_nom = cur_row.value('plan.Пномер')
     poz = CMS.Pozition(p_nom, self.db_kplan, self.bd_naryad, self.db_resxml, self.db_users, self)
     poz.load_kpl_table('пл_топ')
     poz.load_kpl_table('пл_оуп')
     vid_po_napr = poz.dict_tables['пл_топ']['Вид']
-    nk_napr = CQT.num_col_by_name_c(tbl, 'plan.Направление_деятельности')
-    if nk_napr == None:
-        CQT.msgbox(f'Отсутствует поле plan.Направление_деятельности')
-        return
-    napr_deyat = tbl.item(tbl.currentRow(), nk_napr).text()
-
+    num_napr_deyat = poz.Направление_деятельности
+    napr_deyat = self.Data_plan.DICT_NAPR_DEYAT[num_napr_deyat]['Имя']
     try:
         koef_vneplana, koef_pogr_norm = CMS.calc_koefs_pogr(self.Data_plan.DICT_VID_PO_NAPR,
                                                             self.Data_plan.DICT_NAPRAVLENIE,
@@ -1575,7 +4712,7 @@ def btn_norm_fact_by_opers(self: mywindow):
 
     dict_norm = generate_dict_norm(self)
     nk_pnom = CQT.num_col_by_name_c(tbl, 'plan.Пномер')
-    pnom = int(tbl.item(tbl.currentRow(), nk_pnom).text())
+
     nk_stat_norm = CQT.num_col_by_name_c(tbl, 'plan.Статус_норм')
     if nk_stat_norm == None:
         CQT.msgbox(f'Отсутствует поле plan.Статус_норм')
@@ -1583,33 +4720,96 @@ def btn_norm_fact_by_opers(self: mywindow):
 
     dict_norm = calc_top(self, dict_norm, poz.dict_tables['пл_топ'])
 
+
+
+
+    aliases = {
+    'Пномер' : 'Пномер',
+    'Количество' : 'Количество изделий',
+    'Дата_завершения' : 'Дата завершения',
+    'Вес' : 'Вес',
+    'Тип' : 'Тип'
+    }
+    template = []
+    if len(list_mk)>1:
+        def calc_type_mk_name(num:int)->str :
+            for name, dict_data in self.DICT_TIP_MK.items():
+                if dict_data['Пномер']==num:
+                    return name
+            return  f'Не найден в БД'
+        for it in list_mk:
+            template.append({   '':CEMOJ.ДокументыДанные.document,
+                                'Пномер' : it['Пномер'],
+                                'Количество' : it['Количество'],
+                                'Дата_завершения' : it['Дата_завершения'],
+                                'Вес' : it['Вес'],
+                                'Тип' : calc_type_mk_name(it['Тип'])
+            }
+            )
+        rez = CQT.msgboxg_get_table(DTCLS.app_self,'МК для просмотра',template,
+                                    'Выбор',styleSheet=CQT.MES_CSS,aliases_header =aliases,selectRows=True,
+                                    selection_from_tbl=True)
+        if not rez:
+            return
+        mk_item = [_ for _ in list_mk if str(_['Пномер']) == rez[0]['Пномер']][0]
+    else:
+        mk_item = list_mk[0]
+    show_mk_norm_fact_by_opers(mk_item,koef_vneplana,koef_pogr_norm,dict_norm)
+
+def show_mk_norm_fact_by_opers(mk_item,koef_vneplana,koef_pogr_norm,dict_norm):
     tmp_log = []
     list_log = []
-    for mk_item in list_mk:
-        mk = mk_item['Пномер']
-        count_izd = mk_item['Количество']
-        res = CMS.load_res(int(mk))
-        # count_izd = poz.dict_tables['пл_оуп']['Количество']
-        tmp_log = tmp_log_calc(res, tmp_log)
+    def tmp_log_calc(res, tmp_log):
+        for dse in res:
+            for oper in dse['Операции']:
+                pass
+                kal_pl_podr = DTCLS.app_self.DICT_VAR_OPER[oper['Опер_наименование']][0]['kal_pl_podr'].split("|")
+                tpz = oper['Опер_Тпз']
+                tsht = oper['Опер_Тшт_ед']
+                for podr_per in kal_pl_podr:
+                    podr, per = podr_per.split("%")
+                    if 'пл_сб' in podr:
+                        tsht_per = round(oper['Опер_Тшт'] * int(per) / 100, 3)
+                        tmp_log.append({"МК": mk,
+                                        "dse": f"{dse['Наименование']} {dse['Номенклатурный_номер']}",
+                                        "кол_во_заказ_по_структуре": dse['кол_во_инф']['кол_во_заказ_по_структуре'],
+                                        "Опер_Тпз": tpz,
+                                        "Опер_Тшт": tsht_per,
+                                        "Опер_Тшт_ед": tsht,
+                                        "Опер_Тпз+Опер_Тшт*N": tsht_per + tpz
+                                        })
+                    tpz = 0
+                    tsht = 0
+        return tmp_log
 
-        koef_vneplana_tmp = copy.deepcopy(koef_vneplana)  # 19.08.2025 Задача № 100058908
-        if mk_item['Тип'] in (2, 3, 5):
-            if koef_vneplana_tmp > 1.27:
-                koef_vneplana_tmp = 1.27
+    mk = mk_item['Пномер']
+    count_izd = mk_item['Количество']
+    res = CMS.load_res(int(mk))
+    # count_izd = poz.dict_tables['пл_оуп']['Количество']
+    tmp_log = tmp_log_calc(res, tmp_log)
 
-        ves, ves_res_list = self.raschet_vesa_dse(res, False)
-        if ves != mk_item['Вес']:
-            CSQ.custom_request_c(self.bd_naryad, f"""UPDATE mk SET Вес = {ves} WHERE Пномер = {int(mk)};""")
-            CQT.msgbox(f'В МК {mk} обновлен вес, было {mk_item["Вес"]} кг., стало {ves} кг.')
-        if count_izd == None or count_izd == '' or not F.is_numeric(count_izd):
-            CQT.msgbox(f'{"пл_оуп.Количество"} не число')
-        dict_norm, list_log = dict_norm_from_res(self, res, dict_norm, koef_vneplana_tmp, koef_pogr_norm, count_izd,
-                                                 list_log, mk)
-        if list_log:
-            CQT.msgboxg_get_table(self, 'Расчет веса для сравнения', list_log, 'OK', disable_btn1=True, load_summ=True)
+    koef_vneplana_tmp = copy.deepcopy(koef_vneplana)  # 19.08.2025 Задача № 100058908
+    if mk_item['Тип'] in (2, 3, 5):
+        if koef_vneplana_tmp > 1.27:
+            koef_vneplana_tmp = 1.27
+
+    ves, ves_res_list = DTCLS.app_self.raschet_vesa_dse(res, False)
+    if ves != mk_item['Вес']:
+        CSQ.custom_request_c(DTCLS.bd_naryad, f"""UPDATE mk SET Вес = {ves} WHERE Пномер = {int(mk)};""")
+        CQT.msgbox(f'В МК {mk} обновлен вес, было {mk_item["Вес"]} кг., стало {ves} кг.')
+    if count_izd == None or count_izd == '' or not F.is_numeric(count_izd):
+        CQT.msgbox(f'{"пл_оуп.Количество"} не число')
+    dict_norm, list_log = dict_norm_from_res(DTCLS.app_self, res, dict_norm, koef_vneplana_tmp, koef_pogr_norm, count_izd,
+                                             list_log, mk)
+    if list_log:
+        CQT.msgboxg_get_table(DTCLS.app_self, 'Расчет веса для сравнения', list_log,
+                              'OK', disable_btn1=True, load_summ=True, WindowTitle=f'МК {mk}')
 
 @CQT.onerror
 def btn_pl_load_norm(self: mywindow):
+    if not CMS.user_access(rule= 'мкарт_управление_планированием_только_ПДО'):
+        return
+
     if 'shift' in CQT.get_key_modifiers(self):
         btn_norm_fact_by_opers(self)
         return
@@ -1981,7 +5181,7 @@ def btn_pl_load_norm(self: mywindow):
 
     @CQT.onerror
     def fnc_check_select(btn, dialog, t, p):
-        if btn.text() == 'Рассчитать':
+        if dialog.is_btn_yes_role(btn):
             row = CQT.get_dict_line_form_tbl(t)
             if not  row:
                 CQT.msgbox(f'Не выбран метод расчета')
@@ -2066,7 +5266,7 @@ def btn_pl_load_norm(self: mywindow):
             tbl.item(tbl.currentRow(), nk_field).setText(str(round(dict_norm[field] / 60, 2)))
 
     if list_change:
-        CMS.update_local_graf(self, update=True, pnom=pnom)
+        update_local_graf( update=True, pnom=pnom,fill_gant=not is_local_gant_hidden(self))
         obj_msg = CMS.Msg_b24(self.db_kplan, self.bd_naryad, self.db_resxml, self.db_users, pnom)
         obj_msg.send_msg('recalc_dates_disp', tbl = list_change)
         CQT.msgboxg_get_table_ok_inf(self, 'Успешно пересчитано', list_change, show_filtr=False,
@@ -2098,7 +5298,8 @@ def btn_pl_load_norm(self: mywindow):
 
     CQT.select_range(tbl, tbl.currentRow(), tbl.currentColumn())
     tbl.setFocus()
-
+    with CQT.table_updating(tbl):
+        oforml_row_plan_tbl(CQT.TableContext(tbl).current_row())
     if list_log:
         if CQT.msgboxgYN(f'Показать таблицу норм пооперационно?'):
             CQT.msgboxg_get_table(self, 'Расчет веса для сравнения', list_log, 'OK', disable_btn1=True, load_summ=True)
@@ -2165,6 +5366,8 @@ def select_exel_file(self:mywindow,*args):
 
 @CQT.onerror
 def pl_send_dates_into_ERP_from_exel(self:mywindow,*args):
+    if not CMS.user_access(rule= 'мкарт_управление_планированием_только_ПДО'):
+        return
     self.ui.btn_pl_send_dates_into_ERP.setEnabled(False)
     self.ui.tab_addit_info_poz_gant.blockSignals(True)
     self.ui.tab_addit_info_poz_gant.setCurrentIndex(0)
@@ -2179,28 +5382,10 @@ def pl_send_dates_into_ERP_from_exel(self:mywindow,*args):
 
 @CQT.onerror
 def send_into_ERP(self:mywindow):
-    tab = self.ui.tab_addit_info_poz_gant
-    ind = tab.currentIndex()
-    if tab.tabText(ind) == 'Этапы':
-        if self.glob_dict_etaps_from_erp == None:
-            return
-        line = CQT.get_dict_line_form_tbl(self.ui.tbl_kal_pl)
-        if line== {}:
-            return
-        kpl_num = int(line['plan.Пномер'])
-        znpr_num = CSQ.custom_request_c(self.db_kplan,f'''SELECT s_num FROM знпр INNER JOIN пл_оуп 
-                ON знпр.s_num == пл_оуп.Пномер_ЗП WHERE пл_оуп.НомПл = {kpl_num};''',one_column=True,one=True,hat_c=False)
-        rez = CMS.update_data_etaps_from_erp(self.db_kplan,self.glob_dict_etaps_from_erp,znpr_num) #11.11.25
-        if rez:
-            CQT.msgbox(f'Удачно',time_life=0.5)
-            tab.setCurrentIndex(0)
-        else:
-            CQT.msgbox(f'Не выполнено!')
-
+    if not CMS.user_access(rule= 'мкарт_управление_планированием_только_ПДО'):
         return
+    send_date_kompl_into_ERP(self)
 
-    if tab.tabText(ind) == 'ЗК':
-        send_date_kompl_into_ERP(self)
 @CQT.onerror
 def send_date_kompl_into_ERP(self:mywindow):
     exel_mode = False
@@ -2208,7 +5393,8 @@ def send_date_kompl_into_ERP(self:mywindow):
         exel_mode=True
 
     if self.glob_plan_addit_info_poz_gant_old_date == None:
-        CQT.msgbox(f'Дата отгрузки `{self.glob_plan_addit_info_poz_gant_old_date}` не соотнесена с текущей позицией, ошибка разбора документа.\nНужно прогрузить вкладку ЗК')
+        CQT.msgbox(f'Дата отгрузки `{self.glob_plan_addit_info_poz_gant_old_date}` не соотнесена с текущей позицией,'
+                   f' ошибка разбора документа.\nНужно прогрузить вкладку ЗК')
         return
 
 
@@ -2344,85 +5530,54 @@ def send_date_kompl_into_ERP(self:mywindow):
 
 
 
-@CQT.onerror
-def get_fill_dates_etap_DELETE(self: mywindow):
-    path = r'O:\Журналы и графики\Ведомости для передачи\Sroki_etapov.txt'
-    if not F.existence_file_c(path):
-        CQT.msgbox(f'файл не найден')
-        return
-    list_proj = F.list_of_lists_to_list_of_dicts(F.open_file_c(path, False, "|", False))
-    dict_names = {'Резка': ['пл_заг', 'ПДата_нач_заг', 'ПДата_зав_заг'],
-                  'Мех_обработка': ['пл_мех', 'Пдата_нач_мехобр', 'Пдата_зав_мехобр'],
-                  'Сборка+сварка': ['пл_сб', "Пдата_нач_сб", ''],
-                  'Зачистка': ['пл_сб', "", 'Пдата_зав_сб'],
-                  'Покрытие': ['пл_покр', "Пдата_нач_покр", 'Пдата_зав_покр'],
-                  'Упаковка': ['пл_компл', "ПДата_нач_комплект_упаковки", 'ПДата_зав_комплект_упаковки'],
-                  'Всп': ['пл_отк', "Пдата_нач_контр", 'Пдата_зав_контр']}
-    set_proj = set(['"' + _['Номер проекта'] + '$' + _['Номер заявки'] + '"' for _ in list_proj])
-    list_proj_str = ','.join(set_proj)
-
-    query = f"""SELECT пл_оуп.НомПл, пл_оуп.№проекта || '$' || пл_оуп.№ERP as Проект, 
-    пл_заг.ПДата_нач_заг, пл_заг.ПДата_зав_заг, пл_заг.ФДата_нач_заг, пл_заг.ФДата_зав_заг, 
-    пл_мех.Пдата_нач_мехобр, пл_мех.Пдата_зав_мехобр, пл_мех.Фдата_нач_мехобр, пл_мех.Фдата_зав_мехобр, 
-    пл_компл.Дата_комплект_под_сб, пл_компл.ПДата_нач_комплект_упаковки,  пл_компл.ПДата_зав_комплект_упаковки, 
-    пл_компл.ФДата_нач_комплект_упаковки,  пл_компл.ФДата_зав_комплект_упаковки, 
-    пл_сб.Пдата_нач_сб, пл_сб.Пдата_зав_сб, пл_сб.Фдата_нач_сб, пл_сб.Фдата_зав_сб, 
-    пл_покр.Пдата_нач_покр, пл_покр.Пдата_зав_покр, пл_покр.Фдата_нач_покр, пл_покр.Фдата_зав_покр, 
-    пл_отк.Пдата_нач_контр, пл_отк.Пдата_зав_контр, пл_отк.Фдата_нач_контр, пл_отк.Фдата_зав_контр 
-    
-    FROM пл_оуп
-    INNER JOIN 
-     
-    пл_заг   ON пл_заг.НомПл    = пл_оуп.НомПл, 
-    пл_мех   ON пл_мех.НомПл    = пл_оуп.НомПл, 
-    пл_компл ON пл_компл.НомПл  = пл_оуп.НомПл, 
-    пл_сб    ON пл_сб.НомПл     = пл_оуп.НомПл, 
-    пл_покр  ON пл_покр.НомПл   = пл_оуп.НомПл, 
-    пл_отк   ON пл_отк.НомПл    = пл_оуп.НомПл 
-    
-     WHERE пл_оуп.№проекта || '$' || пл_оуп.№ERP IN ({list_proj_str})"""
-    res = CSQ.custom_request_c(self.db_kplan, query, rez_dict=True)
-    set_rows = set()
-    list_not_find_rows = []
-    fl_fill = False
-    for item in res:
-        proj = item['Проект']
-        for row in list_proj:
-            if row['Номер проекта'] + '$' + row['Номер заявки'] == proj:
-                fl_fill = True
-                for key in dict_names:
-                    if key in row:
-                        nach, kon = row[key].split("/")
-                        if nach != '':
-                            nach = F.datetostr(F.strtodate(nach, '%d.%m.%Y'), "%Y-%m-%d")
-                            if dict_names[key][1] in item:
-                                if item[dict_names[key][1]] != nach:
-                                    pass
-                                    print(f'В {dict_names[key][0]} было {item[dict_names[key][1]]} стало {nach}')
-                                    query = f"""UPDATE {dict_names[key][0]} SET {dict_names[key][1]} = "{nach}" WHERE НомПл = {item['НомПл']}"""
-                                    CSQ.custom_request_c(self.db_kplan, query)
-                                    set_rows.add(item['НомПл'])
-                                    F.sleep(0.25)
-                        if kon != "":
-                            kon = F.datetostr(F.strtodate(kon, '%d.%m.%Y'), "%Y-%m-%d")
-                            if dict_names[key][2] in item:
-                                if item[dict_names[key][2]] != kon:
-                                    pass
-                                    print(f'В {dict_names[key][0]} было {item[dict_names[key][2]]} стало {kon}')
-                                    query = f"""UPDATE {dict_names[key][0]} SET {dict_names[key][2]} = "{kon}" WHERE НомПл = {item['НомПл']}"""
-                                    CSQ.custom_request_c(self.db_kplan, query)
-                                    set_rows.add(item['НомПл'])
-                                    F.sleep(0.25)
-        if fl_fill == False:
-            list_not_find_rows.append(item['НомПл'])
-    for row in set_rows:
-        CMS.update_local_graf(self, True, row, False)
-    CQT.msgbox(f'Успешно')
-
 
 @CQT.onerror
-def update_tabels(self: mywindow):
+def update_plan_main_tbl(self: mywindow):
+    gui_mode_off()
+    if DTCLS.FIELDS_DB_INFO.list_unchecked:
+        def fnc_oform(tbl, *args):
+            list_checks = CSQ.custom_request_c(DTCLS.db_kplan,f"""SELECT * FROM info_fields_kpl_check_rules""",rez_dict=True)
 
+            t = CQT.TableContext(tbl)
+            for row in t.rows():
+                CQT.add_combobox(DTCLS.app_self,t.tbl,row.i,t.nf['Правило'],
+                                 [f"{_['name']} ({_['descr']})" for _ in list_checks],
+                                 list_data=[_['id'] for _ in list_checks],return_data=True)
+        def fnc_btn(btn: QtWidgets.QPushButton, dialog:CQT.Dialog_tbl, tbl: QtWidgets.QTableWidget,*args):
+            if dialog.is_btn_yes_role(btn):
+                t = CQT.TableContext(tbl)
+                for row in t.rows():
+                    cmb:CQT.QtWidgets.QComboBox = row.widget('Правило')
+                    id_rule = cmb.currentData(QtCore.Qt.UserRole)
+                    field_id = int(row.value('Номер'))
+                    CSQ.custom_request_c(DTCLS.db_kplan,f"""INSERT INTO info_fields_kpl_check_rules_val 
+                            (field, rule, comment) VALUES(?,?,?)""",list_of_lists_c=[[field_id,id_rule,F.now()]])
+                CQT.msgbox(f'Успешно. Перезагрузка')
+                dialog.accept()
+            else:
+                dialog.reject()
+        if DTCLS.USER_CONFIG.is_developer:
+            dict_tabels = {_['Таблица']: dict() for _ in DTCLS.FIELDS_DB_INFO.list_unchecked}
+            for tbl_name in dict_tabels.keys():
+                dict_tabels[tbl_name] = CSQ.dict_types_tbl(DTCLS.db_kplan, tbl_name,as_str=True)
+            template = []
+            for it in DTCLS.FIELDS_DB_INFO.list_unchecked:
+                it["Правило"]=''
+                if it['Поле'] not in dict_tabels[it['Таблица']]:
+                    it['Тип'] = f'Не создано поле "{it['Поле']}" в таблице "{it['Таблица']}"'
+                else:
+                    it['Тип'] = dict_tabels[it['Таблица']][it['Поле']]
+                template.append(it)
+
+
+            rez = CQT.msgboxg_get_table(DTCLS.app_self, 'Не проверенные поля:', template,
+                                         WindowTitle=f'{CEMOJ.EmojiMain.Эмоции.confused} Нет правил проверки',
+                                         styleSheet=CQT.MES_CSS,func_oform_tbl=fnc_oform,func_btn0=fnc_btn,not_standart_close=True)
+        else:
+            CQT.msgbox(' Нет правил проверки для некоторых полей')
+
+        sys.exit()
+        raise Exception
     def load_month_for_apply_diap_dates_to_sb_in_tbl(self: mywindow):
         cmb = self.ui.cmb_apply_diap_dates_to_sb_in_tbl
         cmb.clear()
@@ -2434,7 +5589,6 @@ def update_tabels(self: mywindow):
         for month in rez:
             if month['Дата']:
                 cmb.addItem(month['Дата'])
-
 
     def get_params_kpl(self: mywindow):
         kpl_bool_load_zav = 0
@@ -2459,122 +5613,107 @@ def update_tabels(self: mywindow):
     # update_date_kplmk_from_narmk(self)# отключено
     self.Data_plan.DICT_INFO_FIELDS_KPL = self.Data_plan.GET_DICT_INFO_FIELDS_KPL(self.Data_plan.db_kplan)
     #temporary_fix(self)
-    self.ui.tbl_kal_pl.blockSignals(True)
-    check_set_fininsh_py(self)
-    self.kpl_mode = 0
+    with QtCore.QSignalBlocker(self.ui.tbl_kal_pl):
+        check_set_fininsh_py(self)
+        self.kpl_mode = 0
 
-    # self.LIST_ETAPS = [ _ for _ in CSQ.get_list_of_tables_c(self.db_kplan) if 'пл_' in _ ]
+        # self.LIST_ETAPS = [ _ for _ in CSQ.get_list_of_tables_c(self.db_kplan) if 'пл_' in _ ]
 
-    self.dict_tbls_kpl_info = dict()
-    self.edit_tabel_mode = False
-    if "val_masht" not in dir(self):
-        self.val_masht = 12
+        self.dict_tbls_kpl_info = dict()
+
+        if "val_masht" not in dir(self):
+            self.val_masht = 12
+            try:
+                self.val_masht = int(CMS.load_tmp_path('mk_val_masht'))
+            except:
+                pass
+        VPL.load_diapazon_month(self)
+
+
+        #=======ЗАГРУЗКА ДАННЫХ==============
+        load_gui(self)
+        #===================================
+
+        self.ui.splitter_pl.setSizes([400, 180])
+
+
+        self.glob_kpl_summ_selct_tbl = ''
+        self.dict_form_kpl = ''
+        KPLUF.fill_pl_user_filtrs(self)
+        load_month_for_apply_diap_dates_to_sb_in_tbl(self)
+
+        m = CODAT.OrdersComposit(self.USER_CONFIG.ERP_base_name['Значение'])
         try:
-            self.val_masht = int(CMS.load_tmp_path('mk_val_masht'))
+            #self.DICT_plan_erp_nomen_refs = F.deploy_dict_c(m.get_response(doc_name='Catalog_Номенклатура',
+            #                          wet_filtr=f"""?$select= Ref_Key, Description, Артикул""",lazy_method_huours = 2), 'Ref_Key')
+
+            wet_req_text = f"""ВЫБРАТЬ
+                    Номенклатура.Наименование КАК Description,
+                    Номенклатура.Артикул КАК Артикул,
+                    УНИКАЛЬНЫЙИДЕНТИФИКАТОР(Номенклатура.Ссылка) КАК Ref_Key
+                ИЗ
+                    Справочник.Номенклатура КАК Номенклатура
+                ГДЕ
+                    Номенклатура.ВидНоменклатуры В ИЕРАРХИИ
+                (ВЫБРАТЬ ПЕРВЫЕ 1
+                    ВидыНоменклатуры.Ссылка КАК Ссылка
+                ИЗ
+                    Справочник.ВидыНоменклатуры КАК ВидыНоменклатуры
+                ГДЕ
+                    ВидыНоменклатуры.ЭтоГруппа = ИСТИНА
+                    И ВидыНоменклатуры.Наименование = "{CFG.Config.place.Имя}");"""
+            key, data_rez = APIERP.get_wet_request(wet_req_text,lazy_method_huours=2)
+            if key != 200:
+                if not CFG.Config.user_config.is_developer:
+                    self.ui.tabWidget.setCurrentIndex(self.START_TAB_IND)
+                CQT.msgbox(f'Ошибка получения данных код ({key}) из ERP')
+                return
+            self.DICT_plan_erp_nomen_refs = F.deploy_dict_c(data_rez['data'] , 'Ref_Key')
+
+            self.DICT_plan_erp_Пользователи = F.deploy_dict_c(m.get_response(doc_name=f"Catalog_Пользователи",
+                                       wet_filtr=f"?$select=Ref_Key, Description",lazy_method_huours = 24), 'Ref_Key')
+
+            self.DICT_plan_erp_ПричиныПриостановкиПроизводства = F.deploy_dict_c(m.get_response(doc_name=f"Catalog_ПричиныПриостановкиПроизводства",
+                                       wet_filtr=f"?$select=*",lazy_method_huours = 24), 'Ref_Key')
         except:
-            pass
-    VPL.load_diapazon_month(self)
+            CQT.msgbox(f'Ошибка получения данных из 1С (сервер не отвечает) попробуй через минуту')
+            self.ui.tabWidget.setCurrentIndex(self.START_TAB_IND)
 
+        self.glob_kpl_pull_poz_dict = dict()
+        self.ui.splitter_pl.setSizes([400, 0])
 
-    #=======ЗАГРУЗКА ДАННЫХ==============
-    load_gui(self)
-    #===================================
-
-
-
-    self.ui.splitter_pl.setSizes([400, 180])
-
-    VPL.get_max_mosh_from_db(self)
-    self.glob_kpl_summ_selct_tbl = ''
-    self.dict_form_kpl = ''
-    KPLUF.fill_pl_user_filtrs(self)
-    load_month_for_apply_diap_dates_to_sb_in_tbl(self)
-
-    m = CODAT.OrdersComposit(self.USER_CONFIG.ERP_base_name['Значение'])
-    try:
-        #self.DICT_plan_erp_nomen_refs = F.deploy_dict_c(m.get_response(doc_name='Catalog_Номенклатура',
-        #                          wet_filtr=f"""?$select= Ref_Key, Description, Артикул""",lazy_method_huours = 2), 'Ref_Key')
-
-        wet_req_text = f"""ВЫБРАТЬ
-                Номенклатура.Наименование КАК Description,
-                Номенклатура.Артикул КАК Артикул,
-                УНИКАЛЬНЫЙИДЕНТИФИКАТОР(Номенклатура.Ссылка) КАК Ref_Key
-            ИЗ
-                Справочник.Номенклатура КАК Номенклатура
-            ГДЕ
-                Номенклатура.ВидНоменклатуры В ИЕРАРХИИ
-            (ВЫБРАТЬ ПЕРВЫЕ 1
-                ВидыНоменклатуры.Ссылка КАК Ссылка
-            ИЗ
-                Справочник.ВидыНоменклатуры КАК ВидыНоменклатуры
-            ГДЕ
-                ВидыНоменклатуры.ЭтоГруппа = ИСТИНА
-                И ВидыНоменклатуры.Наименование = "{CFG.Config.place.Имя}");"""
-        key, data_rez = APIERP.get_wet_request(wet_req_text,lazy_method_huours=2)
-        if key != 200:
-            if not CFG.Config.user_config.is_developer:
-                self.ui.tabWidget.setCurrentIndex(self.START_TAB_IND)
-            CQT.msgbox(f'Ошибка получения данных код ({key}) из ERP')
-            return
-        self.DICT_plan_erp_nomen_refs = F.deploy_dict_c(data_rez['data'] , 'Ref_Key')
-        
-        self.DICT_plan_erp_Пользователи = F.deploy_dict_c(m.get_response(doc_name=f"Catalog_Пользователи",
-                                   wet_filtr=f"?$select=Ref_Key, Description",lazy_method_huours = 24), 'Ref_Key')
-
-        self.DICT_plan_erp_ПричиныПриостановкиПроизводства = F.deploy_dict_c(m.get_response(doc_name=f"Catalog_ПричиныПриостановкиПроизводства",
-                                   wet_filtr=f"?$select=*",lazy_method_huours = 24), 'Ref_Key')
-    except:
-        CQT.msgbox(f'Ошибка получения данных из 1С (сервер не отвечает) попробуй через минуту')
-        self.ui.tabWidget.setCurrentIndex(self.START_TAB_IND)
-
-    self.glob_kpl_pull_poz_dict = dict()
-    self.ui.splitter_pl.setSizes([400, 0])
-    self.ui.splitter_gant_local.setSizes([1040, 871])
-    self.ui.fr_tree_fields.setHidden(True)
-    self.ui.tbl_kal_pl.blockSignals(False)
-    self.ui.fr_plan_day_edit.setHidden(True)
-    self.ui.fr_poz_from_exel.setHidden(True)
-    self.ui.fr_gant_local_tbl.setHidden(False)
+        self.ui.fr_tree_fields.setHidden(True)
+        self.ui.fr_plan_day_edit.setHidden(True)
+        self.ui.tbl_limit_gant.setHidden(True)
+        self.ui.fr_poz_from_exel.setHidden(True)
+        self.ui.fr_gant_local_tbl.setHidden(False)
 
 def is_local_gant_hidden(self:mywindow)->bool:
     if self.ui.splitter_pl.sizes()[1] == 0:
         return True
     return False
 
-def select_row(self: mywindow):
-    if is_local_gant_hidden(self):
-        return
-    CMS.update_local_graf(self)
-    GPL.fill_select_poz_kpl(self)
-    self.ui.btn_pl_send_dates_into_ERP.setEnabled(False)
-    self.ui.tab_addit_info_poz_gant.blockSignals(True)
-    self.ui.tab_addit_info_poz_gant.setCurrentIndex(0)
-    self.ui.tab_addit_info_poz_gant.blockSignals(False)
+
 
 @CQT.onerror
 def load_gui(self: mywindow, *args):
     show_fr(self)
-
+    gui_mode_off()
     load_table_db(self)
-
     self.kpl_mode = 0  # объемный выключен
     self.kpl_mode_pull = 0  # компоновщик выключен
 
 
-def btn_pl_add_poz_click(self):
-    if self.regim == '':
-        show_fr(self, 'tbl_add')
-        load_tbl_add_new_poz(self)
-        self.regim = 'add'
-    else:
-        show_fr(self)
-        self.regim = ''
+
+
 
 
 @CQT.onerror
 def plan_day_edit_set_weekend(self: mywindow, *args):
-    tbl_gant = self.ui.tbl_preview
-    weekends = CMS.Plan_custom_weekends(self.pnom_kplan_select)
+    g_handler = Gant_handler()
+    if g_handler is None:
+        return
+    weekends = CMS.Plan_custom_weekends(g_handler.poz_gant.poz_id)
 
     if 'shift' in CQT.get_key_modifiers(self):
 
@@ -2586,58 +5725,33 @@ def plan_day_edit_set_weekend(self: mywindow, *args):
 
 
     else:
-        selection_cells = CQT.get_selected_cells_coordinates(tbl_gant)
-        list_days_parts = [tbl_gant.horizontalHeaderItem(_[1]).text().split('\n') for _ in selection_cells]
-        list_days_oform = [f'{_[3]} - {".".join(_[:3])}' for _ in list_days_parts]
-        list_days_oform.insert(0,'Не рабочие дни')
-        list_days = [F.strtodate('.'.join(_[:3]), "%d.%m.%y") for _ in list_days_parts]
+        list_cld_days_selected = g_handler.get_list_cld_days_selected()
+        list_days_oform = [{'Дата':f'{F.get_day_name(_.day_week)} - {F.datetostr(_.dt_datetime,"%d.%m.%Y")}'}
+                           for _ in list_cld_days_selected]
+
         ans = CQT.msgboxg_get_table(self,'Дни к добавлению',list_days_oform,'Продолжить',yesNoMode=True)
         if not ans:
             return
-        weekends.add_days(set(list_days))
-    CMS.update_local_graf(self,update=True)
+        weekends.add_days(set([_.dt_datetime for _ in list_cld_days_selected]))
+    update_local_graf(update=True,)
     #CQT.msgbox(f'Успешно. Теперь нужно пересчитать гант')
 
 
 
-@CQT.onerror
-def plan_day_edit_recalc(self: mywindow, *args):
-    tbl_gant:QtWidgets.QTableWidget = self.ui.tbl_preview
-    line = CQT.get_dict_line_form_tbl(tbl_gant)
-    if len(tbl_gant.selectedIndexes()) > 1:
-        CQT.msgbox(f'Нужно выбрать одну строку')
-        return
-    if len(line) == 0:
-        CQT.msgbox(f'Не выбран этап в ганте')
-        return
-    curr_field = line['Этап']
-    if curr_field[:4] in ('план', 'факт'):
-        pl_name = 'план' + curr_field[4:]
-        f_name = 'факт' + curr_field[4:]
-    else:
-        CQT.msgbox(f'Не подходящий этап')
-        return
-
-    poz = CMS.Pozition(self.pnom_kplan_select, self.db_kplan, self.bd_naryad, self.db_resxml, self.db_users,
-                       self, False, None, True)
-    dict_fact_jur = poz.recalc_get_day_plan_as_fact(pl_name, f_name)
-    if dict_fact_jur == None:
-        return
-    self.Data_plan.DICT_REPLACE_BY_DAYS = dict_fact_jur
-    CMS.update_local_graf(self, True, self.pnom_kplan_select, True)
-    CQT.msgbox(f'Успешно')
-
 
 @CQT.onerror
 def plan_on_of_day_edit_frame(self: mywindow, *args):
+    if not CMS.user_access(rule= 'мкарт_управление_планированием_только_ПДО'):
+        return
     if self.ui.fr_plan_day_edit.isHidden():
         self.ui.fr_plan_day_edit.setHidden(False)
         self.ui.le_plan_day_edit_recalc_hour_per_day.setText('16')
         self.ui.fr_setup_etaps.setHidden(True)
+        self.ui.tbl_limit_gant.setHidden(False)
     else:
         self.ui.fr_plan_day_edit.setHidden(True)
         self.ui.fr_setup_etaps.setHidden(False)
-
+        self.ui.tbl_limit_gant.setHidden(True)
 @CQT.onerror
 def btn_pull_poz_show(self: mywindow, *args):
     if self.kpl_mode_pull == 0:  # компоновщик выключен
@@ -2647,9 +5761,14 @@ def btn_pull_poz_show(self: mywindow, *args):
         POZPL.fill_list_month_pozplan(self)
         self.ui.cmb_for_adapt.clear()
         self.ui.cmb_for_adapt.addItem('')
-        self.ui.cmb_for_adapt.addItems(CMS.get_shablon_vidov(self.DICT_PROFESSIONS))
+        dict_nicks = CMS.get_shablon_vidov(self.DICT_PROFESSIONS)
+        CQT.fill_list_combobx(self,self.ui.cmb_for_adapt,[_.replace('_н_см','') for _ in dict_nicks],
+                              list_data=dict_nicks)
+
         self.ui.btn_pl_mode.setHidden(True)
         self.kpl_mode_pull = 1  # объемный вылючен
+        self.ui.lbl_srv_cld_plan_workforce.setText(CEMOJ.EmojiMain.ПерсоналРоли.server.symbol)
+        self.ui.lbl_local_cld_plan_workforce.setText(CEMOJ.EmojiMain.ПерсоналРоли.local_machine.symbol)
     else:
         self.ui.fr_pull_poz.setHidden(True)
         self.ui.btn_pl_mode.setHidden(False)
@@ -2657,17 +5776,7 @@ def btn_pull_poz_show(self: mywindow, *args):
 
 
 @CQT.onerror
-def btn_pl_mode(self):
-    def check_one_napr_filtr(self):
-        tbl = self.ui.tbl_kal_pl
-        set_napr = set()
-        nf_napr = CQT.num_col_by_name_c(tbl, 'Направление')
-        for i in range(tbl.rowCount()):
-            if not tbl.isRowHidden(i):
-                set_napr.add(tbl.item(i, nf_napr).text())
-        if len(set_napr) != 1:
-            return False
-        return list(set_napr)[0]
+def btn_pl_mode(self:mywindow):
 
     def get_koef_selected_napr(self):
         for dic in self.Data_plan.DICT_NAPRAVLENIE.values():
@@ -2675,42 +5784,15 @@ def btn_pl_mode(self):
                 return dic['val'] / 100
         return 0
 
-    def count_rows():
-        tbl = self.ui.tbl_kal_pl
+    if self.is_main_mode():  # объемный выключен :включаем
 
-        cntr = 0
-        for i in range(tbl.rowCount()):
-            if not tbl.isRowHidden(i):
-                cntr +=1
-        return  cntr
-
-    if 'kpl_mode' not in self.__dict__:
-        self.kpl_mode = 1
-
-    if self.kpl_mode == 0:  # объемный выключен
-        self.selected_napr = None
-        self.selected_napr_koef = 1
-        selected_napr = check_one_napr_filtr(self)
-        #if not selected_napr:
-        #    if not CQT.msgboxgYN(f'В фильтре таблицы должно быть не более 1 направления для генерации графика мощности.\n Продолжить?'):
-        #        return
-        #else:
-        #    self.selected_napr = selected_napr
-        #    self.selected_napr_koef = get_koef_selected_napr(self)
-        #
-        #if count_rows() > 100:
-        #    if not CQT.msgboxgYN(f'В таблице более 100 строк, выгрузка займет достаточно много времени.\n Продолжить?'):
-        #        return
-        #
+        if not VPL.load_tbl_gant(self):  # объемный загрузка
+            return
         show_fr(self, graf=1)  # объемный включаем
-        self.kpl_mode = 1  # объемный включен
-        self.ui.fr_svod.setHidden(True)
-        self.ui.tbl_pl_gaf_svod.setHidden(True)
-        VPL.load_tbl_gant(self)  # объемный загрузка
+        fill_napr_into_cmb_select_napr(self)
     else:
         load_gui(self)  # объемный выключить
-        self.selected_napr_koef = 1
-        self.kpl_mode = 0
+
 
 
 @CQT.onerror
@@ -2723,60 +5805,53 @@ def clck_tbl_verticalHeader(self, row, *args):
     self.ui.tbl_pl_gaf_filtr.item(0, CQT.num_col_by_name_c(tbl, 'Этап')).setText(etap)
 
 
-def kal_pl_left(self):
-    tbl = self.ui.tbl_pl_add_poz
-    column = tbl.currentColumn()
-    if column == None or column == -1 or column == 0:
+
+
+def btn_pl_add_poz_click(self):
+    if not CMS.user_access(rule= 'мкарт_управление_планированием_только_ПДО'):
         return
-    spis = CQT.list_from_wtabl_c(tbl, hat_c=True)
-    spis_new = copy.deepcopy(spis)
-    spis_new[0].pop(column)
-    spis_new[1].pop(column)
-    spis_new[0].insert(column - 1, spis[0][column])
-    spis_new[1].insert(column - 1, spis[1][column])
-    fill_tbl_settings(self, spis_new)
-    tbl.selectColumn(column - 1)
 
+    def add_poz_mode_on():
+        self.ui.fr_settings_pl.setHidden(True)
+        self.ui.btn_pull_poz_show.setHidden(False)
+        self.ui.btn_pl_mode.setHidden(False)
+        CQT.clear_tbl(self.ui.tbl_pl_add_poz)
+        self.ui.tbl_pl_add_poz.setHidden(False)
 
-def kal_pl_right(self):
-    tbl = self.ui.tbl_pl_add_poz
-    column = tbl.currentColumn()
-    spis = CQT.list_from_wtabl_c(tbl, hat_c=True)
-    if column == None or column == -1 or column == len(spis[0]) - 1:
-        return
-    spis_new = copy.deepcopy(spis)
-    spis_new[0].pop(column)
-    spis_new[1].pop(column)
-    spis_new[0].insert(column + 1, spis[0][column])
-    spis_new[1].insert(column + 1, spis[1][column])
-    fill_tbl_settings(self, spis_new)
-    tbl.selectColumn(column + 1)
+        self.ui.fr_pull_poz.setHidden(True)
+        self.ui.fr_pl_graf.setHidden(True)
+        self.ui.fr_pl_tables.setHidden(False)
 
+        self.ui.fr_pl_add_poz.setHidden(False)
+        self.ui.fr_pl_etap.setHidden(True)
+        self.ui.btn_pl_mode.setHidden(True)
+        self.ui.tbl_pl_add_poz.setHidden(False)
+        DTCLS.ADD_POZ_MODE = True
 
-def fill_tbl_settings(self: mywindow, list_conf):
-    def check_val(self: mywindow, checked, row, col):
-        self.ui.tbl_pl_add_poz.item(row, col).setText(str(int(checked)))
-    CQT.fill_wtabl(list_conf, self.ui.tbl_pl_add_poz)
-    for j in range(self.ui.tbl_pl_add_poz.columnCount()):
-        val = 1
-        if list_conf[-1][j] != 1:
-            val = 0
-        CQT.add_check_box(self.ui.tbl_pl_add_poz, 0, j, val=val, conn_func_checked_row_col=check_val, self=self)
-        it_value = list_conf[0][j] #10.11.25
-        if it_value in self.Data_plan.DICT_INFO_FIELDS_KPL and self.Data_plan.DICT_INFO_FIELDS_KPL[it_value]['is_system']:
-            chk_box: QtWidgets.QCheckBox = self.ui.tbl_pl_add_poz.cellWidget(0, j)
-            chk_box.setEnabled(False)
-            chk_box.setChecked(True)
-
-
-
+    if not DTCLS.ADD_POZ_MODE:
+        add_poz_mode_on()
+        if not load_tbl_add_new_poz(self):
+            gui_mode_off()
+    else:
+        gui_mode_off()
 
 def btn_pl_settings(self:mywindow):
-    if self.regim == '':
-        show_fr(self, 'tbl_add')
-        self.ui.btn_kal_pl_left.setHidden(False)
-        self.ui.btn_kal_pl_right.setHidden(False)
+    def gui_settings_pl_mode_on():
         self.ui.fr_settings_pl.setHidden(False)
+        self.ui.btn_pull_poz_show.setHidden(True)
+        self.ui.btn_pl_mode.setHidden(True)
+        CQT.clear_tbl(self.ui.tbl_pl_add_poz)
+        self.ui.tbl_pl_add_poz.setHidden(True)
+        self.ui.tbl_select_etap_edit_poz.setHidden(True)
+        self.ui.fr_pull_poz.setHidden(True)
+        self.ui.fr_pl_graf.setHidden(True)
+        self.ui.fr_pl_tables.setHidden(False)
+        self.ui.fr_pl_add_poz.setHidden(False)
+        self.ui.fr_pl_etap.setHidden(True)
+
+        DTCLS.SETTINGS_PL_MODE = True
+
+    if not DTCLS.SETTINGS_PL_MODE:
 
         self.ui.chk_autorepeat_update_fact.blockSignals(True)
         if CMS.is_autorepeat_update_fact(CFG.Config.project.db_naryad,self.place.poki):
@@ -2784,18 +5859,19 @@ def btn_pl_settings(self:mywindow):
         else:
             self.ui.chk_autorepeat_update_fact.setChecked(False)
         self.ui.chk_autorepeat_update_fact.blockSignals(False)
-        db, list_conf = load_db(self,only_hat=True)
-        fill_tbl_settings(self, list_conf)
-        self.regim = 'cnf'
+        gui_settings_pl_mode_on()
+
     else:
-        show_fr(self)
-        self.regim = ''
+        gui_mode_off()
 
 
-def create_list_fields(self):
-    'Загрузка всех полей с БД'
+
+
+def create_list_fields____(self):#TO DELETe
     list_tables = ['plan','mk.Дата_завершения','mk.Вес','mk.xml', 'знпр']
+    custom_fields = ['Дата_прих_ордера_гп']
     filtr_poki = list(self.Data_plan.DICT_PODR_POKI.keys())
+
     tables = [_ for _ in CSQ.get_list_of_tables_c(self.db_kplan) if 'пл_' in _ and _ in filtr_poki]
     for i in range(len(self.Data_plan.DICT_PODR)):
         for table in tables:
@@ -2805,7 +5881,18 @@ def create_list_fields(self):
     for table in tables:
         if table not in self.Data_plan.DICT_PODR:
             list_tables.append(table)
+
     dict_fields = dict()
+    for cust_field in custom_fields:
+        name_field = f'cust.{cust_field}'
+        dict_fields[name_field] = {'view':1}
+        descr = ''
+        if name_field in self.Data_plan.DICT_INFO_FIELDS_KPL:
+            descr = self.Data_plan.DICT_INFO_FIELDS_KPL[name_field]['nickname']
+            if self.Data_plan.DICT_INFO_FIELDS_KPL[name_field]['hide'] == 1:
+                dict_fields[name_field]['view'] = 0
+        dict_fields[name_field]['descr'] = descr
+
     for table in list_tables:
         if '.' in table:
             table , fields = table.split('.')
@@ -2814,103 +5901,96 @@ def create_list_fields(self):
             fields = CSQ.list_of_columns_c(self.db_kplan, table)
         for field in fields:
             name_field = f'{table}.{field}'
-            dict_fields[name_field] = 1
+            dict_fields[name_field] = {'view':1}
+            descr = ''
             if name_field in self.Data_plan.DICT_INFO_FIELDS_KPL:
+                descr = self.Data_plan.DICT_INFO_FIELDS_KPL[name_field]['nickname']
                 if self.Data_plan.DICT_INFO_FIELDS_KPL[name_field]['hide'] == 1:
-                    dict_fields[name_field] = 0
+                    dict_fields[name_field]['view'] = 0
+            dict_fields[name_field]['descr'] = descr
     return dict_fields
 
 
-def fix_old_field_path(new_path: str):
-    import shutil
-    old_path = 'Config\\fields.pickle'
-    if os.path.exists(old_path):
-        shutil.move(old_path, new_path)
 
 
-def load_list_fields(self, all=False):
-    """Приостановка отключенных полей из конфига"""
-    path = os.path.join(CMS.tmp_dir(), 'fields.pickle')
-    fix_old_field_path(path)
-    dict_fields_mes = create_list_fields(self)
-    if F.existence_file_c(path) and all == False:
-        dict_cnf = F.load_file_pickle(path)
-        tmp_list = [['n', 'fied']]
-        max_n = 0
-        for field, val in dict_fields_mes.items():
-            if field in dict_cnf and val == 1 and field not in LIST_HIDE_FIELDS:
-                tmp_list.append([dict_cnf[field]['order'], field])
-                if dict_cnf[field]['order'] > max_n:
-                    max_n = dict_cnf[field]['order']
+def update_list_fields(fl_one_row=False):
+    DTCLS.FIELDS_DB_INFO.force_view = fl_one_row
+    dict_fields_o = DTCLS.FIELDS_DB_INFO.dict_fields
 
-        for field, val in dict_fields_mes.items():
-            if field in dict_cnf and val == 0 or field in LIST_HIDE_FIELDS:
-                max_n+=1
-                tmp_list.append([max_n, field])
+    dict_cnf = DTCLS.FIELDS_DB_INFO.load_user_data(f"poki_{CFG.Config.place.poki}_")
+    if not dict_cnf:
+        dict_cnf =  DTCLS.FIELDS_DB_INFO.load_user_data()
 
-        tmp_list = F.sort_by_column_c(tmp_list, 'n')
-        for field, val in dict_fields_mes.items():
-            if field not in dict_cnf:
-                tmp_list.append([tmp_list[-1][0] + 1, field])
-        dict_fields = [[], []]
-        for i in range(1, len(tmp_list)):
-            dict_fields[0].append(tmp_list[i][1])
-            if tmp_list[i][1] in dict_cnf and dict_fields_mes[tmp_list[i][1]] == 1:
-                dict_fields[1].append(dict_cnf[tmp_list[i][1]]['hidden'])
-            else:
-                dict_fields[1].append(dict_fields_mes[tmp_list[i][1]])
-        return dict_fields
+
+    if dict_cnf is None:
+        DTCLS.FIELDS_DB_INFO.first_load = True
     else:
-        tmp_list = [['n', 'fied']]
-        max_n = 0
-        for i, field in enumerate(dict_fields_mes.keys()):
-            if dict_fields_mes[field] == 1 and field not in LIST_HIDE_FIELDS:
-                tmp_list.append([i, field])
-                max_n = i
+        for f_cnf, data_cnf in dict_cnf.items():
+            if f_cnf in dict_fields_o:
+                dict_fields_o[f_cnf].usr_hide = not data_cnf['hidden']
+                dict_fields_o[f_cnf].usr_idx = data_cnf['order']
+        set_new_fields = set(dict_fields_o.keys()) - set(dict_cnf.keys())
 
-        for i, field in enumerate(dict_fields_mes.keys()):
-            if dict_fields_mes[field] == 0 or field in LIST_HIDE_FIELDS:
-                max_n+=1
-                tmp_list.append([max_n, field])
-        dict_fields = [[], []]
-        for i in range(1, len(tmp_list)):
-            dict_fields[0].append(tmp_list[i][1])
-            dict_fields[1].append(dict_fields_mes[tmp_list[i][1]])
-    return dict_fields
+        if set_new_fields:
+            for field_o in dict_fields_o.values():
+                if field_o.name_mes in set_new_fields:
+                    field_o.usr_hide = True
+
+    dict_fields_o['plan.ТипГр'].sys_hide = not DTCLS.FIELDS_DB_INFO.use_groups
+    dict_fields_o['plan.Группа'].sys_hide = not DTCLS.FIELDS_DB_INFO.use_groups
+    DTCLS.FIELDS_DB_INFO.fix_indx()
 
 
-def btn_pl_edit_poz_click(self):
-    if self.regim == '':
-        show_fr(self, 'tbl_edit')
+
+
+def btn_pl_edit_poz_click(self: mywindow):
+    def gui_edit_poz_mode_on():
+        self.ui.fr_settings_pl.setHidden(True)
+        self.ui.btn_pull_poz_show.setHidden(False)
+        self.ui.btn_pl_mode.setHidden(False)
+        CQT.clear_tbl(self.ui.tbl_pl_add_poz)
+        self.ui.tbl_pl_add_poz.setHidden(False)
+
+        self.ui.fr_pull_poz.setHidden(True)
+        self.ui.fr_pl_graf.setHidden(True)
+        self.ui.fr_pl_tables.setHidden(False)
+
+        self.ui.fr_pl_add_poz.setHidden(False)
+        self.ui.fr_pl_etap.setHidden(False)
+        self.ui.btn_pl_mode.setHidden(True)
+        self.ui.tbl_pl_add_poz.setHidden(False)
+        DTCLS.EDIT_POZ_MODE = True
+
+    if not DTCLS.EDIT_POZ_MODE:
         load_tbl_edit_poz(self)
-        self.regim = 'edit'
+        gui_edit_poz_mode_on()
     else:
-        show_fr(self)
-        self.regim = ''
+        gui_mode_off()
 
 
-def oform_table_editeble(self, tbl, name_field):
-    for i in range(tbl.columnCount()):
-        if 'дата' in tbl.horizontalHeaderItem(i).text().lower() or name_field.lower() == \
-                self.ui.tbl_pl_add_poz.horizontalHeaderItem(i).text().lower().split('.')[-1]:
-            CQT.set_cell_editable(tbl, 0, i, False)
-            CQT.set_color_wtab_c(tbl, 0, i, 230, 230, 230)
-        else:
-            CQT.set_cell_editable(tbl, 0, i, True)
 
-def check_permisions_on_fields(header: str, value: str, self) -> bool:
-    if getattr(self, 'regim') == 'add':
+def check_permisions_on_fields(header: str, alias: str, self) -> bool:
+    if DTCLS.ADD_POZ_MODE:
         return True
-    db_kplan = CFG.Config.project.db_kplan
-    current_login = F.user_name()
+    #if CFG.Config.user_config.is_developer:
+    #     return True
+    tbl_name ,field_name = header.split('.')
+
     access_users = CSQ.custom_request_c(
-        db_kplan,
-        f'SELECT users_rule FROM info_fields_kpl WHERE name = {header!r}', rez_dict=True, one=True
+        CFG.Config.project.db_kplan,
+        f'SELECT users_rule FROM info_fields_kpl '
+        f'WHERE table_kpl = "{tbl_name}" and name = "{field_name}";', rez_dict=True, one=True
     )
     if isinstance(access_users, dict):
         users_rule = access_users.get('users_rule', '')
-        if not current_login in users_rule.split(';'):
-            return CQT.msgbox(f'У вас недостаточно прав для редактирования поля: {header!r}')
+        if not F.user_name() in users_rule.split(';'):
+            QtCore.QTimer.singleShot(
+                0,
+                lambda: CQT.msgbox(
+                    f'У "{F.user_name()}" недостаточно прав для редактирования поля:\n"{alias}"'
+                )
+            )
+            return False
         return True
     return False
 
@@ -2920,93 +6000,29 @@ def attach_tbl_pl_add_poz_validator(self, tbl: QtWidgets.QTableWidget):
         tbl.validator_is_set = True
         tbl.setItemDelegate(validator)
 
-
-@CQT.onerror
-def load_tbl_edit_poz(self: mywindow):
-    filtr_poki = list(self.Data_plan.DICT_PODR_POKI.keys())
-    list_podr = [_ for _ in CSQ.get_list_of_tables_c(self.db_kplan) if 'пл_' in _ and _ in filtr_poki]
-    list_podr.append('plan')
-    list_podr.append('')
-    list_podr.sort()
-
-    list_colors = []
-    list_tooltip = []
-    for podr in list_podr:
-        tooltip = ''
-        color = ('255;55;0')
-        if podr in self.Data_plan.DICT_PODR:
-            color = self.Data_plan.DICT_PODR[podr]['Цвет']
-            tooltip = self.Data_plan.DICT_PODR[podr]['Наименование']
-        list_colors.append(F.align_colors(color,';'))
-        list_tooltip.append(tooltip)
-    # list_colors = [QtGui.QColor.setRgb(*self.Data_plan.DICT_PODR[_]['Цвет'].split(';'))  for _ in list_podr]
-    # self.ui.cmb_etap.addItems(list_podr)
-    # self.ui.cmb_etap.setMaxVisibleItems(len(list_podr))
-    attach_tbl_pl_add_poz_validator(self, self.ui.tbl_pl_add_poz)
-    CQT.fill_list_combobx(self, self.ui.cmb_etap, list_podr, list_colors, list_tooltip)
-    CQT.clear_tbl(self.ui.tbl_pl_add_poz)
-
-@CQT.onerror
-def open_pkk(self: mywindow, row='', col=''):
-    self.current_kpl_table = 'tbl_preview'
-    row = CQT.get_dict_line_form_tbl(self.ui.tbl_kal_pl, row)
-
-    if 'plan.Пномер' not in row:
-        return
-    pozition = CMS.Pozition(row['plan.Пномер'], self.db_kplan, self.bd_naryad, self.db_resxml, self.db_users, self)
-    pozition.load_kpl_table('пл_оуп')
-    nom_file = pozition.dict_tables['пл_оуп']['ПКК']
-    if not F.is_numeric(nom_file):
-        return
-    if not isinstance(F.valm(nom_file), int):
-        return
-    nom_file = int(nom_file)
-    rez = CSQ.custom_request_c(self.bd_files,
-                               f'''SELECT file_name, file FROM project_cards WHERE s_nom = {nom_file}''',
-                               one=True)
-    if len(rez) <= 1:
-        CQT.msgbox(f'Файл s_num {nom_file} в project_cards не найден')
-        return
-    file_blob_compr = rez[-1][1]
-    file_name = rez[-1][0]
-    file_blob = F.unpack_byte_file(file_blob_compr)
-    dir_tmp = F.put_po_umolch() + F.sep() + 'tmp_file_view'
-    try:
-        if F.existence_file_c(dir_tmp):
-            F.delete_dir_c(dir_tmp)
-        F.create_dir_c(dir_tmp)
-    except:
-        CQT.msgbox(f'ОШибка доступа {dir_tmp}')
-        return
-    path_file = dir_tmp + F.sep() + file_name
-    if F.existence_file_c(path_file):
-        return
-    F.save_binary_convert_to_file(file_blob, path_file)
-    F.run_file_os_c(path_file)
-
 @CQT.onerror
 def doubleclck_tbl_kal_pl(self: mywindow, row='', col=''):
     tbl = self.ui.tbl_kal_pl
-    row_data = CQT.get_dict_line_form_tbl(tbl)
-    col = tbl.currentColumn()
-    row = tbl.currentRow()
-    field_name = tbl.horizontalHeaderItem(col).text()
+    t = CQT.TableContext(tbl)
+    field_name = t.current_column_name()
+    cur_row = t.current_row()
+    if cur_row.no_selection:
+        return
+
     if field_name == 'plan.ТипГр':
-        is_closed = row_data['plan.ТипГр'] == FOLDER_CLOSED
+
+        is_closed = cur_row.value('plan.ТипГр') == FOLDER_CLOSED
 
         dict_filtr = CMS.apply_filtr_c(self, self.ui.tbl_filtr_kal_pl, self.ui.tbl_kal_pl, False,
                                        get_dict_by_fild='plan.Пномер')
-        gr = row_data['plan.Группа']
+        gr = cur_row.value('plan.Группа')
+        with CQT.table_updating(t):
+            set_group_close(self,gr_name=gr,close= not is_closed, dict_filtr=dict_filtr)
 
-        set_group_close(self,gr_name=gr,close= not is_closed, dict_filtr=dict_filtr)
-
-        if is_closed:
-            tbl.item(row,col).setText(FOLDER_OPEN)
-        else:
-            tbl.item(row,col).setText(FOLDER_CLOSED)
-
-
-
+            if is_closed:
+                cur_row.set_value('plan.ТипГр',FOLDER_OPEN)
+            else:
+                cur_row.set_value('plan.ТипГр',FOLDER_CLOSED)
 
 
     if field_name == 'пл_ко.Ссылка_КД':
@@ -3018,214 +6034,6 @@ def doubleclck_tbl_kal_pl(self: mywindow, row='', col=''):
                 CQT.msgbox(f'Ошибка открытия ссылки')
 
 
-
-@CQT.onerror
-def select_etap_edit(self: mywindow):
-    def add_file_pkk(checked, row, col):
-
-        num_poz = int(self.ui.tbl_pl_add_poz.item(0, CQT.num_col_by_name_c(self.ui.tbl_pl_add_poz, 'НомПл')).text())
-
-        dir = CMS.load_tmp_path('kpl_pkk')
-        file_path = CQT.f_dialog_name(self, 'Выбрать файл с карточкой проекта', dir, '*', True)
-        if file_path == '.':
-            return
-        name = file_path.split(F.sep())[-1]
-        CMS.save_tmp_path('kpl_pkk', file_path, True)
-        print(file_path)
-
-        file_founding = F.load_file_convert_to_binary(file_path)
-        size = sys.getsizeof(file_founding)
-        if size > 1048576 * 3:
-            CQT.msgbox(f'Размер файла должен быть не более 3 мб')
-            return
-        hash = hashlib.sha1(file_founding).hexdigest()
-        file_founding = F.pack_byte_file(file_founding)
-        print(f'size {size}')
-
-        rez = CSQ.custom_request_c(self.bd_files,
-                                   f'''SELECT s_nom FROM project_cards WHERE size = {size} AND hash = "{hash}"''',
-                                   one_column=True, one=True)
-        if not rez:
-            CSQ.custom_request_c(self.bd_files,
-                                 """INSERT INTO  project_cards(file_name,size,hash,file) VALUES (?,?,?,?);""",
-                                 list_of_lists_c=[[name, size, hash, file_founding]])
-            rez = CSQ.custom_request_c(self.bd_files,
-                                       f'''SELECT s_nom FROM project_cards WHERE size = {size} AND hash = "{hash}"''',
-                                       one_column=True, one=True)
-        CSQ.custom_request_c(self.db_kplan, f"""UPDATE пл_оуп SET ПКК = {rez} WHERE  НомПл = {num_poz};""")
-        self.ui.tbl_pl_add_poz.item(0, CQT.num_col_by_name_c(self.ui.tbl_pl_add_poz, 'ПКК')).setText(str(rez))
-
-    def edit_tabel(self):
-        month = self.ui.cmb_etap.currentText()
-        if month == '':
-            return
-        list_month = CSQ.custom_request_c(self.db_kplan, f"""SELECT * FROM {month}""")
-        set_editeble_columns = set()
-        for i in range(len(list_month[0])):
-            if F.is_date(list_month[0][i], "d_%Y_%m_%d"):
-                set_editeble_columns.add(i)
-        CQT.fill_wtabl(list_month, self.ui.tbl_pl_add_poz, set_editeble_col_nomera=set_editeble_columns,
-                       colorful_edit=True)
-
-    def edit_etap(self):
-
-
-        podr = self.ui.cmb_etap.currentText()
-        tbl_pl = self.ui.tbl_kal_pl
-        row = tbl_pl.currentRow()
-        if row == None or row == -1:
-            return
-        if podr == "":
-            CQT.clear_tbl(self.ui.tbl_pl_add_poz)
-            return
-        name_field = 'НомПл'
-        if podr == "plan":
-            name_field = 'Пномер'
-        nk_pnom = int(CQT.num_col_by_name_c(tbl_pl, 'plan.Пномер'))
-        pnom = tbl_pl.item(row, nk_pnom).text()
-        list_itog = get_line_to_edit_podr(self, pnom)
-        CQT.fill_wtabl(list_itog, self.ui.tbl_pl_add_poz, auto_type=False)
-        for field in LIST_HIDE_FIELDS:
-            if field.split('.')[0] == podr:
-                nk = CQT.num_col_by_name_c(self.ui.tbl_pl_add_poz, field.split('.')[1])
-                if nk != None:
-                    self.ui.tbl_pl_add_poz.setColumnHidden(nk, True)
-        oform_table_editeble(self, self.ui.tbl_pl_add_poz, name_field)
-        if podr == 'plan':
-            list_napr_deyat = dict()
-            for key in self.Data_plan.DICT_NAPR_DEYAT.keys():
-                list_napr_deyat[self.Data_plan.DICT_NAPR_DEYAT[key]['Имя']] = self.Data_plan.DICT_NAPR_DEYAT[key][
-                    'Псевдоним']
-            nk_napr_deyat = CQT.num_col_by_name_c(self.ui.tbl_pl_add_poz, 'Направление_деятельности')
-            CQT.add_combobox(self, self.ui.tbl_pl_add_poz, 0, nk_napr_deyat, list_napr_deyat, first_void=False,
-                             conn_func=select_napr_deyat)
-
-            try:
-                self.ui.tbl_pl_add_poz.cellWidget(0, nk_napr_deyat).setCurrentText(
-                    self.Data_plan.DICT_NAPR_DEYAT[int(self.ui.tbl_pl_add_poz.item(0, nk_napr_deyat).text())]['Имя'])
-            except:
-                pass
-            list_status = []
-            for key in self.Data_plan.DICT_STATUS_POZ.keys():
-                list_status.append(self.Data_plan.DICT_STATUS_POZ[key]['Имя'])
-            nk_status = CQT.num_col_by_name_c(self.ui.tbl_pl_add_poz, 'Статус')
-            CQT.add_combobox(self, self.ui.tbl_pl_add_poz, 0, nk_status, list_status, first_void=False,
-                             conn_func=select_status)
-            try:
-                self.ui.tbl_pl_add_poz.cellWidget(0, nk_status).setCurrentText(
-                    self.Data_plan.DICT_STATUS_POZ[int(self.ui.tbl_pl_add_poz.item(0, nk_status).text())]['Имя'])
-            except:
-                pass
-            list_status_norm = []
-            for key in self.Data_plan.DICT_STATUS_NORM.keys():
-                list_status_norm.append(self.Data_plan.DICT_STATUS_NORM[key]['Имя'])
-            nk_status_norm = CQT.num_col_by_name_c(self.ui.tbl_pl_add_poz, 'Статус_норм')
-            CQT.add_combobox(self, self.ui.tbl_pl_add_poz, 0, nk_status_norm, list_status_norm, first_void=False,
-                             conn_func=select_status_norm)
-            try:
-                self.ui.tbl_pl_add_poz.cellWidget(0, nk_status_norm).setCurrentText(
-                    self.Data_plan.DICT_STATUS_NORM[int(self.ui.tbl_pl_add_poz.item(0, nk_status_norm).text())]['Имя'])
-            except:
-                pass
-
-            list_etapi_erp = []
-            for key in self.Data_plan.DICT_STATUS_ETAPI_ERP.keys():
-                list_etapi_erp.append(self.Data_plan.DICT_STATUS_ETAPI_ERP[key]['Имя'])
-            nk_etapi_erp = CQT.num_col_by_name_c(self.ui.tbl_pl_add_poz, 'Этапы_ЕРП')
-            CQT.add_combobox(self, self.ui.tbl_pl_add_poz, 0, nk_etapi_erp, list_etapi_erp, first_void=False,
-                             conn_func=select_etapi_erp)
-            try:
-                self.ui.tbl_pl_add_poz.cellWidget(0, nk_etapi_erp).setCurrentText(
-                    self.Data_plan.DICT_STATUS_ETAPI_ERP[int(self.ui.tbl_pl_add_poz.item(0, nk_etapi_erp).text())][
-                        'Имя'])
-            except:
-                pass
-        if podr == 'пл_топ':
-            CMS.TypesWorkingByDirections().change_vid_po_napr( #25.08.25
-                self,
-                self.ui.tbl_pl_add_poz,
-                0,
-                CQT.num_col_by_name_c(self.ui.tbl_pl_add_poz, 'Вид'),
-            )
-            # list_sort_c = []
-            # for key in self.Data_plan.DICT_VID_PO_NAPR.keys():
-            #     list_sort_c.append(self.Data_plan.DICT_VID_PO_NAPR[key]['Имя'])
-            nk_sort_c = CQT.num_col_by_name_c(self.ui.tbl_pl_add_poz, 'Вид')
-            # CQT.add_combobox(self, self.ui.tbl_pl_add_poz, 0, nk_sort_c, list_sort_c, first_void=False,
-            #                  conn_func=select_sort_c)
-            list_tech = []
-            for key in self.DICT_EMPLOEE_FULL.keys():
-                if self.DICT_EMPLOEE_FULL[key]['Подразделение'] == 'Технологический отдел Производства':
-                    list_tech.append(key)
-            list_tech = sorted(list_tech)
-            nk_otv_tech = CQT.num_col_by_name_c(self.ui.tbl_pl_add_poz, 'Отв_технолог')
-            CQT.add_combobox(self, self.ui.tbl_pl_add_poz, 0, nk_otv_tech, list_tech, first_void=True,
-                             conn_func=select_tech)
-            nk_otv_tech_res = CQT.num_col_by_name_c(self.ui.tbl_pl_add_poz, 'Отв_по_ресурсной')
-            CQT.add_combobox(self, self.ui.tbl_pl_add_poz, 0, nk_otv_tech_res, list_tech, first_void=True,
-                             conn_func=select_tech)
-            try:
-                self.ui.tbl_pl_add_poz.cellWidget(0, nk_sort_c).setCurrentText(
-                    self.Data_plan.DICT_VID_PO_NAPR[int(self.ui.tbl_pl_add_poz.item(0, nk_sort_c).text())]['Имя'])
-            except:
-                pass
-        if podr == 'пл_оуп':
-            tbl_pl:QtWidgets.QTableWidget = self.ui.tbl_pl_add_poz
-            nf = CQT.nums_col_by_name_dict(tbl_pl)
-            line_tbl = CQT.get_dict_line_form_tbl(self.ui.tbl_pl_add_poz, 0)
-            Пномер_ЗП = line_tbl['Пномер_ЗП']
-            ref_zp = None
-            if F.is_numeric(Пномер_ЗП) and int(Пномер_ЗП):
-                ref_zp = CSQ.custom_request_c(self.db_kplan,f"""SELECT 
-                                           Ref_Key_py 
-                                      FROM знпр WHERE s_num == {int(Пномер_ЗП)}; """,one_column=True,one=True,hat_c=False)
-            if F.is_unique_identifier(Пномер_ЗП):
-                ref_zp = Пномер_ЗП
-            widg = CQT.add_interactive_label(tbl_pl, 0, nf['№ERP'], tbl_pl.item(0,nf['№ERP']).text(), parent_self=self)
-            widg.add_button(CEMOJ.EmojiMain.Статусы.ellipsis.symbol, 'Выбрать ЗП', select_py,
-                            cell_val=None, img_path=  F.sep().join([F.path_to_execut_file_c(),
-                                                                              'icons','btn_select']))
-
-
-            if ref_zp:
-                add_btns_select_poz_after_py(self,tbl_pl,nf,ref_zp)
-
-            CQT.add_btn(self.ui.tbl_pl_add_poz, 0, CQT.num_col_by_name_c(self.ui.tbl_pl_add_poz, 'ПКК'), '...',
-                        conn_func_checked_row_col=add_file_pkk, self=self)
-
-        if podr == 'пл_компл':
-            list_status_tara = dict()
-            for key in self.Data_plan.DICT_STATUS_TARA_NAME.keys():
-                list_status_tara[key] = self.Data_plan.DICT_STATUS_TARA_NAME[key]['prim']
-            nk_status_tara = CQT.num_col_by_name_c(self.ui.tbl_pl_add_poz, 'Статус_тара')
-            CQT.add_combobox(self, self.ui.tbl_pl_add_poz, 0, nk_status_tara, list_status_tara, first_void=False,
-                             conn_func=select_status_tara)
-            try:
-                self.ui.tbl_pl_add_poz.cellWidget(0, nk_status_tara).setCurrentText(
-                    self.Data_plan.DICT_STATUS_TARA_NUM[int(self.ui.tbl_pl_add_poz.item(0, nk_status_tara).text())][
-                        'name'])
-            except:
-                pass
-
-    if self.edit_tabel_mode:
-        edit_tabel(self)
-    else:
-        edit_etap(self)
-
-
-def clck_cld(self):
-    tbl = self.ui.tbl_pl_add_poz
-    if not current_cell_is_data_type(tbl):
-        return
-    date = self.ui.calendarWidget.selectedDate()
-    new_str = F.datetostr(QDate.toPyDate(date), "%Y-%m-%d")
-    col = tbl.currentColumn()
-    old_str = tbl.item(0, col).text()
-    header = tbl.horizontalHeaderItem(col).text()
-    if not check_permisions_on_fields(header, new_str, self):
-        return
-    if CQT.msgboxgYN(f'Установить для {tbl.horizontalHeaderItem(col).text()} c \n {old_str} \n на \n {new_str} ?'):
-        tbl.item(0, col).setText(new_str)
 
 
 @CQT.onerror
@@ -3254,9 +6062,7 @@ def select_sort_c(self, text, row, col, *args):
     print(f'Выбран {val}')
 
 
-def select_tech(self, text, row, col, *args):
-    self.ui.tbl_pl_add_poz.item(row, col).setText(text)
-    print(f'Выбран {text}')
+
 
 
 def select_status_tara(self, text, row, col, *args):
@@ -3313,7 +6119,7 @@ def select_etapi_erp(self, text, row, col, *args):
 
 
 @CQT.onerror
-def generate_list_py(self)->list[dict]:
+def generate_list_py(self)->list[dict]|None:
     wet_req_text = f"""
             ВЫБРАТЬ
     ЗаказНаПроизводство2_2.Дата КАК Date,
@@ -3337,35 +6143,11 @@ def generate_list_py(self)->list[dict]:
             data[i]['Date'] = F.dateStrToStr(data[i]['Date'],format_out="%Y-%m-%d")
         return data
     return
-    postfix = f"and Статус ne 'Закрыт'"
-    if state != None:
-        postfix = f"and Статус eq '{state}'"
-    if year != None:
-        if year == 'all':
-            pass
-        else:
-            postfix = f"{postfix} and  year(Date) eq {year}"
-
-    m = ERP.OrdersComposit()
-    list_data = m.get_response(doc_name='Document_ЗаказНаПроизводство2_2',
-                               wet_filtr=f"?$filter= startswith(Number, '{self.place.doc_prefix}'){postfix} &$select=Date,Number,Комментарий,Ref_Key")
-    if list_data == None:
-        CQT.msgbox(f'Соединение с сервером 1С не установлено')
-        return
-    rez_list = ['Date|Number|Комментарий|Ref_Key']
-    for item in list_data:
-        year = F.datetostr(F.strtodate(item['Date'], "%Y-%m-%dT%H:%M:%S"), "%Y")
-
-        rez_list.append(
-            '|'.join([year, item['Number'], F.clear_str_ntrs(item['Комментарий']).replace("|", " "), item['Ref_Key']]))
-    rez_list.insert(1, '|'.join(['Загрузить', '-', 'Все года', "Статус = 'Формируется'"]))
-    rez_list.insert(2, '|'.join(['Загрузить', '-', 'Статус не закрыт', "Все Года"]))
-    rez_list.insert(3, '|'.join(['1999', '-', f'Нет {self.place.doc_prefix}', ""]))
-    return rez_list
 
 
 
-def select_poz(self: mywindow, text, row, col, *args):
+
+def DEL_select_poz(self: mywindow, text, row, col, *args):#DELETE
     num_line, count_poz, name = text.split('.| ')
     tbl = self.ui.tbl_pl_add_poz
 
@@ -3380,13 +6162,13 @@ def select_poz(self: mywindow, text, row, col, *args):
         return
 
     nf_poz_name = CQT.num_col_by_name_c(tbl, 'Номенклатура_ЕРП')
-    nf_poz_line = CQT.num_col_by_name_c(tbl, 'НомПартии_ЗП')
+
     tbl.item(0, nf_poz_count).setText(count_poz.replace(" ед.", ''))
     tbl.item(0, nf_poz_name).setText(name)
     poz_num = '?'
     if nf_poz_num:
         tbl.item(0, nf_poz_num).setText(poz_num)
-    tbl.item(0, nf_poz_line).setText(num_line.replace("№", ''))
+
     pass
 
 def etaps_data_if_exists(m: ERP.OrdersComposit, num_py: str, year: int) -> tuple[dict, bool]:
@@ -3424,7 +6206,7 @@ def select_py(lblself:CQT.InteractiveLabelInstance, self: mywindow, row, col, *a
     row = CQT.msgboxg_get_table(self, 'Выбор проекта', list_py, 'Выбор',
                                 selection_from_tbl=True, ExtendedSelection=False,
                                 selectRows=True, sortingEnabled=True,styleSheet=CQT.ERP_CSS,func_oform_tbl=fn_oform,
-                                aliases_header={'Date':'Дата','Number':'Номер ЗП'})
+                                aliases_header={'Date':'Дата','Number':'Номер ЗП'},)
 
     if row:
         year= row['Date']
@@ -3437,28 +6219,36 @@ def select_py(lblself:CQT.InteractiveLabelInstance, self: mywindow, row, col, *a
         CQT.msgbox(f'Не выбран {self.place.doc_prefix}')
         return
     tbl = self.ui.tbl_pl_add_poz
-    nf = CQT.nums_col_by_name_dict(tbl)
+    t = CQT.TableContext(tbl)
+    for row in t.rows():
+        name = row.value('_Name')
+        #add
+        if name == 'пл_оуп.Номенклатура_ЕРП':
+            row.set_value('Значение','')
+        if name == 'пл_оуп.Количество':
+            row.set_value('Значение','')
+        if name == 'plan.Позиция':
+            row.set_value('Значение','')
+        if name == 'знпр.Ref_Key_py':
+            row.set_value('Значение',Ref_Key_py)
+        if name == 'знпр.№ERP':
+            row.set_value('Значение',nom)
+        if name == 'знпр.№проекта':
+            row_nom_pr = t.find_row({'_Name':'пл_оуп.№проекта'},True)
+            if row_nom_pr:
+                row.set_value('Значение',row_nom_pr.value('Значение'))
+            row.set_editable('Значение')
 
-    nf_poz_name = CQT.num_col_by_name_c(tbl, 'Номенклатура_ЕРП')
-    nf_poz_count = CQT.num_col_by_name_c(tbl, 'Количество')
-    nf_poz_num = CQT.num_col_by_name_c(tbl, 'Позиция')
-    nf_ref = CQT.num_col_by_name_c(tbl, 'Ref_Key_py')
+        # edit
+        if name == 'пл_оуп.№ERP':
+            row.set_value('Значение',nom)
+        if name == 'пл_оуп.Дата_заявки_на_произв':
+            row.set_value('Значение' ,F.dateStrToStr(year))
+        if name == 'пл_оуп.Пномер_ЗП':
+            row.set_value('Значение', Ref_Key_py)
 
-    if nf_ref == None:
-        nf_ref = CQT.num_col_by_name_c(tbl, 'Пномер_ЗП')
-
-    tbl.item(0, nf_poz_name).setText('')
-    tbl.item(0, nf_poz_count).setText('')
-    if nf_poz_num:
-        tbl.item(0, nf_poz_num).setText('')
-    if nf_ref:
-        tbl.item(0, nf_ref).setText('0')
-    if 'Дата_заявки_на_произв' in nf:
-        tbl.item(0,nf['Дата_заявки_на_произв']).setText(F.dateStrToStr(year))
-    tbl.item(0, nf['№ERP']).setText(nom)
-    tbl.item(0, nf_ref).setText(Ref_Key_py)
     lblself.set_text(nom)
-    add_btns_select_poz_after_py(self, tbl, nf, Ref_Key_py)
+    add_btns_select_poz_after_py(self, tbl, Ref_Key_py)
 
 @CQT.onerror
 def select_poz_after_py(lblself:CQT.InteractiveLabelInstance,self, row, col,ref:str):
@@ -3487,142 +6277,81 @@ def select_poz_after_py(lblself:CQT.InteractiveLabelInstance,self, row, col,ref:
         CQT.msgbox(f'ТЧ пустая')
         return
     data = data_rez['data']
-    year = data[0]['year']
-    nom = data[0]['НомерЗП']
-    m = ERP.OrdersComposit()
-    nomen_pos, have_null_etap = etaps_data_if_exists(m, nom, year)
+
     list_name_poz = []
     for poz in data:
         name_poz = poz['НоменклатураНаименование']
-        if part_py := nomen_pos.get(poz['Номенклатура_Key']):
-            line_number = part_py.get('НомерПартииЗапуска')
-        else:
-            line_number = int(have_null_etap) + int(poz['LineNumber'])
 
+        line_number = poz['LineNumber']
         list_name_poz.append( {'№':line_number, 'НоменклатураНаименование': name_poz , 'Количество': poz['Количество'] ,
-                               'ЕдиницаИзмерения': poz['ЕдиницаИзмерения'] })
+                               'ЕдиницаИзмерения': poz['ЕдиницаИзмерения'], '_Номенклатура_Key': poz['Номенклатура_Key'] })
+    def fnc_oform_tbl(tbl:CQT.QtWidgets.QTableWidget,*args):
+        t = CQT.TableContext(tbl)
+        t.hide_if_not_dev(CFG.Config.user_config.is_developer)
 
     row = CQT.msgboxg_get_table(self, 'Выбор проекта', list_name_poz, 'Выбор',
                                 selection_from_tbl=True, ExtendedSelection=False,
-                                selectRows=True, sortingEnabled=True,styleSheet=CQT.ERP_CSS)
+                                selectRows=True, sortingEnabled=True,styleSheet=CQT.ERP_CSS,func_oform_tbl=fnc_oform_tbl)
     if row:
-        num_line = row['№']
+
         count_poz= row['Количество']
-        name= row['НоменклатураНаименование']
+        name_nomen= row['НоменклатураНаименование']
+        ref_nomen= row['_Номенклатура_Key']
     else:
         return
 
     tbl_pl = self.ui.tbl_pl_add_poz
-    nf = CQT.nums_col_by_name_dict(tbl_pl)
-    tbl_pl.item(0, nf['Номенклатура_ЕРП']).setText(name)
-    tbl_pl.item(0, nf['Количество']).setText(str(count_poz))
-    tbl_pl.item(0, nf['НомПартии_ЗП']).setText(str(num_line))
-    lblself.set_text(name)
-    if 'Позиция' in nf:
-        tbl_pl.item(0, nf['Позиция']).setText('')
+    t = CQT.TableContext(tbl_pl)
+    for row in t.rows():
+        name = row.value("_Name")
+        if name == 'пл_оуп.Номенклатура_ЕРП':
+            row.set_value('Значение',name_nomen)
+        if name == 'пл_оуп.Номенклатура_ЕРП_ref':
+            row.set_value('Значение',ref_nomen)
+        if name == 'пл_оуп.Количество':
+            row.set_value('Значение',str(count_poz))
+        if name == 'plan.Позиция':
+            row.set_value('Значение', '')
+
+    lblself.set_text(name_nomen)
+
+
 
 @CQT.onerror
-def add_btns_select_poz_after_py(self:mywindow,tbl_pl:QtWidgets.QTableWidget,nf:dict,ref_zp:str):
-    widg = CQT.add_interactive_label(tbl_pl, 0, nf['Номенклатура_ЕРП'],
-                                     tbl_pl.item(0, nf['Номенклатура_ЕРП']).text(), parent_self=self)
-    widg.add_button(CEMOJ.EmojiMain.Статусы.ellipsis.symbol, 'Выбрать Поз.', select_poz_after_py,
-                    cell_val=ref_zp, img_path=  F.sep().join([F.path_to_execut_file_c(),
-                                                                              'icons','btn_select']))
+def add_btns_select_poz_after_py(self:mywindow,tbl_pl:QtWidgets.QTableWidget,ref_zp:str):
+    t = CQT.TableContext(tbl_pl)
+    for row in t.rows():
+        name = row.value('_Name')
+        if name == 'пл_оуп.Номенклатура_ЕРП':
+            widg = CQT.add_interactive_label(tbl_pl, row.i, t.nf['Значение'],
+                                             row.value('Значение'), parent_self=self)
+            widg.add_button(CEMOJ.EmojiMain.Статусы.ellipsis.symbol, 'Выбрать Поз.', select_poz_after_py,
+                            cell_val=ref_zp, img_path=  F.sep().join([F.path_to_execut_file_c(),
+                                                                                      'icons','btn_select']))
 
 
-@CQT.onerror
-def load_tbl_add_new_poz(self: mywindow, *args):
+def fnc_select_nd(lbl: CQT.InteractiveLabelInstance, app_self, i, j, add_data):
+    row: CQT.TableRow = add_data[1]
+    t: CQT.TableContext = add_data[0]
+    def fnc_oform(tbl):
+        t = CQT.TableContext(tbl)
+        if not CFG.Config.user_config.is_developer:
+            t.hide_startsunderscore()
+        for row in t.rows():
+            clr_o = CMS.Color(row.value('_clr'))
+            clr_o.align_colors(level_percent=-30, saturation_percent=-20)
+            row.set_color_font(*clr_o.rgb, col_name='Имя')
+            row.set_font_format(bold=True, col_name='Имя')
 
-
-    tbl_poz = self.ui.tbl_kal_pl
-    list_heads = CSQ.custom_request_c(self.db_kplan, """SELECT 
-
-plan.Направление_деятельности, 
-"" as Статус,
-
-знпр.№проекта, 
-знпр.№ERP, 
-пл_оуп.Номенклатура_ЕРП,  
-plan.Позиция, 
-пл_оуп.Количество, 
-пл_оуп.НомПартии_ЗП, 
-пл_оуп.ПКК, 
-"" AS Ref_Key_py, 
-пл_оуп.Вес_кг,
-пл_ко.Вес_ВО
-FROM plan 
-INNER JOIN 
-пл_оуп ON пл_оуп.НомПл = plan.Пномер, 
-пл_ко ON пл_ко.НомПл = plan.Пномер, 
-пл_топ ON пл_топ.НомПл = plan.Пномер,
-знпр ON знпр.s_num = пл_оуп.Пномер_ЗП 
- LIMIT 1""", one=True, hat_c=True)
-    if list_heads == False:
-        CQT.msgbox(f'Ошибка')
+    tmpl = [{'_Пномер': _['Пномер'], 'Имя': _['Имя'], 'Псевдоним': _['Псевдоним'], '_clr': _['Цвет']} for _ in
+            app_self.Data_plan.NAPR_DEYAT if _['Псевдоним']]
+    rez = CQT.msgboxg_get_table(DTCLS.app_self, 'Выбор НД', tmpl, styleSheet=CQT.MES_CSS,
+                                selectRows=True, ExtendedSelection=False, func_oform_tbl=fnc_oform,
+                                selection_from_tbl=True)
+    if not rez:
         return
-
-
-    list_heads = list_heads[0]
-    list_itog = ['' for _ in list_heads]
-    list_itog = [list_heads, list_itog]
-    list_itog[-1][F.num_col_by_name_in_hat_c(list_itog, 'Вес_кг')] = '*резерв/пмс на сумм кол-во'
-    list_itog[-1][F.num_col_by_name_in_hat_c(list_itog, 'Вес_ВО')] = '*на сумм-ное кол-во'
-    list_itog[-1][F.num_col_by_name_in_hat_c(list_itog, '№ERP')] = ''
-
-    list_itog[-1][F.num_col_by_name_in_hat_c(list_itog, 'НомПартии_ЗП')] = ''
-    # ===========================
-    cur_row = tbl_poz.currentRow()
-    if cur_row >= 0 and CQT.get_key_modifiers(self) == ['shift']:
-        nk_np = CQT.num_col_by_name_c(tbl_poz, 'знпр.№проекта')
-        nk_py = CQT.num_col_by_name_c(tbl_poz, 'знпр.№ERP')
-        if nk_py == None:
-            CQT.msgbox(f'Поле знпр.№ERP не включено')
-            return
-        if nk_np == None:
-            CQT.msgbox(f'Поле знпр.№проекта не включено')
-            return
-        nk_pkk = CQT.num_col_by_name_c(tbl_poz, 'пл_оуп.ПКК')
-
-        if nk_np != None:
-            list_itog[-1][F.num_col_by_name_in_hat_c(list_itog, '№проекта')] = tbl_poz.item(cur_row, nk_np).text()
-        if nk_py != None:
-            list_itog[-1][F.num_col_by_name_in_hat_c(list_itog, '№ERP')] = tbl_poz.item(cur_row, nk_py).text()
-
-        if nk_pkk != None:
-            list_itog[-1][F.num_col_by_name_in_hat_c(list_itog, 'ПКК')] = tbl_poz.item(cur_row, nk_pkk).text()
-    # ===========================
-    tbl_pl = self.ui.tbl_pl_add_poz
-    CQT.fill_wtabl(list_itog, tbl_pl)
-    nf = CQT.nums_col_by_name_dict(tbl_pl)
-    tbl_pl.setColumnWidth(F.num_col_by_name_in_hat_c(list_itog, 'Направление_деятельности'), 300)
-    tbl_pl.setColumnWidth(F.num_col_by_name_in_hat_c(list_itog, 'Статус'), 100)
-    tbl_pl.setColumnWidth(F.num_col_by_name_in_hat_c(list_itog, '№ERP'), 400)
-    tbl_pl.setColumnWidth(F.num_col_by_name_in_hat_c(list_itog, 'Позиция'), 60)
-    tbl_pl.setColumnWidth(F.num_col_by_name_in_hat_c(list_itog, '№проекта'), 100)
-    tbl_pl.setColumnWidth(F.num_col_by_name_in_hat_c(list_itog, 'Номенклатура_ЕРП'), 400)
-    tbl_pl.setColumnHidden(F.num_col_by_name_in_hat_c(list_itog, 'Ref_Key_py'), True)
-    list_napr_deyat = []
-    for key in self.Data_plan.DICT_NAPR_DEYAT.keys():
-        list_napr_deyat.append(self.Data_plan.DICT_NAPR_DEYAT[key]['Имя'])
-    nk_napr_deyat = CQT.num_col_by_name_c(tbl_pl, 'Направление_деятельности')
-
-    nk_state = CQT.num_col_by_name_c(tbl_pl, 'Статус')
-    tbl_pl.item(0, nf['№ERP']).setText('-')
-    CQT.add_combobox(self, tbl_pl, 0, nk_napr_deyat, list_napr_deyat, first_void=False,
-                     conn_func=select_napr_deyat)
-    widg = CQT.add_interactive_label(tbl_pl, 0, nf['№ERP'], tbl_pl.item(0, nf['№ERP']).text(), parent_self=self)
-    widg.add_button(CEMOJ.EmojiMain.Статусы.ellipsis.symbol, 'Выбрать ЗП', select_py,
-                    cell_val=None, img_path=F.sep().join([F.path_to_execut_file_c(),
-                                                          'icons', 'btn_select']))
-
-    CQT.add_combobox(self, tbl_pl, 0, nk_state,
-                     [_ for _ in list(self.Data_plan.DICT_STATUS_POZ_NAME.keys()) if _ in ('Резерв', 'Подготовка',"Долгосрочный")],
-                     first_void=True,
-                     conn_func=select_status)
-
-    # fill_sort_c_top_combo(self,0)
-    name_field = 'Пномер'
-    oform_table_editeble(self, tbl_pl, name_field)
+    row.set_value('Значение', rez['_Пномер'])
+    lbl.set_text(rez['Псевдоним'])
 
 
 def fill_sort_c_top_combo(self: mywindow, napr_d=0):
@@ -3635,300 +6364,7 @@ def fill_sort_c_top_combo(self: mywindow, napr_d=0):
                      conn_func=select_sort_c)
 
 
-def check_add_poz(self):
-    def check_number(self, val, key, tbl):
-        if ',' in val:
-            CQT.msgbox(f'{key} разделитель дробной части должна быть точка, а не запятая')
-            return False
-        if F.is_numeric(val) == False:
-            CQT.msgbox(f'{key} должно быть число')
-            CQT.migat(self, tbl, 0, CQT.num_col_by_name_c(tbl, key), 1)
-            return False
-        return True
 
-    def check_db(self, val, key, tbl, dict):
-        if F.valm(val) not in dict:
-            CQT.msgbox(f'{key} должно быть по БД')
-            CQT.migat(self, tbl, 0, CQT.num_col_by_name_c(tbl, key), 1)
-            return False
-        return True
-
-    def check_choose(self, val, key, tbl):
-        if val == '1':
-            CQT.msgbox(f'{key} должно быть выбрано')
-            CQT.migat(self, tbl, 0, CQT.num_col_by_name_c(tbl, key), 1)
-            return False
-        return True
-
-    tbl = self.ui.tbl_pl_add_poz
-    list_add = CQT.list_from_wtabl_c(tbl, rez_dict=True)[0]
-    list_add = F.trim_collection(list_add) #05.06.2025
-    for key in list_add.keys():
-        val = list_add[key]
-        if str(val).strip() == '':
-            CQT.msgbox(f'{key} не может быть пусто')
-            return False
-        if key not in ('№ERP'):
-            if str(val) == "" or '*' == str(val)[0]:
-                CQT.msgbox(f'{key} не указан')
-                return False
-        if key in [ 'Направление_деятельности', 'Количество', 'Вес_ВО', 'Вес_кг']:
-            if not check_number(self, val, key, tbl):
-                return False
-        if key == 'Статус':
-            if val == '':
-                CQT.msgbox(f'Не выбран статус позиции')
-                return False
-        if key == 'Направление_деятельности':
-            if not check_db(self, val, key, tbl, self.Data_plan.DICT_NAPR_DEYAT):
-                return False
-            if not check_choose(self, val, key, tbl):
-                return False
-        if key == '№ERP':
-            if val == '-':
-                return True
-
-            if f'{self.place.doc_prefix}00-0' not in val:
-                CQT.msgbox(f'{key} Не корректная запись')
-                CQT.migat(self, tbl, 0, CQT.num_col_by_name_c(tbl, key), 1)
-                return False
-            if not F.is_numeric(val.split(f'{self.place.doc_prefix}00-0')[-1]):
-                CQT.msgbox(f'{key} Не корректная запись')
-                CQT.migat(self, tbl, 0, CQT.num_col_by_name_c(tbl, key), 1)
-                return False
-            if val == f'{self.place.doc_prefix}00-000000':
-                CQT.msgbox(f'{key} Не корректная запись')
-                CQT.migat(self, tbl, 0, CQT.num_col_by_name_c(tbl, key), 1)
-                return False
-
-
-
-    rez = CSQ.custom_request_c(self.db_kplan, f"""SELECT plan.Позиция, пл_оуп.№проекта, пл_оуп.№ERP FROM plan 
-          INNER JOIN пл_оуп ON пл_оуп.НомПл = plan.Пномер 
-         WHERE plan.Позиция = "{list_add['Позиция']}" AND 
-          пл_оуп.№проекта = "{list_add['№проекта']}" AND 
-           пл_оуп.№ERP = "{list_add['№ERP']}" """, one=True)
-    if rez and len(rez) > 1:
-        CQT.msgbox(
-            f"Уже существует в базе {list_add['№проекта']} {list_add['№ERP']} {list_add['Позиция']}")
-        return False
-
-    return True
-
-
-def chek_state_poz(self:mywindow,num_state: int,s_num_poz:int,poz:CMS.Pozition=None,msg=True) -> bool:
-
-    val_str = self.Data_plan.DICT_STATUS_POZ[int(num_state)]['Имя']
-    if val_str in ('К производству', 'Завершена', 'Изготовление'):
-        if poz is None:
-            poz = CMS.Pozition(s_num_poz, self.db_kplan, self.bd_naryad, self.db_resxml,
-                               self.db_users, '')
-            poz.load_kpl_table('пл_оуп')
-        if poz.dict_tables['пл_оуп']['№ERP'] in ('', 0, '-'):
-            if msg:
-                CQT.msgbox(f'Статус без №ERP не может быть {val_str}')
-            return False
-    return True
-
-
-def check_edit_poz(self, old_list):
-    def check_number(self, val, key, tbl):
-        if ',' in val:
-            CQT.msgbox(f'{key} разделитель дробной части должна быть точка, а не запятая')
-            return False
-        if F.is_numeric(val) == False:
-            CQT.msgbox(f'{key} должно быть число')
-            CQT.migat(self, tbl, 0, CQT.num_col_by_name_c(tbl, key), 1)
-            return False
-        return True
-
-    def check_db(self, val, key, tbl, dict):
-        if F.valm(val) not in dict:
-            CQT.msgbox(f'{key} должно быть по БД')
-            CQT.migat(self, tbl, 0, CQT.num_col_by_name_c(tbl, key), 1)
-            return False
-        return True
-
-    def check_choose(self, val, key, tbl):
-        if val == '1':
-            CQT.msgbox(f'{key} должно быть выбрано')
-            CQT.migat(self, tbl, 0, CQT.num_col_by_name_c(tbl, key), 1)
-            return False
-        return True
-
-    def check_date(self, val, key, tbl, dateformat='%Y-%m-%d'):
-        if not F.is_date(val, dateformat):
-            CQT.msgbox(f'{key} Не корректный формат даты')
-            CQT.migat(self, tbl, 0, CQT.num_col_by_name_c(tbl, key), 1)
-            return False
-        return True
-
-    list_edit = CQT.list_from_wtabl_c(self.ui.tbl_pl_add_poz, rez_dict=True)[0]
-    tbl = self.ui.tbl_pl_add_poz
-    podr = self.ui.cmb_etap.currentText()
-
-    if podr == 'plan':
-        for key in list_edit.keys():
-            val = list_edit[key]
-            if str(val) == str(old_list[key]):
-                continue
-            if key in [ 'Направление_деятельности', 'Статус', 'МК', 'Нчас_вспом',
-                       'Фчас_вспом', 'Фчас_доп_раб', 'Приоритет']:
-                if not check_number(self, val, key, tbl):
-                    return False
-            if key in ['Направление_деятельности']:
-                if not check_choose(self, val, key, tbl):
-                    return False
-            if key == 'Направление_деятельности':
-                if not check_db(self, val, key, tbl, self.Data_plan.DICT_NAPR_DEYAT):
-                    return False
-            if key == 'Статус':
-                if not check_db(self, val, key, tbl, self.Data_plan.DICT_STATUS_POZ):
-                    return False
-
-                return chek_state_poz(self,val,list_edit['Пномер'])
-            if key == 'Статус_норм':
-                if not check_db(self, val, key, tbl, self.Data_plan.DICT_STATUS_NORM):
-                    return False
-
-    if podr == 'пл_заг':
-        for key in list_edit.keys():
-            val = list_edit[key]
-            if str(val) == str(old_list[key]):
-                continue
-            if key in ['Нчас_заг', 'Фчас_заг']:
-                if not check_number(self, val, key, tbl):
-                    return False
-            if key in ['ПДата_нач_заг', 'ПДата_зав_заг', 'ФДата_нач_заг', 'ФДата_зав_заг',
-                       'ФДата_раскладки', 'ФДата_резки', 'ФДата_г_ш']:
-                if not check_date(self, val, key, tbl):
-                    return False
-    if podr == 'пл_ко':
-        for key in list_edit.keys():
-            val = list_edit[key]
-            if str(val) == str(old_list[key]):
-                continue
-            if key in ['Вес_ВО', 'Вес_КД']:
-                if not check_number(self, val, key, tbl):
-                    return False
-            if key in ['Пдата_КД', 'Фдата_КД']:
-                if not check_date(self, val, key, tbl):
-                    return False
-            if key == 'Ссылка_КД':
-                if 'docs://' not in val and 'Отдел технолога\В работе' not in val:
-                    CQT.msgbox(f'{key} не корректная ссылка')
-                    CQT.migat(self, tbl, 0, CQT.num_col_by_name_c(tbl, key), 1)
-                    return False
-
-    if podr == 'пл_компл':
-        for key in list_edit.keys():
-            val = list_edit[key]
-            if str(val) == str(old_list[key]):
-                continue
-
-            if key in ['Дата_комплект_после_заг', 'Дата_компл_под_мех', 'Дата_комплект_под_сб',
-                       'Дата_комплект_под_покр', 'Дата_комплект_под_упак',
-                       'ПДата_комплект_упаковки', 'ФДата_комплект_упаковки', ]:
-                if not check_date(self, val, key, tbl):
-                    return False
-
-    if podr == 'пл_мех':
-        for key in list_edit.keys():
-            val = list_edit[key]
-            if str(val) == str(old_list[key]):
-                continue
-            if key in ['Нчас_мехобр', 'Фчас_мехобр']:
-                if not check_number(self, val, key, tbl):
-                    return False
-            if key in ['Пдата_нач_мехобр', 'Пдата_зав_мехобр',
-                       'Фдата_нач_мехобр', 'Фдата_зав_мехобр']:
-                if not check_date(self, val, key, tbl):
-                    return False
-    if podr == 'пл_оуп':
-        for key in list_edit.keys():
-            val = list_edit[key]
-            if str(val) == str(old_list[key]):
-                continue
-            if key in ['Количество']:
-                if not check_number(self, val, key, tbl):
-                    return False
-            if key in ['Дата_заявки_на_произв', 'Дата_отгрузки_ПУ']:
-                if not check_date(self, val, key, tbl):
-                    return False
-            if key in ['№проекта', 'ПКК', 'Номенклатура_ЕРП']:
-                if val == '':
-                    CQT.msgbox(f'{key} Не может быть пусто')
-                    CQT.migat(self, tbl, 0, CQT.num_col_by_name_c(tbl, key), 1)
-                    return False
-            if key == '№ERP':
-                if val == '-':
-                    return True
-                if f'{self.place.doc_prefix}00-0' not in val:
-                    CQT.msgbox(f'{key} Не корректная запись')
-                    CQT.migat(self, tbl, 0, CQT.num_col_by_name_c(tbl, key), 1)
-                    return False
-                if f'{self.place.doc_prefix}00-000000' in val:
-                    CQT.msgbox(f'{key} Не корректная запись')
-                    CQT.migat(self, tbl, 0, CQT.num_col_by_name_c(tbl, key), 1)
-                    return False
-                if not F.is_numeric(val.split(f'{self.place.doc_prefix}00-0')[-1]):
-                    CQT.msgbox(f'{key} Не корректная запись')
-                    CQT.migat(self, tbl, 0, CQT.num_col_by_name_c(tbl, key), 1)
-                    return False
-
-
-    if podr == 'пл_покр':
-        for key in list_edit.keys():
-            val = list_edit[key]
-            if str(val) == str(old_list[key]):
-                continue
-            if key in ['Нчас_покр', 'Фчас_покр']:
-                if not check_number(self, val, key, tbl):
-                    return False
-            if key in ['Пдата_нач_покр', 'Пдата_зав_покр', 'Фдата_нач_покр',
-                       'Фдата_зав_покр']:
-                if not check_date(self, val, key, tbl):
-                    return False
-    if podr == 'пл_сб':
-        for key in list_edit.keys():
-            val = list_edit[key]
-            if str(val) == str(old_list[key]):
-                continue
-            if key in ['Нчас_сб', 'Фчас_сб']:
-                if not check_number(self, val, key, tbl):
-                    return False
-            if key in ['Пдата_нач_сб', 'Пдата_зав_сб', 'Фдата_нач_сб', 'Фдата_зав_сб']:
-                if not check_date(self, val, key, tbl):
-                    return False
-    if podr == 'пл_топ':
-        for key in list_edit.keys():
-            val = list_edit[key]
-            if str(val) == str(old_list[key]):
-                continue
-            if key in ['Нчас_ТД', 'Нчас_сб', 'Фчас_сб', 'Вид',
-                       'Уд_вес_ВО', 'Нчас_сб_ВО', 'Число_ДСЕ']:
-                if not check_number(self, val, key, tbl):
-                    return False
-            if key in ['Пдата_ТД', 'Фдата_ТД', 'Дата_МК',
-                       'Спецификация_дата']:
-                if not check_date(self, val, key, tbl):
-                    return False
-            if key == 'пл_топ.Вид':
-                if not check_db(self, val, key, tbl, self.Data_plan.DICT_VID_PO_NAPR):
-                    return False
-            if key == 'пл_топ.Спецификация_ЕРП':
-                nk_npoz = CQT.num_col_by_name_c(self.ui.tbl_pl_add_poz, 'НомПл')
-                npoz = int(self.ui.tbl_pl_add_poz.item(0, nk_npoz).text())
-                oyp_nomenkl = CSQ.custom_request_c(self.db_kplan,
-                                                   f"""SELECT Номенклатура_ЕРП FROM пл_оуп WHERE НомПл == {npoz};""",
-                                                   one_column=True)
-                if len(oyp_nomenkl) != 2:
-                    return False
-                if val != oyp_nomenkl[-1]:
-                    CQT.msgbox(f'{key} Наименование должно совпадать с номенклатурой: {oyp_nomenkl[-1]}')
-                    CQT.migat(self, tbl, 0, CQT.num_col_by_name_c(tbl, key), 1)
-                    return False
-    return True
 
 
 @CQT.onerror
@@ -3948,6 +6384,9 @@ def del_poz(self: mywindow):
     list_podr = [_ for _ in CSQ.get_list_of_tables_c(self.db_kplan) if _.startswith('пл_') ]
     for podr in list_podr:
         CSQ.custom_request_c(self.db_kplan, f"""DELETE FROM {podr} WHERE НомПл = {pnom};""")
+    CSQ.custom_request_c(self.db_kplan, f"""DELETE FROM gant_poz_val_by_day WHERE id_poz = {pnom};""")
+    CSQ.custom_request_c(self.db_kplan, f"""DELETE FROM gant_poz WHERE id_poz = {pnom};""")
+    CSQ.custom_request_c(self.db_kplan, f"""DELETE FROM сопост_кпл_зп WHERE kpl_num = {pnom};""")
     load_table_db(self)
     CQT.msgbox(f'Успешно')
     return True
@@ -4019,444 +6458,32 @@ def fix_crashed_poz(self: mywindow):
     CQT.msgbox(f'Успешно')
     return True
 
-
-def btn_pl_ok_add_poz_click(self, *args):
-    def add_py_from_erp(Ref_Key_py, nom_proj):
-        m = CODAT.OrdersComposit()
-        code, list_data = m.get_response(doc_name='Document_ЗаказНаПроизводство2_2',
-                                   wet_filtr=f"?$filter= Ref_Key eq guid'{Ref_Key_py}'"
-                                             f" &$select=Date,Number,Комментарий,Статус,ДатаПотребности,ДокументОснование,ДокументОснование_Type",with_cod=True)
-        if code != 200:
-            CQT.msgbox(f'Ошибка связи с ЕРП  Document_ЗаказНаПроизводство2_2  код {code}')
-            return False
-        if len(list_data) == 0:
-            CQT.msgbox(f"Не найден в ЕРП ЗП с Ref_Key_py {Ref_Key_py}")
-            return False
-
-
-        if list_data[0]['ДокументОснование_Type'] not in (
-                'StandardODATA.Document_ЗаказКлиента', 'StandardODATA.Document_ЗаказНаСборку',
-                'StandardODATA.Document_ЗаказНаВнутреннееПотребление','StandardODATA.Document_ЗаказДавальца2_5'):
-            CQT.msgbox(
-                f"Основание для {self.place.doc_prefix}:\n{list_data[0]['ДокументОснование_Type']}.\n Нужен Заказа клиента/Заказ на сборку/ЗНВП")
-            return
-
-        client_order = list_data[0]['ДокументОснование']
-        sb_order = ''
-        znvp_order = ''
-        zDav_order = ''
-
-        if list_data[0]['ДокументОснование_Type'] == 'StandardODATA.Document_ЗаказНаСборку':
-            sb_order = list_data[0]['ДокументОснование']
-            code, data_sb = m.get_response(doc_name=f"Document_ЗаказНаСборку(guid'{sb_order}')",
-                                   wet_filtr=f"?$select=ДокументОснование_Key,Номенклатура_Key",with_cod=True)
-            if code != 200:
-                CQT.msgbox(f'Ошибка связи с ЕРП Document_ЗаказНаСборку код {code}')
-                return False
-            client_order = data_sb['ДокументОснование_Key']
-
-        if list_data[0]['ДокументОснование_Type'] == 'StandardODATA.Document_ЗаказНаВнутреннееПотребление':
-            znvp_order = list_data[0]['ДокументОснование']
-            client_order = ''
-
-        if list_data[0]['ДокументОснование_Type'] == 'StandardODATA.Document_ЗаказДавальца2_5':
-            zDav_order = list_data[0]['ДокументОснование']
-            client_order = ''
-
-        year = F.datetostr(F.strtodate(list_data[0]['Date'], "%Y-%m-%dT%H:%M:%S"), "%Y")
-        date = F.datetostr(F.strtodate(list_data[0]['Date'], "%Y-%m-%dT%H:%M:%S"), "%Y-%m-%d")
-        date_otgr = F.datetostr(F.strtodate(list_data[0]['ДатаПотребности'], "%Y-%m-%dT%H:%M:%S"), "%Y-%m-%d")
-        list_to_add = [int(year), date, list_data[0]['Number'], nom_proj, list_data[0]['Статус'],
-                       '', date_otgr, '', 1, Ref_Key_py,list_data[0]['Комментарий'],sb_order,client_order,znvp_order,zDav_order]
-
-        CSQ.custom_request_c(self.db_kplan, f"""INSERT INTO знпр (Год, 
-                        Дата_заявки_на_произв, 
-                        №ERP, 
-                        №проекта, 
-                        Статус_поз_ЕРП, 
-                        Заказ_клиента, 
-                        Дата_отгрузки_ПУ, 
-                        ЗП_келаст_КЭ, 
-                        Этапы_ЕРП,
-                        Ref_Key_py,
-                        Комментарий,
-                        sb_order_Key,
-                        client_order_Key,
-                        znvp_order_Key,
-                        zDav_order_Key
-                        ) VALUES ({CSQ.questions_for_mask(list_to_add)})""", list_of_lists_c=[list_to_add])
-
-    def check_edit_tabel(self):
-        month = self.ui.cmb_etap.currentText()
-        if month == '':
-            return
-        list_month = CSQ.custom_request_c(self.db_kplan, f"""SELECT * FROM {month}""")
-        list_new = CQT.list_from_wtabl_c(self.ui.tbl_pl_add_poz, '', True)
-        if len(list_month) != len(list_new):
-            CQT.msgbox(f'Что то пошло не так')
-            return
-        if len(list_month[0]) != len(list_new[0]):
-            CQT.msgbox(f'Что то пошло не так')
-            return
-        list_changes = []
-        list_sql = []
-        for i in range(3, len(list_new)):
-            for j in range(3, len(list_new[0])):
-                if list_month[i][j] != list_new[i][j]:
-                    list_changes.append(
-                        f'Для {list_month[i][1]} от {list_month[0][j]} было:{list_month[i][j]}, стало:{list_new[i][j]}')
-                    list_sql.append(
-                        f"""UPDATE {month} SET {list_month[0][j]} = {list_new[i][j]} WHERE Подразделение = '{list_month[i][1]}'""")
-        if list_changes == []:
-            CQT.msgbox(f'Изменений не найдено')
-            return False
-
-        msg_str = 'Внести изменения?\n\n' + "\n".join(list_changes)
-        if CQT.msgboxgYN(msg=msg_str):
-            return list_sql
-        return False
-
-    def apply_edit_tabel(self, list_sql):
-        for custom_request_c in list_sql:
-            CSQ.custom_request_c(self.db_kplan, custom_request_c)
-        CQT.msgbox(f'Успешно')
-        VPL.get_max_mosh_from_db(self)
-
-    @CQT.onerror
-    def fill_old_fields_from_znpr(self: mywindow, num_kpl):
-        req = f"""SELECT  знпр.s_num, 
-        знпр.Год, 
-        знпр.Дата_заявки_на_произв, 
-        знпр.№ERP, 
-        знпр.№проекта, 
-        знпр.Статус_поз_ЕРП, 
-        знпр.Заказ_клиента, 
-        знпр.Дата_отгрузки_ПУ, 
-        знпр.ЗП_келаст_КЭ, 
-        знпр.Этапы_ЕРП, 
-
-        знпр.Ref_Key_py
-    FROM знпр WHERE s_num IN (SELECT Пномер_ЗП FROM пл_оуп WHERE НомПл = {int(num_kpl)})"""
-        row_znpr = CSQ.custom_request_c(self.db_kplan, req, rez_dict=True)
-        row_znpr = row_znpr[0]
-        list_data = [row_znpr['Дата_заявки_на_произв'],
-                     row_znpr['№ERP'],
-                     row_znpr['№проекта'],
-                     row_znpr['Дата_отгрузки_ПУ']
-                     ]
-        CSQ.custom_request_c(self.db_kplan, f"""UPDATE пл_оуп SET (Дата_заявки_на_произв,№ERP,№проекта,Дата_отгрузки_ПУ)
-         = ({CSQ.questions_for_mask(list_data)}
-         ) WHERE НомПл = {int(num_kpl)}""", list_of_lists_c=[list_data])
-
-    @CQT.onerror
-    def add_new_poz(self: mywindow):
-        if not check_add_poz(self):
-            return
-        show_fr(self)
-
-        list_add = CQT.list_from_wtabl_c(self.ui.tbl_pl_add_poz, rez_dict=True)[0]
-        s_num_py = 0
-        if list_add['Ref_Key_py'] not in ('','0'):
-            list_py_from_mes = CSQ.custom_request_c(self.db_kplan, f"""SELECT Ref_Key_py FROM знпр WHERE 
-             Ref_Key_py = "{list_add['Ref_Key_py']}";""", rez_dict=True)
-            if len(list_py_from_mes) == 0:
-                add_py_from_erp(list_add['Ref_Key_py'], list_add['№проекта'])
-
-            list_py_from_mes = CSQ.custom_request_c(self.db_kplan,
-                                                    f"""SELECT s_num FROM знпр WHERE Ref_Key_py 
-                                                         = "{list_add['Ref_Key_py']}";""",
-                                                    rez_dict=True)
-            if len(list_py_from_mes) == 0:
-                CQT.msgbox(f"Не найден в МЕС ЗП с Ref_Key_py {list_add['Ref_Key_py']}")
-                return False
-            s_num_py = list_py_from_mes[0]['s_num']
-
-        CSQ.custom_request_c(self.db_kplan, f"""INSERT INTO plan(Дата_внесения,
-                    Позиция,
-                    Направление_деятельности,
-                    Статус,
-                    poki
-                    )
-                    VALUES (?,?,?,?,?);""", list_of_lists_c=[[F.now("%Y-%m-%d"), list_add['Позиция'],
-                                                            list_add['Направление_деятельности'],
-                                                            int(list_add['Статус']),self.place.poki]])
-        pnom = CSQ.last_row_db_c(self.db_kplan, 'plan', 'Пномер', ['Пномер'])[0]
-
-        list_podr = [_ for _ in CSQ.get_list_of_tables_c(self.db_kplan) if _.startswith('пл_')]
-        for podr in list_podr:
-            CSQ.custom_request_c(self.db_kplan, f"""INSERT INTO {podr}(
-                        НомПл
-                        )
-                        VALUES (?);""", list_of_lists_c=[[pnom]])
-
-        vals = [
-
-            list_add['№проекта'],
-            s_num_py,
-            list_add['Количество'],
-            list_add['ПКК'],
-            list_add['Номенклатура_ЕРП'],
-            list_add['Вес_кг'].replace(',', '.'),
-            list_add['НомПартии_ЗП'], ]
-
-        CSQ.custom_request_c(self.db_kplan, f"""UPDATE пл_оуп SET(
-
-               
-               №проекта,
-               Пномер_ЗП,
-               Количество,
-               ПКК,
-               Номенклатура_ЕРП, 
-               Вес_кг,
-               НомПартии_ЗП  
-               ) =
-                ({"?, ".join([""] * len(vals)) + "?"}) WHERE НомПл == {pnom};""", list_of_lists_c=vals)
-        if s_num_py != 0:
-            fill_old_fields_from_znpr(self, pnom)
-
-        vals = [list_add['Вес_ВО'].replace(',', '.'),
-                ]
-
-        CSQ.custom_request_c(self.db_kplan, f"""UPDATE пл_ко SET(
-                       Вес_ВО
-                       ) =
-                        (?) WHERE НомПл == {pnom};""", list_of_lists_c=vals)
-
-        # vals = [list_add['Вид'],
-        #        ]
-
-        # CSQ.custom_request_c(self.db_kplan, f"""UPDATE пл_топ SET(
-        #               Вид
-        #               ) =
-        #                (?) WHERE НомПл == {pnom};""", list_of_lists_c=vals)
-        obj_msg = CMS.Msg_b24(self.db_kplan, self.bd_naryad, self.db_resxml, self.db_users, pnom)
-        obj_msg.send_msg('add_new_poz')
-        # msg = f"{F.user_full_namre()} Добавил в план {list_add['№проекта']} {list_add['№ERP']} " \
-        #      f" поз. {list_add['Позиция']}:\n " \
-        #      f"Необходимо указать вид {list_add['Номенклатура_ЕРП']}\n" \
-        #      f"и загрузить xml-аналог либо сделать МК по КД"
-        # self.send_info_mk_b24(msg,'chat48346')
-        CQT.msgbox(f'Успешно')
-        return True
-
-
-    @CQT.onerror
-    def edit_poz(self: mywindow):
-        @CQT.onerror
-        def fill_changes_into_user_tbl(self: mywindow, podr, list_fields, list_vals, pnom, name_field):
-            tbl = self.ui.tbl_kal_pl
-            row = -1
-            nk_nom = CQT.num_col_by_name_c(tbl, 'plan.Пномер')
-            for i in range(tbl.rowCount()):
-                if tbl.item(i, nk_nom).text() == str(pnom):
-                    row = i
-                    break
-            if row == -1:
-                return False
-            for j, field in enumerate(list_fields):
-                nk_field = CQT.num_col_by_name_c(tbl, f'{podr}.{field}')
-                if nk_field != None:
-                    if tbl.item(row, nk_field).text() != str(list_vals[j]):
-                        tbl.item(row, nk_field).setText(str(list_vals[j]))
-            pass
-
-        tbl = self.ui.tbl_pl_add_poz
-        podr = self.ui.cmb_etap.currentText()
-        if podr == '':
-            return
-        if podr == 'plan':
-            nk_nom = CQT.num_col_by_name_c(tbl, 'Пномер')
-            name_field = 'Пномер'
-        else:
-            nk_nom = CQT.num_col_by_name_c(tbl, 'НомПл')
-            name_field = 'НомПл'
-        pnom = int(tbl.item(0, nk_nom).text())
-        old_list = get_line_to_edit_podr(self, pnom)
-        old_list = F.list_to_dict(old_list)[0]
-        if not check_edit_poz(self, old_list):
-            return
-
-        new_list = CQT.list_from_wtabl_c(tbl, hat_c=True, rez_dict=True)[0]
-        if podr == 'plan': #10.11.25
-            if new_list['Статус'] == '4' and not checking_positions_for_closed_mk(self, [pnom]):
-                return
-        if podr == 'пл_оуп':
-            if not F.is_numeric(new_list['Пномер_ЗП']):
-                list_py_from_mes = CSQ.custom_request_c(self.db_kplan,
-                                                        f"""SELECT Ref_Key_py FROM знпр WHERE Ref_Key_py = "{new_list['Пномер_ЗП']}";""",
-                                                        rez_dict=True)
-                if len(list_py_from_mes) == 0:
-                    add_py_from_erp(new_list['Пномер_ЗП'], new_list['№проекта'])
-
-                list_py_from_mes = CSQ.custom_request_c(self.db_kplan,
-                                                        f"""SELECT s_num FROM знпр WHERE Ref_Key_py = "{new_list['Пномер_ЗП']}";""",
-                                                        rez_dict=True)
-                if len(list_py_from_mes) == 0:
-                    CQT.msgbox(f"Не найден в МЕС ЗП с Ref_Key_py {new_list['Пномер_ЗП']}")
-                    return False
-                new_list['Пномер_ЗП'] = list_py_from_mes[0]['s_num']
-        old_list.pop(name_field)
-        new_list.pop(name_field)
-        delta_dict = dict()
-
-        obj_jur = CMS.Logs(self.bd_files)
-        for key in new_list.keys():
-            if str(new_list[key]) != str(old_list[key]):
-                delta_dict[key] = new_list[key]
-                obj_jur.add_note(pnom, key, new_list[key], 'tbl_kal_pl')
-
-        list_fields = list(delta_dict.keys())
-        list_vals = list(delta_dict.values())
-        if len(delta_dict) > 0:
-            if list_fields == []:
-                return
-            CSQ.custom_request_c(self.db_kplan, f"""UPDATE {podr} SET({','.join(list_fields)}) =
-             ({'?,'.join(['' for _ in list_fields]) + '?'}) WHERE {name_field} = {pnom};""", list_of_lists_c=list_vals)
-
-            fill_changes_into_user_tbl(self, podr, list_fields, list_vals, pnom, name_field)
-
-            if podr == 'plan' and 'Фдата_получения_КД' in list_fields:
-                if old_list['Фдата_получения_КД'] != new_list['Фдата_получения_КД']:
-                    obj_msg = CMS.Msg_b24(self.db_kplan, self.bd_naryad, self.db_resxml, self.db_users, pnom)
-                    obj_msg.send_msg('obtained_kd')
-            if podr == 'пл_топ' and 'Вид' in list_fields:
-                if old_list['Вид'] != new_list['Вид']:
-                    # poz = CSQ.custom_request_c(self.db_kplan, f"""SELECT пл_оуп.№проекта, пл_оуп.№ERP, plan.Позиция FROM пл_оуп INNER JOIN plan
-                    #        ON пл_оуп.НомПл = plan.Пномер WHERE НомПл = {pnom}""", rez_dict=True)
-                    # msg = f'{F.user_full_namre()} указал "вид" на {str(poz)}\n Необходимо проставить предварительные нормы'
-                    # self.send_info_mk_b24(msg, 'chat48346')
-                    obj_msg = CMS.Msg_b24(self.db_kplan, self.bd_naryad, self.db_resxml, self.db_users, pnom)
-                    obj_msg.send_msg('recalc_time_technolog')
-
-            if podr == 'пл_топ' and 'Спецификация_код_ЕРП' in list_fields:
-                if old_list['Спецификация_код_ЕРП'] != new_list['Спецификация_код_ЕРП']:
-                    obj_msg = CMS.Msg_b24(self.db_kplan, self.bd_naryad, self.db_resxml, self.db_users, pnom)
-                    obj_msg.send_msg('obtained_kod_res')
-
-            if podr == 'пл_оуп':
-                if str(new_list['Пномер_ЗП']) != '0':
-                    fill_old_fields_from_znpr(self, pnom)
-                if '№ERP' in list_fields:
-                    if old_list['№ERP'] != new_list['№ERP']:
-
-                        py = new_list['№ERP']
-
-                        CSQ.custom_request_c(self.bd_naryad,
-                                             f"""UPDATE mk SET Номер_заказа = "{py}" WHERE НомКплан = {pnom};""")
-
-                        obj_msg = CMS.Msg_b24(self.db_kplan, self.bd_naryad, self.db_resxml, self.db_users, pnom)
-                        obj_msg.send_msg('reset_py', additional_str=py)
-        show_fr(self)
-        self.regim = ''
-        CQT.msgbox(f'Успешно')
-        return True
-
-    def save_cnf(self):
-        info_fields_alias = self.Data_plan.DICT_INFO_FIELDS_KPL
-        if 'shift' in CQT.get_key_modifiers(self):
-            path = os.path.join(CMS.tmp_dir(), 'fields.pickle')
-            F.delete_file_c(path)
-            return True
-        spis = CQT.list_from_wtabl_c(self.ui.tbl_pl_add_poz, hat_c=True)
-        rez_dict = dict()
-        for j in range(0, len(spis[-1])):
-            spis[1][j] = int(spis[1][j])
-            hid = 1
-            if spis[1][j] != 1:
-                if spis[0][j] in info_fields_alias and info_fields_alias[spis[0][j]]['is_system']:  # 10.11.25
-                    hid = 2
-                else:
-                    hid = 0
-            rez_dict[spis[0][j]] = {'hidden': hid, 'order': j + 1}
-        path = os.path.join(CMS.tmp_dir(), 'fields.pickle')
-        F.save_file_pickle(path, rez_dict)
-        return True
-
-    if self.edit_tabel_mode:
-        list_sql = check_edit_tabel(self)
-        if list_sql:
-            apply_edit_tabel(self, list_sql)
-    else:
-        rez = None
-        if self.regim == 'add':
-            rez = add_new_poz(self)
-            if rez != None:
-                CMS.update_local_graf(self, True)
-                self.regim = ''
-                load_table_db(self)
-                show_fr(self)
-        if self.regim == 'edit':
-            rez = edit_poz(self)
-            if rez != None:
-                CMS.update_local_graf(self, True)
-        if self.regim == 'cnf':
-            rez = save_cnf(self)
-            self.regim = ''
-            list_conf = load_list_fields(self, False)
-            self.list_conf_fields_kpl = list_conf
-            load_table_db(self)
-            show_fr(self)
-        if rez == None:
-            return
-
-
-def get_line_to_edit_podr(self, pnom):
-    podr = self.ui.cmb_etap.currentText()
-    if podr == "":
-        CQT.clear_tbl(self.ui.tbl_pl_add_poz)
-        return
-    name_field = podr + '.НомПл'
-    if podr == "plan":
-        name_field = 'plan.Пномер'
+def get_line_to_edit_podr(self, pnom, podr:CMS.Table_db_info )->list[dict]:
+    name_field =  podr.table_primary_full_name
 
     list_itog = CSQ.custom_request_c(self.db_kplan, f"""SELECT * FROM 
-                    {podr} WHERE {name_field} == {pnom}
-                     """, one=True, hat_c=True)
-    return list_itog
+                        {podr.name} WHERE {name_field} == {pnom}
+                         """, one=True, rez_dict=True)
+    return [list_itog]
 
-
-def show_fr(self, fr='', graf=0):
-    self.ui.btn_kal_pl_left.setHidden(True)
-    self.ui.btn_kal_pl_right.setHidden(True)
-    self.ui.fr_settings_pl.setHidden(True)
-    self.ui.btn_pull_poz_show.setHidden(False)
-    self.ui.btn_pl_mode.setHidden(False)
-    if graf == 0:  # объемный выключаем
-        self.ui.fr_pull_poz.setHidden(True)
-        self.ui.fr_pl_graf.setHidden(True)
-        self.ui.fr_pl_tables.setHidden(False)
-        if fr == '':
-            self.ui.fr_pl_cal.setHidden(True)
-            self.ui.fr_pl_add_poz.setHidden(True)
-            self.ui.fr_pl_etap.setHidden(True)
-        if fr == 'tbl_add':
-            self.ui.fr_pl_cal.setHidden(False)
-            self.ui.fr_pl_add_poz.setHidden(False)
-            self.ui.fr_pl_etap.setHidden(True)
-            self.ui.btn_pl_mode.setHidden(True)
-        if fr == 'tbl_edit':
-            self.ui.fr_pl_cal.setHidden(False)
-            self.ui.fr_pl_add_poz.setHidden(False)
-            self.ui.fr_pl_etap.setHidden(False)
-            self.ui.btn_pl_mode.setHidden(True)
-    if graf == 1:  # объемный включаем
-        self.ui.fr_pull_poz.setHidden(True)
+def show_fr(self, graf=0):
+    if graf: #объемный график включаем
+        self.ui.fr_main_mode.setHidden(True)
         self.ui.fr_pl_graf.setHidden(False)
-        self.ui.fr_pl_tables.setHidden(True)
-        self.ui.fr_pl_gaf.setHidden(False)
-        self.ui.btn_pull_poz_show.setHidden(True)
-
-def check_db(self):
-    if 'SRV' in self.db_kplan:
-        return True
+        self.ui.fr_for_tbl_gant_vol.setHidden(False)
     else:
-        return F.existence_file_c(self.db_kplan)
+        # объемный график выключеаем
+        self.ui.fr_pl_graf.setHidden(True)
+        self.ui.fr_main_mode.setHidden(False)
+        self.ui.fr_for_tbl_gant_vol.setHidden(True)
+
+
 
 
 def current_cell_is_data_type(tbl):
     try:
-        column = tbl.currentColumn()
-        if 'дата' in tbl.horizontalHeaderItem(column).text().lower():
+        t = CQT.TableContext(tbl)
+        if 'дата' in t.current_column_name().lower():
             return True
         return False
     except:
@@ -4465,56 +6492,12 @@ def current_cell_is_data_type(tbl):
 
 def dbl_clk_tbl_add_poz(self):
     if current_cell_is_data_type(self.ui.tbl_pl_add_poz):
-        CQT.blink_obj_c(self, 2, self.ui.calendarWidget, 'Выбрать дату в календаре')
+        CQT.msgbox('Нужно выбрать дату в календаре  [...]')
 
 
-def select_field_from_kgui(self):
-    self.current_kpl_table = 'tbl_preview'
-    tbl:QtWidgets.QTableWidget = self.ui.tbl_preview
-    r = tbl.currentRow()
-    c = tbl.currentColumn()
-    if self.dict_tbls_kpl_info['tbl_preview'][r + 1][c] == '':
-        return
-    dict_obj = copy.deepcopy(self.dict_tbls_kpl_info['tbl_preview'][r + 1][c])[0]
-    try:
-        if 'shift' in CQT.get_key_modifiers(self):
-            name_field = dict_obj['Имя_нз'][1]
-        else:
-            name_field = dict_obj['Имя_нз'][0]
-    except:
-        return
-    nk = CQT.num_col_by_name_c(self.ui.tbl_kal_pl, name_field)
-    self.ui.tbl_kal_pl.setCurrentCell(self.ui.tbl_kal_pl.currentRow(), nk)
-    try:
-        if 'фдата_' in dict_obj['Этап']:
-            date_str = '\n'.join(tbl.horizontalHeaderItem(c).text().split('\n')[:3])
-            date = F.strtodate(date_str, "%d\n%m\n%y")
-            row_name = tbl.verticalHeaderItem(r).text()
-            result = CMS.recalc_fact_by_date(
-                                                                                       self.Data_plan.DICT_GROUP_PODR_VID_RAB_FOR_PLAN,
-                                                                                       self.DICT_VID_RABOT,
-                                                                                       self.Data_plan.DICT_NAPR_DEYAT,
-                                                                                       self.Data_plan.DICT_VID_PO_NAPR,
-                                                                                       self.Data_plan.DICT_NAPRAVLENIE,
-                                                                                       self.Data_plan.DICT_NAPR_DEYAT_NAME,
-                                                                                       self.Data_plan.DICT_DOLGN_ETAP,
-                                                                                       self.Data_plan.DICT_EMPLOEE_FULL_WITH_DEL,
-                                                                                       self.DICT_OP_NAME,
-                                                                                       self.pnom_kplan_select,
-                                                                                       date_calc=date)
-            if result is None:
-                return
-            poz, dict_fact_jur, dict_summ_time, dict_jur_data = result
-            if row_name in dict_jur_data:
-                CQT.msgboxg_get_table_ok_inf(self,'Расшифровка дня', dict_jur_data[row_name],load_summ=True)
-    except:
-        pass
 
 
-def create_db(self):
-    frase_tmp = """
-"""
-    CSQ.create_db_sql_c(self.db_kplan, frase_tmp)
+
 
 @CQT.onerror
 def test_add_field_kpl():
@@ -4630,9 +6613,10 @@ class Сomparison_fields_vs_db():
         return kpls
 
     @CQT.onerror
-    def reload_fields_from_db(self) -> tuple[bool, dict]:
+    def reload_fields_from_db(self)->tuple[bool,dict]:
         def norm(v):
             return '' if v is None else str(v)
+
 
         rez = dict()
         suc_iter = False
@@ -4652,7 +6636,7 @@ class Сomparison_fields_vs_db():
                             WHERE {fields_name['ind_field']}
                         in ({", ".join([str(_) for _ in chunk_kpl])});'''
                     data = CSQ.custom_request_c(self.db,text,rez_dict=True)
-                    dict_data = F.deploy_dict_c(data,'id_row', keep_key=True) # 24.04.2026
+                    dict_data = F.deploy_dict_c(data,'id_row')
                     for item in fields_name['items_fields']:
                         name_field_db = item.name_field_db
                         name_column_plan = item.name_column_plan
@@ -4679,320 +6663,36 @@ class Сomparison_fields_vs_db():
 
 
 
-@CQT.onerror
-def load_db(self: mywindow, pnom=False, only_hat=False,use_groups=False):
-    def move_gr_field(list_conf,start=True):
-
-        if name_gr_field in list_conf[0]:
-            indx = list_conf[0].index(name_gr_field)
-            list_conf[1].pop(indx)
-            list_conf[0].pop(indx)
-        if start:
-            list_conf[0].insert(0, name_gr_field)
-            list_conf[1].insert(0, 1)
-        else:
-            list_conf[0].append( name_gr_field)
-            list_conf[1].append( 1)
-
-        return list_conf
-
-    def check_tabels(self: mywindow):
-        list_pnoms = CSQ.custom_request_c(self.db_kplan, f"""SELECT Пномер FROM plan""", one_column=True, hat_c=False)
-        list_tbls = CSQ.get_list_of_tables_c(self.db_kplan)
-        for tbl in list_tbls:
-            if 'пл_' == tbl[:3]:
-                list_nompl = CSQ.custom_request_c(self.db_kplan, f"""SELECT НомПл  FROM {tbl}""", one_column=True,
-                                                  hat_c=False)
-                differ_list = [[_] for _ in list_pnoms if _ not in list_nompl]
-                if len(differ_list) > 0:
-                    count_fields = len(CSQ.custom_request_c(self.db_kplan, f'select * from {tbl} Limit 1')[0])
-                    for i in range(len(differ_list)):
-                        for _ in range(count_fields - 1):
-                            differ_list[i].append('')
-                    CSQ.custom_request_c(self.db_kplan,
-                                         f"""INSERT INTO  {tbl} VALUES({','.join(["?" for _ in range(count_fields)])})""",
-                                         list_of_lists_c=differ_list)
-
-
-
-    name_gr_field = 'plan.Группа'
-    sort_by = ''
-    if use_groups:
-        sort_by = f' ORDER BY plan.Пномер, {name_gr_field}'
-
-    limit = ''
-    if only_hat:
-        limit = ' Limit 1'
-
-    # check_tabels(self)
-    dict_inner = {
-        'plan.Направление_деятельности as "plan.Направление_деятельности"': 'napravl_deyat.Имя as "plan.Направление_деятельности"',
-        'plan.Статус as "plan.Статус"': 'status_poz.Имя as "plan.Статус"',
-        'знпр.Этапы_ЕРП as "знпр.Этапы_ЕРП"': 'status_etapi_erp.Имя as "знпр.Этапы_ЕРП"',
-        'пл_топ.Вид as "пл_топ.Вид"': 'виды_по_напр.Имя as "пл_топ.Вид"',
-        'plan.local_graf as "plan.local_graf"': '"" as "plan.local_graf"',
-        'пл_компл.Статус_тара as "пл_компл.Статус_тара"': 'status_tara.name as "пл_компл.Статус_тара"',
-        'plan.Статус_норм as "plan.Статус_норм"': 'status_norm.Имя as "plan.Статус_норм"',
-        'mk.Дата_завершения as "mk.Дата_завершения"': 'mk.Дата_завершения as "plan.Дата_зав_МК"',
-        'mk.Вес as "mk.Вес"': 'mk.Вес as "plan.Вес"',
-        'mk.xml as "mk.xml"': 'mk.xml as "plan.Вес_xml"'
-    }
-    if check_db(self) == False:
-        CQT.msgbox(f'db_kplan не найдена')
-
-    rez_list_tabels = ['napravlenie.name as "Направление"', 'napravl_deyat.Псевдоним as "Псевдоним"']
-    poki = f'plan.poki == {self.place.poki}'
-
-
-    if not self.ui.chk_kpl_zaversch.isChecked():
-        postfix = f'WHERE {poki} and status_poz.Имя NOT IN  ("Завершена","Приостановлена","На удаление")'
-    else:
-        postfix = f'WHERE {poki}'
-    if pnom:
-        postfix = f'WHERE {poki} and plan.Пномер == {int(pnom)}'
-        if 'list_conf_fields_kpl_all' in self.__dict__:
-            list_conf = self.list_conf_fields_kpl_all
-        else:
-            list_conf = load_list_fields(self, True)
-            self.list_conf_fields_kpl_all = list_conf
-
-        for i in range(len(list_conf[0])):
-            rez_list_tabels.append(f'{list_conf[0][i]} as "{list_conf[0][i]}"')
-    else:
-        if 'list_conf_fields_kpl' in self.__dict__:
-            list_conf = self.list_conf_fields_kpl
-        else:
-            list_conf = load_list_fields(self, only_hat)
-            self.list_conf_fields_kpl = list_conf
-            if use_groups:
-                list_conf = move_gr_field(list_conf,use_groups)
-        for i in range(len(list_conf[0])):
-            field_credentials = self.Data_plan.DICT_INFO_FIELDS_KPL.get(list_conf[0][i]) or {} # 23.03.2026
-            if list_conf[1][i] or field_credentials.get('is_system'):
-                alias = f'{list_conf[0][i]} as "{list_conf[0][i]}"'
-                if alias in dict_inner:
-                    alias = dict_inner[alias] #25.11.25
-                rez_list_tabels.append(alias)
-
-    str_field = ', \n'.join(rez_list_tabels)
-    for key in dict_inner.keys():
-        str_field = str_field.replace(key, dict_inner[key])
-
-    list = CSQ.custom_request_c(self.db_kplan, f"""SELECT
-    {str_field}
-    FROM plan
-    LEFT JOIN 
-    пл_оуп ON пл_оуп.НомПл = plan.Пномер,
-    пл_ко ON пл_ко.НомПл = plan.Пномер,
-    пл_топ ON пл_топ.НомПл = plan.Пномер,
-    пл_заг ON пл_заг.НомПл = plan.Пномер,
-    пл_компл ON пл_компл.НомПл = plan.Пномер,
-    пл_мех ON пл_мех.НомПл = plan.Пномер,
-    пл_сб ON пл_сб.НомПл = plan.Пномер,
-    пл_покр ON пл_покр.НомПл = plan.Пномер,
-    пл_отк ON пл_отк.НомПл = plan.Пномер,
-    пл_осил ON пл_осил.НомПл = plan.Пномер,
-    
-    пл_рскр ON пл_рскр.НомПл = plan.Пномер,
-    пл_оснтк ON пл_оснтк.НомПл = plan.Пномер,
-    пл_швк ON пл_швк.НомПл = plan.Пномер,
-    пл_сбтк ON пл_сбтк.НомПл = plan.Пномер,
-    пл_сбмл ON пл_сбмл.НомПл = plan.Пномер,
-    пл_нбвк ON пл_нбвк.НомПл = plan.Пномер,
-    пл_свг ON пл_свг.НомПл = plan.Пномер,
-    пл_сббси ON пл_сббси.НомПл = plan.Пномер,
-    пл_упквк ON пл_упквк.НомПл = plan.Пномер,
-    пл_кмпл ON пл_кмпл.НомПл = plan.Пномер,
-    пл_откк ON пл_откк.НомПл = plan.Пномер,
-    пл_чпу ON пл_чпу.НомПл = plan.Пномер,
-
-    napravl_deyat ON napravl_deyat.Пномер = plan.Направление_деятельности,
-    status_poz ON status_poz.Пномер = plan.Статус,
-    status_etapi_erp ON status_etapi_erp.Пномер = знпр.Этапы_ЕРП,
-    виды_по_направлению as виды_по_напр ON виды_по_напр.Пномер = пл_топ.Вид,
-    napravlenie ON napravlenie.Пномер = napravl_deyat.Направление,
-    status_norm ON status_norm.Код = plan.Статус_норм,
-    status_tara ON status_tara.s_num = пл_компл.Статус_тара,
-    знпр ON знпр.s_num = пл_оуп.Пномер_ЗП,
-    mk ON mk.Пномер = plan.МК 
-    {postfix} {limit}{sort_by};
-    """,attach_dbs=(self.bd_naryad)) #18.07.25
-
-    nf_group_img = 0
-    try:
-        nf_name_part_zp = list[0].index('пл_оуп.ИмяПартии_ЗП')
-        nf_oyp_cont = list[0].index('пл_оуп.Количество')
-        nf_oyp_name_nomen = list[0].index('пл_оуп.Номенклатура_ЕРП')
-        list[0].insert(nf_group_img, 'plan.ТипГр')
-    except Exception as e:
-        import pickle
-        path = os.path.join(CMS.tmp_dir(), 'fields.pickle')
-        with open(path, 'rb') as desc:
-            fields = pickle.load(desc)
-        with open(path, 'wb') as desc:
-            fields['пл_оуп.ИмяПартии_ЗП'] = {'hidden': 1, 'order': 8}
-            fields['пл_оуп.Количество'] = {'hidden': 1, 'order': 363}
-            fields['пл_оуп.Номенклатура_ЕРП'] = {'hidden': 1, 'order': 17}
-            pickle.dump(fields, desc)
-            if 'list_conf_fields_kpl' in self.__dict__:
-                delattr(self, 'list_conf_fields_kpl')
-            return load_db(self, pnom, only_hat, use_groups)
-    for item in list[1:]:
-
-        if item[nf_name_part_zp] != '':
-            item[nf_oyp_cont] = ''
-            item[nf_oyp_name_nomen] = f'*' +  item[nf_name_part_zp]
-        item.insert(nf_group_img, '')
-    if use_groups:
-        nf_group = list[0].index(name_gr_field)
-        nf_state = list[0].index('plan.Статус')
-        nf_s_num = list[0].index('plan.Пномер')
-        new_list = [list[0]]
-        shabl_row = ["" for _ in list[0]]
-        list_groups = sorted(set([item[nf_group].strip() for item in list[1:] if item[nf_group].strip() != '']))
-        for gr in list_groups:
-            tmp_row = copy.deepcopy(shabl_row)
-            tmp_row[nf_group] = gr
-            tmp_row[nf_group_img] = FOLDER_CLOSED
-            tmp_row[nf_state] = 'Группа'
-            tmp_row[nf_s_num] = '-1'
-            new_list.append(tmp_row)
-            for item in list[1:]:
-                item_group = item[nf_group].strip()
-                if item_group == gr:
-                    item[nf_group_img] = DOC_EMOJI
-                    new_list.append(item)
-        for item in list[1:]:
-            item_group = item[nf_group].strip()
-            if item_group == '':
-                item[nf_group_img] = ''
-                new_list.append(item)
-        list = new_list
-    return list, list_conf
-
-
-
-@CQT.onerror
-
-def tbl_kal_pl_cellChanged(self: mywindow, *args):
-    def check_date(text):
-        if F.is_date(text, "%Y-%m-%d"):
-            return text
-        if F.is_date(text, "%y-%m-%d"):
-            return F.datetostr(F.strtodate(text, "%y-%m-%d"), "%Y-%m-%d")
-        if F.is_date(text, "%d.%m.%Y"):
-            return F.datetostr(F.strtodate(text, "%d.%m.%Y"), "%Y-%m-%d")
-        if F.is_date(text, "%d.%m.%y"):
-            return F.datetostr(F.strtodate(text, "%d.%m.%y"), "%Y-%m-%d")
-        if F.is_date(text, "%d.%m.%y"):
-            return F.datetostr(F.strtodate(text, "%d.%m.%y"), "%Y-%m-%d")
-        if text == '':
-            return text
-        return False
-
-    def check_str(text):
-        new_val = text.replace('\t', '').replace('\n', '')
-        return new_val
-
-    def check_digit(text):
-        if not F.is_numeric(text):
-            return False
-        return str(F.valm(text))
-
-    tbl = self.ui.tbl_kal_pl
-    row = tbl.currentRow()
-    column = tbl.currentColumn()
-    if '.' not in tbl.horizontalHeaderItem(column).text():
-        return
-    tbl.blockSignals(True)
-    name_tbl, name_field = tbl.horizontalHeaderItem(column).text().split('.')
-    full_name_field = tbl.horizontalHeaderItem(column).text()
-    row_dict = CQT.get_dict_line_form_tbl(tbl, row)
-    if name_tbl == 'знпр':
-        s_num = CSQ.custom_request_c(self.db_kplan, f"""SELECT  s_num 
-     FROM знпр WHERE s_num IN (SELECT Пномер_ЗП FROM пл_оуп WHERE НомПл = {int(row_dict['plan.Пномер'])})""",
-                                     rez_dict=True)[0]['s_num']
-        old_val = CSQ.custom_request_c(self.db_kplan, f"""SELECT {name_field} FROM {name_tbl} 
-                WHERE s_num == {s_num};""", hat_c=False, one_column=True, one=True) # 11.11.25
-        name_s_num = 's_num'
-    else:
-        name_s_num = 'НомПл'
-        if name_tbl == 'plan':
-            name_s_num = 'Пномер'
-        try:
-            s_num = int(row_dict['plan.Пномер'])
-            old_val = CSQ.custom_request_c(self.db_kplan, f"""SELECT {name_field} FROM {name_tbl} 
-            WHERE {name_s_num} == {s_num};""", hat_c=False, one_column=True, one=True) # 11.11.25
-        except:
-            CQT.msgbox(f'Ошибка загрузки данных')
-            tbl.blockSignals(False)
-            return
-
-    fl_update_val = False
-    fl_check_field = True
-    msg_err = ''
-    if not full_name_field in self.Data_plan.DICT_INFO_FIELDS_KPL:
-        msg_err = f'Не найдено правило обслуживания поля'
-        fl_check_field = False
-
-    if self.Data_plan.DICT_INFO_FIELDS_KPL[full_name_field]['hand_editable'] != 1:
-        msg_err = f'Корректировка поля запрещена'
-        fl_check_field = False
-
-    fl_access = CMS.access_kpl_tbl(self.Data_plan.DICT_INFO_FIELDS_KPL, full_name_field)
-
-    if fl_access == False:
-        msg_err = f'Нет доступа'
-        fl_check_field = False
-
-    new_val = tbl.item(row, column).text().strip()
-    if fl_check_field:
-        if self.Data_plan.DICT_INFO_FIELDS_KPL[full_name_field]['edit_rules_str_digit_date'] == 'date':
-            msg_err = f'Не корректный формат даты'
-            new_val = check_date(new_val)
-            if not (isinstance(new_val, bool) and new_val == False):
-                fl_update_val = True
-
-        elif self.Data_plan.DICT_INFO_FIELDS_KPL[full_name_field]['edit_rules_str_digit_date'] == 'str':
-            msg_err = f'Не корректный формат строки'
-            new_val = check_str(new_val)
-            if not (isinstance(new_val, bool) and new_val == False):
-                fl_update_val = True
-        elif self.Data_plan.DICT_INFO_FIELDS_KPL[full_name_field]['edit_rules_str_digit_date'] == 'digit':
-            msg_err = f'Не корректный формат число'
-            new_val = check_digit(new_val)
-            if not (isinstance(new_val, bool) and new_val == False):
-                fl_update_val = True
-
-    if fl_check_field and fl_update_val:
-
-        CSQ.custom_request_c(self.db_kplan, f"""UPDATE {name_tbl} SET ({name_field}) = (?) WHERE {name_s_num} 
-          == {s_num};""", list_of_lists_c=[new_val])
-        if name_tbl == "знпр":
-            update_tabels(self)
-        else:
-            tbl.item(row, column).setText(new_val)
-
-        obj_jur = CMS.Logs(self.bd_files)
-        obj_jur.add_note(s_num, name_field, new_val, 'tbl_kal_pl')
-        tbl.blockSignals(False)
-        return True
-    else:
-        tbl.item(row, column).setText(str(old_val))
-        CQT.msgbox(msg_err)
-        tbl.blockSignals(False)
-        return
 
 
 @CQT.onerror
 def get_history(self: mywindow):
     tbl = self.ui.tbl_kal_pl
-    row_data = CQT.get_dict_line_form_tbl(tbl)
-    row_num = int(row_data['plan.Пномер'])
-    column = tbl.horizontalHeaderItem(tbl.currentColumn()).text()
+    t = CQT.TableContext(tbl)
+    row = t.current_row()
+    row_num = int(row.value('plan.Пномер'))
+    column = t.current_column_name()
+
     obj_jur = CMS.Logs(self.bd_files)
     history_list = obj_jur.get_history(row_num, column, obj_name='MKart$tbl_kal_pl')
-    CQT.msgboxg_get_table(self, 'Журнал изменений', history_list, 'ясно', 'понятно')
+    for it in history_list:
+        if it['user'] in self.Data_plan.DICT_EMPLOEE_FULL_WITH_DEL_BY_LOGIN:
+            usr = self.Data_plan.DICT_EMPLOEE_FULL_WITH_DEL_BY_LOGIN[it['user']]
+            it['user'] = f"{usr['ФИО']} - {usr['Должность']}\n{usr['Подразделение']}({usr['Компания']})"
+        it['datetime_change'] = F.dateStrToStr(it['datetime_change'],format="%Y-%m-%d %H:%M:%S",format_out="%d.%m.%Y %H:%M:%S")
+    def fnc_oform(tbl):
+        t = CQT.TableContext(tbl)
+        t.set_width('user',600)
+        t.set_rows_height_multiply(1.3)
+
+    CQT.msgboxg_get_table(self, 'Журнал изменений', history_list, 'ясно', 'понятно',
+                          styleSheet=CQT.MES_CSS,
+                        func_oform_tbl=fnc_oform,
+                          aliases_header={
+                              'user': 'Пользователь',
+                                'datetime_change':'Дата',
+                                'new_val':'Новое значение'
+                                                      },max_width_clms=600)
 
 @CQT.onerror
 def set_group_close(self:mywindow, gr_name:str, close:bool=True, dict_filtr:dict=None):
@@ -5035,32 +6735,28 @@ def set_group_close(self:mywindow, gr_name:str, close:bool=True, dict_filtr:dict
 def close_all_groups(self:mywindow):
     tbl = self.ui.tbl_kal_pl
 
-    tbl.blockSignals(True)
-    tbl.setUpdatesEnabled(False)
+    with CQT.table_updating(tbl):
+        nf = CQT.nums_col_by_name_dict(tbl)
+        col_group = nf['plan.Группа']
+        dict_filtr = CMS.apply_filtr_c(self, self.ui.tbl_filtr_kal_pl, self.ui.tbl_kal_pl, False,
+                                       get_dict_by_fild='plan.Пномер')
+        groups = set()
+        for i in range(tbl.rowCount()):
+           gr = tbl.item(i, col_group).text()
+           if gr:
+               groups.add(gr)
 
-    nf = CQT.nums_col_by_name_dict(tbl)
+        for gr in groups:
+            set_group_close(self,gr,dict_filtr=dict_filtr)
 
-    col_group = nf['plan.Группа']
-    dict_filtr = CMS.apply_filtr_c(self, self.ui.tbl_filtr_kal_pl, self.ui.tbl_kal_pl, False,
-                                   get_dict_by_fild='plan.Пномер')
-    groups = set()
-    for i in range(tbl.rowCount()):
-       gr = tbl.item(i, col_group).text()
-       if gr:
-           groups.add(gr)
-
-    for gr in groups:
-        set_group_close(self,gr,dict_filtr=dict_filtr)
-    tbl.setUpdatesEnabled(True)
-    tbl.blockSignals(False)
-
-    CMS.apply_gui_groups(self)
+        CMS.apply_gui_groups(self)
 
 
 @CQT.onerror
 def delete_from_cell(self:mywindow):
     tbl = self.ui.tbl_kal_pl
-    full_name_field = tbl.horizontalHeaderItem(tbl.currentColumn()).text()
+    t = CQT.TableContext(tbl)
+    full_name_field = t.current_column_name()
     fl_access = CMS.access_kpl_tbl(self.Data_plan.DICT_INFO_FIELDS_KPL, full_name_field)
     if fl_access == False:
         CQT.msgbox(f'Нет доступа')
@@ -5078,345 +6774,6 @@ def delete_from_cell(self:mywindow):
 
 
 
-
-
-@CQT.progress_decorator
-def load_table_db(self, hook_prog_bar=None):
-    def oforml_groups(self):
-
-
-        tbl = self.ui.tbl_kal_pl
-
-        nk_state = CQT.num_col_by_name_c(tbl, 'plan.Статус')
-
-        nk_type_group = CQT.num_col_by_name_c(tbl, 'plan.ТипГр')
-        nk_group = CQT.num_col_by_name_c(tbl, 'plan.Группа')
-
-
-        if nk_type_group is not None:
-            if not self.ui.chk_kpl_groups.isChecked():
-                self.ui.tbl_kal_pl.setColumnHidden(nk_type_group, True)
-            else:
-                self.ui.tbl_kal_pl.setColumnHidden(nk_type_group, False)
-                self.ui.tbl_kal_pl.setColumnWidth(nk_type_group,100)
-
-        if self.ui.chk_kpl_groups.isChecked() and nk_group != None:
-            for i in range(tbl.rowCount()):
-                if tbl.item(i, nk_state).text() == 'Группа':
-                    CQT.font_cell_size_format(tbl,i,nk_group,bold=True)
-                    CQT.font_cell_size_format(tbl,i,nk_state,bold=True)
-                    CQT.font_cell_size_format(tbl,i,nk_type_group,bold=True,size=14)
-                if tbl.item(i, nk_type_group).text() == DOC_EMOJI:
-                    tbl.setRowHidden(i,True)
-        CMS.apply_gui_groups(self)
-
-    def oforml_table(self):
-
-        tbl = self.ui.tbl_kal_pl
-        nk_s_num = CQT.num_col_by_name_c(tbl, 'plan.Пномер')
-        nk_pseudo = CQT.num_col_by_name_c(tbl, 'Псевдоним')
-        nk_napr = CQT.num_col_by_name_c(tbl, 'plan.Направление_деятельности')
-        nk_nom_pr = CQT.num_col_by_name_c(tbl, 'пл_оуп.№проекта')
-        nk_pred_spec_erp = CQT.num_col_by_name_c(tbl, 'пл_топ.Предв_спецификация_ЕРП')
-        nk_local_graf = CQT.num_col_by_name_c(tbl, 'plan.local_graf')
-        nk_pkk = CQT.num_col_by_name_c(tbl, 'пл_оуп.ПКК')
-        nk_state_norm = CQT.num_col_by_name_c(tbl, 'plan.Статус_норм')
-        nk_state = CQT.num_col_by_name_c(tbl, 'plan.Статус')
-        nk_mk = CQT.num_col_by_name_c(tbl, 'plan.МК')
-
-        def fcn_pred_spec_erp(lnk, i, j, name, file, parent_self, *args):
-            def fnc_oform_tbl_res(tbl):
-                pass
-
-            def fnc_select_tbl_res(tbl):
-                pass
-
-            nom_pr = tbl.item(i,nk_nom_pr).text()
-            wet_req_text = f"""
-                    ВЫБРАТЬ
-                        РесурсныеСпецификации.Наименование КАК Наименование,
-                        РесурсныеСпецификации.Код КАК Код,
-                        РесурсныеСпецификации.Статус КАК Статус,
-                        РесурсныеСпецификации.Описание КАК Описание
-                    ИЗ
-                        Справочник.РесурсныеСпецификации КАК РесурсныеСпецификации
-                    ГДЕ
-                        РесурсныеСпецификации.ПометкаУдаления = ЛОЖЬ
-                        И РесурсныеСпецификации.ЭтоГруппа = ЛОЖЬ
-                        И РесурсныеСпецификации.Наименование ПОДОБНО "%ТКПА_%"
-                        И РесурсныеСпецификации.Наименование ПОДОБНО "%{nom_pr}%"
-                    """
-            key, data_rez = APIERP.get_wet_request(wet_req_text)
-            if key != 200:
-                CQT.msgbox(f'Ошибка получения данных код ({key}) из ERP')
-                return
-            if data_rez['data']:
-                data_rez['data'].insert(0,{k:'' for k in data_rez['data'][0].keys()})
-            result = CQT.msgboxg_get_table(self, f'Выбор ресурсной', data_rez['data'], 'Выбор',
-                                           func_oform_tbl=fnc_oform_tbl_res,
-                                           func_btn0=fnc_select_tbl_res,
-                                           ExtendedSelection=False, selectRows=True, styleSheet=CQT.ERP_CSS,
-                                           sortingEnabled=True)
-            if result:
-                res_code = result['Код']
-                tbl.item(i, j).setText(res_code)
-                if tbl_kal_pl_cellChanged(self):
-                    if not res_code:
-                        res_code = '...'
-                    tbl.cellWidget(i, j).deleteLater()
-                    CQT.add_label_link(tbl, i, j, res_code, res_code, fcn_pred_spec_erp, self)
-
-        if nk_local_graf:
-            self.ui.tbl_kal_pl.setColumnHidden(nk_local_graf, True)
-
-        if nk_nom_pr != None:
-            for i in range(tbl.rowCount()):
-                r, g, b = 240, 240, 240
-                try:
-                    r, g, b = self.Data_plan.DICT_NAPR_DEYAT_NAME[tbl.item(i, nk_napr).text()]['Цвет'].split(';')
-                except:
-                    pass
-                CQT.set_color_wtab_c(tbl, i, nk_pseudo, r, g, b)
-                CQT.font_cell_size_format(tbl, i, nk_nom_pr, underline=True)
-        if nk_pkk != None:
-            for i in range(tbl.rowCount()):
-                if not tbl.item(i, nk_pkk) == None:
-                    pkk_val = tbl.item(i, nk_pkk).text()
-                    if F.is_numeric(pkk_val) and isinstance(F.valm(pkk_val), int):
-                        CQT.add_btn(tbl, i, nk_pkk, '(*)', conn_func_checked_row_col=open_pkk, self=self)
-        if nk_state_norm != None:
-            for i in range(tbl.rowCount()):
-                if tbl.item(i, nk_state_norm):
-                    state = tbl.item(i, nk_state_norm).text()
-                    if state in self.Data_plan.DICT_STATUS_NORM_NAME:
-                        r, g, b = self.Data_plan.DICT_STATUS_NORM_NAME[state]['color'].split(';')
-                        CQT.set_color_wtab_c(tbl, i, nk_state_norm, r, g, b)
-        if nk_state != None:
-            for i in range(tbl.rowCount()):
-                if tbl.item(i, nk_state):
-                    state = tbl.item(i, nk_state).text()
-                    if state in self.Data_plan.DICT_STATUS_POZ_NAME:
-                        r, g, b = self.Data_plan.DICT_STATUS_POZ_NAME[state]['color'].split(';')
-                        CQT.set_color_wtab_c(tbl, i, nk_state, r, g, b)
-        if nk_pred_spec_erp != None:
-            for i in range(tbl.rowCount()):
-                if tbl.item(i, nk_pred_spec_erp):
-                    pred_spec_erp = tbl.item(i, nk_pred_spec_erp).text()
-                    pred_spec_erp_name = pred_spec_erp.strip()
-                    if not pred_spec_erp_name:
-                        pred_spec_erp_name = '...'
-                    CQT.add_label_link(tbl, i, nk_pred_spec_erp, pred_spec_erp_name, pred_spec_erp_name, fcn_pred_spec_erp, self)
-
-        if nk_mk != None:
-            for i in range(tbl.rowCount()):
-                if tbl.item(i, nk_mk):
-                    mk = tbl.item(i, nk_mk).text()
-                    if mk == '0':
-                        CQT.set_color_wtab_c(tbl, i, nk_mk, 206, 128, 128)
-        if self.ui.chk_paint_dates.isChecked():
-            dict_nkpl_for_paint = dict()
-            dict_pairs_fields = {
-                name + '.' + _['Имя_начала_этапа']: name + '.' + _['Имя_начала_этапа'].replace('Пдата',
-                                                                                               'Фдата').replace(
-                    'ПДата', 'ФДата') for name, _ in
-                self.Data_plan.DICT_PODR.items() if _['Имя_начала_этапа'] != '' and _['Имя_начала_этапа'] is not None}
-            list_dicts_tbl = CQT.list_from_wtabl_c(tbl, rez_dict=True)
-            if list_dicts_tbl:
-                for i, item in enumerate(list_dicts_tbl):
-                    for j, field_val in list(enumerate(item.items())):
-                        if tbl.isColumnHidden(j):
-                            continue
-                        field, val = field_val
-                        if field in dict_pairs_fields:
-                            if F.is_date(val, "%Y-%m-%d") and F.strtodate(val, "%Y-%m-%d") <= F.now(''):
-                                if dict_pairs_fields[field] in item:
-                                    if item[dict_pairs_fields[field]] == '':
-                                        if i not in dict_nkpl_for_paint:
-                                            dict_nkpl_for_paint[i] = []
-                                        dict_nkpl_for_paint[i].append(j)
-            clr_bad = CMS.Color_tbl(10)
-            with CQT.table_updating(tbl): #02.04.2026
-                for i_row, list_fields in dict_nkpl_for_paint.items():
-                    if nk_nom_pr != None:
-                        CQT.set_color_wtab_c(tbl, i_row, nk_nom_pr, clr_bad.r, clr_bad.g, clr_bad.b)
-                    CQT.set_color_wtab_c(tbl, i_row, nk_s_num, clr_bad.r, clr_bad.g, clr_bad.b)
-                    for field in list_fields:
-                        CQT.set_color_wtab_c(tbl, i_row, field, clr_bad.r, clr_bad.g, clr_bad.b)
-
-    debug = False
-    hook_prog_bar.open()
-    if CFG.Config.user_config.is_developer and debug:
-        self.setHidden(False)
-    hook_prog_bar.set(0)
-    hook_prog_bar.text("Загрузка данных")
-
-    list_from_db, list_conf = load_db(self,use_groups=self.ui.chk_kpl_groups.isChecked())
-    if list_from_db == False:
-        CQT.msgbox(f'Ошибка загрузки таблиц')
-        return
-    # if len(list) == 1:
-    #    list = add_excell(list)
-    # list = CSQ.fix_types_table(list)
-    # editeble_col_nomera = [_ for _ in list_conf[0] if 'дата_' in _.lower()]
-    editeble_col_nomera = []
-    hook_prog_bar.set(20)
-    hook_prog_bar.text("Применение прав")
-    for i, name_field in enumerate(list_from_db[0]):
-        if name_field in self.Data_plan.DICT_INFO_FIELDS_KPL:
-            if self.Data_plan.DICT_INFO_FIELDS_KPL[name_field]['hand_editable'] == 1:
-                if CMS.access_kpl_tbl(self.Data_plan.DICT_INFO_FIELDS_KPL, name_field):
-                    editeble_col_nomera.append(name_field)
-        hook_prog_bar.set(20 + round(i / len(list_from_db[0]) * 10))
-    hook_prog_bar.text("Заполнение данными")
-    @CQT.onerror
-    def fncContextMenu(self:mywindow,tbl:QtWidgets.QTableWidget,row:int,col:int,menu_builder:CQT.ContextMenuBuilder):
-        cfg = CFG.Config.project
-
-        def fnc_edit_num_pr(self:mywindow,s_num_poz:int,change:bool=True):
-            poz = CMS.Pozition(s_num_poz)
-            poz.load_kpl_table('пл_оуп')
-            start_text = None
-            if change:
-                start_text = poz.dict_tables['пл_оуп']['№проекта']
-            succ, text = CQT.get_dialog_choose_text(self,f'Новый номер проекта:', placeholderText = '...',start_text=start_text)
-            if not succ:
-                return
-            new_np = text["text"].strip()
-            if len(new_np)<4:
-                CQT.msgbox(f'Не корректное значение')
-                return
-
-            if poz.dict_tables['пл_оуп']['№проекта'] == new_np:
-                CQT.msgbox(f'Номер проекта не изменился')
-                return
-            poz.dict_tables['пл_оуп']['№проекта'] = new_np
-            if not poz.update_znpr():
-                CQT.msgbox(f'Ошибка изменения ЗНПР')
-                return
-            update_tabels(self)
-
-
-        def fnc_set_state(self:mywindow,s_num_state:int,list_s_num:tuple[int]):
-            r , g, b = self.Data_plan.DICT_STATUS_POZ[s_num_state]['color'].split(';')
-            state_name = self.Data_plan.DICT_STATUS_POZ[s_num_state]['Имя']
-            CSQ.custom_request_c(cfg.db_kplan,
-                                 f"""UPDATE plan SET (Статус) = ({s_num_state}) 
-                                 WHERE Пномер in ({CSQ.prepare_list_to_tuple(list_s_num)})""")
-            with CQT.table_updating(tbl):
-                for row_tbl in range(tbl.rowCount()):
-                    if int( tbl.item(row_tbl, nf['plan.Пномер']).text()) in list_s_num:
-                        tbl.item(row_tbl,nf['plan.Статус']).setText(state_name)
-                        CQT.set_color_wtab_c(tbl,row_tbl,nf['plan.Статус'],r,g,b)
-
-
-        nf = CQT.nums_col_by_name_dict(tbl)
-        row_data = CQT.get_dict_line_form_tbl(tbl)
-        s_num_poz = row_data['plan.Пномер']
-
-        col_name = tbl.horizontalHeaderItem(col).text()
-
-        if col_name == 'plan.ТипГр':
-            if F.curr_user_c() in self.Data_plan.DICT_INFO_FIELDS_KPL['plan.Статус']['users_rule']:
-                gr = row_data['plan.Группа']
-                if tbl.item(row,col).text() == CMS.DOC_EMOJI:
-                    s_num_pozs = [s_num_poz]
-
-                else:
-                    s_num_pozs = CSQ.custom_request_c(cfg.db_kplan,
-                                                      f"""SELECT Пномер FROM plan WHERE Группа == "{gr}";""",
-                                                      hat_c=False,one_column=True
-                                                      )
-                pozitions = CMS.Pozitions(s_num_pozs, cfg.db_kplan, cfg.db_naryad,
-                                         cfg.db_resxml, cfg.db_users, self
-                                         )
-                pozitions.load_kpl_table('пл_оуп')
-                list_states = [data_state['Пномер'] for data_state in self.Data_plan.DICT_STATUS_POZ_NAME.values()]
-
-                for poz in pozitions.dict_pozs.values():
-                    for state, data_state in self.Data_plan.DICT_STATUS_POZ_NAME.items():
-                        s_num_state = data_state['Пномер']
-                        if not chek_state_poz(self,s_num_state,poz.Пномер,poz,msg=False):
-                            if s_num_state in list_states:
-                                list_states.remove(s_num_state)
-                if list_states:
-                    menu_builder.add_submenu(f"Сменить статус    ")
-                for state_num in list_states:
-                    data_state = self.Data_plan.DICT_STATUS_POZ[state_num]
-
-                    emoji:CEMOJ.EmojiItem = eval(f'CEMOJ.EmojiMain.{data_state["emoj"]}')
-                    fnc = partial(fnc_set_state, self,state_num,tuple(pozitions.dict_pozs.keys()))
-                    menu_builder.add_menu(f'{emoji.symbol} {data_state["Имя"]}',
-                            fnc)
-
-        if col_name == 'знпр.№проекта':
-            if tbl.item(row, col).text() == '' or tbl.item(row, nf['знпр.№ERP']).text() == '':
-                return
-            if F.curr_user_c() in self.Data_plan.DICT_INFO_FIELDS_KPL['знпр.№проекта']['users_rule']:
-                emoji: CEMOJ.EmojiItem = CEMOJ.EmojiMain.ДокументыДанные.pencil2
-
-                fnc = partial(fnc_edit_num_pr, self, int(s_num_poz),change=True)
-                menu_builder.add_menu(f'{emoji.symbol} {"Изменить"}',
-                                      fnc)
-
-                emoji: CEMOJ.EmojiItem = CEMOJ.EmojiMain.ДокументыДанные.document
-                fnc = partial(fnc_edit_num_pr, self, int(s_num_poz),change=False)
-                menu_builder.add_menu(f'{emoji.symbol} {"Ввести новый"}',
-                                      fnc)
-
-
-
-
-
-    CQT.fill_wtabl(list_from_db, self.ui.tbl_kal_pl, auto_type=False, set_editeble_col_nomera=editeble_col_nomera,
-                   height_row=20,load_links=True,sortingEnabled= not self.ui.chk_kpl_groups.isChecked(),
-                   fncContextMenu=fncContextMenu,parent_self=self)
-
-    hook_prog_bar.text("Свертка полей")
-    for i in range(len(list_conf[0])):
-        if CQT.num_col_by_name_c(self.ui.tbl_kal_pl, list_conf[0][i]) != None:
-            if list_conf[1][i] == 2:
-                self.ui.tbl_kal_pl.setColumnHidden(CQT.num_col_by_name_c(self.ui.tbl_kal_pl, list_conf[0][i]), True)
-            else:
-                self.ui.tbl_kal_pl.setColumnHidden(CQT.num_col_by_name_c(self.ui.tbl_kal_pl, list_conf[0][i]), False)
-        hook_prog_bar.set(30 + round(i / len(list_conf[0]) * 30))
-    self.ui.tbl_kal_pl.rowCount()
-    hook_prog_bar.text("Оформление заголовков")
-    for j in range(self.ui.tbl_kal_pl.columnCount()):
-        hook_prog_bar.set(60 + round(j / self.ui.tbl_kal_pl.columnCount() * 20))
-        podr = self.ui.tbl_kal_pl.horizontalHeaderItem(j).text().replace('факт_', '').replace(
-            'план_', '').split('.')[0]
-        r = 11
-        g = 11
-        b = 11
-        if podr in self.Data_plan.DICT_PODR:
-            r, g, b = self.Data_plan.DICT_PODR[podr]['Цвет'].split(";")
-        CQT.set_color_text_header_wtab_horisontal_c(self.ui.tbl_kal_pl, j, r, g, b, blod=True)
-
-    if self.ui.tbl_filtr_kal_pl.columnCount() < 1:
-        btn_clear_filtr(self, False)
-
-
-    hook_prog_bar.set(80)
-    hook_prog_bar.text("Применение цветовой политики")
-
-    CMS.load_column_widths(self, self.ui.tbl_kal_pl)
-
-    hook_prog_bar.set(90)
-    hook_prog_bar.text("Заполнение фильтров")
-    hook_prog_bar.close()
-
-
-    oforml_table(self)
-    CQT.fill_filtr_c(self, self.ui.tbl_filtr_kal_pl, self.ui.tbl_kal_pl,
-                     USER_CONFIG_reset_tbl_filtrs_forsed_off=self.ui.chk_kpl_groups.isChecked())
-    CMS.update_width_filtr(self.ui.tbl_kal_pl, self.ui.tbl_filtr_kal_pl)
-    CMS.apply_filtr_c(self, self.ui.tbl_filtr_kal_pl, self.ui.tbl_kal_pl,False)
-    KPLUF.apply_select_filtr(self)
-    oforml_groups(self)
-
-    print(f'reload ok')
-
-
 @CQT.onerror
 def btn_clear_filtr(self: mywindow, apply=True):
     row = CQT.get_dict_line_form_tbl(self.ui.tbl_kal_pl, 0)
@@ -5424,9 +6781,10 @@ def btn_clear_filtr(self: mywindow, apply=True):
     nk_status = CQT.num_col_by_name_c(self.ui.tbl_kal_pl, 'plan.Статус')
     if nk_status != None:
         spis_znach[-1][nk_status] = 'Изготовление|Подготовка|К производству|Резерв|Долгосрочный|Группа'
-    CMS.fill_filtr_c(self, self.ui.tbl_filtr_kal_pl, self.ui.tbl_kal_pl, hidden_scroll=True, spis_znach=spis_znach)
+    fill_filtr_main_tbl_pl(spis_znach)
     CMS.update_width_filtr(self.ui.tbl_kal_pl, self.ui.tbl_filtr_kal_pl)
-
+    if 'shift' in CQT.get_key_modifiers(self) or apply:
+        CMS.apply_filtr_c(self,self.ui.tbl_filtr_kal_pl,self.ui.tbl_kal_pl)
 
 def set_groups_kpl(self: mywindow):
     kpl_bool_groups = self.ui.chk_kpl_groups.isChecked()
@@ -5435,7 +6793,7 @@ def set_groups_kpl(self: mywindow):
 
     try:
         CMS.save_tmp_stukt(kpl_bool_groups, 'chk_kpl_groups')
-        update_tabels(self)
+        update_plan_main_tbl(self)
 
     except:
         pass
@@ -5443,7 +6801,7 @@ def set_params_kpl(self: mywindow):
     kpl_bool_load_zav = self.ui.chk_kpl_zaversch.isChecked()
     try:
         CMS.save_tmp_path('kpl_bool_load_zav', str(int(kpl_bool_load_zav)))
-        update_tabels(self)
+        update_plan_main_tbl(self)
     except:
         pass
 
@@ -5474,7 +6832,6 @@ def chk_autorepeat_update_fact(self: mywindow):
 def clck_tbl_kal_pl_tbl(self:mywindow, *args):
     self.current_kpl_table = 'tbl_preview'
     tbl = self.ui.tbl_kal_pl
-
     CQT.summ_selct_tbl(self, tbl)
     select_row(self)
     if not self.ui.fr_tree_fields.isHidden():
@@ -5484,50 +6841,20 @@ def clck_tbl_kal_pl_tbl(self:mywindow, *args):
     POZPL.clck_tbl_kal_pl(self)
 
 
-def show_tabel(self):
-    if self.ui.fr_pl_add_poz.isHidden():
-        self.edit_tabel_mode = True
-        self.ui.fr_pl_etap.setHidden(False)
-        self.ui.fr_pl_add_poz.setHidden(False)
-        self.ui.tbl_pl_add_poz.setMaximumHeight(370)
-        self.ui.fr_pl_add_poz.setMaximumHeight(470)
-        self.ui.fr_gant_local.setHidden(True)
-        self.ui.cmb_etap.clear()
-        self.ui.tbl_pl_add_poz.clear()
-        list_month = [_ for _ in CSQ.get_list_of_tables_c(self.db_kplan) if 'm_cld_' in _]
-        list_month.insert(0, '')
-        self.ui.cmb_etap.addItems(list_month)
-        self.ui.cmb_etap.setMaxCount(len(list_month))
-    else:
-        self.ui.fr_pl_add_poz.setHidden(True)
-        self.ui.fr_gant_local.setHidden(False)
-        self.edit_tabel_mode = False
-        self.ui.tbl_pl_add_poz.setMaximumHeight(70)
-        self.ui.fr_pl_add_poz.setMaximumHeight(170)
-        self.ui.tbl_pl_add_poz.clear()
-
-
 @CQT.onerror
-def clck_tbl_pl_gaf(self:mywindow, tbl):
-    if not is_local_gant_hidden(self):
-        self.current_kpl_table = 'tbl_preview'
-        t = CQT.TableContext(tbl)
-        row = t.get_current_row()
-        if 'Пномер' not in t.nf or row.value('Пномер') == '':
-            return
-        pnom = int(row.value('Пномер'))
-        CMS.update_local_graf(self, pnom=pnom)
-        pozition = CMS.Pozition(pnom, self.db_kplan, self.bd_naryad, self.db_resxml, self.db_users, '')
-        GPL.fill_select_poz_kpl(self, pozition.row)
-
+def clck_tbl_pl_gaf(self:mywindow, tbl:QtWidgets.QTableWidget):
     CQT.summ_selct_tbl(self, tbl)
+    if is_local_gant_hidden(self):
+        return
+    nf_id_kpl = CQT.num_col_by_name_c(tbl,'_id_poz')
+    it = tbl.item(tbl.currentRow(),nf_id_kpl)
+    if it:
+        id_kpl = int(it.text())
+        prepare_local_gant_and_poz_info(self,forced_kpl_id=id_kpl)
 
 
-@CQT.onerror
-def clck_tbl_preview(self, tbl):
-    self.current_kpl_table = 'tbl_preview'
-    CQT.summ_selct_tbl(self, tbl)
-    # GPL.load_info_select_block(self,tbl)
+
+
 
 
 def add_excell(list):
@@ -5598,3 +6925,7 @@ def copy_exel_svod(self: mywindow):
     tbl = self.ui.tbl_pl_gaf
     file_path = CEX.save_table_colour(tbl, putf, wb_name, ws_name)
     F.run_file_os_c(file_path)
+
+
+
+

@@ -159,6 +159,62 @@ class B24Sender(BaseSender):
         response = requests.post(f'{self._URL}{self._NOTIFY_ENDPOINT}', json=body, verify=False)
         return response.ok
 
+    def send_msg_to_user(
+            self,
+            user_id: int,
+            msg: str,
+            attach: list = None,
+            form_dict: dict = None,
+            msg_bold: bool = False,
+            basement_msg: str = None,
+            message_id: int = None
+    ) -> bool:
+        """
+        Отправляет сообщение в личный чат пользователя.
+        :param user_id:   ID пользователя в Битрикс24
+        :param msg:       текст сообщения
+        :param attach:    вложения (массив)
+        :param form_dict: словарь для форматирования (ключ: значение)
+        :param msg_bold:  выделить весь текст жирным
+        :param basement_msg: добавить текст в конец
+        :param message_id: если передан, то редактирует существующее сообщение
+        """
+        chat_id = str(user_id)  # Для личного чата используем просто ID пользователя
+        return self.send_msg_by_chat_id(
+            chat_id=chat_id,
+            msg=msg,
+            attach=attach,
+            form_dict=form_dict,
+            msg_bold=msg_bold,
+            basement_msg=basement_msg,
+            message_id=message_id
+        )
+
+    def send_msg_table_to_user(
+            self,
+            user_id: int,
+            lst_of_lists: list[list] | list[dict],
+            title: str = '',
+            bold_title: bool = True,
+            have_header: bool = True,
+            horizontal: bool = True,
+            message_id: int = None
+    ) -> bool:
+        """
+        Отправляет табличную часть в личный чат пользователя.
+        """
+        chat_id = str(user_id)
+        return self.send_msg_table(
+            lst_of_lists=lst_of_lists,
+            chat_id=chat_id,
+            title=title,
+            bold_title=bold_title,
+            have_header=have_header,
+            horizontal=horizontal,
+            message_id=message_id
+        )
+
+
 class MessageBuilder:
     """
         @example
@@ -184,9 +240,10 @@ class MessageBuilder:
             template = CB24.MessageBuilder('Таблица с дсе') #Инициализация (базовое сообщение)
             template.add_table(table1)                      #Добавить табличную часть
             template.add_delimiter()                        #Добавить разделитель
-            template.add_message('Таблица с операциями')    #Добавить сообщение
+            template.add_message('Таблица с операциями')    #Добавить сообщение или ссылка [URL=https://bitrix24.kelast.ru/online/?IM_DIALOG=chat103962]Перейти в чат[/URL]
             template.add_table(table2)                      #Добавить таблицу 2
             template.send_by_chat_id('chat78766')           #Итоговая отправка
+            #или builder.send_by_user_id(userid_123)
     """
 
     def __init__(
@@ -237,6 +294,10 @@ class MessageBuilder:
     def send_by_chat_id(self, chat_id: str):
         """Отправка сообщения по chat_id"""
         self.__sender.send_msg_by_chat_id(chat_id, self.title, attach=self.sandwich)
+
+    def send_by_user_id(self, user_id: int):
+        """Отправка сообщения в личный чат пользователя."""
+        self.__sender.send_msg_to_user(user_id, self.title, attach=self.sandwich)
 
 class HtmlContentDeployer:
     def pick_html_into_landing_block(self, *, html, matrix_id_landing_b24, matrix_id_landing_table_block_b24) -> bool:

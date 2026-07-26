@@ -1085,6 +1085,11 @@ class mywindow_res(QtWidgets.QDialog):  # диалоговое окно
 
     @CQT.onerror
     def show_options_upload(self, *args):
+        if self.res_obj.вид_по_напр not in self.myparent.Data_plan.DICT_VID_PO_NAPR:
+            CQT.msgbox(f'Технологический вид №{self.res_obj.вид_по_напр}, выбранный в Плане\ТКП, отсутствует в таблице Технологические виды.\n'
+                       f'см. "Техкарты"->"Материалы"->"ТехнологическиеВиды"')
+            return
+
         LIST_VIDS_NOMEN = ()
         if USRCNF.Config.place.poki == 0:
             LIST_VIDS_NOMEN  = ("Металлическая арматура", "Фильтры рукавные", "ФР.2403088", "Аппараты обдувки",

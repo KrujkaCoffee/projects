@@ -31,7 +31,7 @@ def _______INITS__________():
 def update_comp_files():
     tbl = DTCLS.app_self.ui.tbl_comp_files
     tblf = DTCLS.app_self.ui.tbl_comp_files_filtr
-    comps = CMS.Compositions()
+    comps = CMS.Compositions(DTCLS.PLACE.poki)
     DTCLS.compositions = comps
     templ = comps.template()
 
@@ -64,6 +64,103 @@ class Card_nesting_powerz_dse():
 
     def __repr__(self):
         return f'{self.dse_dft} - {self.count} шт.'
+
+
+class Card_nesting_kelast():
+    DIR_FILES_COMP = r'Z:\Data\Создание\compositions'
+    OPER_CODE = "ТОК.1"
+    RC = {"10101","10102"}
+    def __init__(self,data:list[list[str]],fileo:F.Cust_path):
+
+        num = F.Cust_path(data[1][0])
+        num.clean_and_normalize_path_part()
+        self.fileo:F.Cust_path = fileo
+        self.num:str = num.path_str
+        self.comment:str = data[1][1].replace('примечание:','').strip()
+        self.given_out:str = data[3][17].replace('Выдан:','').strip()
+        self.material_name:str = data[4][3].strip()
+        self.material_thickness:str = data[4][6].replace('≠','').strip()
+        self.count:int = int(data[5][2].replace('Количество повторений: ','').split('|')[0])
+        local_data = data[5][0].replace('Раскрой: ','').split(' из ')
+        self.local_num:int = int(local_data[0])
+        self.local_count:int = int(local_data[1])
+
+        if F.is_numeric(self.count):
+            self.count = int(self.count)
+        else:
+            self.count = 1
+        self.dse:list[Card_nesting_powerz_dse] = []
+        start_table_row = 8
+        end_table_row = 8
+        for ind in range(start_table_row,len(data)-1):
+            if data[ind][0] == '':
+                end_table_row = ind-1
+                break
+        tbl = F.list_of_lists_to_list_of_dicts(data[start_table_row:end_table_row+1])
+        for item in tbl:
+            dse_comp = Card_nesting_powerz_dse(item)
+            if 'ТОП.ПР.008' in dse_comp.dse_dft:
+                continue
+            self.dse.append(dse_comp)
+    @property
+    def store_name(self)->str:
+        return f'{self.num} N{self.local_num} из {self.local_count}{self.fileo.extension}'
+    @property
+    def store_path(self)->str:
+        return F.sep().join([self.DIR_FILES_COMP, self.store_name])
+
+    def __repr__(self):
+        return f'{self.given_out} {self.material_name}{self.material_thickness} - {len(self.dse)} поз.'
+
+    def add_to_db(self,new_path)->bool:
+        comp = CMS.Compositions.add_new_comp(DTCLS.PLACE.poki)
+        comp.name = self.num
+
+        comp.path = new_path
+        comp.count = self.count
+        comp.comment = self.comment
+        comp.given_out = self.given_out
+        comp.material_name = self.material_name
+        comp.material_thickness = self.material_thickness
+        comp.local_num = self.local_num
+        comp.local_count = self.local_count
+        comp.oper_code = self.OPER_CODE
+        comp.rc = self.RC
+
+
+        if not comp.upload():
+            return False
+        for poz in self.dse:
+            poz_comp = comp.add_poz()
+            poz_comp.id_file = comp.id
+            poz_comp.dse = '_'.join(poz.dse_dft.split('_')[1:]).replace('.dft','')
+            poz_comp.count = poz.count
+            poz_comp.proj = ''
+            poz_comp.py = ''
+            if '-' in poz.project:
+                poz_comp.proj, poz_comp.py = poz.project.split('-')
+
+            poz_comp.mk = int(poz.dse_dft.split('_')[0])
+            if poz_comp.proj == '' and poz_comp.py == '':
+                poz_comp.proj, poz_comp.py, poz.project = self.load_pr_py_by_mk(poz_comp.mk,poz.project)
+            if not poz_comp.upload():
+                return False
+
+        return True
+
+    def load_pr_py_by_mk(self,mk:int,project:str)->tuple[str,str,str]:
+        data = CSQ.custom_request_c(DTCLS.PROJECT.db_kplan,f"""SELECT  знпр.№проекта, знпр.№ERP FROM mk
+            INNER JOIN пл_оуп ON пл_оуп.НомПл == mk.НомКплан 
+            INNER JOIN знпр ON знпр.s_num == пл_оуп.Пномер_ЗП WHERE mk.Пномер = {mk} """, rez_dict=True,one=True,attach_dbs=DTCLS.PROJECT.db_naryad)
+        if data:
+            erp = data['№ERP'].split('-')[-1].lstrip('0')
+            np = data['№проекта']
+            limit = 3
+            if len(np) > limit:
+                np = np[-limit:]
+            return np , erp, f"{np}-{'0'*(4-len(str(erp)))}{erp}"
+        return '','', project
+
 
 
 class Card_nesting_powerz():
@@ -113,7 +210,7 @@ class Card_nesting_powerz():
         return f'{self.given_out} {self.material_name}{self.material_thickness} - {len(self.dse)} поз.'
 
     def add_to_db(self,new_path)->bool:
-        comp = CMS.Compositions.add_new_comp()
+        comp = CMS.Compositions.add_new_comp(DTCLS.PLACE.poki)
         comp.name = self.num
 
         comp.path = new_path
@@ -139,11 +236,29 @@ class Card_nesting_powerz():
             poz_comp.py = ''
             if '-' in poz.project:
                 poz_comp.proj, poz_comp.py = poz.project.split('-')
+
             poz_comp.mk = int(poz.dse_dft.split('_')[0])
+            if poz_comp.proj == '' and poz_comp.py == '':
+                poz_comp.proj, poz_comp.py, poz.project = self.load_pr_py_by_mk(poz_comp.mk,poz.project)
             if not poz_comp.upload():
                 return False
 
         return True
+
+    def load_pr_py_by_mk(self,mk:int,project:str)->tuple[str,str,str]:
+        data = CSQ.custom_request_c(DTCLS.PROJECT.db_kplan,f"""SELECT  знпр.№проекта, знпр.№ERP FROM mk
+            INNER JOIN пл_оуп ON пл_оуп.НомПл == mk.НомКплан 
+            INNER JOIN знпр ON знпр.s_num == пл_оуп.Пномер_ЗП WHERE mk.Пномер = {mk} """, rez_dict=True,one=True,attach_dbs=DTCLS.PROJECT.db_naryad)
+        if data:
+            erp = data['№ERP'].split('-')[-1].lstrip('0')
+            np = data['№проекта']
+            limit = 3
+            if len(np) > limit:
+                np = np[-limit:]
+            return np , erp, f"{np}-{'0'*(4-len(str(erp)))}{erp}"
+        return '','', project
+
+
 
 
 def ________TBLS_______________():
@@ -165,11 +280,12 @@ def btn_comp_load_file(id_file:int|None = None,*args):
         id = int(row.value('id'))
     else:
         id = id_file
-    comp = DTCLS.compositions.find(id)
+    comp:CMS.Composition = DTCLS.compositions.find(id)
     comp.load_pozs()
     comp.recalc_signed()
     comp.recalc_coupled()
     comp.recalc_finished()
+    comp.recalc_errors()
     if comp.is_edited:
         btn_update_files(DTCLS.app_self)
         comp.set_not_edited()
@@ -223,27 +339,63 @@ def ________BTNS_______________():
 
 @CQT.onerror
 def btn_comp_add_file(app_self,*args):
+    POKI = DTCLS.PLACE.poki
+
     def is_composition(data)->bool:
-        if '|__|__|__|__|__|__|__|__|__|__|__|__|__|__|__|__|' not in data[5][2]:
+        def is_empty_row(row):
+            row_list = [_.strip() for _ in row]
+            if  len(set(row_list))==1 and row_list[0] == '':
+                return True
             return False
-        return True
+
+        if not data:
+            return False
+        if POKI == 0:
+            if '|__|__|__|__|__|__|__|__|__|__|__|__|__|__|__|__|' not in data[5][2]:
+                return False
+            return True
+        elif POKI==1:
+            if len(data[0]) != 13:
+                return False
+            if is_empty_row(data[0]) and is_empty_row(data[2]):
+                return True
+        return False
+
     default_path = load_last_dir()
-    files = CQT.f_dialog_name(app_self,'Выбора карты раскроя',default_path, filtr='*.XLSX',one=False)
+    if POKI == 0:
+        str_filter = '*.XLSX'
+    elif POKI==1:
+        str_filter = '*.CSV'
+    else:
+        raise TypeError(f'fnc btn_comp_add_file')
+
+    files = CQT.f_dialog_name(app_self,'Выбора карты раскроя',default_path, filtr=str_filter,one=False)
     if not files:
         return
     fl_save = False
     dict_comp = dict()
     list_used_names = []
-    compositions = CMS.Compositions()
+    compositions = CMS.Compositions(DTCLS.PLACE.poki)
     for file in files:
         fileo = F.Cust_path(file)
         if not fl_save:
             save_last_dir(str(fileo.parent))
-        data = CEX.read_file(fileo.path_str,c2=18)
+        if fileo.extension.lower() == ".XLSX".lower():
+            data = CEX.read_file(fileo.path_str,c2=18)
+        elif fileo.extension.lower() == ".CSV".lower():
+            data = F.load_file(fileo.path_str,';')
+        else:
+            raise TypeError(f'fnc btn_comp_add_file')
+
         if not is_composition(data):
             CQT.msgbox(f'Файл {fileo.name} не корректный')
             return
-        card_nesting = Card_nesting_powerz(data,fileo)
+        if POKI == 0:
+            card_nesting = Card_nesting_powerz(data,fileo)
+        elif POKI==1:
+            card_nesting = Card_nesting_kelast(data, fileo)
+        else:
+            raise TypeError(f'fnc btn_comp_add_file')
 
         composition = compositions.find_by_name(card_nesting.store_name)
         if composition:
@@ -307,6 +459,42 @@ def btn_comp_delete_file(app_self,*args):
     btn_comp_load_file()
 
 @CQT.onerror
+def btn_fr_comp_dse_nars_delete(app_self,*args):
+    tbl_ch = DTCLS.app_self.ui.tbl_comp_dse_chose_nar
+    t = CQT.TableContext(tbl_ch)
+    cur_nar = t.current_row()
+    if cur_nar.no_selection:
+        CQT.msgbox('Не выбрана строка')
+        return
+
+    couple_o = CMS.Couple_nar_poz.get(int(cur_nar.value('_snum_couple')))
+
+    nar = CMS.Naryads(couple_o.snum_nar,CFG.Config.project.db_naryad,DTCLS.app_self.DICT_DOLGN_ETAP,
+                          CFG.Config.project.db_users,DTCLS.app_self.DICT_EMPLOEE_FULL,DTCLS.app_self.DICT_OPER,
+                          DTCLS.app_self.DICT_DOLGN_ETAP)
+    if nar.Пномер is not None: #не удален ранее
+        if nar.get_list_from_jurnal().rows:
+            CQT.msgbox('Наряд взят в работу- удаление невозможно')
+            return
+        if not CQT.msgboxgYN(f'Удалить наряд {nar.Пномер} и очисть связанные данные по раскрою?',
+                             app_self=DTCLS.app_self):
+            return
+    else:
+        if not CQT.msgboxgYN(f'Наряд {nar.Пномер} был удален ранее, очисть связанные данные по раскрою?',
+                             app_self=DTCLS.app_self):
+            return
+
+    if nar.Пномер is not None: #не удален ранее
+        if not nar.delete():
+            CQT.msgbox('Ошибка удаления')
+
+    composition_poz = couple_o.get_composition_poz()
+    composition_poz.del_associated_dse(couple_o.snum_nar)
+    btn_comp_load_file(composition_poz.parent.id)
+    tbl_comp_dse(composition_poz.id)
+
+
+@CQT.onerror
 def btn_comp_dse_cr_nar(app_self,*args):
     poz = _get_current_poz_obj()
     if poz is None:
@@ -317,7 +505,7 @@ def btn_comp_dse_cr_nar(app_self,*args):
     template = poz.calc_composite_create_templ()
 
     def fnc_check_select(btn, dialog, t):
-        if btn.text() == 'Ввод':
+        if dialog.is_btn_yes_role(btn):
             t = CQT.TableContext(t)
             not_nums = [str(_.i + 1) for _ in t.rows() if not F.is_numeric(_.value('Выбрано шт.'))
                         and _.value('Выбрано шт.') != '']
@@ -353,8 +541,14 @@ def btn_comp_dse_cr_nar(app_self,*args):
         return [_ for _ in data if _['Выбрано шт.'] != '']
 
     def func_oform_tbl(tbl, *args):
+        def fnc_dblclick_copy_count(t:CQT.TableContext,i:int,name_clmn:str,*args):
+            row = t.get_row(i)
+            row.set_value('Выбрано шт.',row.value('Доступно'))
+
         t = CQT.TableContext(tbl)
         t.set_editable('Выбрано шт.')
+        print(t.tbl.property('_drdr'))
+        t.add_column_events('Доступно',on_double_click=fnc_dblclick_copy_count)
 
     if not template:
         CQT.msgbox(f'ДСЕ для создания не найдено')
@@ -397,6 +591,7 @@ def btn_comp_dse_cr_nar(app_self,*args):
                                        )
     for param_o in list_params_o:
         new_nar.add_param(param_o)
+    new_nar.ФИО = 'Работник Заготовительного Цеха'
     new_nar.save()
     for param_o in new_nar.params_o:
         snum_nar = param_o.parent.Пномер
@@ -425,7 +620,7 @@ def btn_comp_dse(app_self,*args):
                                                              DTCLS.app_self.DICT_OPER_NAME)
 
     def fnc_check_select(btn, dialog, t):
-        if btn.text() == 'Ввод':
+        if dialog.is_btn_yes_role(btn):
             t = CQT.TableContext(t)
             not_nums = [str(_.i + 1) for _ in t.rows() if not F.is_numeric(_.value('Выбрано шт.'))
                         and _.value('Выбрано шт.') != '']
@@ -543,11 +738,11 @@ def check_count(*args):
 
 def set_lbl_count_composite_aviable(count:int|str = '-'):
     lbl:CQT.QtWidgets.QLabel = DTCLS.app_self.ui.lbl_compos_count
-    lbl.setText(f'Доступно: {count} шт.')
+    lbl.setText(f'Доступно к связыванию: {count} шт.')
 
 def set_lbl_count_composite_create_aviable(count:int|str = '-'):
     lbl:CQT.QtWidgets.QLabel = DTCLS.app_self.ui.lbl_compos_create_count
-    lbl.setText(f'Доступно: {count} шт.')
+    lbl.setText(f'Доступно к созданию: {count} шт.')
 
 
 def _get_current_poz_obj()-> CMS.Composition_poz | None:

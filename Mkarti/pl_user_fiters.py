@@ -6,7 +6,7 @@ import project_cust_38.Cust_Functions as F
 
 import project_cust_38.Cust_Qt as CQT
 import project_cust_38.Cust_mes as CMS
-
+import kal_plan as KPL
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -21,10 +21,16 @@ def apply_select_filtr(self:mywindow):
     if name not in dict_filtrs:
         CQT.msgbox(f'Имя не в списке')
         return
+    old_cust_filtr = CQT.get_spis_znach_for_filtr(self, self.ui.tbl_filtr_kal_pl, self.ui.tbl_kal_pl)
     dict_fields = dict_filtrs[name]
-    CMS.fill_filtr_c(self,self.ui.tbl_filtr_kal_pl,self.ui.tbl_kal_pl,dict_fields)
+    for k,v in dict_fields.items():
+        if v:
+            old_cust_filtr[k] =v
+
+    KPL.fill_filtr_main_tbl_pl(old_cust_filtr)
     CMS.update_width_filtr(self.ui.tbl_kal_pl,self.ui.tbl_filtr_kal_pl)
     CMS.apply_filtr_c(self,self.ui.tbl_filtr_kal_pl,self.ui.tbl_kal_pl,False)
+    return  True
 
 @CQT.onerror
 def load_pl_user_filtrs(*args):
@@ -39,11 +45,15 @@ def load_pl_user_filtrs(*args):
 
 @CQT.onerror
 def fill_pl_user_filtrs(self:mywindow):
+    old_text = self.ui.pl_cmb_filtrs.currentText()
     dict_filtrs = load_pl_user_filtrs(self)
     self.ui.pl_cmb_filtrs.clear()
     self.ui.pl_cmb_filtrs.addItem('')
     for key in dict_filtrs:
         self.ui.pl_cmb_filtrs.addItem(key)
+    self.ui.pl_cmb_filtrs.blockSignals(True)
+    self.ui.pl_cmb_filtrs.setCurrentText(old_text)
+    self.ui.pl_cmb_filtrs.blockSignals(False)
 
 @CQT.onerror
 def add_pl_user_filtrs(self:mywindow):

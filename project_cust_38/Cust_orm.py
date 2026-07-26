@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import enum
 from collections import OrderedDict
 import copy
+import dataclasses
 import datetime as _dt
+import inspect
 import json
+import keyword
 import typing
+import types
 from collections import defaultdict
 from typing import Any, Callable, Dict, Iterable, List, Optional, Union
 
@@ -24,14 +29,18 @@ __all__ = [
     "BlobField",
     "JsonTextField",
     "ListTextField",
+    "SmartRow",
     "SmartList",
     "QuerySetLite",
+    "ObjectManager",
+    "SaveResult",
     "BaseModel",
 ]
 
 
 _EMPTY = object()
-T = typing.TypeVar("T", bound="BaseModel")
+ModelT = typing.TypeVar("ModelT", bound="BaseModel")
+HintT = typing.TypeVar("HintT")
 
 
 class OrmError(Exception):
@@ -45,28 +54,195 @@ class DoesNotExist(OrmError):
 class MultipleObjectsReturned(OrmError):
     """Найдено больше одной записи там, где ожидалась одна."""
 
-## todo struct start
 
-class SmartList(list):
-    """Структура для хранения словарей и прокси между QuerySetLite и python-коллекцией."""
+class SmartRow(dict):
+    """Словарь-строка, который помнит ORM-модель и умеет возвращаться обратно в модель."""
 
     def __init__(
         self,
-        iterable: Optional[Iterable[dict]] = None,
+        mapping: typing.Mapping[str, typing.Any] | None = None,
+        *,
+        _origin_qs: "QuerySetLite | None" = None,
+        _origin_model: type["BaseModel"] | None = None,
+        _key_mode: str = "python",
+        _db: str | None = None,
+        _attach_dbs: typing.Iterable[str] | str | None = None,
+        _executor: "SqlExecutor | None" = None,
+        _aliases: dict[str, str] | None = None,
+    ) -> None:
+        super().__init__(mapping or {})
+        self._origin_qs = _origin_qs
+        self._origin_model = _origin_model
+        self._key_mode = _key_mode
+        self._db = _db
+        self._attach_dbs = _normalize_attach_dbs(_attach_dbs)
+        self._executor = _executor
+        self._aliases = dict(_aliases or {})
+
+    @property
+    def model_cls(self) -> type["BaseModel"] | None:
+        return self._origin_model
+
+    @property
+    def key_mode(self) -> str:
+        return self._key_mode
+
+    def clone(self) -> "SmartRow":
+        return SmartRow(
+            dict(self),
+            _origin_qs=self._origin_qs.clone() if self._origin_qs is not None else None,
+            _origin_model=self._origin_model,
+            _key_mode=self._key_mode,
+            _db=self._db,
+            _attach_dbs=self._attach_dbs,
+            _executor=self._executor,
+            _aliases=self._aliases,
+        )
+
+    def to_model(
+        self,
+        model_cls: type["BaseModel"] | None = None,
+        *,
+        db: str | None = None,
+        attach_dbs: typing.Iterable[str] | str | None = None,
+        executor: "SqlExecutor | None" = None,
+        aliases: dict[str, str] | None = None,
+    ) -> "BaseModel":
+        model = model_cls or self._origin_model
+        if model is None:
+            raise OrmError("SmartRow не знает ORM-модель; передайте model_cls явно")
+        return model.from_row(
+            dict(self),
+            db=self._db if db is None else db,
+            attach_dbs=self._attach_dbs if attach_dbs is None else attach_dbs,
+            executor=self._executor if executor is None else executor,
+            aliases=self._aliases if aliases is None else aliases,
+        )
+
+    def to_dict(
+        self,
+        *,
+        by_aliases: bool = False,
+        by_db_columns: bool = False,
+        aliases: dict[str, str] | None = None,
+        include_extra: bool = True,
+    ) -> dict[str, typing.Any]:
+        if self._origin_model is None:
+            return dict(self)
+
+        active_aliases = self._aliases if aliases is None else aliases
+        model_cls = self._origin_model
+        model = self.to_model(aliases=active_aliases)
+        alias_map = model_cls.bind_aliases(active_aliases)
+
+        result: dict[str, typing.Any] = {}
+        used_fields: set[str] = set()
+        extra_items: dict[str, typing.Any] = {}
+        for raw_key, raw_value in self.items():
+            field_name = model_cls.resolve_field_name(str(raw_key), aliases=active_aliases)
+            if field_name in model_cls.__fields__:
+                if field_name in used_fields:
+                    continue
+                used_fields.add(field_name)
+                field = model_cls.__fields__[field_name]
+                if by_aliases:
+                    out_key = alias_map.get(field_name, field.db_column if by_db_columns else field_name)
+                else:
+                    out_key = field.db_column if by_db_columns else field_name
+                result[out_key] = getattr(model, field_name)
+            elif include_extra:
+                extra_items[str(raw_key)] = raw_value
+        if include_extra:
+            result.update(extra_items)
+        return result
+
+    def by_aliases(self, aliases: dict[str, str] | None = None) -> "SmartRow":
+        return SmartRow(
+            self.to_dict(by_aliases=True, aliases=aliases),
+            _origin_qs=self._origin_qs,
+            _origin_model=self._origin_model,
+            _key_mode="alias",
+            _db=self._db,
+            _attach_dbs=self._attach_dbs,
+            _executor=self._executor,
+            _aliases=self._aliases if aliases is None else aliases,
+        )
+
+    def by_db_columns(self) -> "SmartRow":
+        return SmartRow(
+            self.to_dict(by_db_columns=True),
+            _origin_qs=self._origin_qs,
+            _origin_model=self._origin_model,
+            _key_mode="db",
+            _db=self._db,
+            _attach_dbs=self._attach_dbs,
+            _executor=self._executor,
+            _aliases=self._aliases,
+        )
+
+    def by_fields(self) -> "SmartRow":
+        return SmartRow(
+            self.to_dict(),
+            _origin_qs=self._origin_qs,
+            _origin_model=self._origin_model,
+            _key_mode="python",
+            _db=self._db,
+            _attach_dbs=self._attach_dbs,
+            _executor=self._executor,
+            _aliases=self._aliases,
+        )
+
+class GroupByTypes(enum.Enum):
+    LIST = 'list'       # Группировка по ключу {key: [values]}
+    FIRST = 'first'     # По первому вхождению ключа {key: {value: 1}}
+    LAST = 'last'       # По последнему вхождению ключа {key: {value: 1}}
+
+class SmartList(list):
+    """Список результатов, который помнит QuerySet/модель и умеет менять представление."""
+
+    def __init__(
+        self,
+        iterable: Optional[Iterable[typing.Any]] = None,
         *,
         _origin_qs: "QuerySetLite | None" = None,
         _origin_model: type["BaseModel"] | None = None,
         _mutated: bool = False,
+        _aliases: dict[str, str] | None = None,
     ):
         super().__init__(iterable or [])
         self._origin_qs = _origin_qs
         self._origin_model = _origin_model
         self._mutated = _mutated
+        self._aliases = dict(_aliases or {})
 
     @classmethod
-    def from_queryset(cls, qs: "QuerySetLite") -> "SmartList":
+    def from_queryset(
+        cls,
+        qs: "QuerySetLite",
+        *,
+        by_aliases: bool = False,
+        by_db_columns: bool = True,
+        aliases: dict[str, str] | None = None,
+    ) -> "SmartList":
         rows = qs._fetch_rows(one=False) or []
-        return cls(rows, _origin_qs=qs.clone(), _origin_model=qs.model_cls, _mutated=False)
+        items = [
+            qs.model_cls.row_to_smartrow(
+                row,
+                by_aliases=by_aliases,
+                by_db_columns=by_db_columns,
+                aliases=aliases,
+                db=qs.db,
+                attach_dbs=qs.attach_dbs,
+                executor=qs.executor,
+                origin_qs=qs.clone(),
+            )
+            for row in rows
+        ]
+        return cls(items, _origin_qs=qs.clone(), _origin_model=qs.model_cls, _mutated=False, _aliases=aliases)
+
+    @property
+    def model_cls(self) -> type["BaseModel"] | None:
+        return self._origin_model
 
     @property
     def is_mutated(self) -> bool:
@@ -82,6 +258,7 @@ class SmartList(list):
             _origin_qs=self._origin_qs.clone() if self._origin_qs is not None else None,
             _origin_model=self._origin_model,
             _mutated=self._mutated,
+            _aliases=self._aliases,
         )
 
     def _mark_mutated(self):
@@ -93,6 +270,86 @@ class SmartList(list):
         if self._mutated:
             raise OrmError('SmartList был изменен и не может быть безопасно преобразован обратно в QuerySetLite')
         return self._origin_qs.clone()
+
+    def _as_smartrow(self, item: typing.Any, *, aliases: dict[str, str] | None = None) -> SmartRow:
+        if isinstance(item, SmartRow):
+            return item
+        if isinstance(item, BaseModel):
+            return item.to_smartrow(aliases=self._aliases if aliases is None else aliases)
+        if isinstance(item, dict):
+            return SmartRow(
+                item,
+                _origin_qs=self._origin_qs,
+                _origin_model=self._origin_model,
+                _key_mode="unknown",
+                _db=getattr(self._origin_qs, 'db', None),
+                _attach_dbs=getattr(self._origin_qs, 'attach_dbs', None),
+                _executor=getattr(self._origin_qs, 'executor', None),
+                _aliases=self._aliases if aliases is None else aliases,
+            )
+        raise TypeError(f"Нельзя преобразовать {type(item).__name__} в SmartRow")
+
+    def to_models(
+        self,
+        model_cls: type["BaseModel"] | None = None,
+        *,
+        db: str | None = None,
+        attach_dbs: typing.Iterable[str] | str | None = None,
+        executor: "SqlExecutor | None" = None,
+        aliases: dict[str, str] | None = None,
+    ) -> "SmartList":
+        model = model_cls or self._origin_model
+        if model is None:
+            raise OrmError("SmartList не знает ORM-модель; передайте model_cls явно")
+        items = []
+        for item in self:
+            if isinstance(item, model):
+                items.append(item)
+            elif isinstance(item, BaseModel):
+                items.append(model.from_row(item.to_dict(), db=db, attach_dbs=attach_dbs, executor=executor, aliases=aliases))
+            else:
+                items.append(self._as_smartrow(item, aliases=aliases).to_model(model, db=db, attach_dbs=attach_dbs, executor=executor, aliases=aliases))
+        return SmartList(items, _origin_qs=self._origin_qs, _origin_model=model, _mutated=self._mutated, _aliases=aliases)
+
+    def to_dicts(
+        self,
+        *,
+        by_aliases: bool = False,
+        by_db_columns: bool = False,
+        aliases: dict[str, str] | None = None,
+        include_extra: bool = True,
+    ) -> "SmartList":
+        items = []
+        for item in self:
+            if isinstance(item, BaseModel):
+                row = item.to_smartrow(
+                    by_aliases=by_aliases,
+                    by_db_columns=by_db_columns,
+                    aliases=self._aliases if aliases is None else aliases,
+                    include_extra=include_extra,
+                )
+            else:
+                smart_row = self._as_smartrow(item, aliases=aliases)
+                if by_aliases:
+                    row = smart_row.by_aliases(self._aliases if aliases is None else aliases)
+                elif by_db_columns:
+                    row = smart_row.by_db_columns()
+                else:
+                    row = smart_row.by_fields()
+            items.append(row)
+        return SmartList(items, _origin_qs=self._origin_qs, _origin_model=self._origin_model, _mutated=self._mutated, _aliases=aliases)
+
+    def by_aliases(self, aliases: dict[str, str] | None = None) -> "SmartList":
+        return self.to_dicts(by_aliases=True, aliases=aliases)
+
+    def by_db_columns(self) -> "SmartList":
+        return self.to_dicts(by_db_columns=True)
+
+    def by_fields(self) -> "SmartList":
+        return self.to_dicts()
+
+    def first(self, default: typing.Any = None) -> typing.Any:
+        return self[0] if self else default
 
     def append(self, item):
         self._mark_mutated()
@@ -136,85 +393,82 @@ class SmartList(list):
 
     @staticmethod
     def _ensure_dict(item: Any) -> dict:
-        if not isinstance(item, dict):
-            raise TypeError(
-                f"Ожидался dict, получено: {type(item).__name__}. "
-                f"SmartList рассчитан на список словарей."
-            )
-        return item
+        if isinstance(item, SmartRow):
+            return item
+        if isinstance(item, dict):
+            return item
+        if isinstance(item, BaseModel):
+            return item.to_dict()
+        raise TypeError(
+            f"Ожидался dict/SmartRow/BaseModel, получено: {type(item).__name__}."
+        )
 
     @staticmethod
-    def _get_value(item: dict, field: Union[str, Callable[[dict], Any]], default: Any = None) -> Any:
+    def _get_value(item: typing.Any, field: Union[str, Callable[[dict], Any]], default: Any = None) -> Any:
         if callable(field):
             return field(item)
-        return item.get(field, default)
-
-    @staticmethod
-    def _merge_dicts(
-        left: dict,
-        right: Optional[dict],
-        *,
-        left_prefix: str = "",
-        right_prefix: str = "",
-        right_fields: Optional[Iterable[str]] = None,
-        left_fields: Optional[Iterable[str]] = None,
-    ) -> dict:
-        result = {}
-
-        if left is not None:
-            for k, v in left.items():
-                if left_fields is None or k in left_fields:
-                    result[f"{left_prefix}{k}"] = v
-
-        if right is not None:
-            for k, v in right.items():
-                if right_fields is None or k in right_fields:
-                    new_key = f"{right_prefix}{k}"
-                    if new_key in result:
-                        new_key = f"{new_key}_right"
-                    result[new_key] = v
-
-        return result
-
-    @staticmethod
-    def _normalize_number(value: Any, converter: Optional[Callable[[Any], Any]] = None) -> Any:
-        if converter is not None:
-            return converter(value)
-        return value
+        if isinstance(item, BaseModel):
+            return getattr(item, field, default)
+        if isinstance(item, dict):
+            return item.get(field, default)
+        return getattr(item, field, default)
 
     def group_by(
         self,
         field: Union[str, Callable[[dict], Any]],
         *,
-        mode: str = "list",
+        mode: GroupByTypes = GroupByTypes.LIST,
         item_filter: Optional[Callable[[dict], bool]] = None,
         default_key: Any = None,
     ) -> Dict[Any, Union[List[dict], dict, None]]:
-        if mode not in {"list", "first", "last"}:
-            raise ValueError("mode должен быть одним из: 'list', 'first', 'last'")
-
-        if mode == "list":
+        if not isinstance(mode, GroupByTypes):
+            raise ValueError("mode должен быть типа Cust_orm.GroupByTypes")
+        if mode == GroupByTypes.LIST:
             result: Dict[Any, List[dict]] = defaultdict(list)
         else:
             result: Dict[Any, dict] = {}
-
         for raw_item in self:
-            item = self._ensure_dict(raw_item)
-
+            item = raw_item
             if item_filter is not None and not item_filter(item):
                 continue
-
             key = self._get_value(item, field, default=default_key)
-
-            if mode == "list":
+            if mode == GroupByTypes.LIST:
                 result[key].append(item)
-            elif mode == "first":
+            elif mode == GroupByTypes.FIRST:
                 if key not in result:
                     result[key] = item
-            elif mode == "last":
+            elif mode == GroupByTypes.LAST:
                 result[key] = item
+        if mode == GroupByTypes.LIST:
+            return dict(result)
+        else:
+            return SmartRow(result, _origin_model=self._origin_model, _origin_qs=self._origin_qs)
 
-        return dict(result)
+    def deploy_dict(
+            self,
+            field: Union[str, Field, Callable[[dict], Any]] = None,
+            item_filter: Optional[Callable[[dict], bool]] = None
+    ) -> Dict[Any, Union[List[dict], dict, None]]:
+        """
+        Параметры:
+            field ключ группировки (например KroKases.id или 'id')
+            item_filter функция фильтр, которой передается словарь текущей итерации
+
+        Дефолтные параметры:
+            field если не передан алгоритм попытается взять primary key
+
+        Возврат:
+            Структура {field: {val: 1, val: 2...}}
+        """
+        is_have_model = self._origin_model is not None
+        if isinstance(field, Field):
+            field = field.name
+        if field is None:
+            if is_have_model:
+                field = self._origin_model.pk_name()
+            else:
+                raise ValueError('Ключ для deploy_by_dict не был передан')
+        return self.group_by(field, item_filter=item_filter, mode=GroupByTypes.FIRST)
 
     def get_column_values(
         self,
@@ -228,7 +482,7 @@ class SmartList(list):
         result = []
 
         for raw_item in self:
-            item = self._ensure_dict(raw_item)
+            item = raw_item
 
             if item_filter is not None and not item_filter(item):
                 continue
@@ -236,9 +490,9 @@ class SmartList(list):
             if callable(column):
                 value = column(item)
             else:
-                if skip_missing and column not in item:
+                if skip_missing and isinstance(item, dict) and column not in item:
                     continue
-                value = item.get(column, default)
+                value = self._get_value(item, column, default)
 
             if converter is not None:
                 value = converter(value)
@@ -283,7 +537,7 @@ class SmartList(list):
         result: Dict[Any, Any] = defaultdict(lambda: start)
 
         for raw_item in self:
-            item = self._ensure_dict(raw_item)
+            item = raw_item
 
             if item_filter is not None and not item_filter(item):
                 continue
@@ -393,11 +647,6 @@ class SmartList(list):
         )
         return result
 
-## todo struct end
-
-
-
-
 
 class SqlExecutor:
 
@@ -426,7 +675,11 @@ class SqlExecutor:
         if params is None:
             return CSQ.custom_request_c(bd, query, **kwargs)
 
-        kwargs["list_of_lists_c"] = [_normalize_params(params)]
+        normalized_params = _normalize_params(params)
+        if _sql_has_returning(query):
+            kwargs["list_of_lists_c"] = normalized_params
+        else:
+            kwargs["list_of_lists_c"] = [normalized_params]
         return CSQ.custom_request_c(bd, query, **kwargs)
 
 
@@ -442,11 +695,562 @@ def get_default_executor() -> SqlExecutor:
     return _DEFAULT_EXECUTOR
 
 
-class Manager:
-    """Минимальный аналог Django objects manager."""
+@dataclasses.dataclass(frozen=True)
+class SaveResult:
+    """Результат сохранения одной ORM-сущности."""
 
-    def __get__(self, instance, owner: type[BaseModel]) -> "QuerySetLite":
-        return QuerySetLite(owner)
+    instance: "BaseModel"
+    ok: bool
+    created: bool = False
+    updated: bool = False
+    changed: bool = False
+    matched: bool = False
+    pk: typing.Any = None
+    row: dict[str, typing.Any] | None = None
+    dirty_fields: tuple[str, ...] = ()
+
+    def __bool__(self) -> bool:
+        return bool(self.ok)
+
+
+class ObjectManager(typing.Generic[ModelT, HintT]):
+    """Менеджер операций над множеством ORM-объектов."""
+
+    def __init__(self, model_cls: type[ModelT] | None = None) -> None:
+        self.model_cls = model_cls
+
+    def __get__(self, instance, owner: type[ModelT]) -> "ObjectManager[ModelT, HintT]":
+        manager = copy.copy(self)
+        manager.model_cls = owner
+        manager._install_create_method()
+        manager._install_update_method()
+        return manager
+
+    def _install_create_method(self) -> None:
+        def create(
+            *,
+            _db: str | None = None,
+            _attach_dbs: typing.Iterable[str] | str | None = None,
+            _executor: SqlExecutor | None = None,
+            **_kwargs,
+        ) -> ModelT:
+            return self._create(
+                _db=_db,
+                _attach_dbs=_attach_dbs,
+                _executor=_executor,
+                **_kwargs,
+            )
+
+        create.__name__ = "create"
+        create.__qualname__ = f"{self.__class__.__name__}.create"
+        create.__doc__ = "Создать объект модели, сохранить его и вернуть свежую ORM-сущность."
+        try:
+            create.__signature__ = self._create_signature()
+        except Exception:
+            pass
+        self.create = create
+
+    def _install_update_method(self) -> None:
+        def update(
+            pk: typing.Any,
+            *,
+            _db: str | None = None,
+            _attach_dbs: typing.Iterable[str] | str | None = None,
+            _executor: SqlExecutor | None = None,
+            **_kwargs,
+        ) -> SaveResult:
+            return self._update(
+                pk=pk,
+                _db=_db,
+                _attach_dbs=_attach_dbs,
+                _executor=_executor,
+                **_kwargs,
+            )
+
+        update.__name__ = "update"
+        update.__qualname__ = f"{self.__class__.__name__}.update"
+        update.__doc__ = "Обновить объект модели по первичному ключу и вернуть SaveResult."
+        try:
+            update.__signature__ = self._update_signature()
+        except Exception:
+            pass
+        self.update = update
+
+    def _create_signature(self) -> inspect.Signature:
+        model_cls = self._ensure_model()
+        annotations: dict[str, typing.Any] = {}
+        for base in reversed(getattr(model_cls, "__mro__", ())):
+            annotations.update(getattr(base, "__annotations__", {}) or {})
+        params: list[inspect.Parameter] = [
+            inspect.Parameter("_db", inspect.Parameter.KEYWORD_ONLY, default=None, annotation=str | None),
+            inspect.Parameter("_attach_dbs", inspect.Parameter.KEYWORD_ONLY, default=None, annotation=typing.Any),
+            inspect.Parameter("_executor", inspect.Parameter.KEYWORD_ONLY, default=None, annotation=typing.Any),
+        ]
+        used_names = {param.name for param in params}
+        for name, field in getattr(model_cls, "__fields__", {}).items():
+            if not isinstance(name, str):
+                continue
+            if not name.isidentifier() or keyword.iskeyword(name) or name in used_names:
+                continue
+            default = None
+            if field.default is not _EMPTY and not callable(field.default):
+                try:
+                    default = copy.deepcopy(field.default)
+                except Exception:
+                    default = None
+            annotation = annotations.get(name, typing.Any)
+            params.append(
+                inspect.Parameter(
+                    name,
+                    inspect.Parameter.KEYWORD_ONLY,
+                    default=default,
+                    annotation=annotation,
+                )
+            )
+            used_names.add(name)
+        params.append(
+            inspect.Parameter("_kwargs", inspect.Parameter.VAR_KEYWORD, annotation=typing.Any)
+        )
+        return inspect.Signature(params, return_annotation=model_cls)
+
+    def _update_signature(self) -> inspect.Signature:
+        model_cls = self._ensure_model()
+        annotations: dict[str, typing.Any] = {}
+        for base in reversed(getattr(model_cls, "__mro__", ())):
+            annotations.update(getattr(base, "__annotations__", {}) or {})
+        params: list[inspect.Parameter] = [
+            inspect.Parameter("pk", inspect.Parameter.POSITIONAL_OR_KEYWORD, annotation=typing.Any),
+            inspect.Parameter("_db", inspect.Parameter.KEYWORD_ONLY, default=None, annotation=str | None),
+            inspect.Parameter("_attach_dbs", inspect.Parameter.KEYWORD_ONLY, default=None, annotation=typing.Any),
+            inspect.Parameter("_executor", inspect.Parameter.KEYWORD_ONLY, default=None, annotation=typing.Any),
+        ]
+        used_names = {param.name for param in params}
+        pk_name = model_cls.pk_name()
+        for name, field in getattr(model_cls, "__fields__", {}).items():
+            if not isinstance(name, str) or name == pk_name:
+                continue
+            if not name.isidentifier() or keyword.iskeyword(name) or name in used_names:
+                continue
+            default = None
+            if field.default is not _EMPTY and not callable(field.default):
+                try:
+                    default = copy.deepcopy(field.default)
+                except Exception:
+                    default = None
+            annotation = annotations.get(name, typing.Any)
+            params.append(
+                inspect.Parameter(
+                    name,
+                    inspect.Parameter.KEYWORD_ONLY,
+                    default=default,
+                    annotation=annotation,
+                )
+            )
+            used_names.add(name)
+        params.append(
+            inspect.Parameter("_kwargs", inspect.Parameter.VAR_KEYWORD, annotation=typing.Any)
+        )
+        return inspect.Signature(params, return_annotation=SaveResult)
+
+    def _ensure_model(self) -> type[ModelT]:
+        if self.model_cls is None:
+            raise OrmError("ObjectManager не привязан к модели")
+        return self.model_cls
+
+    def query(
+        self,
+        *,
+        _db: str | None = None,
+        _attach_dbs: typing.Iterable[str] | str | None = None,
+        _executor: SqlExecutor | None = None,
+    ) -> "QuerySetLite":
+        return QuerySetLite(
+            self._ensure_model(),
+            db=_db,
+            attach_dbs=_attach_dbs,
+            executor=_executor,
+        )
+
+    def using(
+        self,
+        _db: str | None = None,
+        _attach_dbs: typing.Iterable[str] | str | None = None,
+    ) -> "QuerySetLite":
+        return self.query(_db=_db, _attach_dbs=_attach_dbs)
+
+    def with_executor(self, _executor: SqlExecutor) -> "QuerySetLite":
+        return self.query(_executor=_executor)
+
+    def filter(self, **_kwargs) -> "QuerySetLite":
+        return self.query().filter(**_kwargs)
+
+    def exclude(self, **_kwargs) -> "QuerySetLite":
+        return self.query().exclude(**_kwargs)
+
+    def where(self, sql: str, params: typing.Iterable[typing.Any] | None = None) -> "QuerySetLite":
+        return self.query().where(sql, params=params)
+
+    def order_by(self, *fields: str) -> "QuerySetLite":
+        return self.query().order_by(*fields)
+
+    def limit(self, value: int | None) -> "QuerySetLite":
+        return self.query().limit(value)
+
+    def all(
+        self,
+        *,
+        model_as_dict: bool = False,
+        by_aliases: bool = False,
+        by_db_columns: bool = False,
+        aliases: dict[str, str] | None = None,
+    ) -> "SmartList":
+        return self.query().all(
+            as_dict=model_as_dict,
+            by_aliases=by_aliases,
+            by_db_columns=by_db_columns,
+            aliases=aliases,
+        )
+
+    def as_smartlist(
+        self,
+        *,
+        by_aliases: bool = False,
+        by_db_columns: bool = True,
+        aliases: dict[str, str] | None = None,
+        **_kwargs,
+    ) -> "SmartList":
+        qs = self.query()
+        if _kwargs:
+            qs = qs.filter(**_kwargs)
+        return qs.as_smartlist(
+            by_aliases=by_aliases,
+            by_db_columns=by_db_columns,
+            aliases=aliases,
+        )
+
+    def values(
+        self,
+        *fields: str,
+        by_aliases: bool = False,
+        by_db_columns: bool = False,
+        aliases: dict[str, str] | None = None,
+    ) -> "SmartList":
+        return self.query().values(
+            *fields,
+            by_aliases=by_aliases,
+            by_db_columns=by_db_columns,
+            aliases=aliases,
+        )
+
+    def first(
+        self,
+        *,
+        as_dict: bool = False,
+        by_aliases: bool = False,
+        by_db_columns: bool = False,
+        aliases: dict[str, str] | None = None,
+        **_kwargs,
+    ) -> ModelT | SmartRow | None:
+        qs = self.query()
+        if _kwargs:
+            qs = qs.filter(**_kwargs)
+        return qs.first(
+            as_dict=as_dict,
+            by_aliases=by_aliases,
+            by_db_columns=by_db_columns,
+            aliases=aliases,
+        )
+
+    def get(
+        self,
+        pk: typing.Any = _EMPTY,
+        *,
+        _db: str | None = None,
+        _attach_dbs: typing.Iterable[str] | str | None = None,
+        _executor: SqlExecutor | None = None,
+        as_dict: bool = False,
+        by_aliases: bool = False,
+        by_db_columns: bool = False,
+        aliases: dict[str, str] | None = None,
+        **_kwargs,
+    ) -> ModelT | SmartRow:
+        model_cls = self._ensure_model()
+        qs = self.query(_db=_db, _attach_dbs=_attach_dbs, _executor=_executor)
+        if pk is not _EMPTY:
+            _kwargs[model_cls.pk_name()] = pk
+        return qs.get(
+            as_dict=as_dict,
+            by_aliases=by_aliases,
+            by_db_columns=by_db_columns,
+            aliases=aliases,
+            **_kwargs,
+        )
+
+    def count(self, **_kwargs) -> int:
+        qs = self.query()
+        if _kwargs:
+            qs = qs.filter(**_kwargs)
+        return qs.count()
+
+    def _create(
+        self,
+        *,
+        _db: str | None = None,
+        _attach_dbs: typing.Iterable[str] | str | None = None,
+        _executor: SqlExecutor | None = None,
+        **_kwargs,
+    ) -> ModelT:
+        model_cls = self._ensure_model()
+        obj = model_cls(_db=_db, _attach_dbs=_attach_dbs, _executor=_executor, **_kwargs)
+        self.save_instance(obj, force_insert=True)
+        return obj
+
+    def _update(
+        self,
+        pk: typing.Any,
+        *,
+        _db: str | None = None,
+        _attach_dbs: typing.Iterable[str] | str | None = None,
+        _executor: SqlExecutor | None = None,
+        **_kwargs,
+    ) -> SaveResult:
+        model_cls = self._ensure_model()
+        unknown_fields = sorted(name for name in _kwargs if name not in model_cls.__fields__)
+        if unknown_fields:
+            raise OrmError(
+                f"У модели {model_cls.__name__} нет полей для update: "
+                f"{', '.join(repr(name) for name in unknown_fields)}"
+            )
+
+        pk_name = model_cls.pk_name()
+        if pk_name in _kwargs:
+            raise OrmError(
+                f"Поле первичного ключа {pk_name!r} нельзя изменять через object_manager.update"
+            )
+
+        obj = self.get(
+            pk=pk,
+            _db=_db,
+            _attach_dbs=_attach_dbs,
+            _executor=_executor,
+        )
+        for name, value in _kwargs.items():
+            setattr(obj, name, value)
+        return self.save_instance_result(obj, update_fields=tuple(_kwargs))
+
+    def save_instance(
+        self,
+        obj: ModelT,
+        *,
+        force_insert: bool = False,
+        force_update: bool = False,
+        update_fields: typing.Iterable[str] | None = None,
+    ) -> bool:
+        return bool(
+            self.save_instance_result(
+                obj,
+                force_insert=force_insert,
+                force_update=force_update,
+                update_fields=update_fields,
+            )
+        )
+
+    def save_instance_result(
+        self,
+        obj: ModelT,
+        *,
+        force_insert: bool = False,
+        force_update: bool = False,
+        update_fields: typing.Iterable[str] | None = None,
+    ) -> SaveResult:
+        obj._ensure_table_and_db()
+        if force_insert and force_update:
+            raise OrmError("force_insert и force_update одновременно использовать нельзя")
+
+        should_insert = force_insert or not obj._persisted
+        if should_insert:
+            return self._insert_instance(obj)
+
+        return self._update_instance(obj, update_fields=update_fields, force=force_update)
+
+    def refresh_instance(self, obj: ModelT) -> ModelT:
+        obj._ensure_table_and_db()
+        fresh = obj.__class__.object_manager.get(
+            pk=obj.pk,
+            _db=obj._db,
+            _attach_dbs=obj._attach_dbs,
+            _executor=obj._executor,
+        )
+        obj._data = copy.deepcopy(fresh._data)
+        obj._extra_data = copy.deepcopy(fresh._extra_data)
+        obj._persisted = True
+        obj._sync_original_data()
+        return obj
+
+    def delete_instance(self, obj: ModelT) -> bool:
+        obj._ensure_table_and_db()
+        pk_name = obj.pk_name()
+        pk_value = getattr(obj, pk_name)
+        if pk_value is None:
+            raise OrmError("Нельзя удалить объект без первичного ключа")
+
+        field = obj.get_field(pk_name)
+        sql = f"DELETE FROM {obj.__table__} WHERE {field.db_column} = ?;"
+        obj._executor.execute(
+            obj._db,
+            sql,
+            params=[obj._prepare_db_value(pk_name, pk_value)],
+            attach_dbs=obj._attach_dbs,
+        )
+        obj._persisted = False
+        obj._original_db_data = {}
+        return True
+
+    def _insert_instance(self, obj: ModelT) -> SaveResult:
+        columns: list[str] = []
+        params: list[typing.Any] = []
+        dirty_before = tuple(obj._dirty_fields)
+
+        for name, field in obj.__fields__.items():
+            value = obj._prepare_db_value(name, obj._data.get(name))
+            if field.primary_key and value is None:
+                continue
+            columns.append(field.db_column)
+            params.append(value)
+
+        if not columns:
+            raise OrmError(f"У модели {obj.__class__.__name__} нет данных для INSERT")
+
+        placeholders = ", ".join("?" for _ in columns)
+        sql = f"INSERT INTO {obj.__table__} ({', '.join(columns)}) VALUES ({placeholders}) RETURNING *;"
+        result = obj._executor.execute(
+            obj._db,
+            sql,
+            params=params,
+            attach_dbs=obj._attach_dbs,
+            rez_dict=True,
+            one=True,
+        )
+        row = self._returning_row(result)
+        if row:
+            obj._apply_db_row(row)
+        obj._persisted = True
+        obj._sync_original_data()
+        return SaveResult(
+            instance=obj,
+            ok=True,
+            created=True,
+            updated=False,
+            changed=True,
+            matched=True,
+            pk=obj.pk,
+            row=row,
+            dirty_fields=dirty_before,
+        )
+
+    def _update_instance(
+        self,
+        obj: ModelT,
+        *,
+        update_fields: typing.Iterable[str] | None,
+        force: bool,
+    ) -> SaveResult:
+        pk_name = obj.pk_name()
+        pk_value = getattr(obj, pk_name)
+        if pk_value is None:
+            raise OrmError("Нельзя обновить объект без первичного ключа")
+
+        dirty_before = tuple(obj._dirty_fields)
+        target_fields = list(update_fields) if update_fields is not None else list(dirty_before)
+        target_fields = [name for name in target_fields if name != pk_name]
+
+        if not target_fields and not force:
+            return SaveResult(
+                instance=obj,
+                ok=False,
+                created=False,
+                updated=False,
+                changed=False,
+                matched=True,
+                pk=obj.pk,
+                row=None,
+                dirty_fields=dirty_before,
+            )
+
+        if not target_fields and force:
+            target_fields = [name for name in obj.__fields__ if name != pk_name]
+
+        set_parts: list[str] = []
+        params: list[typing.Any] = []
+        for name in target_fields:
+            field = obj.get_field(name)
+            set_parts.append(f"{field.db_column} = ?")
+            params.append(obj._prepare_db_value(name, obj._data.get(name)))
+
+        if not set_parts:
+            return SaveResult(
+                instance=obj,
+                ok=False,
+                created=False,
+                updated=False,
+                changed=False,
+                matched=True,
+                pk=obj.pk,
+                row=None,
+                dirty_fields=dirty_before,
+            )
+
+        pk_field = obj.get_field(pk_name)
+        params.append(obj._prepare_db_value(pk_name, pk_value))
+        sql = f"UPDATE {obj.__table__} SET {', '.join(set_parts)} WHERE {pk_field.db_column} = ? RETURNING *;"
+        result = obj._executor.execute(
+            obj._db,
+            sql,
+            params=params,
+            attach_dbs=obj._attach_dbs,
+            rez_dict=True,
+            one=True,
+        )
+        row = self._returning_row(result)
+        if not row:
+            return SaveResult(
+                instance=obj,
+                ok=False,
+                created=False,
+                updated=False,
+                changed=bool(dirty_before),
+                matched=False,
+                pk=obj.pk,
+                row=None,
+                dirty_fields=dirty_before,
+            )
+
+        obj._apply_db_row(row)
+        obj._persisted = True
+        obj._sync_original_data()
+        return SaveResult(
+            instance=obj,
+            ok=True,
+            created=False,
+            updated=True,
+            changed=bool(dirty_before),
+            matched=True,
+            pk=obj.pk,
+            row=row,
+            dirty_fields=dirty_before,
+        )
+
+    @staticmethod
+    def _returning_row(result: typing.Any) -> dict[str, typing.Any] | None:
+        if isinstance(result, dict):
+            return result or None
+        if isinstance(result, list):
+            if not result:
+                return None
+            first = result[0]
+            if isinstance(first, dict):
+                return first
+        return None
 
 
 class Field:
@@ -595,7 +1399,6 @@ class DateTimeField(Field):
             return None
         if isinstance(value, (_dt.datetime, _dt.date)):
             return value
-        # В проекте много дат хранится строками; на Stage 1 не форсируем парсинг.
         return value
 
     def to_db(self, value: typing.Any) -> typing.Any:
@@ -674,11 +1477,9 @@ class ListTextField(StrField):
 
 
 class QuerySetLite:
-    """Облегченный query builder."""
-
     def __init__(
         self,
-        model_cls: type[T],
+        model_cls: type[ModelT],
         *,
         db: str | None = None,
         attach_dbs: typing.Iterable[str] | str | None = None,
@@ -761,26 +1562,128 @@ class QuerySetLite:
         clone._limit = value
         return clone
 
-    def all(self) -> list[T]:
+    def _row_to_result(
+        self,
+        row: dict[str, typing.Any],
+        *,
+        as_dict: bool = False,
+        by_aliases: bool = False,
+        by_db_columns: bool = False,
+        aliases: dict[str, str] | None = None,
+    ) -> ModelT | SmartRow:
+        if as_dict or by_aliases or by_db_columns:
+            return self.model_cls.row_to_smartrow(
+                row,
+                by_aliases=by_aliases,
+                by_db_columns=by_db_columns,
+                aliases=aliases,
+                db=self.db,
+                attach_dbs=self.attach_dbs,
+                executor=self.executor,
+                origin_qs=self.clone(),
+            )
+        return self.model_cls.from_row(
+            row,
+            db=self.db,
+            attach_dbs=self.attach_dbs,
+            executor=self.executor,
+            aliases=aliases,
+        )
+
+    def all(
+        self,
+        *,
+        as_dict: bool = False,
+        by_aliases: bool = False,
+        by_db_columns: bool = False,
+        aliases: dict[str, str] | None = None,
+    ) -> SmartList:
         rows = self._fetch_rows(one=False) or []
-        return [self.model_cls.from_row(row, db=self.db, attach_dbs=self.attach_dbs, executor=self.executor) for row in rows]
+        items = [
+            self._row_to_result(
+                row,
+                as_dict=as_dict,
+                by_aliases=by_aliases,
+                by_db_columns=by_db_columns,
+                aliases=aliases,
+            )
+            for row in rows
+        ]
+        return SmartList(items, _origin_qs=self.clone(), _origin_model=self.model_cls, _mutated=False, _aliases=aliases)
 
-    def as_smartlist(self) -> SmartList:
-        return SmartList.from_queryset(self)
+    def as_smartlist(
+        self,
+        *,
+        by_aliases: bool = False,
+        by_db_columns: bool = True,
+        aliases: dict[str, str] | None = None,
+    ) -> SmartList:
+        return SmartList.from_queryset(
+            self,
+            by_aliases=by_aliases,
+            by_db_columns=by_db_columns,
+            aliases=aliases,
+        )
 
-    def values(self, *fields: str) -> SmartList:
+    def values(
+        self,
+        *fields: str,
+        by_aliases: bool = False,
+        by_db_columns: bool = False,
+        aliases: dict[str, str] | None = None,
+    ) -> SmartList:
         rows = self._fetch_rows(one=False) or []
-        if fields:
-            rows = [{field: row.get(field) for field in fields} for row in rows]
-        return SmartList(rows, _origin_qs=self.clone(), _origin_model=self.model_cls, _mutated=False)
+        selected: list[SmartRow] = []
+        resolved_fields = [self.model_cls.resolve_field_name(field, aliases=aliases) for field in fields]
+        for row in rows:
+            data = self.model_cls.normalize_row_keys(row, aliases=aliases, include_unknown=True)
+            if resolved_fields:
+                data = {field: data.get(field) for field in resolved_fields}
+            smart_row = SmartRow(
+                data,
+                _origin_qs=self.clone(),
+                _origin_model=self.model_cls,
+                _key_mode="python",
+                _db=self.db,
+                _attach_dbs=self.attach_dbs,
+                _executor=self.executor,
+                _aliases=self.model_cls.bind_aliases(aliases),
+            )
+            if by_aliases:
+                smart_row = smart_row.by_aliases(aliases)
+            elif by_db_columns:
+                smart_row = smart_row.by_db_columns()
+            selected.append(smart_row)
+        return SmartList(selected, _origin_qs=self.clone(), _origin_model=self.model_cls, _mutated=False, _aliases=aliases)
 
-    def first(self) -> T | None:
+    def first(
+        self,
+        *,
+        as_dict: bool = False,
+        by_aliases: bool = False,
+        by_db_columns: bool = False,
+        aliases: dict[str, str] | None = None,
+    ) -> ModelT | SmartRow | None:
         row = self.limit(1)._fetch_rows(one=True)
         if not row:
             return None
-        return self.model_cls.from_row(row, db=self.db, attach_dbs=self.attach_dbs, executor=self.executor)
+        return self._row_to_result(
+            row,
+            as_dict=as_dict,
+            by_aliases=by_aliases,
+            by_db_columns=by_db_columns,
+            aliases=aliases,
+        )
 
-    def get(self, **kwargs) -> T:
+    def get(
+        self,
+        *,
+        as_dict: bool = False,
+        by_aliases: bool = False,
+        by_db_columns: bool = False,
+        aliases: dict[str, str] | None = None,
+        **kwargs,
+    ) -> ModelT | SmartRow:
         qs = self.filter(**kwargs) if kwargs else self
         rows = qs.limit(2)._fetch_rows(one=False)
         if not rows:
@@ -791,7 +1694,13 @@ class QuerySetLite:
             raise self.model_cls.MultipleObjectsReturned(
                 f"{self.model_cls.__name__} вернул больше одной записи по условиям {kwargs}"
             )
-        return self.model_cls.from_row(rows[0], db=self.db, attach_dbs=self.attach_dbs, executor=self.executor)
+        return qs._row_to_result(
+            rows[0],
+            as_dict=as_dict,
+            by_aliases=by_aliases,
+            by_db_columns=by_db_columns,
+            aliases=aliases,
+        )
 
     def count(self) -> int:
         sql, params = self._build_select_sql(columns="COUNT(*) as cnt", for_count=True)
@@ -963,8 +1872,8 @@ class ModelMeta(type):
             pk_name = "id"
         cls.__pk__ = pk_name
 
-        if "objects" not in cls.__dict__:
-            cls.objects = Manager()
+        if "object_manager" not in cls.__dict__:
+            cls.object_manager = ObjectManager()
 
         cls.DoesNotExist = type(f"{name}DoesNotExist", (DoesNotExist,), {})
         cls.MultipleObjectsReturned = type(
@@ -973,14 +1882,15 @@ class ModelMeta(type):
         return cls
 
 
-class BaseModel(metaclass=ModelMeta):
+class BaseModel(typing.Generic[HintT], metaclass=ModelMeta):
     __abstract__ = True
     __table__: str | None = None
     __db__: str | typing.Callable[[], str] | None = None
     __attach_dbs__: tuple[str, ...] | list[str] | str | None = ()
     __pk__: str | None = None
+    ALIASES: dict[str, str] = {}
 
-    objects = Manager()
+    object_manager = ObjectManager()
 
     def __init__(
         self,
@@ -988,7 +1898,7 @@ class BaseModel(metaclass=ModelMeta):
         _db: str | None = None,
         _attach_dbs: typing.Iterable[str] | str | None = None,
         _executor: SqlExecutor | None = None,
-        **kwargs,
+        **_kwargs,
     ) -> None:
         self._data: dict[str, typing.Any] = {}
         self._extra_data: dict[str, typing.Any] = {}
@@ -1003,7 +1913,7 @@ class BaseModel(metaclass=ModelMeta):
         for name, field in self.__fields__.items():
             self._data[name] = field.get_default()
 
-        for key, value in kwargs.items():
+        for key, value in _kwargs.items():
             if key in self.__fields__:
                 self._assign_field(key, value, from_db=_persisted)
             elif key in self.__field_by_column__:
@@ -1047,6 +1957,94 @@ class BaseModel(metaclass=ModelMeta):
         return cls.__fields__[name]
 
     @classmethod
+    def bind_aliases(cls, aliases: dict[str, str] | None = None) -> dict[str, str]:
+        """Вернуть нормализованную карту python_field -> alias для модели."""
+        raw_aliases: dict[str, str] = {}
+        for attr_name in ("ALIASES", "__aliases__", "DICT_ALIASES"):
+            value = getattr(cls, attr_name, None)
+            if isinstance(value, dict):
+                raw_aliases.update(value)
+        if aliases:
+            raw_aliases.update(aliases)
+
+        result: dict[str, str] = {}
+        for raw_key, raw_alias in raw_aliases.items():
+            if raw_alias in (None, ""):
+                continue
+            key = str(raw_key)
+            if key in cls.__fields__:
+                field_name = key
+            elif key in cls.__field_by_column__:
+                field_name = cls.__field_by_column__[key]
+            else:
+                continue
+            result[field_name] = str(raw_alias)
+        return result
+
+    @classmethod
+    def alias_to_field_map(cls, aliases: dict[str, str] | None = None) -> dict[str, str]:
+        return {alias: field_name for field_name, alias in cls.bind_aliases(aliases).items()}
+
+    @classmethod
+    def resolve_field_name(cls, key: str, aliases: dict[str, str] | None = None) -> str:
+        key = str(key)
+        if key in cls.__fields__:
+            return key
+        if key in cls.__field_by_column__:
+            return cls.__field_by_column__[key]
+        alias_map = cls.alias_to_field_map(aliases)
+        if key in alias_map:
+            return alias_map[key]
+        return key
+
+    @classmethod
+    def normalize_row_keys(
+        cls,
+        row: dict[str, typing.Any],
+        *,
+        aliases: dict[str, str] | None = None,
+        include_unknown: bool = True,
+    ) -> dict[str, typing.Any]:
+        result: dict[str, typing.Any] = {}
+        for key, value in (row or {}).items():
+            field_name = cls.resolve_field_name(str(key), aliases=aliases)
+            if field_name in cls.__fields__:
+                result[field_name] = value
+            elif include_unknown:
+                result[str(key)] = value
+        return result
+
+    @classmethod
+    def row_to_smartrow(
+        cls,
+        row: dict[str, typing.Any],
+        *,
+        by_aliases: bool = False,
+        by_db_columns: bool = False,
+        aliases: dict[str, str] | None = None,
+        db: str | None = None,
+        attach_dbs: typing.Iterable[str] | str | None = None,
+        executor: SqlExecutor | None = None,
+        origin_qs: "QuerySetLite | None" = None,
+    ) -> SmartRow:
+        model = cls.from_row(row, db=db, attach_dbs=attach_dbs, executor=executor, aliases=aliases)
+        key_mode = "python"
+        if by_aliases:
+            key_mode = "alias"
+        elif by_db_columns:
+            key_mode = "db"
+        return SmartRow(
+            model.to_dict(by_aliases=by_aliases, by_db_columns=by_db_columns, aliases=aliases),
+            _origin_qs=origin_qs,
+            _origin_model=cls,
+            _key_mode=key_mode,
+            _db=db,
+            _attach_dbs=attach_dbs,
+            _executor=executor,
+            _aliases=cls.bind_aliases(aliases),
+        )
+
+    @classmethod
     def prepare_db_value(cls, field_name: str, value: typing.Any) -> typing.Any:
         field = cls.get_field(field_name)
         serializer = getattr(cls, f"serialize_{field_name}", None)
@@ -1088,100 +2086,249 @@ class BaseModel(metaclass=ModelMeta):
     def _sync_original_data(self) -> None:
         self._original_db_data = self._current_db_snapshot()
 
+    def _apply_db_row(self, row: dict[str, typing.Any]) -> None:
+        for key, value in (row or {}).items():
+            if key in self.__fields__:
+                self._assign_field(key, value, from_db=True)
+            elif key in self.__field_by_column__:
+                self._assign_field(self.__field_by_column__[key], value, from_db=True)
+            else:
+                self._extra_data[key] = value
+
     @property
-    def dirty_fields(self) -> list[str]:
+    def _dirty_fields(self) -> list[str]:
         current = self._current_db_snapshot()
         if not self._persisted:
             return [name for name, value in current.items() if value is not None]
         return [name for name, value in current.items() if self._original_db_data.get(name) != value]
 
+    @property
+    def dirty_fields(self) -> list[str]:
+        return self._dirty_fields
+
     @classmethod
     def query(
-        cls: type[T],
+        cls: type[ModelT],
         *,
         db: str | None = None,
         attach_dbs: typing.Iterable[str] | str | None = None,
         executor: SqlExecutor | None = None,
     ) -> QuerySetLite:
-        return QuerySetLite(cls, db=db, attach_dbs=attach_dbs, executor=executor)
+        return cls.object_manager.query(_db=db, _attach_dbs=attach_dbs, _executor=executor)
 
     @classmethod
-    def filter(cls: type[T], **kwargs) -> QuerySetLite:
-        return cls.query().filter(**kwargs)
+    def filter(cls: type[ModelT], **kwargs) -> QuerySetLite:
+        return cls.object_manager.filter(**kwargs)
 
     @classmethod
-    def all(cls: type[T]) -> list[T]:
-        return cls.query().all()
+    def exclude(cls: type[ModelT], **kwargs) -> QuerySetLite:
+        return cls.object_manager.exclude(**kwargs)
 
     @classmethod
-    def as_smartlist(cls: type[T], **kwargs) -> SmartList:
-        qs = cls.query()
-        if kwargs:
-            qs = qs.filter(**kwargs)
-        return qs.as_smartlist()
+    def where(cls: type[ModelT], sql: str, params: typing.Iterable[typing.Any] | None = None) -> QuerySetLite:
+        return cls.object_manager.where(sql, params=params)
 
     @classmethod
-    def first(cls: type[T], **kwargs) -> T | None:
-        qs = cls.query()
-        if kwargs:
-            qs = qs.filter(**kwargs)
-        return qs.first()
+    def order_by(cls: type[ModelT], *fields: str) -> QuerySetLite:
+        return cls.object_manager.order_by(*fields)
+
+    # @classmethod
+    # def all(
+    #     cls: type[ModelT],
+    #     *,
+    #     as_dict: bool = False,
+    #     by_aliases: bool = False,
+    #     by_db_columns: bool = False,
+    #     aliases: dict[str, str] | None = None,
+    # ) -> SmartList:
+    #     return cls.object_manager.all(
+    #         as_dict=as_dict,
+    #         by_aliases=by_aliases,
+    #         by_db_columns=by_db_columns,
+    #         aliases=aliases,
+    #     )
+
+    # @classmethod
+    # def as_smartlist(
+    #     cls: type[ModelT],
+    #     *,
+    #     by_aliases: bool = False,
+    #     by_db_columns: bool = True,
+    #     aliases: dict[str, str] | None = None,
+    #     **kwargs,
+    # ) -> SmartList:
+    #     return cls.object_manager.as_smartlist(
+    #         by_aliases=by_aliases,
+    #         by_db_columns=by_db_columns,
+    #         aliases=aliases,
+    #         **kwargs,
+    #     )
+
+    # @classmethod
+    def values(
+        cls: type[ModelT],
+        *fields: str,
+        by_aliases: bool = False,
+        by_db_columns: bool = False,
+        aliases: dict[str, str] | None = None,
+    ) -> SmartList:
+        return cls.object_manager.values(
+            *fields,
+            by_aliases=by_aliases,
+            by_db_columns=by_db_columns,
+            aliases=aliases,
+        )
+
+    @classmethod
+    def first(
+        cls: type[ModelT],
+        *,
+        as_dict: bool = False,
+        by_aliases: bool = False,
+        by_db_columns: bool = False,
+        aliases: dict[str, str] | None = None,
+        **kwargs,
+    ) -> ModelT | SmartRow | None:
+        return cls.object_manager.first(
+            as_dict=as_dict,
+            by_aliases=by_aliases,
+            by_db_columns=by_db_columns,
+            aliases=aliases,
+            **kwargs,
+        )
 
     @classmethod
     def get(
-        cls: type[T],
+        cls: type[ModelT],
         pk: typing.Any = _EMPTY,
         *,
         db: str | None = None,
         attach_dbs: typing.Iterable[str] | str | None = None,
         executor: SqlExecutor | None = None,
+        as_dict: bool = False,
+        by_aliases: bool = False,
+        by_db_columns: bool = False,
+        aliases: dict[str, str] | None = None,
         **kwargs,
-    ) -> T:
-        qs = cls.query(db=db, attach_dbs=attach_dbs, executor=executor)
-        if pk is not _EMPTY:
-            kwargs[cls.pk_name()] = pk
-        return qs.get(**kwargs)
+    ) -> ModelT | SmartRow:
+        return cls.object_manager.get(
+            pk=pk,
+            _db=db,
+            _attach_dbs=attach_dbs,
+            _executor=executor,
+            as_dict=as_dict,
+            by_aliases=by_aliases,
+            by_db_columns=by_db_columns,
+            aliases=aliases,
+            **kwargs,
+        )
+
+    @classmethod
+    def count(cls: type[ModelT], **kwargs) -> int:
+        return cls.object_manager.count(**kwargs)
 
     @classmethod
     def create(
-        cls: type[T],
+        cls: type[ModelT],
         *,
         db: str | None = None,
         attach_dbs: typing.Iterable[str] | str | None = None,
         executor: SqlExecutor | None = None,
-        **kwargs: typing.TypedDict[T.__dict__],
-    ) -> T:
-        obj = cls(_db=db, _attach_dbs=attach_dbs, _executor=executor, **kwargs)
-        obj.save(force_insert=True)
-        return obj
+        **_kwargs,
+    ) -> ModelT:
+        return cls.object_manager.create(
+            _db=db,
+            _attach_dbs=attach_dbs,
+            _executor=executor,
+            **_kwargs,
+        )
 
     @classmethod
     def from_row(
-        cls: type[T],
+        cls: type[ModelT],
         row: dict[str, typing.Any],
         *,
         db: str | None = None,
         attach_dbs: typing.Iterable[str] | str | None = None,
         executor: SqlExecutor | None = None,
-    ) -> T:
+        aliases: dict[str, str] | None = None,
+    ) -> ModelT:
+        normalized_row = cls.normalize_row_keys(row, aliases=aliases, include_unknown=True)
         return cls(
             _persisted=True,
             _db=db,
             _attach_dbs=attach_dbs,
             _executor=executor,
-            **row,
+            **normalized_row,
         )
+    @classmethod
+    def from_rows(
+        cls: type[ModelT],
+        rows: list[dict[str, typing.Any]],
+        *,
+        db: str | None = None,
+        attach_dbs: typing.Iterable[str] | str | None = None,
+        executor: SqlExecutor | None = None,
+        aliases: dict[str, str] | None = None,
+    ) -> list[ModelT]:
+        return SmartList([
+            cls(
+                _persisted=True,
+                _db=db,
+                _attach_dbs=attach_dbs,
+                _executor=executor,
+                **cls.normalize_row_keys(row, aliases=aliases, include_unknown=True),
+            )
+             for row in rows
+        ], _origin_model=cls)
 
-    def to_dict(self, *, by_db_columns: bool = False, include_extra: bool = False) -> dict[str, typing.Any]:
+    def to_dict(
+        self,
+        *,
+        by_db_columns: bool = False,
+        by_aliases: bool = False,
+        aliases: dict[str, str] | None = None,
+        include_extra: bool = False,
+    ) -> dict[str, typing.Any]:
         result = {}
+        alias_map = self.bind_aliases(aliases)
         for name, field in self.__fields__.items():
-            key = field.db_column if by_db_columns else name
+            if by_aliases:
+                key = alias_map.get(name, field.db_column if by_db_columns else name)
+            else:
+                key = field.db_column if by_db_columns else name
             result[key] = getattr(self, name)
         if include_extra:
             result.update(self._extra_data)
         return result
 
-    def clone(self: T, *, reset_pk: bool = False) -> T:
+    def to_smartrow(
+        self,
+        *,
+        by_aliases: bool = False,
+        by_db_columns: bool = False,
+        aliases: dict[str, str] | None = None,
+        include_extra: bool = False,
+        origin_qs: "QuerySetLite | None" = None,
+    ) -> SmartRow:
+        key_mode = "alias" if by_aliases else "db" if by_db_columns else "python"
+        return SmartRow(
+            self.to_dict(
+                by_aliases=by_aliases,
+                by_db_columns=by_db_columns,
+                aliases=aliases,
+                include_extra=include_extra,
+            ),
+            _origin_qs=origin_qs,
+            _origin_model=self.__class__,
+            _key_mode=key_mode,
+            _db=self._db,
+            _attach_dbs=self._attach_dbs,
+            _executor=self._executor,
+            _aliases=self.bind_aliases(aliases),
+        )
+
+    def clone(self: ModelT, *, reset_pk: bool = False) -> ModelT:
         data = self.to_dict()
         if reset_pk:
             data[self.pk_name()] = None
@@ -1200,15 +2347,26 @@ class BaseModel(metaclass=ModelMeta):
         force_update: bool = False,
         update_fields: typing.Iterable[str] | None = None,
     ) -> bool:
-        self._ensure_table_and_db()
-        if force_insert and force_update:
-            raise OrmError("force_insert и force_update одновременно использовать нельзя")
+        return self.__class__.object_manager.save_instance(
+            self,
+            force_insert=force_insert,
+            force_update=force_update,
+            update_fields=update_fields,
+        )
 
-        should_insert = force_insert or not self._persisted
-        if should_insert:
-            return self._insert()
-
-        return self._update(update_fields=update_fields, force=force_update)
+    def save_result(
+        self,
+        *,
+        force_insert: bool = False,
+        force_update: bool = False,
+        update_fields: typing.Iterable[str] | None = None,
+    ) -> SaveResult:
+        return self.__class__.object_manager.save_instance_result(
+            self,
+            force_insert=force_insert,
+            force_update=force_update,
+            update_fields=update_fields,
+        )
 
     def update(self, **kwargs) -> bool:
         for key, value in kwargs.items():
@@ -1216,91 +2374,22 @@ class BaseModel(metaclass=ModelMeta):
         return self.save(force_update=True)
 
     def refresh(self) -> "BaseModel":
-        self._ensure_table_and_db()
-        fresh = self.__class__.get(
-            pk=self.pk,
-            db=self._db,
-            attach_dbs=self._attach_dbs,
-            executor=self._executor,
-        )
-        self._data = copy.deepcopy(fresh._data)
-        self._extra_data = copy.deepcopy(fresh._extra_data)
-        self._persisted = True
-        self._sync_original_data()
-        return self
+        return self.__class__.object_manager.refresh_instance(self)
 
     def delete(self) -> bool:
-        self._ensure_table_and_db()
-        pk_name = self.pk_name()
-        pk_value = getattr(self, pk_name)
-        if pk_value is None:
-            raise OrmError("Нельзя удалить объект без первичного ключа")
-
-        field = self.get_field(pk_name)
-        sql = f"DELETE FROM {self.__table__} WHERE {field.db_column} = ?;"
-        self._executor.execute(
-            self._db,
-            sql,
-            params=[self._prepare_db_value(pk_name, pk_value)],
-            attach_dbs=self._attach_dbs,
-        )
-        self._persisted = False
-        self._original_db_data = {}
-        return True
+        return self.__class__.object_manager.delete_instance(self)
 
     def _insert(self) -> bool:
-        columns: list[str] = []
-        params: list[typing.Any] = []
-
-        for name, field in self.__fields__.items():
-            value = self._prepare_db_value(name, self._data.get(name))
-            if field.primary_key and value is None:
-                continue
-            columns.append(field.db_column)
-            params.append(value)
-
-        if not columns:
-            raise OrmError(f"У модели {self.__class__.__name__} нет данных для INSERT")
-
-        placeholders = ", ".join("?" for _ in columns)
-        sql = f"INSERT INTO {self.__table__} ({', '.join(columns)}) VALUES ({placeholders}) RETURNING *;"
-        result = self._executor.execute(self._db, sql, params=params, attach_dbs=self._attach_dbs, rez_dict=True)
-        self._persisted = True
-        self._sync_original_data()
-        return True
+        return bool(self.__class__.object_manager._insert_instance(self))
 
     def _update(self, *, update_fields: typing.Iterable[str] | None, force: bool) -> bool:
-        pk_name = self.pk_name()
-        pk_value = getattr(self, pk_name)
-        if pk_value is None:
-            raise OrmError("Нельзя обновить объект без первичного ключа")
-
-        target_fields = list(update_fields) if update_fields is not None else self.dirty_fields
-        target_fields = [name for name in target_fields if name != pk_name]
-
-        if not target_fields and not force:
-            return False
-
-        if not target_fields and force:
-            target_fields = [name for name in self.__fields__ if name != pk_name]
-
-        set_parts: list[str] = []
-        params: list[typing.Any] = []
-        for name in target_fields:
-            field = self.get_field(name)
-            set_parts.append(f"{field.db_column} = ?")
-            params.append(self._prepare_db_value(name, self._data.get(name)))
-
-        if not set_parts:
-            return False
-
-        pk_field = self.get_field(pk_name)
-        params.append(self._prepare_db_value(pk_name, pk_value))
-        sql = f"UPDATE {self.__table__} SET {', '.join(set_parts)} WHERE {pk_field.db_column} = ?;"
-        self._executor.execute(self._db, sql, params=[params], attach_dbs=self._attach_dbs)
-        self._persisted = True
-        self._sync_original_data()
-        return True
+        return bool(
+            self.__class__.object_manager._update_instance(
+                self,
+                update_fields=update_fields,
+                force=force,
+            )
+        )
 
     def _ensure_table_and_db(self) -> None:
         if not self.__table__:
@@ -1310,6 +2399,10 @@ class BaseModel(metaclass=ModelMeta):
                 f"У модели {self.__class__.__name__} не задана база данных. "
                 f"Передайте _db/db или определите __db__."
             )
+
+
+def _sql_has_returning(query: str) -> bool:
+    return " RETURNING " in f" {str(query or '').upper()} "
 
 
 def _normalize_attach_dbs(value: typing.Iterable[str] | str | None) -> tuple[str, ...]:
@@ -1333,7 +2426,7 @@ def _normalize_params(params: typing.Any) -> typing.Any:
 
 def _unwrap_optional(annotation: typing.Any) -> typing.Any:
     origin = typing.get_origin(annotation)
-    if origin is typing.Union:
+    if origin in (typing.Union, types.UnionType):
         args = [arg for arg in typing.get_args(annotation) if arg is not type(None)]
         if len(args) == 1:
             return args[0]

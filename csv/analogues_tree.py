@@ -184,34 +184,27 @@ def recalc_weight(self, *args, list_rows = None):
     nf_count_by_izd = CQT.num_col_by_name_c(tbl, key_count_na_izd)
     if tbl.rowCount() == 0:
         return
-    tbl.blockSignals(True)
-    for i in range(tbl.rowCount()):
-        # row = CQT.get_dict_line_form_tbl(tbl, i)
-        row = list_rows[i]
-        split_weight = row['Масса/М1,М2,М3'].split('/')
-        if len(split_weight) <= 1 or split_weight[1] == '':
-            continue
-        str_weight = row['Масса/М1,М2,М3'].split('/')[0]
-        pki = row['ПКИ']
-        count = calc_count(self, i)
-        # tbl.item(i, nf_count_by_izd).setText('-')
-        if count == None:
-            tbl.blockSignals(False)
-            return 0, 0
-        else:
-            if row[key_count_na_izd] != str(count):
-                tbl.item(i, nf_count_by_izd).setText(str(count))
-        # if count != int(row['Количество на изделие']):
-        #    CQT.msgbox(f'Ошибка расчетка количества на изделие')
-        #    return
-        rez += F.valm(str_weight) * count
-        if pki == '0':
-            rez_wo_pki += F.valm(str_weight) * count
-    if rez > 0:
-        self.ui.lbl_summ_weight.setText(str(round(rez, 2)))
-    if rez_wo_pki > 0:
-        self.ui.lbl_summ_weight_wo_pki.setText(str(round(rez_wo_pki, 2)))
-    tbl.blockSignals(False)
+    with QtCore.QSignalBlocker(tbl):
+        for i in range(tbl.rowCount()):
+            row = list_rows[i]
+            split_weight = row['Масса/М1,М2,М3'].split('/')
+            if len(split_weight) <= 1 or split_weight[1] == '':
+                continue
+            str_weight = row['Масса/М1,М2,М3'].split('/')[0]
+            pki = row['ПКИ']
+            count = calc_count(self, i)
+            if count == None:
+                return 0, 0
+            else:
+                if row[key_count_na_izd] != str(count):
+                    tbl.item(i, nf_count_by_izd).setText(str(count))
+            rez += F.valm(str_weight) * count
+            if pki == '0':
+                rez_wo_pki += F.valm(str_weight) * count
+        if rez > 0:
+            self.ui.lbl_summ_weight.setText(str(round(rez, 2)))
+        if rez_wo_pki > 0:
+            self.ui.lbl_summ_weight_wo_pki.setText(str(round(rez_wo_pki, 2)))
     if tbl.currentRow() != -1:
         weight = tbl.item(
             tbl.currentRow(),
@@ -393,11 +386,10 @@ def save_red_tree(self: mywindow):
     if 'shift' in CQT.get_key_modifiers(self):
         update_into_db(self)
         return
-    self.ui.tbl_red_tree.blockSignals(True)
-    if not check_tbl(self):
-        return
-    save_into_db(self)
-    self.ui.tbl_red_tree.blockSignals(False)
+    with QtCore.QSignalBlocker(self.ui.tbl_red_tree):
+        if not check_tbl(self):
+            return
+        save_into_db(self)
 
 
 @CQT.onerror
@@ -1004,7 +996,7 @@ def add_row(self: mywindow):
     if self.ui.le_add_naim.text().strip() == '':
         CQT.msgbox(f'Не указано Наименование')
         return
-
+    learn_nn = self.ui.le_add_nn.text()
     pki_name = 'Да'
     pki_val = '1'
     if self.ui.chk_pki.checkState() == 2:  # pki
@@ -1027,6 +1019,9 @@ def add_row(self: mywindow):
     tmp_row['Количество'] = '1'
     tmp_row['ID'] = str(F.get_time_shtamp_c())[:14]
     tmp_row['ПКИ'] = pki_val
+    if pki_val == '1':
+        tmp_row['Наименование_аналог'] = self.ui.le_add_naim.text()
+        tmp_row['Обозначение_аналог'] = learn_nn
     tmp_row['Уровень'] = level
     spisok.insert(q_strok + 1, tmp_row)
 
@@ -1034,7 +1029,6 @@ def add_row(self: mywindow):
     apply_dse(self, False)
     clear_add_info(self)
     on_tree_changed(self, spisok)
-    # recalc_weight(self)
 
 
 @CQT.onerror
@@ -1071,12 +1065,11 @@ def red_tree_del_knot(self: mywindow):
             k += 1
         else:
             break
-    tabl_cr_stukt.blockSignals(True)
-    on_tree_changed(self, list_rows=spisok)
-    if len(spisok) > 1:
-        tabl_cr_stukt.setCurrentCell(q_strok, q_column)
-    tabl_cr_stukt.setCurrentCell(-1, 0)
-    tabl_cr_stukt.blockSignals(False)
+    with QtCore.QSignalBlocker(tabl_cr_stukt):
+        on_tree_changed(self, list_rows=spisok)
+        if len(spisok) > 1:
+            tabl_cr_stukt.setCurrentCell(q_strok, q_column)
+        tabl_cr_stukt.setCurrentCell(-1, 0)
 
 
 @CQT.onerror
@@ -1151,7 +1144,6 @@ def red_tree_load(self: mywindow):
                 for elem in spis
             ]
     spis = check_knot(self, spis)
-    # fill_tbl_strukt(self, spis)
     on_tree_changed(self, list_rows=spis)
 
 
@@ -1159,8 +1151,6 @@ def red_tree_load(self: mywindow):
 def red_tree_move(self: mywindow, operator):
     tabl_cr_stukt = self.ui.tbl_red_tree
     selected_rows = {item.row() for item in tabl_cr_stukt.selectedItems()}
-    # tabl_cr_stukt.clearSelection()
-    # tabl_cr_stukt.blockSignals(True)
     nk_lvl = CQT.num_col_by_name_c(tabl_cr_stukt, 'Уровень')
     if not selected_rows:
         CQT.msgbox('Не выбрана позиция')
@@ -1184,8 +1174,6 @@ def red_tree_move(self: mywindow, operator):
                     cur_item.setText(swap_item.text())
                 tabl_cr_stukt.setItem(operator(row, 1), col, cur_item)
                 tabl_cr_stukt.setItem(row, col, swap_item)
-        # tabl_cr_stukt.blockSignals(False)
-
     on_tree_changed(self)
 
 
@@ -1311,7 +1299,6 @@ def mat_apply_2(self: mywindow, replace_weight: bool = False, replace_material: 
     CQT.msgbox(f'Успешно')
 
 def on_tree_changed(self, list_rows = None):
-    # accumulate_tree_mass(self, list_rows=list_rows)
     fill_tab_to_level(self, self.ui.tbl_red_tree, list_rows=list_rows)
     recalc_weight(self, list_rows=list_rows)
 
@@ -1323,7 +1310,6 @@ def sync_row_materials(self: mywindow, target_nn: str, val: str, name: str, kod:
         if 'Обозначение' in dse and dse['Обозначение'] == target_nn:
             lst_dse[idx]['Масса/М1,М2,М3'] = '/'.join((val, name))
             lst_dse[idx]['Код ERP'] = kod
-    # fill_tbl_strukt(self, lst_dse)
     on_tree_changed(self, list_rows=lst_dse)
 
 
@@ -1333,14 +1319,11 @@ def apply_dse(self: mywindow, check=True):
     if cur_row == -1:
         CQT.msgbox(f'Не выбран ДСЕ')
         return
-    nf_dse_name_db = CQT.num_col_by_name_c(self.ui.tbl_anal_dse, 'Наименование')
-    nf_dse_nn_db = CQT.num_col_by_name_c(self.ui.tbl_anal_dse, 'Номенклатурный_номер')
-    nf_dse_path_db = CQT.num_col_by_name_c(self.ui.tbl_anal_dse, 'Путь_docs')
-    nf_note_db = CQT.num_col_by_name_c(self.ui.tbl_anal_dse, 'Примечание')
-    naim_db = self.ui.tbl_anal_dse.item(cur_row, nf_dse_name_db).text()
-    nn_db = self.ui.tbl_anal_dse.item(cur_row, nf_dse_nn_db).text()
-    dse_path_db = self.ui.tbl_anal_dse.item(cur_row, nf_dse_path_db).text()
-    note_db = self.ui.tbl_anal_dse.item(cur_row, nf_note_db).text()
+    current_line = CQT.get_dict_line_form_tbl(self.ui.tbl_anal_dse, cur_row)
+    naim_db = current_line['Наименование']
+    nn_db = current_line['Номенклатурный_номер']
+    dse_path_db = current_line['Путь_docs']
+    note_db = current_line['Примечание']
     note_db = note_db.split("(ОГК: ")[-1].split(")")[0]
     tbl = self.ui.tbl_red_tree
     selected_row = tbl.currentRow()
@@ -1355,12 +1338,13 @@ def apply_dse(self: mywindow, check=True):
         if not CQT.msgboxgYN(f'Установить {naim_db} {nn_db} в качестве налога для'
                              f' {tbl.item(selected_row, nf_dse_name).text()} {tbl.item(selected_row, nf_dse_nn).text()}?'):
             return
-    tbl.item(selected_row, nf_dse_name).setText(naim_db)
-    tbl.item(selected_row, nf_dse_nn).setText(nn_db)
-    tbl.item(selected_row, nf_dse_path).setText(dse_path_db)
-    if note_db: # 11.09.25
-        tbl.item(selected_row, nf_note).setText(note_db)
-    recalc_weight(self)
+    with QtCore.QSignalBlocker(tbl):
+        tbl.item(selected_row, nf_dse_name).setText(naim_db)
+        tbl.item(selected_row, nf_dse_nn).setText(nn_db)
+        tbl.item(selected_row, nf_dse_path).setText(dse_path_db)
+        if note_db: # 11.09.25
+            tbl.item(selected_row, nf_note).setText(note_db)
+        recalc_weight(self)
     CQT.msgbox(f'Успешно')
 
 
@@ -1568,7 +1552,6 @@ def fill_tab_to_level(self, table: QtWidgets.QTableWidget, list_rows = None):
                 CQT.set_color_row_wtab_c(table, row_idx, 255, 255, 255)
                 table.item(row_idx, 0).setText('')
 
-        # CMS.load_column_widths(DTCLS.app_self,table)
         hide_columns_for_simple_mode(self, self.ui.tbl_red_tree)
         CMS.load_column_widths(DTCLS.app_self,table)
 
@@ -1577,8 +1560,6 @@ def fill_tab_to_level(self, table: QtWidgets.QTableWidget, list_rows = None):
 @CQT.onerror
 def accumulate_tree_mass(self: mywindow, list_rows = None):
     table_widget = self.ui.tbl_red_tree
-    # if CQT.is_table_updating(self.ui.tbl_red_tree):
-    #     return
     if list_rows is None:
         list_rows = CQT.list_from_wtabl_c(table_widget, "", True, rez_dict=True)
     tree_knot_object = TreeKnotList(list_rows)

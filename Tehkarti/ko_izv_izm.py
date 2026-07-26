@@ -118,19 +118,19 @@ def apply_row(self:mywindow):
             if not check_fill(dict_vals[key]):
                 CQT.msgbox(f'Не корректные данные {key}')
                 return
-            if key == 'Подтверждение_проводки' and dict_vals[key] != '':
-                flag='True'
-                for key in dict_vals:
-                    if '_дата' in key or '_ФИО' in key:
-                        pass
-                    else:
-                        nk_ = CQT.num_col_by_name_c(self.ui.tbl_ii,key)
-                        if nk_ == None or self.ui.tbl_ii.item(row,nk_).text() == '':
-                            flag = key
-                            break
-                if flag != 'True':
-                    CQT.msgbox(f'Подтвердить проводку невозможно без отметки {flag}')
-                    return
+            # if key == 'Подтверждение_проводки' and dict_vals[key] != '':
+            #     flag='True'
+            #     for key in dict_vals:
+            #         if '_дата' in key or '_ФИО' in key:
+            #             pass
+            #         else:
+            #             nk_ = CQT.num_col_by_name_c(self.ui.tbl_ii,key)
+            #             if nk_ == None or self.ui.tbl_ii.item(row,nk_).text() == '':
+            #                 flag = key
+            #                 break
+            #     if flag != 'True':
+            #         CQT.msgbox(f'Подтвердить проводку невозможно без отметки {flag}')
+            #         return
     tmp = []
     for key in dict_vals:
         if '_дата' in key or '_ФИО' in key:

@@ -16,6 +16,9 @@ import project_cust_38.Cust_emoji as CEMOJ
 USER_ERP = 'mes_user'
 PASS_ERP = '89Luham'
 
+USER_DO = 'mes_user'
+PASS_DO= '89Luham'
+
 
 HOSTNAME_LOCAL_MES = False
 PORT_MES = 20011
@@ -83,6 +86,19 @@ def patch_state_doc_znpr(ref_key:str,name_obj:str,dict_data:dict, erp_base_name:
     response = requests.patch(url, data=JS.dumps(dict_data), headers=headers, params=params, auth=(USER_ERP, PASS_ERP))
     #print(F.convert_binary_to_data(response.content))
     return response.status_code, F.convert_binary_to_data(response.content)
+
+def post_kty_json(json_data:dict, erp_base_name:str = 'ERP'):
+    headers = dict(Accept='application/json')
+    params = dict()
+    url = f'{CFG.Config.project.ERB_BASE_URL}/{erp_base_name}/ru_RU/hs/mes/factexp/v1/kty/'
+    response = requests.post(url, json=json_data, headers=headers, params=params, auth=(USER_ERP, PASS_ERP))
+    #print(F.convert_binary_to_data(response.content))
+    data_str = F.convert_binary_to_data(response.content)
+    try:
+        data = json.loads(data_str)
+    except:
+        data = []
+    return response.status_code, data
 
 def post_trdz_json(json:dict, erp_base_name:str = 'ERP'):
     headers = dict(Accept='application/json')
@@ -201,7 +217,27 @@ def get_enum(name_enum:str, erp_base_name: str = 'ERP'):
 def hash_data_for_api(dict_data:dict)->str:
     return  F.hash_data(dict_data)
 
+class Autentication1C:
+    def __init__(self, base:CFG.Erp_base, login:str, password:str,rootURL:str ):
+        self.base:CFG.Erp_base = base
+        self.login:str = login
+        self.password:str = password
+        self.rootURL:str = rootURL#/ru_RU/hs/mes/sysexchange/v1/wet_request/none
+
 def get_wet_request(text: str, refs: Refs_wet | None = None, lazy_method_huours=0, **kwargs):
+    return _get_wet_request_base(text=text, refs=refs, lazy_method_huours=lazy_method_huours,
+                         aut = Autentication1C(CFG.Config.user_config.ERP_base, USER_ERP,PASS_ERP,
+                                               f'/ru_RU/hs/mes/sysexchange/v1/wet_request/none'
+                                               ), kwargs=kwargs)
+
+def get_wet_request_DO(text: str, refs: Refs_wet | None = None, lazy_method_huours=0, **kwargs):
+    return _get_wet_request_base(text=text, refs=refs, lazy_method_huours=lazy_method_huours,
+                         aut = Autentication1C(CFG.Config.user_config.DO_base, USER_DO,PASS_DO,
+                                               f'/ru_RU/hs/MIE/contract/v1/none'
+                                               ), kwargs=kwargs)
+
+def _get_wet_request_base(text: str, refs: Refs_wet | None = None, lazy_method_huours=0, aut: Autentication1C = None,
+                         **kwargs):
     start = F.now('')
     print()
     print(f'---------------')
@@ -251,7 +287,7 @@ def get_wet_request(text: str, refs: Refs_wet | None = None, lazy_method_huours=
             else:
                 CSQ.custom_request_c(db_files,
                                      f"""UPDATE odata_lazy_resps set (resp_date, file, 
-                                     file_size, hash_file ) = (?,?,?,?) WHERE resp == ?;""",
+                                     file_size, hash_file ) = (?,?,?,?) WHERE resp = ?;""",
                                      list_of_lists_c=[[time, F.to_binary_pickle(file),
                                                             size, new_file_hash,sum_hash]])
 
@@ -265,8 +301,8 @@ def get_wet_request(text: str, refs: Refs_wet | None = None, lazy_method_huours=
         dict_data['refs'] = refs.refs
     for k, v in kwargs.items():
         dict_data[k] = v
-    url = f'{CFG.Config.project.ERB_BASE_URL}/{
-            CFG.Config.user_config.ERP_base_name["Значение"]}/ru_RU/hs/mes/sysexchange/v1/wet_request/none'
+    url = f'{CFG.Config.project.ERB_BASE_URL}/{aut.base.name
+            }{aut.rootURL}'
     url_hash = hashlib.md5(url.encode('utf-8')).hexdigest()
     dict_data_hash = hash_data_for_api(dict_data)
     params_hash = hash_data_for_api(params)
@@ -297,17 +333,19 @@ def get_wet_request(text: str, refs: Refs_wet | None = None, lazy_method_huours=
             ELSE null  
                 END AS file, 
               hash_file FROM odata_lazy_resps 
-        where resp == ? limit 1""",
+        where resp = ? limit 1""",
             list_of_lists_c=[[date_limit, sum_hash]], rez_dict=True)
         if data and len(data):
             fl_naid_lazy = True
             file_hash_lazy = data[0]['hash_file']
-            old_data_db = F.from_binary_pickle(data[0]['file'])
-            if F.strtodate(data[0]['resp_date']) >= date_limit:
-                print(f'wet_req end DB {(F.now('') - start).total_seconds()}')
-                return 200, old_data_db
+            if data[0]['file'] is not None: # 19.06.2026
+
+                old_data_db = F.from_binary_pickle(data[0]['file'])
+                if F.strtodate(data[0]['resp_date']) >= date_limit:
+                    print(f'wet_req end DB {(F.now('') - start).total_seconds()}')
+                    return 200, old_data_db
     try:
-        response = requests.get(url, json=dict_data, headers=headers, params=params, auth=(USER_ERP, PASS_ERP))
+        response = requests.get(url, json=dict_data, headers=headers, params=params, auth=(aut.login, aut.password))
     except:
         print(f'wet_req end err (Code: None) resp {(F.now('')  - start).total_seconds()}')
         if old_data_db:
@@ -444,6 +482,8 @@ class Etap_erp(_ImportDb):
         self.Подразделение:str = None
         self.ref_Подразделение:str = None
         self.Спецификация:str = None
+        self.Спецификация_ref:str = None
+        self.Спецификация_code:str = None
         self.Статус:str = None
         self.Распоряжение:str = None
         self.Номер:str = None
@@ -455,9 +495,12 @@ class Etap_erp(_ImportDb):
         self.НомерЭтапа:int = None
         self.НомерСледующегоЭтапа:int = None
         self.ФактическоеНачалоЭтапа:datetime.datetime = None
+        self.ФактическоеОкончаниеЭтапа:datetime.datetime = None
         self.parce_row_dict(item)
         if F.is_date(self.ФактическоеНачалоЭтапа,"%Y-%m-%dT%H:%M:%S"):
             self.ФактическоеНачалоЭтапа = F.strtodate(self.ФактическоеНачалоЭтапа,"%Y-%m-%dT%H:%M:%S")
+        if F.is_date(self.ФактическоеОкончаниеЭтапа,"%Y-%m-%dT%H:%M:%S"):
+            self.ФактическоеОкончаниеЭтапа = F.strtodate(self.ФактическоеОкончаниеЭтапа,"%Y-%m-%dT%H:%M:%S")
 
     def __repr__(self):
         return f"Etap_erp({self.НаименованиеЭтапа}, №{self.НомерЭтапа})"
@@ -468,68 +511,216 @@ class Etap_erp(_ImportDb):
             return CEMOJ.EmojiMain.СтатусыПроизводства.error.symbol
         return ''
 
+class NotFoundNomenclature(Exception): ...
+
 class Etaps_erp():
     def __init__(self,kpl:int):
-        data_znpr = CSQ.custom_request_c(CFG.Config.project.db_kplan, f"""SELECT Ref_Key_py, НомПартии_ЗП FROM пл_оуп 
+        data_znpr = CSQ.custom_request_c(CFG.Config.project.db_kplan, f"""SELECT 
+        пл_оуп.Номенклатура_ЕРП_ref, знпр.Ref_Key_py, пл_оуп.НомПартии_ЗП, знпр.№ERP FROM пл_оуп 
          LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП 
-         WHERE НомПл == {kpl};""", one=True, rez_dict=True)
-        НомПартии_ЗП = data_znpr['НомПартии_ЗП']
-        ref_py = data_znpr['Ref_Key_py']
-        text = f"""ВЫБРАТЬ
-                ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЭтапПроизводства2_2.Ссылка)) КАК ref,
-                ЭтапПроизводства2_2.НаименованиеЭтапа КАК НаименованиеЭтапа,
-                ЭтапПроизводства2_2.ПометкаУдаления КАК ПометкаУдаления,
-                ЭтапПроизводства2_2.Комментарий КАК Комментарий,
-                ПРЕДСТАВЛЕНИЕ(ЭтапПроизводства2_2.Организация) КАК Организация,
-                ПРЕДСТАВЛЕНИЕ(ЭтапПроизводства2_2.Подразделение) КАК Подразделение,
-                ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЭтапПроизводства2_2.Подразделение.Ссылка)) КАК ref_Подразделение,
-                ПРЕДСТАВЛЕНИЕ(ЭтапПроизводства2_2.Спецификация) КАК Спецификация,
-                ПРЕДСТАВЛЕНИЕ(ЭтапПроизводства2_2.Статус) КАК Статус,
-                ПРЕДСТАВЛЕНИЕ(ЭтапПроизводства2_2.Распоряжение) КАК Распоряжение,
-                ЭтапПроизводства2_2.Номер КАК Номер,
-                ЭтапПроизводства2_2.Дата КАК Дата,
-                ЭтапПроизводства2_2.Проведен КАК Проведен,
-                ЭтапПроизводства2_2.НЭ_НулевойЭтап КАК НЭ_НулевойЭтап,
-                ЗаказНаПроизводство2_2Продукция.НомерСтроки КАК НомерСтрокиЗП,
-                ЭтапПроизводства2_2.НомерПартииЗапуска КАК НомерПартииЗапуска,
-                ЭтапПроизводства2_2.НомерЭтапа КАК НомерЭтапа,
-                ЭтапПроизводства2_2.НомерСледующегоЭтапа КАК НомерСледующегоЭтапа,
-                ЭтапПроизводства2_2.ФактическоеНачалоЭтапа
-            ИЗ
-                Документ.ЭтапПроизводства2_2 КАК ЭтапПроизводства2_2
-                    ЛЕВОЕ СОЕДИНЕНИЕ Документ.ЗаказНаПроизводство2_2.Продукция КАК ЗаказНаПроизводство2_2Продукция
-                    ПО (ЭтапПроизводства2_2.Спецификация = ЗаказНаПроизводство2_2Продукция.Спецификация
-                    И ЗаказНаПроизводство2_2Продукция.Ссылка = &Распоряжение)
-            ГДЕ
-                ЭтапПроизводства2_2.Распоряжение = &Распоряжение
-                И ЭтапПроизводства2_2.НомерПартииЗапуска = {НомПартии_ЗП}  """
-        refs = Refs_wet(text)
-        ref_obj = Ref_wet('Распоряжение', "Документы.ЗаказНаПроизводство2_2", ref_py)
-
-        refs.add_ref(ref_obj)
-        key, res = get_wet_request(text=text, refs=refs)
+         WHERE пл_оуп.НомПл = {kpl};""", one=True, rez_dict=True)
+        self.НомПартии_ЗП:str = data_znpr['НомПартии_ЗП']
+        self.ref_py:str = data_znpr['Ref_Key_py']
+        self.num_zp:str = data_znpr['№ERP']
+        self.nomenclature_ref:str  = data_znpr['Номенклатура_ЕРП_ref']
+        self.specification_ref:str = ''
+        self.specification_code:str = ''
         self.err = False
-        if key != 200:
+        self.err_msg = ''
+        if not self.nomenclature_ref:
+            raise NotFoundNomenclature('Некорректно привязана номенклатура!')
+        try:
+            self.list_etaps = self.get_etaps_by_znpr_nomen_ref(self.ref_py, self.nomenclature_ref)
+            if not self.list_etaps:
+                self.list_etaps = self.get_etaps_by_znpr_nomen_ref_alter_join(self.ref_py, self.nomenclature_ref)
+            if self.list_etaps:
+                self.specification_ref = self.list_etaps[0].Спецификация_ref
+                self.specification_code = self.list_etaps[0].Спецификация_code
+                self.НомПартии_ЗП = self.list_etaps[0].НомерПартииЗапуска   # noqa
+        except Exception as e:
+            print(e)
             self.err = True
+            self.err_msg = e
+            raise e
+    @staticmethod
+    def get_znpr_etaps_by_kpl(kpl: int):
+        data_znpr = CSQ.custom_request_c(CFG.Config.project.db_kplan, f"""SELECT пл_оуп.Номенклатура_ЕРП_ref, знпр.Ref_Key_py, пл_оуп.НомПартии_ЗП, знпр.№ERP FROM пл_оуп 
+         LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП 
+         WHERE пл_оуп.НомПл = {kpl};""", one=True, rez_dict=True)
+        list_etaps = Etaps_erp.get_etaps_by_znpr_nomen_ref(data_znpr['Ref_Key_py'], data_znpr['Номенклатура_ЕРП_ref'])
+        if list_etaps:
+            return list_etaps
+        return Etaps_erp.get_etaps_by_znpr_nomen_ref_alter_join(data_znpr['Ref_Key_py'], data_znpr['Номенклатура_ЕРП_ref'])
+
+    @staticmethod
+    def get_etap_by_ref_etap(ref_etap:str)->tuple[bool, dict|None]:
+        text = f"""ВЫБРАТЬ
+                                ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЭтапПроизводства2_2.Ссылка)) КАК ref,
+                                ЭтапПроизводства2_2.НаименованиеЭтапа КАК НаименованиеЭтапа,
+                                ЭтапПроизводства2_2.ПометкаУдаления КАК ПометкаУдаления,
+                                ЭтапПроизводства2_2.Комментарий КАК Комментарий,
+                                ПРЕДСТАВЛЕНИЕ(ЭтапПроизводства2_2.Организация) КАК Организация,
+                                ПРЕДСТАВЛЕНИЕ(ЭтапПроизводства2_2.Подразделение) КАК Подразделение,
+                                ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЭтапПроизводства2_2.Подразделение.Ссылка)) КАК ref_Подразделение,
+                                ПРЕДСТАВЛЕНИЕ(ЭтапПроизводства2_2.Спецификация) КАК Спецификация,
+                                ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЭтапПроизводства2_2.Спецификация)) КАК Спецификация_ref,
+                                ЭтапПроизводства2_2.Спецификация.Код КАК Спецификация_code,
+                                ПРЕДСТАВЛЕНИЕ(ЭтапПроизводства2_2.Статус) КАК Статус,
+                                ПРЕДСТАВЛЕНИЕ(ЭтапПроизводства2_2.Распоряжение) КАК Распоряжение,
+                                ЭтапПроизводства2_2.Номер КАК Номер,
+                                ЭтапПроизводства2_2.Дата КАК Дата,
+                                ЭтапПроизводства2_2.Проведен КАК Проведен,
+                                ЭтапПроизводства2_2.НЭ_НулевойЭтап КАК НЭ_НулевойЭтап,
+                                ЗаказНаПроизводство2_2Продукция.НомерСтроки КАК НомерСтрокиЗП,
+                                ЭтапПроизводства2_2.НомерПартииЗапуска КАК НомерПартииЗапуска,
+                                ЭтапПроизводства2_2.НомерЭтапа КАК НомерЭтапа,
+                                ЭтапПроизводства2_2.НомерСледующегоЭтапа КАК НомерСледующегоЭтапа,
+                                ЭтапПроизводства2_2.ФактическоеНачалоЭтапа,
+                                ЭтапПроизводства2_2.ФактическоеОкончаниеЭтапа
+                            ИЗ
+                                Документ.ЭтапПроизводства2_2 КАК ЭтапПроизводства2_2
+                                    ЛЕВОЕ СОЕДИНЕНИЕ Документ.ЗаказНаПроизводство2_2.Продукция КАК ЗаказНаПроизводство2_2Продукция
+                                    ПО (ЭтапПроизводства2_2.Спецификация = ЗаказНаПроизводство2_2Продукция.Спецификация
+                                    И ЭтапПроизводства2_2.ПартияПроизводства.ОсновноеИзделиеНоменклатура = ЗаказНаПроизводство2_2Продукция.Номенклатура)
+                            ГДЕ
+                                ЭтапПроизводства2_2.Ссылка = &Этап
+
+                """
+        refs = Refs_wet(text)
+        ref_obj_etap = Ref_wet('Этап', "Документы.ЭтапПроизводства2_2", ref_etap)
+        refs.add_ref(ref_obj_etap)
+        key, res = get_wet_request(text=text, refs=refs)
+        if key != 200:
             raise ValueError(f'Ошибка получения данных из ЕРП')
-            return
-        self.list_etaps:list[Etap_erp]=[]
+        if res['data']:
+            return True, res['data'][0]
+        return False, 'Не найден этап по ref'
+
+
+    @staticmethod
+    def get_etaps_by_znpr_nomen_ref(ref_py: str, nomen_ref: str):
+        text = f"""ВЫБРАТЬ
+                        ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЭтапПроизводства2_2.Ссылка)) КАК ref,
+                        ЭтапПроизводства2_2.НаименованиеЭтапа КАК НаименованиеЭтапа,
+                        ЭтапПроизводства2_2.ПометкаУдаления КАК ПометкаУдаления,
+                        ЭтапПроизводства2_2.Комментарий КАК Комментарий,
+                        ПРЕДСТАВЛЕНИЕ(ЭтапПроизводства2_2.Организация) КАК Организация,
+                        ПРЕДСТАВЛЕНИЕ(ЭтапПроизводства2_2.Подразделение) КАК Подразделение,
+                        ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЭтапПроизводства2_2.Подразделение.Ссылка)) КАК ref_Подразделение,
+                        ПРЕДСТАВЛЕНИЕ(ЭтапПроизводства2_2.Спецификация) КАК Спецификация,
+                        ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЭтапПроизводства2_2.Спецификация)) КАК Спецификация_ref,
+                        ЭтапПроизводства2_2.Спецификация.Код КАК Спецификация_code,
+                        ПРЕДСТАВЛЕНИЕ(ЭтапПроизводства2_2.Статус) КАК Статус,
+                        ПРЕДСТАВЛЕНИЕ(ЭтапПроизводства2_2.Распоряжение) КАК Распоряжение,
+                        ЭтапПроизводства2_2.Номер КАК Номер,
+                        ЭтапПроизводства2_2.Дата КАК Дата,
+                        ЭтапПроизводства2_2.Проведен КАК Проведен,
+                        ЭтапПроизводства2_2.НЭ_НулевойЭтап КАК НЭ_НулевойЭтап,
+                        ЗаказНаПроизводство2_2Продукция.НомерСтроки КАК НомерСтрокиЗП,
+                        ЭтапПроизводства2_2.НомерПартииЗапуска КАК НомерПартииЗапуска,
+                        ЭтапПроизводства2_2.НомерЭтапа КАК НомерЭтапа,
+                        ЭтапПроизводства2_2.НомерСледующегоЭтапа КАК НомерСледующегоЭтапа,
+                        ЭтапПроизводства2_2.ФактическоеНачалоЭтапа,
+                        ЭтапПроизводства2_2.ФактическоеОкончаниеЭтапа
+                    ИЗ
+                        Документ.ЭтапПроизводства2_2 КАК ЭтапПроизводства2_2
+                            ЛЕВОЕ СОЕДИНЕНИЕ Документ.ЗаказНаПроизводство2_2.Продукция КАК ЗаказНаПроизводство2_2Продукция
+                            ПО (ЭтапПроизводства2_2.Спецификация = ЗаказНаПроизводство2_2Продукция.Спецификация
+                            И ЗаказНаПроизводство2_2Продукция.Ссылка = &Распоряжение)
+                    ГДЕ
+                        ЭтапПроизводства2_2.Распоряжение = &Распоряжение
+                        И ЗаказНаПроизводство2_2Продукция.Спецификация.ОсновноеИзделиеНоменклатура = &Номенклатура
+                        И ЭтапПроизводства2_2.ПометкаУдаления = ЛОЖЬ
+                        И ЭтапПроизводства2_2.Проведен = ИСТИНА
+        """
+        refs = Refs_wet(text)
+        ref_obj_znpr = Ref_wet('Распоряжение', "Документы.ЗаказНаПроизводство2_2", ref_py)
+        ref_obj_nomen = Ref_wet('Номенклатура', "Справочники.Номенклатура", nomen_ref)
+
+        refs.add_ref(ref_obj_znpr)
+        refs.add_ref(ref_obj_nomen)
+        key, res = get_wet_request(text=text, refs=refs)
+        if key != 200:
+            raise ValueError(f'Ошибка получения данных из ЕРП')
+        list_etaps: list[Etap_erp] = []
         for it in res['data']:
-            self.list_etaps.append(Etap_erp(it))
-        self.ref_py:str = ref_py
-        self.НомПартии_ЗП:str = НомПартии_ЗП
-        return
+            list_etaps.append(Etap_erp(it))
+        return list_etaps
+
+
+    @staticmethod
+    def get_etaps_by_znpr_nomen_ref_alter_join(ref_py: str, nomen_ref: str):
+        text = f"""ВЫБРАТЬ
+                        ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЭтапПроизводства2_2.Ссылка)) КАК ref,
+                        ЭтапПроизводства2_2.НаименованиеЭтапа КАК НаименованиеЭтапа,
+                        ЭтапПроизводства2_2.ПометкаУдаления КАК ПометкаУдаления,
+                        ЭтапПроизводства2_2.Комментарий КАК Комментарий,
+                        ПРЕДСТАВЛЕНИЕ(ЭтапПроизводства2_2.Организация) КАК Организация,
+                        ПРЕДСТАВЛЕНИЕ(ЭтапПроизводства2_2.Подразделение) КАК Подразделение,
+                        ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЭтапПроизводства2_2.Подразделение.Ссылка)) КАК ref_Подразделение,
+                        ПРЕДСТАВЛЕНИЕ(ЭтапПроизводства2_2.Спецификация) КАК Спецификация,
+                        ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЭтапПроизводства2_2.Спецификация)) КАК Спецификация_ref,
+                        ЭтапПроизводства2_2.Спецификация.Код КАК Спецификация_code,
+                        ПРЕДСТАВЛЕНИЕ(ЭтапПроизводства2_2.Статус) КАК Статус,
+                        ПРЕДСТАВЛЕНИЕ(ЭтапПроизводства2_2.Распоряжение) КАК Распоряжение,
+                        ЭтапПроизводства2_2.Номер КАК Номер,
+                        ЭтапПроизводства2_2.Дата КАК Дата,
+                        ЭтапПроизводства2_2.Проведен КАК Проведен,
+                        ЭтапПроизводства2_2.НЭ_НулевойЭтап КАК НЭ_НулевойЭтап,
+                        ЗаказНаПроизводство2_2Продукция.НомерСтроки КАК НомерСтрокиЗП,
+                        ЭтапПроизводства2_2.НомерПартииЗапуска КАК НомерПартииЗапуска,
+                        ЭтапПроизводства2_2.НомерЭтапа КАК НомерЭтапа,
+                        ЭтапПроизводства2_2.НомерСледующегоЭтапа КАК НомерСледующегоЭтапа,
+                        ЭтапПроизводства2_2.ФактическоеНачалоЭтапа,
+                        ЭтапПроизводства2_2.ФактическоеОкончаниеЭтапа
+                    ИЗ
+                        Документ.ЭтапПроизводства2_2 КАК ЭтапПроизводства2_2
+                            ЛЕВОЕ СОЕДИНЕНИЕ Документ.ЗаказНаПроизводство2_2.Продукция КАК ЗаказНаПроизводство2_2Продукция
+                            ПО (ЭтапПроизводства2_2.ПартияПроизводства.ОсновноеИзделиеНоменклатура = ЗаказНаПроизводство2_2Продукция.Номенклатура)
+                    ГДЕ
+                        ЭтапПроизводства2_2.Распоряжение = &Распоряжение
+                        И ЗаказНаПроизводство2_2Продукция.Спецификация.ОсновноеИзделиеНоменклатура = &Номенклатура
+                        И ЭтапПроизводства2_2.ПометкаУдаления = ЛОЖЬ
+                        И ЭтапПроизводства2_2.Проведен = ИСТИНА
+        """
+        refs = Refs_wet(text)
+        ref_obj_znpr = Ref_wet('Распоряжение', "Документы.ЗаказНаПроизводство2_2", ref_py)
+        ref_obj_nomen = Ref_wet('Номенклатура', "Справочники.Номенклатура", nomen_ref)
+
+        refs.add_ref(ref_obj_znpr)
+        refs.add_ref(ref_obj_nomen)
+        key, res = get_wet_request(text=text, refs=refs)
+        if key != 200:
+            raise ValueError(f'Ошибка получения данных из ЕРП alter_join')
+        list_etaps: list[Etap_erp] = []
+        for it in res['data']:
+            list_etaps.append(Etap_erp(it))
+        return list_etaps
 
     def __repr__(self):
         status = "error" if self.err else "ok"
         return f"Etaps_erp(НомПартии={self.НомПартии_ЗП}, etaps={len(self.list_etaps)}, status={status})"
+    
+    @property  
+    def is_deleted(self):
+        list_delete_states =[_.ПометкаУдаления for _ in self.list_etaps if not _.НЭ_НулевойЭтап]
+        set_delete_state = set(list_delete_states)
+        if len(set_delete_state)==1 and list_delete_states[0] == True:
+            return True
+        return False
 
+    @property
+    def is_empty_notnull(self):
+        list_delete_states =[_ for _ in self.list_etaps if not _.НЭ_НулевойЭтап]
+        if not list_delete_states:
+            return True
+        return False
 
     def create_new_etap(self,name:str,ref_podr:str)->tuple[int,list[str]|dict]:
         json_data = {'name':name,
                 'ref_py':self.ref_py,
                 'НомПартии_ЗП':self.НомПартии_ЗП,
-                'Подразделение_Key':ref_podr# TODO брать реф из Справочники.СтруктураПредприятия а не из Справочники.ПодразделенияОрганизаций
+                'Подразделение_Key':ref_podr
                 }
         headers = dict(Accept='application/json')
         params = dict()
@@ -541,7 +732,7 @@ class Etaps_erp():
         return response.status_code, F.convert_binary_to_data(response.content)
 
     def is_etap_existance(self,name_etap:str)->bool:
-        return name_etap in {_.НаименованиеЭтапа for _ in self.list_etaps}
+        return name_etap in {_.НаименованиеЭтапа for _ in self.list_etaps if not _.ПометкаУдаления}
     
     def get_permited_to_create_etaps(self,mes_code_podr:str):
         DICT_ETAPI_FULL = F.deploy_dict_c(CSQ.custom_request_c(CFG.Config.project.db_naryad, f'''SELECT * FROM etaps''', rez_dict=True),
@@ -572,4 +763,16 @@ class Etaps_erp():
                                        attach_dbs=CFG.Config.project.db_naryad)
         set_refs = set([_['ref_СтруктураПредприятия'] for _ in data_rc])
         return [_ for _ in self.list_etaps if _.ref_Подразделение in set_refs]
-        
+
+    def make_dict_etaps(self) ->  dict:
+
+        dict_etap = {'Спецификация': self.specification_code,
+                    'Спецификация_Key': self.specification_ref,
+                                                               'Этапы': []}
+        for et in self.list_etaps:
+            dict_etap['Этапы'].append(
+                {'Номер': et.Номер, 'НаименованиеЭтапа': et.НаименованиеЭтапа,
+                 'Чек': et.ref})
+        return dict_etap
+
+

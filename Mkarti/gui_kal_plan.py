@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import datetime
 import datetime as DT
 import re
 import project_cust_38.Cust_Qt as CQT
@@ -15,56 +16,95 @@ import project_cust_38.Cust_odata_erp as CODAT
 import project_cust_38.api_erp_commands as APIERP
 from project_cust_38 import Cust_config as CFG
 import project_cust_38.Cust_emoji as CEMOJ
+from data_class import Data_plan as DTCLS
+import project_cust_38.border_painter as BORDERP
+from functools import partial
 if TYPE_CHECKING:
     from MKart import mywindow
 from PyQt5 import QtWidgets, QtCore
-def hover_tbl_kal_pl_header(self:mywindow, event):
-    tbl = self.ui.tbl_kal_pl
-    row, column = CQT.get_hover_row_col(self, tbl, event)
-    if column == None:
-        return
-    if tbl.horizontalHeaderItem(column) == None:
-        return
-    nick = name = tbl.horizontalHeaderItem(column).text()
-    if name in self.Data_plan.DICT_INFO_FIELDS_KPL:
-        nick = self.Data_plan.DICT_INFO_FIELDS_KPL[name]['nickname']
-    tbl.horizontalHeader().setToolTip(nick)
 
+def _____________________gant_manage_________________________():pass
 def hover_tbl_pl_gaf(self, event):
     tbl = self.ui.tbl_pl_gaf
-    row, column = CQT.get_hover_row_col(self, tbl, event)
-    if row == None or column == None:
-        return
-    if tbl.item(row, column) == None:
-        return
-    val = tbl.item(row, column).text()
-    if val != '':
-        load_info_select_block(self,tbl,row,column)
-    else:
-        load_info_select_block(self, tbl, row, column,True)
+    hover_tbl_gant(self,tbl,event)
 
 def hover_tbl_preview(self, event):
     tbl = self.ui.tbl_preview
-    row, column = CQT.get_hover_row_col(self, tbl, event)
-    if row == None or column == None:
-        return
-    if tbl.item(row, column) == None:
-        return
-    val = tbl.item(row, column).text()
-    if val != '':
-        load_info_select_block(self,tbl,row,column)
-    else:
-        load_info_select_block(self, tbl, row, column,True)
-def max_mosh(self:mywindow, day, podr:str):
-    podr = podr.split('план_')[-1]
-    podr = podr.split('факт_')[-1]
-    try:
-        return round(self.KPLAN_max_mosh[day][podr]*self.selected_napr_koef,2)
-    except:
-        return 'err'
+    hover_tbl_gant(self,tbl,event)
 
-def load_info_select_block(self,tbl,r = '',c = '',clear=False):
-    from datetime import datetime
+def hover_tbl_gant(self, tbl:CQT.QtWidgets.QTableWidget, event):
+    i, j = CQT.get_hover_row_col(self, tbl, event)
+    if i == None or j == None:
+        return
+    if tbl.item(i, j) == None:
+        return
+    g_handler = KPL.Gant_handler(local_mode=tbl is self.ui.tbl_preview, by_hover=event)
+    if g_handler.gant is None:
+        return
+    if g_handler is None:
+        return
+    val = g_handler.selected_cell
+    fl_clear = False
+    mouse_move_mode = False
+    if val is None or not val:
+        fl_clear = True
+    if DTCLS.MOUSE_MOVING_BLOCK_GANT:
+        mouse_move_mode =True
+    load_info_select_block(self,g_handler,fl_clear,mouse_move_mode)
+@CQT.onerror
+def load_info_select_block(self:mywindow,g_handler:KPL.Gant_handler,clear=False,mouse_move_mode=False):
+    def set_border_block(border_o:BORDERP.BorderPainter,
+                         g_handler:KPL.Gant_handler):
+        delta_clmn_idx_left = 0
+        delta_clmn_idx_right = 0
+        row_for_border = g_handler.current_row.i
+        g_handler_for_border = g_handler
+        if mouse_move_mode:
+            if DTCLS.MOUSE_MOVING_BLOCK_GANT.cld_day is None :
+                return
+            if DTCLS.MOUSE_MOVING_BLOCK_GANT.cld_day not in g_handler.t.nf:
+                return
+            start_clmn_idx = g_handler.t.nf[DTCLS.MOUSE_MOVING_BLOCK_GANT.cld_day]
+            delta_clmn_idx = g_handler.t.nf[g_handler.cld_day] - start_clmn_idx
+            if DTCLS.MOUSE_MOVING_BLOCK_GANT._mouse_moving_block_gant_mode == Mouse_moving_block_gant_modes.block:
+                delta_clmn_idx_left = delta_clmn_idx_right = delta_clmn_idx
+            elif  DTCLS.MOUSE_MOVING_BLOCK_GANT._mouse_moving_block_gant_mode == Mouse_moving_block_gant_modes.left_edge:
+                delta_clmn_idx_left  = delta_clmn_idx
+            elif  DTCLS.MOUSE_MOVING_BLOCK_GANT._mouse_moving_block_gant_mode == Mouse_moving_block_gant_modes.right_edje:
+                delta_clmn_idx_right = delta_clmn_idx
+            row_for_border = DTCLS.MOUSE_MOVING_BLOCK_GANT.current_row.i
+            g_handler_for_border = DTCLS.MOUSE_MOVING_BLOCK_GANT
+
+        clr_ins = g_handler_for_border.tbl_db.color.align_colors(level_percent=-12, saturation_percent=40, copy=True)
+        clr_out = g_handler_for_border.tbl_db.color.align_colors(level_percent=-12, saturation_percent=30, copy=True)
+
+        border_o.set_colors(clr_out.rgb,clr_ins.rgb)
+        border_o.enabled = True
+
+        left_block_idx = g_handler_for_border.left_block_idx or 0
+        united_left_block_idx= left_block_idx+delta_clmn_idx_left
+        right_block_idx = g_handler_for_border.right_block_idx or 0
+        united_right_block_idx = right_block_idx+delta_clmn_idx_right
+        if united_left_block_idx < g_handler_for_border.left_idx_net:
+            united_left_block_idx = g_handler_for_border.left_idx_net
+        if united_right_block_idx > g_handler_for_border.right_idx_net:
+            united_right_block_idx = g_handler_for_border.right_idx_net
+            
+        if g_handler_for_border.t.tbl is None:#01.07.2026 по логам MKart.py|2026-07-01 10:39:59|1.0.0.1.5|m.morenko|POW17-01|
+            return 
+        
+        border_o.update_border(g_handler_for_border.t.tbl,
+                   (row_for_border,united_left_block_idx),
+                (row_for_border,united_right_block_idx),repaint_by_row=True)
+    def calc_work_days(dt_start:datetime.datetime,dt_end:datetime.datetime)->int:
+        cnt = 0
+        for dt,date_o in DTCLS.DICT_CLD.items():
+            if dt_start <= dt <= dt_end:
+                if not date_o.is_holyday:
+                    cnt += 1
+                if dt_end< dt:
+                    break
+        return cnt
 
     def format_date(val: str) -> str:
         if not val:
@@ -74,70 +114,553 @@ def load_info_select_block(self,tbl,r = '',c = '',clear=False):
             return date
         return val  # если формат не распознан
 
-
-
     if clear:
         CQT.statusbar_text(self, '')
-        tbl.setToolTip('')
+        g_handler.t.tbl.setToolTip('')
+        if not mouse_move_mode:
+            g_handler.t.set_cursor(CQT.Cursors.simple.get())
+
+    if mouse_move_mode:
+        if DTCLS.MOUSE_MOVING_BLOCK_GANT._mouse_moving_block_gant_mode == Mouse_moving_block_gant_modes.block:
+            g_handler.t.set_cursor(CQT.Cursors.closedhand.get())
+        else:
+            g_handler.t.set_cursor(CQT.Cursors.sizehorcursor.get())
+
+    if g_handler.local_mode:
+        border_o = DTCLS.tbl_gant_local_border
+    else:
+        border_o = DTCLS.tbl_gant_context_border
+    if g_handler.cld_day is None:
         return
-    if r =="":
-        r = tbl.currentRow()
-    if c == "":
-        c = tbl.currentColumn()
-    try:
-        if self.dict_tbls_kpl_info[KPL.calc_current_ifo_tbl_name(self)][r+1][c] == '':
-            CQT.statusbar_text(self,'')
-            tbl.setToolTip('')
-    except:
+
+        #====border_load========
+    if g_handler.block_selected or mouse_move_mode:
+        if not mouse_move_mode and g_handler.local_mode:
+            if g_handler.selected_cell and g_handler.selected_cell.for_tbl():
+                g_handler.t.set_cursor(CQT.Cursors.double_and_context.get())
+            else:
+                g_handler.t.set_cursor(CQT.Cursors.right_click.get())
+
+
+        set_border_block(border_o, g_handler)
+    else:
+        border_o.clear_borders(g_handler.t.tbl)
+    # ==========
+    if clear:
         return
 
-    list_inf = []
-    info = ''
-    if c >= 6:
-        row_inf = self.dict_tbls_kpl_info[KPL.calc_current_ifo_tbl_name(self)][r + 1][c]
-        try:
-            if len(row_inf)>0:
-                list_inf = [copy.deepcopy(row_inf)[-1]]
-        except:
-            pass
+    blocks = []
+    hours = g_handler.block_count_hours
+    lines = [f"Этап: {g_handler.tbl_db.alias}"]
+    start = format_date(g_handler.min_date_block)
+    end = format_date(g_handler.max_date_block)
+    if start or end:
+        lines.append(f"Период: {start} — {end}")
+    lines.append(f"Время: {round(hours, 2)} ч.")
+    blocks.append("\n".join(lines))
 
-        if isinstance(list_inf, list):
-            blocks = []
+    info = "\n\n".join(blocks)
+    g_handler.t.tbl.setToolTip(info)
+    power = ''
+    power_aplyed = ''
+    if g_handler.min_date_block:
+        if g_handler.cld_day.dt_datetime >= g_handler.min_date_block:
+            w_days = calc_work_days(g_handler.min_date_block,g_handler.cld_day.dt_datetime)
+            if w_days:
+                power_aplyed = f'Гипот. мощность до {
+                        F.datetostr(g_handler.cld_day.dt_datetime,"%d.%m.%Y")}: {
+                        round(hours/w_days,2)} н-час/день'
 
-            for item in list_inf:
-                item = item.copy()
-                item.pop("Имя_нз", None)
 
-                stage = item.get("Этап", "")
-                lines = [f"Этап: {stage}"]
-
-                start = format_date(item.get("Начало"))
-                end = format_date(item.get("Конец"))
-                if start or end:
-                    lines.append(f"Период: {start} — {end}")
-
-                if "Время_час" in item:
-                    lines.append(f"Время: {round(item['Время_час'], 2)} ч.")
-
-                if "По дню" in item:
-                    lines.append(f"В день: {round(item['По дню'], 2)} ч.")
-
-                blocks.append("\n".join(lines))
-
-            info = "\n\n".join(blocks)
-            tbl.setToolTip(info)
-
-    mosh = ''
+    power_etap = g_handler.get_power_hour_current_etap
     try:
-        day = self.dict_tbls_kpl_info[KPL.calc_current_ifo_tbl_name(self)][0][c]
-        podr = self.dict_tbls_kpl_info[KPL.calc_current_ifo_tbl_name(self)][r+1][0]
-        mosh = f'Макс. мощность по {self.selected_napr} : {max_mosh(self,day,podr)} н-час.'
+        power = f'Макс. мощность по {g_handler.tbl_db.alias} : {round(power_etap,2)} н-час.'
     except:
         pass
-    CQT.statusbar_text(self,
-                       f'{self.glob_kpl_summ_selct_tbl}    |    {info}    |    {mosh}' )
+    result_data = [self.glob_kpl_summ_selct_tbl,info,power]
+    if power_aplyed:
+        result_data.append(power_aplyed)
+    result_txt = '    |    '.join(result_data)
+    CQT.statusbar_text(self, result_txt)
 
-def get_ref_and_nomen_from_tbl_poz(self,m,exel_mode=False):
+def mouse_moving_stop():
+    g_handler = KPL.Gant_handler()
+    g_handler_move = DTCLS.MOUSE_MOVING_BLOCK_GANT
+    origin_left_idx = g_handler_move.left_block_idx
+    origin_right_idx = g_handler_move.right_block_idx
+    start_clmn_idx = g_handler.t.nf[g_handler_move.cld_day]
+    delta_clmn_idx = g_handler.t.tbl.currentColumn() - start_clmn_idx
+    if DTCLS.MOUSE_MOVING_BLOCK_GANT._mouse_moving_block_gant_mode == Mouse_moving_block_gant_modes.block:
+        g_handler_move.set_new_date(True, F.date_add_days(g_handler_move.min_date_block, delta_clmn_idx, '', ''))
+        g_handler_move.set_new_date(False, F.date_add_days(g_handler_move.max_date_block, delta_clmn_idx, '', ''))
+    elif DTCLS.MOUSE_MOVING_BLOCK_GANT._mouse_moving_block_gant_mode == Mouse_moving_block_gant_modes.left_edge:
+        g_handler_move.set_new_date(True, F.date_add_days(g_handler_move.min_date_block, delta_clmn_idx, '', ''))
+    elif DTCLS.MOUSE_MOVING_BLOCK_GANT._mouse_moving_block_gant_mode == Mouse_moving_block_gant_modes.right_edje:
+        g_handler_move.set_new_date(False, F.date_add_days(g_handler_move.max_date_block, delta_clmn_idx, '', ''))
+
+    if g_handler.link_blocks_moving:
+        for row in g_handler.t.rows():
+            tmp_g_hndlr = KPL.Gant_handler(forced_row=row)
+            if tmp_g_hndlr.current_row.i ==  g_handler_move.current_row.i:
+                continue
+            if not tmp_g_hndlr.is_block_replaced_dates:
+                if (DTCLS.MOUSE_MOVING_BLOCK_GANT._mouse_moving_block_gant_mode == Mouse_moving_block_gant_modes.block or
+                    DTCLS.MOUSE_MOVING_BLOCK_GANT._mouse_moving_block_gant_mode == Mouse_moving_block_gant_modes.right_edje): # сдвигаем правее на +
+                    if tmp_g_hndlr.left_block_idx > origin_right_idx or tmp_g_hndlr.left_block_idx == origin_left_idx:# правее исходного края
+                        tmp_g_hndlr.set_new_date(True,
+                                                    F.date_add_days(tmp_g_hndlr.min_date_block, delta_clmn_idx, '',
+                                                                    ''))
+                        tmp_g_hndlr.set_new_date(False,
+                                                    F.date_add_days(tmp_g_hndlr.max_date_block, delta_clmn_idx, '',
+                                                                    ''))
+                if (DTCLS.MOUSE_MOVING_BLOCK_GANT._mouse_moving_block_gant_mode == Mouse_moving_block_gant_modes.block or
+                    DTCLS.MOUSE_MOVING_BLOCK_GANT._mouse_moving_block_gant_mode == Mouse_moving_block_gant_modes.left_edge):
+                    if tmp_g_hndlr.right_block_idx < origin_left_idx or tmp_g_hndlr.left_block_idx == origin_left_idx:
+                        tmp_g_hndlr.set_new_date(True,
+                                                 F.date_add_days(tmp_g_hndlr.min_date_block, delta_clmn_idx, '',
+                                                                 ''))
+                        tmp_g_hndlr.set_new_date(False,
+                                                 F.date_add_days(tmp_g_hndlr.max_date_block, delta_clmn_idx, '',
+                                                                 ''))
+
+
+    DTCLS.MOUSE_MOVING_BLOCK_GANT = None
+    KPL.update_local_graf(True,g_handler.poz_gant.poz_id,True)
+def fill_select_poz_kpl(self,forced_kpl_id:int|None=None):
+    DICT_FIELDS = DTCLS.FIELDS_DB_INFO.dict_fields
+    tbl = self.ui.tbl_kal_pl
+    t = CQT.TableContext(tbl)
+    CQT.clear_tbl(self.ui.tbl_addit_info_poz_gant)
+
+    if forced_kpl_id is None:
+        row = t.current_row()
+        if row.no_selection:
+            return
+    else:
+        row = t.find_row({'plan.Пномер':forced_kpl_id},True)
+        if row is None:
+            return
+
+    row_fix = row.get_list_dict_vals(aliases=False)
+    set_not_loaded = set([_ for _ in DICT_FIELDS.values() if not _.is_loaded or _.is_hidden])
+
+    templ = []
+    for it in row_fix:
+        name_field = it['Параметр']
+        val_field = it['Значение']
+        field_o = DICT_FIELDS[name_field]
+        if not val_field or val_field == '0' or val_field == '0.0':
+            continue
+        if field_o in set_not_loaded:
+            continue
+        templ.append({
+            '_name':field_o.name_mes,
+            'Параметр':field_o.name_alias,
+            'Значение':val_field,
+            'Описание':field_o.description
+        })
+    row_fix = templ
+
+    CQT.fill_wtabl(row_fix,self.ui.tbl_addit_info_poz_gant,height_row=42,styleSheet=CQT.MES_CSS)
+
+
+    t = CQT.TableContext(self.ui.tbl_addit_info_poz_gant)
+    t.hide_if_not_dev(CFG)
+    for row in t.rows():
+        name = row.value('_name')
+        field_o = DICT_FIELDS[name]
+        clr = field_o.table_color
+        clrs = clr.align_colors(level_percent=-30, saturation_percent=-20,copy=True)
+        row.set_color_font(*clrs.rgb)
+        row.set_font_format(bold=True,col_name= 'Параметр')
+        row.set_font_format(bold=True,col_name= 'Значение')
+
+
+@CQT.onerror
+def move_manage(self,direction:int):
+    if not CMS.user_access(rule= 'мкарт_управление_планированием_только_ПДО'):
+        return
+    g_handler = KPL.Gant_handler()
+    if g_handler.poz_gant is None:
+        CQT.msgbox(f'Не выбран этап в ганте')
+        return
+
+
+    fl_update_gant = False
+    fl_update_gant_tmp ,errors = move(g_handler, direction, self.ui.le_edit_local_gant_nach.text(),
+                                      start=True)
+    if errors:
+        CQT.msgbox('\n'.join(list[errors]))
+        return
+    if fl_update_gant_tmp:
+        fl_update_gant = True
+
+    fl_update_gant_tmp, errors = move(g_handler, direction, self.ui.le_edit_local_gant_kon.text(),
+                                      start=False)
+    if errors:
+        CQT.msgbox('\n'.join(list[errors]))
+        return
+    if fl_update_gant_tmp:
+        fl_update_gant = True
+
+    if fl_update_gant:
+        KPL.update_local_graf(True, g_handler.poz_gant.poz_id)
+        if not self.is_main_mode():
+            VPL.load_tbl_gant(self)  # объемный загрузка
+
+
+@CQT.onerror
+def move_left(self):
+    move_manage(self,-1)
+@CQT.onerror
+def move_right(self):
+    move_manage(self, 1)
+
+@CQT.onerror
+def move( g_handler: KPL.Gant_handler, direction: int = 1, count_str: str = '',
+          start: bool = True) -> tuple[bool,set[str]]:
+    def parse_date(date_txt: str) -> datetime.datetime | None:
+        return F.dateStrToStr(date_txt, format_out='', onerror=None)
+
+    errors = set()
+    count_str = count_str.strip()
+    if count_str in ('', '0'):
+        return False, errors
+    describe = 'Начало' if start else 'Конец'
+
+    old_date = g_handler.min_date_block if start else g_handler.max_date_block
+
+
+
+
+    new_date: datetime.datetime | None = None
+    delta_days:int|None = None
+    if not F.is_numeric(count_str):
+        dt_date = parse_date(count_str)
+        if dt_date is None:
+            CQT.msgbox(f'В поле периода {describe} не число и не дата')
+            return False, errors
+        delta_days = abs((old_date - dt_date).days)
+    else:
+        delta_days = F.valm(count_str)
+
+    if delta_days is None:
+        err = f'Ошибка расчетов даты'
+        CQT.msgbox(err)
+        errors.add(err)
+        return False , errors
+
+    selectd_rows = g_handler.list_selected_rows
+    if len(selectd_rows) == 1:
+        if g_handler.type_day == CMS.Types_day_gant.fact:
+            err = 'Перемещение невозможно для факта'
+            CQT.msgbox(err)
+            errors.add(err)
+            return False, errors
+        if g_handler.is_block_replaced_dates:
+            err = 'Перемещение невозможно для нерасчетных блоков'
+            CQT.msgbox(err)
+            errors.add(err)
+            return False, errors
+
+    fl_update_gant = False
+    for row in g_handler.list_selected_rows:
+        tmp_g_handler = KPL.Gant_handler(forced_row=row)
+        if tmp_g_handler.type_day == CMS.Types_day_gant.fact:
+            continue
+        if tmp_g_handler.is_block_replaced_dates:
+            continue
+        old_date = tmp_g_handler.min_date_block if start else tmp_g_handler.max_date_block
+
+        new_date = F.date_add_days(old_date, delta_days * direction, '', '')
+        if tmp_g_handler.set_new_date(start, new_date):
+            fl_update_gant = True
+
+
+    return fl_update_gant, errors
+
+@CQT.onerror
+def tbl_preview_on_vert_header_click(self:mywindow,ind):
+    if not self.is_main_mode():
+        return
+    tbl = self.ui.tbl_preview
+    t = CQT.TableContext(tbl)
+    row = t.get_row(ind)
+    try:
+        id_poz = int(row.value('_id_poz'))
+    except:
+        return
+    #poz_gant: CMS.Poz_gant = DTCLS.current_gant.dict_pozitions[id_poz]
+    type_day = CMS.Types_day_gant.find(row.value('_type_day'))
+    tbl_db = DTCLS.FIELDS_DB_INFO.tables_db.get_table(
+            row.value("_tbl_name"))
+    if type_day is CMS.Types_day_gant.plan:
+        name_field = tbl_db.norm_full_name
+    else:
+        name_field = tbl_db.fact_full_name
+    t_kpl = CQT.TableContext(self.ui.tbl_kal_pl)
+    row_kpl = t_kpl.current_row()
+    t_kpl.set_selected_cell(row_kpl,name_field)
+
+@CQT.onerror
+def tbl_preview_right_click(self, row, col): # for fnc_context_menu_gant
+    if DTCLS.MOUSE_MOVING_BLOCK_GANT:
+        border_o = DTCLS.tbl_gant_local_border
+        border_o.clear_borders(self.ui.tbl_preview)
+        DTCLS.MOUSE_MOVING_BLOCK_GANT = False
+
+@CQT.onerror
+def tbl_preview_on_header_click(self,ind):
+    tbl = self.ui.tbl_preview
+    t = CQT.TableContext(tbl)
+    data = t.name_by_idx(ind)
+    if isinstance(data,CMS.Month_cld_day):
+        text = F.datetostr(data.dt_datetime,"%d.%m.%Y" )
+        F.copy_bufer(text)
+        CQT.msgbox(f'Скопировано в буфер: {text}',time_life=1)
+def clear_edit_local_gant(lbl:CQT.QtWidgets.QLabel):
+    lbl.setText('')
+    lbl.setFocus()
+def clear_edit_local_gant_nach(self:mywindow):
+   clear_edit_local_gant(self.ui.le_edit_local_gant_nach)
+
+def clear_edit_local_gant_kon(self:mywindow):
+   clear_edit_local_gant(self.ui.le_edit_local_gant_kon)
+
+def pickup_dates(lbl_start:CQT.QtWidgets.QLabel,lbl_end:CQT.QtWidgets.QLabel,columns:list):
+    def fill_date(lbl, clmn:CMS.Month_cld_day):
+        if not isinstance(clmn,CMS.Month_cld_day):
+            return
+        lbl.setText(F.datetostr(clmn.dt_datetime,"%d.%m.%Y"))
+
+    fill_date(lbl_start, columns[0])
+    fill_date(lbl_end, columns[-1])
+
+def pickup_date(lbl:CQT.QtWidgets.QLabel,clmn):
+    def fill_date(lbl, clmn:CMS.Month_cld_day):
+        if not isinstance(clmn,CMS.Month_cld_day):
+            return
+        lbl.setText(F.datetostr(clmn.dt_datetime,"%d.%m.%Y"))
+
+    fill_date(lbl,clmn)
+
+def pickup_date_nach(self:mywindow):
+    tbl = DTCLS.app_self.ui.tbl_preview
+    t = CQT.TableContext(tbl)
+    columns = t.get_selected_columns()
+    if len(columns) == 1:
+        pickup_date(self.ui.le_edit_local_gant_nach,columns[0])
+    else:
+        pickup_dates(
+            self.ui.le_edit_local_gant_nach,
+            self.ui.le_edit_local_gant_kon,
+            columns
+        )
+def pickup_date_kon(self:mywindow):
+    tbl = DTCLS.app_self.ui.tbl_preview
+    t = CQT.TableContext(tbl)
+    columns = t.get_selected_columns()
+    if len(columns) == 1:
+        pickup_date(self.ui.le_edit_local_gant_kon,columns[0])
+    else:
+        pickup_dates(
+            self.ui.le_edit_local_gant_nach,
+            self.ui.le_edit_local_gant_kon,
+            columns
+        )
+@CQT.onerror
+def set_start_end_dates_clnd(self:mywindow):
+    succ, dates = CQT.get_data_dialog_choose(self,'Выбрать дату начала и завершения работы с позицией',
+                                       range_dates=True)
+    if not succ:
+        return
+    self.ui.le_start_set_dates_etaps.setText(F.datetostr(dates["date_from"],"%d.%m.%Y"))
+    self.ui.le_end_set_dates_etaps.setText(F.datetostr(dates["date_to"],"%d.%m.%Y"))
+
+
+class Mouse_moving_block_gant_modes:
+    block='block'#перетягивание блока
+    left_edge ='left_edge '#движения левой границе
+    right_edje ="rigth edge"# движений правой границей
+
+@CQT.onerror
+def fnc_context_menu_gant(app_self, object_tbl, row, col, builder):
+    if DTCLS.MOUSE_MOVING_BLOCK_GANT or DTCLS.MOUSE_MOVING_BLOCK_GANT == False:
+        DTCLS.MOUSE_MOVING_BLOCK_GANT = None
+        return
+
+    g_handler = KPL.Gant_handler()
+    if not g_handler.block_selected:
+        return
+    clmn_o: CMS.Month_cld_day = g_handler.t.current_column_name()
+    if not isinstance(clmn_o, CMS.Month_cld_day):
+        return
+
+    def fnc_hand_move_r(g_handler,*args):# KPL.clck_tbl_preview
+        if not CMS.user_access(rule='мкарт_управление_планированием_только_ПДО'):
+            return
+        DTCLS.MOUSE_MOVING_BLOCK_GANT = g_handler
+        g_handler._mouse_moving_block_gant_mode = Mouse_moving_block_gant_modes.right_edje
+    def fnc_hand_move_l(g_handler,*args):# KPL.clck_tbl_preview
+        if not CMS.user_access(rule='мкарт_управление_планированием_только_ПДО'):
+            return
+        DTCLS.MOUSE_MOVING_BLOCK_GANT = g_handler
+        g_handler._mouse_moving_block_gant_mode = Mouse_moving_block_gant_modes.left_edge
+    def fnc_hand_move(g_handler,*args):# KPL.clck_tbl_preview
+        if not CMS.user_access(rule='мкарт_управление_планированием_только_ПДО'):
+            return
+        DTCLS.MOUSE_MOVING_BLOCK_GANT = g_handler
+        g_handler._mouse_moving_block_gant_mode = Mouse_moving_block_gant_modes.block
+
+    if not g_handler.is_block_replaced_dates:
+        builder.add_submenu(f"{CEMOJ.EmojiMain.ДокументыДанные.shuffle.symbol} Перемещение")
+        builder.add_menu(f'{CEMOJ.EmojiMain.ДокументыДанные.revers.symbol}\t Блок',
+                         partial( fnc_hand_move,g_handler))
+        builder.add_menu(f'{CEMOJ.EmojiMain.ДокументыДанные.move_left_border.symbol}\t Л. Границу',
+                         partial( fnc_hand_move_l,g_handler))
+        builder.add_menu(f'{CEMOJ.EmojiMain.ДокументыДанные.move_right_border.symbol}\t П. Границу',
+                         partial( fnc_hand_move_r,g_handler))
+        builder.end_submenu()
+    builder.add_submenu(f"{CEMOJ.EmojiMain.ОборудованиеИнструменты.tool.symbol} В разработке")
+
+def recalc_gant_forced(*args):
+    if DTCLS.current_id_poz_kpl is None:
+        CQT.msgbox(f'Не выбрана позиция')
+        return
+    KPL.update_local_graf(pnom=DTCLS.current_id_poz_kpl,update=True,fill_gant=True)
+def hover_tbl_kal_pl_header(self:mywindow, event):
+    tbl = self.ui.tbl_kal_pl
+    row, column = CQT.get_hover_row_col(self, tbl, event)
+    if column == None:
+        return
+    if tbl.horizontalHeaderItem(column) == None:
+        return
+    name_field = tbl.horizontalHeaderItem(column).data(QtCore.Qt.UserRole)
+    field_o = DTCLS.FIELDS_DB_INFO.dict_fields[name_field]
+    tbl.horizontalHeader().setToolTip(field_o.description)
+
+@CQT.onerror
+def recalc_gant_by_local_limit_table(i:int,*args):
+    tbl = DTCLS.app_self.ui.tbl_limit_gant
+    t = CQT.TableContext(tbl)
+    row = t.get_row(i)
+    name_etap = row.value('_tbl_name')
+    str_limit = row.value('Н-ч')
+    if not F.is_numeric(str_limit):
+        CQT.msgbox(f'Лимит {str_limit} не число')
+        return
+    val_limit = F.valm(str_limit)
+    dict_cust_limits = {name_etap:val_limit}
+
+    g_handler = KPL.Gant_handler()
+    if g_handler.poz_gant is None:
+        t_plan = CQT.TableContext(DTCLS.app_self.ui.tbl_kal_pl)
+        row = t_plan.current_row()
+        if row.no_selection:
+            CQT.msgbox(f'Не выбрана позиция(гант)')
+            return
+        poz_id = int(row.value('plan.Пномер'))
+    else:
+        poz_id = g_handler.poz_gant.poz_id
+
+    gant = CMS.Gant(DTCLS.DICT_CLD, DTCLS.FIELDS_DB_INFO)
+    gant.load([poz_id])
+    if not gant.recalc([poz_id],dict_cust_limits=dict_cust_limits):
+        if gant.err_recalc:
+            str_err = "\n".join(gant.err_recalc)
+        else:
+            str_err = f'Не выполнено'
+        CQT.msgbox(str_err)
+        return
+    KPL.update_local_graf(False, poz_id, fill_gant=True)
+
+    CQT.msgbox(f'Успешно')
+DTCLS.FNC_RECALC_GANT_BY_LOCAL_LIMIT_TABLE = recalc_gant_by_local_limit_table
+@CQT.onerror
+def del_dates_etaps(self:mywindow):
+    if not CMS.user_access(rule= 'мкарт_управление_планированием_только_ПДО'):
+        return
+
+    g_handler = KPL.Gant_handler()
+    if g_handler.poz_gant is None :
+        t_plan = CQT.TableContext(self.ui.tbl_kal_pl)
+        row = t_plan.current_row()
+        if row.no_selection:
+            CQT.msgbox(f'Не выбрана позиция(гант)')
+            return
+        poz_id = int(row.value('plan.Пномер'))
+    else:
+        poz_id = g_handler.poz_gant.poz_id
+    if not CQT.msgboxgYN(f'Буду удалены даты этапов по позиции: {poz_id}'):
+        return
+
+    gant = CMS.Gant(DTCLS.DICT_CLD, DTCLS.FIELDS_DB_INFO)
+    gant.load([poz_id])
+    gant.clear_dates([poz_id])
+    KPL.update_local_graf(True, poz_id, fill_gant=True)
+    if gant.err_clear:
+        CQT.msgbox("\n".join(gant.err_recalc))
+    else:
+        CQT.msgbox(f'Успешно')
+@CQT.onerror
+def set_dates_etaps(self:mywindow):
+    if not CMS.user_access(rule= 'мкарт_управление_планированием_только_ПДО'):
+        return
+    def prepare_dates(le:CQT.QtWidgets.QLineEdit)->datetime.datetime|None|bool:
+        date_str = le.text().strip()
+        if date_str == '':
+            return None
+        def check_dates(str_date) -> datetime.datetime | None:
+            dt_date = F.dateStrToStr(str_date, format_out='', onerror=None)
+            if isinstance(dt_date, datetime.datetime):
+                return dt_date
+            return
+
+        fix_date = check_dates(date_str)
+
+        if fix_date is None:
+            CQT.msgbox(f'Дата "{date_str}"  введена не корректно')
+            return False
+        return fix_date
+
+    g_handler = KPL.Gant_handler()
+    if g_handler.poz_gant is None :
+        t_plan = CQT.TableContext(self.ui.tbl_kal_pl)
+        row = t_plan.current_row()
+        if row.no_selection:
+            CQT.msgbox(f'Не выбрана позиция(гант)')
+            return
+        poz_id = int(row.value('plan.Пномер'))
+    else:
+        poz_id = g_handler.poz_gant.poz_id
+
+    start_date_dt  = prepare_dates(self.ui.le_start_set_dates_etaps)
+    end_date_dt  = prepare_dates(self.ui.le_end_set_dates_etaps)
+    if start_date_dt == False or end_date_dt == False:return
+    if start_date_dt is None and end_date_dt is None:return
+    if start_date_dt and end_date_dt:
+        if start_date_dt >= end_date_dt:return
+    gant = CMS.Gant(DTCLS.DICT_CLD,DTCLS.FIELDS_DB_INFO)
+    gant.load([poz_id])
+    if not gant.recalc([poz_id],start_date_dt,end_date_dt):
+        if gant.err_recalc:
+            str_err = "\n".join(gant.err_recalc)
+        else:
+            str_err = f'Не выполнено'
+        CQT.msgbox(str_err)
+        return
+    KPL.update_local_graf( False, poz_id,fill_gant=True)
+    clear_dates_etaps_le(self)
+    CQT.msgbox(f'Успешно')
+
+    return
+
+
+def _________refactored__________():pass#^^^^^^^^^^^^^^^^^
+
+
+
+def get_ref_and_nomen_from_tbl_poz(self,m,exel_mode=False)->tuple[str|None,str|None,CMS.Pozition|None]:
     poz= None
     if not exel_mode:
         line = CQT.get_dict_line_form_tbl(self.ui.tbl_kal_pl)
@@ -411,31 +934,44 @@ def tab_addit_info_poz_gant_click(self:mywindow,ind):
                                     FROM знпр 
                                WHERE s_num = {poz.dict_tables['пл_оуп']['s_num']};""",
                                                  rez_dict=True)
-                m = CMS.ODAT.OrdersComposit()
-                for item in list_proj:
-                    py = item['№ERP']
-                    s_num = item['s_num']
-                    if py == '-':
-                        continue
-                    ref_key_py = item['Ref_Key_py']
-                    resp = CMS.make_dict_etaps_from_erp(m, ref_key_py)
-                    CMS.update_data_etaps_from_erp(self.db_kplan, resp, s_num)
+                CQT.msgboxg_get_table_ok_inf(self,'Параметры ЗП для обновления этапов',list_proj,styleSheet=CQT.MES_CSS)
+                # result_resps = []
+                # m = CMS.ODAT.OrdersComposit()
+                # for item in list_proj:
+                #     py = item['№ERP']
+                #     s_num = item['s_num']
+                #     if py == '-':
+                #         continue
+                #     ref_key_py = item['Ref_Key_py']
+                    # resp = CMS.make_dict_etaps_from_erp(m, ref_key_py)
+                    # if isinstance(resp, CMS.ErpStagesLoadResult):
+                    #     resp = resp.data
+                    #
+                    # if CMS.update_data_etaps_from_erp(self.db_kplan, resp, s_num):
+                    #     [result_resps.extend(_['Этапы']) for _ in resp.values()]
+                # tab_addit_info_poz_gant_click(self,1)
+                # CQT.msgboxg_get_table_ok_inf(self, 'Этапы обновлены', result_resps,
+                #                                      styleSheet=CQT.MES_CSS)
 
             if exel_mode:
                 return
-            resp = CMS.make_dict_etaps_from_erp(m, Ref_Key_py)
-            list_etaps_erp = []
-            НомПартии_ЗП = str(poz.dict_tables['пл_оуп']['НомПартии_ЗП'])
-            if НомПартии_ЗП in resp and  'Этапы' in resp[НомПартии_ЗП]:
-                list_etaps_erp = resp[НомПартии_ЗП]['Этапы']
+            try:
+                stages_from_erp = APIERP.Etaps_erp.get_znpr_etaps_by_kpl(poz.Пномер)
 
-            list_etaps_mes = []
-            if not poz.dict_tables['пл_оуп']['data_etaps_from_erp'] == None:
-                data_mes  = F.from_binary_pickle(poz.dict_tables['пл_оуп']['data_etaps_from_erp'])
-                if НомПартии_ЗП in data_mes:
-                    list_etaps_mes = data_mes[НомПартии_ЗП]['Этапы']
-            result_data = [{'Версия':"MES","Список":list_etaps_mes},
-                           {'Версия':"ERP","Список":list_etaps_erp},]
+            except APIERP.NotFoundNomenclature as e:
+                return CQT.msgbox( f"""Номенклатура привязанная к КПЛ занесена некорректно, необходимо: 
+            1. Зайти в приложение МКарты. 
+            2. Выбрать позицию {poz.Пномер}
+            3. Зайти в режим редактирования (карандаш)
+            4. В разделе пл_оуп перезанести номенклатуру_ерп
+            5. Попробовать выгрузку снова 
+            """)
+            data_for_table_stages = [
+                {'Number': stage.Номер, 'НаименованиеЭтапа': stage.НаименованиеЭтапа,
+                 'Чек': stage.ref}
+                for stage in stages_from_erp
+            ]
+            result_data = [{'Версия':"ERP", "Список": data_for_table_stages}]
             CQT.fill_wtabl(result_data, tbl, height_row=24, ogr_maxshir_kol=500, selectionBehavior='SelectRows')
             for i in range(tbl.rowCount()):
                 if tbl.item(i,0).text() == "ERP":
@@ -447,15 +983,15 @@ def tab_addit_info_poz_gant_click(self:mywindow,ind):
                                     cell_val=tbl.cellWidget(i,1).item(j,2).text())
 
 
-            if len(list_etaps_mes) != len(list_etaps_erp):
-                bad = CMS.Color_tbl(10)
-                CQT.set_font_color_wtab_c(tbl,0,0,bad.r,bad.g,bad.b)
-                CSQ.custom_request_c(self.db_kplan, f"""UPDATE знпр SET Этапы_ЕРП = 1 WHERE s_num == {poz.dict_tables['пл_оуп']['s_num']};""")
+            # if len(list_etaps_mes) != len(list_etaps_erp):
+            #     bad = CMS.Color_tbl(10)
+            #     CQT.set_font_color_wtab_c(tbl,0,0,bad.r,bad.g,bad.b)
+            #     CSQ.custom_request_c(self.db_kplan, f"""UPDATE знпр SET Этапы_ЕРП = 1 WHERE s_num == {poz.dict_tables['пл_оуп']['s_num']};""")
             self.ui.btn_pl_send_dates_into_ERP.setEnabled(True)
-            self.glob_dict_etaps_from_erp = resp
-            widg = CQT.add_interactive_label(tbl, 0,0, tbl.item(0,0).text(), parent_self=self)
-            widg.add_button(CEMOJ.EmojiMain.ДокументыДанные.refresh.symbol, 'Принудительно обновить этапы', fnc_upd_etaps_znpr,
-                            cell_val=poz)
+            self.glob_dict_etaps_from_erp = data_for_table_stages
+            #widg = CQT.add_interactive_label(tbl, 0,0, tbl.item(0,0).text(), parent_self=self)
+            #widg.add_button(CEMOJ.EmojiMain.ДокументыДанные.refresh.symbol, 'Принудительно обновить этапы', fnc_upd_etaps_znpr,
+            #                cell_val=poz)
 
 
         if tab.tabText(ind) in ('ЗП','ЗК'):
@@ -644,19 +1180,6 @@ def fill_select_poz_exel(self):
     row_fix.insert(0,["Параметр","Значение"])
     CQT.fill_wtabl(row_fix,self.ui.tbl_addit_info_poz_gant,height_row=24)
 
-def fill_select_poz_kpl(self,row=None):
-    if row == None:
-        tbl = self.ui.tbl_kal_pl
-        r = tbl.currentRow()
-
-        CQT.clear_tbl(self.ui.tbl_addit_info_poz_gant)
-        if r == None or r == -1:
-            return
-        row = CQT.get_dict_line_form_tbl(tbl,r)
-    row_fix = [[k,v] for k,v in row.items()]
-    row_fix.insert(0,["Параметр","Значение"])
-    CQT.fill_wtabl(row_fix,self.ui.tbl_addit_info_poz_gant,height_row=24)
-
 @CQT.onerror
 def update_dates_obesp(self:mywindow,*args):
     tbl = self.ui.tbl_kal_pl  # 17.04.2025
@@ -692,38 +1215,49 @@ def update_dates_obesp(self:mywindow,*args):
         num_kpl = int(row['plan.Пномер'])
         dict_custom_etaps_compliance = sootv.get_custom_compliance_etaps(num_kpl,self.Data_plan.DICT_GROUP_VID_RAB_FOR_PLAN)
         poz = CMS.Pozition(num_kpl, self.db_kplan, self.bd_naryad, self.db_resxml, self.db_users, self)
-        poz.load_kpl_table('пл_оуп')
+        #poz.load_kpl_table('пл_оуп')
         custom_ignore_maters = sootv.get_custom_ignore_maters(num_kpl)
 
+
         data = {"poz": poz,
-                'wage_batch_number':poz.dict_tables['пл_оуп']['НомПартии_ЗП'],
+
                 'dict_custom_etaps_compliance': dict_custom_etaps_compliance,
                 'new_dates': dict(),
                 'dict_mat_etaps': dict(),
                 'custom_ignore_maters':custom_ignore_maters}
         nums_kpl = {num_kpl: data,}
-
+    list_errs = [] #01.07.2026 MKart.py|2026-07-01 11:27:12|1.0.0.1.5|m.morenko|POW17-01|
     for num_kpl, data_kpl in nums_kpl.items():
-        def calc_etaps(s_num_kpl:int,wage_batch_number:int ):
-            data_etap_erp = CSQ.custom_request_c(CFG.Config.project.db_kplan, f"""SELECT пл_оуп.№ERP, пл_оуп.Дата_заявки_на_произв, пл_оуп.НомПартии_ЗП, знпр.Ref_Key_py, знпр.data_etaps_from_erp 
-                     FROM знпр INNER JOIN пл_оуп ON пл_оуп.Пномер_ЗП = знпр.s_num WHERE пл_оуп.НомПл == {s_num_kpl}""",
+        def calc_etaps(s_num_kpl:int):
+
+            data_etap_erp = CSQ.custom_request_c(CFG.Config.project.db_kplan,
+                                        f"""SELECT пл_оуп.№ERP, пл_оуп.Дата_заявки_на_произв, 
+                                         знпр.Ref_Key_py, знпр.data_etaps_from_erp 
+                                 FROM знпр INNER JOIN пл_оуп ON пл_оуп.Пномер_ЗП = знпр.s_num WHERE пл_оуп.НомПл == {s_num_kpl}""",
                                                  rez_dict=True, one=True)
             if data_etap_erp == None or data_etap_erp == False:
-                CQT.msgbox(f'Ошибка получения Пномер_ЗП')
+                list_errs.append(
+                    {'КПЛ': s_num_kpl, "Этап кода": "Расчет этапов", 'Ошибка': f'Ошибка получения Пномер_ЗП'})
                 return
+
             if F.is_date(data_etap_erp['Дата_заявки_на_произв'], "%Y-%m-%d") == False:
-                CQT.msgbox(f'В КПЛ {s_num_kpl},Дата_заявки_на_произв не дата, обратиться в ПДО')
+                list_errs.append({'КПЛ': s_num_kpl, "Этап кода": "Расчет этапов",
+                                  'Ошибка': f'В КПЛ {s_num_kpl},Дата_заявки_на_произв не дата, обратиться в ПДО'})
                 return
-            ref_Key_py = data_etap_erp['Ref_Key_py']
-            dict_etaps_from_erp = F.from_binary_pickle(data_etap_erp['data_etaps_from_erp'])
-            if dict_etaps_from_erp == None:
-                CQT.msgbox(f'В КПЛ {s_num_kpl} Не заполнены этапы при создании, обратиться в ПДО')
+
+            try:
+                etaps_o = APIERP.Etaps_erp(num_kpl)
+            except APIERP.NotFoundNomenclature as e:
+                list_errs.append(
+                    {'КПЛ': s_num_kpl, "Этап кода": "Расчет этапов", 'Ошибка': e})
                 return
-            data_etaps_from_erp = F.from_binary_pickle(data_etap_erp['data_etaps_from_erp'])
-            if str(wage_batch_number) not in data_etaps_from_erp:
-                CQT.msgbox(f'В КПЛ {s_num_kpl} Не cоответстувет номер партии ЗП')
+            except Exception as e:
+                list_errs.append(
+                    {'КПЛ': s_num_kpl, "Этап кода": "Расчет этапов",
+                     'Ошибка': e})
                 return
-            return data_etaps_from_erp[str(wage_batch_number)]
+            return etaps_o.make_dict_etaps()
+
 
         def add_mat_in_dict_mat_etaps(dict_mat_etaps,mat_etap):
             RANGES_RS_TYPE = {
@@ -745,7 +1279,10 @@ def update_dates_obesp(self:mywindow,*args):
                 dict_mat_etaps[key] = mat_etap
             return dict_mat_etaps
 
-        list_mat_etaps_from_etaps = calc_etaps(num_kpl,data_kpl['wage_batch_number'])
+
+
+        list_mat_etaps_from_etaps = calc_etaps(num_kpl)
+            
         if list_mat_etaps_from_etaps:
             for etap_etaps in list_mat_etaps_from_etaps['Этапы']:
                 ref_mat_etap = etap_etaps['Чек']
@@ -797,8 +1334,8 @@ def update_dates_obesp(self:mywindow,*args):
                 """
             key, res = APIERP.get_wet_request(text=text)
             if key != 200:
-                CQT.msgbox(f'Ошибка получения данных из ЕРП')
-                return
+                list_errs.append({'КПЛ':num_kpl, "Этап кода":"Спецификация_код_ЕРП",'Ошибка':f'Ошибка получения данных из ЕРП'})
+                continue
 
 
             for mat_etap_etaps in res['data']:
@@ -831,8 +1368,8 @@ def update_dates_obesp(self:mywindow,*args):
                 """
             key, res = APIERP.get_wet_request(text=text)
             if key != 200:
-                CQT.msgbox(f'Ошибка получения данных из ЕРП')
-                return
+                list_errs.append({'КПЛ':num_kpl, "Этап кода":"Предв_спецификация_ЕРП",'Ошибка':f'Ошибка получения данных из ЕРП'})
+                continue
 
             for mat_etap_etaps in res['data']:
                 data_kpl['dict_mat_etaps'] = add_mat_in_dict_mat_etaps(data_kpl['dict_mat_etaps'], mat_etap_etaps)
@@ -872,8 +1409,8 @@ def update_dates_obesp(self:mywindow,*args):
 
             key, res = APIERP.get_wet_request(text=text)
             if key != 200:
-                CQT.msgbox(f'Ошибка получения данных из ЕРП')
-                return
+                list_errs.append({'КПЛ':num_kpl, "Этап кода":"Предв_спецификация_ЕРП and Спецификация_код_ЕРП",'Ошибка':f'Ошибка получения данных из ЕРП'})
+                continue
 
             for mat_etap_etaps in res['data']:
                 data_kpl['dict_mat_etaps'] = add_mat_in_dict_mat_etaps(data_kpl['dict_mat_etaps'], mat_etap_etaps)
@@ -969,9 +1506,15 @@ def update_dates_obesp(self:mywindow,*args):
                         item[k] = v
                     result_all.append(item)
             else:
-                CQT.msgbox(f'Ошибка получения данных из ЕРП')
-                return
-
+                list_errs.append({'КПЛ':num_kpl, "Этап кода":"ВиртуальныйЗаказПоставщику",'Ошибка':f'Ошибка получения данных из ЕРП'})
+                continue
+    
+    
+    if list_errs:
+        CQT.msgboxg_get_table_ok_inf(self,'Ошибки расчетов проверьте связи и обратитесь к разработчику',list_errs,
+                                     styleSheet=CQT.MES_CSS)
+        return 
+    
     def add_etap_kpl_in_calc(etap_kpl,poz):
 
         if etap_kpl == None:
@@ -1107,7 +1650,7 @@ def update_dates_obesp(self:mywindow,*args):
 
 
     def fnc_get_result_tbl(btn:QtWidgets.QPushButton,dialog:CQT.Dialog_tbl,tbl:QtWidgets.QTableWidget):
-        if btn.text() == 'Принять':
+        if dialog.is_btn_yes_role(btn):
             nf_etap_kpl = CQT.num_col_by_name_c(tbl, 'ЭтапКПЛ')
             nf_etap_kpl_name = CQT.num_col_by_name_c(tbl, 'Имя Этапа КПЛ')
             nf_s_num = CQT.num_col_by_name_c(tbl, 's_num_zp')
@@ -1258,157 +1801,6 @@ def le_edit_local_gant_full_etap(self:mywindow):
     self.ui.le_edit_local_gant_kon.setText(self.ui.le_edit_local_gant_full_etap.text())
     self.ui.le_edit_local_gant_nach.setText(self.ui.le_edit_local_gant_full_etap.text())
 
-def move_left(self):
-    move(self, -1)
-
-def move_right(self):
-    move(self, 1)
-@CQT.onerror
-def move(self, direction = 1):
-    set_masks_date = {"%d.%m.%Y", "%d.%m.%y", "%Y-%m-%d", "%y-%m-%d", }
-    def update_db(self, list_name_field_change, delta_nach, direction):
-        delta_days = 0
-        for name_field_change in list_name_field_change:
-            table, field = name_field_change.split('.')
-            name_field_snom = 'НомПл'
-            if table == "plan":
-                name_field_snom = 'Пномер'
-            list_old_date = CSQ.custom_request_c(self.db_kplan,
-                                  f"""SELECT {field} FROM {table} WHERE {name_field_snom} == {self.pnom_kplan_select};""")
-            if list_old_date == False or list_old_date == None or len(list_old_date) != 2:
-                CQT.msgbox(f'ОШибка загрузки даты {field}')
-                return False
-            old_date = list_old_date[-1][0]
-            if not F.is_date(old_date,"%Y-%m-%d"):
-                CQT.msgbox(f'ОШибка распознавания дат {old_date} {field}')
-                return False
-            delta_days = delta_nach
-            if F.is_date(delta_nach, "%Y-%m-%d"):
-                new_date = delta_nach
-                delta_days = F.delta_days(F.strtodate(new_date), F.strtodate(old_date))
-            else:
-                if not F.is_numeric(delta_nach):
-                    CQT.msgbox(f'Ошибка типа данных')
-                    return False
-                new_date = F.date_add_days(old_date, delta_nach*direction, "%Y-%m-%d", "%Y-%m-%d")
-            CSQ.custom_request_c(self.db_kplan,
-                       f"""UPDATE {table} SET {field} = "{new_date}"  WHERE {name_field_snom} == {self.pnom_kplan_select};""")
-        return delta_days
-
-    r = self.ui.tbl_preview.currentRow()
-    c = self.ui.tbl_preview.currentColumn()
-    if self.ui.le_edit_local_gant_nach.text() == '':
-        self.ui.le_edit_local_gant_nach.setText('0')
-    if self.ui.le_edit_local_gant_kon.text() == '':
-        self.ui.le_edit_local_gant_kon.setText('0')
-
-    fl_is_date_n = False
-    fl_is_date_k = False
-    fl_check_data_n = True
-    fl_check_data_k = True
-    if not F.is_numeric(self.ui.le_edit_local_gant_nach.text()):
-        fl_check_data_n = False
-        for mask in set_masks_date:
-            if F.is_date(self.ui.le_edit_local_gant_nach.text(),mask):
-                self.ui.le_edit_local_gant_nach.setText(F.datetostr(F.strtodate(self.ui.le_edit_local_gant_nach.text(),mask),"%Y-%m-%d"))
-                fl_check_data_n = True
-                fl_is_date_n = True
-                break
-
-    if not F.is_numeric(self.ui.le_edit_local_gant_kon.text()):
-        fl_check_data_k = False
-        for mask in set_masks_date:
-            if F.is_date(self.ui.le_edit_local_gant_kon.text(), mask):
-                self.ui.le_edit_local_gant_kon.setText(
-                    F.datetostr(F.strtodate(self.ui.le_edit_local_gant_kon.text(), mask), "%Y-%m-%d"))
-                fl_check_data_k = True
-                fl_is_date_k = True
-                break
-
-    if not(fl_check_data_k and fl_check_data_n):
-        CQT.msgbox(f'Смещение не число и не дата')
-        return
-    #if 'shift' in CQT.get_key_modifiers(self):
-    set_name_nach = set()
-    set_name_zav = set()
-    current_ifo_tbl_name = KPL.calc_current_ifo_tbl_name(self)
-    try:
-        tbls_kpl_info_val = self.dict_tbls_kpl_info[current_ifo_tbl_name]
-    except:
-        CQT.msgbox(f'Ошибка, не обработана активная таблица')
-        return
-
-
-    for ix in self.ui.tbl_preview.selectedIndexes():
-        r = ix.row()+1
-        c = ix.column()
-
-        if not isinstance(tbls_kpl_info_val, list):
-            continue
-        if tbls_kpl_info_val[r][c] == '' or "Имя_нз" not in tbls_kpl_info_val[r][c][0]:
-            continue
-        set_name_nach.add(tbls_kpl_info_val[r][c][0]["Имя_нз"][0])
-        set_name_zav.add(tbls_kpl_info_val[r][c][0]["Имя_нз"][1])
-    list_name_nach= list(set_name_nach)
-    list_name_zav = list(set_name_zav)
-    if not len(list_name_nach):
-        CQT.msgbox(f'Не выбран этап')
-        return
-
-    if not len(list_name_zav):
-        CQT.msgbox(f'Не выбран этап')
-        return
-
-    #else:
-    #    if type(self.dict_tbls_kpl_info[KPL.calc_current_ifo_tbl_name(self)][r + 1][c]) != list:
-    #        return
-    #    else:
-    #        if "Имя_нз" not in self.dict_tbls_kpl_info[KPL.calc_current_ifo_tbl_name(self)][r + 1][c][0]:
-    #            return
-    #    list_name_nach = [deepcopy(self.dict_tbls_kpl_info[KPL.calc_current_ifo_tbl_name(self)][r + 1][c][0])["Имя_нз"][0]]
-    #    #name_nach = deepcopy(self.dict_tbls_kpl_info[KPL.calc_current_ifo_tbl_name(self)][r + 1][c][0])["Имя_нз"][0]
-    #    #name_zav =  deepcopy(self.dict_tbls_kpl_info[KPL.calc_current_ifo_tbl_name(self)][r + 1][c][0])["Имя_нз"][1]
-    #    list_name_zav = [deepcopy(self.dict_tbls_kpl_info[KPL.calc_current_ifo_tbl_name(self)][r + 1][c][0])["Имя_нз"][1]]
-
-
-
-    delta_nach =self.ui.le_edit_local_gant_nach.text()
-    delta_kon = self.ui.le_edit_local_gant_kon.text()
-    if not fl_is_date_n:
-        delta_nach = F.valm(delta_nach)
-    if not fl_is_date_k:
-        delta_kon = F.valm(delta_kon)
-
-    fl = False
-    if delta_nach != 0:
-        rez = update_db(self,list_name_nach,delta_nach,direction)
-        if rez == False:
-            return
-        if fl_is_date_n:
-            delta_nach = rez.days
-        c = c + delta_nach * direction
-        if c >= self.ui.tbl_preview.columnCount():
-            c = self.ui.tbl_preview.columnCount()-1
-        if c < 1:
-            c = 1
-        fl = True
-    if delta_kon != 0:
-        rez = update_db(self,list_name_zav,delta_kon,direction)
-        if rez == False:
-           return
-        c = c + delta_nach * direction
-        if c >= self.ui.tbl_preview.columnCount():
-            c = self.ui.tbl_preview.columnCount()-1
-        if c < 1:
-            c = 1
-        fl = True
-    if fl:
-        CMS.update_local_graf(self,True,self.pnom_kplan_select)
-        self.ui.tbl_preview.setCurrentCell(r-1,c)
-        CMS.hide_free_columns(self,self.ui.tbl_preview)
-        if self.kpl_mode == 1:
-            VPL.load_tbl_gant(self)  # объемный загрузка
-
 
 @CQT.onerror
 def show_hide_tree_fields(self:mywindow):
@@ -1419,365 +1811,141 @@ def show_hide_tree_fields(self:mywindow):
     else:
         fr.setHidden(True)
         self.ui.splitter_8.setSizes([650, 180])
+
+@CQT.onerror
+def btn_tree_pl_wrap_all(*args):
+    self = DTCLS.app_self
+    tree = self.ui.tree_fields
+    tree.collapseAll()
+
+@CQT.onerror
+def btn_tree_pl_unwrap_all(*args):
+    self = DTCLS.app_self
+    tree = self.ui.tree_fields
+    tree.expandAll()
+
 @CQT.onerror
 def load_fields_for_tree(self:mywindow):
     tree = self.ui.tree_fields
     tbl = self.ui.tbl_kal_pl
-    currentRow = None
-    if tbl.currentRow() !=-1:
-        currentRow = CQT.get_dict_line_form_tbl(tbl)
 
-
-    dict_of_dicts = dict()
-    #for j in range(tbl.columnCount()):
-    #    name = tbl.horizontalHeaderItem(j).text()
-    #    if '.' in name:
-    #        tbl_name, field = name.split('.')
-    #    else:
-    #        tbl_name = name
-    #        field = None
-    #    if tbl_name not in dict_of_dicts:
-    #        dict_of_dicts[tbl_name] = []
-    #    dict_of_dicts[tbl_name].append(field)
-    if currentRow == None:
+    if tbl.currentRow() ==-1:
         CQT.msgbox(f'Не выбрана позиция')
         return
-    if currentRow['plan.Статус'] == 'Группа':
+    t = CQT.TableContext(tbl)
+    row = t.current_row()
+    if row.value('plan.Статус') == 'Группа':
         return
-    data_from_db, fields_info = KPL.load_db(self,currentRow['plan.Пномер'])
-    data_from_db_dict = F.list_of_lists_to_list_of_dicts(data_from_db)[0]
-    dict_of_dicts = dict()
-    for j in range(len(data_from_db[0])):
-        name = data_from_db[0][j]
-        if '.' in name:
-            tbl_name, field = name.split('.')
-        else:
-            tbl_name = name
-            field = None
-        if tbl_name not in dict_of_dicts:
-            dict_of_dicts[tbl_name] = []
-        dict_of_dicts[tbl_name].append(field)
+    id_kpl = row.value('plan.Пномер')
 
-    list_of_dict = []
+    data_from_db = KPL.load_db(self,id_kpl) or {}
 
-    for k,v in dict_of_dicts.items():
-        nick = ''
-        if v == []:
-            if k in self.Data_plan.DICT_INFO_FIELDS_KPL:
-                nick = self.Data_plan.DICT_INFO_FIELDS_KPL[k]['nickname']
-        else:
-            if k in self.Data_plan.DICT_PODR:
-                nick = self.Data_plan.DICT_PODR[k]['Наименование']
-        color_background = '254;254;254'
-        color_font = None
-        bold_font = None
-        italic_font = None
-        size_font = None
-        if k in self.Data_plan.DICT_PODR:
-            color_font = F.align_colors(self.Data_plan.DICT_PODR[k]['Цвет'],level_percent=-20,saturation_percent=-20)
-            bold_font = True
-        tmp_dict = {'Поле': k,  'Значение': '','Примечание': nick, '_lvl':0,'_Поле_tooltip':nick, '_Поле_gui':
-            {'color_background':color_background, 'color_font':color_font, 'bold_font':bold_font, 'italic_font':italic_font,'size_font':size_font}}
-        list_of_dict.append(tmp_dict)
-        color1= '254;254;254'
-        color2 = '234;234;234'
-        fl_back = True
-        for field in v:
-            if field == None:
+    set_existance = set()
+
+    color1 = '254;254;254'
+    color2 = '234;234;234'
+
+    tree_o = CMS.Tree_unique()
+    f_field = tree_o.add_field('Поле')
+    f_tbl = tree_o.add_field('_tbl')
+    f_name = tree_o.add_field('_name_mes',primary = True)
+    f_val = tree_o.add_field('Значение',bold_font=False,color_font='10;10;10')
+    f_loaded = tree_o.add_field('Табличное',bold_font=False,color_font='10;10;10')
+    f_note = tree_o.add_field('Примечание',bold_font=False)
+
+    for tbl in DTCLS.FIELDS_DB_INFO.tables_db.tabels:
+
+        if not any(f.is_loaded for f in tbl.set_fields):
+            continue
+
+        clr = copy.deepcopy(tbl.color)
+        clr.align_colors(level_percent=-20,saturation_percent=-20)
+        color_font_str = clr.get_str(';')
+
+        if tbl.alias not in set_existance:
+            set_existance.add(tbl.alias)
+
+            row = tree_o.add_row(0,tbl.descr,color_font_str,bold_font=True)
+            row.add_val(f_tbl,tbl.alias)
+            row.add_val(f_name,tbl.name)
+            row.add_val(f_field,tbl.alias)
+            row.add_val(f_val,'')
+            row.add_val(f_note,tbl.descr)
+
+        for field in tbl.set_fields:
+            if not field.is_loaded:
                 continue
-            full_name =  '.'.join([k,field])
-            nick = ''
-            if full_name in self.Data_plan.DICT_INFO_FIELDS_KPL:
-                nick = self.Data_plan.DICT_INFO_FIELDS_KPL[full_name]['nickname']
+            if field.sys_hide:
+                continue
+            name_mes =  field.name_mes
+            val = str(data_from_db.get(name_mes, ''))
 
-            fl_back= not fl_back
-            if fl_back:
-                color_background = color1
-            else:
-                color_background = color2
+            row = tree_o.add_row(1,'', color_font_str,bold_font=False,color_background=color1,color_background_odd=color2)
+            row.add_val(f_tbl,tbl.alias)
+            row.add_val(f_name,name_mes)
+            row.add_val(f_field,field.name_alias)
+            row.add_val(f_val,val)
+            row.add_val(f_loaded, CEMOJ.EmojiMain.ПоказателиМетрики.eye.symbol if field.tbl_idx is not None else '' )
+            row.add_val(f_note,field.description)
 
-            color_font = None
-            bold_font = None
-            italic_font = None
-            size_font = None
 
-            if k in self.Data_plan.DICT_PODR:
-                color_font = F.align_colors(self.Data_plan.DICT_PODR[k]['Цвет'],level_percent=-20)
-                bold_font = True
-            field_gui = {'color_background':color_background, 'color_font':color_font, 'bold_font':bold_font, 'italic_font':italic_font,'size_font':size_font}
-            field_gui_not_colored = {'color_background': color_background, 'color_font': '10;10;10', 'bold_font': False,
-                         'italic_font': italic_font, 'size_font': size_font}
-            tmp_dict = {'Поле': field, 'Значение' : '', 'Примечание': nick, '_lvl':1,'_Поле_tooltip':nick,
-                        '_Поле_gui':field_gui,
-                        '_Значение_gui': field_gui_not_colored,
-                        '_Примечание_gui': field_gui_not_colored,
+    tree_o.fill_tree(tree)
+    CQT.load_column_widths(DTCLS.app_self, tree_o.tree_q)
+    if not CFG.Config.user_config.is_developer:
+        for f in tree_o.fields:
+            if f.name.startswith('_'):
+                tree_o.hide(f)
 
-                        }
-            if currentRow:
-                tmp_dict['Значение'] = ''
-                if full_name in data_from_db_dict:
-                    tmp_dict['Значение'] = str(data_from_db_dict[full_name])
-            list_of_dict.append(tmp_dict)
-
-    CQT.fill_wtree_unique(tree,list_of_dict, False)
-
+    #CQT.fill_wtree_unique(tree,list_data_tree, False)
 
 @CQT.onerror
 def tree_fields_dbl_clck(self:mywindow,*args):
     tree = self.ui.tree_fields
-    #row = CQT.treeCurrentRow(tree)
 
-    if tree.currentItem().parent() == None:
-        str_find = tree.currentItem().text(0)
-    else:
-        field = tree.currentItem().text(0)
-        tbl = tree.currentItem().parent().text(0)
-        str_find = tbl+'.'+field
-
+    row = CQT.get_tree_current_row_dict(tree)
+    dict_fields = DTCLS.FIELDS_DB_INFO.dict_fields
+    name_mes = row['_name_mes']
+    if name_mes not in dict_fields:
+        CQT.msgbox(f'Поле не найдено')
+        return
+    column = dict_fields[name_mes].tbl_idx
+    if column is None:
+        return
     tbl = self.ui.tbl_kal_pl
-    tbl_config = self.ui.tbl_pl_add_poz
-
-
-    if self.regim == 'cnf':
-        fl_naid = False
-        for j in range(tbl_config.columnCount()):
-            if tbl_config.horizontalHeaderItem(j).text() == str_find:
-                tbl_config.setCurrentCell(0, j)
-                tbl_config.selectColumn(j)
-                fl_naid = True
-                break
-        if not fl_naid:
-            CQT.msgbox(f'Поле {str_find} не найдено в табличной части настроек')
-    else:
-        row_tbl = 0
-        if tbl.currentRow() != -1:
-            row_tbl = tbl.currentRow()
-        fl_naid = False
-        for j in range(tbl.columnCount()):
-            if tbl.horizontalHeaderItem(j).text() == str_find:
-                tbl.setCurrentCell(row_tbl, j)
-                tbl.selectColumn(j)
-                fl_naid = True
-                break
-        if not fl_naid:
-            CQT.msgbox(f'Поле {str_find} не найдено в табличной части')
+    row_tbl = tbl.currentRow()
+    if row_tbl <= 0:
+        return
+    tbl.blockSignals(True)
+    CQT.select_cell(tbl,row_tbl,column)
+    tbl.blockSignals(False)
     pass
-
-
-
-@CQT.onerror
-def del_dates_etaps(self:mywindow):
-    if 'pnom_kplan_select' not in self.__dict__:
-        CQT.msgbox(f'Не выбрана позиция(гант)')
-        return
-    if not CQT.msgboxgYN(f'Будут удалены для номера КПЛ   {self.pnom_kplan_select}  даты этапов:'
-                         f':\n\n{[_["Имя_поля"] for _ in self.Data_plan.DICT_PODR.values() if _["Имя_поля"] != ""]}'):
-        return
-    for name_tbl, item in self.Data_plan.DICT_PODR.items():
-        if item['Имя_поля'] != '':
-            name_field_nach = item['Имя_начала_этапа']
-            name_field_zav = item['Имя_конца_этапа']
-            CSQ.custom_request_c(self.db_kplan,f"""UPDATE {name_tbl} SET ({name_field_nach} , {name_field_zav}) 
-                = ("","") WHERE {item['Имя_первичного_поля']} = {int(self.pnom_kplan_select)} """)
-    CMS.update_local_graf(self, True, self.pnom_kplan_select)
-    clear_dates_etaps_le(self)
-    CQT.msgbox(f'Успешно')
 
 
 @CQT.onerror
 def set_start_end_dates(self:mywindow):
-    tbl= None
-    if self.current_kpl_table == 'tbl_preview':
-        list_tbl = self.dict_tbls_kpl_info['tbl_preview']
-        tbl = self.ui.tbl_preview
-    if self.current_kpl_table == 'tbl_pl_gaf_svod':
-        list_tbl = self.dict_tbls_kpl_info['tbl_pl_gaf']
-        tbl = self.ui.tbl_pl_gaf_svod
-    if self.current_kpl_table == 'tbl_pl_gaf':
-        list_tbl = self.dict_tbls_kpl_info['tbl_pl_gaf']
-        tbl = self.ui.tbl_pl_gaf
-    if tbl == None:
-        return
-    set_column = set()
-    for ix in tbl.selectedIndexes():
-        c = ix.column()
-        set_column.add(c)
-    list_column = sorted(list(set_column))
-    if len(list_column) == 0:
-        CQT.msgbox(f'Не выбрано ни одной ячейки')
-        return
-    start = list_column[0]
-    end = list_column[-1]
-    start_date = F.datetostr(list_tbl[0][start],"%Y-%m-%d")
-    end_date =F.datetostr(list_tbl[0][end],"%Y-%m-%d")
-    self.ui.le_start_set_dates_etaps.setText(start_date)
-    self.ui.le_end_set_dates_etaps.setText(end_date)
+    tbl = DTCLS.app_self.ui.tbl_preview
+    t = CQT.TableContext(tbl)
+    columns = t.get_selected_columns()
+    pickup_date(
+            self.ui.le_start_set_dates_etaps,
+            columns[0]
+        )
+    pickup_date(
+            self.ui.le_end_set_dates_etaps,
+            columns[-1]
+        )
 
 @CQT.onerror
 def clear_dates_etaps_le(self:mywindow):
     self.ui.le_start_set_dates_etaps.setText('')
     self.ui.le_end_set_dates_etaps.setText('')
-@CQT.onerror
-def set_dates_etaps(self:mywindow,by_sbork = False):
-    SB_GROUP = [ _['Группа_для_расч_норм_и_ганта'] for _ in self.Data_plan.DICT_PODR_POKI.values() if _['Это_группа_сборки']]
-
-    if 'pnom_kplan_select' not in self.__dict__ or self.pnom_kplan_select is None:
-        CQT.msgbox(f'Не выбрана позиция(гант)')
-        return
-    start_str = self.ui.le_start_set_dates_etaps.text()
-    end_str = self.ui.le_end_set_dates_etaps.text()
-    #start_str = "2024-06-25"
-    #end_str = "2024-07-25"
-    def check_dates(str_date):
-        if F.is_date(str_date,"%Y-%m-%d"):
-            return F.strtodate(str_date,"%Y-%m-%d")
-        if F.is_date(str_date, "%d.%m.%Y"):
-            return F.strtodate(str_date, "%d.%m.%Y")
-        return False
-    def make_dict_groupes(self:mywindow,poz):
-        summ_time = 0
-        dict_groups = dict()
-        tmp_list= [['tbl','data','poz']]
-        for name_tbl, item in self.Data_plan.DICT_PODR.items():
-            if item['Группа_для_расч_норм_и_ганта'] != '':
-                tmp_list.append([name_tbl,item,item['Группа_для_расч_норм_и_ганта']])
-        tmp_list = F.sort_by_column_c(tmp_list,'poz')
-
-        for name_tbl, item, _ in tmp_list[1:]:
-            group = item['Группа_для_расч_норм_и_ганта']
-            name_field = item['Имя_поля'].split(';')[0]
-            full_name = '.'.join([name_tbl,name_field])
-            if full_name not in poz.row_time_etap:
-                continue
-            time_current = poz.row_time_etap[full_name]
-            if time_current == 0:
-                continue
-            if group not in dict_groups:
-                dict_groups[group] = {'time':0,
-                                      'start':'',
-                                      'end':'',
-                                      'name_field_start':[],
-                                      'name_field_end': [],
-                                      'part_of_summ':0,
-                                      'days':0}
-
-            if time_current > dict_groups[group]['time']:
-                dict_groups[group]['time'] = time_current
-                dict_groups[group]['name_field_start'].append(name_tbl + '.' + item['Имя_начала_этапа'])
-                dict_groups[group]['name_field_end'].append(name_tbl + '.' +item['Имя_конца_этапа'])
-                summ_time+=time_current
-
-        return dict_groups, summ_time
-
-    start_date = check_dates(start_str)
-    end_date = check_dates(end_str)
-    if start_date == False or end_date == False:
-        CQT.msgbox(f'Дата введена не корректно')
-        return
-    if end_date <= start_date:
-        CQT.msgbox(f'Разница дат не корректна')
-        return
-    if 'pnom_kplan_select' not in self.__dict__:
-        CQT.msgbox(f'Нужно выбрать позицию КПЛ')
-        return
-    poz = CMS.Pozition(self.pnom_kplan_select, self.db_kplan, self.bd_naryad, self.db_resxml, self.db_users, self,
-                       False)
-    dict_groups: dict[int,str,str,list,list,int,int]
-    dict_groups,summ_time = make_dict_groupes(self,poz)
-    if summ_time == 0:
-        CQT.msgbox(f'Сумма норм времени на позицию = 0')
-        return
-
-    for group in dict_groups.keys():
-        dict_groups[group]['part_of_summ'] = dict_groups[group]['time'] / summ_time
-    days_from_user = (end_date - start_date).days -1
-    if by_sbork and len(SB_GROUP):
-        sb_start_date = copy.deepcopy(start_date)
-        sb_end_date = copy.deepcopy(end_date)
-        part_before_sb = 0
-        part_after_sb = 0
-        count_before = 1
-        count_after = 0
-        num_gr_sbork = SB_GROUP[0]
-        if num_gr_sbork in dict_groups:
-            for key in dict_groups.keys():
-                if key < num_gr_sbork:
-                    part_before_sb +=  dict_groups[key]['part_of_summ']
-                    count_before +=1
-                if key> num_gr_sbork:
-                    part_after_sb +=   dict_groups[key]['part_of_summ']
-                    count_after += 1
-            part_sb = dict_groups[num_gr_sbork]['part_of_summ']
-            days_before_sb = F.round_up((part_before_sb/part_sb*days_from_user+count_before)*7/5)
-            days_after_sb = F.round_up((part_after_sb/part_sb*days_from_user+count_after)*7/5)
-            start_date = F.date_add_days(start_date,-days_before_sb,'','')
-            end_date = F.date_add_days(end_date, days_after_sb, '', '')
-        else:
-            CQT.msgbox(f'Сборки не обнаружено')
-            return
-        delta = (end_date - start_date).days
-
-        gr_sbork = dict_groups[num_gr_sbork]
-        gr_sbork['days'] = (sb_end_date - sb_start_date).days+1
-        gr_sbork['start'] = F.datetostr(sb_start_date,"%Y-%m-%d")
-        gr_sbork['end'] = F.datetostr(sb_end_date,"%Y-%m-%d")
-
-        tmp_day = F.date_add_days(gr_sbork['start'], -1, "%Y-%m-%d", "%Y-%m-%d")
-        for num_gr in range(num_gr_sbork-1,0,-1):
-            if num_gr in dict_groups:
-                gr = dict_groups[num_gr]
-                gr['end'] = tmp_day
-                gr['days'] = F.round_up(gr['part_of_summ'] * delta)
-                gr['start'] = F.date_add_days(tmp_day, -gr['days'], "%Y-%m-%d", "%Y-%m-%d")
-                tmp_day = F.date_add_days(gr['start'], -1, "%Y-%m-%d", "%Y-%m-%d")
-
-        tmp_day = F.date_add_days(gr_sbork['end'], 1, "%Y-%m-%d", "%Y-%m-%d")
-        for num_gr in range(num_gr_sbork+1, max(list(dict_groups.keys()))+1):
-            if num_gr in dict_groups:
-                gr = dict_groups[num_gr]
-                gr['days'] = F.round_up(gr['part_of_summ'] * delta)
-                gr['start'] = tmp_day
-                gr['end'] = F.date_add_days(gr['start'], gr['days'], "%Y-%m-%d", "%Y-%m-%d")
-                tmp_day = F.date_add_days(gr['end'], 1, "%Y-%m-%d", "%Y-%m-%d")
-    else:
-        delta = (end_date - start_date).days
-        prev_date = F.datetostr(start_date,"%Y-%m-%d")
-        for group in dict_groups.keys():
-            dict_groups[group]['days'] = F.round_up(dict_groups[group]['part_of_summ'] * delta)
-            dict_groups[group]['start'] = prev_date
-            dict_groups[group]['end'] = F.date_add_days(prev_date,dict_groups[group]['days'],"%Y-%m-%d","%Y-%m-%d")
-            prev_date = F.date_add_days(dict_groups[group]['end'],1,"%Y-%m-%d","%Y-%m-%d")
 
 
-    new_poz_row_etap = copy.deepcopy(poz.row_dates_etap_plan)
-    for group in dict_groups.keys():
-        for full_name_start in dict_groups[group]['name_field_start']:
-            new_poz_row_etap[full_name_start] = dict_groups[group]['start']
-        for full_name_end in dict_groups[group]['name_field_end']:
-            new_poz_row_etap[full_name_end] = dict_groups[group]['end']
-    poz.update_row_etaps(new_poz_row_etap)
-    CMS.update_local_graf(self, True, self.pnom_kplan_select)
-    clear_dates_etaps_le(self)
-    CQT.msgbox(f'Успешно')
-
-
-def load_form_db(self,pnom):
-    rez = CSQ.custom_request_c(self.db_kplan,f"""SELECT local_graf FROM plan WHERE Пномер == {pnom};""",)
-    data = F.from_binary_pickle(rez)
-    return data
-
-
-def tbl_preview_on_header_click(self, ind):
-    tbl = self.ui.tbl_preview
-    text = tbl.horizontalHeaderItem(ind).text()
-    if len(text.split('\n')) ==4:
-        pre_date = "\n".join(text.split('\n')[:3])
-        if F.is_date( pre_date, "%d\n%m\n%y"):
-            text = F.datetostr(F.strtodate(pre_date,"%d\n%m\n%y"),"%d.%m.%Y" )
-    F.copy_bufer(text)
-    CQT.msgbox(f'Скопировано в буфер: {text}',time_life=0.5)
 
 @CQT.onerror
 def apply_field_filter_hat_name(tbl_filtr):
     tbl_filtr.setVerticalHeaderLabels(['план_факт_подр'])
     tbl_filtr.setRowHeight(0, 25)
+
+
+

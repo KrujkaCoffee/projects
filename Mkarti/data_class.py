@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     import kal_plan as KPL
     import gui_kal_plan as GPL
     from PyQt5 import QtWebEngineWidgets
+    from project_cust_38.sub_mes.kro.manage_kro import Kro_manager as MKRO
 class SingletonMeta(type):
     __instances = {}
 
@@ -124,6 +125,7 @@ class Data_plan(SingletonMeta):
     LIST_FOR_HAT_GANT:list[str]|None = None
     MOUSE_MOVING_BLOCK_GANT:KPL.Gant_handler|None = None
     FNC_RECALC_GANT_BY_LOCAL_LIMIT_TABLE = None#GPL.recalc_gant_by_local_limit_table
+    KRO_MANAGER:MKRO|None = None
     #---------------gant_borders-------------
     tbl_gant_local_border:BORDERP.BorderPainter = BORDERP.BorderPainter(
                             left_top=(0, 0), right_bottom=(0, 0),
@@ -178,7 +180,7 @@ class Data_plan(SingletonMeta):
     DICT_ETAPS_NAME = F.deploy_dict_c(ETAPS_NAME,"name")
     DICT_ETAPS_VID_NAME = F.deploy_dict_c(ETAPS_NAME, "имя_в_виды_по_напр")
     DICT_EMPLOEE_FULL_WITH_DEL = CMS.dict_emploee_full_with_del(db_users)
-    DICT_EMPLOEE_FULL_WITH_DEL_BY_LOGIN = CMS.dict_emploee_full_with_del(db_users)
+    DICT_EMPLOEE_FULL_WITH_DEL_BY_LOGIN = CMS.dict_emploee_full_with_del(db_users,deploy_column_name= 'login')
 
 
     list_dict_from_db:None|list[dict] = None

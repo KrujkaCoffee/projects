@@ -1,3 +1,5 @@
+import sys
+
 from project_cust_38.isdayoff_cust import ProdCalendar
 import datetime
 import project_cust_38.Cust_Functions as F
@@ -61,6 +63,9 @@ def count_empl(podr, spis_empl, DICT_PODRAZD, DICT_MNTS_PLAN, month,count_rab_da
         name_podr_ERP = DICT_PODRAZD[podr]['Наименование_ЕРП']
     else:
         print(f'{podr} не найден в DICT_PODRAZD')
+    if name_podr_ERP is None:
+        print(f'{podr} в DICT_PODRAZD is None')
+        sys.exit()
     for i in range(len(spis_empl)):
         if name_podr_ERP in spis_empl[i][4]:
             count += 1
@@ -554,9 +559,12 @@ def reload_tbl_empl_old(ima_table_empl, LIST_DICT_EMPLOYEE_FULL, res, dict_rab_v
 
 #++12.11.25
 def get_current_state_employee(fio: str, prof: str, ref_key: str):
+    where_prof = ''
+    if prof:
+        where_prof = f"AND Должность = {prof!r}"
     return CSQ.custom_request_c(put_db, f"""
         SELECT * FROM employee 
-        WHERE ФИО = {fio!r} AND Должность = {prof!r} AND ID_ФизЛица = {ref_key!r}
+        WHERE ФИО = {fio!r} {where_prof} AND ID_ФизЛица = {ref_key!r}
         ORDER BY Пномер DESC LIMIT 1;
     """, rez_dict=True, one=True)
 
@@ -576,7 +584,15 @@ def reload_tbl_employee(ima_table_empl, LIST_DICT_EMPLOYEE_FULL, res, dict_rab_v
         ПериодРегистрации_str = F.datetostr(F.strtodate(ima_table_empl, "mtdz_%Y_%m_%d"), "%d.%m.%Y")
         text = f"""
        ВЫБРАТЬ
-    ТабельУчетаРабочегоВремениДанныеОВремени.Сотрудник.Наименование КАК Сотрудник,
+           ТабельУчетаРабочегоВремениДанныеОВремени.Сотрудник.ФизическоеЛицо.Фамилия
+    + " "
+    + ТабельУчетаРабочегоВремениДанныеОВремени.Сотрудник.ФизическоеЛицо.Имя
+    + " "
+    + ВЫБОР
+        КОГДА ТабельУчетаРабочегоВремениДанныеОВремени.Сотрудник.ФизическоеЛицо.Отчество = ""
+        ТОГДА "_"
+        ИНАЧЕ ТабельУчетаРабочегоВремениДанныеОВремени.Сотрудник.ФизическоеЛицо.Отчество
+      КОНЕЦ КАК Сотрудник,
     УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ТабельУчетаРабочегоВремениДанныеОВремени.Сотрудник.ФизическоеЛицо.Ссылка) КАК Ref_Физлица,
     УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ТабельУчетаРабочегоВремениДанныеОВремени.Сотрудник.Ссылка) КАК Ref,
     ДанныеДляПодбора.Должность КАК ТекущаяДолжность,
@@ -777,8 +793,9 @@ def reload_tbl_employee(ima_table_empl, LIST_DICT_EMPLOYEE_FULL, res, dict_rab_v
     list_to_add_scedule = []
     print(f'    Обновление времени {ima_table_empl} ')
     used_indexes = set()
-    cache_employee = {}
+
     messages = []
+    cache_employee=Data_cls.CACHE_EMPLOYEE
     for item_erp in list_erp_tabels:
         is_finded = False
         fio = item_erp['Сотрудник'].strip()
@@ -812,7 +829,7 @@ def reload_tbl_employee(ima_table_empl, LIST_DICT_EMPLOYEE_FULL, res, dict_rab_v
                                                                      ({erp_val}), Примечание = {comment!r} WHERE Пномер == {Пномер};""")
                             if erp_val != val:
                                 messages.append({
-                                    'Сотрудник': item_scedule['ФИО'].split(' ')[:3],
+                                    'Сотрудник': ' '.join(item_scedule['ФИО'].split(' ')[:3]),
                                     'Комментарий было/стало': f"{item_scedule['Примечание']} / {comment}",
                                     'Время было / стало': f"{val} / {erp_val}",
                                 })
@@ -837,14 +854,19 @@ def reload_tbl_employee(ima_table_empl, LIST_DICT_EMPLOYEE_FULL, res, dict_rab_v
                         strok.append(norma)
             list_to_add_scedule.append(strok)
     for idx, item_scedule in enumerate(list_from_scedule_month):
-        if idx not in used_indexes:
-            fields_to_update = {'Примечание': 'Увольнение'}
-            pk = item_scedule['Пномер']
-            for key, val in item_scedule.items():
-                if F.is_date(key, 'd_%Y_%m_%d'):
-                    fields_to_update[key] = 0
-            fields = ','.join(f'{key} = {val!r}' for key, val in fields_to_update.items())
-            CSQ.custom_request_c('SRV:BD_users.db', f'UPDATE {ima_table_empl} SET {fields} WHERE Пномер = {pk}')
+        if list_erp_tabels:
+            if idx not in used_indexes:
+                fields_to_update = {}
+                if item_scedule['Примечание'] != 'Увольнение':
+                    fields_to_update = {'Примечание': 'Увольнение'}
+                pk = item_scedule['Пномер']
+                for key, val in item_scedule.items():
+                    if F.is_date(key, 'd_%Y_%m_%d'):
+                        if item_scedule[key] != 0:
+                            fields_to_update[key] = 0
+                if fields_to_update:
+                    fields = ','.join(f'{key} = {val!r}' for key, val in fields_to_update.items())
+                    CSQ.custom_request_c('SRV:BD_users.db', f'UPDATE {ima_table_empl} SET {fields} WHERE Пномер = {pk}')
     if messages:
         sender = CB24.B24Sender()
         sender.send_msg_table_by_action(
@@ -1030,7 +1052,7 @@ def check_rm(ima_table_rm, row_rm, res):
 def check_jurnal_kplan(ima_table_jurnal_kplan, res, spis_empl,DICT_PODRAZD,DICT_MNTS_PLAN,month_str,
                        tabel_workforce)->bool:
     fl_dirty =False
-    list_podr = CSQ.custom_request_c(db_kplan, f"""SELECT * FROM podrazdel""", rez_dict=True)
+    list_podr = CSQ.custom_request_c(db_kplan, f"""SELECT * FROM podrazdel WHERE synthetic = 0""", rez_dict=True)
     list_podr = F.deploy_dict_c(list_podr, 'Имя')
     if ima_table_jurnal_kplan not in CSQ.get_list_of_tables_c(db_kplan):
         add_jurnal_kplan(list_podr, res, ima_table_jurnal_kplan,spis_empl,DICT_PODRAZD,DICT_MNTS_PLAN,

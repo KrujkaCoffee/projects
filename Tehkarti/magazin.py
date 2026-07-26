@@ -358,11 +358,14 @@ def tbl_magaz_click(self):
     nk_stat = CQT.num_col_by_name_c(tbl, 'Статус')
     row = tbl.currentRow()
     if tbl.currentColumn() == nk_stat:
-        if tbl.cellWidget(row, tbl.currentColumn()).isChecked():
-            tbl.cellWidget(row, tbl.currentColumn()).setChecked(False)
+        current_cell = tbl.cellWidget(row, tbl.currentColumn()) # 18.06.2026 вылет p.rudnik
+        if current_cell is None:
+            return
+        if current_cell.isChecked():
+            current_cell.setChecked(False)
             tbl.item(row, nk_stat).setText('0')
             CQT.set_color_row_wtab_c(tbl, row, 211, 211, 211)
         else:
-            tbl.cellWidget(row, tbl.currentColumn()).setChecked(True)
+            current_cell.setChecked(True)
             tbl.item(row, nk_stat).setText('1')
             CQT.set_color_row_wtab_c(tbl, row, 255, 255, 255)

@@ -1545,7 +1545,7 @@ def event_handler(rule)->dict|None:
 
 
     def fnc_check_btn(btn, dialog, tbl: CQT.QtWidgets.QTableWidget):
-        if btn.text() == 'Ввод':
+        if dialog.is_btn_yes_role(btn):
             t = CQT.TableContext(tbl)
             for row in t.rows():
                 if row.value('Name') == 'doc_type':
@@ -1619,7 +1619,7 @@ def show_form(user_id:str,id_rule:int|None =None):
     template = rule.get_template()
 
     def fnc_check(btn, dialog, tbl:CQT.QtWidgets.QTableWidget):
-        if btn.text() == 'Завершить':
+        if dialog.is_btn_yes_role(btn):
             for row in CQT.TableContext(tbl).rows():
                 val = row.value('Значение').strip()
                 if row.value('Параметр') in ('Название','Пользователь','Типы документов','Период'):
@@ -1768,7 +1768,7 @@ def show_form(user_id:str,id_rule:int|None =None):
                             pass
 
                     def fnc_check_new_doc_type(btn, dialog, tbl:CQT.QtWidgets.QTableWidget):
-                        if btn.text() == 'Создать':
+                        if dialog.is_btn_yes_role(btn):
                             t = CQT.TableContext(tbl)
                             ext_row = t.find_row({'Name':'file_extension'})[0]
                             if ext_row.value('Значение') == "":

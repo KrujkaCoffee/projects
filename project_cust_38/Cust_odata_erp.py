@@ -149,13 +149,13 @@ class OrdersComposit():
             now_date = F.now('')
             date_limit = F.date_add_time(now_date,hours=-lazy_method_huours)
             data = CSQ.custom_request_c(db_files,f"""SELECT s_num, resp_date,
-            CASE WHEN datetime(resp_date) >= datetime("{date_limit}")  
+            CASE WHEN datetime(resp_date) >= datetime('{date_limit}')  
         THEN file 
         ELSE null  
         END AS file, 
              
               hash_file FROM odata_lazy_resps 
-            where resp == "{url_hash}" limit 1""",rez_dict=True)
+            where resp = '{url_hash}' limit 1""",rez_dict=True)
             if len(data):
                 fl_naid_lazy = data[0]['s_num']
                 file_hash_lazy = data[0]['hash_file']

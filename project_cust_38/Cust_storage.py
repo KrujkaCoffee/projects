@@ -48,7 +48,7 @@ class BaseStorage:
         custom_request_c = f"""
             SELECT * 
             FROM reestr 
-            WHERE [size] = {size} and [hesh] = ? ;"""
+            WHERE size = {size} and hesh = ? ;"""
         query = CSQ.custom_request_c(
             self.db_files,
             custom_request_c,
@@ -59,7 +59,7 @@ class BaseStorage:
         return query
 
     def _get_file_info(self, by_value: str, by_attr: str = 'name', many: bool = False):
-        custom_request_c = f"""SELECT * FROM names WHERE {by_attr} == ?"""
+        custom_request_c = f"""SELECT * FROM names WHERE {by_attr} = ?"""
         return CSQ.custom_request_c(self.db_files, custom_request_c,
                                     rez_dict=True, one=not many,
                                     list_of_lists_c=[by_value])
@@ -102,11 +102,11 @@ class BaseStorage:
         if storage == 'filesystem':
             if self.store_file(hash_, size, binary=bin_file):
                 return CSQ.custom_request_c(self.db_files, f"""UPDATE reestr SET (size, hesh, file, Date_edit, usr, storage)
-                             = (?,?,?,?,?) WHERE Пномер == {pnom};""",
+                             = (?,?,?,?,?) WHERE Пномер = {pnom};""",
                        list_of_lists_c=[size, hash_, None, date, usr, 3])
         elif storage == 'database':
             return CSQ.custom_request_c(self.db_files, f"""UPDATE reestr SET (size, hesh, file, Date_edit, usr)
-                         = (?,?,?,?,?) WHERE Пномер == {pnom};""",
+                         = (?,?,?,?,?) WHERE Пномер = {pnom};""",
                    list_of_lists_c=[size, hash_, bin_file, date, usr])
 
     def _compute_signature(self, path: str) -> FileSignature:
@@ -155,7 +155,7 @@ class BaseStorage:
         return dest_path
 
     def add_tkart(self, file_name, t_kard_name):
-        query = CSQ.custom_request_c(self.db_files,f"""SELECT file_name,t_kard_name FROM t_kards WHERE file_name == '{file_name}' AND t_kard_name == '{t_kard_name}' """)
+        query = CSQ.custom_request_c(self.db_files,f"""SELECT file_name,t_kard_name FROM t_kards WHERE file_name = '{file_name}' AND t_kard_name = '{t_kard_name}' """)
         if len(query)==1:
             CSQ.custom_request_c(self.db_files, """INSERT INTO t_kards(file_name,t_kard_name)
                                          VALUES (?,?);""",
@@ -182,7 +182,7 @@ class FileStorage(BaseStorage):
             else:
                 nom = file_info['Пномер']
                 if nom_tk is not None:
-                    custom_request_c3 = f"""SELECT t_kard_name, Пномер FROM t_kards WHERE file_name == ?"""
+                    custom_request_c3 = f"""SELECT t_kard_name, Пномер FROM t_kards WHERE file_name = ?"""
                     query3 = CSQ.custom_request_c(self.db_files, custom_request_c3, rez_dict=True,
                                                   list_of_lists_c=[filename])
                     list_cards = [_['t_kard_name'] for _ in query3]
@@ -203,7 +203,7 @@ class FileStorage(BaseStorage):
                 if not filename in names_from_db:
                     if nom_tk is not None:
                         list_other_names = CSQ.custom_request_c(self.db_files, f"""SELECT names.name, t_kards.t_kard_name FROM names INNER JOIN 
-                        t_kards ON  t_kards.file_name = names.name WHERE names.nom_data == {nom_data}""")
+                        t_kards ON  t_kards.file_name = names.name WHERE names.nom_data = {nom_data}""")
                         if not CQT.msgboxgYN(
                                 f'Файл уже существует с другим наименованием :\n{pprint.pformat(list_other_names)}.'
                                 f' \n\n Вероятно это ошибка!\n\n Следует ли '
@@ -215,29 +215,29 @@ class FileStorage(BaseStorage):
         return filename
     
     def delete_file(self, name: str, nom_tk: str | int):
-        list_uses_tk = CSQ.custom_request_c(self.db_files, f"""SELECT * FROM t_kards WHERE file_name == '{name}'""",
+        list_uses_tk = CSQ.custom_request_c(self.db_files, f"""SELECT * FROM t_kards WHERE file_name = '{name}'""",
                                             rez_dict=True)
         if len(list_uses_tk) == 1 or len(list_uses_tk) == 0:
             list_uses_names = CSQ.custom_request_c(
                 self.db_files,
-    f"""SELECT names.*, reestr.hesh FROM names LEFT JOIN reestr ON reestr.Пномер = names.nom_data WHERE name == ?""",
+    f"""SELECT names.*, reestr.hesh FROM names LEFT JOIN reestr ON reestr.Пномер = names.nom_data WHERE name = ?""",
                 rez_dict=True,
                 list_of_lists_c=[name]
             )
             if len(list_uses_names) == 1:
                 nom_data = list_uses_names[0]['nom_data']
-                datas = CSQ.custom_request_c(self.db_files, f"""SELECT * FROM names WHERE nom_data == '{nom_data}'""",
+                datas = CSQ.custom_request_c(self.db_files, f"""SELECT * FROM names WHERE nom_data = '{nom_data}'""",
                                              rez_dict=True)
                 if len(datas) == 1:
                     self._delete_file(list_uses_names[0]['hesh'])
-                    CSQ.custom_request_c(self.db_files, f"""DELETE FROM reestr WHERE Пномер == {nom_data}""")
-            CSQ.custom_request_c(self.db_files, f"""DELETE FROM names WHERE name == '{name}'""")
-        CSQ.custom_request_c(self.db_files, f"""DELETE FROM t_kards WHERE file_name == '{name}'""")
+                    CSQ.custom_request_c(self.db_files, f"""DELETE FROM reestr WHERE Пномер = {nom_data}""")
+            CSQ.custom_request_c(self.db_files, f"""DELETE FROM names WHERE name = '{name}'""")
+        CSQ.custom_request_c(self.db_files, f"""DELETE FROM t_kards WHERE file_name = '{name}'""")
         return
 
     def add_tkart(self, file_name, t_kard_name):
-        query = CSQ.custom_request_c(self.db_files,f"""SELECT file_name,t_kard_name FROM t_kards WHERE file_name == '{file_name}' AND t_kard_name == '{t_kard_name}' """)
-        if len(query)==1:
+        query = CSQ.custom_request_c(self.db_files,f"""SELECT file_name,t_kard_name FROM t_kards WHERE file_name = '{file_name}' AND t_kard_name = '{t_kard_name}' """)
+        if len(query) == 1:
             CSQ.custom_request_c(self.db_files, """INSERT INTO t_kards(file_name,t_kard_name)
                                          VALUES (?,?);""",
                    list_of_lists_c=[[file_name,t_kard_name]])
@@ -250,7 +250,7 @@ class FileStorage(BaseStorage):
             FROM reestr 
             INNER JOIN names on names.nom_data = reestr.Пномер 
             LEFT JOIN storage_types ON storage_types.id = reestr.storage
-            WHERE names.name == ?"""
+            WHERE names.name = ?"""
         query = CSQ.custom_request_c(
             CFG.Config.project.db_files,
             custom_request_c,
@@ -293,6 +293,8 @@ class FileStorage(BaseStorage):
             put_file_tmp = os.path.join(destination_dir, new_name)
             if docs_manager.is_docs_reference(filename):
                 content = docs_manager.load_docs_file(filename, nn)
+                if content.binary_content is None:
+                    return CQT.msgbox(f'Не удалось получить файл «{filename}» с сервера DOCS. Обратитесь к администратору системы DOCS.')
                 put_file_tmp = os.path.join(destination_dir, new_name) #17.11.25 fix filename
                 pathlib.Path(put_file_tmp).parent.mkdir(parents=True, exist_ok=True) # 26.03.2026
                 F.save_binary_convert_to_file(content.binary_content, put_file_tmp)

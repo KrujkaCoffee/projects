@@ -6,10 +6,10 @@ import datetime
 import pathlib
 import pprint
 import re
-
+from enum import IntEnum # 19.06.2026
+import random
 import asyncio
 import typing
-from builtins import ValueError
 from itertools import accumulate
 from collections import defaultdict, OrderedDict
 import project_cust_38.Cust_odata_erp as ODAT
@@ -35,6 +35,8 @@ import subprocess
 import winreg
 import project_cust_38.api_erp_commands as APIERP
 import project_cust_38.Cust_emoji as CEMOJ
+import project_cust_38.border_painter as BORDERP
+from  functools import partial
 try:
     from project_cust_38.isdayoff_cust import ProdCalendar
 except:
@@ -52,6 +54,14 @@ import project_cust_38.operacii as operacii
 FOLDER_CLOSED = f'{CEMOJ.EmojiMain.ДокументыДанные.folder_closed.symbol}{CEMOJ.EmojiMain.ДокументыДанные.plus_circled.symbol}'
 FOLDER_OPEN = f'{CEMOJ.EmojiMain.ДокументыДанные.folder.symbol}{CEMOJ.EmojiMain.ДокументыДанные.minus_circled.symbol}'
 DOC_EMOJI = f'    {CEMOJ.EmojiMain.ДокументыДанные.document.symbol}'
+
+def send_err_msg_dev_chat(base_msg:str='',tbl_info:list[dict]|None=None):
+    template = CB24.MessageBuilder(base_msg)
+    if tbl_info:
+        template.add_table(tbl_info)
+    template.add_delimiter()
+    template.send_by_chat_id('chat103927')
+
 
 
 def is_user_profession(prof_name: str, dict_employee: dict = None) -> bool: #09.02.2026
@@ -151,10 +161,25 @@ class ReportNarChanges:  # 30.04.2026
         self.message_builder.add_table(lst_of_lists=after)
         self.message_builder.send_by_action(action='Корректировки данных')
 
+class _MiniManager():
+    def __init__(self):
+        pass
+
+    @property
+    def as_dict(self)->dict[int,Result_state]:
+        if not getattr(self, '_child_class', False):
+            raise AttributeError(f'В классе не указано свойство _child_class')
+        if not getattr(self,'_dict_states',False):
+            rez = dict()
+            for it in F.get_all_attrs_with_properties(self.__class__).values():
+                if isinstance(it,self._child_class):
+                    rez[it.id]=it
+            self._dict_states = rez
+        return self._dict_states
 
 class _ImportDb():
     def parce_row_dict(self,item:dict):
-        attrs = F.get_all_attrs_with_properties(self)
+        attrs = F.get_all_attrs_with_properties(self,include_private=True)
         for key,val in item.items():
             fix_key = str(key).replace(".", "_")
             if fix_key not in attrs:
@@ -199,7 +224,6 @@ class _DbRow(_ImportDb):
             VALUES ({CSQ.questions_for_mask(data)})
             RETURNING {self.PK}""",
             list_of_lists_c=data,
-            returning=True,
             rez_dict=True
         )
 
@@ -352,6 +376,33 @@ class Production_shifts():
         diff = Shift.minutes_between(now, sm.end)
         return diff
 
+class Month_cld_day():
+    def __init__(self,is_holyday, day_week,dt_datetime:datetime.datetime):
+        self.is_holyday:bool|None = is_holyday
+        self.day_week:int|None=day_week
+        self.dt_datetime:datetime.datetime|None=dt_datetime
+        self.dict_podrs:dict[str,int]|None=dict()
+
+    def add_podr(self,name,value:int=None)-> None:
+        self.dict_podrs[name]= value
+
+    def to_str(self,format="%d\n%m\n%y",custom_weekend:bool=False):
+        name_day = F.get_day_name(self.day_week)
+        if custom_weekend:
+            name_day = CEMOJ.СтатусыПроизводства.not_allowed
+        return f'{F.datetostr(self.dt_datetime,format)}\n{name_day}'
+
+    def __eq__(self, other):
+        if not isinstance(other, Month_cld_day):
+            return False
+        return self.dt_datetime==other.dt_datetime
+
+    def __hash__(self):
+        return hash(self.dt_datetime)
+
+    def __repr__(self) -> str:
+        """Читаемое представление объекта"""
+        return f"Month_cld_day(is_holyday={self.is_holyday}, day_week={self.day_week}, podrs={self.dict_podrs})"
 
 class Tabels_erp():
     def __init__(self,ERP_base_name):
@@ -464,7 +515,7 @@ class Logs():
             obj_name = self._generate_obj_name()
         res = CSQ.custom_request_c(self.db,f"""SELECT user,datetime_change,new_val FROM journal_log 
          INNER JOIN objects_jur ON objects_jur.s_num == journal_log.obj WHERE objects_jur.name =="{obj_name}" AND 
-          journal_log.row == {row} AND journal_log.column_name == "{name_field}";""",rez_dict=True)
+          journal_log.row == {row} AND (journal_log.column_name == {column_name!r} OR journal_log.column_name = {name_field!r});""",rez_dict=True)
         return  res
 
 
@@ -540,12 +591,43 @@ class Color_tbl():
         90: "81;149;75",  # Средне-зеленый
         100: "49;140;73",  # Насыщенный зеленый
     }
+
+    @property
+    def as_color_o(self)->Color:
+        return Color(*self.rgb)
+
     def __init__(self,val:float|int,revers=False,dark_mode=False):
         """
 
         :param val: 0-100
         :param revers:
         :param dark_mode:
+
+          # Разные форматы ввода
+        c1 = Color("153;102;255")
+        print(c1.r, c1.g, c1.b)  # 153 102 255
+        print(c1.rgb)  # (153, 102, 255)
+
+        c2 = Color("100,200,50,128")
+        print(c2.rgba)  # (100, 200, 50, 128)
+
+        c3 = Color("rgb(255 100 50)")
+        print(c3.rgb)  # (255, 100, 50)
+
+        c4 = Color("rgba(255,100,50,200)")
+        print(c4.rgba)  # (255, 100, 50, 200)
+
+        c5 = Color((64, 128, 192))
+        print(c5.hex)  # #4080c0
+
+        # Методы
+        c5.set_val(100)
+        print(c5.rgb)  # (100, 100, 100)
+
+        # align_colors
+        result = c1.align_colors(c2)
+        print(result)  # Усредненный цвет
+
         """
         DICT_COLOR = Color_tbl.DICT_COLOR
         if dark_mode:
@@ -571,11 +653,13 @@ class Color_tbl():
 
 
 class Color:
+    _BLACK: RGB = (0, 0, 0)
+    _WHITE: RGB = (255, 255, 255)
     def __init__(self, color_str: str|tuple[int, int, int]|tuple[int, int, int, int]|None = None):
-        self.r = 0
-        self.g = 0
-        self.b = 0
-        self.a = 255  # альфа-канал по умолчанию (непрозрачный)
+        self._r = 0
+        self._g = 0
+        self._b = 0
+        self._a = 255  # альфа-канал по умолчанию (непрозрачный)
         self.none:bool=True
 
         if color_str is not None:
@@ -586,6 +670,84 @@ class Color:
         if self.none:
             return False
         return True
+
+
+    @classmethod
+    def random(cls, alpha: int = 255) -> 'Color':
+        """Создает случайный цвет."""
+        return cls((
+            random.randint(0, 255),
+            random.randint(0, 255),
+            random.randint(0, 255),
+            alpha
+        ))
+
+    def copy(self) -> 'Color':
+        return Color(self.rgba)
+
+    def __add__(self, other):
+        """Смешивание двух цветов."""
+        if not isinstance(other, Color):
+            return NotImplemented
+
+        return Color((
+            (self.r + other.r) // 2,
+            (self.g + other.g) // 2,
+            (self.b + other.b) // 2,
+            (self.a + other.a) // 2,
+        ))
+
+    def __iadd__(self, other):
+        """Смешивание с присваиванием."""
+        if not isinstance(other, Color):
+            return NotImplemented
+
+        self.r = (self.r + other.r) // 2
+        self.g = (self.g + other.g) // 2
+        self.b = (self.b + other.b) // 2
+        self.a = (self.a + other.a) // 2
+        return self
+
+    def __mul__(self, value):
+        """Осветление/затемнение цвета множителем."""
+        if not isinstance(value, (int, float)):
+            return NotImplemented
+
+        return Color((
+            self._clamp(round(self.r * value)),
+            self._clamp(round(self.g * value)),
+            self._clamp(round(self.b * value)),
+            self.a
+        ))
+
+    __rmul__ = __mul__
+
+    def reverse(self, copy: bool = True) -> 'Color':
+        """
+        Инвертирует цвет.
+
+        copy=True  - вернуть новый объект
+        copy=False - изменить текущий объект
+        """
+        if copy:
+            return Color((
+                255 - self.r,
+                255 - self.g,
+                255 - self.b,
+                self.a
+            ))
+
+        self.r = 255 - self.r
+        self.g = 255 - self.g
+        self.b = 255 - self.b
+        return self
+
+    def reverse_inplace(self) -> 'Color':
+        """Инвертирует текущий цвет."""
+        self.r = 255 - self.r
+        self.g = 255 - self.g
+        self.b = 255 - self.b
+        return self
 
     def get_str(self,sep:str)->str:
         return sep.join([str(_) for _ in self.rgb])
@@ -602,6 +764,26 @@ class Color:
 
         # Очищаем строку от лишних пробелов
         color_str = color_str.strip()
+
+        # --- HEX обработка ---
+        if color_str.startswith('#'):
+            hex_value = color_str[1:]
+
+            if len(hex_value) == 6:
+                self.r = int(hex_value[0:2], 16)
+                self.g = int(hex_value[2:4], 16)
+                self.b = int(hex_value[4:6], 16)
+                self.a = 255
+                return
+
+            if len(hex_value) == 8:
+                self.r = int(hex_value[0:2], 16)
+                self.g = int(hex_value[2:4], 16)
+                self.b = int(hex_value[4:6], 16)
+                self.a = int(hex_value[6:8], 16)
+                return
+
+            raise ValueError(f"Invalid hex color: {color_str}")
 
         # Поддерживаемые разделители: ; , пробел
         # Убираем "rgb(" и "rgba(" если есть
@@ -623,10 +805,99 @@ class Color:
             else:
                 self.a = 255
 
+    def serialize(self):
+        return  self.serialize_str()
+
+    def serialize_str(self)->str:
+        """
+           Сериализация цвета в строку.
+           Формат: r,g,b,a
+           """
+        return f"{self.r},{self.g},{self.b},{self.a}"
+
+    @classmethod
+    def deserialize(cls, value: str) -> 'Color':
+        """
+        Восстановление цвета из serialize().
+        """
+        parts = value.split(",")
+
+        if len(parts) == 3:
+            return cls(tuple(map(int, parts)))
+
+        if len(parts) == 4:
+            return cls(tuple(map(int, parts)))
+
+        raise ValueError(f"Invalid color format: {value}")
+
     @staticmethod
     def _clamp(value: int, min_val: int = 0, max_val: int = 255) -> int:
         """Ограничивает значение в заданном диапазоне"""
         return max(min_val, min(value, max_val))
+
+    @property
+    def luminance(self) -> float:
+
+        def channel(value: int) -> float:
+
+            value /= 255
+
+            if value <= 0.03928:
+                return value / 12.92
+
+            return (
+                (value + 0.055) /
+                1.055
+            ) ** 2.4
+
+
+        return (
+            0.2126 * channel(self.r) +
+            0.7152 * channel(self.g) +
+            0.0722 * channel(self.b)
+        )
+
+    def contrast(
+            self,
+            other: Color,
+    ) -> float:
+
+        if not isinstance(other, Color):
+            raise TypeError(
+                "other must be Color"
+            )
+
+        light = max(
+            self.luminance,
+            other.luminance,
+        )
+
+        dark = min(
+            self.luminance,
+            other.luminance,
+        )
+
+        return (
+                light + 0.05
+        ) / (
+                dark + 0.05
+        )
+
+    @property
+    def text_color(self) -> Color:
+
+        white = type(self)(self._WHITE)
+        black = type(self)(self._BLACK)
+
+        if self.contrast(white) >= self.contrast(black):
+            return white
+
+        return black
+
+    @property
+    def qcolor(self) -> QtGui.QColor:
+        """Возвращает QColor."""
+        return QtGui.QColor(self.r, self.g, self.b, self.a)
 
     @property
     def red(self) -> int:
@@ -721,32 +992,15 @@ class Color:
         return (self.r, self.g, self.b, self.a) == (other.r, other.g, other.b, other.a)
 
 
-# Примеры использования:
-if __name__ == "__main__":
-    # Разные форматы ввода
-    c1 = Color("153;102;255")
-    print(c1.r, c1.g, c1.b)  # 153 102 255
-    print(c1.rgb)  # (153, 102, 255)
+class Colors():
+    dull_black: Color = Color((150,150,150))
+    link_blue: Color = Color((0, 0, 153))
+    black:Color = Color((15, 15, 15))
+    red_blinking:Color = Color((248,105,107))
+    uneditable:Color = Color((240, 240, 240))
+    editable:Color = Color((250, 250, 250))
 
-    c2 = Color("100,200,50,128")
-    print(c2.rgba)  # (100, 200, 50, 128)
 
-    c3 = Color("rgb(255 100 50)")
-    print(c3.rgb)  # (255, 100, 50)
-
-    c4 = Color("rgba(255,100,50,200)")
-    print(c4.rgba)  # (255, 100, 50, 200)
-
-    c5 = Color((64, 128, 192))
-    print(c5.hex)  # #4080c0
-
-    # Методы
-    c5.set_val(100)
-    print(c5.rgb)  # (100, 100, 100)
-
-    # align_colors
-    result = c1.align_colors(c2)
-    print(result)  # Усредненный цвет
 
 
 class Emploee_usr(CFG.User_emploee):
@@ -785,6 +1039,18 @@ class Emploee_usr(CFG.User_emploee):
         for item in data:
             self.history.append(item)
         super().__init__(fio=fio,user_db=user_db)
+
+
+class Emploee_spread_db_user(_ImportDb):
+    def __init__(self,it:dict):
+        pass
+
+
+class Employee_spread_select():
+    ФизическиеЛица: list[str]
+    Подразделения: list[str]
+    Должности: list[str]
+
 
 class Emploee_spread_db():
 
@@ -881,9 +1147,31 @@ class Emploee_spread_db():
             CSQ.custom_request_c(CFG.Config.project.db_users, f"""INSERT INTO ФизическиеЛица
                               ({','.join(fields)}) 
                               VALUES ({CSQ.questions_for_mask(fields)});""", list_of_lists_c=list_of_lists)
+
+    def get_list_active_users(self,select:Employee_spread_select)->list[dict]:
+        attrs = F.get_all_attrs_with_properties(select)
+        select_str =  ', '.join([ ', '.join([f'{tbl}.{field} AS {alias}' for field, alias in wh.items()])  for tbl,wh in attrs.items()])
+        text = f"""
+            WITH slice AS (SELECT 
+            *
+            FROM (
+                SELECT *,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY ФизическоеЛицо_Key 
+                           ORDER BY Период DESC
+                       ) as rn
+                FROM КадроваяИстория
+            ) AS ranked
+            WHERE rn = 1 
+              AND Событие != 'Увольнение'
+              ORDER BY id )  
         
-        
-        
+        SELECT {select_str} FROM  slice
+        INNER JOIN Подразделения On Подразделения.Подразделение_Key = slice.Подразделение_Key   
+        INNER JOIN ФизическиеЛица On ФизическиеЛица.ФизическоеЛицо_Key = slice.ФизическоеЛицо_Key
+    """
+        return CSQ.custom_request_c(CFG.Config.project.db_users,text,rez_dict=True)
+
 
 class Emploee_db():
     URI = fr'{CFG.Config.project.ERB_BASE_URL}/ERP/hs/SDE/Staff/'
@@ -948,6 +1236,8 @@ class Emploee_db():
             if F.is_date(date,"%Y-%m-%dT%H:%M:%SZ"):
                 date = F.datetostr(F.strtodate(date,"%Y-%m-%dT%H:%M:%SZ"),"%Y-%m-%d")
             fio = fio.strip()
+            if not len(fio.split(' ')) == 3:
+                fio = f'{fio} _'
             dolg = dolg.replace('.', '').replace('  ', ' ').strip()
             return fio, dolg,date
 
@@ -1007,6 +1297,7 @@ class Emploee_db():
             fio, dolg,date = prepare_params(user['ФИОПолные'], user['Должность'],user['ДатаИзмененияДолжности'])
             podr = user['Подразделение']
             fl_naid = False
+            profile = None
             gender = user['ID_ФизЛица'] #28.11.2025
             for user_db in users_db:
                 if user_db['ФИО'] != 'Абстракт' and dolg == user_db['Должность'] and fio == user_db['ФИО'] and user_db['Компания'] == "":
@@ -1022,8 +1313,13 @@ class Emploee_db():
 
                 if user['ID_ФизЛица'] == user_db['ID_ФизЛица'] and dolg == user_db['Должность'] and user_db['Статус'] != 'Увольнение':
                     fl_naid = True
+                    profile = user_db
                     break
-            if fl_naid == False:
+            if fl_naid:
+                if profile is not None and profile['ФИО'] != fio:
+                    CSQ.custom_request_c(self.db, f"""UPDATE employee SET ФИО = ? WHERE Пномер = ?;""",
+                                         list_of_lists_c=[fio, profile['Пномер']])
+            else:
                 spis_add.append([fio, dolg,user['Состояние'],user['Подразделение'],user['ГрафикРаботы'],
                                  user['Организация'],user['ID_ФизЛица'],user['ВидЗанятости'],date,gender])
                 list_changes.append(f'Добавлен {user}')
@@ -1379,9 +1675,26 @@ def get_db_rows_pl_etaps(pnom_or_pnoms: int | list[int]):
     return CSQ.custom_request_c(db_kplan, request, rez_dict=True, one=one)
 # --06.06.2025 (по задаче 100055177 )
 
-class Pozitions():
+class _Pozition_base():
+
+    def calc_additional_fields(self)->set[str]:
+        if getattr(self,'_additional_fields',None) is None:
+            pre_additional_fields = CSQ.custom_request_c(CFG.Config.project.db_users, f"""SELECT name from group_vid_rab_for_plan
+            INNER JOIN podrazdel ON podrazdel.Пномер == group_vid_rab_for_plan.num_podr 
+            WHERE subord = 1 and podrazdel.poki in (NULL, {CFG.Config.place.poki})""", one_column=True, hat_c=False,
+                                                     attach_dbs=CFG.Config.project.db_kplan)
+            additional_fields = []
+            for field in pre_additional_fields:
+                additional_fields.append(field)
+                additional_fields.append(field.replace('.Нчас', '.Фчас'))
+                
+            return set(additional_fields)
+
+        
+class Pozitions(_Pozition_base):
     def __init__(self,p_noms:list,db_kpl,db_naryad,db_resxml,db_users,parent_self=None, load_loacal_graf=False,
-                 load_day_plan=False):
+                 load_day_plan=False,list_names_preload_tbls:list|None = None):
+
         if p_noms == []:
             postfix_pnoms = ''
             postfix_pnoms_dates = ''
@@ -1392,8 +1705,10 @@ class Pozitions():
 
         postfix_local_graf = ''
         postfix_day_plan = ''
+        postfix_local_graf_inner = ''
         if load_loacal_graf:
-            postfix_local_graf = f', plan.local_graf'
+            postfix_local_graf = f', gant_poz.data_gant as local_graf'
+            postfix_local_graf_inner = f', gant_poz ON gant_poz.id_poz = plan.Пномер'
         if load_day_plan:
             postfix_day_plan = f', plan.fact_jurnal_blolb_data'
         request = f"""
@@ -1432,32 +1747,75 @@ class Pozitions():
                 plan.Приоритет{postfix_local_graf}{postfix_day_plan} 
 
                  FROM plan INNER JOIN пл_оуп ON пл_оуп.НомПл = plan.Пномер,
-                 знпр ON знпр.s_num = пл_оуп.Пномер_ЗП {postfix_pnoms}
+                 знпр ON знпр.s_num = пл_оуп.Пномер_ЗП{postfix_local_graf_inner}  {postfix_pnoms}
                 ;"""
         rows = CSQ.custom_request_c(db_kpl, request, rez_dict=True) # 06.06.2025 (по задаче 100055177 )
+        if rows is None:
+            raise ValueError(f'error request Pozitions')
 
-        # request = f"""
-        #                   SELECT plan.Пдата_зав_вспом, plan.Пдата_нач_вспом,
-        #                     пл_заг.ПДата_зав_заг, пл_заг.ПДата_нач_заг,
-        #                     пл_мех.Пдата_зав_мехобр, пл_мех.Пдата_нач_мехобр,
-        #                     пл_сб.Пдата_зав_сб, пл_сб.Пдата_нач_сб,
-        #                     пл_покр.Пдата_зав_покр, пл_покр.Пдата_нач_покр,
-        #                     пл_компл.ПДата_зав_комплект_упаковки,  пл_компл.ПДата_нач_комплект_упаковки
-        #                    FROM plan INNER JOIN
-        #                   пл_заг  ON plan.Пномер == пл_заг.НомПл,
-        #                   пл_мех  ON plan.Пномер == пл_мех.НомПл,
-        #                   пл_сб  ON plan.Пномер == пл_сб.НомПл,
-        #                   пл_покр  ON plan.Пномер == пл_покр.НомПл,
-        #                   пл_компл  ON plan.Пномер == пл_компл.НомПл {postfix_pnoms_dates};"""
         data_etaps = F.deploy_dict_c(get_db_rows_pl_etaps(p_noms), 'Пномер')
 
         # rows_dates_etaps = CSQ.custom_request_c(db_kpl, request, rez_dict=True)
         self.parent_self = parent_self
         self.dict_pozs:dict[int,Pozition] = dict()
+        self.additional_fields =  self.calc_additional_fields()
+        self._dict_kpl_table:dict[list] = dict()
+
+        if list_names_preload_tbls:
+            for tbl_name in list_names_preload_tbls:
+                request = f"""
+                                    SELECT * FROM {tbl_name} 
+                                    WHERE НомПл in ({CSQ.prepare_list_to_tuple(p_noms)});"""
+                resp = CSQ.custom_request_c(db_kpl, request, rez_dict=True)
+                dict_data_resp = F.deploy_dict_c(resp,"НомПл")
+                self._dict_kpl_table[tbl_name] = dict_data_resp
+
+                if tbl_name == 'пл_оуп':
+
+                    request = f"""  SELECT пл_оуп.НомПл as _пл_оупНомПл,  знпр.* FROM пл_оуп  
+                                INNER JOIN знпр ON знпр.s_num == пл_оуп.Пномер_ЗП
+                                 WHERE пл_оуп.НомПл in ({CSQ.prepare_list_to_tuple(p_noms)});"""
+                    resp = CSQ.custom_request_c(db_kpl, request, rez_dict=True)
+                    dict_data_resp = F.deploy_dict_c(resp, "_пл_оупНомПл")
+                    self._dict_kpl_table['знпр'] = dict_data_resp
+        
         for i, item in enumerate(rows):
             row_dates_etaps= data_etaps.get(item['Пномер'])
-            self.dict_pozs[item['Пномер']] =  Pozition(item,db_kpl,db_naryad,db_resxml,db_users,self.parent_self, row_dates_etaps= row_dates_etaps)
-    
+            tmp_poz = Pozition(item,db_kpl,db_naryad,db_resxml,db_users,self.parent_self,
+                                                       row_dates_etaps= row_dates_etaps,
+                                                    load_loacal_graf=load_loacal_graf,
+                                                      load_day_plan=load_day_plan,
+                                                      additional_fields = self.additional_fields,
+                                                      )
+            for tbl_name , list_data in self._dict_kpl_table.items():
+                if tbl_name == 'знпр':
+                    continue
+                if tbl_name == 'пл_оуп':
+                    tmp_poz.load_kpl_table(tbl_name, preload_row=list_data[tmp_poz.Пномер],preload_znpr=self._dict_kpl_table['знпр'][tmp_poz.Пномер])
+                else:
+                    tmp_poz.load_kpl_table(tbl_name,preload_row=list_data[tmp_poz.Пномер])
+
+            self.dict_pozs[item['Пномер']] = tmp_poz
+
+            
+    def __repr__(self):
+        try:
+            keys = list(self.dict_pozs.keys())
+
+            statii = []
+            for p in list(self.dict_pozs.values())[:20]:  # ограничение чтобы не убить лог
+                if hasattr(p, "Статус"):
+                    statii.append(p.Статус)
+
+            return (
+                f"Pozitions("
+                f"count={len(keys)}, "
+                f"mk_count={sum(1 for p in self.dict_pozs.values() if getattr(p, 'МК', None))}, "
+                f"sample_statuses={set(statii)})"
+            )
+        except Exception as e:
+            return f"Pozitions(<repr_error {type(e).__name__}>)"
+
     def load_kpl_table(self,name_table):
 
 
@@ -1501,9 +1859,21 @@ class Pozitions():
                             poz.dict_tables[name_table][f'{field}_base'] = poz.dict_tables[name_table][field]
                         exec(f'poz.dict_tables["{name_table}"]["{field}"] = row_оуп[key]')
 
-class Pozition():
-    def __init__(self,p_nom_or_row_preload,db_kpl=None,db_naryad=None,db_resxml=None,db_users=None,parent_self=None,
-                 load_loacal_graf=False,row_dates_etaps=None,load_day_plan=False):
+class Pozition(_Pozition_base):
+    def __init__(self,p_nom_or_row_preload,db_kpl:None=None,db_naryad:None=None,db_resxml:None=None,
+                 db_users:None=None,parent_self=None,
+                 load_loacal_graf=False,row_dates_etaps=None,load_day_plan=False,**kwargs):
+
+        self._additional_fields = kwargs.get('additional_fields', None)
+        if self._additional_fields is None:
+            self._additional_fields = self.calc_additional_fields()
+
+        db_naryad = CFG.Config.project.db_naryad
+        db_resxml = CFG.Config.project.db_resxml
+        db_users = CFG.Config.project.db_users
+        db_kpl = CFG.Config.project.db_kplan
+
+
         if p_nom_or_row_preload is None:
             raise ValueError(f'Pozition init-> p_nom_or_row_preload is None')
         if db_kpl == None:
@@ -1515,201 +1885,9 @@ class Pozition():
         if db_users == None:
             db_users = CFG.Config.project.db_users
         def get_data_etaps(Пномер): # 06.06.2025 (по задаче 100055177 )
-            ADDITIONAL_FIELDS = {
-                "пл_сб.Нчас_слсб",
-                "пл_сб.Фчас_слсб",
-                "пл_сб.Нчас_св",
-                "пл_сб.Фчас_св",
-                "пл_сб.Нчас_зач",
-                "пл_сб.Фчас_зач", }
+
             if isinstance(Пномер,int):
                 resp = get_db_rows_pl_etaps(Пномер)
-            # if isinstance(Пномер,int):
-            #
-            #
-            #     request = f"""
-            #                                 SELECT plan.Пдата_зав_вспом, plan.Пдата_нач_вспом,
-            #                                   пл_заг.ПДата_зав_заг, пл_заг.ПДата_нач_заг,
-            #                                   пл_мех.Пдата_зав_мехобр, пл_мех.Пдата_нач_мехобр,
-            #                                   пл_сб.Пдата_зав_сб, пл_сб.Пдата_нач_сб,
-            #                                   пл_покр.Пдата_зав_покр, пл_покр.Пдата_нач_покр,
-            #                                   пл_компл.ПДата_зав_комплект_упаковки,  пл_компл.ПДата_нач_комплект_упаковки,
-            #                                   пл_отк.Пдата_зав_контр,  пл_отк.Пдата_нач_контр,
-            #                                    пл_топ.Пдата_зав_ТД,  пл_топ.Пдата_нач_ТД,
-            #
-            #
-            #                                     пл_топ.Пдата_нач_ТД AS "пл_топ.Пдата_нач_ТД",
-            #                                     пл_топ.Пдата_зав_ТД AS "пл_топ.Пдата_зав_ТД",
-            #                                     plan.Пдата_зав_вспом AS "plan.Пдата_зав_вспом",
-            #                                     plan.Пдата_нач_вспом AS "plan.Пдата_нач_вспом",
-            #                                     пл_заг.ПДата_зав_заг AS "пл_заг.ПДата_зав_заг",
-            #                                     пл_заг.ПДата_нач_заг AS "пл_заг.ПДата_нач_заг",
-            #                                     пл_мех.Пдата_зав_мехобр AS "пл_мех.Пдата_зав_мехобр",
-            #                                     пл_мех.Пдата_нач_мехобр AS "пл_мех.Пдата_нач_мехобр",
-            #                                     пл_сб.Пдата_зав_сб AS "пл_сб.Пдата_зав_сб",
-            #                                     пл_сб.Пдата_нач_сб AS "пл_сб.Пдата_нач_сб",
-            #                                     пл_покр.Пдата_зав_покр AS "пл_покр.Пдата_зав_покр",
-            #                                     пл_покр.Пдата_нач_покр AS "пл_покр.Пдата_нач_покр",
-            #                                     пл_компл.ПДата_зав_комплект_упаковки AS "пл_компл.ПДата_зав_комплект_упаковки",
-            #                                     пл_компл.ПДата_нач_комплект_упаковки AS "пл_компл.ПДата_нач_комплект_упаковки",
-            #                                     пл_отк.Пдата_зав_контр AS "пл_отк.Пдата_зав_контр",
-            #                                     пл_отк.Пдата_нач_контр AS "пл_отк.Пдата_нач_контр",
-            #
-            #                                     пл_сб.Нчас_слсб AS "пл_сб.Нчас_слсб",
-            #                                     пл_сб.Фчас_слсб AS "пл_сб.Фчас_слсб",
-            #                                     пл_сб.Нчас_св AS "пл_сб.Нчас_св",
-            #                                     пл_сб.Фчас_св AS "пл_сб.Фчас_св",
-            #                                     пл_сб.Нчас_зач AS "пл_сб.Нчас_зач",
-            #                                     пл_сб.Фчас_зач AS "пл_сб.Фчас_зач",
-            #
-            #                                     пл_топ.Фдата_нач_ТД AS "пл_топ.Фдата_нач_ТД",
-            #                                     пл_топ.Фдата_зав_ТД AS "пл_топ.Фдата_зав_ТД",
-            #                                     plan.Фдата_зав_вспом AS "plan.Фдата_зав_вспом",
-            #                                     plan.Фдата_нач_вспом AS "plan.Фдата_нач_вспом",
-            #                                     пл_заг.ФДата_зав_заг AS "пл_заг.ФДата_зав_заг",
-            #                                     пл_заг.ФДата_нач_заг AS "пл_заг.ФДата_нач_заг",
-            #                                     пл_мех.Фдата_зав_мехобр AS "пл_мех.Фдата_зав_мехобр",
-            #                                     пл_мех.Фдата_нач_мехобр AS "пл_мех.Фдата_нач_мехобр",
-            #                                     пл_сб.Фдата_зав_сб AS "пл_сб.Фдата_зав_сб",
-            #                                     пл_сб.Фдата_нач_сб AS "пл_сб.Фдата_нач_сб",
-            #                                     пл_покр.Фдата_зав_покр AS "пл_покр.Фдата_зав_покр",
-            #                                     пл_покр.Фдата_нач_покр AS "пл_покр.Фдата_нач_покр",
-            #                                     пл_компл.ФДата_зав_комплект_упаковки AS "пл_компл.ФДата_зав_комплект_упаковки",
-            #                                     пл_компл.ФДата_нач_комплект_упаковки AS "пл_компл.ФДата_нач_комплект_упаковки",
-            #                                     пл_отк.Фдата_зав_контр AS "пл_отк.Фдата_зав_контр",
-            #                                     пл_отк.Фдата_нач_контр AS "пл_отк.Фдата_нач_контр",
-            #
-            #                                     пл_топ.Нчас_ТД AS "пл_топ.Нчас_ТД",
-            #                                     пл_топ.Фчас_ТД AS "пл_топ.Фчас_ТД",
-            #                                     пл_заг.Нчас_заг AS "пл_заг.Нчас_заг",
-            #                                     пл_заг.Фчас_заг AS "пл_заг.Фчас_заг",
-            #                                     пл_мех.Нчас_мехобр AS "пл_мех.Нчас_мехобр",
-            #                                     пл_мех.Фчас_мехобр AS "пл_мех.Фчас_мехобр",
-            #                                     пл_сб.Нчас_сб AS "пл_сб.Нчас_сб",
-            #                                     пл_сб.Фчас_сб AS "пл_сб.Фчас_сб",
-            #                                     пл_покр.Нчас_покр AS "пл_покр.Нчас_покр",
-            #                                     пл_покр.Фчас_покр AS "пл_покр.Фчас_покр",
-            #                                     пл_компл.Нчас_упаковки AS "пл_компл.Нчас_упаковки",
-            #                                     пл_компл.Фчас_упаковки AS "пл_компл.Фчас_упаковки",
-            #                                     пл_отк.Нчас_контр AS "пл_отк.Нчас_контр",
-            #                                     пл_отк.Фчас_контр AS "пл_отк.Фчас_контр",
-            #                                     plan.Нчас_вспом AS "plan.Нчас_вспом",
-            #                                     plan.Фчас_вспом AS "plan.Фчас_вспом",
-            #
-            #                                     пл_рскр.Нчас_рскр AS "пл_рскр.Нчас_рскр",
-            #                                     пл_оснтк.Нчас_оснтк AS "пл_оснтк.Нчас_оснтк",
-            #                                     пл_швк.Нчас_швк AS "пл_швк.Нчас_швк",
-            #                                     пл_сбтк.Нчас_сбтк AS "пл_сбтк.Нчас_сбтк",
-            #                                     пл_сбмл.Нчас_сбмл AS "пл_сбмл.Нчас_сбмл",
-            #                                     пл_нбвк.Нчас_нбвк AS "пл_нбвк.Нчас_нбвк",
-            #                                     пл_свг.Нчас_свг AS "пл_свг.Нчас_свг",
-            #                                     пл_сббси.Нчас_сббси AS "пл_сббси.Нчас_сббси",
-            #                                     пл_упквк.Нчас_упквк AS "пл_упквк.Нчас_упквк",
-            #                                     пл_кмпл.Нчас_кмпл AS "пл_кмпл.Нчас_кмпл",
-            #                                     пл_откк.Нчас_откк AS "пл_откк.Нчас_откк",
-            #
-            #                                     пл_рскр.Фчас_рскр AS "пл_рскр.Фчас_рскр",
-            #                                     пл_оснтк.Фчас_оснтк AS "пл_оснтк.Фчас_оснтк",
-            #                                     пл_швк.Фчас_швк AS "пл_швк.Фчас_швк",
-            #                                     пл_сбтк.Фчас_сбтк AS "пл_сбтк.Фчас_сбтк",
-            #                                     пл_сбмл.Фчас_сбмл AS "пл_сбмл.Фчас_сбмл",
-            #                                     пл_нбвк.Фчас_нбвк AS "пл_нбвк.Фчас_нбвк",
-            #                                     пл_свг.Фчас_свг AS "пл_свг.Фчас_свг",
-            #                                     пл_сббси.Фчас_сббси AS "пл_сббси.Фчас_сббси",
-            #                                     пл_упквк.Фчас_упквк AS "пл_упквк.Фчас_упквк",
-            #                                     пл_кмпл.Фчас_кмпл AS "пл_кмпл.Фчас_кмпл",
-            #                                     пл_откк.Фчас_откк AS "пл_откк.Фчас_откк",
-            #
-            #                                     пл_рскр.ПДата_нач_рскр AS "пл_рскр.ПДата_нач_рскр",
-            #                                     пл_оснтк.ПДата_нач_оснтк AS "пл_оснтк.ПДата_нач_оснтк",
-            #                                     пл_швк.ПДата_нач_швк AS "пл_швк.ПДата_нач_швк",
-            #                                     пл_сбтк.ПДата_нач_сбтк AS "пл_сбтк.ПДата_нач_сбтк",
-            #                                     пл_сбмл.ПДата_нач_сбмл AS "пл_сбмл.ПДата_нач_сбмл",
-            #                                     пл_нбвк.ПДата_нач_нбвк AS "пл_нбвк.ПДата_нач_нбвк",
-            #                                     пл_свг.ПДата_нач_свг AS "пл_свг.ПДата_нач_свг",
-            #                                     пл_сббси.ПДата_нач_сббси AS "пл_сббси.ПДата_нач_сббси",
-            #                                     пл_упквк.ПДата_нач_упквк AS "пл_упквк.ПДата_нач_упквк",
-            #                                     пл_кмпл.ПДата_нач_кмпл AS "пл_кмпл.ПДата_нач_кмпл",
-            #                                     пл_откк.ПДата_нач_откк AS "пл_откк.ПДата_нач_откк",
-            #
-            #                                     пл_рскр.ПДата_зав_рскр AS "пл_рскр.ПДата_зав_рскр",
-            #                                     пл_оснтк.ПДата_зав_оснтк AS "пл_оснтк.ПДата_зав_оснтк",
-            #                                     пл_швк.ПДата_зав_швк AS "пл_швк.ПДата_зав_швк",
-            #                                     пл_сбтк.ПДата_зав_сбтк AS "пл_сбтк.ПДата_зав_сбтк",
-            #                                     пл_сбмл.ПДата_зав_сбмл AS "пл_сбмл.ПДата_зав_сбмл",
-            #                                     пл_нбвк.ПДата_зав_нбвк AS "пл_нбвк.ПДата_зав_нбвк",
-            #                                     пл_свг.ПДата_зав_свг AS "пл_свг.ПДата_зав_свг",
-            #                                     пл_сббси.ПДата_зав_сббси AS "пл_сббси.ПДата_зав_сббси",
-            #                                     пл_упквк.ПДата_зав_упквк AS "пл_упквк.ПДата_зав_упквк",
-            #                                     пл_кмпл.ПДата_зав_кмпл AS "пл_кмпл.ПДата_зав_кмпл",
-            #                                     пл_откк.ПДата_зав_откк AS "пл_откк.ПДата_зав_откк",
-            #
-            #                                     пл_рскр.ФДата_нач_рскр AS "пл_рскр.ФДата_нач_рскр",
-            #                                     пл_оснтк.ФДата_нач_оснтк AS "пл_оснтк.ФДата_нач_оснтк",
-            #                                     пл_швк.ФДата_нач_швк AS "пл_швк.ФДата_нач_швк",
-            #                                     пл_сбтк.ФДата_нач_сбтк AS "пл_сбтк.ФДата_нач_сбтк",
-            #                                     пл_сбмл.ФДата_нач_сбмл AS "пл_сбмл.ФДата_нач_сбмл",
-            #                                     пл_нбвк.ФДата_нач_нбвк AS "пл_нбвк.ФДата_нач_нбвк",
-            #                                     пл_свг.ФДата_нач_свг AS "пл_свг.ФДата_нач_свг",
-            #                                     пл_сббси.ФДата_нач_сббси AS "пл_сббси.ФДата_нач_сббси",
-            #                                     пл_упквк.ФДата_нач_упквк AS "пл_упквк.ФДата_нач_упквк",
-            #                                     пл_кмпл.ФДата_нач_кмпл AS "пл_кмпл.ФДата_нач_кмпл",
-            #                                     пл_откк.ФДата_нач_откк AS "пл_откк.ФДата_нач_откк",
-            #
-            #                                     пл_рскр.ФДата_зав_рскр AS "пл_рскр.ФДата_зав_рскр",
-            #                                     пл_оснтк.ФДата_зав_оснтк AS "пл_оснтк.ФДата_зав_оснтк",
-            #                                     пл_швк.ФДата_зав_швк AS "пл_швк.ФДата_зав_швк",
-            #                                     пл_сбтк.ФДата_зав_сбтк AS "пл_сбтк.ФДата_зав_сбтк",
-            #                                     пл_сбмл.ФДата_зав_сбмл AS "пл_сбмл.ФДата_зав_сбмл",
-            #                                     пл_нбвк.ФДата_зав_нбвк AS "пл_нбвк.ФДата_зав_нбвк",
-            #                                     пл_свг.ФДата_зав_свг AS "пл_свг.ФДата_зав_свг",
-            #                                     пл_сббси.ФДата_зав_сббси AS "пл_сббси.ФДата_зав_сббси",
-            #                                     пл_упквк.ФДата_зав_упквк AS "пл_упквк.ФДата_зав_упквк",
-            #                                     пл_кмпл.ФДата_зав_кмпл AS "пл_кмпл.ФДата_зав_кмпл",
-            #                                     пл_откк.ФДата_зав_откк AS "пл_откк.ФДата_зав_откк",
-            #
-            #                                     пл_заг.Дата_обесп_заг AS "пл_заг.Дата_обесп_заг",
-            #                                     пл_компл.Дата_обесп_компл AS "пл_компл.Дата_обесп_компл",
-            #                                     пл_сб.Дата_обесп_сб AS "пл_сб.Дата_обесп_сб",
-            #                                     пл_покр.Дата_обесп_покр AS "пл_покр.Дата_обесп_покр",
-            #                                     пл_мех.Дата_обесп_мех AS "пл_мех.Дата_обесп_мех",
-            #                                     пл_отк.Дата_обесп_отк AS "пл_отк.Дата_обесп_отк",
-            #                                     пл_рскр.Дата_обесп_рскр AS "пл_рскр.Дата_обесп_рскр",
-            #                                     пл_оснтк.Дата_обесп_оснтк AS "пл_оснтк.Дата_обесп_оснтк",
-            #                                     пл_швк.Дата_обесп_швк AS "пл_швк.Дата_обесп_швк",
-            #                                     пл_сбтк.Дата_обесп_сбтк AS "пл_сбтк.Дата_обесп_сбтк",
-            #                                     пл_сбмл.Дата_обесп_сбмл AS "пл_сбмл.Дата_обесп_сбмл",
-            #                                     пл_нбвк.Дата_обесп_нбвк AS "пл_нбвк.Дата_обесп_нбвк",
-            #                                     пл_свг.Дата_обесп_свг AS "пл_свг.Дата_обесп_свг",
-            #                                     пл_сббси.Дата_обесп_сббси AS "пл_сббси.Дата_обесп_сббси",
-            #                                     пл_упквк.Дата_обесп_упквк AS "пл_упквк.Дата_обесп_упквк",
-            #                                     пл_кмпл.Дата_обесп_кмпл AS "пл_кмпл.Дата_обесп_кмпл",
-            #                                     пл_откк.Дата_обесп_откк AS "пл_откк.Дата_обесп_откк"
-            #
-            #
-            #
-            #                                  FROM plan INNER JOIN
-            #                                  пл_топ  ON plan.Пномер == пл_топ.НомПл,
-            #                                 пл_заг  ON plan.Пномер == пл_заг.НомПл,
-            #                                 пл_мех  ON plan.Пномер == пл_мех.НомПл,
-            #                                 пл_сб  ON plan.Пномер == пл_сб.НомПл,
-            #                                 пл_покр  ON plan.Пномер == пл_покр.НомПл,
-            #                                 пл_компл  ON plan.Пномер == пл_компл.НомПл,
-            #                                 пл_отк  ON plan.Пномер == пл_отк.НомПл,
-            #                                 пл_рскр ON пл_рскр.НомПл = plan.Пномер,
-            #                                 пл_оснтк ON пл_оснтк.НомПл = plan.Пномер,
-            #                                 пл_швк ON пл_швк.НомПл = plan.Пномер,
-            #                                 пл_сбтк ON пл_сбтк.НомПл = plan.Пномер,
-            #                                 пл_сбмл ON пл_сбмл.НомПл = plan.Пномер,
-            #                                 пл_нбвк ON пл_нбвк.НомПл = plan.Пномер,
-            #                                 пл_свг ON пл_свг.НомПл = plan.Пномер,
-            #                                 пл_сббси ON пл_сббси.НомПл = plan.Пномер,
-            #                                 пл_упквк ON пл_упквк.НомПл = plan.Пномер,
-            #                                 пл_кмпл ON пл_кмпл.НомПл = plan.Пномер,
-            #                                 пл_откк ON пл_откк.НомПл = plan.Пномер
-            #
-            #                                 WHERE Пномер == {Пномер};"""
-            #     resp = CSQ.custom_request_c(self.db, request, rez_dict=True)[0]
 
             else:
                 resp = row_dates_etaps
@@ -1717,11 +1895,12 @@ class Pozition():
             row_dates_etap_fact = {k: v for k, v in resp.items() if 'фдата_' in k.lower()}
             row_dates_etap_plan = {k: v for k, v in resp.items() if 'пдата_' in k.lower() and '.' in k}
             row_time_etap = {k: v for k, v in resp.items() if
-                             'час_' in k.lower() and k not in ADDITIONAL_FIELDS}
+                             'час_' in k.lower() and k not in self._additional_fields}
             row_time_add_etap = {k: v for k, v in resp.items() if
-                             'час_' in k.lower() and k in ADDITIONAL_FIELDS}
+                             'час_' in k.lower() and k in self._additional_fields}
             row_dates_supply = {k: v for k, v in resp.items() if 'дата_обесп' in k.lower() and '.' in k}
-            return row_dates_etap,row_time_etap,row_dates_etap_fact,row_dates_etap_plan,row_time_add_etap,row_dates_supply
+            return (row_dates_etap,row_time_etap,row_dates_etap_fact,row_dates_etap_plan,row_time_add_etap,
+                    row_dates_supply)
         self.parent_self = parent_self
         self.db = db_kpl
         self.db_naryad = db_naryad
@@ -1760,7 +1939,7 @@ class Pozition():
         self.Постановка_в_план = None
         self.Примечание = None
         self.Приоритет = None
-        self.local_graf = None
+        self.local_graf:Poz_gant|None = None
         self.fact_jurnal_blolb_data = None
         self.poki:int|None = None
         if F.is_numeric(p_nom_or_row_preload):
@@ -1774,8 +1953,10 @@ class Pozition():
             p_nom = p_nom_or_row_preload
             postfix_local_graf= ''
             postfix_day_plan = ''
+            postfix_local_graf_inner = ''
             if load_loacal_graf:
-                postfix_local_graf = f', plan.local_graf'
+                postfix_local_graf = f', gant_poz.data_gant as local_graf'
+                postfix_local_graf_inner = f', gant_poz ON gant_poz.id_poz = plan.Пномер'
             if load_day_plan:
                 postfix_day_plan = f', plan.fact_jurnal_blolb_data'
             request = f"""
@@ -1814,12 +1995,13 @@ class Pozition():
                             plan.Приоритет{postfix_local_graf}{postfix_day_plan}, 
                             plan.poki 
                              FROM plan INNER JOIN пл_оуп ON пл_оуп.НомПл = plan.Пномер,
-                             знпр ON знпр.s_num = пл_оуп.Пномер_ЗП 
-            WHERE plan.Пномер == {p_nom};"""
+                             знпр ON знпр.s_num = пл_оуп.Пномер_ЗП{postfix_local_graf_inner} 
+            WHERE plan.Пномер == {p_nom} ;"""
             row = CSQ.custom_request_c(db_kpl,request,rez_dict=True)
             if len(row) == 0:
                 print(f'Pozition Остутвет в БД кпл {p_nom}')
                 return
+
             row = row[0]
 
 
@@ -1828,7 +2010,11 @@ class Pozition():
         for key in row.keys():
             exec(f'self.{key.replace(".","_")} = row[key]')
 
-        row_dates_etap, row_time_etap,row_dates_etap_fact,row_dates_etap_plan,row_time_add_etap,row_dates_supply = get_data_etaps(p_nom_or_row_preload)
+        if load_loacal_graf:
+            self.local_graf = Gant.convert_data(self.local_graf)
+
+        row_dates_etap, row_time_etap,row_dates_etap_fact,row_dates_etap_plan,row_time_add_etap,row_dates_supply\
+            = get_data_etaps(p_nom_or_row_preload)
 
 
         self.max_date = ''
@@ -1856,9 +2042,10 @@ class Pozition():
             min_date, max_date = apply_min_max(min_date, max_date, data, "%Y-%m-%d")
         if self.fact_jurnal_blolb_data:
             self.fact_jurnal_data = F.from_binary_pickle(self.fact_jurnal_blolb_data)
-            for etap in self.fact_jurnal_data:
-                for data in etap:
-                    min_date,max_date = apply_min_max(min_date,max_date, data, "%d\n%m\n%y")
+            if self.fact_jurnal_data:
+                for etap in self.fact_jurnal_data:
+                    for data in etap:
+                        min_date,max_date = apply_min_max(min_date,max_date, data, "%d\n%m\n%y")
 
 
         self.max_date = F.datetostr(max_date,'%d.%m.%Y')
@@ -1870,7 +2057,20 @@ class Pozition():
         self.row_dates_etap_plan = row_dates_etap_plan
         self.row_time_add_etap = row_time_add_etap
         self.row_dates_supply = row_dates_supply
-
+        
+    def __repr__(self):
+        try:
+            return (
+                f"Pozition("
+                f"Пномер={self.Пномер}, "
+                f"Позиция={self.Позиция}, "
+                f"МК={self.МК}, "
+                f"Статус={self.Статус}, "
+                f"Этапов={len(self.row_dates_etap) if hasattr(self, 'row_dates_etap') else 0}, "
+                
+            )
+        except Exception as e:
+            return f"Pozition(<repr_error {type(e).__name__}>)"
 
     def update_dates_supply(self,dict_dates:dict[str:datetime.datetime]):
        return self.update_row_etaps(dict_dates)
@@ -1938,99 +2138,102 @@ class Pozition():
         return orders
 
 
-    def load_kpl_table(self,name_table):
+    def load_kpl_table(self,name_table,preload_row:dict|None= None,preload_znpr:dict|None= None):
+        if preload_row is None:
+            request = f"""
+                    SELECT * FROM {name_table} 
+                    WHERE НомПл == {self.Пномер};"""
+            resp = CSQ.custom_request_c(self.db, request, rez_dict=True)
+            if not resp:
+                return
+            row = resp[0]
+        else:
+            row = preload_row
 
-        request = f"""
-                SELECT * FROM {name_table} 
-                WHERE НомПл == {self.Пномер};"""
-        resp = CSQ.custom_request_c(self.db, request, rez_dict=True)
-        if not resp:
-            return
-        row = resp[0]
         self.dict_tables[name_table] = dict()
         for key in row.keys():
             exec(f'self.dict_tables["{name_table}"]["{key.replace(".", "_")}"] = row[key]')
+
         if name_table == 'пл_оуп':
-            if self.dict_tables[name_table]['Пномер_ЗП']:
-                request = f"""
-                                SELECT * FROM знпр 
-                                WHERE s_num == {self.dict_tables[name_table]['Пномер_ЗП']};"""
-                row = CSQ.custom_request_c(self.db, request, rez_dict=True)[0]
+            if preload_znpr is None:
+                if self.dict_tables[name_table]['Пномер_ЗП']:
+                    request = f"""
+                                    SELECT * FROM знпр 
+                                    WHERE s_num == {self.dict_tables[name_table]['Пномер_ЗП']};"""
+                    row = CSQ.custom_request_c(self.db, request, rez_dict=True)[0]
 
 
+                else:
+                    row = CSQ.dict_zero_val_row(self.db,'знпр')
             else:
-                row = CSQ.dict_zero_val_row(self.db,'знпр')
+                row = preload_znpr
+
+
             for key in row.keys():
                 field = key.replace(".", "_")
                 if field in self.dict_tables[name_table]:
                     self.dict_tables[name_table][f'{field}_base'] = self.dict_tables[name_table][field]
                 exec(f'self.dict_tables["{name_table}"]["{field}"] = row[key]')
+
     def get_list_link_mk(self):
         list_mk = CSQ.custom_request_c(self.db_naryad,f"""SELECT Пномер FROM mk 
          WHERE НомКплан == {self.Пномер} AND Дата_завершения == "" AND На_удал == 0;""",hat_c=False,one_column=True)
+        self.list_link_mk: list[int] = list_mk
         return list_mk
 
     def get_norm_by_range_dates(self, start_date_obj, end_date_obj,LIST_PROFESSIONS,mode='left_right')->dict:
-        dict_tbl_name_to_nick = {'план_'+k['name_tbl']:k['nick_name'] for k in LIST_PROFESSIONS}
-        dict_from_cld = dict()
-        data_cld = F.from_binary_pickle(self.local_graf)[0]
-        if mode == 'after_right':
-            for day in data_cld['data'].keys():
-                if  day > end_date_obj:
-                    for podr in data_cld['data'][day]['podr']:
-                        podr_data = data_cld['data'][day]['podr'][podr]
-                        if isinstance(podr_data, list) and 'план_' in podr:
-                            if podr not in dict_from_cld:
-                                dict_from_cld[podr] = 0
-                            for item in podr_data:
-                                dict_from_cld[podr] += item['Время_час']
-        if mode == 'right':
-            for day in data_cld['data'].keys():
-                if  day <= end_date_obj:
-                    for podr in data_cld['data'][day]['podr']:
-                        podr_data = data_cld['data'][day]['podr'][podr]
-                        if isinstance(podr_data, list) and 'план_' in podr:
-                            if podr not in dict_from_cld:
-                                dict_from_cld[podr] = 0
-                            for item in podr_data:
-                                dict_from_cld[podr] += item['Время_час']
-        if mode == 'left_right':
-            for day in data_cld['data'].keys():
-                if day >= start_date_obj and day <= end_date_obj:
-                    for podr in data_cld['data'][day]['podr']:
-                        podr_data = data_cld['data'][day]['podr'][podr]
-                        if isinstance(podr_data,list) and 'план_' in podr:
-                            if podr not in dict_from_cld:
-                                dict_from_cld[podr] = 0
-                            for item in podr_data:
-                                dict_from_cld[podr]+=item['Время_час']
+        dict_from_cld:dict[Table_db_info,float|int] = dict()
+        data_cld = self.local_graf.dict_days
+        fields_db_info:Fields_db_info = self.parent_self.Data_plan.FIELDS_DB_INFO
+        def add_time_h(dict_from_cld,day_gant,mode_condition:bool):
+            for etap_gant_o in day_gant.dict_etaps.values():
+                tbl_db_o = fields_db_info.tables_db.dict_tables[etap_gant_o.tbl_db]
+                if tbl_db_o not in dict_from_cld:
+                    dict_from_cld[tbl_db_o] = {'full':0,
+                                                         'condition':0}
+                cell = etap_gant_o.get_cell(Types_day_gant.plan)
+                if cell:
+                    h = cell.get_minutes()
+                    if h:
+                        dict_from_cld[tbl_db_o]['full'] += h
+                        if mode_condition:
+                            dict_from_cld[tbl_db_o]['condition'] += h
+            return dict_from_cld
 
+        if mode == 'after_right':
+            for dt, day_gant in data_cld.items():
+                dict_from_cld = add_time_h(dict_from_cld,day_gant,dt > end_date_obj)
+
+        if mode == 'right':
+            for dt, day_gant in data_cld.items():
+                dict_from_cld = add_time_h(dict_from_cld,day_gant,dt <= end_date_obj)
+
+        if mode == 'left_right':
+            for dt, day_gant in data_cld.items():
+                dict_from_cld = add_time_h(dict_from_cld,day_gant,start_date_obj <= dt <= end_date_obj)
+        groups_vid_rab_for_plan:Groups_vid_rab_for_plan = self.parent_self.Data_plan.GROUPS_VID_RAB_FOR_PLAN
         result_minutes = dict()
-        for podr , val in dict_from_cld.items():
-            if podr in dict_tbl_name_to_nick:
-                nick_name = dict_tbl_name_to_nick[podr]
-                if nick_name in ('Сборка_н_см','Сварка_н_см','Зачистка_н_см'):
-                    summ_sb = self.row_time_etap['пл_сб.Нчас_сб']
-                    part_sv = 0
-                    part_sl = 0
-                    part_zch = 0
-                    if summ_sb >0:
-                        part_sv = self.row_time_add_etap['пл_сб.Нчас_св'] * val / summ_sb
-                        part_sl = self.row_time_add_etap['пл_сб.Нчас_слсб'] * val / summ_sb
-                        part_zch = self.row_time_add_etap['пл_сб.Нчас_зач'] * val / summ_sb
-                    if 'Сварка_н_см' not in result_minutes:
-                        result_minutes['Сварка_н_см'] = 0
-                    if 'Сборка_н_см' not in result_minutes:
-                        result_minutes['Сборка_н_см'] = 0
-                    if 'Зачистка_н_см' not in result_minutes:
-                        result_minutes['Зачистка_н_см'] = 0
-                    result_minutes['Сварка_н_см'] += part_sv * 60
-                    result_minutes['Сборка_н_см'] += part_sl * 60
-                    result_minutes['Зачистка_н_см'] += part_zch * 60
-                else:
-                    if nick_name not in result_minutes:
-                        result_minutes[nick_name] = 0
-                    result_minutes[nick_name] += val*60
+        for tbl_db , data_norms in dict_from_cld.items():
+            koef_data_norms = 0
+            if data_norms['full']:
+                koef_data_norms = data_norms['condition']/data_norms['full']
+            gr = groups_vid_rab_for_plan.find_by_tbl(tbl_db)
+            if gr:
+                if tbl_db.is_composite:
+                    fields_comp = tbl_db.get_composite_fields(True)
+                    for field_comp in fields_comp:
+                        if field_comp.name_mes not in self.row_time_add_etap:
+                            raise ValueError(f'В БД не соответсвтуют поля в group_vid_rab_for_plan и podrazdel')
+                        norm = self.row_time_add_etap[field_comp.name_mes] * koef_data_norms
+                        tbl_comp = field_comp.parent_tbale
+                        gr_comp = groups_vid_rab_for_plan.find_by_tbl(tbl_comp)
+                        if gr_comp.nick_name not in result_minutes:
+                            result_minutes[gr_comp.nick_name] = 0
+                        result_minutes[gr_comp.nick_name] += norm * 60
+                if gr.nick_name not in result_minutes:
+                    result_minutes[gr.nick_name] = 0
+                result_minutes[gr.nick_name] += data_norms['condition']
+
         return result_minutes
 
     @CQT.onerror
@@ -2043,14 +2246,16 @@ class Pozition():
             return f'Не найдено ни одной МК для  позиции {self.Пномер}, МК возможно завершена, тогда нужно сменить статус позиции'
         #dict_opers(pself,self.db_naryad)
 
-        dict_vid_rab = {DICT_PROFESSIONS[_]['nick_name']:{'Норма_н_см':0,'Заверш_н_см':0,'sort':DICT_PROFESSIONS[_]['sort']} for _ in  DICT_PROFESSIONS.keys()}
+        dict_vid_rab = {DICT_PROFESSIONS[_]['nick_name']:{'Норма_н_см':0,'Заверш_н_см':0,
+                                                          'sort':DICT_PROFESSIONS[_]['sort']} for _ in  DICT_PROFESSIONS.keys()}
         dict_vid_rab = dict(sorted(dict_vid_rab.items(), key=lambda item: item[1]['sort']))
         for key in dict_vid_rab.keys():
             dict_vid_rab[key].pop('sort')
         print(f"Пномер|Наименование|Опер_номер"
               f"Опер_наименование|vid_rab_nick|add_all_time|add_zav_time|count_dse|zaversh")
-        for item in list_mk:
-            mk = Marshrut_cards(item,self.db_naryad,self.db_resxml)
+        list_mk_o = Marshrut_cards_list(list_mk)
+        for mk in list_mk_o.marshrut_cards:
+            #mk = Marshrut_cards(item,self.db_naryad,self.db_resxml)
             for dse in mk.res:
                 count_dse = dse['Количество']
 
@@ -2267,11 +2472,14 @@ class Pozition():
             return rez
         return rez #11.11.25
 
-    def update_day_plan_etap_jurnal(self, data:dict, clear_upd = False):
+    def update_day_plan_etap_jurnal(self, data:dict, clear_upd = False,precalc_old_dict:dict|None=None):
         if clear_upd: #18.09.2025 от Моренко
             old_dict = None #self.get_day_plan_etap_jurnal() 02.09.2025 от Моренко
         else:
-            old_dict = self.get_day_plan_etap_jurnal()
+            if precalc_old_dict:
+                old_dict = F.from_binary_pickle(precalc_old_dict)
+            else:
+                old_dict = self.get_day_plan_etap_jurnal()
         if old_dict == None or old_dict == False:
             old_dict = data
         else:
@@ -2295,13 +2503,14 @@ class Pozition():
             return F.from_binary_pickle(self.fact_jurnal_blolb_data)
 
 
-    def recalc_get_day_plan_as_fact(self, pl_name,f_name):
+    def recalc_get_day_plan_as_fact(self, name_time_etap:str)->dict|None:#19/04/2026 проверено
+        pl_name = 'план_' + name_time_etap
+        f_name = 'факт_' + name_time_etap
         dict_days = self.get_day_plan_etap_jurnal()
         if f_name not in dict_days:
-            return False
-        name_time_etap = pl_name.replace('план_','')
+            return
         if name_time_etap not in self.parent_self.Data_plan.DICT_PODR:
-            return False
+            return
         name_field_time = name_time_etap + '.' + self.parent_self.Data_plan.DICT_PODR[name_time_etap]['Имя_поля'].split(';')[0]
         name_field_end = name_time_etap + '.' + self.parent_self.Data_plan.DICT_PODR[name_time_etap]['Имя_конца_этапа'].split(';')[0]
         name_field_start = name_time_etap + '.' + self.parent_self.Data_plan.DICT_PODR[name_time_etap]['Имя_начала_этапа'].split(';')[0]
@@ -2332,7 +2541,7 @@ class Pozition():
                     break
             if date_target == None:
                 CQT.blink_obj_c(self.parent_self,1,le_date_or_num,'Не число и не дата')
-                return False
+                return
 
 
 
@@ -2361,30 +2570,30 @@ class Pozition():
             date_or_num = round(remains_time/count_days_before/60,3)
             pull_time = date_or_num * 60 * count_days_before + summ_fact
 
-
-
         average = F.valm(date_or_num)*60
         if average < 1:
             CQT.blink_obj_c(self.parent_self, 1, le_date_or_num, 'Не может быть меньше 0.0167')
-            return False
-
-        #if len(dict_days[f_name]) > 0:
-        #    average = summ_fact / len(dict_days[f_name])
-        #delta = summ_fact - self.row_time_etap[name_field_time]
+            return
 
         summ_plan = 0
-        cld = copy.deepcopy(self.parent_self.Data_plan.DICT_CLD)
+        DICT_CLD = self.parent_self.Data_plan.DICT_CLD
 
         new_last_date = self.row_dates_etap_plan[name_field_end]
         new_first_date = ''
 
-        for day, vals in cld.items():
+        dict_plan_days = dict()
+
+
+        for day, cld_day in DICT_CLD.items():
+            cld_day:Month_cld_day
+
             day_gui = F.datetostr(day,"%d\n%m\n%y")
             plan = 0
             if pull_time == 0:
                 break
             if len(dict_days_tmp[f_name]) == 0:
-                if vals['Выходные'] == 0 and day >= F.strtodate(self.row_dates_etap_plan[name_field_start]) and day > F.now(''):
+                if (cld_day.is_holyday == 0 and
+                        day >= F.strtodate(self.row_dates_etap_plan[name_field_start]) and day > F.now('')):
                     plan = average
             else:
                 if day_gui in dict_days_tmp[f_name]:
@@ -2396,16 +2605,14 @@ class Pozition():
             if round(pull_time - plan,2) <= 0:
                 plan = pull_time
             pull_time -= plan
-            cld[day]['план'] = plan
-            cld[day]['day_gui'] = day_gui
+            dict_plan_days[day] = plan
 
-
-        for day, vals in cld.items():
-            if 'day_gui' in vals:
-                dict_days[pl_name][vals['day_gui']] = round(vals['план'],2)
-                new_last_date = F.datetostr(day, "%Y-%m-%d")
-                if new_first_date == '':
-                    new_first_date = F.datetostr(day, "%Y-%m-%d")
+        for dt_day, val in dict_plan_days.items():
+            day_gui = F.datetostr(dt_day,"%d\n%m\n%y")
+            dict_days[pl_name][day_gui] = round(val ,2)
+            new_last_date = F.datetostr(dt_day, "%Y-%m-%d")
+            if new_first_date == '':
+                new_first_date = F.datetostr(dt_day, "%Y-%m-%d")
 
         fl = False
         new_tbl = copy.deepcopy(self.row_dates_etap_plan)
@@ -3164,73 +3371,159 @@ class Techkards():
 
     def list_osn_mats(self,DICT_VID_NOMEN:dict,DICT_NOMEN:dict)->list:
         return []#todo
+class _base_marshrut_cards(_ImportDb):
+    db = db_naryad = CFG.Config.project.db_naryad
+    db_resxml = CFG.Config.project.db_resxml
+    db_users = CFG.Config.project.db_users
+    db_kplan = CFG.Config.project.db_kplan
 
 
-class Marshrut_cards():
+    def get_str_select(self)->str:
+        dict_fields = CSQ.dict_types_tbl(self.db, 'mk')
+        select_list = [_ for _, v in dict_fields.items() if v not in [bytes] and _ not in ['Номер_заказа','Номер_проекта']]
+        str_select = ', '.join([f'mk.{field}' for field in select_list])
+        return str_select
+
+    def _calc_dict_rc(self):
+        DICT_RC = dict()
+        custom_request_c = f'''SELECT 
+                rab_c.Код,
+                etaps.name as etaps_name,
+                rab_c.Имя as Имя
+             FROM rab_c INNER JOIN etaps ON etaps.s_num = rab_c.etaps_num WHERE rab_c.poki = {CFG.Config.place.poki};'''
+
+        SPIS_RC = CSQ.custom_request_c(self.db_users, custom_request_c, hat_c=False, rez_dict=True,
+                                       attach_dbs=self.db_naryad)
+        DICT_RC = F.deploy_dict_c(SPIS_RC, 'Код')
+        return DICT_RC
+    
+    
+
+
+class Marshrut_cards_list(_base_marshrut_cards):
+    def __init__(self,set_nums:set[int]|list[int]|tuple[int],load_resource:bool=True):
+
+
+        self.DICT_RC = self._calc_dict_rc()
+
+        str_select = self.get_str_select()
+        postfix = ''
+        join_postfix = 'NULL as res,'
+        attach_dbs = [self.db_kplan]
+        if load_resource:
+            postfix = f'res.data as res, '
+            join_postfix = f'LEFT JOIN res ON res.Номер_мк = mk.Пномер '
+            if  CFG.Config.project.db_resxml not in attach_dbs:
+                attach_dbs.append(self.db_resxml)
+        request = f"""
+                        SELECT 
+                        {str_select},
+                        mk.Обеспечение,
+                        
+                         CASE WHEN знпр.№проекта IS NOT NULL 
+                           THEN знпр.№проекта 
+                           ELSE mk.Номер_проекта 
+                           END AS Номер_проекта, 
+    
+    
+                            CASE WHEN знпр.№ERP IS NOT NULL 
+                           THEN знпр.№ERP 
+                           ELSE mk.Номер_заказа 
+                           END AS Номер_заказа,
+                        
+                        {postfix}
+                        дорезки_мк.Причина AS дорезки_мк_Причина,
+
+                        тип_дорезок.Имя AS тип_дорезок_Имя,
+                        тип_дорезок.Коэффициент_наряда AS тип_дорезок_Коэффициент_наряда,
+
+                        тип_доработок.Имя AS тип_доработок_Имя,
+                        тип_доработок.Коэффициент_наряда AS тип_доработок_Коэффициент_наряда,
+
+                        Тип_мк.Имя AS Тип_мк_Имя,
+                        Тип_мк.rgb AS Тип_мк_rgb
+
+                         FROM mk LEFT JOIN дорезки_мк ON дорезки_мк.Номер_мк = mk.Пномер  
+                        LEFT JOIN тип_дорезок ON тип_дорезок.Пномер = дорезки_мк.Причина  
+                        LEFT JOIN тип_доработок ON тип_доработок.Пномер = mk.Тип_доработки 
+                        LEFT JOIN plan ON plan.Пномер = mk.НомКплан  
+                       LEFT JOIN пл_оуп ON пл_оуп.НомПл = mk.НомКплан 
+                        LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП
+                                        LEFT JOIN Тип_мк ON Тип_мк.Пномер = mk.Тип 
+                                        {join_postfix}
+                           WHERE mk.Пномер in ({CSQ.prepare_list_to_tuple(set_nums)});"""
+
+        data  = CSQ.custom_request_c(self.db_naryad,request,rez_dict=True,attach_dbs=attach_dbs)
+
+        req_nars = f"""SELECT ФИО, ФИО2, Фвремя, Фвремя2, 
+               ДСЕ_ID, Операции, Опер_колво, Номер_мк
+          FROM naryad WHERE Номер_мк in ({CSQ.prepare_list_to_tuple(set_nums)}) and Внеплан == {CFG.Config.place.КодыНарядов.Плановая};"""
+        data_nars = CSQ.custom_request_c(self.db_naryad, req_nars, rez_dict=True)
+        self.marshrut_cards: list[Marshrut_cards] = []
+        for it in data:
+            list_nars = [_ for _ in data_nars if _['Номер_мк'] == it['Пномер']]
+            self.marshrut_cards.append(
+                Marshrut_cards(None,None,None, load_resource, it, it['res'], self.DICT_RC,list_nars)
+                    )
+
+
+class Marshrut_cards(_base_marshrut_cards):
     def __init__(self,
                  nom_mk: int,
-                 db_mk,
-                 db_resxml='',
+                 db_mk,#del
+                 db_resxml='',#del
                  load_resource=True,
                  row_from_db:dict=None,
                  byte_data_res_from_db=None,
-                 load_znpr: bool = True,
+
                  DICT_RC_BY_CODE=None,
+                 list_nars:list[dict]=None,
+                 dict_etaps: dict = None
                  ):
-        self.db = db_mk
-        self.db_resxml = db_resxml
-        request = f"""
-                SELECT 
-                mk.Пномер,
-                mk.Дата,
-                mk.Статус,
-                mk.Номенклатура,
-                mk.Номер_заказа,
-                mk.Номер_проекта,
-                mk.Вид,
-                mk.Примечание,
-                mk.Основание,
-                mk.Прогресс,
-                mk.Приоритет,
-                mk.Направление,
-                mk.Вес,
-                mk.xml,
-                mk.Количество,
-                mk.Статус_ЧПУ,
-                mk.Ресурсная,
-                mk.Дата_завершения,
-                mk.Коэф_парал,
-                mk.Обеспечение,
-                mk.Место,
-                mk.Искл_план_рм,
-                mk.Тип,
-                mk.Ресурсная_дата,
-                mk.ФИО,
-                mk.НомКплан,
-                mk.check_execute_opers,
-                mk.Тип_доработки,
-                mk.На_удал,
 
-                дорезки_мк.Причина AS дорезки_мк_Причина,
 
-                тип_дорезок.Имя AS тип_дорезок_Имя,
-                тип_дорезок.Коэффициент_наряда AS тип_дорезок_Коэффициент_наряда,
-
-                тип_доработок.Имя AS тип_доработок_Имя,
-                тип_доработок.Коэффициент_наряда AS тип_доработок_Коэффициент_наряда,
-
-                Тип_мк.Имя AS Тип_мк_Имя,
-                Тип_мк.rgb AS Тип_мк_rgb
-
-                 FROM mk LEFT JOIN дорезки_мк ON дорезки_мк.Номер_мк = mk.Пномер  
-                LEFT JOIN тип_дорезок ON тип_дорезок.Пномер = дорезки_мк.Причина  
-                LEFT JOIN тип_доработок ON тип_доработок.Пномер = mk.Тип_доработки 
-                                LEFT JOIN Тип_мк ON Тип_мк.Пномер = mk.Тип 
-                   WHERE mk.Пномер == {nom_mk};"""
         if row_from_db:
             row = row_from_db
         else:
-            row = CSQ.custom_request_c(db_mk, request, rez_dict=True)[0]
+            str_select = self.get_str_select()
+
+            request = f"""
+                            SELECT 
+                            {str_select},
+                            mk.Обеспечение,
+                            
+                            CASE WHEN знпр.№проекта IS NOT NULL 
+                           THEN знпр.№проекта 
+                           ELSE mk.Номер_проекта 
+                           END AS Номер_проекта, 
+    
+    
+                            CASE WHEN знпр.№ERP IS NOT NULL 
+                           THEN знпр.№ERP 
+                           ELSE mk.Номер_заказа 
+                           END AS Номер_заказа,
+                            
+                            дорезки_мк.Причина AS дорезки_мк_Причина,
+
+                            тип_дорезок.Имя AS тип_дорезок_Имя,
+                            тип_дорезок.Коэффициент_наряда AS тип_дорезок_Коэффициент_наряда,
+
+                            тип_доработок.Имя AS тип_доработок_Имя,
+                            тип_доработок.Коэффициент_наряда AS тип_доработок_Коэффициент_наряда,
+
+                            Тип_мк.Имя AS Тип_мк_Имя,
+                            Тип_мк.rgb AS Тип_мк_rgb
+
+                             FROM mk LEFT JOIN дорезки_мк ON дорезки_мк.Номер_мк = mk.Пномер  
+                            LEFT JOIN тип_дорезок ON тип_дорезок.Пномер = дорезки_мк.Причина  
+                            LEFT JOIN тип_доработок ON тип_доработок.Пномер = mk.Тип_доработки 
+                            LEFT JOIN plan ON plan.Пномер = mk.НомКплан  
+                           LEFT JOIN пл_оуп ON пл_оуп.НомПл = mk.НомКплан 
+                            LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП
+                                            LEFT JOIN Тип_мк ON Тип_мк.Пномер = mk.Тип 
+                               WHERE mk.Пномер == {nom_mk};"""
+
+            row = CSQ.custom_request_c(db_mk, request, rez_dict=True, attach_dbs=self.db_kplan)[0]
 
         self.row = row
         self.Пномер = None,
@@ -3249,7 +3542,6 @@ class Marshrut_cards():
         self.xml = None,
         self.Количество = None,
         self.Статус_ЧПУ = None,
-        self.Ресурсная = None,
         self.Дата_завершения = None,
         self.Коэф_парал = None,
         self.Обеспечение = None,
@@ -3269,57 +3561,34 @@ class Marshrut_cards():
         self.тип_доработок_Коэффициент_наряда = None
         self.Тип_мк_Имя = None
         self.Тип_мк_rgb = None
+        self.ТипВыгрузкиТрЗт = None
+        self.xml_with_pki = None
+        self.res = None
+        self.res_o:ResSpec|None = None
 
         self.DICT_RC = DICT_RC_BY_CODE
         if self.DICT_RC is None:
-            dict_rc(self, CFG.Config.project.db_users)
+            self.DICT_RC = self._calc_dict_rc()
+        self.parce_row_dict(row)
 
-        for key in row.keys():
-            exec(f'self.{key.replace(".", "_")} = row[key]')
+        nom_mk = self.Пномер
         if self.Пномер != None:
-            if db_resxml != '' and load_resource:
+            if load_resource:
                 self.res = Marshrut_cards._load_res(self.Пномер, db_resxml=self.db_resxml,
-                                                    byte_data_res_from_db=byte_data_res_from_db)
-        if load_znpr:
-            try:
-                config = CFG.Config.project
-
-                squery = f"""SELECT CASE WHEN знпр.№проекта IS NOT NULL 
-                       THEN знпр.№проекта 
-                       ELSE mk.Номер_проекта 
-                       END AS Номер_проекта, 
-
-
-                        CASE WHEN знпр.№ERP IS NOT NULL 
-                       THEN знпр.№ERP 
-                       ELSE mk.Номер_заказа 
-                       END AS Номер_заказа 
-
-                FROM mk 
-                         LEFT JOIN plan ON plan.Пномер = mk.НомКплан  
-                       LEFT JOIN пл_оуп ON пл_оуп.НомПл = mk.НомКплан 
-                LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП 
-
-                           WHERE mk.Пномер = {self.Пномер}"""
-                query = CSQ.custom_request_c(self.db, squery, rez_dict=True, one=True, attach_dbs=(config.db_kplan))
-                self.Номер_заказа = query['Номер_заказа']
-                self.Номер_проекта = query['Номер_проекта']
-            except:
-                print(f'Marshrut_cards __init__ : CFG.Config.project.db_kplan err')
-
+                                                    byte_data_res_from_db=byte_data_res_from_db,list_nars= list_nars,
+                                                    dict_etaps=self.DICT_RC)
+                self.res_o = ResSpec(wet_data=self.res,mk_o=self)
 
     def get_poz(self)->Pozition:
-        self.poz:Pozition = Pozition(self.НомКплан,CFG.Config.project.db_kplan,CFG.Config.project.db_naryad,
-                                     CFG.Config.project.db_resxml,CFG.Config.project.db_users
-                                     )
+        self.poz:Pozition = Pozition(self.НомКплан)
         return  self.poz
 
     def calc_poki(self)->int|None:
         return CSQ.custom_request_c( # 07.04.2026
-            CFG.Config.project.db_naryad,
+            self.db_naryad,
             f"""SELECT poki FROM plan WHERE Пномер={self.НомКплан};""",hat_c=False,one=True,
             one_column=True,
-            attach_dbs=CFG.Config.project.db_kplan
+            attach_dbs=self.db_kplan
         )
 
     def is_del(self):
@@ -3423,14 +3692,14 @@ class Marshrut_cards():
         return dict_vid_rab
 
     @staticmethod
-    def _load_res(nom_mk: int, db_resxml='', byte_data_res_from_db=None):
+    def _load_res(nom_mk: int, db_resxml='', byte_data_res_from_db=None,list_nars:list[dict]=None,dict_etaps:dict=None):
         if db_resxml == '':
             db_resxml = F.bdcfg('db_resxml')
         if byte_data_res_from_db:
-            res = load_res(nom_mk=[nom_mk, [byte_data_res_from_db]])
+            res = load_res(nom_mk=[nom_mk, [byte_data_res_from_db]],list_nars=list_nars,dict_etaps=dict_etaps)
         else:
             # res = CSQ.custom_request_c(db_resxml, f'''SELECT data FROM res WHERE Номер_мк == {nom_mk}''')
-            res = load_res(nom_mk, db_resxml=db_resxml)
+            res = load_res(nom_mk, db_resxml=db_resxml,list_nars=list_nars,dict_etaps=dict_etaps)
 
         return res
 
@@ -3459,7 +3728,7 @@ class Marshrut_cards():
 
 class _Naryad_base():
     def calc_dict_empl(self,db_users:str)->list[dict]:
-        return F.deploy_dict_c(CSQ.custom_request_c(db_users, custom_request_c=f"""SELECT * FROM employee WHERE Пномер IN( SELECT Пномер FROM (SELECT
+        data = F.deploy_dict_c(CSQ.custom_request_c(db_users, custom_request_c=f"""SELECT * FROM employee WHERE Пномер IN( SELECT Пномер FROM (SELECT
             	MAX(Пномер) as Пномер,
             	ФИО
             FROM
@@ -3467,7 +3736,8 @@ class _Naryad_base():
             GROUP BY
             	ФИО
             HAVING COUNT(*) >= 1 )) order by ФИО;""", rez_dict=True), 'ФИО')
-
+        return  data
+        
     def calc_dict_dolgn_etap(self,db_naryad:str)->list[dict]:
         return F.deploy_dict_c(
             CSQ.custom_request_c(db_naryad, f"""SELECT * FROM dolgn_etap""", rez_dict=True),
@@ -3549,7 +3819,8 @@ class Naryad_param():
         return ';  '.join([f'{k}: "{v}"' for k,v in self.__dict__.items() if k not in ('parent')])
 
 class Naryads(_Naryad_base):
-    def __init__(self,p_nom_or_row,db_naryad=None,dict_dolgn_etap=None,db_users=None,dict_empl=None,dict_opers=None):
+    def __init__(self,p_nom_or_row,db_naryad=None,dict_dolgn_etap=None,db_users=None,dict_empl=None,dict_opers=None,
+                 DICT_DATA_DOLGN_ETAP:dict|None=None):
         self.params = []
         self.db = db_naryad
         self.row = []
@@ -3632,9 +3903,9 @@ class Naryads(_Naryad_base):
             WHERE mk.Пномер == {self.Номер_мк};''',rez_dict=True, one=True)
                 self.__dict__.update(row)
             if self.ФИО != '':
-                self.Этап_фио_1 = etap_by_employee(date_str=self.ДатаМК, key_employee=self.ФИО) # 07.07.25
+                self.Этап_фио_1 = self.calc_etap_by_fio(DICT_DATA_DOLGN_ETAP,self.ФИО)
             if self.ФИО2 != '':
-                self.Этап_фио_2 = etap_by_employee(date_str=self.ДатаМК, key_employee=self.ФИО2) # 07.07.25
+                self.Этап_фио_2 = self.calc_etap_by_fio(DICT_DATA_DOLGN_ETAP,self.ФИО2) # 07.07.25
 
         self.dict_dolgn_etap:dict[dict] = dict_dolgn_etap
         self.dict_empl:dict[dict] = dict_empl
@@ -3647,6 +3918,33 @@ class Naryads(_Naryad_base):
             pref = '*'
             num = ''
         return f'{pref}{num}, МК {self.Номер_мк}, {self.Норма_времени} мин.: {self.ФИО}-{self.Фвремя}|{self.ФИО2}-{self.Фвремя2}. Вып:{self.Подтвержд_вып_дата}'
+
+    def calc_etap_by_fio(self,DICT_DATA_DOLGN_ETAP:dict|None,ФИО:str)->str|None:
+        etap_for_fio = None
+        if DICT_DATA_DOLGN_ETAP:
+            etap_for_fio = self.calc_precalc_etaps(DICT_DATA_DOLGN_ETAP, ФИО)
+        if etap_for_fio is None:
+            etap_for_fio = etap_by_employee(date_str=self.ДатаМК, key_employee=ФИО)  # 07.07.25
+        return etap_for_fio
+
+    def calc_precalc_etaps(self,DICT_DATA_DOLGN_ETAP:dict|None,ФИО:str)->str|None:
+        if not DICT_DATA_DOLGN_ETAP:
+            return None
+
+        if ФИО not in DICT_DATA_DOLGN_ETAP:
+            return None
+
+        for diap, data_etap_precalc in DICT_DATA_DOLGN_ETAP[ФИО].items():
+
+            start_d, end_d = diap
+
+            start_ok = start_d is None or self.ДатаМК >= start_d
+            end_ok = end_d is None or self.ДатаМК < end_d
+
+            if start_ok and end_ok:
+                return data_etap_precalc['этап']
+
+        return None
 
     def refresh(self):
         dict_dolgn_etap, dict_empl, dict_opers = self.dict_dolgn_etap, self.dict_empl, self.dict_opers
@@ -3691,67 +3989,79 @@ class Naryads(_Naryad_base):
 
     def _get_strukt_params(self):
 
+
+        def _check_count_elems(data,limit,name:str):
+            if len(data) == limit:
+                return data
+            print(f'naryad {self.Пномер} err {name}')
+            return ['' for _ in range(limit)]
+
         def _list_dse_name_nn(self):
             if self.ДСЕ == '':
                 return []
             list_dse = self.ДСЕ.split('|')
-            return [name_nn for name_nn in list_dse]
+            return list_dse
 
-        def _list_dse_id(self):
+        def _list_dse_id(self,limit):
             if self.ДСЕ_ID == '':
                 return []
             list_dse_id = self.ДСЕ_ID.split('|')
-            return [int(_) for _ in list_dse_id]
+            rez = [int(_) for _ in list_dse_id]
+            return _check_count_elems(rez,limit,'_list_dse_id')
 
-        def _list_opers_nom_name(self):
+        def _list_opers_nom_name(self,limit):
             if self.ДСЕ_ID == '$':
                 return []
             list_opers = self.Операции.split('|')
-            return [pnom_name.split('$') for pnom_name in list_opers]
+            rez = [pnom_name.split('$') for pnom_name in list_opers]
+            return _check_count_elems(rez,limit,'_list_opers_nom_name')
 
-        def _list_kolvo(self):
+        def _list_kolvo(self,limit):
             if self.Опер_колво == '':
                 return []
             list_kol = self.Опер_колво.split('|')
-            return [int(_) for _ in list_kol ]
+            rez = [int(_) for _ in list_kol ]
+            return _check_count_elems(rez,limit,'_list_kolvo')
 
-        def _list_prof(self):
+        def _list_prof(self,limit):
             if self.Профессии == '':
                 return []
             list_prof = self.Профессии.split('|')
-            return list_prof
+            return _check_count_elems(list_prof, limit, '_list_prof')
 
-        def _list_time(self):
+        def _list_time(self,limit):
             if self.Профессии == '1' and self.ДСЕ_ID == '':
                 return []
             list_time_minutes =self.Опер_время.split('|')
-            return [F.valm(ch) for ch in list_time_minutes]
+            rez = [F.valm(ch) for ch in list_time_minutes]
+            return _check_count_elems(rez, limit, '_list_time')
 
-        def _list_vid_r(self):
+        def _list_vid_r(self,limit):
             if self.Виды_работ == '':
                 return []
             list_vid_r =self.Виды_работ.split('|')
-            return [vid_r for vid_r in list_vid_r]
+            rez =  [vid_r for vid_r in list_vid_r]
+            return _check_count_elems(rez, limit, '_list_vid_r')
+
 
         list_dse = _list_dse_name_nn(self)
-        list_opers = _list_opers_nom_name(self)
-        list_kol = _list_kolvo(self)
-        list_time_minutes = _list_time(self)
-        list_dse_id = _list_dse_id(self)
-        list_prof = _list_prof(self)
-        list_vid_r = _list_vid_r(self)
+        list_opers = _list_opers_nom_name(self,len(list_dse))
+        list_kol = _list_kolvo(self,len(list_dse))
+        list_time_minutes = _list_time(self,len(list_dse))
+        list_dse_id = _list_dse_id(self,len(list_dse))
+        list_prof = _list_prof(self,len(list_dse))
+        list_vid_r = _list_vid_r(self,len(list_dse))
 
         self.params_o = []
         for i in range(len(list_dse_id)):
-            if len(list_prof) != len(list_dse_id):
-                print(f'naryad {self.Пномер} err list_prof')
-                list_prof = ['' for _ in list_dse_id]
-            if len(list_vid_r) != len(list_dse_id):
-                print(f'naryad {self.Пномер} err list_prof')
-                list_vid_r = ['' for _ in list_dse_id]
-
+            if len(list_opers[i]) == 2:
+                num_oper = list_opers[i][0]
+                name_oper = list_opers[i][1]
+            else:
+                raise IndexError(f'Наряд {self.Пномер}, ошибка в номере операци {list_opers[i]}')
+            
             param_o = Naryad_param(self,list_dse[i],int(list_dse_id[i]),
-                                  list_opers[i][0],list_opers[i][1],
+                                  num_oper,name_oper,
                                   int(list_kol[i]),F.valm(list_time_minutes[i]),
                                   list_prof[i],list_vid_r[i]
                                   )
@@ -3955,24 +4265,33 @@ class Naryads(_Naryad_base):
             return
         jur.calc_and_set_poditog(jur.selected_fragment_end_state, jur.selected_fragment_end_date)
         if jur.selected_fragment_end_state == 'Завершен':
-
-            if self.Фвремя == 0 or self.Фвремя2 == 0:
+            if self.Фвремя in (0,'') or self.Фвремя2 in (0,''):
                 jur.calc_and_fill_nar_by_zaversh(self.dict_empl, jur.user)
         while jur.next_fragment():
             if jur.selected_fragment_end_date == None:
                 break
             jur.calc_and_set_poditog(jur.selected_fragment_end_state, jur.selected_fragment_end_date)
             if jur.selected_fragment_end_state == 'Завершен':
-
-                if self.Фвремя == 0 or self.Фвремя2 == 0:
+                if self.Фвремя in (0,'') or self.Фвремя2 in (0,''):
                     jur.calc_and_fill_nar_by_zaversh(self.dict_empl, jur.user)
 
-    def get_list_from_jurnal(self,blob_pass=False):
-        jur = Jurnal_nar(self.db,self.Пномер,blob_pass=blob_pass)
+    def get_list_from_jurnal(self,blob_pass=False,data_jur:list[dict]|None=None):
+        jur = Jurnal_nar(self.db,self.Пномер,blob_pass=blob_pass,list_dicts_jur=data_jur)
         return jur
 
-    def recalc_fact(self):
-        jur = self.get_list_from_jurnal()
+    def delete(self)->bool:
+        if self.get_list_from_jurnal().rows:
+            print('Naryads.delete Наряд взят в работу - удаление невозможно')
+            return False
+        custom_request_c = f'''DELETE FROM naryad WHERE Пномер == {self.Пномер}'''
+        if CSQ.custom_request_c(self.db, custom_request_c):
+            return True
+        else:
+            print('Ошибка удаления')
+            return False
+
+    def recalc_fact(self,data_jur:list[dict]|None=None):
+        jur = self.get_list_from_jurnal(data_jur = data_jur)
         summ1 = 0
         summ2 = 0
         fl_zav1 = False
@@ -4092,9 +4411,15 @@ class Naryads(_Naryad_base):
         for key in self.params[0].keys():
             elem = '|'.join([str(_[key]) for _ in self.params])
             exec(f'self.{key} = "{elem}"')
+        self._build_oper_attr_from_params()
         self.recalc_astronom_time(DICT_OPERS)
         self._save_nar()
-
+    
+    def _build_oper_attr_from_params(self):
+        elem = '|'.join(['$'.join([str(_['Операции_номер']), _['Операции_имя']]) for _ in self.params])
+        self.row['Операции'] = elem
+        self.Операции = elem
+    
     def _recalc_selfrow(self):
         for key in self.row.keys():
             if key in self.__dict__:
@@ -4106,7 +4431,8 @@ class Naryads(_Naryad_base):
                 elem = '|'.join([str(_[key]) for _ in self.params])
                 self.row[key] = elem
                 exec(f'self.{key} = "{elem}"')
-
+        self._build_oper_attr_from_params()
+        
     def save(self):
         self._save_nar()
 
@@ -4252,7 +4578,6 @@ class Naryads(_Naryad_base):
         if nar_to_block:
             CSQ.custom_request_c(db_nar, f"""UPDATE naryad SET month_closing_block = 
                      "{previos_month_str}" WHERE Пномер in ({CSQ.prepare_list_to_tuple(list(nar_to_block))})""")
-
 
 
 class Group_nar(_ImportDb):
@@ -4548,8 +4873,6 @@ class Group_nar(_ImportDb):
         return res
 
 
-
-
 class Groups_nar():
 
     def __init__(self,db:str,app_self,user:Emploee_usr):
@@ -4581,7 +4904,7 @@ class Groups_nar():
             CQT.msgbox(f'Группа с таким именем уже существует', app_self=self.app_self)
             return
         res = CSQ.custom_request_c(self.db, f"""INSERT INTO groups (name,user_ref)
-              VALUES (?,?) RETURNING id """, list_of_lists_c=[name, self.user_ref], returning=True, rez_dict=True,
+              VALUES (?,?) RETURNING id """, list_of_lists_c=[name, self.user_ref],  rez_dict=True,
                                    one=True)
         new_id = res['id']
         self._load_groups()
@@ -4844,12 +5167,8 @@ class Jurnal_nar():
                 if blob_pass:
                     dict_fields= CSQ.list_types_table(db_nar,'jurnal')
                     fields = ', '.join([k for k,v in dict_fields.items() if v != 'BLOB'])
-                limit_date = ''
-                if CFG.Config.user_config.is_developer and os.environ.get('DEV_OFFSET_NOW'):
-                    lst_date = os.environ.get('DEV_OFFSET_NOW')
-                    limit_date = f'AND datetime(Дата) < datetime({lst_date!r})'
                 list_zap = CSQ.custom_request_c(db_nar, f"""SELECT {fields}
-                        FROM jurnal WHERE {postfix_nom}{postfix} {limit_date} ORDER BY Номер_наряда, datetime(Дата) ASC;""", # 30.01.2026
+                        FROM jurnal WHERE {postfix_nom}{postfix} ORDER BY Номер_наряда, datetime(Дата) ASC;""", # 30.01.2026
                                                 rez_dict=True)
         else:
             if nom_nar == 0:
@@ -4896,22 +5215,18 @@ class Jurnal_nar():
         except Exception:
             self.fragment = None
 
-    def is_idle(self):
-        idle_status = 'Плановая'
-        query_vnepl = f"""
-            SELECT коды_веплана_для_наряда.name
-            FROM naryad
-            INNER JOIN коды_веплана_для_наряда ON коды_веплана_для_наряда.code = naryad.Внеплан
-            WHERE naryad.Пномер = {self.nom_nar} 
-        """
-        nar_status = CSQ.custom_request_c(
-            CFG.Config.project.db_naryad,
-            query_vnepl,
-            one_column=True,
-            hat_c=False,
-            one=True
-        )
-        return nar_status == idle_status
+    def fix_poditogs(self):
+        for row in self.rows:
+            if row['Статус'] == 'Начат':
+                self.set_selected_fragment(row['Пномер'])
+            break
+        if not self.selected_fragment_end_date is None:
+            self.calc_and_set_poditog(self.selected_fragment_end_state, self.selected_fragment_end_date)
+        while self.next_fragment():
+            if self.selected_fragment_end_date == None:
+                break
+            self.calc_and_set_poditog(self.selected_fragment_end_state, self.selected_fragment_end_date)
+
 
     def clear_mark_confirm(self):  # 10.04.25
         query = f"""
@@ -5029,37 +5344,47 @@ class Jurnal_nar():
         return dict_etaps, data_for_update_mes_db
 
 
-    def create_data_trdz_for_erp(self, parent_self, s_num_kpl, db_kpl, nom_nar, db_usres, db_resxml,DICT_PROFESSIONS,DICT_VID_RABOT=None,day_shift_hours=1):
-
-        dict_rez = dict()
+    def get_data_etap_erp_from_kpl(self,s_num_kpl:int,db_kpl:str)->tuple[dict|None,str]:
         if s_num_kpl == 0:
-            CQT.msgbox(f'КПЛ номер 0')
-            return
-        data_etap_erp = CSQ.custom_request_c(db_kpl,f"""SELECT пл_оуп.№ERP, пл_оуп.Дата_заявки_на_произв, пл_оуп.НомПартии_ЗП, знпр.Ref_Key_py, знпр.data_etaps_from_erp 
+
+            return None, f'КПЛ номер 0'
+        data_etap_erp = CSQ.custom_request_c(db_kpl,f"""SELECT пл_оуп.№ERP, пл_оуп.Дата_заявки_на_произв,
+          знпр.Ref_Key_py
          FROM знпр INNER JOIN пл_оуп ON пл_оуп.Пномер_ЗП = знпр.s_num WHERE пл_оуп.НомПл == {s_num_kpl}""", rez_dict=True, one=True)
         if data_etap_erp == None or data_etap_erp == False:
-            CQT.msgbox(f'Ошибка получения Пномер_ЗП')
-            return
+
+            return None, f'Ошибка получения Пномер_ЗП'
         if F.is_date(data_etap_erp['Дата_заявки_на_произв'],"%Y-%m-%d") == False:
-            CQT.msgbox(f'В КПЛ {s_num_kpl},Дата_заявки_на_произв не дата, обратиться в ПДО')
-            return
+
+            return None, f'В КПЛ {s_num_kpl},Дата_заявки_на_произв не дата, обратиться в ПДО'
+
+        return  data_etap_erp, ''
+
+    def create_data_trdz_for_erp(self, parent_self, s_num_kpl, db_kpl, nom_nar, db_usres, db_resxml,DICT_PROFESSIONS,
+                                 DICT_VID_RABOT=None,day_shift_hours=1,ref_current_etap:str|None = None,
+                                 foreced_ref:bool=False)->tuple[dict|None,list|None,str]:
+
+        dict_rez = dict()
+
+        data_etap_erp,err = self.get_data_etap_erp_from_kpl(s_num_kpl,db_kpl)
+        if data_etap_erp is None:
+            return None,None,err
+
         ref_Key_py = data_etap_erp['Ref_Key_py']
-        dict_etaps_from_erp = F.from_binary_pickle(data_etap_erp['data_etaps_from_erp'])
-        if dict_etaps_from_erp == None:
-            CQT.msgbox(f'В КПЛ {s_num_kpl} Не заполнены этапы при создании, обратиться в ПДО')
-            return
-        part_py = data_etap_erp['НомПартии_ЗП']
         nar = Naryads(nom_nar, self.db_nar, parent_self.Data.DICT_DOLGN_ETAP, db_usres, parent_self.Data.DICT_EMPL_FULL) #07.07.25 по задаче(100056203)
         etap = nar.etap_by_fio(self.user)
         if etap in parent_self.Data.DICT_ETAPI_FULL:
             if parent_self.Data.DICT_ETAPI_FULL[etap]['ДляЕРП'] == 0:
-                CQT.msgbox(f'Этап {etap} не может быть выгуржен в ЕРП')
-                return
-        etap_dict = calc_num_etap_from_name_etap(dict_etaps_from_erp,part_py,etap,s_num_kpl,nar.Пномер)
-        if etap_dict == None:
-            return
+
+                return None,None, f'Этап {etap} не может быть выгуржен в ЕРП'
+        rez_calc, err_etap_dict = calc_num_etap_from_name_etap(etap,s_num_kpl,nar.Пномер,
+                                                               ref_current_etap=ref_current_etap,foreced_ref=foreced_ref)
+        if not rez_calc:
+            return None,None, err_etap_dict
+        etap_dict = err_etap_dict
         etap_num = etap_dict['Number']
-        etap_ref_key_spec = dict_etaps_from_erp[str(part_py)]['Спецификация_Key']
+        etap_ref_key = etap_dict['Чек']
+        etap_ref_key_spec = etap_dict['Спецификация_ref']
 
         subtype = None
         nar.get_mk(db_resxml,True)
@@ -5081,13 +5406,13 @@ class Jurnal_nar():
         if etap_num not in dict_rez[py_year]['Этапы']:
             dict_rez[py_year]['Этапы'][etap_num] = {'Расход': [],
                                                     'Традозатраты': [],
-
+                                                    'ref_Key_etap': etap_ref_key
                                                     }
         count_users = nar.count_users()
         fiod = f"{self.user} {parent_self.Data.DICT_EMPL_FULL[self.user]['Должность']}"
         if self.selected_fragment_dict_row_start == None:
-            CQT.msgbox(f'Ошибка чтения фрагмента')
-            return
+
+            return  None,None, f'Ошибка чтения фрагмента'
         time_block = self.selected_fragment_dict_row_start['Подытог_нормы']
         time_nar = nar.Твремя
         koeff = 0
@@ -5108,8 +5433,8 @@ class Jurnal_nar():
             if vid_rabot == None:
                 continue
             if vid_rabot not in DICT_VID_RABOT:
-                CQT.msgbox(f'Вид работ {vid_rabot} не найден в БД МЕС')
-                return
+
+                return  None,None, f'Вид работ {vid_rabot} не найден в БД МЕС'
             if DICT_VID_RABOT[vid_rabot]['ref_Key_erp'] == None:
                 continue
             nom_nar = nar.Пномер
@@ -5125,7 +5450,7 @@ class Jurnal_nar():
                 dict_opers_by_vid_rab[vid_rabot] = {
                      'Количество_мин': 0,
                      'Дата выполнения': '',
-                     'Исполнитель': self.user,
+                     'Исполнитель': self.user.strip('_').strip(),
                      'Статья калькуляции': 'Основной ФОТ',
                      'Ключ_мес': '',
                      }
@@ -5147,11 +5472,9 @@ class Jurnal_nar():
             # etap_mat_name = oper['Этап_материала'] #25.08.25 Вычисление этапа по работнику ( задача 100059237 )
             if etap in parent_self.Data.DICT_ETAPI_FULL:
                 if parent_self.Data.DICT_ETAPI_FULL[etap]['ДляЕРП'] == 1:
-                    # etap_dict = calc_num_etap_from_name_etap(dict_etaps_from_erp, part_py, etap, s_num_kpl, nar.Пномер)
-                    # if etap_dict == None:
-                    #     return
+
                     etap_num_mat = etap_dict['Number']
-                    etap_ref_key_spec = dict_etaps_from_erp[str(part_py)]['Спецификация_Key']
+
                     for mat in oper['Материалы']:
                             if etap_num_mat not in dict_rez[py_year]['Этапы']:
                                 dict_rez[py_year]['Этапы'][etap_num_mat] = {'Расход': [],
@@ -5181,7 +5504,7 @@ class Jurnal_nar():
                          'Вид работ': vid_rabot,
                          'Количество_мин': vid_rab_data['Количество_мин'],
                          'Дата выполнения': vid_rab_data['Дата выполнения'],
-                         'Исполнитель': self.user,
+                         'Исполнитель': self.user.strip('_').strip(),
                          'Статья калькуляции': 'Основной ФОТ',
                          'Ключ_мес': vid_rab_data['Ключ_мес'],
                          })
@@ -5190,13 +5513,13 @@ class Jurnal_nar():
                                    parent_self.Data.DICT_BASES_ERP[parent_self.USER_CONFIG.ERP_base_name['Значение']]['s_num'],
                                    self.selected_fragment_start_s_num]]
 
-        return dict_rez, data_for_update_mes_db
+        return dict_rez, data_for_update_mes_db,''
 
     def update_mes_db_trdz(self,data_for_update_mes_db):
-        CSQ.custom_request_c(self.db_nar,f"""UPDATE jurnal SET Файл_выгрузки_ЕРП = ?, 
+        rez = CSQ.custom_request_c(self.db_nar,f"""UPDATE jurnal SET Файл_выгрузки_ЕРП = ?, 
         ФИО_выгрузки_ЕРП = ?, Дата_выгрузки_ЕРП = ?, Минут_выгружено_ЕРП = ?, base_ERP = ? WHERE Пномер = ?;""",
                          list_of_lists_c=data_for_update_mes_db)
-
+        return  rez
 
     def get_ontime_naruad(self,set_as_fragment=False):
         #custom_request_c = f'''SELECT Номер_наряда, Пномер, Дата FROM jurnal WHERE ФИО == "{self.user}" AND
@@ -5266,21 +5589,22 @@ class Jurnal_nar():
         if poditog == None:
             return False
         param= []
-        if (self.rows[self.selected_fragment_start_row_obj_nom]['Подытог'] != poditog and
+        curr_pd = self.rows[self.selected_fragment_start_row_obj_nom]['Подытог']
+        if (curr_pd != poditog and
                 self.rows[self.selected_fragment_start_row_obj_nom]['Подытог_нормы'] != poditog_norm):
             custom_request_c = f'UPDATE jurnal SET Подытог == ?, Подытог_нормы == ? WHERE Пномер == ?'
             param = [poditog, poditog_norm, self.selected_fragment_start_s_num]
-            print(f"Наряд: {self.nom_nar} было {self.rows[self.selected_fragment_start_row_obj_nom]['Подытог']}", f'стало {poditog}')
-        if (self.rows[self.selected_fragment_start_row_obj_nom]['Подытог'] != poditog and
+            print(f"Наряд: {self.nom_nar} было {curr_pd}", f'стало {poditog}')
+        if (curr_pd != poditog and
                 self.rows[self.selected_fragment_start_row_obj_nom]['Подытог_нормы'] == poditog_norm):
             custom_request_c = f'UPDATE jurnal SET Подытог == ? WHERE Пномер == ?'
             param = [poditog, self.selected_fragment_start_s_num]
-            print(f"Наряд: {self.nom_nar} было {self.rows[self.selected_fragment_start_row_obj_nom]['Подытог']}", f'стало {poditog}')
-        if (self.rows[self.selected_fragment_start_row_obj_nom]['Подытог'] == poditog and
+            print(f"Наряд: {self.nom_nar} было {curr_pd}", f'стало {poditog}')
+        if (curr_pd == poditog and
                 self.rows[self.selected_fragment_start_row_obj_nom]['Подытог_нормы'] != poditog_norm):
             custom_request_c = f'UPDATE jurnal SET Подытог_нормы == ? WHERE Пномер == ?'
             param = [poditog_norm, self.selected_fragment_start_s_num]
-            print(f"Наряд: {self.nom_nar} было {self.rows[self.selected_fragment_start_row_obj_nom]['Подытог']}", f'стало {poditog}')
+            print(f"Наряд: {self.nom_nar} было {curr_pd}", f'стало {poditog}')
         if len(param)>0:
             try:
                 CSQ.custom_request_c(self.db_nar, custom_request_c, list_of_lists_c=param)
@@ -5322,7 +5646,7 @@ class Jurnal_nar():
                 else:
                     poditog_norm = poditog
 
-        return poditog, round(poditog_norm,2)
+        return round(poditog,2) , round(poditog_norm,2)
 
     def get_summ_poditog(self,include_selected_fragment_start_date= False):
         fact_vr = 0
@@ -5489,7 +5813,7 @@ class Jurnal_nar():
 
     def calc_and_fill_nar_by_zaversh(self,DICT_EMPL_FULL,lbl_abstract_text):
         fact_vr = self.get_summ_poditog(True)
-
+        
         if DICT_EMPL_FULL[self.user]['Режим'] == 'Абстракт':
             custom_request_c = f'UPDATE jurnal SET ФИО = "{lbl_abstract_text}" WHERE ФИО == "{self.user}" AND Номер_наряда == {self.nom_nar}'
             CSQ.custom_request_c(self.db_nar, custom_request_c)
@@ -5890,10 +6214,12 @@ class Msg_b24():
         'recalc_dates_disp': {'chats': ['Занесение новых проектов в МЕС']},
         'obtained_kd': {'chats': ['Готовность РКД']}, #26.08.25 по задаче 100058958
         'obtained_kod_res': {'chats': ['Занесение новых проектов в МЕС']},
+
         'state_valid_kod_res_one': {'chats': ['готовность РС']},
         'state_valid_kod_res_one_wo_py': {'chats': ['готовность РС']},
         'state_valid_kod_res_all': {'chats': ['готовность РС']},
         'state_valid_kod_res_recalc': {'chats': ['Занесение новых проектов в МЕС']},
+
         'state_poz_for_production': {'chats': ['Занесение новых проектов в МЕС']},
         'check_etaps': {'chats': ['Списание_отгрузки Пауэрз на Келаст и ПР продукция Пауэрз']},
         'fix_name_res': {'chats': ['Готовность Маршрутных карт']},
@@ -6443,16 +6769,33 @@ class Zp_kpl:
          plan on plan.Пномер == сопост_кпл_зп.kpl_num
          WHERE plan.poki = {CFG.Config.place.poki} and сопост_кпл_зп.kpl_num = {kpl} """)
 
+class Plans_custom_weekends():
+    def __init__(self,list_snum_kplan:list[int]):
+        db_kplan = CFG.Config.project.db_kplan
+        dict_weekends = CSQ.custom_request_c(db_kplan, f"""SELECT Пномер, fact_jurnal_blolb_weekends FROM plan 
+                                WHERE Пномер IN ({CSQ.prepare_list_to_tuple(list_snum_kplan)});""",
+                                              rez_dict=True)
+        self.dict_plans:dict[int,Plan_custom_weekends]= dict()
+        for it in dict_weekends:
+            self.dict_plans[it["Пномер"]] = Plan_custom_weekends(it["Пномер"], it['fact_jurnal_blolb_weekends'])
 
+    def __repr__(self):
+        return f"<Plans_custom_weekends: {len(self.dict_plans)} plans>"
 
 class Plan_custom_weekends():
     db_kplan = CFG.Config.project.db_kplan
     current_pnom_kplan_select:int = None
-    current_dict_weekends:dict|None = None
+    current_dict_weekends:dict[datetime.datetime,int]|None = None
 
-    def __init__(self,snum_kplan:int):
+    def __init__(self,snum_kplan:int,blob_data='None'):
         Plan_custom_weekends.current_pnom_kplan_select = snum_kplan
-        self._get_dict_weekends()
+        self._get_dict_weekends(blob_data)
+
+    def __repr__(self):
+        plan_num = Plan_custom_weekends.current_pnom_kplan_select
+        weekends_count = len(
+            Plan_custom_weekends.current_dict_weekends) if Plan_custom_weekends.current_dict_weekends else 0
+        return f"<Plan_custom_weekends {plan_num}: {weekends_count} weekends>"
 
     def is_weekend(self,day:datetime.datetime):
         if day not in Plan_custom_weekends.current_dict_weekends:
@@ -6462,20 +6805,28 @@ class Plan_custom_weekends():
         else:
             return  False
 
-    def _get_dict_weekends(self)-> dict:
+    def _get_dict_weekends(self,blob_data='None')-> dict:
+        if blob_data == 'None':
+            blob_data = CSQ.custom_request_c(self.db_kplan, f"""SELECT fact_jurnal_blolb_weekends FROM plan 
+                            WHERE Пномер = {Plan_custom_weekends.current_pnom_kplan_select}""", one_column=True, one=True, hat_c=False)
+            if blob_data == False: #11.11.25
+                raise ConnectionError(f'Ошибка получения данных _get_dict_weekends')
+                return
 
-        dict_weekends = CSQ.custom_request_c(self.db_kplan, f"""SELECT fact_jurnal_blolb_weekends FROM plan 
-                        WHERE Пномер = {Plan_custom_weekends.current_pnom_kplan_select}""", one_column=True, one=True, hat_c=False)
-        if dict_weekends == False: #11.11.25
-            raise ConnectionError(f'ОШибка получения данных')
-            return
-        if dict_weekends is None or dict_weekends == '':
+        if blob_data is None or blob_data == '' or blob_data == b'':
             dict_weekends = dict()
         else:
-            dict_weekends = F.from_binary_pickle(dict_weekends)
+            dict_weekends = F.from_binary_pickle(blob_data)
             if dict_weekends == None:
                 dict_weekends = dict()
-        Plan_custom_weekends.current_dict_weekends  = dict_weekends
+
+        rez_dict_weekends = dict()
+        for k,v in dict_weekends.items():
+            if isinstance(k,datetime.datetime):
+                rez_dict_weekends[k]= v
+            else:
+                rez_dict_weekends[F.dateStrToStr(k,format_out='')] = v
+        Plan_custom_weekends.current_dict_weekends  = rez_dict_weekends
 
 
     def get_list_weekends(self)->list:
@@ -6626,6 +6977,9 @@ class ResOper():
 
 
 class ResDse():
+    _emo_dir = CEMOJ.EmojiMain.ОборудованиеИнструменты.conveyor.symbol
+    _emo_det = CEMOJ.EmojiMain.ОборудованиеИнструменты.machine.symbol
+    _emo_pki = CEMOJ.EmojiMain.ОперацииПроизводства.purchased.symbol
 
     def __init__(self,parent:ResSpec, wet_data_row:dict):
         self.parent: ResSpec = parent
@@ -6638,35 +6992,64 @@ class ResDse():
         self.Количество:int|None = None
         self.Количество_ед:int|None = None
         self.Уровень:int|None = None
-        
+        self.is_dir:bool|None = None
         self.Параметрика:dict|None = None
         self.Документы:list|None = None
-        self.ПКИ:str|None = None
+        self.ПКИ:bool|None = None
         self.Мат_кд:str|None = None
         self.Ссылка:str|None = None
         self.Прим:str|None = None
         self.dreva_kod:str|None = None
         self.Способы_получения_материала:str|None = None
         self.кол_во_инф:dict|None = None
-        
-        if wet_data_row['Код ERP'] == '':
-            self.Код_ERP = wet_data_row['Код_ERP']
+
+
+        if 'Код ERP' in wet_data_row:
+            if wet_data_row['Код ERP'] == '':
+                self.Код_ERP = wet_data_row['Код_ERP']
+            else:
+                self.Код_ERP = wet_data_row['Код ERP']
         else:
-            self.Код_ERP = wet_data_row['Код ERP']
-        
-        
+            self.Код_ERP = ''
+
         self.Операции = [ResOper(self,_) for _ in wet_data_row['Операции']]
         for key in wet_data_row.keys():
             if key not in ('Операции','Код_ERP','Код ERP',):
                 exec(f'self.{str(key).replace(".", "_").replace(" ", "")} = wet_data_row[key]')
+
+        self.Номерпп = int(self.Номерпп)
+
+        if self.ПКИ is not None :
+            if F.is_bool(self.ПКИ):
+                self.ПКИ = F.boolm(self.ПКИ)
+
+    @property
+    def full_name(self)->str:
+        return  f'{self.Наименование} {self.Номенклатурный_номер}'
+
+    @property
+    def emoj_item(self)->str:
+        return self._emo_pki if self.ПКИ else self._emo_dir if self.is_dir else self._emo_det
+
+    def get_oper(self,num:str)->ResOper:
+        for it in self.Операции:
+            if it.Опер_номер == num:
+                return it
+
 
     def __str__(self):
         return f'N {self.Номерпп}, {self.Наименование} {self.Номенклатурный_номер} - {self.Количество} шт.'
 
 
 class ResSpec():
-    def __init__(self,num_mk:int):
-        self._wet_data = load_res(num_mk, db_resxml=CFG.Config.project.db_resxml)
+    def __init__(self,num_mk:int|None=None,wet_data=None,mk_o:Marshrut_cards=None):
+        if num_mk == wet_data == mk_o == None:
+            raise ValueError(f'Не указан номер МК')
+
+        if wet_data:
+            self._wet_data = wet_data
+        else:
+            self._wet_data = load_res(num_mk, db_resxml=CFG.Config.project.db_resxml)
         
         self.DICT_PROF_BY_COD:dict[dict] = F.deploy_dict_c(CSQ.custom_request_c(CFG.Config.project.db_users, 
                          """SELECT * 
@@ -6676,10 +7059,25 @@ class ResSpec():
                                                 'код')
         self.data:list[ResDse] = [ResDse(self,_) for _ in self._wet_data]
         self.count = self.data[0].Количество
-        self.mk:Marshrut_cards = Marshrut_cards(num_mk,CFG.Config.project.db_naryad,CFG.Config.project.db_resxml,
+        if mk_o:
+            self.mk: Marshrut_cards = mk_o
+        else:
+            self.mk:Marshrut_cards = Marshrut_cards(num_mk,CFG.Config.project.db_naryad,CFG.Config.project.db_resxml,
                                                 False)
+        for it in self.data:
+            id = it.Номерпп-1
+            lvl = it.Уровень
+            it.is_dir = False
+            if id == len(self.data)-1:
+                break
+            next_it = self.data[id+1]
+            if next_it.Уровень > lvl:
+                it.is_dir = True
+
+
     def __repr__(self):
         return f'{self.count} шт. "{self.mk.Номенклатура}"'
+
 
     def get_vids_rab(self,key_ref=False)->dict:
         dict_res = dict()
@@ -6764,6 +7162,10 @@ class ResSpec():
                         res.append(ResSpecERP(item['refKey']))
         return res
 
+    def get_dse(self,id:int)->ResDse|None:
+        for it in self.data:
+            if it.Номерпп == id:
+                return it
 
 
 class TchResSpecERP():
@@ -6826,7 +7228,6 @@ class ResSpecERP():
             self.ОтветственноеПодразделение: str | None = None
             self.РазрешитьВыборДляИзделийПобочногоВыхода: str | None = None
             self.ИдентификаторВерсииДанных: str | None = None
-            self.ВариантПромежуточногоВыпуска: str | None = None
             self.Предопределенный: str | None = None
             self.ИмяПредопределенныхДанных: str | None = None
             self.Представление: str | None = None
@@ -6882,7 +7283,6 @@ class ResSpecERP():
             РесурсныеСпецификации.ОтветственноеПодразделение КАК ОтветственноеПодразделение,
             РесурсныеСпецификации.РазрешитьВыборДляИзделийПобочногоВыхода КАК РазрешитьВыборДляИзделийПобочногоВыхода,
             РесурсныеСпецификации.ИдентификаторВерсииДанных КАК ИдентификаторВерсииДанных,
-            РесурсныеСпецификации.ВариантПромежуточногоВыпуска КАК ВариантПромежуточногоВыпуска,
             РесурсныеСпецификации.Предопределенный КАК Предопределенный,
             РесурсныеСпецификации.ИмяПредопределенныхДанных КАК ИмяПредопределенныхДанных,
             РесурсныеСпецификации.Представление КАК Представление
@@ -6984,6 +7384,7 @@ class Composition(_ImportDb):
         'path': '_Путь',
         'signed': 'Проведен',
         'coupled': 'Связан',
+        'errors': 'Ошибки',
         'finished': 'Завершен',
         'count': 'Количество',
         'material_name': 'Материал',
@@ -7000,6 +7401,7 @@ class Composition(_ImportDb):
         self.path:str|None = None
         self.signed:bool = False
         self.coupled:bool = False
+        self.errors:bool = False
         self.finished:bool = False
         self.name:str|None = None
         self.count:int|None = None
@@ -7019,15 +7421,21 @@ class Composition(_ImportDb):
     def emo_name(self)->str:
         return f"{CEMOJ.ДокументыДанные.folder_closed.symbol} {self.name}"
 
-    def template(self)->dict:
+    def template(self,err_not_coupled:bool=False)->dict:
         data = F.get_all_attrs_with_properties(self)
         data = {k: v for k, v in data.items() if k in self.ALIASES}
         if data['signed'] == 0:
             data['signed'] = ''
         else:
             data['signed'] = CEMOJ.ОборудованиеИнструменты.lock.symbol
+        if data['errors'] == 0:
+            data['errors'] = ''
+        else:
+            data['errors'] = CEMOJ.СтатусыПроизводства.alert.symbol
         if data['coupled'] == 0:
             data['coupled'] = ''
+            if err_not_coupled:
+                data['coupled'] = CEMOJ.СтатусыПроизводства.alert.symbol
         else:
             data['coupled'] = CEMOJ.ОборудованиеИнструменты.link.symbol
         if data['finished'] == 0:
@@ -7084,6 +7492,15 @@ class Composition(_ImportDb):
             self.coupled = False
             self.upload()
         return rez
+    def recalc_errors(self):
+        rez = sum([int(_.is_deleted) for _ in self.pozs])>0
+        if rez and not self.errors:
+            self.errors = True
+            self.upload()
+        if not rez and self.errors:
+            self.errors = False
+            self.upload()
+        return rez
 
     def delete(self,forced:bool= False)->bool:
         if self.signed and not forced:
@@ -7122,13 +7539,14 @@ class Composition(_ImportDb):
     def upload(self):
         data = [self.path,self.signed,self.name,self.count,self.comment,self.given_out,
                 self.material_name,self.material_thickness, self.coupled, self.local_num, self.local_count,
-                self.finished, self.oper_code, self.rc, self.poki]
+                self.finished, self.oper_code, self.rc, self.poki, self.errors]
         fields = f'''path, signed, name, count, comment, given_out, 
-                        material_name, material_thickness, coupled, local_num, local_count, finished, oper_code, rc, poki'''
+                        material_name, material_thickness, coupled, local_num, local_count, finished, oper_code, rc, 
+                        poki, errors'''
         if self.id is None:
             result = CSQ.custom_request_c(CFG.Config.project.db_naryad,f"""INSERT INTO naryad_composit_files 
                               ({fields})
-                              VALUES ({CSQ.questions_for_mask(data)}) RETURNING id""",list_of_lists_c=data,returning=True,rez_dict=True)
+                              VALUES ({CSQ.questions_for_mask(data)}) RETURNING id""",list_of_lists_c=data,rez_dict=True)
             self.id = result[0]['id']
         else:
             result = CSQ.custom_request_c(CFG.Config.project.db_naryad,f"""UPDATE naryad_composit_files
@@ -7163,8 +7581,8 @@ class Compositions():
         self.poki:int = poki
         self._load_from_db(filtr_nars)
 
-    def template(self)->list[dict]:
-        return [_.template() for _ in self.comps]
+    def template(self,err_not_coupled:bool=False)->list[dict]:
+        return [_.template(err_not_coupled=err_not_coupled) for _ in self.comps]
 
     def _load_from_db(self,filtr_nars:list[int]|None=None):
         self.comps = []
@@ -7216,6 +7634,33 @@ class Couple_nar_poz(_ImportDb):
         self.с_oper:str|None = None
         self.parce_row_dict(item)
 
+    @classmethod
+    def get(self,id:int)->Couple_nar_poz|None:
+        rez = CSQ.custom_request_c(CFG.Config.project.db_naryad, f'SELECT * FROM naryad_composit_poz_snum_nars '
+                                                           f' WHERE id ={id}', rez_dict=True)
+        if rez:
+            return Couple_nar_poz(rez[0])
+
+    def get_compozition(self)->Compozition|None:
+        rez_comp = CSQ.custom_request_c(CFG.Config.project.db_naryad, f'SELECT naryad_composit_files.* FROM naryad_composit_files '
+                                         f'inner join naryad_composit_poz on naryad_composit_poz.id_file == '
+                                                                 f'naryad_composit_files.id'
+                                         f' WHERE naryad_composit_poz.id ={self.id_poz}', rez_dict=True)
+        if rez_comp :
+            return Composition(rez_comp[0])
+        return None
+
+
+    def get_composition_poz(self)->Composition_poz|None:
+        rez_comp_poz = CSQ.custom_request_c(CFG.Config.project.db_naryad, f'SELECT * FROM naryad_composit_poz '
+                                                           f' WHERE id ={self.id_poz}', rez_dict=True)
+
+        if rez_comp_poz:
+            cmp_o= self.get_compozition()
+            return Composition_poz(cmp_o, rez_comp_poz[0])
+        return None
+
+
 class Composition_poz(_ImportDb):
     ALIASES = {
         'id':'№',
@@ -7229,6 +7674,7 @@ class Composition_poz(_ImportDb):
         'count_aggregate':'Общee\nколичество',
         'count_left_couple': 'Не\nсвязано',
         'is_coupled':'Связана',
+        'deleted':'Ошибки',
         'finished':'Завершена',
 
     }
@@ -7245,6 +7691,7 @@ class Composition_poz(_ImportDb):
         self.mk:int|None = None
         self.parent:Composition = parent
         self.finished:bool = False
+        self.deleted:bool = False
         self.parce_row_dict(item)
         self.aviable_to_composite:int|None = None
         self.aviable_to_create:int|None = None
@@ -7262,8 +7709,14 @@ class Composition_poz(_ImportDb):
         return self.count_aggregate - sum([_.count_nar for _ in self.couples])
 
     @property
+    def is_deleted(self) -> bool:
+        if self.deleted:
+            return True
+        return False
+
+    @property
     def is_coupled(self) -> bool:
-        if self.count_aggregate == self.calc_summ_coupled() and self.count_aggregate >0:
+        if self.count_aggregate == self.calc_summ_coupled() and self.count_aggregate >0 and  not self.deleted:
             return True
         return False
 
@@ -7281,6 +7734,7 @@ class Composition_poz(_ImportDb):
         data['is_coupled'] = CEMOJ.ОборудованиеИнструменты.link.symbol if data['is_coupled'] else ''
         data['finished'] = CEMOJ.СтатусыПроизводства.success.symbol if data['finished'] else ''
         data['dse'] = f"{CEMOJ.ОперацииПроизводства.dse.symbol} {data['dse']}"
+        data['deleted'] = CEMOJ.СтатусыПроизводства.alert.symbol if data['deleted'] else ''
         data = F.sort_dict_by_sample(data,self.ALIASES)
         return data
 
@@ -7320,19 +7774,45 @@ class Composition_poz(_ImportDb):
                                     Пномер in ({CSQ.prepare_list_to_tuple(nnars)});""",
                                                          rez_dict=True), 'Наряд')
         fl_finished = True
+        fl_deleted = False
         for c in self.couples:
-            nar = dict_nars[c.snum_nar]
-            if not self._is_closed_nar(nar):
+            if c.snum_nar not in dict_nars:
                 fl_finished = False
-                break
+                fl_deleted = True
+            else:
+                nar = dict_nars[c.snum_nar]
+
+                if not self._is_closed_nar(nar):
+                    fl_finished = False
+                    break
 
         if fl_finished and self.is_coupled:
             self.finished = True
         else:
             self.finished = False
+        if fl_deleted:
+            self.deleted = True
+        else:
+            self.deleted = False
 
     def calc_summ_coupled(self):
         return sum([_.count_nar for _ in self.couples])
+
+    def del_associated_dse(self,snum_nar:int)->bool:
+        id_poz = self.id
+        rez = CSQ.custom_request_c(CFG.Config.project.db_naryad, f"""
+                DELETE FROM naryad_composit_poz_snum_nars 
+                                      WHERE id_poz == {id_poz} and snum_nar == {snum_nar};
+                    """)
+        if rez == False:
+            return False
+        self._load_couples()
+        self.parent.load_pozs()
+        self.parent.recalc_coupled()
+        self.parent.recalc_signed()
+        self.parent.recalc_finished()
+        self.parent.recalc_errors()
+        return True
 
     def add_associated_dse(self,snum_nar:int, id_dse:int, count_nar:int,n_oper:str,с_oper:str)->bool:
         id_poz = self.id
@@ -7356,6 +7836,7 @@ class Composition_poz(_ImportDb):
         self.parent.recalc_coupled()
         self.parent.recalc_signed()
         self.parent.recalc_finished()
+        self.parent.recalc_errors()
         return True
 
 
@@ -7371,6 +7852,8 @@ class Composition_poz(_ImportDb):
 
     @staticmethod
     def _is_closed_nar(tmp_data: dict):
+        if tmp_data['ФИО'] == "" and tmp_data['ФИО2'] == "":
+            return False
         if tmp_data['ФИО'] != "" and tmp_data['_Фвремя'] == '':
             return False
         if tmp_data['ФИО2'] != "" and tmp_data['_Фвремя2'] == '':
@@ -7381,6 +7864,8 @@ class Composition_poz(_ImportDb):
         rez = []
         nnars = list(set([_.snum_nar for  _ in self.couples]))
         ALIASES = {'Пномер':'Наряд',
+                    '""':'Удален',
+
                     'Дата':'От',
                     'ФИО':'ФИО',
                     'ФИО2':'ФИО2',
@@ -7397,7 +7882,12 @@ class Composition_poz(_ImportDb):
                                                          rez_dict=True),'Наряд')
 
         for couple in self.couples:
-            tmp_data = copy.deepcopy(dict_nars[couple.snum_nar])
+            if couple.snum_nar not in dict_nars:
+                tmp_data = {v:'' for v in ALIASES.values()}
+                tmp_data['Наряд'] = couple.snum_nar
+                tmp_data['Удален'] = CEMOJ.СтатусыПроизводства.error.symbol
+            else:
+                tmp_data = copy.deepcopy(dict_nars[couple.snum_nar])
             closed_state = ''
             if self._is_closed_nar(tmp_data):
                 closed_state = CEMOJ.СтатусыПроизводства.success.symbol
@@ -7542,7 +8032,7 @@ class Composition_poz(_ImportDb):
             result = CSQ.custom_request_c(CFG.Config.project.db_naryad, f"""INSERT INTO naryad_composit_poz
                                       ({fields})
                                       VALUES ({CSQ.questions_for_mask(data)}) RETURNING id""", list_of_lists_c=data,
-                                          returning=True, rez_dict=True)
+                                           rez_dict=True)
             self.id = result[0]['id']
         else:
             result = CSQ.custom_request_c(CFG.Config.project.db_naryad, f"""UPDATE naryad_composit_poz
@@ -7803,8 +8293,80 @@ class Tree_unique_field():
         return f'{self.idx}. {self.name}{" PRIM" if self.primary else ""}'
 
 
+class ActionDevMenu:
+    def __init__(self, app_self, menu_name="menu_dev", menu_title="Dev"):
+        """
+        Инициализация меню разработчика.
+
+        :param menu_name: имя атрибута меню (objectName)
+        :param menu_title: отображаемый заголовок меню
+        """
+        self.main_window = app_self
+        self.ui = self.main_window.ui
+        self.menubar = self.ui.menubar
+        self.menu_name = menu_name
+        self.menu_title = menu_title
 
 
+        # Создаём меню и привязываем к ui
+        menu = QtWidgets.QMenu(self.menubar)
+        menu.setEnabled(True)
+        menu.setObjectName(self.menu_name)
+        menu.setTitle(self.menu_title)
+
+        self.ui.__setattr__(self.menu_name, menu)
+        self.menubar.addMenu(menu)
+        self.add_change_user()
+        self.add_reset_user()
+
+    def add_change_user(self):
+        self.add_action('Зайти под юзером', self._tbl_change_user)
+
+    def add_reset_user(self):
+        self.add_action('Зайти под собой', partial(self._tbl_change_user,True))
+
+    def _tbl_change_user(self,app_self,reset=False):
+        if reset:
+            fio_or_ref = F.user_full_namre()
+        else:
+            users = CSQ.custom_request_c(CFG.Config.project.db_users,
+                    f"""SELECT * FROM employee WHERE Статус != 'Увольнение' AND Компания = '{CFG.Config.place.Имя}';""")
+            selectd_user_data = CQT.msgboxg_get_table(app_self,f"Выберите пользователя",users,selection_from_tbl=True,
+                                                styleSheet=CQT.MES_CSS,selectRows=True,ExtendedSelection=False)
+            if not selectd_user_data:
+                return
+            fio_or_ref = selectd_user_data['ID_ФизЛица']
+        CFG.Config.user_config.init_employee(fio_or_ref)
+        if CFG.Config.user_config._is_developer_by_user:
+            CFG.Config.user_config.user_mode = ''
+        else:
+            CFG.Config.user_config.user_mode = F.now("%Y-%m-%d")
+
+        CFG.Config.user_config.update_window_title()
+
+    def add_action(self, name_action: str, fnc: object):
+        """
+        Добавляет пункт подменю.
+
+        :param name_action: отображаемое имя пункта меню
+        :param fnc: функция-обработчик (принимает self/ui как первый аргумент)
+        """
+        pep_name = F.to_pep8_name(f'auto_sub_action_{name_action}')
+
+        action = QtWidgets.QAction(f"{name_action}", self.menubar)
+        action.setCheckable(False)
+        action.setEnabled(True)
+        action.triggered.connect(lambda: fnc(self.main_window))  # <-- основной self
+
+        self.ui.__setattr__(pep_name, action)
+
+        menu = self.ui.__getattribute__(self.menu_name)
+        menu.addAction(self.ui.__getattribute__(pep_name))
+
+    def add_separator(self):
+        """Добавляет разделитель в меню."""
+        menu = self.ui.__getattribute__(self.menu_name)
+        menu.addSeparator()
 
 if __name__ == "__main__":
     pass
@@ -7919,6 +8481,8 @@ def DICT_RC_TBL(db_users): #27.01.2026
     return CSQ.custom_request_c(db_users, custom_request_c, hat_c=False, rez_dict=True) or []
 
 
+
+
 def tmp_dir():
     ima_module = F.name_of_executable_file_c().split('.')[0]
     if F.existence_file_c(os.sep.join([F.put_po_umolch() ,'mes_tmp'])) == False:
@@ -7982,8 +8546,9 @@ def calc_dicts_opers(poki):
     return DICT_OP, DICT_OP_NAME
     
 @CQT.onerror
-def calc_dict_napravlenie(*args):
-    poki = CFG.Config.place.poki #16.04.2026
+def calc_dict_napravlenie(*args,poki:int|None = None):
+    if poki is None :
+        poki = CFG.Config.place.poki #16.04.2026
     return CSQ.custom_request_c(CFG.Config.project.db_kplan,
                                 f"""SELECT * FROM napravlenie WHERE poki = {poki} OR poki IS NULL""", rez_dict=True)
 
@@ -8059,7 +8624,13 @@ def recalc_fact_by_date(
                         DICT_OP_NAME,
                         pozition_num: int,
                         date_calc: datetime.datetime = None,
-                        *args):
+                         dict_data_for_jurnal:dict|None=None,
+                        pozs:Pozitions|None=None,
+                        DICT_OPERS:dict|None=None,
+                        POZ_DICT_MK_DATA:dict|None=None,
+                        POZ_DICT_LIST_NARS:dict|None=None,
+                        DICT_DATA_DOLGN_ETAP:dict|None=None,
+                                         *args):
     estimated_vid_rab_names_fact = {v['name_fact'] for k, v in DICT_GROUP_PODR_VID_RAB_FOR_PLAN.items()
                                     if
                                     v['estimated'] and v['poki'] == CFG.Config.place.poki}
@@ -8092,9 +8663,19 @@ def recalc_fact_by_date(
                   DICT_DOLGN_ETAP,
                 DICT_EMPLOEE_FULL_WITH_DEL,
                  DICT_OP_NAME,
-                  pozition_num, date_calc=None):
-        poz = Pozition(pozition_num, CFG.Config.project.db_kplan, CFG.Config.project.db_naryad, CFG.Config.project.db_resxml, CFG.Config.project.db_users)
-        poz.load_kpl_table('пл_топ')
+                  pozition_num, date_calc=None,dict_data_for_jurnal:dict|None=None,pozs:Pozitions|None=None,
+                  DICT_OPERS:dict|None=None,
+                  POZ_DICT_MK_DATA:dict|None=None,
+                  POZ_DICT_LIST_NARS:dict|None=None,
+                  DICT_DATA_DOLGN_ETAP:dict|None=None,
+                  ):
+        if pozs and pozition_num in pozs.dict_pozs:
+            poz = pozs.dict_pozs[pozition_num]
+        else:
+            poz = Pozition(pozition_num, CFG.Config.project.db_kplan, CFG.Config.project.db_naryad,
+                                CFG.Config.project.db_resxml, CFG.Config.project.db_users)
+            poz.load_kpl_table('пл_топ')
+
 
         vid_po_napr = poz.dict_tables['пл_топ']['Вид']
         napr_deyat = DICT_NAPR_DEYAT[poz.Направление_деятельности]['Имя']
@@ -8107,42 +8688,52 @@ def recalc_fact_by_date(
         except:
             CQT.msgbox(f'Не корректно занесен направление')
             return
+
         postfix =''
         if date_calc:
             nach = F.datetostr(date_calc,"%Y-%m-%d 04:00:00")
             konec = F.datetostr( F.date_add_days(date_calc,1,format_out='') ,"%Y-%m-%d 03:59:59")
             postfix= f'datetime(jurnal.Дата) > datetime("{nach}") and datetime(jurnal.Дата) < datetime("{konec}") and'
-        list_nars = CSQ.custom_request_c(CFG.Config.project.db_naryad, f"""SELECT DISTINCT
-        {', '.join(['naryad.' + _ for _ in CSQ.list_types_table(CFG.Config.project.db_naryad, 'naryad').keys()])},
-         mk.Дата as ДатаМК , mk.Тип as ТипМК 
-         FROM naryad 
-        INNER JOIN mk ON mk.Пномер = naryad.Номер_мк 
-        INNER JOIN jurnal ON jurnal.Номер_наряда = naryad.Пномер 
-        WHERE {postfix} mk.НомКплан = {pozition_num}  and naryad.Аутсорсинг == 0;""", # убрано 29.09.2025 по задаче 100060640 naryad.Подтвержд_вып_дата != ""
-                                         rez_dict=True)
+
+        if POZ_DICT_LIST_NARS and poz.Пномер in POZ_DICT_LIST_NARS:
+            list_nars = POZ_DICT_LIST_NARS[poz.Пномер]
+        else:
+            list_nars = CSQ.custom_request_c(CFG.Config.project.db_naryad, f"""SELECT DISTINCT
+            {', '.join(['naryad.' + _ for _ in CSQ.list_types_table(CFG.Config.project.db_naryad, 'naryad').keys()])},
+             mk.Дата as ДатаМК , mk.Тип as ТипМК 
+             FROM naryad 
+            INNER JOIN mk ON mk.Пномер = naryad.Номер_мк 
+            INNER JOIN jurnal ON jurnal.Номер_наряда = naryad.Пномер 
+            WHERE {postfix} mk.НомКплан = {pozition_num}  and naryad.Аутсорсинг == 0;""", # убрано 29.09.2025 по задаче 100060640 naryad.Подтвержд_вып_дата != ""
+                                             rez_dict=True)
+
         #mk.Пномер as "Номер МК", mk.Номенклатура, [_['Пномер'] for _ in list_nars]
-        list_mk_nums = [_['Номер_мк'] for _ in list_nars]
-        dict_mk_data = F.deploy_dict_c(CSQ.custom_request_c(CFG.Config.project.db_naryad,f"""SELECT mk.Пномер as "Номер МК", 
-         mk.Номенклатура FROM mk 
-         LEFT JOIN plan ON plan.Пномер = mk.НомКплан 
-        WHERE 
-         mk.Пномер IN ({CSQ.prepare_list_to_tuple(list_mk_nums)}) and plan.poki = {CFG.Config.place.poki};""", rez_dict=True,
-                                            attach_dbs=(CFG.Config.project.db_kplan)),"Номер МК")
+        if POZ_DICT_MK_DATA and poz.Пномер in POZ_DICT_MK_DATA:
+            dict_mk_data = POZ_DICT_MK_DATA[poz.Пномер]
+        else:
+            list_mk_nums = [_['Номер_мк'] for _ in list_nars]
+            dict_mk_data = F.deploy_dict_c(CSQ.custom_request_c(CFG.Config.project.db_naryad,f"""SELECT mk.Пномер as "Номер МК", 
+             mk.Номенклатура FROM mk 
+             LEFT JOIN plan ON plan.Пномер = mk.НомКплан 
+            WHERE 
+             mk.Пномер IN ({CSQ.prepare_list_to_tuple(list_mk_nums)}) and plan.poki = {CFG.Config.place.poki};""", rez_dict=True,
+                                                attach_dbs=(CFG.Config.project.db_kplan)),"Номер МК")
         dict_summ_time = dict()
         dict_fact_jur = dict()
         dict_jur_data = dict()
 
         set_name_etaps = set()
-
         for row in list_nars:
             nar = Naryads(row, CFG.Config.project.db_naryad, DICT_DOLGN_ETAP, CFG.Config.project.db_users,
-                              DICT_EMPLOEE_FULL_WITH_DEL)
+                              DICT_EMPLOEE_FULL_WITH_DEL, dict_opers = DICT_OPERS,DICT_DATA_DOLGN_ETAP=DICT_DATA_DOLGN_ETAP)
+            data_jur = None
+            if dict_data_for_jurnal:
+                data_jur = dict_data_for_jurnal[nar.Пномер]
+            #nar.recalc_fact(data_jur)
+            #nar.recalc_jur_n_time(nar.ФИО)
+            #nar.recalc_jur_n_time(nar.ФИО2)
 
-            nar.recalc_fact()
-            nar.recalc_jur_n_time(nar.ФИО)
-            nar.recalc_jur_n_time(nar.ФИО2)
-
-            jur = nar.get_list_from_jurnal(blob_pass=True)
+            jur = nar.get_list_from_jurnal(blob_pass=True,data_jur=data_jur)
             start, end = jur.calc_start_end_dates()
             if start == None or end == None:
                 continue
@@ -8283,713 +8874,2481 @@ def recalc_fact_by_date(
                                                                 DICT_EMPLOEE_FULL_WITH_DEL,
                                                                 DICT_OP_NAME,
                                                                 pozition_num,
-                                                                date_calc)
+                                                                date_calc,
+                                                                dict_data_for_jurnal,
+                                                            pozs= pozs,
+                                                            DICT_OPERS=DICT_OPERS,
+                                                            POZ_DICT_MK_DATA=POZ_DICT_MK_DATA,
+                                                            POZ_DICT_LIST_NARS=POZ_DICT_LIST_NARS,
+                                                            DICT_DATA_DOLGN_ETAP=DICT_DATA_DOLGN_ETAP
+    )
     if result is None:
         return
     poz, dict_fact_jur, dict_summ_time, dict_jur_data = result
     return poz, dict_fact_jur, dict_summ_time,dict_jur_data
 
+
+def prepare_day_plan_etap_jurnal_for_calc_pozition_fact_kpl(list_pnums_kpl:list[int]) -> dict:
+    data =F.deploy_dict_c(
+        CSQ.custom_request_c(CFG.Config.project.db_kplan,
+                             f"""SELECT Пномер, fact_jurnal_blolb_data FROM 
+                 plan WHERE Пномер IN ({CSQ.prepare_list_to_tuple(list_pnums_kpl)})""", rez_dict=True),
+        'Пномер')
+    return data
+
+def prepare_list_nars_for_calc_pozition_fact_kpl(list_pnums_kpl:list[int]) -> dict:
+    POZ_DICT_LIST_NARS = dict()
+    req_poz_dict_list_nars = CSQ.custom_request_c(CFG.Config.project.db_naryad, f"""SELECT DISTINCT
+                {', '.join(['naryad.' + _ for _ in CSQ.list_types_table(CFG.Config.project.db_naryad, 'naryad').keys()])},
+                 mk.Дата as ДатаМК , mk.Тип as ТипМК, mk.НомКплан
+                 FROM naryad 
+                INNER JOIN mk ON mk.Пномер = naryad.Номер_мк 
+                INNER JOIN jurnal ON jurnal.Номер_наряда = naryad.Пномер 
+                WHERE mk.НомКплан IN ({CSQ.prepare_list_to_tuple(list_pnums_kpl)})  and naryad.Аутсорсинг == 0;""",
+                                                  # убрано 29.09.2025 по задаче 100060640 naryad.Подтвержд_вып_дата != ""
+                                                  rez_dict=True)
+    for it in req_poz_dict_list_nars:
+        if it['НомКплан'] not in POZ_DICT_LIST_NARS:
+            POZ_DICT_LIST_NARS[it['НомКплан']] = []
+        POZ_DICT_LIST_NARS[it['НомКплан']].append(it)
+    return  POZ_DICT_LIST_NARS
+    
+def prepare_pozs_for_calc_pozition_fact_kpl(list_pnums_kpl:list[int]) -> dict:
+    pr = CFG.Config.project
+    POZ_DICT_MK_DATA = dict()
+    req_poz_dict_mk_data = CSQ.custom_request_c(pr.db_naryad, f"""SELECT mk.НомКплан, mk.Пномер as "Номер МК", 
+                 mk.Номенклатура FROM mk 
+                 LEFT JOIN plan ON plan.Пномер = mk.НомКплан 
+                WHERE 
+                 mk.НомКплан IN ({CSQ.prepare_list_to_tuple(list_pnums_kpl)}) ;""", rez_dict=True,
+                                                attach_dbs=(pr.db_kplan))
+    for it in req_poz_dict_mk_data:
+        if it['НомКплан'] not in POZ_DICT_MK_DATA:
+            POZ_DICT_MK_DATA[it['НомКплан']] = dict()
+        POZ_DICT_MK_DATA[it['НомКплан']][it["Номер МК"]] = it['Номенклатура']
+    return  POZ_DICT_MK_DATA
+    
+def prepare_data_for_jurnal_for_calc_pozition_fact_kpl(list_pnums_kpl:list[int]) -> dict:
+    req_for_jurnal = CSQ.custom_request_c(CFG.Config.project.db_naryad, f"""SELECT 
+        jurnal.Пномер,
+        jurnal.Дата,
+        jurnal.Штамп,
+        jurnal.Номер_наряда,
+        jurnal.ФИО,
+        jurnal.Подытог,
+        jurnal.Подытог_нормы,
+        jurnal.Статус,
+        jurnal.Примечание,
+        jurnal.Ном_заверш,
+        jurnal.Дата_выгрузки_ЕРП,
+        jurnal.ФИО_выгрузки_ЕРП,
+        jurnal.Минут_выгружено_ЕРП,
+        jurnal.base_ERP
+                    FROM jurnal INNER JOIN naryad ON naryad.Пномер = jurnal.Номер_наряда
+                    INNER JOIN mk ON  mk.Пномер = naryad.Номер_мк
+                     WHERE mk.НомКплан IN ({CSQ.prepare_list_to_tuple(list_pnums_kpl)}) 
+                     ORDER BY jurnal.Номер_наряда, datetime(jurnal.Дата) ASC;""", rez_dict=True)
+    dict_data_for_jurnal = dict()
+    for it in req_for_jurnal:
+        if it['Номер_наряда'] not in dict_data_for_jurnal:
+            dict_data_for_jurnal[it['Номер_наряда']] = []
+        dict_data_for_jurnal[it['Номер_наряда']].append(it)
+    return dict_data_for_jurnal
+
+def prepare_dolg_etap_for_calc_pozition_fact_kpl() -> dict:
+    query_dolgn_etap = f"""
+        WITH etap_ranges AS (
+
+        SELECT
+            Должность,
+            Подразделение,
+            Производство,
+            этап,
+    
+            LAG(ДействуетДо) OVER (
+                PARTITION BY Должность, Подразделение, Производство
+                ORDER BY ДействуетДо
+            ) as date_from,
+    
+            ДействуетДо as date_to
+    
+        FROM dolgn_etap
+    
+        WHERE Производство = "{CFG.Config.place.Имя}"
+    ),
+    
+    employee_actual AS (
+    
+        SELECT *
+        FROM employee
+        WHERE Пномер IN (
+            SELECT MAX(Пномер)
+            FROM employee
+            GROUP BY ФИО
+        )
+    )
+    
+    SELECT
+        employee_actual.ФИО,
+        employee_actual.Пномер,
+        employee_actual.Должность,
+        employee_actual.Подразделение,
+        employee_actual.Компания,
+    
+        etap_ranges.этап,
+        etap_ranges.date_from,
+        etap_ranges.date_to
+    
+    FROM employee_actual
+    
+    JOIN etap_ranges
+    ON employee_actual.Должность = etap_ranges.Должность
+    AND employee_actual.Подразделение = etap_ranges.Подразделение
+    AND employee_actual.Компания = etap_ranges.Производство
+    
+    
+    ORDER BY
+        employee_actual.ФИО,
+        etap_ranges.date_to
+    """
+    data_dolgn_etap = CSQ.custom_request_c(CFG.Config.project.db_naryad, query_dolgn_etap, rez_dict=True, 
+                                           attach_dbs=CFG.Config.project.db_users)
+    DICT_DATA_DOLGN_ETAP = dict()
+    for row in data_dolgn_etap:
+        fio = row['ФИО']
+        key = (
+            row['date_from'],
+            row['date_to']
+        )
+        if fio not in DICT_DATA_DOLGN_ETAP:
+            DICT_DATA_DOLGN_ETAP[fio] = dict()
+
+        DICT_DATA_DOLGN_ETAP[fio][key] = {
+            'этап': row['этап'],
+            'Пномер': row['Пномер'],
+            'Должность': row['Должность'],
+            'Подразделение': row['Подразделение'],
+            'Компания': row['Компания'],
+        }
+    return DICT_DATA_DOLGN_ETAP
+
+
 def calc_pozition_fact_kpl(self, pozition_num,
-                            DICT_GROUP_PODR_VID_RAB_FOR_PLAN,
-                            DICT_VID_RABOT,
-                            DICT_NAPR_DEYAT,
-                            DICT_VID_PO_NAPR,
-                            DICT_NAPRAVLENIE,
-                            DICT_NAPR_DEYAT_NAME,
-                            DICT_DOLGN_ETAP,
-                            DICT_EMPLOEE_FULL_WITH_DEL,
-                            DICT_OP_NAME,
-                            DICT_CLD,
-                            DICT_PODR,
-                            repaint_graf=True):
+                        DICT_GROUP_PODR_VID_RAB_FOR_PLAN,
+                        DICT_VID_RABOT,
+                        DICT_NAPR_DEYAT,
+                        DICT_VID_PO_NAPR,
+                        DICT_NAPRAVLENIE,
+                        DICT_NAPR_DEYAT_NAME,
+                        DICT_DOLGN_ETAP,
+                        DICT_EMPLOEE_FULL_WITH_DEL,
+                        DICT_OP_NAME,
+                        DICT_CLD,
+                        DICT_PODR,
+                        FIELDS_DB_INFO:Fields_db_info,
+                        dict_data_for_jurnal:dict|None=None,
+                        pozs:Pozitions|None=None,
+                        DICT_OPERS:dict|None=None,
+                        POZ_DICT_MK_DATA:dict|None=None,
+                        POZ_DICT_LIST_NARS:dict|None=None,
+                        DICT_DAY_PLAN_ETAP_JURNAL:dict|None=None,
+                        DICT_DATA_DOLGN_ETAP:dict|None=None,
+                        
+                        *args
+                        ):
 
-        result = recalc_fact_by_date(
-                            DICT_GROUP_PODR_VID_RAB_FOR_PLAN,
-                            DICT_VID_RABOT,
-                            DICT_NAPR_DEYAT,
-                            DICT_VID_PO_NAPR,
-                            DICT_NAPRAVLENIE,
-                            DICT_NAPR_DEYAT_NAME,
-                            DICT_DOLGN_ETAP,
-                            DICT_EMPLOEE_FULL_WITH_DEL,
-                            DICT_OP_NAME,
-                            pozition_num)
-        if result is None:
+    result = recalc_fact_by_date(
+                        DICT_GROUP_PODR_VID_RAB_FOR_PLAN,
+                        DICT_VID_RABOT,
+                        DICT_NAPR_DEYAT,
+                        DICT_VID_PO_NAPR,
+                        DICT_NAPRAVLENIE,
+                        DICT_NAPR_DEYAT_NAME,
+                        DICT_DOLGN_ETAP,
+                        DICT_EMPLOEE_FULL_WITH_DEL,
+                        DICT_OP_NAME,
+                        pozition_num,
+                        dict_data_for_jurnal=dict_data_for_jurnal,
+                        pozs = pozs,
+                         DICT_OPERS= DICT_OPERS,
+                        POZ_DICT_MK_DATA=POZ_DICT_MK_DATA,
+                        POZ_DICT_LIST_NARS=POZ_DICT_LIST_NARS,
+                        DICT_DATA_DOLGN_ETAP=DICT_DATA_DOLGN_ETAP
+                        )
+    if result is None:
+        return
+    poz, dict_fact_jur, dict_summ_time, dict_jur_data = result
+    precalc_old_dict = None
+    if DICT_DAY_PLAN_ETAP_JURNAL:
+        if poz.Пномер in DICT_DAY_PLAN_ETAP_JURNAL:
+            precalc_old_dict = dict()
+            precalc_old_dict = DICT_DAY_PLAN_ETAP_JURNAL[poz.Пномер]
+    poz.update_day_plan_etap_jurnal(dict_fact_jur,precalc_old_dict=precalc_old_dict)
+    rez_update_row_etaps = poz.update_row_etaps(dict_summ_time)
+
+    infotable_mini_data = []
+    
+    if rez_update_row_etaps:
+        gant_o = Gant(DICT_CLD, FIELDS_DB_INFO)
+        gant_o.load([pozition_num])
+        gant_o.recalc([pozition_num])
+        infotable_mini_data.append({'№':poz.Пномер,'Изм.': '; '.join([f"{k}:{v}" for k,v in dict_summ_time.items()])})
+        print(f'recalc_fact_by_date: №{poz.Пномер} {dict_summ_time}')
+        pass
+    return dict_jur_data, rez_update_row_etaps,infotable_mini_data
+
+class Groups_vid_rab_for_plan():
+    def __init__(self,data_tbl:list):
+        self.list_groups : list[Group_vid_rab_for_plan]= []
+        for it in data_tbl:
+            self.list_groups.append(Group_vid_rab_for_plan(it))
+
+    def find_by_tbl(self,tbl:Table_db_info)->Group_vid_rab_for_plan|None:
+        for gr in self.list_groups:
+            if gr.num_podr == tbl.id:
+                return gr
+
+class Group_vid_rab_for_plan(_ImportDb):
+    def __init__(self,row_data:dict):
+        self.name:str|int|float|None = None
+        self.nick_name:str|int|float|None = None
+        self.color:str|int|float|None = None
+        self.sort:str|int|float|None = None
+        self.mnts_plan_names:str|int|float|None = None
+        self.name_field_obespech:str|int|float|None = None
+        self.composite:bool|None = None
+        self.subord:bool|None = None
+        self.estimated:bool|None = None
+        self.koef_estimate:str|int|float|None = None
+        self.num_podr:str|int|float|None = None
+        self.etap_name_from_erp_1c:str|int|float|None = None
+        self.average_efficiency:str|int|float|None = None
+        self.koef:str|int|float|None = None
+        self.etap_id:str|int|float|None = None
+
+        self.parce_row_dict(row_data)
+
+
+class Table_db_info(_ImportDb):
+    def __init__(self, parent, name, color, descr, alias, order, table_primary_name, synthetic,
+                 data_tbls:dict):
+        self.id:int|None = None
+        self.parent: Tables_db_info = parent
+        self.name: str = name
+        self.color: Color = color
+        self.descr: str = descr
+        self.alias: str = alias
+        self.order: int = order
+        self.synthetic: bool = synthetic
+        self.table_primary_name: str = table_primary_name
+        self.set_fields: set[Field_db_info] = set()
+        self.dict_types_data: dict = dict()
+        self.source_table_primary_name: Field_db_info | int | None = None# поле которое имеет ссылку на УИД по которому можно найти запись ячейки в ее таблице.
+        self.source_table_for_join: Field_db_info | int | None = None
+        self.join_order: int  = None
+        self.norm_name_field:str|None = None
+        self.fact_name_field:str|None = None
+        self.start_plan_name_field:str|None = None
+        self.end_plan_name_field:str|None = None
+        self.start_fact_name_field:str|None = None
+        self.end_fact_name_field:str|None = None
+        self.group_for_gant:int|None = None
+        self.default_hours_day_gant:int|None = None
+        self.main_group:bool|None = None
+        self.poki:bool|None = None
+        self.load_dict_types_data()
+        self.parce_row_dict(data_tbls)
+        self.calc_fact_name()
+
+    def __eq__(self, other):
+        if isinstance(other, Table_db_info):
+            return self.name == other.name
+        return False
+
+    def __hash__(self):
+        if not hasattr(self, 'name'):
+            return 0
+        return hash(self.name)
+    @property
+    def is_composite(self)->bool:
+        if ';' in self.norm_name_field:
+            return True
+        return False
+
+
+    def update_default_hours_day_gant(self,new_val:float|int):
+        self.default_hours_day_gant = new_val
+        CSQ.custom_request_c(CFG.Config.project.db_kplan,
+                             f'UPDATE podrazdel '
+                             f'SET default_hours_day_gant = {self.default_hours_day_gant} '
+                             f'WHERE Имя = "{self.name}";')
+
+    def get_composite_fields(self,wo_main:bool)->list[Field_db_info]:
+        list_name_fields = self.norm_name_field.split(";")
+        if wo_main:
+            list_name_fields = list_name_fields[1:]
+        return [self.find_field(_) for _ in list_name_fields]
+
+    def find_field(self,name)->Field_db_info|None:
+        for f in self.set_fields :
+            if f.field_mes == name:
+                return f
+
+
+    def dump_state(self):
+        return self.name
+
+    def get_previous(self)->Table_db_info|None:
+        tabels_ordered =self.parent.tabels_ordered
+        idx = tabels_ordered.index(self)
+        if not idx:
             return
-        poz, dict_fact_jur, dict_summ_time, dict_jur_data = result
-        poz.update_day_plan_etap_jurnal(dict_fact_jur)
-        rez_update_row_etaps = poz.update_row_etaps(dict_summ_time)
-        if rez_update_row_etaps:
-            update_local_graf(self, True, pozition_num, repaint_graf, DICT_CLD = DICT_CLD, DICT_PODR = DICT_PODR)
-            print(f'recalc_fact_by_date: №{poz.Пномер} {dict_summ_time}')
-            pass
-        return dict_jur_data, rez_update_row_etaps
+        return tabels_ordered[idx-1]
 
 
-@CQT.onerror
-def update_local_graf(self=None, update=False,pnom:int = 0,fill_gant=True,DICT_CLD=None, DICT_PODR=None,*args):
-    if self:
-        self.current_kpl_table = 'tbl_preview'
-        if pnom == 0:
-            tbl = self.ui.tbl_kal_pl
-            r = tbl.currentRow()
-            if r == None or r == -1:
+    def add_field(self, field: Field_db_info):
+        self.set_fields.add(field)
+
+    @property
+    def table_primary_full_name(self) -> str:
+        return f'{self.name}.{self.table_primary_name}'
+
+    @property
+    def start_plan_name_field_full_name(self) -> str:
+        return f'{self.name}.{self.start_plan_name_field}'
+    @property
+    def end_plan_name_field_full_name(self) -> str:
+        return f'{self.name}.{self.end_plan_name_field}'
+
+    @property
+    def norm_full_name(self) -> str:
+        return f'{self.name}.{self.norm_name_field}'
+
+    @property
+    def fact_full_name(self) -> str:
+        return f'{self.name}.{self.fact_name_field}'
+
+    def calc_fact_name(self):
+        if self.norm_name_field:
+            self.fact_name_field = self.norm_name_field.replace('Нчас_','Фчас_')
+
+    def load_dict_types_data(self):
+        if not self.synthetic:
+            self.dict_types_data = CSQ.dict_types_tbl(CFG.Config.project.db_kplan, self.name)
+
+    def apply_poki(self):
+        if self.poki:
+            if isinstance(self.poki,str):
+                if str(CFG.Config.place.poki) in self.poki:
+                    self.poki =CFG.Config.place.poki
+
+    def load_source_table_for_join(self):
+        if isinstance(self.source_table_for_join, int):
+            field = self.parent.parent.find(self.source_table_for_join)
+            if field:
+                self.source_table_for_join = field
                 return
-            nk_pnom = CQT.num_col_by_name_c(tbl, 'plan.Пномер')
-            if tbl.item(r, nk_pnom).text() == '-1':
-                return 
-            pnom = int(tbl.item(r, nk_pnom).text())
-        if 'shift' in CQT.get_key_modifiers(self):
-            update = True
-        DICT_CLD = self.Data_plan.DICT_CLD
-        DICT_PODR = self.Data_plan.DICT_PODR
+            raise Exception(f"place= {CFG.Config.place.Имя};  source_table_for_join not_found! field"
+                            f" {self.source_table_for_join} for  tbl= {self.id} {self.name}")
 
-    else:
-        if pnom == 0:
-            print(f'update_local_graf err pnom == 0')
+    def load_source_table_primary_name(self):
+        if isinstance(self.source_table_primary_name, int):
+            field = self.parent.parent.find(self.source_table_primary_name)
+            if field:
+                self.source_table_primary_name = field
+
+    def __repr__(self) -> str:
+        return (f'{self.order}.:{self.name}; ({self.alias})')
+
+class Tables_db_info():
+    def __init__(self, parent:Fields_db_info):
+        self.parent:Fields_db_info = parent
+        self.tabels:set[Table_db_info]= set()
+        self.dict_tables:dict[str,Table_db_info]=dict()
+
+    def get_table(self,name)->Table_db_info|None:
+        return self.dict_tables.get(name,None)
+
+    def load_state_table(self,state)->Table_db_info|None:
+        return self.get_table(state)
+
+    @property
+    def dict_tabels_by_names(self):
+        return copy.deepcopy(self.dict_tables)
+
+    @property
+    def dict_groups_gant(self)->dict[int,list[Table_db_info]]:
+        rez:dict[int,list[Table_db_info]] = dict()
+        ordered_tbls = [_ for _ in self.tabels if _.group_for_gant is not None and _.group_for_gant != '']
+        ordered_tbls.sort(key=lambda x: x.order)
+        for tbl in ordered_tbls:
+            if tbl.group_for_gant not in rez:
+                rez[tbl.group_for_gant] = []
+            rez[tbl.group_for_gant].append(tbl)
+        return rez
+    @property
+    def tabels_ordered(self)->list[Table_db_info]:
+        rez = [_ for _ in self.tabels if not _.synthetic]
+        rez.sort(key=lambda x: x.order)
+        return rez
+
+    def add_table(self, name, color, descr,alias,order,table_primary_name,synthetic,
+                    data_tbls:dict)->Table_db_info:
+        table = self._is_exist(name)
+        if table:
+            return table
+        table = Table_db_info(self, name, color, descr,alias,order,table_primary_name,synthetic,
+                              data_tbls)
+        self.tabels.add(table)
+        self.dict_tables[table.name] = table
+        return table
+
+    def _is_exist(self, name)->Table_db_info|bool:
+        for table in self.tabels:
+            if table.name == name:
+                return table
+        return False
+
+
+class Checker_val_fields_rez():
+    def __init__(self,success:bool,msg:str|None=None):
+        self.success:bool=success
+        self.msg:str|None=msg
+        
+class Checker_val_fields():
+    def __init__(self,poz:Pozition|None,DICT_ITERS_FOR_CHECK_FIELDS:dict|None):
+        self.DICT_ITERS_FOR_CHECK_FIELDS:dict|None = DICT_ITERS_FOR_CHECK_FIELDS
+        self._dict_checked:dict[str,Checker_val_fields_rez] = dict()
+        self.poz:Pozition = poz
+
+        STATUS_POZ = CSQ.custom_request_c(CFG.Config.project.db_kplan, f"""SELECT * FROM status_poz""", rez_dict=True)
+        self.DICT_STATUS_POZ = F.deploy_dict_c(STATUS_POZ, 'Пномер')
+        
+    def get_results(self)->dict[str,Checker_val_fields_rez]:
+        return self._dict_checked
+
+    def fix_value_field(self, val: str,field_o:Field_db_info):
+        type_data = field_o.edit_rules_type_data
+        if type_data is None:
+            type_data = field_o.type_db_field
+        if type_data:
+            if type_data in (int, float):# int,
+                if isinstance(val, str):
+                    if F.is_numeric(val):
+                        val = F.valm(val)
+            if type_data == str:# str,
+                if not isinstance(val, str):
+                    val = str(val)
+                val = val.strip().replace('\t', '').replace('\n', '')
+            if type_data == bytes:# bytes,
+                pass
+            if type_data == datetime.datetime:# DT.datetime,
+                val = F.dateStrToStr(val,format_out="%Y-%m-%d",onerror=None)
+        return val
+
+    def check_value_field(self, val: str,field_o:Field_db_info) -> bool:
+        def start_check(method):
+            if method is None :
+                raise  ValueError(f'Для правила {rule.name} обработчик отсутствует')
+            if not method(val,field_o):
+                return False
+            return True
+
+        methods = self.is_auto_rule_applied(field_o)
+        if methods:
+            for method_name in methods:
+                method =  getattr(self, '_check_'+ method_name,None)
+                if not start_check(method):
+                    return False
+
+        for rule in field_o.tuple_rules:
+            method =  getattr(self, '_check_'+ rule.name,None)
+            if not start_check(method):
+                return False
+        return True
+
+    @staticmethod
+    def is_auto_rule_applied(field_o:Field_db_info)->list|None:
+        name = field_o.name_mes.lower()
+        if 'фчас_' in name or 'нчас_' in name:
+            return ['number']
+        if 'фдата_' in name or 'пдата_' in name or '.дата_' in name:
+            return ['date']
+        if field_o.is_id_like:
+            return ['int']
+        if 'примечание' in name or 'комментарий' in name:
+            return ['nonthing']
+        return
+
+
+
+    def _check_free(self,val , field_o :Field_db_info):
+        name_field = field_o.name_mes
+        self._dict_checked[name_field] = Checker_val_fields_rez(True)
+        return True
+
+    def _check_nonthing(self,val , field_o :Field_db_info):
+        name_field = field_o.name_mes
+        self._dict_checked[name_field] = Checker_val_fields_rez(True)
+        return True
+
+
+    def _check_ref_or_empty(self,val , field_o :Field_db_info):
+        name_field = field_o.name_mes
+        alias = field_o.field_alias
+        if val is None or val == '':
+            self._dict_checked[name_field] = Checker_val_fields_rez(True)
+            return True
+        if not F.is_unique_identifier(val):
+            self._dict_checked[name_field] = Checker_val_fields_rez(False, f'"{alias}" не является типом UID')
+            return False
+        self._dict_checked[name_field] = Checker_val_fields_rez(True)
+        return True
+
+
+    def _check_string(self,val , field_o :Field_db_info):
+        name_field = field_o.name_mes
+        alias = field_o.field_alias
+        if not val == CSQ.sanitize_sql_input(val):
+            self._dict_checked[name_field] = Checker_val_fields_rez(False, f'"{alias}" содержит запрещенные символы')
+            return False
+        self._dict_checked[name_field] = Checker_val_fields_rez(True)
+        return True
+
+
+    def _check_int(self, val, field_o:Field_db_info):
+        name_field = field_o.name_mes
+        alias = field_o.field_alias
+        if isinstance(val,int):
+            self._dict_checked[name_field] = Checker_val_fields_rez(True)
+            return True
+
+        if val is None or val == '':
+            self._dict_checked[name_field] = Checker_val_fields_rez(True)
+            return True
+        try:
+            int(val)
+        except:
+            self._dict_checked[name_field] = Checker_val_fields_rez(False,f'"{alias}" должно быть целое число')
+            return False
+        self._dict_checked[name_field] = Checker_val_fields_rez(True)
+        return True
+
+    def _check_link(self, val, field_o:Field_db_info):
+        name_field = field_o.name_mes
+        alias = field_o.field_alias
+        if val is None or val == '':
+            self._dict_checked[name_field] = Checker_val_fields_rez(True)
+            return True
+        if 'docs://' not in val and 'Отдел технолога\В работе' not in val and fr'O:{F.sep()}' not in val:
+            self._dict_checked[name_field] = Checker_val_fields_rez(False, f'"{alias}" не корректная ссылка')
+            return False
+        self._dict_checked[name_field] = Checker_val_fields_rez(True)
+        return True
+
+    def _check_number(self, val, field_o:Field_db_info):
+        name_field = field_o.name_mes
+        alias = field_o.field_alias
+        if isinstance(val,(float,int)):
+            self._dict_checked[name_field] = Checker_val_fields_rez(True)
+            return True
+        if F.is_numeric(val) == False:
+            self._dict_checked[name_field] = Checker_val_fields_rez(False,f'"{alias}" должно быть число')
+            return False
+        self._dict_checked[name_field] = Checker_val_fields_rez(True)
+        return True
+
+    def _check_nomen(self, val, field_o:Field_db_info):
+        name_field = field_o.name_mes
+        alias = field_o.field_alias
+        if  val == '':
+            self._dict_checked[name_field] = Checker_val_fields_rez(True)
+            return True
+        if self.poz is None:
+            self._dict_checked[name_field] = Checker_val_fields_rez(False,
+                  f'"{alias}" Проверка недоступна')
+            return False
+        if 'пл_оуп' not in self.poz.dict_tables:
+            self.poz.load_kpl_table('пл_оуп')
+        nomen = self.poz.dict_tables['пл_оуп']['Номенклатура_ЕРП']
+        if val != nomen:
+            self._dict_checked[name_field] = Checker_val_fields_rez(False,
+                      f'"{alias}" Наименование должно совпадать с номенклатурой: "{nomen}"')
+            return False
+        self._dict_checked[name_field] = Checker_val_fields_rez(True)
+        return True
+
+    def _check_db(self, val, field_o:Field_db_info):
+        def find_val(iter_data,val)->bool:
+            val_str= str(val)
+            val_digit = F.valm(val)
+            for row in iter_data:
+                for it in row:
+                    if it in (val_digit,val_str):
+                        return True
+            return False
+        name_field = field_o.name_mes
+        alias = field_o.field_alias
+        name_db = field_o.select_db
+        if self.DICT_ITERS_FOR_CHECK_FIELDS is None:
+            self.DICT_ITERS_FOR_CHECK_FIELDS = dict()
+        iter_data =  self.DICT_ITERS_FOR_CHECK_FIELDS.get(name_db,None)
+        if iter_data is None:
+            name_tbl_db, name_field_db = name_db.split('.')
+            addit_fields = CSQ.get_primary_fields(CFG.Config.project.db_kplan, name_tbl_db)
+            list_fields = [name_field_db]
+            for addit_field in addit_fields:
+                list_fields.append(addit_field)
+            iter_data = CSQ.custom_request_c(CFG.Config.project.db_kplan,
+                                             f"""SELECT {', '.join(list_fields)} FROM {name_tbl_db};""",
+                                             hat_c=False,lazy_method_hours=0.1)
+
+            self.DICT_ITERS_FOR_CHECK_FIELDS[name_db] = iter_data
+
+        if not find_val(iter_data, val):
+            self._dict_checked[name_field] = Checker_val_fields_rez(False,f'"{alias}" должно быть по БД')
+            return False
+        self._dict_checked[name_field] = Checker_val_fields_rez(True)
+        return True
+
+    def _check_choose(self, val, field_o:Field_db_info):
+        name_field = field_o.name_mes
+        alias = field_o.field_alias
+        if val == '1':
+            self._dict_checked[name_field] = Checker_val_fields_rez(False, f'"{alias}" должно быть выбрано')
+            return False
+        self._dict_checked[name_field] = Checker_val_fields_rez(True)
+        return True
+
+    def _check_erp_format(self, val, field_o:Field_db_info):
+        def check_main_str(val, name_field, pref:str=''):
+            if f'{pref}00-0' not in val:
+                self._dict_checked[name_field] = Checker_val_fields_rez(False,
+                                                                        f'"{alias}" Не корректная запись')
+                return False
+            if f'{pref}00-000000' in val:
+                self._dict_checked[name_field] = Checker_val_fields_rez(False,
+                                                                        f'"{alias}" Не корректная запись')
+                return False
+            if not F.is_numeric(val.split(f'{pref}00-0')[-1]):
+                self._dict_checked[name_field] = Checker_val_fields_rez(False,
+                                                                        f'"{alias}" Не корректная запись')
+                return False
+            return True
+
+        name_field = field_o.name_mes
+        alias = field_o.field_alias
+        if val == '':
+            self._dict_checked[name_field] = Checker_val_fields_rez(True)
+            return True
+        if not check_main_str(val,name_field):
+            if not check_main_str(val,name_field, CFG.Config.place.doc_prefix):
+                return False
+
+        self._dict_checked[name_field] = Checker_val_fields_rez(True)
+        return True
+
+
+    def _check_empty(self, val, field_o:Field_db_info):
+        name_field = field_o.name_mes
+        alias = field_o.field_alias
+        if val == '':
+            self._dict_checked[name_field] = Checker_val_fields_rez(False,
+                      f'"{alias}" Не может быть пусто')
+            return False
+        self._dict_checked[name_field] = Checker_val_fields_rez(True)
+        return True
+
+    def _check_date(self, val, field_o:Field_db_info):
+        name_field = field_o.name_mes
+        alias = field_o.field_alias
+        dateformat = '%Y-%m-%d'
+        if val=='' or val is None:
+            self._dict_checked[name_field] = Checker_val_fields_rez(True)
+            return True
+        if not F.is_date(val, dateformat):
+            self._dict_checked[name_field] = Checker_val_fields_rez(False,
+                      f'"{alias}":\nНе корректный формат даты у "{val}",\n должна быть дата формата ГГГГ-ММ-ДД')
+            return False
+        self._dict_checked[name_field] = Checker_val_fields_rez(True)
+        return True
+
+    def _check_state_poz(self, val, field_o:Field_db_info):
+        name_field = field_o.name_mes
+        alias = field_o.field_alias
+        if self.poz is None:
+            self._dict_checked[name_field] = Checker_val_fields_rez(False,
+                  f'"{alias}" Проверка недоступна')
+            return False
+        val_str = self.DICT_STATUS_POZ[int(self.poz.Статус)]['Имя']
+        if val_str in ('К производству', 'Завершена', 'Изготовление'):
+            if 'пл_оуп' not in self.poz.dict_tables:
+                self.poz.load_kpl_table('пл_оуп')
+            if self.poz.dict_tables['пл_оуп']['№ERP'] in ('', 0, '-'):
+                self._dict_checked[name_field] = Checker_val_fields_rez(False,
+                                                                f'Статус без №ERP не может быть {val_str}')
+                return False
+        self._dict_checked[name_field] = Checker_val_fields_rez(True)
+        return True
+
+    def _free(self, val, field_o:Field_db_info):
+        self._dict_checked[name_field] = Checker_val_fields_rez(True)
+        return True
+    def _check_positions_for_closed_mk(self, val, field_o:Field_db_info):
+        name_field = field_o.name_mes
+        alias = field_o.field_alias
+        if not val == 4:
+            self._dict_checked[name_field] = Checker_val_fields_rez(True)
+            return True
+        if self.poz is None:
+            self._dict_checked[name_field] = Checker_val_fields_rez(False,
+                  f'"{alias}" Проверка недоступна')
+            return False
+        def list_unclosed_mk(s_num: int):
+            list_if_status = CSQ.custom_request_c(
+                CFG.Config.project.db_naryad,
+                f"""SELECT Дата_завершения, Пномер, НомКплан as "КПЛ", Статус FROM mk
+             WHERE НомКплан = {s_num} AND Статус == 'Открыта';""", rez_dict=True)  # 28.11.2025
+            list_open_mk = []
+            for item in list_if_status:
+                if item['Дата_завершения'] == "":
+                    list_open_mk.append(item)
+            return list_open_mk
+
+        s_num = self.poz.Пномер
+        list_mk = list_unclosed_mk(s_num)
+        if list_mk:
+            self._dict_checked[name_field] = Checker_val_fields_rez(False,
+                    f'Не закрыты МК №№: {', '.join([str(_['Пномер']) for _ in list_mk])}')
+            return False
+        self._dict_checked[name_field] = Checker_val_fields_rez(True)
+        return True
+
+class Fields_db_info():
+    _DB_ALIASES = {
+        'info_fields_kpl.table_kpl': 'table_mes',
+        'info_fields_kpl.name': 'field_mes',
+        'info_fields_kpl.addit_poki': '_addit_poki',
+
+        'info_fields_kpl.nickname': 'description',
+        'info_fields_kpl.hide': 'sys_hide',
+
+        'info_fields_kpl.base': 'base',
+        'info_fields_kpl.hand_editable': 'hand_editable',
+
+        'info_fields_kpl.is_system': 'is_system',
+        'info_fields_kpl.s_num': 's_num',
+        'info_fields_kpl.freeze': 'freeze',
+        'info_fields_kpl.auto_load': 'auto_load',
+        'info_fields_kpl.enable': 'enable',
+        'info_fields_kpl.insert_order': 'insert_order',
+        'info_fields_kpl.edit_rules_str_digit_date': 'edit_rules_type_data',
+
+        'podrazdel.alias': 'table_alias',
+        'podrazdel.Наименование': 'table_descr',
+        'podrazdel.Цвет': 'table_color',
+        'podrazdel.Порядок': 'table_order',
+        'podrazdel.Имя_первичного_поля': 'table_primary_name',
+        'podrazdel.synthetic': 'synthetic',
+
+        'info_fields_kpl.alias_usr': 'field_alias',
+
+        'info_fields_kpl.alias_db': 'select_db',
+        'info_fields_kpl.users_rule': 'users_rule',
+        'info_fields_kpl.rule_mode_1_disabled': 'rule_off',
+        'info_fields_kpl.for_insert': 'for_insert',
+        'info_fields_kpl.for_edit': 'for_edit',
+        'info_fields_kpl.is_linklike': 'is_linklike',
+        'info_fields_kpl.is_bool': 'is_bool',
+        'info_fields_kpl.is_state': 'is_state',
+
+    }
+
+    def __init__(self,CHECK_FIELD_RULES=None,poki:int|None=None):
+        if poki is None:
+            poki = CFG.Config.place.poki
+        self.list_fields: list[Field_db_info] = []
+        self.list_unchecked:list[dict] = []
+        self.force_view: bool = False
+        self.first_load: bool = False
+        self.use_groups: bool = False
+
+        rez = CSQ.custom_request_c(CFG.Config.project.db_kplan, f"""
+            SELECT {', '.join([f'{k} as "{v}"' for k, v in self._DB_ALIASES.items()])} 
+            FROM info_fields_kpl 
+             INNER JOIN podrazdel ON podrazdel.Имя == info_fields_kpl.table_kpl 
+            WHERE podrazdel.poki == {poki} or podrazdel.poki IS NULL
+            --{F.now()}""", rez_dict=True)  #
+        if not rez:
+            CQT.msgbox(f'Ошибка загрузки info_fields_kpl')
+            sys.exit()
+        self.tables_db: Tables_db_info = Tables_db_info(self)
+        data_rules = CSQ.custom_request_c(CFG.Config.project.db_kplan,
+                                          "SELECT * FROM info_fields_kpl_check_rules_val",
+                                          rez_dict=True)
+        data_tbls = CSQ.custom_request_c(CFG.Config.project.db_kplan, f"""SELECT
+            Пномер as "id",  
+            Имя,
+            poki,
+            Имя_поля as "norm_name_field",
+            Группа_для_расч_норм_и_ганта as "group_for_gant",
+            Имя_начала_этапа as "start_plan_name_field",
+            Имя_конца_этапа as "end_plan_name_field",
+            Имя_начала_этапа_факт as "start_fact_name_field",
+            Имя_конца_этапа_факт as "end_fact_name_field",
+            default_hours_day_gant as "default_hours_day_gant",
+            Источник_первичного_поля_info_fields_kpl as "source_table_primary_name",
+            Источник_для_join_поля_info_fields_kpl as "source_table_for_join",
+            join_order as "join_order",
+            Это_группа_сборки as "main_group" 
+             FROM podrazdel --{F.now()}""",
+                                              rez_dict=True)
+        dict_data_tbls = F.deploy_dict_c(data_tbls,'Имя')
+        for it in rez:
+            f:Field_db_info = Field_db_info(self, it)
+
+            self.list_fields.append(f)
+            table = self.tables_db.add_table(f.table_mes, f.table_color, f.table_descr, f.table_alias,
+                                             f.table_order, f.table_primary_name, f.synthetic,
+                                             dict_data_tbls[f.table_mes])
+            f.parent_tbale = table
+            table.add_field(f)
+
+            if CHECK_FIELD_RULES:
+                rules = [CHECK_FIELD_RULES.find(_['rule']) for _ in data_rules
+                         if _['field'] == f.s_num]
+                if rules:
+                    f.tuple_rules = tuple(sorted(rules, key=lambda x: x.priority))
+                else:
+                    if f.for_edit:
+                        if not Checker_val_fields.is_auto_rule_applied(f):
+                            self.list_unchecked.append(
+                                {'Номер': f.s_num,
+                                 'Таблица': f.table_mes,
+                                 'Поле': f.field_mes,
+                                 'Алиас': f.field_alias,
+
+
+                                                         } )#f'{}. {f.name_mes}({f.field_alias})'
+
+        for tbl in self.tables_db.tabels:
+            tbl.load_source_table_primary_name()
+            tbl.load_source_table_for_join()
+            tbl.apply_poki()
+
+
+
+
+    @property
+    def dict_fields(self):
+        rez: dict[str, 'Field_db_info'] = {}
+        for f in self.list_fields:
+            name = f"{f.table_mes}.{f.field_mes}"
+            rez[name] = f
+        return rez
+
+    @property
+    def dict_nums(self) -> dict[int, Field_db_info]:
+        rez = dict()
+        for f in self.list_fields:
+            rez[f.s_num] = f
+        return rez
+
+    def _get_path_user_cfg(self,pref:str = '') -> str:
+        """
+
+        :param pref: 'f"poki_{CFG.Config.place.poki}_"'
+        :return:
+        """
+
+        path = os.path.join(tmp_dir(), f'{pref}fields.pickle')
+        return path
+
+    def load_user_data(self,pref:str='') -> dict[dict] | None:
+        if F.existence_file_c(self._get_path_user_cfg(pref)):
+            dict_cnf = F.load_file_pickle(self._get_path_user_cfg(pref))
+            return dict_cnf
+        return
+
+    def save_user_data(self):
+        rez_dict = {_.name_mes: {'hidden': not _.usr_hide, 'order': _.usr_idx} for _ in self.list_fields}
+        F.save_file_pickle(self._get_path_user_cfg(f"poki_{CFG.Config.place.poki}_"), rez_dict)
+        return True
+
+    def fill_tbl_idx(self, t: CQT.TableContext):
+        for name, idx in t.nf.items():
+            self.dict_fields[name].tbl_idx = idx
+
+    def get_aliases(self) -> dict[str, str]:
+        return {_.name_mes: _.name_alias for _ in self.dict_fields.values()}
+
+    def find(self, s_num: int) -> Field_db_info | None:
+        if s_num in self.dict_nums:
+            return self.dict_nums[s_num]
+        return None
+
+    def fix_indx(self):
+        items = list([_ for _ in self.dict_fields.values() if _.is_loaded])
+        items_not_load = list([_ for _ in self.dict_fields.values() if not _.is_loaded])
+
+        # 1. фиксированные индексы (freeze)
+        frozen = {it.freeze for it in items if it.freeze is not None}
+
+        # 2. сначала расставим freeze как есть
+        for it in items:
+            if it.freeze is not None:
+                it.usr_idx = it.freeze
+
+        # 3. сортировка (стабильная)
+        items.sort(key=lambda x: (
+            x.usr_idx is None,
+            x.usr_idx if x.usr_idx is not None else 0
+        ))
+
+        next_idx = 1
+
+        for it in items:
+            # freeze не трогаем вообще
+            if it.freeze is not None:
+                next_idx = max(next_idx, it.freeze + 1)
+                continue
+
+            # ищем ближайший свободный индекс
+            candidate = next_idx
+
+            # пропускаем занятые freeze
+            while candidate in frozen:
+                candidate += 1
+
+            # всегда прижимаем к candidate
+            it.usr_idx = candidate
+            next_idx = candidate + 1
+
+        # 4. пересобираем list в новом порядке
+        self.list_fields = sorted(items, key=lambda x: x.usr_idx)
+
+        for it in items_not_load:
+            it.usr_idx = next_idx
+            self.list_fields.append(it)
+            next_idx += 1
+
+
+class Field_db_info(_ImportDb):
+    def __init__(self, parent: Fields_db_info, item: dict):
+        self.parent: Fields_db_info = parent
+        self.parent_tbale: Table_db_info | None = None
+        self.table_mes: str | None = None
+        self.field_mes: str | None = None
+        self.description: str | None = None
+        self.sys_hide: bool | None = None
+        self.usr_hide: bool | None = None
+        self.usr_idx: int | None = None
+        self.tbl_idx: int | None = None
+        self.base: bool | None = None
+        self.hand_editable: bool | None = None
+        self.is_system: bool | None = None
+        self.s_num: int | None = None
+        self.freeze: int | None = None
+        self.table_alias: str | None = None
+        self.table_descr: str | None = None
+        self.field_alias: str | None = None
+        self.table_color: str | Color | None = None
+        self.select_db: str | None = None
+        self.users_rule: list | str | None = None
+        self.rule_off: bool | None = None
+        self.accessed: bool | None = None
+        self.auto_load: bool | None = None
+        self.enable: bool | None = None
+        self.for_insert: bool | None = None
+        self.for_edit: bool | None = None
+        self.synthetic: bool | None = None
+        self.table_order: int | None = None
+        self.table_primary_name: str | None = None
+        self.is_linklike: bool | None = None
+        self.is_bool: int | None = None
+        self.is_state: bool | None = None
+        self._addit_poki: int | None = None
+        self.insert_order: int | None = None
+        self.edit_rules_type_data: type | None = None
+
+        self.parce_row_dict(item)
+
+        self.usr_idx = self.s_num
+
+        self.tuple_rules: tuple[Check_field_rule] = tuple()
+        self._post_parse_users_rule()
+        self._post_parse_color()
+        self._calc_access()
+        self._calc_edit_rules_type_data()
+        if self._addit_poki is not None and self._addit_poki != CFG.Config.place.poki:
+            self.enable = False
+
+    def __lt__(self, other: Field_db_info):
+        if self.name_mes > other.name_mes:
+            return True
+
+    @property
+    def select_db_tbl_name(self) -> str:
+        return self.select_db.split('.')[0]
+
+    @property
+    def is_id_like(self) -> bool:
+        return self.parent_tbale.table_primary_name == self.field_mes
+
+    @property
+    def name_mes(self):
+        return f'{self.table_mes}.{self.field_mes}'
+
+
+    @property
+    def name_alias(self):
+        if self.table_alias:
+            return f'{self.table_alias}\n{self.field_alias}'
+        else:
+            return f'{self.field_alias}'
+
+    def __repr__(self):
+        type_data = self.type_db_field or ''
+
+        return (f'{self.usr_idx}.({type_data}) {self.name_mes} = "{self.select_db}" AS "{self.name_alias}",'
+                f' h={"True" if self.is_hidden else "False"}, load={"True" if self.is_loaded else "False"}')
+
+    @property
+    def type_db_field(self) -> str | None:
+        if self.parent_tbale.dict_types_data and self.field_mes in self.parent_tbale.dict_types_data:
+            return self.parent_tbale.dict_types_data[self.field_mes]
+        return
+
+    @property
+    def is_freeze(self) -> bool:
+        if self.freeze is None:
+            return False
+        return True
+
+    @property
+    def is_hidden(self) -> bool:
+        if self.parent.force_view:
+            return False
+        if self.sys_hide:
+            return True
+        if self.parent.first_load:
+            if self.base:
+                return False
+            return True
+        if not self.usr_hide:
+            return False
+        return True
+
+    @property
+    def is_loaded(self) -> bool:
+        if not self.enable:
+            return False
+        if not self.auto_load:
+            return False
+        if self.parent.force_view:
+            return True
+        if self.is_system:
+            return True
+        if not self.is_hidden:
+            return True
+        return False
+
+    def _post_parse_color(self):
+        if isinstance(self.table_color, str):
+            self.table_color = Color(self.table_color)
+
+    def _post_parse_users_rule(self):
+        res = set()
+        if self.users_rule:
+            if isinstance(self.users_rule, str):
+                res = set(self.users_rule.split(';'))
+        self.users_rule = res
+
+    def _calc_edit_rules_type_data(self):
+        DICT_TYPE_DATA_TO_RULE_NAME = {
+            'str':str,
+            'date':datetime.datetime,
+            'digit':float,
+            'int':int,
+        }
+        self.edit_rules_type_data  =  DICT_TYPE_DATA_TO_RULE_NAME.get(self.edit_rules_type_data,None)
+
+
+    def _calc_access(self):
+        if not self.users_rule:
+            self.accessed = True
             return
-        if DICT_CLD == None or DICT_PODR == None:
-            print(f'update_local_graf err DICT_CLD == None or DICT_PODR == None')
+        user_has_rule = F.user_name() in self.users_rule or CFG.Config.user_config.is_developer
+        if user_has_rule:
+            self.accessed = not self.rule_off
             return
+        self.accessed = self.rule_off
 
-    def load_dict_form(DICT_CLD,DICT_PODR,min_date,max_date,snum_kplan:int):
-        def load_list_of_month(min_date,max_date):
-            return  [F.start_end_dates_c(min_date,'','m','')[0],F.start_end_dates_c(max_date,'','m','')[1]]
 
-        def genetrate_cld(DICT_CLD,DICT_PODR,list_of_month):
-            weekends = Plan_custom_weekends(snum_kplan)
-            rez = dict()
-            list_days = sorted([k for  k in  DICT_CLD.keys()])
-            for day in list_days:
-                if day >= list_of_month[0] and day<= list_of_month[1]:
-                    rez[day] = copy.deepcopy(DICT_CLD[day])
-                    rez[day]['podr'] = dict()
-                    if weekends.is_weekend(day):
-                        rez[day]['Выходные'] = 1
-                    for podr in DICT_PODR.keys():
-                        if DICT_PODR[podr]['Порядок'] >= 0:
-                            rez[day]['podr']['план_' + podr] = ""
-                            rez[day]['podr']['факт_'+ podr] = ""
-            return rez
+class Type_day_gant():
+    def __init__(self,name,text,emoj,full_text):
+        self.name:str = name
+        self.text:str = text
+        self.emoj:str = emoj
+        self.full_text:str = full_text
 
-        min_max_of_month = load_list_of_month(min_date,max_date)
+    @property
+    def emoj_and_text(self):
+        text = self.text + " "*(3-len(self.text))
+        return f'{self.emoj} {text}'
 
-        dict_cld = genetrate_cld(DICT_CLD,DICT_PODR,min_max_of_month)
-        return dict_cld
+    def __eq__(self, other):
+        return self.name == other.name
 
-    def save_form_db(dict_form,pnom):
-        data = F.to_binary_pickle(dict_form)
-        CSQ.custom_request_c(CFG.Config.project.db_kplan,f"""UPDATE plan SET local_graf = ? WHERE Пномер == ?;""",list_of_lists_c=[data,pnom])
-        print(f'    Update {pnom} success')
-        return data
+    def __hash__(self):
+        return hash(self.name)
 
-    def setText_data(self,dict_form,pnom):
-        tbl = self.ui.tbl_kal_pl
-        t = CQT.TableContext(tbl)
-        data = F.to_binary_pickle(dict_form)
-        row = t.find_row({'plan.Пномер':str(pnom)},True)
-        if row:
-            row.set_value('plan.local_graf',str(data))
-        return data
+    def __repr__(self):
+        return f"Type_day_gant(name='{self.name}', text='{self.text}', emoj='{self.emoj}')"
 
-    def fill_date(DICT_PODR,dict_form,dict_dates:dict,dict_norms:dict,pnom,proj,poz, napr,napr_deyat):
+class Types_day_gant():
+    plan: Type_day_gant = Type_day_gant('plan','Пл.',CEMOJ.ДокументыДанные.plan,'План')
+    fact: Type_day_gant = Type_day_gant('fact','Ф.',CEMOJ.ДокументыДанные.fact, 'Факт')
 
-        def search_norma(name,dict_norms,podr):
-            # =================
-            prefix = None
-            if 'фдата' in name:
-                prefix = 'Ф'
-            if 'пдата' in name:
-                prefix = 'Н'
-            if prefix == None:
-                return 0
-            capacity = 0
-            vid_etap = name.split("__")[-1]
-            for field, val in dict_norms.items():
-                if podr == field.split('.')[0]:
-                    left_str = prefix + "час_" + vid_etap
-                    if left_str.lower() == field.split('.')[1].lower():
-                        capacity = val
-                        break
-                    left_str = prefix +  "мин_" + vid_etap
-                    if left_str.lower() == field.split('.')[1].lower():
-                        capacity = round(val/60,2)
-                        break
-            # =================
-            return  capacity
+    @classmethod
+    def find(cls,name)->Type_day_gant:
+        for attr_name, attr in F.get_all_attrs_with_properties(cls).items():
+            if attr.name == name:
+                return attr
+    @classmethod
+    def list(cls)->list[Type_day_gant]:
+        return [cls.plan,cls.fact]
 
-        def fill_date_to_form(dict_form, podr, date_nach,date_zav,etap,capacity,name_nach,name_zav):
-            fl_rab_dn = True
-            rab_dn = 0
-            for date in dict_form.keys():
-                if date >= date_nach and date <= date_zav:
-                    if dict_form[date]['Выходные'] == 0:
-                        rab_dn +=1
-            if rab_dn == 0:
-                fl_rab_dn = False
-                for date in dict_form.keys():
-                    if date >= date_nach and date <= date_zav:
-                        rab_dn += 1
-            if rab_dn == 0:
-                mosh = 0
-            else:
-                mosh = round(capacity / (rab_dn),3)
+class Cell_etap_gant():
+    def __init__(self,etap:Etap_gant,type_day_gant:Type_day_gant,norm:int|float|None=None,is_replaced:bool=False):
+        self.type: Type_day_gant = type_day_gant
+        self.etap: Etap_gant = etap
+        self.norm:int|float|None=norm#minutes
+        self.is_replaced:bool=is_replaced
 
-            for date in dict_form.keys():
-                if date >= date_nach and date <= date_zav:
-                    if date > date_zav:
-                        break
-                    if dict_form[date]['Выходные'] == 0 or not fl_rab_dn:
-                        data_et = {"Время_час" : mosh, 'Этап' : etap,
-                                                         "Начало" : F.datetostr(date_nach,"%d.%m.%y"),
-                                                         "Конец" : F.datetostr(date_zav,"%d.%m.%y"),
-                                                         "Имя_нз" : [name_nach,name_zav],
-                                                        '_type_replace_by_days': False
-                                                            }
+    def get_hours(self,digits:int=2)-> float|None:
+        if self.norm is None:
+            return None
+        return round(self.norm/60,digits)
 
-                        if dict_form[date]['podr'][podr] != '':
-                            dict_form[date]['podr'][podr].append(data_et)
-                        else:
-                            dict_form[date]['podr'][podr] = [data_et]
 
-            return dict_form
-        rez = ''
-        dict_process = dict()
-        for podr in DICT_PODR.keys():
-            if DICT_PODR[podr]['Порядок'] >= 0:
-                if podr not in dict_process:
-                    dict_process['план_' + podr] = dict()
-                    dict_process['факт_' + podr] = dict()
+    def get_minutes(self,digits:int=2)-> float|None:
+        if self.norm is None:
+            return None
+        return round(self.norm, digits)
 
-                for field,val in dict_dates.items():
-                    if podr == field.split('.')[0]:
-                        if "дата" in field.lower():
-                            current_sort_c_pf = None
-                            if "фдата" in field.lower():
-                                current_sort_c_pf = 'факт_' + podr
-                            if "пдата" in field.lower():
-                                current_sort_c_pf = 'план_' + podr
-                            if current_sort_c_pf == None:
-                                continue
-                            if "нач" in field.lower() or "зав" in field.lower():
-                                name = field.lower().replace("нач",'').replace("зав",'')
-                                capacity  = search_norma(name,dict_norms,podr)
-                                if name not in dict_process[current_sort_c_pf]:
-                                    dict_process[current_sort_c_pf][name] = dict()
-                                dict_process[current_sort_c_pf][name]["Норм"] = capacity
-                                if "нач" in field.lower():
-                                    dict_process[current_sort_c_pf][name]["нач"] = dict()
-                                    dict_process[current_sort_c_pf][name]["нач"]['val'] = ''
-                                    if F.is_date(val, "%Y-%m-%d"):
-                                        dict_process[current_sort_c_pf][name]["нач"]['val'] = F.strtodate(val,"%Y-%m-%d")
-                                    dict_process[current_sort_c_pf][name]["нач"]['field'] = field
-                                if "зав" in field.lower():
-                                    dict_process[current_sort_c_pf][name]["зав"] = dict()
-                                    dict_process[current_sort_c_pf][name]["зав"]['val'] = ''
-                                    if F.is_date(val, "%Y-%m-%d"):
-                                        dict_process[current_sort_c_pf][name]["зав"]['val'] = F.strtodate(val, "%Y-%m-%d")
-                                    dict_process[current_sort_c_pf][name]["зав"]['field'] = field
-                            else:
-                                if field.lower() not in dict_process[current_sort_c_pf]:
-                                    dict_process[current_sort_c_pf][field.lower()] = dict()
-                                if "ед" not in dict_process[current_sort_c_pf][field.lower()]:
-                                    dict_process[current_sort_c_pf][field.lower()]["ед"] = dict()
-                                dict_process[current_sort_c_pf][field.lower()]["ед"]['val'] = ''
-                                if F.is_date(val, "%Y-%m-%d"):
-                                    dict_process[current_sort_c_pf][field.lower()]["ед"]['val'] = F.strtodate(val,"%Y-%m-%d")
-                                dict_process[current_sort_c_pf][field.lower()]["ед"]['field'] = field
-        for podr in dict_process.keys():
-            for etap in dict_process[podr].keys():
-                date_nach = ''
-                date_zav = ''
-                capacity = 0
-                for vid in dict_process[podr][etap].keys():
-                    if vid == 'Норм':
-                        capacity = F.valm(dict_process[podr][etap][vid])
-                    if vid == 'ед':
-                        date_nach = date_zav = dict_process[podr][etap][vid]['val']
-                        name_nach = name_zav = dict_process[podr][etap][vid]['field']
-                    if vid == 'нач':
-                        date_nach = dict_process[podr][etap][vid]['val']
-                        name_nach = dict_process[podr][etap][vid]['field']
-                    if vid == 'зав':
-                        date_zav = dict_process[podr][etap][vid]['val']
-                        name_zav = dict_process[podr][etap][vid]['field']
-                if date_nach == "" or date_zav == '':
+
+    def for_tbl(self)->str|int|float:
+        if self.norm is None :
+            return ''
+        val_hours = self.norm/60
+        rounded_hours = round(val_hours,1)
+        return int(rounded_hours) if rounded_hours.is_integer() else rounded_hours
+
+    def __repr__(self):
+        norm_str = f", norm={self.norm}" if self.norm is not None else ""
+        return f"Cell_etap_gant(etap={repr(self.etap)}, type={self.type}{norm_str})"
+
+class Etap_gant():
+    def __init__(self,day_gant:Day_gant, tbl_db:Table_db_info):
+        self.day_gant_p:Day_gant = day_gant
+        self.tbl_db:str|None = tbl_db.name
+        self._cell_plan:Cell_etap_gant|None = None
+        self._cell_fact:Cell_etap_gant|None = None
+
+    def __repr__(self):
+        tbl_str = f"{self.tbl_db}" if self.tbl_db else "tbl_db=None"
+        plan_inf = f'  {self._cell_plan.norm}  ' if self._cell_plan else '❌'
+        fact_inf = f'  {self._cell_fact.norm}  ' if self._cell_fact else '❌'
+        return f"Etap_gant({tbl_str}) plan:{plan_inf}, fact:{fact_inf}"
+
+
+    def is_replaced(self,type_day:Type_day_gant)->bool:
+        cell = self.get_cell(type_day)
+        if cell is None:
+            return False
+        return cell.is_replaced
+
+    def get_cell(self,type_day:Type_day_gant)->Cell_etap_gant:
+        if type_day == Types_day_gant.plan:
+            return self._cell_plan
+        else:
+            return self._cell_fact
+
+    def __add_agregate_etap_element(self,new_cell:Cell_etap_gant):
+        if self.tbl_db not in self.day_gant_p.poz.dict_agregate_etaps:
+            self.day_gant_p.poz.dict_agregate_etaps[self.tbl_db] = dict()
+        date = self.day_gant_p.date
+        new_min_date = date
+        new_max_date = date
+        if new_cell.type in self.day_gant_p.poz.dict_agregate_etaps[self.tbl_db]:
+            old_min_date, old_max_date = self.day_gant_p.poz.dict_agregate_etaps[self.tbl_db][new_cell.type]
+            new_min_date = old_min_date
+            if date < old_min_date:
+                new_min_date = date
+
+            new_max_date = old_max_date
+            if date > old_max_date:
+                new_max_date = date
+
+        self.day_gant_p.poz.dict_agregate_etaps[self.tbl_db][new_cell.type]= (new_min_date,new_max_date)#Метка для быстрой прорисовки строк локальный
+
+
+    def add_cell(self,type_day_gant:Type_day_gant,norm:int|float|None=None,is_replaced:bool=False)->Cell_etap_gant:
+        new_cell = Cell_etap_gant(self,type_day_gant,norm,is_replaced)
+        if type_day_gant == Types_day_gant.plan:
+            self._cell_plan = new_cell
+        else:
+            self._cell_fact = new_cell
+
+        self.__add_agregate_etap_element(new_cell)#добавляем метку
+
+        return new_cell
+
+class Day_gant():
+    def __init__(self,poz:Poz_gant,date:datetime.datetime,day_cld:Month_cld_day,custom_weekend:bool=False):
+        self.poz: Poz_gant = poz
+        self.dict_etaps: dict[str,Etap_gant] = dict()
+        self.day_cld:Month_cld_day = day_cld
+        self.date:datetime.datetime = date
+        self.custom_weekend :bool = custom_weekend
+
+    def __repr__(self):
+        date_str = self.date.strftime("%Y-%m-%d") if self.date else "None"
+        return f"Day_gant(poz_id={self.poz.poz_id}, date={date_str}, etaps_count={len(self.dict_etaps)})"
+
+    def is_replaced(self,name_etap:str,type_day:Type_day_gant)->bool:
+        etap = self.dict_etaps[name_etap]
+        return etap.is_replaced(type_day)
+
+    def add_etap(self,tbl_db:Table_db_info)->Etap_gant:
+        new_etap = Etap_gant(self,tbl_db)
+        self.dict_etaps[tbl_db.name] = new_etap
+        return new_etap
+
+class Tmp_gr_tbl():
+    def __init__(self,sm_hours):
+        self.start: datetime.datetime | None = None
+        self.end: datetime.datetime | None = None
+        self.s_time_hours: float | int = 0
+        self.s_time_smen: int = 0
+        self._sm_hours = sm_hours
+
+    def __repr__(self):
+        start_str = self.start.strftime("%Y-%m-%d") if self.start else "None"
+        end_str = self.end.strftime("%Y-%m-%d") if self.end else "None"
+        return f"Tmp_gr_tbl(start={start_str}, end={end_str}, h={self.s_time_hours}, sm={self.s_time_smen})"
+
+    def calc_end(self,start:datetime.datetime, dict_cld:dict[datetime.datetime,Month_cld_day],
+                 dict_cust_wends:dict[datetime.datetime, bool]):
+        def calc_work_day(date:datetime.datetime,smen:int)->datetime.datetime:
+            cnter = 0
+            for date_dt, cld_day in dict_cld.items():
+                if date_dt < date:
+                    continue
+                if cld_day.is_holyday or date_dt in dict_cust_wends:
                     pass
                 else:
-                    dict_form = fill_date_to_form(dict_form,podr,date_nach,date_zav,etap,capacity,name_nach,name_zav)
-        dict_form = [{'pnom':pnom,'proj':proj,'poz':poz,'napr_deya':napr_deyat,'napr':napr,'data':dict_form}]
-        return dict_form
+                    cnter+=1
+                if cnter == smen:
+                    return date_dt
 
-    def generane_new_gant(self: mywindow|None,DICT_CLD, DICT_PODR, dict_poz):
-        def fix_holyday_starts_ends(DICT_CLD:dict,dict_dates:dict)->dict:
-            clear_dict = {k:F.strtodate(v,"%Y-%m-%d") for k,v in dict_dates.items() if F.is_date(v,"%Y-%m-%d")}
-            for name,date in clear_dict.items():
-                days_add = 0
-                tmp_date =  copy.deepcopy(date)
-                while True:
-                    if DICT_CLD[tmp_date]['Выходные']:
-                        days_add+=1
-                        tmp_date += datetime.timedelta(days=1)
+        self.start =calc_work_day(start,1)
+        self.end = calc_work_day(start,self.s_time_smen)
+
+
+
+class Tmp_gr():
+    def __init__(self):
+        self.start:datetime.datetime|None = None
+        self.end:datetime.datetime|None = None
+        self.dict_tbls: dict[str,Tmp_gr_tbl] = dict()
+
+    def __repr__(self):
+        start_str = self.start.strftime("%Y-%m-%d") if self.start else "None"
+        end_str = self.end.strftime("%Y-%m-%d") if self.end else "None"
+
+        max_tbl = None
+        max_smen = 0
+        if self.dict_tbls:
+            max_tbl = self.get_max_gr_tbl()
+            max_smen = max_tbl.s_time_smen
+
+        return (f"Tmp_gr({'; '.join([_ for _ in self.dict_tbls.keys()])}, start={start_str}, end={end_str},"
+                f" tables={len(self.dict_tbls)},"
+                f" max_smen={max_smen},"
+                f" filled={self.is_filled})")
+    @property
+    def is_filled(self)->bool:
+        for it in self.dict_tbls.values():
+            if it.s_time_smen:
+                return True
+        return False
+
+    def get_max_gr_tbl(self)->Tmp_gr_tbl|None:
+        sorted_gr = sorted( [_ for _ in self.dict_tbls.values()],key= lambda x: x.s_time_smen)
+        if not sorted_gr:
+            return
+        return sorted_gr[-1]
+
+
+    def upd_h(self,k_compress:int|float):
+        for tbl_name, gr_tbl_o in self.dict_tbls.items():
+            gr_tbl_o._sm_hours = gr_tbl_o._sm_hours/k_compress
+            gr_tbl_o.s_time_smen = F.round_up(gr_tbl_o.s_time_hours / gr_tbl_o._sm_hours)
+
+    def add_h(self,tbl_name:str,h:int|float,sm_hours:int):
+        if tbl_name not in self.dict_tbls:
+            self.dict_tbls[tbl_name] = Tmp_gr_tbl(sm_hours)
+
+        gr_tbl_o = self.dict_tbls[tbl_name]
+        gr_tbl_o.s_time_hours += h
+        gr_tbl_o.s_time_smen = F.round_up(gr_tbl_o.s_time_hours/gr_tbl_o._sm_hours)
+
+    def calc_start_end(self,start:datetime.datetime, dict_cld:dict[datetime.datetime,Month_cld_day],
+                 dict_cust_wends:dict[datetime.datetime, bool]):
+
+        [_.calc_end(start,dict_cld,dict_cust_wends) for _ in self.dict_tbls.values()]
+        max_tbl = self.get_max_gr_tbl()
+        if max_tbl is None:
+            return
+        self.start = max_tbl.start
+        self.end = max_tbl.end
+
+class Gant_agregator():
+    def __init__(self):
+        self.db = CFG.Config.project.db_kplan
+
+    def update(self,data:list[dict],id_poz:int):
+        self.clear(id_poz=id_poz)
+        CSQ.custom_request_c(self.db, f"""INSERT INTO gant_poz_val_by_day (id_poz, 
+            etap_podrazdel, 
+            day_dt, 
+            val_minutes)   VALUES (?, ?, ?, ?); """,list_of_lists_c=data)
+        pass
+
+    def clear(self,id_poz:int):
+        rez = CSQ.custom_request_c(self.db,f"""DELETE FROM gant_poz_val_by_day WHERE id_poz == {id_poz}; """)
+
+
+    def load(self,date_start:datetime.datetime,
+             date_end:datetime.datetime,
+             list_id_poz:list[int]|None=None,
+             id_etap:list[int]|None=None)->list[dict]:
+        where_id_poz = ''
+        where_id_etap = ''
+        if list_id_poz:
+            where_id_poz = f'AND id_poz in ({CSQ.prepare_list_to_tuple(list_id_poz)}) '
+        if id_etap:
+            where_id_etap = f'AND etap_podrazdel IN ({CSQ.prepare_list_to_tuple(id_etap)}) '
+        rez = CSQ.custom_request_c(self.db,f"""SELECT gant_poz_val_by_day.*,
+         status_poz.Имя as 'state', napravl_deyat.Имя as 'napr_d', plan.Позиция as 'poz', пл_оуп.Количество as 'count',
+        пл_оуп.№проекта as 'np', пл_оуп.№ERP as 'zp' FROM gant_poz_val_by_day
+        Left JOIN plan on plan.Пномер == gant_poz_val_by_day.id_poz,
+                    status_poz on status_poz.Пномер == plan.Статус,
+                    napravl_deyat on napravl_deyat.Пномер == plan.Направление_деятельности,
+                   пл_оуп on пл_оуп.НомПл == plan.Пномер WHERE 
+                     Date(day_dt) BETWEEN "{date_start.date()}" AND "{date_end.date()}" {where_id_poz} {where_id_etap}; -- {F.now()}""",
+                                   rez_dict=True)
+        return rez
+
+class Poz_gant():
+    def __init__(self, poz_id:int):
+        self.poz_id:int = poz_id
+        self.dict_days:dict[datetime.datetime,Day_gant]=dict()
+        self.min_date_month:datetime.datetime|None = None
+        self.max_date_month:datetime.datetime|None = None
+        self.dict_agregate_etaps:dict[str,dict[Type_day_gant,tuple]]|None = dict()
+        self.err_recalc:list[str]= []
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+
+        # если есть Qt или тяжёлые объекты
+        for k, v in list(state.items()):
+            if 'Qt' in str(type(v)):
+                del state[k]
+
+        return state
+
+    def __setstate__(self, state):
+        # сначала дефолты (критично!)
+        #self.name = None
+        #self.parent = None
+
+        # потом реальные данные
+        self.__dict__.update(state)
+    
+    def min_day_agr(self)->datetime.datetime:
+        plan = Types_day_gant.plan
+        return min([_[plan][0] for _ in self.dict_agregate_etaps.values() if plan in _])
+    
+    def max_day_agr(self)->datetime.datetime:
+        plan = Types_day_gant.plan
+        return max([_[plan][1] for _ in self.dict_agregate_etaps.values() if plan in _])
+
+    def __repr__(self):
+        return f"Poz_gant(poz_id={self.poz_id}, days_count={len(self.dict_days)})"
+
+    def _clear(self):
+        self.dict_agregate_etaps = dict()
+        self.dict_days = dict()
+        self.min_date_month: datetime.datetime | None = None
+        self.max_date_month: datetime.datetime | None = None
+
+
+
+
+
+    def get_etap_gant_summ_minutes(self,tbl_db: Table_db_info,type_day:Type_day_gant)->int| float:
+        summ = 0
+        for dt_day, day_gant in self.dict_days.items():
+            for name, etap_gant in day_gant.dict_etaps.items():
+                if etap_gant.tbl_db == tbl_db.name:
+                    cell_gant = etap_gant.get_cell(type_day)
+                    if cell_gant:
+                        summ += cell_gant.norm
+
+        return summ
+
+
+
+    def add_day(self,date:datetime.datetime,day_cld:Month_cld_day,custom_weekend:bool=False)->Day_gant:
+        day = Day_gant(self,date,day_cld,custom_weekend)
+        self.dict_days[day.date] = day
+        return day
+
+    def _check_repair_unfilled_dates(self,dict_fields_db_info:dict[str, Field_db_info], DICT_CLD:dict[datetime.datetime, Month_cld_day],
+                                     dates_etap_plan:dict,
+                                 row_time_etap:dict)->dict:
+        def calc_start_end(current_tbl,time_h)->tuple[str,str]:
+            start = None
+            end = None
+            prev_tbl:Table_db_info = current_tbl.get_previous()
+            if prev_tbl is not None:
+                if (prev_tbl.end_plan_name_field_full_name in dates_etap_plan and
+                        dates_etap_plan[prev_tbl.end_plan_name_field_full_name]):
+                    start = dates_etap_plan[prev_tbl.end_plan_name_field_full_name]
+            if start is None or start=='':
+                if self.min_date_month:
+                    start = F.datetostr(self.min_date_month,"%Y-%m-%d")
+                else:
+                    self.err_recalc.append(f'Не удается определить дату в КПЛ {self.poz_id} для'
+                                           f' {current_tbl.norm_full_name}.')
+                    return '', ''
+            count_days = F.round_up(time_h/8)
+            if start is not None and F.is_date(start,"%Y-%m-%d"):
+                end = F.date_add_days(start,count_days,"%Y-%m-%d","%Y-%m-%d")
+            return start,end
+
+        for name, time_h in row_time_etap.items():
+            if not time_h:
+                continue
+            if not 'нчас_' in name.lower():
+                continue
+            if name in dict_fields_db_info:
+                field = dict_fields_db_info[name]
+                tbl = field.parent_tbale
+                start_name = tbl.start_plan_name_field_full_name
+                end_name = tbl.end_plan_name_field_full_name
+                fl_calc = False
+                if start_name in dates_etap_plan and dates_etap_plan[start_name]=='':
+                    fl_calc = True
+                if end_name in dates_etap_plan and dates_etap_plan[end_name]=='':
+                    fl_calc = True
+                if fl_calc:
+                    start_str_date, end_str_date = calc_start_end(tbl,time_h)
+                    if start_name in dates_etap_plan and dates_etap_plan[start_name] == '':
+                        print(f'{start_name} new date {start_str_date}')
+                        dates_etap_plan[start_name] = start_str_date
+                    if end_name in dates_etap_plan and dates_etap_plan[end_name] == '':
+                        print(f'{end_name} new date {end_str_date}')
+                        dates_etap_plan[end_name] = end_str_date
+        return dates_etap_plan
+
+    def _fix_holiday_starts_ends(self, DICT_CLD: dict[datetime.datetime, Month_cld_day], dict_dates: dict) -> dict:
+        clear_dict = {k: F.strtodate(v, "%Y-%m-%d") for k, v in dict_dates.items() if F.is_date(v, "%Y-%m-%d")}
+        for name, date in clear_dict.items():
+            days_add = 0
+            tmp_date = copy.deepcopy(date)
+            while True:
+                if tmp_date not in DICT_CLD:
+                    print(f'ERR Поз.{self.poz_id} etap {name} - date out of range {tmp_date}')
+                    return  dict_dates#
+                day: Month_cld_day = DICT_CLD[tmp_date]
+                if day.is_holyday:
+                    days_add += 1
+                    tmp_date += datetime.timedelta(days=1)
+                else:
+                    break
+            if days_add:
+                print(f'    {name} adds {days_add} days')
+                dict_dates[name] = F.datetostr(tmp_date, "%Y-%m-%d")
+        return dict_dates
+
+    def _calc_min_max_dates_month(self,dict_dates):
+        min_date = None
+        max_date = None
+        for tbl, etap in dict_dates.items():
+            for type_row, item in etap.items():
+                if item is None:
+                    continue
+                tmp_min = None
+                tmp_max = None
+                if item['dict_days']:
+                    tmp_min = min(list(item['dict_days'].keys()))
+                    tmp_max = max(list(item['dict_days'].keys()))
+                if tmp_min is not None and (min_date is None or min_date > tmp_min):
+                    min_date = tmp_min
+                if tmp_max is not None and (max_date is None or max_date < tmp_max):
+                    max_date = tmp_max
+        if min_date is None:
+            return None, None
+        if max_date is None:
+            return None, None
+        self.min_date_month = F.start_end_dates_c(min_date, '', 'm', '')[0]
+        self.max_date_month =F.start_of_day(F.start_end_dates_c(max_date, '', 'm', '')[1])
+        return
+
+
+
+    def recalc_etap_by_cust_limit(self,row_dates_etap_plan:dict,row_time_etap:dict,
+                    dict_template_cld: dict[datetime.datetime, Month_cld_day],
+                    dict_fields_db_info: dict[str, Field_db_info],
+                    fields_db_info: Fields_db_info,
+                    dict_cust_wends: dict[datetime.datetime, bool],
+                                  dict_cust_limits:dict[str,float]
+                    )->dict:
+
+
+        def calc_date_by_limit(tbl_db,val_limit)->datetime.datetime|None:
+
+            name_start = tbl_db.start_plan_name_field_full_name
+            name_end = tbl_db.end_plan_name_field_full_name
+            if not val_limit:
+                return
+            if name_start not in row_dates_etap_plan:
+                return
+            if not row_dates_etap_plan[name_start]:
+                return
+
+            start_date = F.strtodate(row_dates_etap_plan[name_start],"%Y-%m-%d")
+
+            norm_h = 0
+            if tbl_db.is_composite:
+                for field in tbl_db.get_composite_fields(False):
+                    if field.name_mes in row_time_etap:
+                        norm_h += row_time_etap[field.name_mes]
+            else:
+                if tbl_db.norm_full_name in row_time_etap:
+                    norm_h += row_time_etap[tbl_db.norm_full_name]
+
+            count_d = F.round_up(norm_h/val_limit)
+            cnter = 0
+            for dt_day, cld_day in dict_template_cld.items():
+                if dt_day < start_date:
+                    continue
+                if cld_day.is_holyday or dt_day in dict_cust_wends:
+                    pass
+                else:
+                    cnter += 1
+                if cnter == count_d:
+                    break
+            return dt_day
+
+
+
+        for name_tbl_db, val_limit in dict_cust_limits.items():
+            tbl_db = fields_db_info.tables_db.get_table(name_tbl_db)
+            date_end_dt = calc_date_by_limit(tbl_db,val_limit)
+            if date_end_dt is None:
+                self.err_recalc.append(f'Неудачно пересчитан этап {tbl_db.alias}')
+                continue
+            date_end = F.datetostr(date_end_dt, "%Y-%m-%d")
+            name_field_end = tbl_db.end_plan_name_field_full_name
+            if name_field_end in row_dates_etap_plan:
+                print(f'{name_field_end}: было {row_dates_etap_plan[name_field_end]} стало {date_end} ')
+                row_dates_etap_plan[name_field_end] = date_end
+        return  row_dates_etap_plan
+
+
+
+
+    def recalc_days(self,row_dates_etap_plan:dict,row_time_etap:dict,
+                    dict_template_cld: dict[datetime.datetime, Month_cld_day],
+                    dict_fields_db_info: dict[str, Field_db_info],
+                    fields_db_info: Fields_db_info,
+                    dict_cust_wends: dict[datetime.datetime, bool],
+                    recalc_days:datetime.datetime|None=None,
+                    recalc_days_end:datetime.datetime|None=None
+                    )->dict:
+
+        def count_holidays(dt_start,dt_end):
+            return sum([month_o.is_holyday for dt,month_o in dict_template_cld.items() if dt_end >= dt>=dt_start])
+
+
+        start_day = recalc_days
+        end_day = recalc_days_end
+
+        tmp_dict_grps:dict[int,Tmp_gr] = {gr: Tmp_gr() for gr in fields_db_info.tables_db.dict_groups_gant.keys()}
+
+        for gr_id, list_tbl_db in fields_db_info.tables_db.dict_groups_gant.items():
+            for tbl in list_tbl_db:
+                if tbl.is_composite:
+                    for field in tbl.get_composite_fields(False):
+                        if field.name_mes in row_time_etap:
+                            tmp_dict_grps[gr_id].add_h(tbl.name, row_time_etap[field.name_mes],tbl.default_hours_day_gant)
+                else:
+                    if tbl.norm_full_name  in row_time_etap:
+                        tmp_dict_grps[gr_id].add_h(tbl.name, row_time_etap[tbl.norm_full_name],tbl.default_hours_day_gant)
+
+        def recalc_groups(tmp_dict_grps:dict,
+                          tmp_day_dt:datetime.datetime)->tuple[dict,datetime.datetime,datetime.datetime]:
+            pre_max_date = None
+            pre_min_date = None
+            for gr in tmp_dict_grps.values():
+                gr.calc_start_end(tmp_day_dt, dict_template_cld, dict_cust_wends)
+                if gr.is_filled:
+                    tmp_day_dt = F.date_add_days(gr.end, 1, '', '')
+                    if gr.end and (pre_max_date is None or gr.end > pre_max_date):
+                        pre_max_date = gr.end
+                    if gr.start and (pre_min_date is None or gr.start < pre_min_date):
+                        pre_min_date = gr.start
+            return tmp_dict_grps, pre_min_date, pre_max_date
+
+        first_day_gr = start_day if start_day else end_day
+
+        pre_tmp_dict_grps = copy.deepcopy(tmp_dict_grps)
+        _, pre_min_date, pre_max_date = recalc_groups(pre_tmp_dict_grps,copy.copy(first_day_gr))
+        if pre_min_date is None or pre_max_date is None:
+            print(f'ERROR recalc_days: pre_min_date is None or pre_max_date is None')
+            return row_dates_etap_plan
+
+        dict_grps = None
+        if start_day and not end_day:
+            dict_grps = _
+        if start_day and end_day:
+            if pre_max_date <= end_day:
+                dict_grps = _
+            else:
+                koef_compress = (end_day-start_day).days / (pre_max_date-pre_min_date ).days
+                for gr in tmp_dict_grps.values():
+                    gr.upd_h(koef_compress)
+                dict_grps, pre_min_date, pre_max_date = recalc_groups(tmp_dict_grps,copy.copy(start_day))
+
+        if not start_day and end_day:
+            delta_days = (pre_max_date-pre_min_date).days- count_holidays(pre_min_date,pre_max_date)
+            cnter = 0
+            cnter_dt = copy.deepcopy(pre_min_date)
+            while cnter<=delta_days:
+                if cnter_dt not in dict_template_cld:
+                    break
+                if not dict_template_cld[cnter_dt].is_holyday:
+                    cnter += 1
+                cnter_dt = F.date_add_days(cnter_dt, -1, '', '')
+
+            start_day = F.date_add_days(pre_min_date, -cnter, '', '')
+            dict_grps, pre_min_date, pre_max_date = recalc_groups(tmp_dict_grps,start_day)
+
+        if dict_grps is None:
+            print(f'ERROR recalc_days: dict_grps is None')
+            return row_dates_etap_plan
+
+        for gr, list_tbl_db in fields_db_info.tables_db.dict_groups_gant.items():
+            gr_it = dict_grps[gr]
+            for name_tbl_db, tmp_dict_grp in gr_it.dict_tbls.items():
+                if not tmp_dict_grp.s_time_smen:
+                    continue
+                tbl_db = fields_db_info.tables_db.get_table(name_tbl_db)
+                date_start =  F.datetostr(tmp_dict_grp.start,"%Y-%m-%d")
+                date_end = F.datetostr(tmp_dict_grp.end,"%Y-%m-%d")
+                name_field_start = tbl_db.start_plan_name_field_full_name
+                name_field_end = tbl_db.end_plan_name_field_full_name
+                if name_field_start in row_dates_etap_plan:
+                    print(f'{name_field_start}: было {row_dates_etap_plan[name_field_start]} стало {date_start} ')
+                    row_dates_etap_plan[name_field_start] = date_start
+                if name_field_end in row_dates_etap_plan:
+                    print(f'{name_field_end}: было {row_dates_etap_plan[name_field_end]} стало {date_end} ')
+                    row_dates_etap_plan[name_field_end] = date_end
+        return row_dates_etap_plan
+
+    def clear_dates(self,poz:Pozition)->bool:
+        row_dates_etap_plan = copy.deepcopy(poz.row_dates_etap_plan)
+        new_row_dates_etap_plan = dict()
+        for field, data in row_dates_etap_plan.items():
+            new_row_dates_etap_plan[field] = ''
+        fl = poz.update_row_etaps(new_row_dates_etap_plan)
+        return fl
+
+    def recalc(self,poz:Pozition,dict_template_cld: dict[datetime.datetime, Month_cld_day],
+               dict_fields_db_info:dict[str, Field_db_info],fields_db_info:Fields_db_info,
+               plan_custom_weekends:Plan_custom_weekends,
+               recalc_days:datetime.datetime|None=None,
+               recalc_days_end:datetime.datetime|None=None,
+               dict_cust_limits: dict | None = None
+               )->bool:
+        self._clear()
+        dict_cust_wends: dict[datetime.datetime, bool] = plan_custom_weekends.current_dict_weekends
+        def calc_united_dates(dict_dates, dict_replace_dates,dict_norms,
+                              dict_template_cld:dict[datetime.datetime, Month_cld_day],
+                              dict_cust_wends:dict[datetime.datetime,bool])->dict[Table_db_info,dict]:
+
+            base_dates = dict()
+            dict_cleared_dates = {k:v for k,v in dict_dates.items() if F.is_date(v,"%Y-%m-%d") and '.' in k}
+            #=======================================
+            #fill base_dates - plan(start,end,norma)
+            #=======================================
+            for name,date in dict_cleared_dates.items():
+                if name in dict_fields_db_info:
+                    field = dict_fields_db_info[name]
+                    tbl = field.parent_tbale
+
+                    if tbl.synthetic:
+                        continue
+                    if field.field_mes not in (tbl.start_plan_name_field, tbl.end_plan_name_field):
+                        continue
+
+                    if tbl not in base_dates:
+                        base_dates[tbl]= {'plan':None,'fact':None}
+                        base_dates[tbl]['plan'] = {
+                            'start':None,
+                            'end':None,
+                            'norma':None,
+                            'dict_days':dict()
+                                             }
+                    item = base_dates[tbl]['plan']
+                    if item['norma'] is None :
+                        norma = 0
+
+                        if tbl.is_composite:
+                            norma = 0
+                            for field_comp in tbl.get_composite_fields(True):
+                                if field_comp.name_mes in dict_norms:
+                                    norma += dict_norms[field_comp.name_mes]
+                        else:
+                            if tbl.norm_full_name in dict_norms:
+                                norma = dict_norms[tbl.norm_full_name]
+                        item['norma'] = norma
+
+
+
+                    dt_date = F.strtodate(date,"%Y-%m-%d")
+                    if field.field_mes == tbl.start_plan_name_field and (item['start'] is None
+                                                                         or dt_date <item['start']):
+                        item['start'] = dt_date
+                    if field.field_mes == tbl.end_plan_name_field and (item['end'] is None
+                                                                       or dt_date >item['end']):
+                        item['end'] = dt_date
+
+            #=======================================
+            #fill base_dates  - dict_days for dict_replace_dates
+            #=======================================
+            if dict_replace_dates:
+                for podr, dict_dates in dict_replace_dates.items():
+                    clear_name_tbl = podr.replace("факт_",'').replace("план_","")
+                    type_row = None
+                    if "факт_" in podr:
+                        type_row=Types_day_gant.fact
+                    if "план_" in podr:
+                        type_row = Types_day_gant.plan
+                    if type_row is None:
+                        continue
+                    tbl = fields_db_info.tables_db.get_table(clear_name_tbl)
+                    if tbl is None:
+                        continue
+                    for date_str , norm in dict_dates.items():
+                        if not F.is_date(date_str,"%d\n%m\n%y"):
+                            continue
+                        dt_date = F.strtodate(date_str,"%d\n%m\n%y")
+                        if tbl not in base_dates:
+                            base_dates[tbl]= {'plan':None,'fact':None}
+                        if base_dates[tbl][type_row.name] is None :
+                            base_dates[tbl][type_row.name] = {
+                                'start':None,
+                                'end':None,
+                                'norma':None,
+                                'dict_days':dict()
+                                                 }
+
+                        item = base_dates[tbl][type_row.name]
+                        item['dict_days'][dt_date] = norm
+                        item['start'] = None
+                        item['end'] = None
+                        item['norma'] = None
+
+            # =======================================
+            # fill base_dates  - dict_days calc for plan
+            # =======================================
+            for tbl, etap in base_dates.items():
+                for type_row, item in etap.items():
+                    if item is None:
+                        continue
+                    if item['start'] is None or item['end'] is None or item['norma'] is None or item['dict_days']:
+                        if item['dict_days']:
+                            item['dict_days'] = F.sort_dict_by_key(item['dict_days'],None)
+                        continue
+
+                    #расчет рабочих дней и уплотнение нормы в день
+                    list_w_days = []
+                    while True:
+                        for dt_day, cld_day in dict_template_cld.items():
+                            if dt_day >= item["start"] and dt_day <= item["end"]:
+                                if not cld_day.is_holyday and dt_day not in dict_cust_wends:
+                                    list_w_days.append(dt_day)
+                            
+                        if list_w_days or item["end"] not in dict_template_cld:
+                            break
+                        item["end"] = F.add_days(item["end"],datetime.timedelta(days=1))
+            
+                    count_rab_days = len(list_w_days)
+                    part_norm =0
+                    if count_rab_days:
+                        part_norm = round(item['norma']*60/count_rab_days,2)#перевод часов в минуты
+
+                    for dt_day in list_w_days:
+                        item['dict_days'][dt_day] = part_norm
+
+                    item['dict_days'] = F.sort_dict_by_key(item['dict_days'], None)
+
+            base_dates = F.sort_dict_by_key(base_dates,lambda x: x.order)
+            return  base_dates
+
+        row_dates_etap_plan = copy.deepcopy(poz.row_dates_etap_plan)
+
+        if recalc_days or recalc_days_end:
+            if not sum(poz.row_time_etap.values()):
+                self.err_recalc.append(f'В позиции {poz.Пномер} нет норм, гант не доступен')
+                return False
+            row_dates_etap_plan = self.recalc_days(row_dates_etap_plan,
+                                                       poz.row_time_etap,
+                                                       dict_template_cld,dict_fields_db_info,
+                                                       fields_db_info,dict_cust_wends,
+                                                       recalc_days,
+                                                        recalc_days_end
+                                                       )
+        if dict_cust_limits:
+            if not sum(poz.row_time_etap.values()):
+                self.err_recalc.append(f'В позиции {poz.Пномер} нет норм, гант не доступен')
+                return False
+            row_dates_etap_plan = self.recalc_etap_by_cust_limit(row_dates_etap_plan,
+                                                   poz.row_time_etap,
+                                                   dict_template_cld, dict_fields_db_info,
+                                                   fields_db_info, dict_cust_wends,
+                                                   dict_cust_limits
+                                                   )
+
+
+        def fix_dates(row_dates_etap_plan,DICT_CLD:dict[datetime.datetime, Month_cld_day])->dict:
+            if not DICT_CLD:
+                raise Exception('Нет данных по DICT_CLD')
+            rez = {}
+            list_dt = []
+            for etap,val_date in row_dates_etap_plan.items():
+                val_fixed = ''
+                if val_date:
+                    if not F.is_date(val_date,"%Y-%m-%d"):
+                        val_date = F.dateStrToStr(val_fixed,onerror='')
+                if val_date:
+                    val_dt = F.strtodate(val_date, "%Y-%m-%d")
+                    if val_dt in DICT_CLD:
+                        val_fixed = val_date
+                        list_dt.append(val_dt)
                     else:
-                        break
-                if days_add:
-                    print(f'    {name} adds {days_add} days')
-                    dict_dates[name] = F.datetostr(tmp_date,"%Y-%m-%d")
-            return dict_dates
+                        pass
+                rez[etap] = val_fixed
 
-        poz = Pozition(dict_poz['Пномер'], CFG.Config.project.db_kplan, CFG.Config.project.db_naryad, CFG.Config.project.db_resxml, CFG.Config.project.db_users)
-        new_row_dates_etap_plan = fix_holyday_starts_ends(DICT_CLD, copy.deepcopy(poz.row_dates_etap_plan))
+            if list_dt:
+                self.min_date_month = min(list_dt)
+            return  rez
+
+        fixed_row_dates_etap_plan = fix_dates(row_dates_etap_plan,dict_template_cld)
+        checked_repair_fixed_row_dates_etap_plan = self._check_repair_unfilled_dates(
+                                                        dict_fields_db_info,dict_template_cld,
+                                                                fixed_row_dates_etap_plan,
+                                                                    poz.row_time_etap)
+
+        new_row_dates_etap_plan = self._fix_holiday_starts_ends(dict_template_cld,
+                                                                checked_repair_fixed_row_dates_etap_plan)
+
         poz.update_row_etaps(new_row_dates_etap_plan)
         poz.row_dates_etap_plan = new_row_dates_etap_plan
-        dict_dates = poz.row_dates_etap |  poz.row_dates_etap_fact
-        dict_dates = dict_dates |  poz.row_dates_etap_plan
-        dict_dates = dict_dates |  poz.row_dates_supply
+        dict_dates = poz.row_dates_etap_plan | poz.row_dates_etap_fact
+        dict_dates = dict_dates | poz.row_dates_etap
+        dict_dates = dict_dates | poz.row_dates_supply
+        dict_norms = poz.row_time_etap | poz.row_time_add_etap
+        dict_replace_dates = None
+        if poz.fact_jurnal_blolb_data:
+            dict_replace_dates = F.from_binary_pickle(poz.fact_jurnal_blolb_data)
 
 
 
-
-
-        dict_norms= poz.row_time_etap |  poz.row_time_add_etap
-
-        if poz.max_date == '' or poz.min_date == '':
-            return
-
-        dict_form = load_dict_form(DICT_CLD,DICT_PODR, F.strtodate(poz.min_date,"%d.%m.%Y" ) , F.strtodate(poz.max_date,"%d.%m.%Y" ),dict_poz['Пномер'])
-
-        dict_form = fill_date(DICT_PODR,
-                              dict_form, dict_dates,dict_norms, dict_poz['Пномер'],
-                              f"{dict_poz['№проекта']} {dict_poz['№ERP']}",
-                              dict_poz['Позиция'], dict_poz['Направление'], dict_poz['Направление_деят'])
-
-        data_bin = save_form_db(dict_form, dict_poz['Пномер'])
-        if self:
-            setText_data(self, dict_form, dict_poz['Пномер'])
-        return data_bin
-
-    dict_poz = None
-    if isinstance(pnom,dict):
-        dict_poz = pnom
-    if isinstance(pnom,list):
-        if pnom and isinstance(pnom[0],dict):
-            dict_poz = pnom
-    if dict_poz is None:
-        dict_poz = load_dict_poz_from_sql(pnom)
-    if dict_poz == False:
-        return
-    if isinstance(dict_poz,list):
-        if update:
-            count = len(dict_poz)
-            i = 1
-            for item in dict_poz:
-                print(f'{i} from {count} update_local_graf:')
-                datat_bin = update_local_graf(self, True, item, False)
-                print(f"    Создан локальный график на {item['Пномер']}")
-                item['local_graf'] = datat_bin
-                i += 1
-        return
-    if self:
-        self.pnom_kplan_select = dict_poz['Пномер']
-        self.Data_plan.DICT_REPLACE_BY_DAYS = None
-        if dict_poz['fact_jurnal_blolb_data']:
-            self.Data_plan.DICT_REPLACE_BY_DAYS = F.from_binary_pickle(dict_poz['fact_jurnal_blolb_data'])
-        if self.Data_plan.DICT_REPLACE_BY_DAYS is None: #31.07.25
-            self.Data_plan.DICT_REPLACE_BY_DAYS = {}
-
-    fl_upd = True
-    dict_form = []
-
-    if update == False:
-        data = dict_poz['local_graf']
-        if data != '' and data != 'None':
-            dict_form = F.from_binary_pickle(data)
-            if dict_form != None:
-                fl_upd = False
-    data_bin = None
-    if fl_upd:
-        data_bin = generane_new_gant(self,DICT_CLD, DICT_PODR,
-                                     dict_poz)
-        if data_bin == None:
-            CQT.msgbox(f'ОШибка генерации ганта')
-            return
-    if fill_gant:
-        if self:
-            if dict_form != None and len(dict_form) > 0:
-                dict_form[0]['napr_deya'] = dict_poz['Направление_деят']
-            self.current_kpl_table = 'tbl_preview'
-            fill_gant_table(self, self.ui.tbl_preview,'', dict_form, pnom)
-
-    if fl_upd:
-        return data_bin
-    return
-
-def hide_free_columns(self,tbl):
-    for j in range(self.count_tbl_field, tbl.columnCount()):
-        self.ui.tbl_preview.setColumnHidden(j, False)
-    for j in range(self.count_tbl_field, tbl.columnCount()):
-        fl_hide = True
-        for i in range(2,tbl.rowCount()):
-            if tbl.item(i,j).text() != '':
-                fl_hide = False
-                break
-        if fl_hide:
-            tbl.setColumnHidden(j,True)
-        else:
-            break
-
-    for j in range(tbl.columnCount()-1,-1,self.count_tbl_field):
-        fl_hide = True
-        for i in range(2,tbl.rowCount()):
-            if tbl.item(i,j).text() != '':
-                fl_hide = False
-                break
-        if fl_hide:
-            tbl.setColumnHidden(j,True)
-        else:
-            break
-    tbl.resizeColumnsToContents()
-
-
-def oforml_table(self:mywindow,tbl, tbl_filtr:QtWidgets.QTableWidget= '')->bool:
-
-    def increase_columns_width(tbl, step=1):
-        for col in range(tbl.columnCount()):
-            current_width = tbl.columnWidth(col)
-            tbl.setColumnWidth(col, current_width + step)
-
-
-    with CQT.table_updating(tbl):
-        self.count_tbl_field = len(self.list_for_hat)
-        CQT.fill_wtabl(self.dict_tbls_kpl[self.current_kpl_table],tbl,min_width_col= int(4*0.8),
-                       height_row=self.val_masht*2, colorful_edit=False,auto_type= False,head_column=0,
-                       set_editeble_col_nomera={},hide_head_column=False,styleSheet=CQT.MES_EDIT_CSS)
-
-        for j in range(1,self.count_tbl_field):
-            CQT.set_color_text_header_wtab_horisontal_c(tbl, j, 11, 11, 11, self.val_masht*0.7, False)
-            for i in range(3, len(self.dict_tbls_kpl_info[self.current_kpl_table])):
-                CQT.font_cell_size_format(tbl, i - 1, j, self.val_masht)
-
-        for j in range(self.count_tbl_field, len(self.dict_tbls_kpl_info[self.current_kpl_table][0])):
-             if self.dict_tbls_kpl_info[self.current_kpl_table][1][j] == 1:
-                 CQT.set_color_text_header_wtab_horisontal_c(tbl, j, 200, 11, 11, self.val_masht*0.8, True)
-             else:
-                 CQT.set_color_text_header_wtab_horisontal_c(tbl, j, 11, 11, 11, self.val_masht*0.7, False)
-        for i in range(3,len(self.dict_tbls_kpl_info[self.current_kpl_table])):
-            fact= False
-            if 'факт_' in self.dict_tbls_kpl_info[self.current_kpl_table][i][0].lower():
-                fact= True
-            podr = self.dict_tbls_kpl_info[self.current_kpl_table][i][0].replace('факт_', '').replace('план_', '')
-            r = 233
-            g = 233
-            b = 233
-            if podr in self.Data_plan.DICT_PODR:
-                r, g, b = F.align_colors(self.Data_plan.DICT_PODR[podr]['Цвет'],level_percent= -5,saturation_percent=-10).split(";")
-                r_t, g_t, b_t = F.align_colors(self.Data_plan.DICT_PODR[podr]['Цвет'], level_percent=15,
-                                         saturation_percent=-30).split(";")
-            CQT.set_color_text_header_wtab_vertical_c(tbl, i - 1, r, g, b, self.val_masht * 0.8, True)
-            try:
-                fl_replaced_vals = bool([_ for  i, _ in  enumerate(self.dict_tbls_kpl_info[self.current_kpl_table][i]) if isinstance(_,list)
-                                     and [x for x in _ if x['_type_replace_by_days']]])
-            except:
-                CQT.msgbox(f'по позиции {self.dict_tbls_kpl_info[self.current_kpl_table][i][1]} нужно обновить гант (включив гант, в таблице КПЛ клик на эту позицию с шифтом)')
-                return False
-            for j in range(self.count_tbl_field, len(self.dict_tbls_kpl_info[self.current_kpl_table][0])):
-                if self.dict_tbls_kpl_info[self.current_kpl_table][i][j] != "":
-                    val = None
-                    if fl_replaced_vals:
-                        if len(self.dict_tbls_kpl_info[self.current_kpl_table][i][j]) > 1 and 'По дню' in self.dict_tbls_kpl_info[self.current_kpl_table][i][j][1]:
-                            val = self.dict_tbls_kpl_info[self.current_kpl_table][i][j][1]['По дню']
-                    else:
-                        if len(self.dict_tbls_kpl_info[self.current_kpl_table][i][j]) == 1:
-                            val = self.dict_tbls_kpl_info[self.current_kpl_table][i][j][0]['Время_час']
-                    if val:
-                        CQT.set_color_wtab_c(tbl, i - 1, j, int(r), int(g), int(b))
-                    else:
-                        CQT.set_color_wtab_c(tbl, i - 1, j, int(r_t), int(g_t), int(b_t))
-                    #for item in self.dict_tbls_kpl_info[self.current_kpl_table][i][j]:
-                    #CQT.add_color_wtab_c(tbl,i-1,j,int(r),int(g),int(b))
-                    CQT.font_cell_size_format(tbl,i-1,j,self.val_masht,bold=fact)
-                    #CQT.set_font_color_wtab_c(tbl,i-1,j,22,22,22)
-
-
-        if self.kpl_mode == 0:
-            hide_free_columns(self,tbl)
-        increase_columns_width(tbl, 2)
-        #self.ui.tbl_preview.setColumnWidth(0, self.val_masht*7.5)
-    
-        for field in self.list_for_hat:
-            try:
-                tbl.horizontalHeader().blockSignals(True)
-                tbl.setColumnHidden(CQT.num_col_by_name_c(tbl, field), False)
-                tbl.horizontalHeader().blockSignals(False)
-            except:
-                pass
-        if tbl_filtr != '':
-            fields_hide = ['Пномер']
-            for field in fields_hide:
-                try:
-                    tbl.horizontalHeader().blockSignals(True)
-                    tbl.setColumnHidden(CQT.num_col_by_name_c(tbl, field), True)
-                    tbl.horizontalHeader().blockSignals(False)
-                except:
-                    pass
-    
-            fill_filtr_c(self, tbl_filtr, tbl,hidden_scroll=True)
-            tbl_filtr.setVerticalHeaderLabels(['план_факт_подр'])
-            tbl_filtr.setRowHeight(0, 25)
-            for j in range(1, len(self.dict_tbls_kpl_info[self.current_kpl_table][0])):
-                if self.dict_tbls_kpl_info[self.current_kpl_table][1][j] == 1:
-                    CQT.set_color_text_header_wtab_horisontal_c(tbl_filtr, j, 200, 11, 11, self.val_masht * 0.5, False)
-                else:
-                    CQT.set_color_text_header_wtab_horisontal_c(tbl_filtr, j, 11, 11, 11, self.val_masht * 0.5, False)
-            update_width_filtr(tbl,tbl_filtr)
-        else:
-            fields_hide = ['Этап','Пномер',"Проект","Поз.","Напр.",'Напр_д.']
-            for field in fields_hide:
-                try:
-                    tbl.setColumnHidden(CQT.num_col_by_name_c(tbl, field), True)
-                except:
-                    pass
-        tbl.setRowHidden(0, True)
-        tbl.setRowHidden(1, True)
-    return True
-
-def load_dict_poz_from_sql(pnom:int|list):
-    fl_single = False
-    if isinstance(pnom,int):
-        list_nums = [pnom]
-        fl_single = True
-    if isinstance(pnom,list):
-        list_nums = pnom
-
-    query = CSQ.custom_request_c(CFG.Config.project.db_kplan, f"""SELECT plan.Пномер, plan.Позиция, plan.local_graf, plan.Приоритет, plan.fact_jurnal_blolb_data, 
-            пл_оуп.№проекта, пл_оуп.№ERP, napravl_deyat.Псевдоним as Направление_деят, 
-            napravlenie.name as Направление 
-             FROM plan INNER JOIN 
-            пл_оуп ON пл_оуп.НомПл = plan.Пномер, 
-            napravl_deyat ON napravl_deyat.Пномер = plan.Направление_деятельности, 
-            napravlenie ON napravlenie.Пномер = napravl_deyat.Направление 
-             WHERE plan.Пномер in ({CSQ.prepare_list_to_tuple(list_nums)})""", rez_dict=True)
-    if query == False or len(query) == 0:
-        return False
-    if fl_single:
-        return query[0]
-    else:
-        return query
-
-@CQT.onerror
-def fill_gant_table(self: mywindow , tbl, tbl_filtr='', dict_form='', pnom=0):
-    CQT.save_scroll(self,tbl)
-    list_for_hat = ['Этап', 'Пномер', 'Проект', 'Поз.', 'Напр.', 'Напр_д.']
-
-    def generate_list(self, pnom_kplan_select, list_for_hat,
-                      DICT_PODR,DICT_REPLACE_BY_DAYS,
-                      dict_form_list,min_date,max_date):
-        list_tbl = []
-        DICT_DAY_NAME = {1:'Пн',2:'Вт',3:'Ср',4:'Чт',5:'Пт',6:'Сб',7:'Вс'}
-        set_podr = set()
-        list_sablon = ["" for _ in list_for_hat]
-        list_hat_full = copy.deepcopy(list_for_hat)
-        list_vih = copy.deepcopy(list_sablon)
-        list_dned = copy.deepcopy(list_sablon)
-        for dict_form_item in dict_form_list:
-            for date in dict_form_item['data'].keys():
-                if max_date > date >= min_date:
-                    list_hat_full.append(date)
-                    list_vih.append(dict_form_item['data'][date]['Выходные'])
-                    list_dned.append(dict_form_item['data'][date]['День недели'])
-            list_tbl.append(list_hat_full)
-            list_tbl.append(list_vih)
-            list_tbl.append(list_dned)
-            break
-        list_tbl_info = copy.deepcopy(list_tbl)
-
-        dict_errs = dict()
-        for dict_form_item in dict_form_list:
-            for date in dict_form_item['data'].keys():
-                for podr in dict_form_item['data'][date]['podr'].keys():
-                    set_podr.add(podr)
-            tmp_list_podr = list(set_podr)
-            tmp_list_podr.sort()
-            list_podr = []
-            for i in range(len(DICT_PODR)):
-                for podr in tmp_list_podr:
-                    podr_cut ="_".join(podr.split("_")[1:])
-                    if podr_cut in DICT_PODR:
-                        if DICT_PODR[podr_cut]['Порядок'] == i:
-                            list_podr.append(podr)
-            start_row = len(list_tbl)
-            for podr in list_podr:
-                list_tbl.append([podr,dict_form_item['pnom'],dict_form_item['proj'],dict_form_item['poz'],dict_form_item['napr'],dict_form_item['napr_deya']])
-                list_tbl_info.append([podr,dict_form_item['pnom'],dict_form_item['proj'],dict_form_item['poz'],dict_form_item['napr'],dict_form_item['napr_deya']])
-
-
-            for i in range(len(list_sablon),len(list_tbl[0])):
-                for j in range(start_row,len(list_tbl)):
-                    podr = list_tbl[j][0]
-                    day = list_tbl[0][i]
-                    if podr in dict_form_item['data'][day]['podr']:
-                        list_vals = dict_form_item['data'][day]['podr'][podr]
-                        time_rab = ''
-                        if list_vals != '':
-                            time_rab = 0
-                            for val_round_1 in list_vals:
-                                time_rab += round(val_round_1['Время_час'])
-                        list_tbl[j].append(time_rab)
-                        list_tbl_info[j].append(list_vals)
-                    else:
-                        #CQT.msgbox(f'{podr} отсутствует в локальном графике, нужно обновить Пномер {str(dict_form_item["pnom"])}')
-                        dict_errs[str(dict_form_item["pnom"])] = {'Этап':podr,'Пномер': str(dict_form_item["pnom"]),
-                                                'Ошибка':'отсутствует в локальном графике, нужно обновить гант (включив гант, в таблице КПЛ клик на эту позицию с шифтом)'}
-
-
-        if dict_errs:
-            if self:
-                CQT.msgboxg_get_table_ok_inf(self,'Ошибка в гантах',dict_errs)
-            else:
-                print('Ошибка в гантах')
-                print(dict_errs )
-            return None, None
-        for i in range(len(list_sablon), len(list_tbl[0])):
-            list_tbl[0][i] = F.datetostr(list_tbl[0][i], f"%d\n%m\n%y\n{DICT_DAY_NAME[int(list_tbl[2][i])]}")
-        
-        if self.current_kpl_table in ('tbl_pl_gaf','tbl_preview'):
-            kpls = [_['pnom'] for _ in dict_form_list]
-            pozs = Pozitions(kpls,CFG.Config.project.db_kplan,CFG.Config.project.db_naryad,CFG.Config.project.db_resxml,
-                      CFG.Config.project.db_users,self,False,False)
-            for poz in pozs.dict_pozs.values():
-                #poz = Pozition(pnom_kplan_select, CFG.Config.project.db_kplan, CFG.Config.project.db_naryad,
-                #               CFG.Config.project.db_resxml, CFG.Config.project.db_users, self,load_day_plan=True)
-                kpl = poz.Пномер
-                if self.current_kpl_table == 'tbl_pl_gaf':
-                    dict_form_kpl = None
-                    for poz_from_list in dict_form_list:
-                        if poz_from_list['pnom'] == kpl:
-                            dict_form_kpl = poz_from_list
-                    if dict_form_kpl is None:
-                        continue
-                    dict_replace_by_days_tmp = dict_form_kpl['dict_replace_by_days']
-                if self.current_kpl_table == 'tbl_preview':
-                    dict_replace_by_days_tmp = DICT_REPLACE_BY_DAYS
-                nf = { _:it for it, _ in enumerate(list_tbl[0]) }
-            
-                for field in dict_replace_by_days_tmp.keys():
-                    # print(field)
-                    for i_row in range(len(list_tbl)):
-                        # print(f'    строка {i_row}')
-                        if list_tbl[i_row][nf['Этап']] == field and list_tbl[i_row][nf['Пномер']] == kpl:
-                            for j_clmn in range(6, len(list_tbl[0])):
-                                list_tbl[i_row][j_clmn] = ''
-                                date_from_tbl_wo_day = '\n'.join(list_tbl[0][j_clmn].split('\n')[:-1])
-
-                                if date_from_tbl_wo_day in dict_replace_by_days_tmp[field]:
-                                    day= date_from_tbl_wo_day
-                                    val_round_nch = round(dict_replace_by_days_tmp[field][day] / 60, 3)
-                                    val_round_1 = round(val_round_nch, 1)
-                                    if val_round_nch > 0:
-                                        podr_cut = "_".join(field.split("_")[1:])
-                                        name_nach = DICT_PODR[podr_cut]['Имя_начала_этапа']
-                                        name_zav = DICT_PODR[podr_cut]['Имя_конца_этапа']
-                                        name_nach_f = DICT_PODR[podr_cut]['Имя_начала_этапа_факт']
-                                        name_zav_f = DICT_PODR[podr_cut]['Имя_конца_этапа_факт']
-                                        name_filed_hour = DICT_PODR[podr_cut]['Имя_поля'].split(';')[0]
-                                        date_nach = ''
-                                        date_zav = ''
-                                        time_hour = ''
-                                        name_nz = ['','']
-                                        if field.startswith('план'):
-                                            time_hour = poz.row_time_etap[f'{podr_cut}.{name_filed_hour}']
-                                            date_nach = poz.row_dates_etap_plan[f'{podr_cut}.{name_nach}']
-                                            date_zav = poz.row_dates_etap_plan[f'{podr_cut}.{name_zav}']
-                                            name_nz = [f'{podr_cut}.{name_nach}', f'{podr_cut}.{name_zav}']
-                                        if field.startswith('факт'):
-                                            time_hour = round(sum([_/60 for _ in dict_replace_by_days_tmp[field].values()]),2)
-                                            date_nach = poz.row_dates_etap_fact[f'{podr_cut}.{name_nach_f}']
-                                            date_zav = poz.row_dates_etap_fact[f'{podr_cut}.{name_zav_f}']
-                                            name_nz = [f'{podr_cut}.{name_nach_f}', f'{podr_cut}.{name_zav_f}']
-
-
-                                        data_et = {"Время_час": time_hour,
-                                                   'Этап': f'{podr_cut}.{name_zav.lower().replace("нач", "").replace("зав", "")}',
-                                                   "Начало": date_nach,
-                                                   "Конец": date_zav,
-                                                   "Имя_нз": name_nz,
-                                                   'По дню': val_round_nch,
-                                                   '_type_replace_by_days': True
-                                                   }
-
-                                        if list_tbl_info[i_row][j_clmn] == '':
-                                            list_tbl_info[i_row][j_clmn] = []
-                                        list_tbl_info[i_row][j_clmn].append(data_et)
-                                        list_tbl[i_row][j_clmn] = val_round_1
-                                    else:
-                                        list_tbl[i_row][j_clmn] = ''
-        st_row = 3
-        st_col = 6
-        set_rows_to_add = set(range(st_row))
-        for i, row in enumerate(list_tbl[st_row:]):
-            if set(row[st_col:]) != {''}:
-                set_rows_to_add.add(st_row+i)
-
-
-
-
-        list_tbl = [val for _,val  in enumerate(list_tbl) if _ in set_rows_to_add]
-        list_tbl_info = [val for _,val  in enumerate(list_tbl_info) if _ in set_rows_to_add]
-        return list_tbl,list_tbl_info
-
-    #========end fnc====================================
-    if dict_form == None  or dict_form == '' or dict_form == []:
-        if self:
-            if pnom == 0:
-                tbl = self.ui.tbl_kal_pl
-                r = tbl.currentRow()
-                if r == None or r == -1:
-                    return
-                nk_pnom = CQT.num_col_by_name_c(tbl, 'plan.Пномер')
-                if tbl.item(r, nk_pnom).text() == '-1':
-                    return 
-                pnom = int(tbl.item(r, nk_pnom).text())
-        else:
-            if pnom == 0:
-                print(f'generate_list err pnom == 0')
-                return
-
-        dict_poz = load_dict_poz_from_sql(pnom)
-        if dict_poz == False:
-            return
-        dict_form = F.from_binary_pickle(dict_poz['local_graf'])
-
-    if dict_form == None:
-        return
-    min_date = F.strtodate('2020-01-01 00:00:01', "%Y-%m-%d %H:%M:%S")
-    max_date = F.strtodate('2220-01-01 00:00:01', "%Y-%m-%d %H:%M:%S")
-
-    if self:
-        self.list_for_hat = list_for_hat
-        if self.kpl_mode == 1:
-            month = self.ui.de_vol_pl.date().toPyDate()
-            month_end = self.ui.de_vol_pl_end.date().toPyDate()
-            min_date = F.start_end_dates_c(F.date_to_datetime(month,0,0,1),'','m','')[0]
-            max_date = F.start_end_dates_c(F.date_to_datetime(month_end,23,59,59),'','m','')[1]
-
-        list_tbl, list_tbl_info = generate_list(self, pnom, list_for_hat,
-                                                self.Data_plan.DICT_PODR,
-                                                self.Data_plan.DICT_REPLACE_BY_DAYS,
-                                                dict_form,
-                                                min_date, max_date)
-
-        self.dict_tbls_kpl[self.current_kpl_table],self.dict_tbls_kpl_info[self.current_kpl_table] = list_tbl,list_tbl_info
-
-        if self.dict_tbls_kpl_info[self.current_kpl_table] == None:
-            return
-        #print(self.current_kpl_table)
-        if not oforml_table(self, tbl, tbl_filtr):
+        dict_dates = calc_united_dates(dict_dates, dict_replace_dates, dict_norms,
+                                       dict_template_cld, dict_cust_wends)
+        if not dict_dates:
+            self.err_recalc.append(f'В позиции {poz.Пномер} нет норм, гант не доступен')
             return False
-        CQT.load_scoll(self,tbl)
-    return True
 
+        self._calc_min_max_dates_month(dict_dates)
+
+        if self.min_date_month is None or self.max_date_month is None:
+            cropped_dict_dates = {}
+        else:
+            cropped_dict_dates = {k:v for k,v in dict_template_cld.items() if
+                                  k>=self.min_date_month and k<=self.max_date_month}
+        self.dict_agregate_etaps = {_.name :dict() for _ in dict_dates.keys()}
+        for day, day_cld in cropped_dict_dates.items():
+            day_o = self.add_day(day, day_cld, day in dict_cust_wends)
+            for tbl, etap in dict_dates.items():
+                etap_o = day_o.add_etap(tbl)
+                for type_row_str, item in etap.items():
+                    type_row = None
+                    if type_row_str=='plan':
+                        type_row = Types_day_gant.plan
+                    if type_row_str=='fact':
+                        type_row = Types_day_gant.fact
+                    if item is None:
+                        continue
+                    for day_dt, norm in item['dict_days'].items():
+                        if day_dt == day_o.date:
+                            etap_o.add_cell(type_row,norm, item['start'] is None)
+
+        return True
+
+    def generate_agregate(self,dict_tbls_db_info:dict[str,Table_db_info])->list[dict]:
+        rez = []
+        for day_dt, day_gant_o in self.dict_days.items():#по всем календарным дням месяца
+            for name_etap, etap_o in day_gant_o.dict_etaps.items():
+                norm = 0
+                cell_o = etap_o.get_cell(Types_day_gant.plan)
+                if cell_o:
+                    norm = cell_o.norm
+                if norm:
+                    tbl_db_o = dict_tbls_db_info[etap_o.tbl_db]
+                    rez.append({
+                        'id_poz':self.poz_id,
+                        'etap_podrazdel':tbl_db_o.id,
+                        'day_dt':day_dt.date(),
+                        'val_minutes':norm,
+                    })
+        return rez
+
+    def delete(self):
+        agr = Gant_agregator()
+        agr.clear(self.poz_id)
+        rez = CSQ.custom_request_c(CFG.Config.project.db_kplan,
+                                   f"""
+                        DELETE FROM gant_poz WHERE
+                        id_poz = {self.poz_id};"""
+                                   )
+        return
+
+    def save(self,dict_tbls_db_info:dict[str,Table_db_info]):
+        pikle_data = F.to_binary_pickle(self)
+        compress_data = F.pack_byte_file(pikle_data)
+
+        rez = CSQ.custom_request_c(CFG.Config.project.db_kplan,
+                                   f"""
+                INSERT INTO gant_poz (id_poz, data_gant, dt_upd )
+            VALUES (?, ?, ?)
+            ON CONFLICT(id_poz) DO UPDATE SET
+                id_poz = excluded.id_poz,
+                data_gant = excluded.data_gant,
+                dt_upd = excluded.dt_upd
+                ;""",
+                                   list_of_lists_c=[[self.poz_id,compress_data,F.now()]]
+                                   )
+        if not rez:
+            CQT.msgbox(f'Ошибка сохранения данных по позиции')
+            return
+        print(f'Обновлен гант позиции {self.poz_id}')
+        data_agr = self.generate_agregate(dict_tbls_db_info)
+        agr = Gant_agregator()
+        if data_agr:
+            agr.update(self.generate_agregate(dict_tbls_db_info),self.poz_id)
+            print(f'Обновлен агрегат позиции {self.poz_id}')
+        else:
+            agr.clear(self.poz_id)
+        return
+
+    def generate_customer_vert_header(self,tbl_db:Table_db_info,type_day:Type_day_gant):
+        return f'{type_day.emoj_and_text}{tbl_db.alias}'
+
+
+    def grenerete_template(self,filtered_days:dict[datetime.datetime,Month_cld_day]|None,
+                           dict_tabels_db_info:dict[str,Table_db_info])->list[dict]:#TODO add addit_ data from settings
+        template=[]
+
+        clear_empty_rows = False
+        if filtered_days is None:
+            filtered_days = [
+                (dt, cld.day_cld) for dt, cld in self.dict_days.items()
+            ]
+        else:
+            clear_empty_rows = True
+
+        for tbl_db_name, dict_type_cell in self.dict_agregate_etaps.items():
+            tbl_db = dict_tabels_db_info[tbl_db_name]
+            for type_day in Types_day_gant.list():
+                if type_day not in dict_type_cell:
+                    continue
+                fl_add = True
+                fl_empty = True
+                tmp_row = {
+                            '_v_header':self.generate_customer_vert_header(tbl_db,type_day),
+                            '_id_poz':self.poz_id,
+                            '_tbl_name':tbl_db.name,
+                            '_type_day':type_day.name,
+                            'КПЛ':self.poz_id,
+                            'Этап':tbl_db.alias,
+                            'Тип':type_day.full_text,
+                            }
+                # add addtional data
+                for dt_day, cld_day in filtered_days:
+                    day_gant_o = self.dict_days.get(dt_day,None)
+
+                    if day_gant_o is None:
+                        tmp_row[cld_day] = ''
+                    else:
+
+                        etap_gant_o = day_gant_o.dict_etaps[tbl_db.name]
+
+                        cell_data = etap_gant_o.get_cell(type_day)
+                        val = '' if cell_data is None else cell_data.for_tbl()
+                        tmp_row[day_gant_o.day_cld] = val
+                        if val:
+                            fl_empty = False
+
+                if clear_empty_rows:
+                    if fl_empty:
+                        fl_add = False
+                if fl_add:
+                    template.append(tmp_row)
+
+
+        return template
+
+
+class Gant():
+    def __init__(self,dict_template_cld:dict[datetime.datetime,Month_cld_day],fields_db_info:Fields_db_info,
+                 min_day:datetime.datetime|None=None,max_day:datetime.datetime|None=None):
+        self.dict_template_cld:dict[datetime.datetime,Month_cld_day] = dict_template_cld
+        self.dict_fields_db_info:dict[str, Field_db_info] = fields_db_info.dict_fields
+        self.fields_db_info:Fields_db_info = fields_db_info
+        self.dict_pozitions:dict[int,Poz_gant] = dict()
+        self.min_day:datetime.datetime = min_day
+        self.max_day:datetime.datetime = max_day
+        self.db_kplan = CFG.Config.project.db_kplan
+        self.db_naryad = CFG.Config.project.db_naryad
+        self.db_resxml = CFG.Config.project.db_resxml
+        self.db_users = CFG.Config.project.db_users
+        self.dict_agregate_etaps: dict[Table_db_info, dict[Type_day_gant, bool]] | None = dict()
+        self.err_recalc:list[str]= []
+        self.err_clear:list[str]= []
+        self.recalced_naprs_id:dict = dict()
+        self.__fix_min_max()
+
+
+    def __repr__(self):
+        return f"<Gant {len(self.dict_pozitions)} poz>"
+
+    def __fix_min_max(self):
+        list_dates = list(self.dict_template_cld.keys())
+        if self.min_day is None or self.min_day < list_dates[0]:
+            self.min_day = list_dates[0]
+        if self.max_day is None or self.max_day > list_dates[-1]:
+            self.max_day = list_dates[-1]
+
+    def recalc_dict_agregate_etaps(self):
+        self.dict_agregate_etaps = dict()
+        for poz in self.dict_pozitions.values():
+            for tbl_db_name , dict_types in poz.dict_agregate_etaps.items():
+                if isinstance(tbl_db_name,str):
+                    tbl_db = self.fields_db_info.tables_db.dict_tables[tbl_db_name]
+                else:
+                    tbl_db = tbl_db_name
+                for day_type in dict_types.keys():
+                    if tbl_db not in self.dict_agregate_etaps:
+                        self.dict_agregate_etaps[tbl_db] = dict()
+                    self.dict_agregate_etaps[tbl_db][day_type]=True#Метка для быстрой прорисовки строк контекстный
+
+
+    def generate_poz_gants(self,ids:list[int])->list[Poz_gant]:
+        list_poz_o = []
+        for id in ids:
+            new_poz_gant_o = Poz_gant(id)
+            self.dict_pozitions[id] = new_poz_gant_o
+        self.recalc(ids)
+        return
+
+
+    def recalc(self,ids:list|None,
+               recalc_days:datetime.datetime|None=None,
+               recalc_days_end:datetime.datetime|None=None,
+               dict_cust_limits:dict|None = None
+               )->bool:
+
+        fl_suc = True
+        if ids is None :
+            ids = list(self.dict_pozitions.keys())
+        pozs = Pozitions(ids, self.db_kplan, self.db_naryad, self.db_resxml, self.db_users, load_day_plan=True)
+        cust_wends_o = Plans_custom_weekends(ids)
+        print(f'Обновление ГАНТа позиций...')
+        count = len(ids)
+        iter_id=1
+        for id, poz_gant in self.dict_pozitions.items():
+            print(f'{iter_id}/{count}')
+            iter_id+=1
+            if id not in ids:
+                continue
+            plan_custom_weekends = cust_wends_o.dict_plans[id]
+            poz = pozs.dict_pozs[id]
+            if not getattr(poz_gant,'err_recalc',False):
+                poz_gant.err_recalc = []
+            if poz_gant.recalc(poz,
+                               self.dict_template_cld,
+                               self.dict_fields_db_info,
+                               self.fields_db_info,
+                               plan_custom_weekends,
+                                recalc_days =recalc_days,
+                                recalc_days_end=recalc_days_end,
+                               dict_cust_limits = dict_cust_limits
+                               ):
+                poz_gant.save(self.fields_db_info.tables_db.dict_tables)
+                if poz.Направление_деятельности not in self.recalced_naprs_id:
+                    self.recalced_naprs_id[poz.Направление_деятельности] = set()
+                self.recalced_naprs_id[poz.Направление_деятельности].add(poz.Пномер)
+            else:
+                self.err_recalc.extend(poz_gant.err_recalc)
+                fl_suc = False
+
+        return fl_suc
+    @staticmethod
+    def convert_data(data)->Poz_gant|None:
+        try:
+            poz_gant = F.from_binary_pickle(F.unpack_byte_file(data))
+
+        except Exception as ex:
+            CQT.msgbox(f'Ошибка загрузки данных по позиции #{id}: \n{ex}')
+            return
+        return poz_gant
+
+    def load(self,list_id_poz:list[int],forced_recalc:bool=False):
+
+        if forced_recalc:
+            id_to_gen = [_ for _ in list_id_poz]
+        else:
+            data = CSQ.custom_request_c(self.db_kplan,f"""SELECT id_poz, data_gant FROM 
+            gant_poz WHERE id_poz 
+                IN ({CSQ.prepare_list_to_tuple(list_id_poz)}) --{F.now('')}""",rez_dict =True)
+            dict_data = F.deploy_dict_c(data,'id_poz')
+            id_to_gen= []
+            for id in list_id_poz:
+                fl_recalc = False
+
+                if id in dict_data:
+                    poz_gant = Gant.convert_data(dict_data[id])
+                    if poz_gant is not None :
+                        self.dict_pozitions[id] = poz_gant
+                    else:
+                        fl_recalc = True
+                else:
+                    fl_recalc = True
+
+                if fl_recalc:
+                    id_to_gen.append(id)
+
+        if id_to_gen:
+            self.generate_poz_gants(id_to_gen)
+
+        self.recalc_dict_agregate_etaps()
+
+    def clear_dates(self,list_id_kpls:list[int]):
+        pozs = Pozitions(list_id_kpls, self.db_kplan, self.db_naryad, self.db_resxml, self.db_users, load_day_plan=True)
+        iter_id = 1
+        count = len(list_id_kpls)
+        for id, poz_gant in self.dict_pozitions.items():
+            print(f'{iter_id}/{count}')
+            iter_id+=1
+            if id not in list_id_kpls:
+                continue
+
+            poz = pozs.dict_pozs[id]
+            if not getattr(poz_gant,'err_clear',False):
+                poz_gant.err_clear = []
+            if not poz_gant.clear_dates(poz):
+                poz_gant.err_clear.append(f'Позиция# {id}, ошибка очистки дат')
+            poz_gant.delete()
+        return
+
+
+    def generate_template_gant(self)->tuple(list[dict],list):
+        template = []
+        dict_header_aliases = None
+
+        filtered_days = None
+
+        if len(self.dict_pozitions)>1:
+            filtered_days = [
+                (dt, cld) for dt, cld in self.dict_template_cld.items()
+                if self.min_day <= dt <= self.max_day
+            ]
+
+            dict_header_aliases = {_: _.to_str() for dt, _ in
+                                   filtered_days}
+        else:
+            for poz in self.dict_pozitions.values():
+                dict_base_val_cld = poz.dict_days.values()
+                break
+
+
+            dict_header_aliases = {_.day_cld: _.day_cld.to_str(custom_weekend=_.custom_weekend) for _ in
+                                   dict_base_val_cld }
+
+        for poz in self.dict_pozitions.values():
+            templ_poz = poz.grenerete_template(filtered_days,self.fields_db_info.tables_db.dict_tables)
+            template.extend(templ_poz)
+
+        return template,dict_header_aliases
+
+
+
+    def get_value(self,id_poz:int|Poz_gant,dt_day:datetime.datetime|Month_cld_day,
+                  name_etap:str|Table_db_info,
+                  type_day:Type_day_gant,
+                  round_val:int=2,
+                  for_table= False,
+                  as_cell_o=False)->int|float|Cell_etap_gant|None:
+        if isinstance(id_poz,Poz_gant):
+            poz_o = id_poz
+        else:
+            if id_poz not in self.dict_pozitions:
+                return
+            poz_o = self.dict_pozitions[id_poz]
+
+        if isinstance(dt_day,Month_cld_day):
+            dt_day = dt_day.dt_datetime
+        if dt_day not in poz_o.dict_days:
+            return
+        day_o = poz_o.dict_days[dt_day]
+
+        if isinstance(name_etap,Table_db_info):
+            name_etap = name_etap.name
+        if name_etap not in day_o.dict_etaps:
+            return
+        etap_o = day_o.dict_etaps[name_etap]
+
+        data = etap_o.get_cell(type_day)
+        if data is None:
+            return
+        if as_cell_o:
+            return data
+        if for_table:
+            return data.for_tbl()
+        norm = data.norm
+        if isinstance(norm,int):
+            return norm
+        return round(norm,round_val)
+
+
+    def oforml_table(self, app_self: mywindow, tbl, tbl_filtr: QtWidgets.QTableWidget = '',
+                     restore_selected_cell:bool=False) -> bool:
+        # блокировка повторного входа
+        print(f'start lock ..')
+        if getattr(app_self, '_oforml_table_running', False):
+            app_self._oforml_table_pending = True  # запомнили что был клик
+            return False
+        app_self._oforml_table_running = True
+
+        try:
+            print(f'oformating table..')
+            self.oforml_table_inner(app_self=app_self,tbl=tbl,tbl_filtr=tbl_filtr,
+                                            restore_selected_cell=restore_selected_cell)
+            return True
+        except Exception as e:
+            print(f'error:{e}\t{e.args!a}')
+            import traceback
+            traceback.print_exc()  #  файл и строк
+
+        finally:
+            app_self._oforml_table_running = False
+            if getattr(app_self, '_oforml_table_pending', False):
+                app_self._oforml_table_pending = False
+                QtCore.QTimer.singleShot(0,
+                        lambda: self.oforml_table(app_self=app_self,tbl=tbl,tbl_filtr=tbl_filtr,
+                                                                restore_selected_cell=restore_selected_cell))
+
+    def oforml_table_inner(self, app_self: mywindow, tbl, tbl_filtr: QtWidgets.QTableWidget = '',
+                     restore_selected_cell:bool=False) -> bool:
+
+        def oform_local_limit_table(t_gant:CQT.TableContext,data_table:list[dict]):
+            ll_tbl = app_self.ui.tbl_limit_gant
+            set_fields = {'_v_header','_id_poz','_tbl_name','_type_day'}
+            template = [
+                {k:v for k,v in _.items() if k in set_fields} for _ in data_table
+            ]
+            TBLS_DB:Tables_db_info = app_self.Data_plan.FIELDS_DB_INFO.tables_db
+            key_btn = CEMOJ.EmojiMain.ДокументыДанные.refresh.symbol
+            key_btn_val = CEMOJ.EmojiMain.ДокументыДанные.refresh.symbol
+            for it in template:
+                tbl_db = TBLS_DB.get_table(it['_tbl_name'])
+                it['Н-ч'] = tbl_db.default_hours_day_gant
+                it[key_btn] = ''
+
+            CQT.fill_wtabl(template, ll_tbl, min_width_col=int(4 * 0.8),
+                           height_row=app_self.val_masht * 2.2, colorful_edit=False, auto_type=False,
+                           hide_head_rows=True,
+                           set_editeble_col_nomera={'Н-ч'}, hide_head_column=False, styleSheet=CQT.MES_EDIT_CSS,
+                           )
+
+            t = CQT.TableContext(ll_tbl)
+
+            def fnc_dbl_clck(t:CQT.TableContext,i:int,clmn_name:str,*args):
+                app_self.Data_plan.fnc_recalc_gant_by_local_limit_table(i)
+
+            t.h_header.set_size(t_gant.h_header.size())
+            t.hide_startsunderscore()
+            t.set_vertical_scroll_visible(False)
+            for row in t.rows():
+                type_d = Types_day_gant.find(row.value('_type_day'))
+                if type_d is Types_day_gant.fact:
+                    row.set_editable('Н-ч',False)
+                    row.set_value('Н-ч','')
+                else:
+                    row.set_value(key_btn,key_btn_val)
+            t.add_column_events(key_btn,on_double_click=fnc_dbl_clck)
+
+            pass
+
+        def increase_columns_width(t:CQT.TableContext, step=1,start_date_clmn:int=0):
+            koef = F.round_up((app_self.val_masht-5)*0.75)+step
+            for clmn,j in t.nf.items():
+                if j < start_date_clmn:
+                    continue
+                current_width = t.width(clmn)
+                t.set_width(clmn,current_width + koef)
+
+        if restore_selected_cell:
+            t = CQT.TableContext(tbl)
+            t.save_coord()
+        first_day_gant:list|None = None
+        VERT_HEAD_COLUMN = 0
+        data_table,dict_header_aliases = self.generate_template_gant()
+
+        CQT.fill_wtabl(data_table, tbl, min_width_col=int(4 * 0.8),
+                       height_row=app_self.val_masht * 2.2, colorful_edit=False, auto_type=False,
+                       head_column=VERT_HEAD_COLUMN,
+                       set_editeble_col_nomera={}, hide_head_column=False, styleSheet=CQT.MES_EDIT_CSS,
+                       aliases_header=dict_header_aliases)
+        CQT.clear_tbl(app_self.ui.tbl_limit_gant)
+        if not data_table:
+            return
+
+        with (CQT.table_updating(tbl)):
+            t = CQT.TableContext(tbl)
+            if t.tbl is None:
+                return
+            start_date_clmn = [i for d,i in t.nf.items() if isinstance(d,Month_cld_day)][0]
+
+            for day_clnd, j in t.nf.items():
+                if j < start_date_clmn:
+                    continue
+                day_clnd:Month_cld_day
+
+                if day_clnd.is_holyday:
+                    CQT.set_color_text_header_wtab_horisontal_c(tbl, j, 200, 11, 11,
+                                             F.round_up(app_self.val_masht -2), True)
+                else:
+                    CQT.set_color_text_header_wtab_horisontal_c(tbl, j, 11, 11, 11,
+                                             F.round_up(app_self.val_masht -2), True)
+
+
+            for row in t.rows():
+                id_poz = int(row.value('_id_poz'))
+                poz_gant = self.dict_pozitions[id_poz]
+                row.set_font_format(app_self.val_masht)
+                type_day = Types_day_gant.find(row.value('_type_day'))
+                fact = type_day.name == 'fact'
+                tbl_db:Table_db_info = app_self.Data_plan.FIELDS_DB_INFO.tables_db.get_table(
+                                    row.value("_tbl_name"))
+                min_date, max_date = poz_gant.dict_agregate_etaps[tbl_db.name][type_day]
+
+                r = r_t = 233
+                g = g_t = 233
+                b = b_t = 233
+
+                r, g, b = tbl_db.color.align_colors(level_percent=-5,
+                                                    saturation_percent=-10, copy=True).rgb
+                r_t, g_t, b_t = tbl_db.color.align_colors(level_percent=15,
+                                                    saturation_percent=-30, copy=True).rgb
+                weight_f = 99 if fact else 75
+                CQT.set_color_text_header_wtab_vertical_c(tbl, row.i, r, g, b,
+                                                          app_self.val_masht * 0.8 + 1,
+                                                          font_name='Bahnschrift',stretch=110,weight=weight_f)
+
+                if fact:
+                    row.set_color_background(245, 245, 245)
+
+                for day_clnd, j in t.nf.items():
+                    if j < start_date_clmn:
+                        continue
+                    if day_clnd.dt_datetime >= min_date and day_clnd.dt_datetime <=max_date:
+                        row.set_color_background(r_t, g_t, b_t, col_name=day_clnd)
+
+                        cell_val = self.get_value(id_poz,day_clnd.dt_datetime,tbl_db.name,type_day)
+
+                        if cell_val is not None:
+                            if cell_val:
+                                row.set_color_background(r, g, b, col_name=day_clnd)
+                                if first_day_gant is None or day_clnd.dt_datetime < first_day_gant[0]:
+                                    first_day_gant = [day_clnd.dt_datetime,j]
+                            row.set_font_format(app_self.val_masht,  fact, col_name=day_clnd)
+
+            t.tbl.resizeColumnsToContents()
+            increase_columns_width(t, 0,start_date_clmn)
+            load_column_widths(app_self, tbl,{_ for _ in range(start_date_clmn)})
+            t.hide_if_not_dev(CFG)
+
+            if app_self.is_main_mode():
+                hide_free_columns(t, start_date_clmn)
+
+
+            if tbl_filtr != '':
+                fill_filtr_c(app_self, tbl_filtr, tbl, hidden_scroll=True,show_header=False,
+                             combo_dict={'Тип':None}, check_box_dict={'Этап':None})
+                tbl_filtr.setVerticalHeaderLabels([''])
+
+            # ===================gant_borders===========================
+            app_self.ui.tbl_preview.setItemDelegate(app_self.Data_plan.tbl_gant_local_border)
+            app_self.ui.tbl_pl_gaf.setItemDelegate(app_self.Data_plan.tbl_gant_context_border)
+            # ==========================================================
+        if app_self.is_main_mode():
+            oform_local_limit_table(t, data_table)
+
+            if first_day_gant:
+                cnt_outset = 0
+                for name in t.nf.keys():
+                    if t.is_hidden(name):
+                        cnt_outset += 1
+                    if isinstance(name,Month_cld_day) and name.dt_datetime == first_day_gant[0]:
+                        break
+                coord = first_day_gant[-1]-cnt_outset-1
+                if coord>0:
+                    t.move_horizontalScroll_to_clmn(coord)
+
+        if restore_selected_cell:
+            t.restore_selected_cell()
+
+        return True
+
+
+
+
+
+
+def hide_free_columns(t:CQT.Table_context,start_date_clmn:int):
+    for clmn, j  in t.nf.items():
+        if j<start_date_clmn:
+            t.hide(clmn,True)
 
 
 def add_only_work_days(date1:datetime.datetime,time_delta:timedelta,self):
@@ -9055,6 +11414,8 @@ def add_action_config_save_tbl_filtrs(self,self_ui):
 @CQT.onerror
 def access_kpl_tbl(DICT_INFO_FIELDS_KPL:dict,full_name_field:str) -> bool:
     fl_access = True
+    if CFG.Config.user_config.is_developer:
+        return fl_access
     if DICT_INFO_FIELDS_KPL[full_name_field]['users_rule'] != "":
         if F.user_name() in DICT_INFO_FIELDS_KPL[full_name_field]['users_rule'].split(';'):
             if DICT_INFO_FIELDS_KPL[full_name_field]['rule_mode_1_disabled'] == 0:
@@ -9069,22 +11430,38 @@ def access_kpl_tbl(DICT_INFO_FIELDS_KPL:dict,full_name_field:str) -> bool:
     return  fl_access
 
 
-def calc_num_etap_from_name_etap(dict_etaps_from_erp,part_py,etap_name,s_num_kpl,Пномер_нар):
+def calc_num_etap_from_name_etap(etap_name,s_num_kpl,Пномер_нар,ref_current_etap:str|None=None,foreced_ref:bool=False)->tuple[bool,err]:
+    if foreced_ref and ref_current_etap:
+        result, data =  APIERP.Etaps_erp.get_etap_by_ref_etap(ref_current_etap)
+        if not result:
+            return False, data
+        return True, {'Number': data['Номер'], 'НаименованиеЭтапа': data['НаименованиеЭтапа'],
+                     'Чек': data['ref'], 'Спецификация_ref': data['Спецификация_ref'] }
+
     fl = False
-    part_py= str(part_py)
-    if part_py in dict_etaps_from_erp:
-        for val_etap in dict_etaps_from_erp[part_py]['Этапы']:
-            if etap_name.strip() == val_etap['НаименованиеЭтапа'].strip(): #12.12.25
+    try:
+        stages = APIERP.Etaps_erp.get_znpr_etaps_by_kpl(s_num_kpl)
+    except APIERP.NotFoundNomenclature as e:
+        msg = f"""Номенклатура привязанная к КПЛ занесена некорректно, необходимо: 
+1. Зайти в приложение МКарты. 
+2. Выбрать позицию {s_num_kpl}
+3. Зайти в режим редактирования (карандаш)
+4. В разделе пл_оуп перезанести номенклатуру_ерп
+5. Попробовать выгрузку снова 
+"""
+        return False, msg
+    for stage in stages:
+        if etap_name.strip() == stage.НаименованиеЭтапа: #12.12.25
+            if ref_current_etap and stage.ref == ref_current_etap or ref_current_etap is None:
                 fl = True
-                return  val_etap
-        if not fl:
-            list_etaps_str = '\n'.join([f" {_['Number']} | {_['НаименованиеЭтапа']}"  for _ in dict_etaps_from_erp[part_py]['Этапы']])
-            CQT.msgbox(f'В МЕС не найден этап для КПЛ {s_num_kpl}\nНомПартии_ЗП: {part_py}\n'
-                       f'этап: `{etap_name}`\nнаряд: {Пномер_нар}\n Нужно обратиться в ПДО для корректировки\n\nТекущий список этапов:\n'
-                       f' {list_etaps_str}')
-            return
-    else:
-        CQT.msgbox(f'НомерПартииЗапуска {part_py} не найден в МЕС\n Нужно обратиться в ПДО для корректировки')
+                return True, {'Number': stage.Номер, 'НаименованиеЭтапа': stage.НаименованиеЭтапа,
+                     'Чек': stage.ref, 'Спецификация_ref': stage.Спецификация_ref }
+    if not fl:
+        list_etaps_str = '\n'.join(f" {stage.Номер} | {stage.НаименованиеЭтапа}"  for stage in stages)
+        return False, f'''
+        В МЕС не найден этап для КПЛ {s_num_kpl}\n этап: `{etap_name}`\nнаряд: {Пномер_нар}\n 
+        Нужно обратиться в ПДО для корректировки\n\nТекущий список этапов:\n {list_etaps_str}
+    '''
 
 def create_nar_prosoy(fio:str, primech, koef, dop_prim_prost='', num_bad_bar='',
         pk_mk: int = None,
@@ -9648,21 +12025,6 @@ def check_execution_previous_operations(self,nom_nar,lvl_check=1,check_by_vip=Tr
 
 
 
-
-def dict_calend_days(db_users):
-    list_tabels = CSQ.get_list_of_tables_c(db_users)
-    dict_days = dict()
-    for tbl in list_tabels:
-        if tbl[:4] == 'mtdz_20':
-            rez = CSQ.custom_request_c(db_users,f"""SELECT * FROM {tbl} WHERE Пномер =1""",rez_dict=True,one=True)
-            for key in rez:
-                if F.is_date(key,'d_%Y_%m_%d'):
-                    dict_days[key]= rez[key]
-    return dict_days
-#dict_calend_days(r'Z:\\Data\\BD_users.db')
-
-
-
 def edit_key_winreg_hkey_current_user(REG_PATH,name,type_reg,val):
     """winreg.REG_BINARY
 Binary data in any form.
@@ -9956,24 +12318,51 @@ def fix_path_mes_setup(put):
         return False
     return put.replace(goal, new_path)
 
-
-
-def check_last_entry(last_date_update: str) -> bool:
-    key = 'LAST_ENTRY_IN_APP'
+KEY_LAST_ENTRY = 'LAST_ENTRY_IN_APP'
+def get_last_entry_time()->datetime.datetime|bool|None:
     format_date = '%Y-%m-%d %H:%M'
+
+    current_application = QtWidgets.QApplication.instance()  # 18.06.2026
+    if not current_application:
+        return
+    date = current_application.property(KEY_LAST_ENTRY)
+    if date is None:
+        return False
+    return F.strtodate(date,format_date)
+
+
+
+def check_last_entry(last_date_update: str):
+    format_date = '%Y-%m-%d %H:%M'
+
     now = datetime.datetime.now()
-    now_str = now.strftime(format_date)
-    if last_entry := os.environ.get(key):
-        datetime_last = datetime.datetime.strptime(last_entry, format_date)
-        if F.is_date(last_date_update, format_date) and datetime_last < datetime.datetime.strptime(last_date_update, format_date):
-            CQT.msgbox('Версия устарела, просим Вас перезапустить клиент')
-            return sys.exit(-1)
-        if (now - datetime_last).total_seconds() / 3600 >= 15:
-            msg = '''Клиент запущен более 15 часов, просим Вас перезапускать приложение хотя бы в начале рабочего дня т.к. за длительный период могло произойти множество обновлений и срочных поправок.'''
-            CQT.msgbox(msg, time_life=40, fontsize=18)
-            return sys.exit(-1)
-    else:
-        os.environ[key] = now_str
+
+    dt_last_entry = get_last_entry_time()
+    if dt_last_entry is None:
+        return
+    if not dt_last_entry:
+        current_application = QtWidgets.QApplication.instance()  # 18.06.2026
+        if not current_application:
+            return
+        now_str = now.strftime(format_date)
+        current_application.setProperty(KEY_LAST_ENTRY, now_str)
+        return
+
+    if F.is_date(last_date_update, format_date) and dt_last_entry < datetime.datetime.strptime(last_date_update, format_date):
+        CQT.msgbox('Версия устарела, просим Вас перезапустить клиент')
+        return sys.exit(-1)
+    if (now - dt_last_entry).total_seconds() / 3600 >= 15:
+        msg = '''Клиент запущен более 15 часов, просим Вас перезапускать приложение хотя бы в начале рабочего дня 
+                            т.к. за длительный период могло произойти множество обновлений и срочных поправок.'''
+        CQT.msgbox(msg, time_life=40, fontsize=18)
+        return sys.exit(-1)
+
+def user_have_pg():
+    try:
+        import psycopg
+        return 1
+    except:
+        return 0
 
 def save_user_credentials():
     KEY_USER_SAVED = 'KEY_USER_CREDENTIALS_IS_SAVED'
@@ -9982,14 +12371,14 @@ def save_user_credentials():
     os.environ[KEY_USER_SAVED] = '1'
     db_users = CFG.Config.project.db_users
     fio = F.user_full_namre()
-    data = CSQ.custom_request_c(db_users, f'SELECT login, computer_name FROM employee WHERE ФИО = {fio!r}',
+    data = CSQ.custom_request_c(db_users, f'SELECT login, computer_name, have_pg FROM employee WHERE ФИО = {fio!r}',
                                 rez_dict=True, one=True)
     if isinstance(data, dict) and 'login' in data and 'computer_name' in data:
         computer_name = F.computer_name()
         login = F.user_name()
-        if data['login'] != login or data['computer_name'] != computer_name:
+        if data['login'] != login or data['computer_name'] != computer_name or not data['have_pg'] or data['have_pg'] is None:
             result = CSQ.custom_request_c(db_users,
-                                          f'UPDATE employee SET login = {login!r}, computer_name = {computer_name!r} WHERE ФИО = {fio!r}')
+                                          f'UPDATE employee SET login = {login!r}, computer_name = {computer_name!r}, have_pg = {user_have_pg()} WHERE ФИО = {fio!r}')
             result and print('Пользователь успешно сохранен')
 
 def check_ver(ver,ima):
@@ -10948,7 +13337,7 @@ def add_to_res_detail_counts(res):
         res[dse_i]['кол_во_инф']= tmp_dict_count
     return res
 
-def fix_mastered_count(res:list,s_num_mk:int):
+def fix_mastered_count(res:list,s_num_mk:int,list_nars:list[dict]=None):
     db_nar= CFG.Config.project.db_naryad
     def clc_count_fio():
         count = 0
@@ -10964,9 +13353,11 @@ def fix_mastered_count(res:list,s_num_mk:int):
         if item['Фвремя2']!= '':
             count+=1
         return count
-    list_nars = CSQ.custom_request_c(db_nar,f"""SELECT ФИО, ФИО2, Фвремя, Фвремя2, 
+    if list_nars is None:
+        list_nars = CSQ.custom_request_c(db_nar,f"""SELECT ФИО, ФИО2, Фвремя, Фвремя2, 
        ДСЕ_ID, Операции, Опер_колво
-  FROM naryad WHERE Номер_мк == {s_num_mk} and Внеплан == {CFG.Config.place.КодыНарядов.Плановая};""",rez_dict=True) #05.09.25
+            FROM naryad WHERE Номер_мк == {s_num_mk} and Внеплан == {CFG.Config.place.КодыНарядов.Плановая};""",
+                                         rez_dict=True) #05.09.25
     dict_cr =dict()
     dict_zav = dict()
     for item in list_nars:#создан
@@ -11017,7 +13408,8 @@ def fix_mastered_count(res:list,s_num_mk:int):
 
 
 def load_res(nom_mk:int, conn = '',cur= '',db_resxml='',self=None,
-             from_xml=False, tkp = False,db_users= None,poki=None,db_naryad=None):
+             from_xml=False, tkp = False,db_users= None,poki=None,db_naryad=None,list_nars:list[dict]=None,
+             dict_etaps:dict=None):
     if db_users is None:
         db_users = CFG.Config.project.db_users 
     if poki is None:
@@ -11031,20 +13423,21 @@ def load_res(nom_mk:int, conn = '',cur= '',db_resxml='',self=None,
     if self == None:
         from_xml= False
 
-    def update_name_rc_and_etaps(res):
-        etaps = CSQ.custom_request_c(db_users,
-                f"""SELECT etaps.name, rab_c.Код , rab_c.Имя FROM rab_c 
-                LEFT JOIN etaps ON 
-                etaps.s_num = rab_c.etaps_num 
-                WHERE rab_c.poki = {poki}""",
-                        attach_dbs = db_naryad,rez_dict=True)
-        dict_etaps = F.deploy_dict_c(etaps,'Код')
+    def update_name_rc_and_etaps(res, dict_etaps:dict=None):
+        if dict_etaps is None:
+            etaps = CSQ.custom_request_c(db_users,
+                    f"""SELECT etaps.name as etaps_name, rab_c.Код , rab_c.Имя FROM rab_c 
+                    INNER JOIN etaps ON 
+                    etaps.s_num = rab_c.etaps_num 
+                    WHERE rab_c.poki = {poki}""",
+                            attach_dbs = db_naryad,rez_dict=True)
+            dict_etaps = F.deploy_dict_c(etaps,'Код')
 
         for dse_i, dse in enumerate(res):
             for oper_i, oper in enumerate(res[dse_i]['Операции']):
                 rc = oper['Опер_РЦ_код']
                 if rc in dict_etaps:
-                    oper['Этап'] = dict_etaps[rc]['name']
+                    oper['Этап'] = dict_etaps[rc]['etaps_name']
                     oper['Опер_РЦ_наименование'] = dict_etaps[rc]['Имя']
         return res
 
@@ -11116,13 +13509,13 @@ def load_res(nom_mk:int, conn = '',cur= '',db_resxml='',self=None,
             rez_spis = resource_from_xml_c(self, spis_xml, kol_vo_izdeliy, nom_mk)
 
     res = add_to_res_detail_counts(rez_spis)
-    res = update_name_rc_and_etaps(res)
+    res = update_name_rc_and_etaps(res,dict_etaps=dict_etaps)
     if isinstance(nom_mk,list):
         s_nom_mk = nom_mk[0]
     else:
         s_nom_mk = nom_mk
     if not tkp: # 30.05.2025 Ошибка при вызове для predv_res
-        res = fix_mastered_count(res,int(s_nom_mk))#починка количества освоенных дсе(создан наряд в Sozdanie -> create_naryd(self, *args):)
+        res = fix_mastered_count(res,int(s_nom_mk),list_nars=list_nars)#починка количества освоенных дсе(создан наряд в Sozdanie -> create_naryd(self, *args):)
     return res
 
 def save_res(db,nom_mk,res,conn = '',cur = ''):
@@ -11191,16 +13584,20 @@ def load_order_outsourcing_c(self, tbl_nar, tbl_viev):
         return
     F.open_dir_c(dir_user)
 
-def list_emploee_full_with_del(bd_users):
+def list_emploee_full_with_del(bd_users, org_name:str = None):
+    org_fix  = ''
+    if org_name:
+        org_fix = f' WHERE Компания = "{org_name}" OR Компания = ""'
     query = f"""SELECT * FROM employee WHERE Пномер IN( SELECT Пномер FROM (SELECT
     	MAX(Пномер) as Пномер,
     	ФИО
     FROM
     	employee
+    {org_fix}	
     GROUP BY
     	ФИО
     HAVING COUNT(*) >= 1 )) order by ФИО;"""
-    list_emploee_with_del = CSQ.custom_request_c(bd_users, query, rez_dict=True)
+    list_emploee_with_del = CSQ.custom_request_c(bd_users, query, rez_dict=True,lazy_method_hours=0.01)
     return list_emploee_with_del
 
 def dict_emploee(bd_users,conn=''):
@@ -11213,8 +13610,8 @@ def dict_emploee(bd_users,conn=''):
         DICT_EMPLOEE[emploee['ФИО']] = emploee['Должность']
     return DICT_EMPLOEE
 
-def dict_emploee_full(bd_users,conn='',self=None):
-    list_emploee_with_del = list_emploee_full_with_del(bd_users)
+def dict_emploee_full(bd_users,conn='',self=None, org_name:str = None):
+    list_emploee_with_del = list_emploee_full_with_del(bd_users,org_name = org_name)
     list_emploee = [_ for _ in list_emploee_with_del if _['Статус'] != 'Увольнение']
     if list_emploee == False:
         return False
@@ -11224,45 +13621,63 @@ def dict_emploee_full(bd_users,conn='',self=None):
         self.DICT_EMPLOEE_FULL_WITH_DEL = F.deploy_dict_c(list_emploee_with_del,'ФИО')
         self.DICT_EMPLOEE_FULL_WITH_DEL_ref = F.deploy_dict_c(list_emploee_with_del,'ID_ФизЛица')
     return F.deploy_dict_c(list_emploee,'ФИО')
-
-def dict_emploee_full_with_del(bd_users,conn=''):
+    'Ларионов Артур Сергеевич' in self.DICT_EMPLOEE_FULL_WITH_DEL
+def dict_emploee_full_with_del(bd_users,conn='',deploy_column_name:str = 'ФИО'):
     list_emploee = list_emploee_full_with_del(bd_users)
     if list_emploee == False:
         return False
-    return F.deploy_dict_c(list_emploee,'ФИО')
+    return F.deploy_dict_c(list_emploee,deploy_column_name)
 
+def agregate_m_cld():
+    db_kplan = CFG.Config.project.db_kplan
+    list_tables = CSQ.get_list_of_tables_c(db_kplan)
+    idxr_date = 0
+    idxr_hday = 1
+    idxr_wday = 2
+    idxc_podr = 1
+    idxc_start_dates = 3
+    idxr_start_podrs = 2
 
-def DICT_CLD(bd_users):
-    list_of_tbls = CSQ.get_list_of_tables_c(bd_users)
-    rez = dict()
-    for item in list_of_tbls:
-        if 'rm_20' in item:
-            list_days = CSQ.custom_request_c(bd_users,f"""SELECT * FROM {item} WHERE Пномер == 1 OR Пномер == 2""")
-            for i in range(len(list_days[0])):
-                if 'd_' in list_days[0][i]:
-                    rez[F.strtodate(list_days[0][i],"d_%Y_%m_%d")] = {'Выходные':list_days[1][i],'День недели':list_days[2][i]}
-    return  rez
+    kplan_max_mosh:dict[datetime.datetime,Month_cld_day] = dict()
 
-def DICT_CLD_KPLAN(bd_kplan):
-    list_of_tbls = CSQ.get_list_of_tables_c(bd_kplan)
-    rez = dict()
-    for item in list_of_tbls:
-        if 'm_cld_' in item:
-            list_days = CSQ.custom_request_c(bd_kplan,f"""SELECT * FROM {item}""")
-            if len(list_days) <=1:
-                print(f'{item} не заполнен')
+    for tbl in list_tables:
+        if not F.is_date(tbl, "m_cld_%Y_%m_%d"):
+            continue
+
+        data = CSQ.custom_request_c(
+            db_kplan,
+            f"SELECT * FROM {tbl}",
+            rez_dict=False
+        )
+
+        if not data or len(data) <= idxr_start_podrs:
+            continue
+
+        header = data[idxr_date]
+
+        for col_idx in range(idxc_start_dates, len(header)):
+            col_name = header[col_idx]
+
+            if not F.is_date(col_name, "d_%Y_%m_%d"):
                 continue
-            for i in range(len(list_days[0])):
-                if 'd_' in list_days[0][i]:
-                    dict_podr = dict()
-                    for j in range(3,len(list_days)):
-                        dict_podr[list_days[j][1]] = list_days[j][i]
-                    try:
-                        rez[F.strtodate(list_days[0][i],"d_%Y_%m_%d")] = {'Выходные':list_days[1][i],'День недели':list_days[2][i],'Подразделения':dict_podr}
-                    except:
-                        print(f'ОШибка расчета m_cld_')
-                        return
-    return  rez
+
+            date_key = F.strtodate(col_name, "d_%Y_%m_%d")
+
+            dict_day_o = Month_cld_day(data[idxr_hday][col_idx],data[idxr_wday][col_idx],date_key)
+
+            for row in data[idxr_start_podrs:]:
+                dict_day_o.add_podr(row[idxc_podr],row[col_idx])
+
+            kplan_max_mosh[date_key] = dict_day_o
+    save_tmp_stukt_db(kplan_max_mosh,'kplan_max_mosh')
+
+def DICT_CLD_KPLAN(bd_kplan)->dict[datetime.datetime,Month_cld_day]:
+    #agregate_m_cld()
+    data = load_tmp_stukt_db('kplan_max_mosh',None)
+    if data is None:
+        raise ValueError(f'DICT_CLD_KPLAN err load')
+    return data
+
 
 def DICT_PLACES(self,bd_users):
     query = f"""SELECT * FROM places_capacity"""
@@ -11437,9 +13852,11 @@ def b24_notation_user_fio(str_fio: str = F.user_full_namre()):
     return str_fio_rez
 
 @CQT.onerror
-def send_info_mk_b24_by_action(msg, action: str,form_dict:dict=None,msg_bold:bool=False,basement_msg:str=None,poki:int|None=None):
+def send_info_mk_b24_by_action(msg, action: str,form_dict:dict=None,msg_bold:bool=False,
+                               basement_msg:str=None,poki:int|None=None):
     sender = CB24.B24Sender()
-    if not sender.send_msg_by_action(action, msg,form_dict=form_dict,msg_bold=msg_bold,basement_msg=basement_msg,poki=poki):
+    if not sender.send_msg_by_action(action, msg,form_dict=form_dict,msg_bold=msg_bold,
+                                     basement_msg=basement_msg,poki=poki):
         CQT.msgbox(f'Ошибка отправки запроса в Б24')
 
 @CQT.onerror
@@ -11626,24 +14043,30 @@ def load_peresilniy(self, tbl_nar, tbl_viev):
         F.open_dir_c(self.tmp_printout_dir)
 
 def dict_rc(self, db_users,conn = ''):
-    self.DICT_RC = dict()
+    self.DICT_RC = dict() # 20.05.2026
     custom_request_c = f'''SELECT 
-rab_c.Код,
-rab_c.Имя,
-rab_c.Примечание,
-rab_c.Подмена_рц_для_плана,
-rab_c.Цвет,
-rab_c.empl_Подразделение,
-rab_c.Отв_мастер_тдз,
-rab_c.Наим_СТО,
-rab_c.Сокр_наим_СТО,
-rab_c.Наим_ЕРП,
-rab_c.СКУД_id,
-rab_c.Вспомогательный,
-rab_c.poki, 
-etaps.name as etaps_name,
-use_in_estimate_plan as use_in_estimate_plan 
-     FROM rab_c INNER JOIN etaps ON etaps.s_num = rab_c.etaps_num WHERE rab_c.poki = {CFG.Config.place.poki};'''
+        rab_c.Код,
+        rab_c.Имя,
+        rab_c.Примечание,
+        rab_c.Подмена_рц_для_плана,
+        rab_c.Цвет,
+        Подразделения.Наименование AS empl_Подразделение,
+        Подразделения.Подразделение_Key,
+        rab_c.Отв_мастер_тдз,
+        rab_c.Наим_СТО,
+        rab_c.Сокр_наим_СТО,
+        rab_c.ref_СтруктураПредприятия, 
+        СтруктураПредприятия.Наименование as Наим_ЕРП, 
+        rab_c.СКУД_id,
+        rab_c.Вспомогательный,
+        rab_c.poki, 
+        etaps.name as etaps_name,
+        use_in_estimate_plan as use_in_estimate_plan 
+     FROM rab_c 
+     INNER JOIN etaps ON etaps.s_num = rab_c.etaps_num 
+     INNER JOIN Подразделения ON Подразделения.Подразделение_Key =  rab_c.ref_Подразделения 
+     INNER JOIN СтруктураПредприятия ON СтруктураПредприятия.Ref =  rab_c.ref_СтруктураПредприятия 
+     WHERE rab_c.poki = {CFG.Config.place.poki};'''
     self.SPIS_RC = CSQ.custom_request_c(CFG.Config.project.db_users, """SELECT * FROM rab_c""")
     SPIS_RC = CSQ.custom_request_c(db_users, custom_request_c, hat_c=False,rez_dict=True, attach_dbs=CFG.Config.project.db_naryad)
     self.DICT_RC = F.deploy_dict_c(SPIS_RC,'Код')
@@ -12081,6 +14504,35 @@ def save_tmp_stukt(data,name):
     puth_name = tmp_dir() + os.sep + name + '.pickle'
     F.save_file_pickle(puth_name,data)
 
+def save_tmp_stukt_db(data,name):
+    db = CFG.Config.project.db_files
+    MAGIC_ZLIB = b'ZB1'
+    data_blob = F.to_binary_pickle(data)
+    if len(data_blob) > 5000:
+        compressed = MAGIC_ZLIB + F.pack_byte_file(data_blob)
+    else:
+        compressed = data
+    CSQ.custom_request_c(db, f"""INSERT INTO notes_blob (name, data, date)
+                        VALUES (?, ?, datetime('now', 'localtime'))
+                        ON CONFLICT(name) DO UPDATE SET
+                            data = excluded.data,
+                            date = excluded.date;""",list_of_lists_c=[[name,compressed]])
+    
+def load_tmp_stukt_db(name,default_value=None):
+    db = CFG.Config.project.db_files
+    MAGIC_ZLIB = b'ZB1'
+    rez = CSQ.custom_request_c(db,
+       f"""SELECT data FROM notes_blob WHERE name = '{name}';"""
+                         ,one_column=True,one=True,hat_c=False)
+    if rez is None:
+        raise SyntaxError(f"Ошибка запроса load_tmp_stukt_db")
+    if not rez:
+        return default_value
+    blob = rez
+    if blob.startswith(MAGIC_ZLIB):
+        blob = F.unpack_byte_file(blob[len(MAGIC_ZLIB):])
+    return F.from_binary_pickle(blob)
+
 def values_of_filter_c(self,tblf):
     spis_znach = CQT.list_from_wtabl_c(tblf,'',False)
     return spis_znach
@@ -12098,9 +14550,9 @@ def fill_summ_tbl(self, tbls:QtWidgets.QTableWidget, tbl:QtWidgets.QTableWidget,
 
 def fill_filtr_c(self, tblf:QtWidgets.QTableWidget, tbl:QtWidgets.QTableWidget, spis_znach='', hidden_scroll=True,
                  combo_dict:dict|None = None,
-                 check_box_dict:dict|None = None, ):
+                 check_box_dict:dict|None = None, show_header:bool=True):
     CQT.fill_filtr_c(self, tblf, tbl, spis_znach=spis_znach,
-                     hidden_scroll=hidden_scroll,combo_dict=combo_dict,check_box_dict=check_box_dict)
+                     hidden_scroll=hidden_scroll,combo_dict=combo_dict,check_box_dict=check_box_dict,show_header=show_header)
 
 
 def set_val_filtr_c(tblf:QtWidgets.QTableWidget, val, name_column):
@@ -12413,11 +14865,11 @@ def load_dict_dse(db_dse,conn=''):
     DICT_NN_NTK = F.deploy_dict_c(rez, 'Номенклатурный_номер')
     return DICT_NN_NTK
 
-def load_column_widths(self,tbl):
-    return CQT.load_column_widths(self, tbl,tmp_dir())
+def load_column_widths(self,tbl,only_nums:set[int]=None):
+    return CQT.load_column_widths(self, tbl,tmp_dir(),only_nums=only_nums)
 
 
-def on_section_resized(self,*args):
+def _del_on_section_resized(self,*args):
     CQT.on_section_resized(self,tmp_dir(),*args)
 
 
@@ -12443,6 +14895,7 @@ def load_tabel_workforce(db_kplan,DICT_PROFESSIONS,DICT_VID_RABOT, name_key = 'n
         vid_rab_nick = DICT_VID_RABOT[item['vid_rabot']][name_key]
         if vid_rab_nick in dict_rez[item['month']]:
             dict_rez[item['month']][vid_rab_nick] += item['normo_smen']*480
+
     return dict_rez
 
 
@@ -12748,6 +15201,61 @@ def grouping_TK_by_work_centres_c(self,tk,nn,ima):
                     spis.append([rc, vrem, n_op])
     return spis
 
+# ++ 30.06.2026
+
+def __parse_registry_path(path: str):
+    ROOTS = {
+        "HKEY_LOCAL_MACHINE": winreg.HKEY_LOCAL_MACHINE,
+        "HKLM": winreg.HKEY_LOCAL_MACHINE,
+        "HKEY_CURRENT_USER": winreg.HKEY_CURRENT_USER,
+        "HKCU": winreg.HKEY_CURRENT_USER,
+        "HKEY_CLASSES_ROOT": winreg.HKEY_CLASSES_ROOT,
+        "HKCR": winreg.HKEY_CLASSES_ROOT,
+    }
+    path = path.strip().strip('"').replace("/", "\\")
+    root_name, subkey = path.split("\\", 1)
+    root_name = root_name.upper()
+    if root_name not in ROOTS:
+        print(f"Неизвестный корень реестра: {root_name}")
+        return None, None
+    return ROOTS[root_name], subkey
+
+
+def __run_docs_protocol_url(docs_url: str) -> str:
+    """
+        Принимает ссылку типа: docs:// и пытается запустить
+        в случае успеха возвращает команду запуска
+    """
+    REG_PATH = r"HKEY_LOCAL_MACHINE\SOFTWARE\Classes\docs\shell\open\command"
+
+    root, subkey = __parse_registry_path(REG_PATH)
+    if root is None:
+        return ''
+
+    access_variants = [
+        winreg.KEY_READ | winreg.KEY_WOW64_64KEY,
+        winreg.KEY_READ | winreg.KEY_WOW64_32KEY,
+        winreg.KEY_READ,
+    ]
+
+    for access in access_variants:
+        try:
+            with winreg.OpenKey(root, subkey, 0, access) as key:
+                value, value_type = winreg.QueryValueEx(key, "")
+
+                if value_type == winreg.REG_EXPAND_SZ:
+                    value = os.path.expandvars(value)
+
+                if value_type not in (winreg.REG_SZ, winreg.REG_EXPAND_SZ):
+                    print(f"[read_default_registry_value] Ожидался REG_SZ, получен тип: {value_type}")
+                command = value.replace('%1', docs_url)
+                subprocess.Popen(command)
+                return command
+
+        except FileNotFoundError as e:
+            print(e)
+    return ''
+# -- 30.06.2026
 
 def run_link_DOCs_c(nn_det,naim,db_dse, link=''):
     """adres = \
@@ -12768,7 +15276,7 @@ def run_link_DOCs_c(nn_det,naim,db_dse, link=''):
                                       'REG_SZ', srv)
     except:
         pass
-    os.startfile(f"{link}")
+    __run_docs_protocol_url(str(link))
     try:
         edit_key_winreg_hkey_current_user(r'SOFTWARE\Top Systems\T-FLEX DOCs 17\Rus\Connections', 'AutoConnect',
                                           'REG_DWORD', 0x00000000)
@@ -13483,18 +15991,9 @@ def calc_productivity_c(data,db_users,db_naryad,db_act,db_kplan,DICT_EMPLOEE,DIC
         print('Не найден табель ')
         raise ValueError('Err')
     metka = 'список работ за месяц'
-    conn, cur = CSQ.connect_bd(db_naryad)
-    #check_and_fix_confirm_execute_dates_c(db_naryad,conn,cur)
-    if additional_fix:
-        check_and_fix_double_narayds(db_naryad,conn,cur)
-        check_and_fix_broken_narayds(db_naryad,conn,cur)
-
-
+    # 19.05.2026
     spis_jur_full,dict_per_month_all_state_from_jur = VIR.list_per_month_new_c(db_naryad, nach, konec,db_kplan,db_users,
                                                                                podrazdelenie,organization,tabel_m=tabel)
-
-    CSQ.close_bd(conn, cur)#[_ for _ in spis_jur_full if 'Гримбер' in _[1]]
-    #print('=====')
     metka = 'список работников за месяц'
     spis_rab_za_mes = list({_['ФИО'] for _ in spis_jur_full})
     spis_rab_za_mes = sorted(spis_rab_za_mes)
@@ -13608,32 +16107,66 @@ def prepare_empty_line_c(self,table):
             spis_ogk[i] = ''
     return [spis_ogk]
 
-def user_access(db,rule:str,fio:str, msg = True, rez = ''):
+def user_access(db:str=None,rule:str=None,fio:str=None, msg:bool = True, rez = '')->bool:
+    if CFG.Config.user_config.is_developer:
+        return True
+    if db is None:
+        db = CFG.Config.project.db_naryad
+    if fio is None:
+        fio = F.user_full_namre()
     if rez == '':
-        rez = CSQ.custom_request_c(db,f'''SELECT * FROM permissions WHERE action == "{rule}";''',rez_dict=True)
-    if rez == [] or rez == False:
+        rez = CSQ.custom_request_c(db,f'''SELECT * FROM permissions WHERE action == "{rule}" 
+                    ;''',rez_dict=True,one=True)
+    if rez == [] or rez == False or rez == {}:
         CQT.msgbox(f'Не найдено правило {rule}')
         return False
+
+    poki = CFG.Config.place.poki
+    if rez['poki'] == poki or rez['poki'] == None:
+        pass
+    else:
+        return True
     try:
-        rez = rez[0]
-        if rez['users'] == None:
+
+        fl_invert = rez['value'] != 1
+        def inv(val:bool)-> bool:
+            rez = val
+            if fl_invert:
+                rez = not val
+            if not rez:
+                return False
+            return True
+
+        if rez['users'] is None and rez['подразделения'] is None:
+            msg_text = 'Не определено правило'
             if msg:
-                CQT.msgbox('Нет доступа')
+                CQT.msgbox(msg_text)
             return False
-        if rez['value'] == 1:
-            if fio.lower() in rez['users'].lower():
+
+
+        if rez['подразделения'] is not None:
+            msg_text = 'Нет доступа для подразделения'
+
+            list_ids_podrs = [int(_) for _ in rez['подразделения'].strip().split(';')]
+            if list_ids_podrs:
+                spread = Emploee_spread_db()
+                select = Employee_spread_select()
+                select.Подразделения = {'Наименование':'Подразделениe','id':'id_Подразделениe'}
+                select.ФизическиеЛица = {'Наименование':'ФИО'}
+                list_active_users = spread.get_list_active_users(select)
+                list_permissible_users = [_['ФИО'] for _ in list_active_users if _['id_Подразделениe'] in list_ids_podrs]
+                if inv(fio in list_permissible_users):
+                    return True
+
+        if rez['users'] is not None:
+            msg_text = 'Нет доступа для пользователя'
+            if inv(fio.lower() in rez['users'].lower()):
                 return True
-            else:
-                if msg:
-                    CQT.msgbox('Нет доступа')
-                return False
-        else:
-            if fio.lower() in rez['users'].lower():
-                if msg:
-                    CQT.msgbox('Нет доступа')
-                return False
-            else:
-                return True
+
+        if msg:
+            CQT.msgbox(msg_text)
+        return False
+
     except:
         print('ошибка user_access')
         return False
@@ -13788,7 +16321,7 @@ def list_dolgn_etap(date_str: str, date_maska: str = '%y-%m-%d'):
 def etap_by_employee(date_str: str, key_employee: str, date_maska: str = '%y-%m-%d'):
     patterns = {
         r'^[0-9]+$': 'Пномер',
-        r'^[А-ЯЁа-яё]+\s[А-ЯЁа-яё]+\s[А-ЯЁа-яё]+$': 'ФИО',
+        r'^[А-ЯЁа-яё]+\s[А-ЯЁа-яё]+\s[А-ЯЁа-яё_]+$': 'ФИО',
         r'^[a-f0-9\-]{36}$': 'ID_ФизЛица'
     }
     value_str = str(key_employee)
@@ -13842,190 +16375,6 @@ def PRICES_BY_VID_RABOT(bd_users):
 
 # @CQT.onerror
 
-def upload_work_productivity_4(self, data_nach=None, data_kon=None, list_users=None, podr_filtr=None, mk=None):
-    if data_nach == None:
-        data_nach, data_kon = F.start_end_dates_c()
-    dict_kpl_part_py = F.deploy_dict_c(CSQ.custom_request_c(self.db_kplan,f"""SELECT НомПартии_ЗП, НомПл FROM пл_оуп""",rez_dict=True),'НомПл')
-    dict_dolgn_etap = F.deploy_dict_c(CSQ.custom_request_c(self.bd_naryad, f"""
-    SELECT * FROM dolgn_etap""", rez_dict=True),"Должность")
-    LIST_ZAMEN_FIO = ['Работник Заготовительного Цеха', 'Работник Заготовительного Цеха2']
-    dict_rez = dict()
-    spis_rez = []
-    # if F.strtodate(F.now()) - timedelta(days=70) > F.strtodate('2022-11-01 00:00:01'):
-    # data_nach = F.datetostr(F.strtodate(F.now()) - timedelta(days=40))
-    # else:
-    #    data_nach = '2022-11-01 00:00:01'
-    mk_condition =""
-    if mk != None:
-        mk_condition = f" AND mk.Пномер = {mk} "
-    custom_request_c = f"""SELECT 
-                        jurnal.Пномер as jurnal_Пномер,
-                        jurnal.Дата, 
-                       jurnal.Штамп, 
-                       jurnal.Номер_наряда, 
-                       jurnal.ФИО, 
-                       mk.Номер_проекта || "$" || 
-                       mk.Номер_заказа AS "ПУ", 
-                       mk.Дата AS "Дата_МК", 
-                       mk.НомКплан, 
-                       mk.Статус,
-                       mk.НомКплан,
-                       naryad.Внеплан, 
-                       naryad.Операции, 
-                       naryad.Номер_мк, 
-                       naryad.Виды_работ, 
-                       jurnal.Статус, 
-                       naryad.Твремя, 
-                       jurnal.Подытог, 
-                       jurnal.Примечание, 
-                       naryad.Опер_время,
-                       naryad.ДСЕ,
-                       naryad.Пномер,
-                       naryad.Виды_работ
-                        FROM jurnal INNER JOIN naryad
-                        ON jurnal.Номер_наряда = naryad.Пномер
-                        INNER JOIN mk
-                        ON naryad.Номер_мк = mk.Пномер
-                        WHERE jurnal.Статус == "Начат" AND jurnal.Подытог > 0
-                        and naryad.Внеплан == 0 
-                        and mk.ТипВыгрузкиТрЗт == 3 {mk_condition}
-                        and datetime(jurnal.Дата) > datetime("{data_nach}")
-                        and datetime(jurnal.Дата) <= datetime("{data_kon}")"""
-    dict_nar_tmp = dict()
-    dict_mk_tmp = dict()
-    resp_db_mes = CSQ.custom_request_c(self.bd_naryad, custom_request_c, rez_dict=True)
-    if resp_db_mes == False or resp_db_mes == None:
-        return
-    for i in range(len(resp_db_mes)):
-        if resp_db_mes[i]['Пномер'] in dict_nar_tmp:
-            nar = dict_nar_tmp[resp_db_mes[i]['Пномер']]
-        else:
-            nar = Naryads(resp_db_mes[i]['Пномер'],self.bd_naryad)
-            if nar.Номер_мк in dict_mk_tmp:
-                nar.mk = dict_mk_tmp[nar.Номер_мк]
-            else:
-                nar.get_mk(self.db_resxml,True)
-                dict_mk_tmp[nar.Номер_мк] = nar.mk
-            nar.load_mats(self.DICT_PROFESSIONS, self.db_resxml)
-            if nar.Пномер not in dict_nar_tmp:
-                dict_nar_tmp[nar.Пномер] = nar
-        #if resp_db_mes[i]['ФИО'] not in list_users:
-        #    continue
-        subtype = None
-
-        type_vneplan = nar.mk.Тип_мк_Имя
-        if type_vneplan == 'Дорезка':
-            subtype = nar.mk.тип_дорезок_Имя
-        if type_vneplan == 'Доработка(без дорезки)':
-            subtype = nar.mk.тип_доработок_Имя
-
-        if resp_db_mes[i]['ФИО'] in LIST_ZAMEN_FIO:
-            resp_db_mes[i]['ФИО'] = resp_db_mes[i]['Примечание']
-
-        if resp_db_mes[i]['ФИО'] not in self.Data.ETAP_BY_FIO:
-            CQT.msgbox(f'В наряде {resp_db_mes[i]["Номер_наряда"]} пользователь {resp_db_mes[i]["ФИО"]} не имеет этап для должности в БД')
-            return
-        if self.Data.ETAP_BY_FIO[resp_db_mes[i]['ФИО']]['ДляЕРП'] == 0:
-            continue
-        np_sep_py = resp_db_mes[i]['ПУ']
-        date_py = '20' + resp_db_mes[i]['Дата_МК']
-        py_year = np_sep_py + "$" + F.datetostr(F.strtodate(date_py,),"%Y")
-        if py_year not in dict_rez:
-            dict_rez[py_year] = {"Тип": type_vneplan,
-                                 "Подтип": subtype,
-                                 "Этапы": dict()}
-        np, py, year = py_year.split("$")
-        etap = self.Data.ETAP_BY_FIO[resp_db_mes[i]['ФИО']]['этап']
-
-        data_etap_erp = CSQ.custom_request_c(self.db_kplan,f"""SELECT Ref_Key_py, data_etaps_from_erp 
-         FROM знпр WHERE №ERP = "{py}" AND Год = "{year}";""",rez_dict=True,one=True)
-        ref_Key_py = data_etap_erp['Ref_Key_py']
-        dict_etaps_from_erp = F.from_binary_pickle(data_etap_erp['data_etaps_from_erp'])
-        if resp_db_mes[i]['НомКплан'] not in dict_kpl_part_py:
-            CQT.msgbox(f'на \n{resp_db_mes[i]} \n\nне обнаржуен пл_оуп.НомПартии_ЗП\n!!Не учтено!!\nОбратиться в ПДО')
-            continue
-        part_py = dict_kpl_part_py[resp_db_mes[i]['НомКплан']]
-        fl = False
-        part_py = str(part_py)
-        if part_py  in dict_etaps_from_erp:
-            for val_etap in dict_etaps_from_erp[part_py]['Этапы']:
-                if etap == val_etap['НаименованиеЭтапа']:
-                    fl = True
-                    etap_num = val_etap['Number']
-                    break
-            if not  fl:
-                list_etaps_str = [f" {_['Number']} | {_['НаименованиеЭтапа']}" for _ in
-                                  dict_etaps_from_erp[part_py]['Этапы']]
-                НомКплан = resp_db_mes[i]['НомКплан']
-
-                CQT.msgbox(f'В МЕС не найден этап для КПЛ {НомКплан}\nНомПартии_ЗП: {part_py}\nэтап: '
-                           f'"{etap}"\n Нужно обратиться в ПДО для корректировки\n\nТекущий список этапов:\n'
-                           f' {list_etaps_str}')
-                return
-        else:
-                CQT.msgbox(f'НомерПартииЗапуска {part_py} не найден в МЕС\n Нужно обратиться в ПДО для корректировки')
-
-        podr = self.Data.ETAP_BY_FIO[resp_db_mes[i]['ФИО']]['Подразделение']
-        if podr == podr_filtr:
-            if etap_num not in dict_rez[py_year]['Этапы']:
-                dict_rez[py_year]['Этапы'][etap_num] = {'Расход':[],
-                                  'Традозатраты':[]}
-        else:
-            continue
-        if nar.Внеплан != 0:
-            continue
-        count_users = nar.count_users()
-        fiod = f"{resp_db_mes[i]['ФИО']} {self.DICT_EMPLOEE_FULL_WITH_DEL[resp_db_mes[i]['ФИО']]['Должность']}"
-
-        time = F.valm(int(resp_db_mes[i]['Подытог']))
-        for oper in nar.params:
-            vid_rabot = oper['Виды_работ']
-            nom_nar = nar.Пномер
-
-            time_minutes = oper['Опер_время']/count_users
-
-            data_end = resp_db_mes[i]['Дата']
-            if podr == podr_filtr:
-                dict_rez[py_year]['Этапы'][etap_num]['Традозатраты'].append(
-                    {'НаименованиеЭтапа': etap,
-                     'Вид работ': vid_rabot ,
-                        'Количество': time_minutes ,
-                        'Норма на единицу': '' ,
-                        'Ед. изм.': 'мин. заработн. плат' ,
-                        'Дата выполнения': data_end ,
-                        'Выполнено': 'Да' ,
-                        'Исполнитель': resp_db_mes[i]['ФИО'] ,
-                        'Статья калькуляции': 'Основной ФОТ' ,
-                        'Задание на резку': '' ,
-                        'Назначение работ': '' ,
-                        'Отменено по причине': '' ,
-                        'Отменено': 'Нет' ,
-                        'Ключ_мес': resp_db_mes[i]['jurnal_Пномер']
-                        })
-
-            etap_mat= oper['Этап_материала']
-            if podr == podr_filtr:
-                for mat in oper['Материалы']:
-                    if etap_mat not in dict_rez[py_year]['Этапы']:
-                        dict_rez[py_year]['Этапы'][etap_mat] = {'Расход': [],
-                                                   'Традозатраты': []}
-                    dict_rez[py_year]['Этапы'][etap_mat]['Расход'].append(
-                        {'Артикул': mat['Мат_код'] ,
-                            'Номенклатура': mat['Мат_наименование'] ,
-                        'Характеристика': '' ,
-                        'Количество': mat['Мат_норма_ед']* oper['Опер_колво']/count_users,
-                        'Упаковка': '' ,
-                        'Ед. изм.': mat['Мат_ед_изм'] ,
-                        'Израсходован': data_end ,
-                        'Статья калькуляции': 'Сырье' ,
-                        'Задание на резку': '' ,
-                         'Ключ_мес': resp_db_mes[i]['jurnal_Пномер']
-                         })
-
-    dir_tdz_user_rc = save_tdz_json(dict_rez,data_nach,data_kon,self.ui.le_path_save.text(),podr_filtr)
-
-    return dir_tdz_user_rc
-
 def upload_work_productivity_3(self, data_nach, data_kon, list_users, podr_filtr=None,  mk=None, by_norm = False):
     suffix = 'jurnal.Подытог'
     if by_norm:
@@ -14053,8 +16402,6 @@ def upload_work_productivity_3(self, data_nach, data_kon, list_users, podr_filtr
     f'   THEN знпр.№ERP ' \
     f'   ELSE mk.Номер_заказа ' \
     f'   END AS "НП$ПУ",' \
-                       f'знпр.data_etaps_from_erp, ' \
-                       f'пл_оуп.НомПартии_ЗП, ' \
                        f'naryad.Внеплан, ' \
              f'naryad.Операции, ' \
              f'naryad.Номер_мк, ' \
@@ -14081,7 +16428,8 @@ def upload_work_productivity_3(self, data_nach, data_kon, list_users, podr_filtr
     if rez == False or rez == None:
         return
 
-    def add_block(self,row,datetime_nach,dict_rez,etap,nom_nar,dse,vid_rabot_empl,dolya_time,postfix_shtamp='',ref_key_etap='00000000-0000-0000-0000-000000000000'):
+    def add_block(self,row,datetime_nach,dict_rez,etap,nom_nar,dse,vid_rabot_empl,dolya_time,postfix_shtamp='',
+                  ref_key_etap='00000000-0000-0000-0000-000000000000'):
         fiod = f"{row['ФИО']} {self.DICT_EMPLOEE_FULL_WITH_DEL[row['ФИО']]['Должность']}"
 
         dict_rez[etap].append([datetime_nach, postfix_shtamp+ "_0", nom_nar, fiod, row['НП$ПУ'],
@@ -14104,11 +16452,8 @@ def upload_work_productivity_3(self, data_nach, data_kon, list_users, podr_filtr
     for i in range(len(rez)):
         if rez[i]['НП$ПУ'] == 'ПРОСТОЙ$ПРОСТОЙ':
             continue
-        struct_etaps = F.from_binary_pickle(rez[i]['data_etaps_from_erp'])
-        if struct_etaps == None:
-            CQT.msgbox(f"""По {rez[i]['НП$ПУ']}  не распознаны этапы """)
-            return
-        list_etaps_erp = { _['НаименованиеЭтапа']:_ for _ in struct_etaps if _['НомерПартииЗапуска'] == str(rez[i]['НомПартии_ЗП'])}
+
+
         if rez[i]['ФИО'] in LIST_ZAMEN_FIO:
             if not rez[i]['Примечание'].strip():
                 msg = f'''По {rez[i]['НП$ПУ']} в наряде №{rez[i]['Номер_наряда']} от {rez[i]['Дата']}
@@ -14174,7 +16519,8 @@ def upload_work_productivity_3(self, data_nach, data_kon, list_users, podr_filtr
                     recoded_min+=time_min_part
                     p_i+=1
                     datetime_nach = F.datetostr(F.strtodate(rez[i]['Дата']),  "%Y-%m-%d 06:54:32")
-                    dict_rez = add_block(self, rez[i], datetime_nach,dict_rez,etap,nom_nar,spis_dse[j],vid_rabot_empl,time_min_part,postfix_shtamp,ref_key_etap)
+                    dict_rez = add_block(self, rez[i], datetime_nach,dict_rez,etap,nom_nar,spis_dse[j],vid_rabot_empl,
+                                         time_min_part,postfix_shtamp,ref_key_etap)
 
     tmp = []
     tmp_lazer = []
@@ -14468,17 +16814,6 @@ def path_kd_dbl_clk(tbl,row,column):
             return
         F.open_dir_c(path)
 
-@CQT.onerror
-def update_data_etaps_from_erp(db_kplan,resp,s_num):
-    if resp is None:
-        return False
-    if len(resp) > 0:
-        blob = F.to_binary_pickle(resp)
-        CSQ.custom_request_c(db_kplan, f"""UPDATE знпр SET (data_etaps_from_erp,Этапы_ЕРП) = (?,?) 
-                WHERE s_num == ?;""", list_of_lists_c=[blob, 2, s_num])
-        return True
-    return False
-
 
 @CQT.onerror
 def apply_gui_groups(self: mywindow):
@@ -14734,37 +17069,40 @@ def ending_oform_zav_nar(nar_obj, jur_obj, glob_otk_kontrol: bool, glob_fio):
 def ____________VIPOLN_END__________________________________():
     pass
 #===============================================
-@CQT.onerror
-def make_dict_etaps_from_erp(m:ERP.OrdersComposit, ref_key_py:str):
-    dict_etaps = dict()
-    if ref_key_py == '':
-        return dict_etaps
-    cod,  resp = m.get_response(doc_name='Document_ЭтапПроизводства2_2',
-                          wet_filtr=f"?$filter=Распоряжение_Key "
-                                    f"eq guid'{ref_key_py}' and НЭ_НулевойЭтап eq false &$select=Ref_Key,Number,"
-                                    f"НаименованиеЭтапа,НомерПартииЗапуска,Спецификация_Key,НЭ_НулевойЭтап",with_cod=True)  #
-    if cod != 200:
-        CQT.msgbox(f'Err read Document_ЭтапПроизводства2_2 {resp}')
-        return  dict()
-    for item_resp in resp:
-        if item_resp['НомерПартииЗапуска'] not in dict_etaps:
-            cod,  name_res = m.get_response(doc_name='Catalog_РесурсныеСпецификации',
-                                      wet_filtr=f"?$filter=Ref_Key eq"
-                                                f" guid'{item_resp['Спецификация_Key']}'&$select=Статус, "
-                                                f"Description,Code",with_cod=True)
-            if cod != 200:
-                CQT.msgbox(f'Err read Catalog_РесурсныеСпецификации {name_res}')
-                return dict()
-            if not isinstance(name_res, list):
-                print(f'Ошибка загрузки спецификации Ref_Key {item_resp["Спецификация_Key"]}')
-                return dict()
-            dict_etaps[item_resp['НомерПартииЗапуска']] = {'Спецификация': name_res[0]['Code'],
-                                                           'Спецификация_Key': item_resp['Спецификация_Key'],
-                                                           'Этапы': []}
-        dict_etaps[item_resp['НомерПартииЗапуска']]['Этапы'].append(
-            {'Number': item_resp['Number'], 'НаименованиеЭтапа': item_resp['НаименованиеЭтапа'],'Чек':item_resp['Ref_Key']})
-    return dict_etaps
+# ++ 19.06.2026
+class ErpStagesSyncStatus(IntEnum):
+    NEED_REFRESH = 1             # Требуется загрузка или повторная сверка
+    SYNCED = 2                   # Валидный непустой снимок успешно записан
 
+    ORDER_NOT_FOUND = 3          # Заказ на производство не найден в ERP
+    ERP_UNAVAILABLE = 4          # Нет связи с 1С, timeout, HTTP/авторизационная ошибка
+    STAGES_NOT_CREATED = 5       # ЗП существует, но этапы производства ещё не созданы
+
+    SPECIFICATION_NOT_FOUND = 6  # Этап найден, но его ресурсная спецификация не найдена
+    INVALID_RESPONSE = 7         # Некорректный тип или структура ответа ERP
+    INTERNAL_ERROR = 8           # Исключение внутри MES при разборе/обработке
+    REF_KEY_MISSING = 9          # В MES отсутствует либо некорректен Ref_Key_py
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class ErpStagesLoadResult:
+    status: ErpStagesSyncStatus
+    data: dict[str, dict] | None = None
+    detail: str = ""
+    http_code: int | None = None
+
+    AUTO_RETRY_STATUSES = (
+        ErpStagesSyncStatus.NEED_REFRESH,
+        ErpStagesSyncStatus.ORDER_NOT_FOUND,
+        ErpStagesSyncStatus.ERP_UNAVAILABLE,
+        ErpStagesSyncStatus.STAGES_NOT_CREATED,
+        ErpStagesSyncStatus.SPECIFICATION_NOT_FOUND,
+    )
+
+    @property
+    def success(self) -> bool:
+        return self.status == ErpStagesSyncStatus.SYNCED
+# -- 19.06.2026
 
 
 
@@ -15205,7 +17543,7 @@ class TypesWorkingByDirections:
                     name = item['Наименование']
                     ref_key = item['Ref_Key']
                     parent_ref = item['Родитель_Ref_Key']
-                    s_num = nomen_types_instance.insert_type_nomen(ref_key, name, parent_ref, returning=True)
+                    s_num = nomen_types_instance.insert_type_nomen(ref_key, name, parent_ref)
                     if s_num is None or s_num == False:
                         return CQT.msgbox(f'Не удалось создать ВидНоменклатуры {name!r} в МЕС')
                     nomen_types_instance.fill_nomen_by_nomen_type(ref_key) # 22.09.25
@@ -15250,15 +17588,15 @@ class TypesWorkingByDirections:
                 'Родитель_Ref_Key': nomen['Родитель_Ref_Key'],
             })
         for key, nomen_mes in nomen_by_ref.items(): #27.10.25 по задаче 100062109
-            # if CFG.Config.place.poki == F.valm(nomen_mes['poki']):
-            data_for_table.append({
-                'Выбрать': '',
-                's_num': nomen_mes['s_num'],
-                'Наименование': nomen_mes['name'],
-                'Родитель': '',
-                'Ref_Key': key,
-                'Родитель_Ref_Key': nomen_mes['Родитель'],
-            })
+            if CFG.Config.place.poki == F.valm(nomen_mes['poki']):
+                data_for_table.append({
+                    'Выбрать': '',
+                    's_num': nomen_mes['s_num'],
+                    'Наименование': nomen_mes['name'],
+                    'Родитель': '',
+                    'Ref_Key': key,
+                    'Родитель_Ref_Key': nomen_mes['Родитель'],
+                })
         selected_nomen_types = ''
         column_types = CQT.num_col_by_name_c(tbl, 'ВидыНоменклатуры')
         if column_types is not None:

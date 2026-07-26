@@ -1,3 +1,5 @@
+
+
 from PyQt5 import QtWidgets, QtGui, QtCore  # , QtWebEngineWidgets
 from PyQt5.QtWinExtras import QtWin
 import os
@@ -37,6 +39,8 @@ class Data:
     db_kplan = F.bdcfg('DB_kplan')
     files_tmp = F.scfg('files_tmp')
     data_f = F.scfg('data_f')
+
+
 
     DICT_ETAPI = dict()
     custom_request_c = f'''SELECT * FROM operacii'''
@@ -110,6 +114,9 @@ class Data:
     else:
         DICT_TRDZ = F.deploy_dict_c(type_workers, "Ref_Key")
 
+
+
+
 class mywindow(QtWidgets.QMainWindow):
     def __init__(self):
         super(mywindow, self).__init__()
@@ -122,8 +129,10 @@ class mywindow(QtWidgets.QMainWindow):
         self.place : USRCNF.Place = None
 
         USRCNF.Config.user_config.load_user_config(self)
-        CQT.load_icons(self)
+
         DTCLS.app_self = self
+        self.DTCLS = DTCLS
+        DTCLS.load_data_main()
         CQT.connect_to_resize(self, CMS.tmp_dir())
         CMS.add_action_config_save_tbl_filtrs(self, self.ui)
         OTCH.vibor_sort_c_report_c(self)
@@ -146,7 +155,10 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.actionexcel.triggered.connect(self.export_table)
         self.ui.action_txt.triggered.connect(self.export_table_txt)
 
-        self.ui.action_tmp.triggered.connect(self.action_tmp)
+        if self.USER_CONFIG.is_developer:
+            dev_menu = CMS.ActionDevMenu(self)
+            dev_menu.add_action('action_tmp', self.action_tmp)
+
         # ==================BTN
         self.ui.btn_report_c.clicked.connect(lambda: OTCH.report_c(self))
         self.ui.btn_grafic_load.clicked.connect(lambda _, x=self: OTCH.create_podreport_c(x))
@@ -155,11 +167,14 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.btn_get_exel.clicked.connect(self.get_exel_for_compare_tdz)
         self.ui.btn_add_zamech.clicked.connect(lambda _, x=self: ZMCH.add_zamech(x))
         self.ui.btn_set_cld_month.clicked.connect(lambda : OTCH.calendar_select(self,'m'))
+        self.ui.btn_set_cld_prev_month.clicked.connect(lambda : OTCH.calendar_select(self,'pm'))
+        self.ui.btn_set_cld_next_month.clicked.connect(lambda : OTCH.calendar_select(self,'nm'))
         self.ui.btn_set_cld_year.clicked.connect(lambda: OTCH.calendar_select(self,'y'))
         self.ui.btn_post_block_to_erp.clicked.connect(lambda: ARMOPER.post_block_to_erp(self))
         self.ui.btn_del_block_to_erp.clicked.connect(lambda: ARMOPER.del_block_to_erp(self))
         self.ui.btn_post_all_block_to_erp.clicked.connect(lambda: ARMOPER.post_all_block_to_erp(self))
         self.ui.btn_start_etap_erp.clicked.connect(lambda: ARMOPER.btn_start_etap_erp(self))
+        self.ui.btn_add_etap_erp.clicked.connect(lambda: ARMOPER.btn_add_etap_erp(self))
         self.ui.btn_delete_block_from_etap.clicked.connect(lambda: ARMOPER.btn_delete_block_from_etap(self))
         self.ui.btn_show_history_nar.clicked.connect(lambda: ARMOPER.show_history_nar(self))
         self.ui.btn_show_structure_nar.clicked.connect(lambda: ARMOPER.show_structure_nar(self))
@@ -167,6 +182,8 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.bnt_glsv_del_doc.clicked.connect(lambda: RPTP.bnt_glsv_del_doc(self))
         self.ui.bnt_glsv_edit_rule.clicked.connect(lambda: RPTP.bnt_glsv_edit_rule(self))
         self.ui.bnt_glsv_add_rule.clicked.connect(lambda: RPTP.bnt_glsv_add_rule(self))
+        self.ui.btn_select_dates.clicked.connect(lambda : OTCH.btn_select_dates(self))
+        self.ui.btn_select_report.clicked.connect(self.select_report)
         # ==================lines
 
         # ==================TABLES
@@ -188,7 +205,8 @@ class mywindow(QtWidgets.QMainWindow):
         # ===================CHECKBOX
         self.ui.chk_autohide.clicked.connect(self.clck_chk_autohide)
         # ===================COMBOBOX
-        self.ui.cmb_sort_c_report.activated.connect(lambda _, x=self: OTCH.vibor_sort_c_report_c(x))
+        #self.ui.cmb_sort_c_report.activated.connect(lambda _, x=self: OTCH.vibor_sort_c_report_c(x))
+        self.ui.cmb_sort_c_report.setEnabled(False)
         self.ui.cmb_podrazdelenie.activated.connect(lambda _, x=self: OTCH.vibor_additional_sort_report(x))
         # self.ui.cmb_sort_c_report.highlighted.connect(self.cmb_sort_c_report_primech)
         self.ui.cmb_napr.activated.connect(self.choose_direction)
@@ -228,7 +246,9 @@ class mywindow(QtWidgets.QMainWindow):
         # ==== GLOBALS
         self.plan_for_gant = ''
         self.global_arm_oper_user_fio = None
-
+        self.current_podr_text: str|None = None
+        self.current_podr_data = None
+        self.DICT_ALIASES_FIELDS_REPORT:dict|None = None
         # =======loads
         self.Data = Data
         self.ui.rbut_start_of_per.setChecked(True)
@@ -296,7 +316,7 @@ class mywindow(QtWidgets.QMainWindow):
 
         self.ARM_oper_using = True
 
-
+        self.select_last_used_report()
         # ============DB
         # ====ВРЕМЕННО
         #self.tmp_func()
@@ -353,12 +373,42 @@ class mywindow(QtWidgets.QMainWindow):
         self.chk_autohide = self.ui.chk_autohide.isChecked()
     @CQT.onerror
     def fill_cmb_sorts_repot(self, *args):
+        #list_bold = [True if _ == name_last else False for _ in list(self.dict_sort_c_report_c.keys())]
+        list_report_names = [_['Название'] for _ in self.dict_sort_c_report_c.values()]
+        list_report_tooltips = [_['Примечание'] for _ in self.dict_sort_c_report_c.values()]
+        list_report_data = [_ for _ in self.dict_sort_c_report_c.keys()]
+        CQT.fill_list_combobx(self,self.ui.cmb_sort_c_report,list_report_names,[],list_report_tooltips,list_data=list_report_data)
+        OTCH.vibor_sort_c_report_c(self)
+
+    @CQT.onerror
+    def select_last_used_report(self, *args):
         name_last = CMS.load_tmp_path('last_used_report')
-        list_bold = [True if _ == name_last else False for _ in list(self.dict_sort_c_report_c.keys())]
-        CQT.fill_list_combobx(self,self.ui.cmb_sort_c_report,list(self.dict_sort_c_report_c.keys()),[],list(self.dict_sort_c_report_c.values()),list_bold=list_bold)
         self.ui.cmb_sort_c_report.setCurrentText(name_last)
         self.vid_report_c = name_last
         OTCH.vibor_sort_c_report_c(self)
+
+    @CQT.onerror
+    def select_report(self,*args):
+        template = F.undeploy_dict_c(self.dict_sort_c_report_c,'_name')
+
+        def fnc_oform(tbl:CQT.QtWidgets.QTableWidget):
+            t = CQT.TableContext(tbl)
+            t.hide_if_not_dev(DTCLS.CONFIG)
+            name_last = CMS.load_tmp_path('last_used_report')
+            row = t.find_row({'Название':name_last},True)
+            if row:
+                t.set_selected_cell(row,'Название')
+        for i, it in enumerate(template):
+            template[i]  = F.sort_dict_by_sample(it,("","Группа", "Название","Примечание"))
+        rez = CQT.msgboxg_get_table(self,"Выбор отчета",template,ExtendedSelection=False,selectRows=True,
+                              styleSheet=CQT.MES_CSS,selection_from_tbl=True,showMaximized=True,
+                              func_oform_tbl=fnc_oform)
+        if not rez:
+            return
+        otch = rez['_name']
+        self.ui.cmb_sort_c_report.setCurrentIndex(self.ui.cmb_sort_c_report.findData(otch))
+        OTCH.vibor_sort_c_report_c(self)
+
 
     @CQT.onerror
     def get_exel_for_compare_tdz(self, *args):
@@ -549,6 +599,7 @@ class mywindow(QtWidgets.QMainWindow):
                     CQT.msgbox(f'Успешно')
 
         if self.vid_report_c == 'Трудозатраты':
+            return #отключено
             if not check_path_save(self):
                 return
             if not check_save_txt_trdzt(self):
@@ -613,7 +664,9 @@ class mywindow(QtWidgets.QMainWindow):
             CQT.msgbox(f'Успешно обновлено')
 
         if self.vid_report_c == 'Выработка сотрудников':
-            CQT.msgbox(f'В разарботке')
+            if not CMS.user_access(DTCLS.app_self.bd_naryad, 'просмотрщик_выработка_сотрудников_выгрузка_в_ерп', F.user_name()):
+                return
+            OTCH.upload_kty_into_erp(self)
             return
             tbl = self.ui.tbl_report_c
             start = self.ui.le_start_of_period.text()
@@ -660,30 +713,17 @@ class mywindow(QtWidgets.QMainWindow):
         CEX.zap_spis(plan, path, name, '1', 1, 1)
 
     def keyReleaseEvent(self, e):
+
         if e.key() == 80 and e.modifiers() == (QtCore.Qt.ControlModifier | QtCore.Qt.ShiftModifier):
             if CQT.focus_is_QTableWidget():
                 CQT.refill_tbl_into_msgbox_get_table(self,QtWidgets.QApplication.focusWidget())
-        if self.ui.tbl_report_add_filtr.hasFocus(): # 12.12.25 по задаче 100061422
-            if e.key() == 16777220:
-                CMS.apply_filtr_c(self, self.ui.tbl_report_add_filtr, self.ui.tbl_report_add)
-        if self.ui.tbl_viev_etaps_erp_filtr.hasFocus():
-            if e.key() == 16777220:
-                CMS.apply_filtr_c(self, self.ui.tbl_viev_etaps_erp_filtr, self.ui.tbl_viev_etaps_erp)
-        if self.ui.tbl_compare_exel_filtr.hasFocus():
-            if e.key() == 16777220:
-                CMS.apply_filtr_c(self, self.ui.tbl_compare_exel_filtr, self.ui.tbl_compare_exel)
+
         if e.key() == 67 and e.modifiers() == (QtCore.Qt.ControlModifier | QtCore.Qt.ShiftModifier):
             if CQT.focus_is_QTableWidget():
                 CQT.copy_bufer_table(QtWidgets.QApplication.focusWidget())
-        if self.ui.tbl_filtr_dse.hasFocus():
-            if e.key() == 16777220:
-                CMS.apply_filtr_c(self, self.ui.tbl_filtr_dse, self.ui.tbl_dse)
-        if self.ui.tbl_zamech_filtr.hasFocus():
-            if e.key() == 16777220:
-                CMS.apply_filtr_c(self, self.ui.tbl_zamech_filtr, self.ui.tbl_zamech)
+
         if self.ui.tbl_report_c_filtr.hasFocus():
             if e.key() == 16777220:
-                CMS.apply_filtr_c(self, self.ui.tbl_report_c_filtr, self.ui.tbl_report_c)
                 if self.ui.cmb_sort_c_report.currentText() == 'Журнал работ':
                     CMS.apply_summ_с(self,
                                                                                                       self.ui.tbl_report_c)
@@ -723,17 +763,8 @@ class mywindow(QtWidgets.QMainWindow):
                                                                                                       self.ui.tbl_report_c,
                                                                                                       sredn=True)
                 self.ui.tbl_report_c.isRowHidden(1)
-        if self.ui.tbl_mk_filtr.hasFocus():
-            if e.key() == 16777220:
-                CMS.apply_filtr_c(self, self.ui.tbl_mk_filtr, self.ui.tbl_mk)
-        if self.ui.tbl_jur_filtr.hasFocus():
-            if e.key() == 16777220:
-                CMS.apply_filtr_c(self, self.ui.tbl_jur_filtr, self.ui.tbl_jur)
-        if e.key() == QtCore.Qt.Key_F11:
-            if self.isFullScreen():
-                self.showNormal()
-            else:
-                self.showFullScreen()
+
+
     def tbl_report_itemSelectionChanged(self):
         CQT.summ_selct_tbl(self, self.ui.tbl_report_c)
 

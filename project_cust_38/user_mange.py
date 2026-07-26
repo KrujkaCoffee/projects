@@ -47,6 +47,11 @@ class UserManager:
 
     combo_prof: QtWidgets.QComboBox = None
 
+    @CQT.onerror
+    def try_sync_users(self):
+        CMS.Emploee_db(CFG.Config.project.db_users).update_db(CFG.Config.project.db_naryad, True)
+        CMS.Emploee_spread_db().update_fiz_users()
+
     def fill_window_fio_descriptor(self, fio: str):
         setattr(self.window, "glob_ima", fio)
         setattr(self.window, "glob_fio", fio)
@@ -59,7 +64,10 @@ class UserManager:
         ima = CMS.name_by_empl_c(self.combo_fio.currentText())
         password = self.input_password.text()
         message = fetch_api(ima, password, action=FetchAction.REGISTER)
-        return CQT.msgbox(message)
+        return CQT.msgboxgYN_delay(message, btn0_name='Ясно', btn1_name='Понятно', delay_sec=5, lock_btn0=True, lock_btn1=True)
+
+    def user_is_initialized(self):
+        return CFG.Config.user_config.User and CFG.Config.user_config.User.ID_ФизЛица is not None
 
     @CQT.onerror
     def log_in(self, autouser=None, *args, **kwargs):
@@ -96,11 +104,20 @@ class UserManager:
                     CQT.msgbox("Не зарегистрирован\nПараметры->Новый пользователь")
                     return
         if parol == True:
-            self.window.glob_login = f'{ima} {self.employee_by_fio[ima]}'
-            self.fill_window_fio_descriptor(ima)
+
             self.window.glob_ref_user = ref
             self.input_password.clear()
-            CFG.Config.user_config.init_employee(ima)
+            CFG.Config.user_config.init_employee(ima)   # Попытка 1
+            if not self.user_is_initialized():
+                self.try_sync_users()
+                CFG.Config.user_config.init_employee(ima)
+
+            if not self.user_is_initialized():
+                self.logout()
+                return CQT.msgbox(f'Не удалось инициализировать пользователя: {ima!r} Обратитесь к администратору MES')
+
+            self.window.glob_login = f'{ima} {self.employee_by_fio[ima]}'
+            self.fill_window_fio_descriptor(ima)
         else:
             CQT.msgbox("Не верный пароль")
             self.input_password.clear()

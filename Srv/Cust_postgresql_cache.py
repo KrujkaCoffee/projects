@@ -204,7 +204,21 @@ class PostgresConfig:
             f'host={self.host} port={self.port} dbname={self.dbname} '
             f'user={self.user} password={pwd} application_name={self.application_name}'
         )
-
+@dataclasses.dataclass
+class PostgresConfig:
+    host: str = 'srv-mes'
+    port: int = 5432
+    dbname: str = ''
+    user: str = 'postgres'
+    password: str = 'Adr1959967 '
+    connect_timeout: int = 5
+    application_name: str = 'mes_pg_cache'
+    schema_name: str = 'files_stage'
+    table_name: str = 'mes_request_cache_payload'
+    options: str = ''
+    sslmode: str = 'disable'
+    gssencmode: str = 'disable'
+    schemas: tuple = ( 'public', 'files_stage')
 
 def connect_pg(config: PostgresConfig):
     driver = _driver_name()
@@ -238,6 +252,7 @@ def connect_pg(config: PostgresConfig):
             options=config.options or None,
         )
         conn.autocommit = True
+
         cur = conn.cursor()
         return conn, cur
     except Exception as e:
@@ -274,15 +289,22 @@ def custom_request_pg(
     rez_dict: bool = False,
     one: bool = False,
     one_column: bool = False,
+hat_c: bool = False,
     conn='',
     cur='',
         config = None
 ):
+    if params is None:
+        params = []
     if config is None:
         config = PostgresConfig()
     conn = conn or get_process_conn(config)
-
+    from psycopg.rows import tuple_row, dict_row
+    conn.row_factory = dict_row if rez_dict else tuple_row
     cur = conn.cursor()
+    if config.schemas:
+        set_schemas = ','.join(config.schemas)
+        cur.execute(f"SET search_path TO {set_schemas};")
     # if Connect is not None and not Connect.closed:
     #     conn = Connect
     #
@@ -296,7 +318,10 @@ def custom_request_pg(
 
     try:
         if params and len(params) >= 1 and isinstance(params[0], (list, tuple)):
-            cur.executemany(query, params)
+            if 'SELECT' in query.upper():
+                cur.execute(query, params[0])
+            else:
+                cur.executemany(query, params)
         else:
             cur.execute(query, params)
         has_result = cur.description is not None
@@ -311,11 +336,15 @@ def custom_request_pg(
             rows = cur.fetchall()
 
         if rez_dict:
-            data = _rows_to_dict(cur, rows)
+            data = rows
+            # data = _rows_to_dict(cur, rows)
             if one:
                 data = data[0] if data else {}
         else:
             data = [list(row) for row in rows]
+            if hat_c == True:
+                cols = [x[0] for x in cur.description]
+                data.insert(0, cols)
             if one:
                 data = data[0] if data else []
 

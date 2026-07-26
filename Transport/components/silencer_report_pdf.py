@@ -365,9 +365,17 @@ def draw_twin_chart(c, x: float, y: float, w: float, h: float, before: list[floa
 
 def draw_sidebar(c, x: float, y: float, w: float, h: float, *, font: str):
     from reportlab.lib import colors
+    x += 14
+    w -= 14
+    te = 823.8897637795277
+
+    ##
 
     c.setStrokeColor(colors.black)
     c.setLineWidth(0.45)
+
+    c.line(x + w , te, x + w, y + h)
+
     c.rect(x, y, w, h, fill=0, stroke=1)
     c.line(x + w / 2, y, x + w / 2, y + h)
 
@@ -481,7 +489,7 @@ def build_silencer_report_pdf(
     footer_h = 98
     sidebar_w = 36
     gap = 0
-    main_x = margin_l + sidebar_w + gap
+    main_x = margin_l + sidebar_w + gap + 6
     main_w = page_w - main_x - margin_r
     top_y = page_h - margin_t
 
@@ -493,7 +501,7 @@ def build_silencer_report_pdf(
     c.setLineWidth(0.7)
     c.rect(margin_l, footer_y, page_w - margin_l - margin_r, page_h - footer_y - margin_t, fill=0, stroke=1)
     draw_sidebar(c, margin_l, footer_y, sidebar_w, 218, font=font)
-    draw_footer(c, main_x, footer_y, main_w, footer_h, font=font, bold_font=bold_font, input_values=input_values)
+    draw_footer(c, main_x - 6, footer_y, main_w + 6, footer_h, font=font, bold_font=bold_font, input_values=input_values)
 
     project_name = str(unpack_value_by_key(input_values, "nazvanie_proekta", default="") or "").strip()
     project_num = str(unpack_value_by_key(input_values, "nomer_proekta", default="") or "").strip()
@@ -502,12 +510,16 @@ def build_silencer_report_pdf(
     c.drawString(main_x, y, "Отчет по расчету шумоглушителя")
     c.setFont(font, 7)
     subtitle = " · ".join([x for x in (project_name, project_num) if x])
-    if subtitle:
-        c.drawRightString(main_x + main_w, y, subtitle)
-    y -= 10
 
     col_gap = 7
-    card_w = (main_w - 2 * col_gap) / 3
+    card_w = (main_w - 3 * col_gap) / 3
+
+    table_w = card_w * 3 + (col_gap * 2)
+    if subtitle:
+        c.drawRightString(main_x + table_w, y, subtitle)
+    y -= 10
+
+
     rows_nominal = [
         ("Среда", unpack_value_by_key(input_values, "sreda", default="-"), ""),
         (f"Расход, {unpack_value_by_key(input_values, 'edinica_rashoda', default='')}", unpack_value_by_key(input_values, "rashod"), ""),
@@ -545,7 +557,7 @@ def build_silencer_report_pdf(
         c,
         main_x,
         y,
-        main_w,
+        table_w,
         title="Уровни звуковой мощности, дБ",
         row1_label="Труба без ШГ",
         row2_label="Шумоглушитель",
@@ -559,7 +571,7 @@ def build_silencer_report_pdf(
         c,
         main_x,
         y,
-        main_w,
+        table_w,
         title="Уровни звукового давления, дБ",
         row1_label=f"УЗД* в {distance} м до ШГ",
         row2_label=f"УЗД* в {distance} м после ШГ",
@@ -572,7 +584,7 @@ def build_silencer_report_pdf(
 
     chart_h = min(230, max(170, y - (footer_y + footer_h + 12)))
     y -= chart_h
-    draw_twin_chart(c, main_x, y, main_w, chart_h, before_pressure, after_pressure, font=font, bold_font=bold_font)
+    draw_twin_chart(c, main_x, y, table_w, chart_h, before_pressure, after_pressure, font=font, bold_font=bold_font)
 
     c.setFont(font, 5.8)
     c.drawString(main_x, footer_y + footer_h + 4, "* УЗД - уровень звукового давления. LАЭкв - эквивалентный уровень звука.")

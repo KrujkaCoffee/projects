@@ -43,3 +43,9 @@ remote_run.py
 !/Setup/remote_run.py
 /project_cust_38/otcheti.py
 /project_cust_38/report_ci copy.py
+/)*
+admin
+/register
+/orm_registers
+upd_*
+*/logs/

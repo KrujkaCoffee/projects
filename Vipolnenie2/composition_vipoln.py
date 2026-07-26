@@ -23,12 +23,17 @@ def fill_table_compositions():
         tbl_comp.setHidden(True)
         return
 
-    templ = comps.template()
+    templ = comps.template(True)
     CQT.fill_wtabl(templ, tbl_comp, styleSheet=CQT.MES_CSS, selectionBehavior="SelectRows", sortingEnabled=True,
                    aliases_header=CMS.Composition.ALIASES)
     t = CQT.TableContext(tbl_comp)
     with CQT.table_updating(tbl_comp):
         if not CFG.Config.user_config.is_developer:
             t.hide_startsunderscore(True)
+        for row in t.rows():
+            id_comp = int(row.value('id'))
+            composition = DTCLS.user_compositions.find(id_comp)
+            if not composition.is_coupled:
+                row.set_color_font(*CMS.Colors.dull_black.rgb)
         CMS.load_column_widths(DTCLS.app_self, tbl_comp)
 

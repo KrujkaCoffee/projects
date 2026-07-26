@@ -7,11 +7,12 @@ import project_cust_38.Cust_mes as CMS
 import copy
 import kal_plan as KPL
 from typing import TYPE_CHECKING
-
+import project_cust_38.Cust_emoji as CEMOJ
+from data_class import Data_plan as DTCLS
 if TYPE_CHECKING:
     from MKart import mywindow
 
-
+CREATED_PL_SYMBOL=CEMOJ.EmojiMain.ДокументыДанные.analysis.symbol
 @CQT.onerror
 def fill_pull(self: mywindow, *args, **kwargs):
     CQT.clear_tbl(self.ui.tbl_cld_plan_summ)
@@ -31,7 +32,8 @@ def fill_pull(self: mywindow, *args, **kwargs):
 
          napravl_deyat ON napravl_deyat.Пномер = plan.Направление_деятельности,
          status_poz ON status_poz.Пномер = plan.Статус, 
-        napravlenie ON napravlenie.Пномер = napravl_deyat.Направление WHERE plan.poki = {self.place.poki} AND plan.Пномер IN ({CSQ.prepare_list_to_tuple(list_pnums)})"""
+        napravlenie ON napravlenie.Пномер = napravl_deyat.Направление WHERE plan.poki = {self.place.poki} 
+            AND plan.Пномер IN ({CSQ.prepare_list_to_tuple(list_pnums)})"""
     rez = CSQ.custom_request_c(self.db_kplan, req, rez_dict=True)
     list_vid_rab = CMS.get_shablon_vidov(self.DICT_PROFESSIONS)
     if rez == []:
@@ -39,8 +41,33 @@ def fill_pull(self: mywindow, *args, **kwargs):
         return
     dict_napravl = dict()
     dict_gant = dict()
+    dict_pozs_o = CMS.Pozitions(list_pnums,DTCLS.db_kplan,DTCLS.bd_naryad,DTCLS.db_resxml,DTCLS.db_users,self,True)
+
+    alias = {'Направление':'Напр.',
+                                                 'Позиция':'Поз.',
+                                                 'Спецификация_код_ЕРП':'Спец-я код ЕРП',
+                                                 'Количество_заказ':'Кол-во \nпоз.',
+                                                 'Количество':'Кол-во',
+                                                 "Всего н-смен на поз.":'Сумм.\nн-смен',
+                                                 }
+    for vid_r in list_vid_rab:
+        alias[vid_r] = vid_r.replace('_н_см','\nн-смен')
+
+
+    list_not_loaded_pozs = [{
+                        '': CEMOJ.EmojiMain.СтатусыПроизводства.error.symbol,
+                        'Пномер': _['Пномер'],
+                        'Направление': _['Направление'],
+                        '№ERP': _['№ERP'],
+                        '№проекта': _['№проекта'],
+                        'Позиция': _['Позиция'],
+                        'Статус проекта': _['Статус проекта'],
+                             } for _ in rez if _['Пномер'] not in dict_pozs_o.dict_pozs]
+    if list_not_loaded_pozs:
+        CQT.msgboxg_get_table_ok_inf(self,'Не сформированы ганты для следующих номеров:',list_not_loaded_pozs,styleSheet=CQT.MES_CSS)
+        return #'|'.join([str(_['Пномер']) for _ in list_not_loaded_pozs])
     for i in range(len(rez)):
-        poz = CMS.Pozition(rez[i]['Пномер'], self.db_kplan, self.bd_naryad, self.db_resxml, self.db_users, self, True)
+        poz = dict_pozs_o.dict_pozs[rez[i]['Пномер']]
         dict_gant_time = poz.get_norm_by_range_dates(start_day, end_day, self.LIST_PROFESSIONS)
         for etap, val in dict_gant_time.items():
             if etap not in dict_gant:
@@ -77,7 +104,7 @@ def fill_pull(self: mywindow, *args, **kwargs):
             rez[i]['Тип'] = Month_plan.file[rez[i]['Пномер']]['Тип']
     editeble_col_nomera = {"Количество", "Примечание"}
     CQT.fill_wtabl(rez, self.ui.tbl_pull_poz, auto_type=False, set_editeble_col_nomera=editeble_col_nomera,
-                   height_row=24)
+                   height_row=24,aliases_header=alias,styleSheet=CQT.MES_EDIT_CSS)
     calc_fill_svod_and_get_dict_summ_plan(self, dict_napravl, dict_gant)
 
 
@@ -108,6 +135,7 @@ def btn_pull_poz_del(self: mywindow):
     if pnum in Month_plan.file:
         Month_plan.file.pop(pnum)
     fill_pull(self)
+    Month_plan.fl_edited = True
 
 #++ 06.06.2025 (по задаче 100055177 )
 @CQT.onerror
@@ -139,8 +167,9 @@ def btn_pull_poz_add_all(self: mywindow):
                                       'Количество': -1
                                       }
     fill_pull(self)
+    Month_plan.fl_edited = True
     if usr_messages:
-        CQT.msgboxg_get_table_ok_inf(self, 'Номера кпл невошедшие в выборку', usr_messages, show_filtr=False)
+        CQT.msgboxg_get_table_ok_inf(self, 'Номера кпл не вошедшие в выборку', usr_messages, show_filtr=False)
 # --06.06.2025 (по задаче 100055177 )
 
 @CQT.onerror
@@ -160,6 +189,7 @@ def btn_pull_all_update(self: mywindow):
                                   'Количество': F.valm(row['Количество'])
                                   }
     fill_pull(self)
+    Month_plan.fl_edited = True
     self.ui.tbl_kal_pl.setFocus()
     CQT.msgbox(f'Успешно')
 
@@ -189,6 +219,7 @@ def btn_pull_poz_update(self: mywindow):
                               'Количество': F.valm(row['Количество'])
                               }
     fill_pull(self)
+    Month_plan.fl_edited = True
     self.ui.tbl_kal_pl.setFocus()
 
 
@@ -217,6 +248,7 @@ def btn_pull_poz_add(self: mywindow, *args, **kwargs):
                               'Количество': -1
                               }
     fill_pull(self)
+    Month_plan.fl_edited = True
     self.ui.tbl_kal_pl.setFocus()
 
 
@@ -230,6 +262,7 @@ def save_local_pl(self: mywindow, *args):
     CMS.save_tmp_path('local_pl_poz', put_ima, True)
 
     F.write_file_c(put_ima, {'data': Month_plan.file, 'month': Month_plan.month}, separ='', pickl=True)
+    Month_plan.fl_edited = False
     CQT.msgbox('Успешно')
     pass
 
@@ -249,30 +282,45 @@ def load_local_pl(self: mywindow, *args):
         CQT.msgbox(f'Ошикба загрузки файла')
         return
     fill_pull(self)
-
+    Month_plan.fl_edited = False
 
 @CQT.onerror
 def reselect_month(self: mywindow, *args):
+    return #01.06.2026
     tbl = self.ui.tbl_cld_plan_workforce
-    row = CQT.get_dict_line_form_tbl(tbl)
-    month = row['Дата']
+    t = CQT.TableContext(tbl)
+    cur_row = t.current_row()
+    if cur_row.no_selection:
+        return
+    month = cur_row.value('Дата')
     if not CQT.msgboxgYN(f'Переопределить месяц текущей выборки {Month_plan.month} на {month}?'):
         return
+    if CQT.msgboxgYN(f'Сбросить данные текущей выборки?'):
+        btn_pull_poz_del_all(self)
     Month_plan.month = month
     self.ui.lbl_current_moth_pl.setText(Month_plan.month)
-    CQT.clear_tbl(self.ui.tbl_cld_plan_summ)
-    CQT.clear_tbl(self.ui.tbl_pull_poz)
     pass
 
 
 def select_month(self: mywindow):
     tbl = self.ui.tbl_cld_plan_workforce
-    month = tbl.item(tbl.currentRow(), 0).text()
-    if Month_plan.month == None:
+    t = CQT.TableContext(tbl)
+    cur_row = t.current_row()
+    if cur_row.no_selection:
+        return
+    month = cur_row.value('Дата')
+    if not Month_plan.month is None:
+        if Month_plan.fl_edited:
+            if not CQT.msgboxgYN(f'Не сохраненные данные будут сброшены.'
+                                 f'Переопределить месяц текущей выборки {Month_plan.month} на {month}?'):
+                return
+
+    self.ui.lbl_current_moth_pl.setText(Month_plan.month)
+    rez = load_poz_pl_from_db(self,False)
+    if rez is None:
         load_plan(self, dict(), month)
-        self.ui.lbl_current_moth_pl.setText(Month_plan.month)
-
-
+        fill_pull(self)
+    Month_plan.fl_edited = False
 def recalc_nsmen_by_count_izd(self: mywindow, poz, alert_msgbox: bool = True):
     poz.load_kpl_table('пл_топ')
     vid_po_napr = poz.dict_tables['пл_топ']['Вид']
@@ -292,8 +340,8 @@ def recalc_nsmen_by_count_izd(self: mywindow, poz, alert_msgbox: bool = True):
 
 @CQT.onerror
 def calc_row_tbl_pull_etaps(self: mywindow, *args, **kwargs):
-    def check_new_val(self: mywindow):
-        new_val = tbl.item(tbl.currentRow(), tbl.currentColumn()).text()
+    def check_new_val(new_val):
+
         if not F.is_numeric(new_val):
             CQT.msgbox(f'Введено не число')
             return False
@@ -317,29 +365,30 @@ def calc_row_tbl_pull_etaps(self: mywindow, *args, **kwargs):
         tbl.item(r, c).setText(str(get_old_val(self)))
 
     tbl = self.ui.tbl_pull_etaps
-    if tbl.currentColumn() != CQT.num_col_by_name_c(tbl, 'Остаток_шт'):
+    if CQT.is_table_updating(tbl):
         return
-    if not check_new_val(self):
-        set_old_val(self)
+    t = CQT.TableContext(tbl)
+    row = t.current_row()
+    if row.no_selection:
         return
-    r = tbl.currentRow()
-    c = tbl.currentColumn()
-    nf_vid_rab = 0
-    nf_ost_n_min = CQT.num_col_by_name_c(tbl, 'Остаток_н_см')
-    new_val = F.valm(tbl.item(r, c).text())
-    vid_rab = tbl.item(r, nf_vid_rab).text()
-    count_izd = self.current_poz_for_pull_poz.dict_tables['пл_оуп']['Количество']
-    norma = self.current_poz_for_pull_poz.dict_vid_rab[vid_rab]['Норма_н_см']
-    new_norma = round(norma / count_izd * new_val, 2)
+    if t.current_column_name() == 'Остаток_шт':
+        new_val  = row.value('Остаток_шт')
+        if not check_new_val(new_val):
+            set_old_val(self)
+            return
+        new_val = F.valm(new_val)
+        vid_rab = row.value('Список')
+        count_izd = self.current_poz_for_pull_poz.dict_tables['пл_оуп']['Количество']
+        norma = self.current_poz_for_pull_poz.dict_vid_rab[vid_rab]['Норма_н_см']
+        new_norma = round(norma / count_izd * new_val, 2)
 
-    self.current_poz_for_pull_poz.dict_vid_rab_tmp[vid_rab]['Остаток_н_см'] = new_norma
-    tbl.item(r, nf_ost_n_min).setText(str(new_norma))
+        self.current_poz_for_pull_poz.dict_vid_rab_tmp[vid_rab]['Остаток_н_см'] = new_norma
+
+        row.set_value('Остаток_н_см',str(new_norma))
 
 
-def corr_tbl_pull_etaps(self: mywindow):
-    # if not self.ui.tbl_pull_etaps.hasFocus():
-    #    CQT.clear_tbl(self.ui.tbl_pull_etaps)
-    #    return
+def corr_tbl_pull_etaps(tbl:CQT.QtWidgets.QTableWidget,item:CQT.QtWidgets.QTableWidgetItem,add_data):
+    self = DTCLS.app_self
     calc_row_tbl_pull_etaps(self)
 
 
@@ -349,29 +398,30 @@ def fill_tbl_pull_etap(self: mywindow, poz):
         return
     tbl = self.ui.tbl_pull_etaps
     tbl.blockSignals(True)
-    CQT.fill_wtabl(poz.dict_vid_rab_tmp, tbl, {'Остаток_шт'}, 40, 10, 20, auto_type=False, hide_head_rows=True,
-                   StretchLastSection=False)
+    data_tbl = dict()
+    for k,v in poz.dict_vid_rab_tmp.items():
+        etap_name= k.replace('_н_см','')
+        vals = copy.deepcopy(v)
+        vals['Этап'] = etap_name
+        data_tbl[k] = vals
 
-    tbl_width = tbl.verticalHeader().width() + 10
-    tbl_height = tbl.horizontalHeader().height() + 10
-    for j in range(0, tbl.columnCount()):
-        try:
-            CQT.set_color_text_header_wtab_horisontal_c(tbl, j, 111, 11, 11, 8, False)
-        except:
-            pass
-        tbl.setColumnWidth(j, 80)
-        tbl_width += tbl.columnWidth(j)
-
-    for i in range(0, tbl.rowCount()):
-        r, g, b = None,None,None
-        CQT.font_cell_size_format(tbl, i, 0, 6)
-        tbl_height += tbl.rowHeight(i)
-
+    CQT.fill_wtabl(data_tbl, tbl, {'Остаток_шт'},height_row=18,
+                     auto_type=False, hide_head_rows=True,styleSheet=CQT.MES_EDIT_CSS,
+                   aliases_header={'Норма_н_см':'Норма\nн-смен',
+                                                            'Заверш_н_см':'Завершено\nн-смен',
+                                                            'Остаток_н_см':'Остаток\nн-смен',
+                                                            'Остаток_шт':'Остаток\nшт',})
+    t = CQT.TableContext(tbl)
+    for row in t.rows():
+        clr = None
+        name_etap = row.value("Список")
         for key in self.DICT_PROFESSIONS.keys():
-            if self.DICT_PROFESSIONS[key]['nick_name'] == tbl.item(i, 0).text():
-                r, g, b = F.hex_to_rgb(self.DICT_PROFESSIONS[key]['color'][1:])
-        if r != None:
-            CQT.set_color_wtab_c(tbl, i, 0, r, g, b)
+            if self.DICT_PROFESSIONS[key]['nick_name'] == name_etap:
+                clr = CMS.Color(self.DICT_PROFESSIONS[key]['color'])
+                break
+        if clr:
+            row.set_color_background(*clr.rgb,col_name='Этап')
+    t.hide("Список")
     # tbl.setFixedWidth(tbl_width)
     # tbl.setFixedHeight(tbl_height)
     self.ui.lbl_count_pull_poz.setText(str(poz.dict_tables['пл_оуп']['Количество']))
@@ -397,9 +447,7 @@ def clck_tbl_kal_pl(self: mywindow, s_nom_kpl: int = None):
 
 def calc_fill_svod_and_get_dict_summ_plan(self: mywindow, dict_napravl, dict_gant):
 
-    #LIST_SUMM_SB = ('Сборка_н_см', 'Сварка_н_см', 'Зачистка_н_см')
-    #TODO
-
+    aliases = dict()
     month = Month_plan.month
     list_vid_rab = CMS.get_shablon_vidov(self.DICT_PROFESSIONS)
 
@@ -432,6 +480,7 @@ def calc_fill_svod_and_get_dict_summ_plan(self: mywindow, dict_napravl, dict_gan
             dict_gant_adopt[copmosite_gr] = round(dict_gant_adopt[copmosite_gr])
 
     for vid_r in dict_summ.keys():
+        aliases[vid_r] = vid_r.replace('_н_см','\nн-смен')
         for key in Month_plan.file.keys():
             norm = 0
             if vid_r in self.Data_plan.DICT_COMPOSITE_PODRAZD.keys():
@@ -478,22 +527,23 @@ def calc_fill_svod_and_get_dict_summ_plan(self: mywindow, dict_napravl, dict_gan
             list_of_lists.append(row_napr)
 
     tbl_summ = self.ui.tbl_cld_plan_summ
-    CQT.fill_wtabl(list_of_lists, tbl_summ, height_row=24, head_column=0)
+    CQT.fill_wtabl(list_of_lists, tbl_summ, height_row=24, head_column=0, styleSheet=CQT.MES_EDIT_CSS,
+                   colorful_edit=False,
+                   aliases_header =aliases)
     for j in range(tbl_summ.columnCount()):
         val = F.valm(tbl_summ.item(3, j).text())
-        r = 254 - val / 100 * 254
-        g = val / 100 * 254
-        CQT.set_color_wtab_c(tbl_summ, 3, j, r, g, 0)
+        clr = CMS.Color_tbl(val)
+        CQT.set_color_wtab_c(tbl_summ, 3, j, *clr.rgb)
     for i in range(5, len(list_of_lists)):
         val_max = F.valm(list_of_lists[i][0].split()[-1].replace("%", ''))
         if val_max == 0:
             val_max = 1
         for j in range(1, len(list_of_lists[0])):
             val = list_of_lists[i][j]
-            r = 254 - val / val_max * 254
-            r = r * (-1) if r < 1 else r
-            g = 254 - r
-            CQT.set_color_wtab_c(tbl_summ, i - 1, j, r, g, 0)
+
+            prcnt = round(val / val_max)
+            clr = CMS.Color_tbl(prcnt)
+            CQT.set_color_wtab_c(tbl_summ, i - 1, j, *clr.rgb)
 
 
 @CQT.onerror
@@ -504,7 +554,7 @@ def adapt_pl_with_gant(self: mywindow, mode='left_right'):
     if Month_plan.file == None:
         CQT.msgbox(f'Не иницализирован месяц')
         return
-    napr_adapt = self.ui.cmb_for_adapt.currentText()
+    napr_adapt = self.ui.cmb_for_adapt.currentData(CQT.Qt.UserRole)
     if napr_adapt == '':
         CQT.msgbox(f'Не выбрано направление')
         return
@@ -557,8 +607,8 @@ def adapt_pl_with_gant(self: mywindow, mode='left_right'):
     fill_pull(self)
     CQT.msgbox(f'Успешно обновлен{postfix_msg}')
 
-
-def cld_pl_apply_filtr_month(self: mywindow):
+@CQT.onerror
+def cld_pl_apply_filtr_month(self: mywindow,*args):
     if Month_plan.month == None:
         CQT.msgbox(f'Не выбран месяц')
         return
@@ -581,7 +631,7 @@ def cld_pl_apply_filtr_month(self: mywindow):
     for poz in pozitions.dict_pozs.values():
         if poz.Статус in (2, 3, 7) and poz.МК != 0:  # Подготовка Изготовление К производству
             for field in poz.row_dates_etap_plan.keys():
-                if poz.row_dates_etap_plan[field] != '':
+                if poz.row_dates_etap_plan[field] != '' and F.is_date(poz.row_dates_etap_plan[field],"%Y-%m-%d"):
                     if F.strtodate(poz.row_dates_etap_plan[field]) <= last_date_obj:
                         list_s_nums.append(str(poz.Пномер))
                         break
@@ -603,7 +653,8 @@ def fill_list_month_pozplan(self: mywindow):
                                   (Дата, poki) 
                                   VALUES (?,?);""", list_of_lists_c=[[data,self.place.poki]])
     if fl_update:
-        rez = CSQ.custom_request_c(self.db_kplan, f"""SELECT Дата,file_poz_plan as Файл  FROM mnts_plan WHERE poki = {self.place.poki}""",
+        rez = CSQ.custom_request_c(self.db_kplan, f"""SELECT Дата,file_poz_plan as Файл 
+         FROM mnts_plan WHERE poki = {self.place.poki}""",
                                    rez_dict=True)
     rez_filtred = []
 
@@ -612,13 +663,32 @@ def fill_list_month_pozplan(self: mywindow):
             if rez[i]['Файл'] == None:
                 rez[i]['Файл'] = ''
             else:
-                rez[i]['Файл'] = "*"
+                rez[i]['Файл'] = CREATED_PL_SYMBOL
             rez_filtred.append(rez[i])
 
     tbl = self.ui.tbl_cld_plan_workforce
     rez_filtred = F.sort_by_column_c(rez_filtred,'Дата',date_time=True,date_format="%Y-%m-%d")
-    CQT.fill_wtabl(rez_filtred, tbl, {}, 120, 15, 20, auto_type=False, hide_head_rows=True)
-    # tbl.setFixedWidth(self.ui.tbl_pull_etaps.width())
+    current_m = F.start_end_dates_c(vid='m',format_out='')[0]
+    for it in rez_filtred:
+        date_o = F.strtodate(it['Дата'],"%Y-%m-%d")
+        it['Месяц'] = f'{date_o.year} {F.month_rus_from_date(date_o,format=None,rodit_padej=False)}'
+        it['_old'] = date_o < current_m
+        it['_current_m'] = date_o == current_m
+
+
+    CQT.fill_wtabl(rez_filtred, tbl, {}, 120,
+                   15, 20, auto_type=False, hide_head_rows=True,styleSheet=CQT.MES_CSS,
+                   select_last_row=True)
+    t = CQT.TableContext(tbl)
+    t.hide_if_not_dev(DTCLS.USER_CONFIG.is_developer)
+    t.hide('Дата')
+    for row in t.rows():
+        if F.boolm(row.value('_old')):
+            row.set_color_font(*CMS.Colors.dull_black.rgb, col_name='Месяц')
+        if F.boolm(row.value('_current_m')):
+            row.set_font_format(bold=True, col_name='Месяц')
+
+
 
 
 @CQT.onerror
@@ -628,12 +698,14 @@ def apply_diap_dates_to_sb_in_tbl(self: mywindow, *args):
     if month == "Не в плане":
         set_kpls = set()
         rez = CSQ.custom_request_c(self.db_kplan,
-                                   f"""SELECT file_poz_plan FROM mnts_plan WHERE poki = {self.place.poki} and file_poz_plan is not null;""",
+                                   f"""SELECT file_poz_plan FROM mnts_plan WHERE poki = {self.place.poki}
+                                    and file_poz_plan is not null;""",
                                    one_column=True, hat_c=False)
         for item in rez:
             data_pl = F.from_binary_pickle(item)
             set_kpls = set_kpls.union({str(_) for _ in data_pl.keys()})
-        rez_snums = CSQ.custom_request_c(self.db_kplan, f"""SELECT plan.Пномер, plan.Группа FROM plan INNER JOIN  status_poz ON 
+        rez_snums = CSQ.custom_request_c(self.db_kplan, f"""SELECT plan.Пномер, plan.Группа FROM plan
+         INNER JOIN  status_poz ON 
         status_poz.Пномер == plan.Статус WHERE plan.Пномер NOT IN ({CSQ.prepare_list_to_tuple(list(set_kpls))}) AND 
          plan.poki = {self.place.poki} AND status_poz.Имя IN ("К производству","Подготовка");""",
                                          one_column=False,rez_dict=True)
@@ -652,7 +724,8 @@ def apply_diap_dates_to_sb_in_tbl(self: mywindow, *args):
         if not F.is_date(month, "%Y-%m-%d"):
             CQT.msgbox('Не выбран месяц')
             return
-        rez = CSQ.custom_request_c(self.db_kplan, f"""SELECT file_poz_plan FROM mnts_plan WHERE poki = {self.place.poki} and Дата ="{month}";""")
+        rez = CSQ.custom_request_c(self.db_kplan, f"""SELECT file_poz_plan FROM mnts_plan WHERE poki =
+        {self.place.poki} and Дата ="{month}";""")
 
 
         data_pl = F.from_binary_pickle(rez[-1][0])
@@ -667,24 +740,38 @@ def apply_diap_dates_to_sb_in_tbl(self: mywindow, *args):
             reg_groups = rf"'^\s*(?:{str_groups})?\s*$"
         str_pnums = '|'.join(list_noms)
         sp_znch = {'plan.Пномер': str_pnums}#, 'plan.Группа':reg_groups}
-    CMS.fill_filtr_c(self, self.ui.tbl_filtr_kal_pl, self.ui.tbl_kal_pl, sp_znch, True)
-    CMS.apply_filtr_c(self, self.ui.tbl_filtr_kal_pl, self.ui.tbl_kal_pl)
+    with CQT.table_updating(self.ui.tbl_filtr_kal_pl):
+        KPL.fill_filtr_main_tbl_pl(sp_znch)
+    with CQT.table_updating(self.ui.tbl_kal_pl):
+        CMS.apply_filtr_c(self, self.ui.tbl_filtr_kal_pl, self.ui.tbl_kal_pl)
     CMS.apply_gui_groups(self)
 
-def load_poz_pl_from_db(self: mywindow):
+@CQT.onerror
+def load_poz_pl_from_db(self: mywindow,msg_alarm=True,*args)->bool|None:
     # F.from_binary_pickle(res[-1][0])
-    if not CQT.msgboxgYN(f'Не сохраненные данные потеряются, Загрузить?'):
-        return
+    if msg_alarm:
+        if not CQT.msgboxgYN(f'Не сохраненные данные потеряются, Загрузить?'):
+            return False
     tbl = self.ui.tbl_cld_plan_workforce
+    t = CQT.TableContext(tbl)
+    cur_row = t.current_row()
+    if cur_row.no_selection:
+        return False
+    month = cur_row.value('Дата')
 
-    if tbl.item(tbl.currentRow(), 1) == None or tbl.item(tbl.currentRow(), 1).text() == '':
+    rez = CSQ.custom_request_c(self.db_kplan, f"""SELECT file_poz_plan FROM mnts_plan WHERE
+                mnts_plan.poki = {self.place.poki} AND Дата ="{month}";""",one_column=True,one=True,hat_c=False)
+
+    if not rez :
         return
-    month = tbl.item(tbl.currentRow(), 0).text()
-    rez = CSQ.custom_request_c(self.db_kplan, f"""SELECT file_poz_plan FROM mnts_plan WHERE mnts_plan.poki = {self.place.poki} AND Дата ="{month}";""")
-
-    load_plan(self, F.from_binary_pickle(rez[-1][0]), month)
-
+    byte_data = rez
+    if not isinstance(byte_data ,bytes):
+        CQT.msgbox('Неверный формат данных для загрузки плана позиций из БД.')
+        return False
+    data = F.from_binary_pickle(byte_data)
+    load_plan(self, data , month)
     fill_pull(self)
+    return True
 
 
 
@@ -706,6 +793,8 @@ def select_poz_from_pull(self: mywindow, *args):
 @CQT.onerror
 def edit_handle_pl(self: mywindow):
     tbl = self.ui.tbl_pull_poz
+    if CQT.is_table_updating(tbl):
+        return
     col = tbl.currentColumn()
     dict_row = CQT.get_dict_line_form_tbl(tbl)
     nom = int(dict_row['Пномер'])
@@ -722,11 +811,16 @@ def save_kpl_plan(self: mywindow):
         return
     print(f'план сформирован')
     tbl = self.ui.tbl_cld_plan_workforce
-    if tbl.item(tbl.currentRow(), 1).text() == '*':
+    t = CQT.TableContext(tbl)
+    cur_row = t.current_row()
+    if cur_row.no_selection:
+        return
+
+
+    if cur_row.value('Файл') == CREATED_PL_SYMBOL:
         if not CQT.msgboxgYN(f'План был ранее сохранен, обновить?'):
             return
-    month = tbl.item(tbl.currentRow(), 0).text()
-
+    month = cur_row.value('Дата')
 
     if month != Month_plan.month:
         CQT.msgbox(f'Сохранить план {Month_plan.month} в ячейку {month} невозможно')
@@ -772,6 +866,7 @@ def save_kpl_plan(self: mywindow):
         comp.reload_fields_from_db()
     except:
         CQT.msgbox(f'Ошибка заполнения таблицы')
+
     # ==================================Отметка даты внесения в план===============================================
 
     if len(Month_plan.file) == 0:
@@ -789,7 +884,7 @@ def save_kpl_plan(self: mywindow):
     blob1 = F.to_binary_pickle(Month_plan.file)
     CSQ.custom_request_c(self.db_kplan, f'''UPDATE mnts_plan SET file_poz_plan = ? WHERE Дата = ? and poki == {self.place.poki};''',
                          list_of_lists_c=[blob1, month])
-    tbl.item(tbl.currentRow(), 1).setText('*')
+    tbl.item(tbl.currentRow(), 1).setText(CREATED_PL_SYMBOL)
     dict_db = {_['nick_name']: _['mnts_plan_names'] for _ in self.Data_plan.DICT_GROUP_VID_RAB_FOR_PLAN.values()}
     DICT_GROUP_VID_RAB_FOR_PLAN_by_mnts_plan_name = F.deploy_dict_c(F.list_of_lists_to_list_of_dicts(F.dict_of_dicts_to_list_of_lists(self.Data_plan.DICT_GROUP_VID_RAB_FOR_PLAN,'name')),'mnts_plan_names')
     rez_dict = {_: 0 for _ in dict_db.values()}
@@ -825,6 +920,11 @@ def save_kpl_plan(self: mywindow):
 
 
     list_hats = [_ for _ in dict_db.values()]
+    fields_db = CSQ.dict_types_tbl(self.db_kplan,'mnts_plan')
+    missing_fields = [_ for _ in list_hats if _ not in fields_db]
+    if missing_fields:
+        CQT.msgbox(f'Ошибка заполнения полей mnts_plan отсутствуют:\n{", ".join(missing_fields)}')
+        return
     str_hats = ', '.join(list_hats)
     rez = CSQ.custom_request_c(self.db_kplan, f"""UPDATE mnts_plan SET ( {str_hats} ) = 
      ({CSQ.questions_for_mask(list_hats)}) WHERE Дата = '{month}' and poki == {self.place.poki}""",
@@ -883,21 +983,24 @@ class Month_plan():
     tabel_workforce_pull_poz_pl = []
     file = None
     month = None
+    fl_edited = False
 
     @classmethod
     def clear(cls):
         cls.file = None
         cls.month = None
         cls.tabel_workforce_pull_poz_pl = []
+        cls.fl_edited = True
 
     def __init__(self):
         self.file = Month_plan.file
         self.month = Month_plan.month
         self.tabel_workforce_pull_poz_pl = Month_plan.tabel_workforce_pull_poz_pl
-
+        self.fl_edited = False
     def update_data(self, file, month):
         Month_plan.file = file
         Month_plan.month = month
 
     def set_type(self, pnum: int, type_poz: str):
         Month_plan.file[pnum]['Тип'] = type_poz
+

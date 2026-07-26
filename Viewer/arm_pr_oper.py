@@ -7,7 +7,10 @@ import project_cust_38.Cust_Functions as F
 import project_cust_38.Cust_Qt as CQT
 import project_cust_38.Cust_SQLite as CSQ
 import project_cust_38.Cust_mes as CMS
+import project_cust_38.Cust_config as CFG
 from typing import TYPE_CHECKING
+from dataClass import data_app as DTCLS
+import project_cust_38.Cust_emoji as CEMOJ
 if TYPE_CHECKING:
     from Viewer import mywindow
 import project_cust_38.Cust_odata_erp as ODAT
@@ -180,7 +183,11 @@ def add_6_hours(date:str|datetime.datetime,mask:str="%Y-%m-%d %H:%M:%S",minus=Fa
 @CQT.progress_decorator
 @CQT.onerror
 def post_block_to_erp(self:mywindow,hook_prog_bar=None,*args):
+    fl_custom_etap = False
+    foreced_ref = False
 
+    if 'shift' in CQT.get_key_modifiers(self):#Выбор этапа вручную
+        fl_custom_etap = True
 
     if self.global_arm_oper_user_fio == None:
         CQT.msgbox(f'Не выбран работник')
@@ -189,12 +196,15 @@ def post_block_to_erp(self:mywindow,hook_prog_bar=None,*args):
     hook_prog_bar.open()
     hook_prog_bar.set(0)
     hook_prog_bar.text('Проверки')
+
+
     tbl = self.ui.tbl_report_add
     old_row = tbl.currentRow()
     old_colmn = tbl.currentColumn()
     tbl_etap = self.ui.tbl_viev_etaps_name
     old_row_etap = tbl_etap.currentRow()
     old_colmn_etap = tbl_etap.currentColumn()
+
     row = CQT.get_dict_line_form_tbl(tbl)
     if row == {}:
         CQT.msgbox(f'Не выбран блок журнала')
@@ -209,6 +219,107 @@ def post_block_to_erp(self:mywindow,hook_prog_bar=None,*args):
     if s_num_kpl == 0:
         CQT.msgbox(f'Пустой КПЛ')
         return
+
+
+    if fl_custom_etap:
+        ref_current_etap = None
+
+        t = CQT.TableContext(tbl)
+        if t.current_row().no_selection:
+            return
+        current_jur_obj = DTCLS.module_arm_oper.current_jur_obj
+        if current_jur_obj is None:
+            CQT.msgbox(f"Не выбрана строка в таблице")
+            return
+        dict_info_zp, err = current_jur_obj.get_data_etap_erp_from_kpl(int(t.current_row().value('НомКплан')),self.db_kplan)
+        if dict_info_zp is None:
+            CQT.msgbox(err)
+            return
+
+
+
+        key_zp = dict_info_zp['Ref_Key_py']
+
+        wet_req_text = f"""ВЫБРАТЬ
+                    ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЭтапПроизводства2_2.Ссылка)) КАК _ref,
+                    ЭтапПроизводства2_2.НаименованиеЭтапа КАК НаименованиеЭтапа,
+                    ЭтапПроизводства2_2.Номер КАК Номер,
+                    ПРЕДСТАВЛЕНИЕ(ЭтапПроизводства2_2.Статус) КАК Статус,
+                    ЭтапПроизводства2_2.Комментарий КАК Комментарий,
+                    ПРЕДСТАВЛЕНИЕ(ЭтапПроизводства2_2.Организация) КАК Организация,
+                    ПРЕДСТАВЛЕНИЕ(ЭтапПроизводства2_2.Подразделение) КАК Подразделение,
+                    ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЭтапПроизводства2_2.Подразделение.Ссылка)) КАК _ref_Подразделение,
+                    ПРЕДСТАВЛЕНИЕ(ЭтапПроизводства2_2.Спецификация) КАК Спецификация,
+                    ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЭтапПроизводства2_2.Спецификация)) КАК _Спецификация_ref,
+                    ЭтапПроизводства2_2.Спецификация.Код КАК _Спецификация_code,
+                    
+                    ПРЕДСТАВЛЕНИЕ(ЭтапПроизводства2_2.Распоряжение) КАК Распоряжение,
+                    
+                    ЭтапПроизводства2_2.Дата КАК Дата,
+
+                    ЭтапПроизводства2_2.НЭ_НулевойЭтап КАК Нулевой,
+                    ЭтапПроизводства2_2.ФактическоеНачалоЭтапа,
+                    ЭтапПроизводства2_2.ФактическоеОкончаниеЭтапа
+                ИЗ
+                    Документ.ЭтапПроизводства2_2 КАК ЭтапПроизводства2_2
+                        ЛЕВОЕ СОЕДИНЕНИЕ Документ.ЗаказНаПроизводство2_2.Продукция КАК ЗаказНаПроизводство2_2Продукция
+                        ПО (ЭтапПроизводства2_2.Спецификация = ЗаказНаПроизводство2_2Продукция.Спецификация
+                        И ЗаказНаПроизводство2_2Продукция.Ссылка = &Распоряжение)
+                ГДЕ
+                    ЭтапПроизводства2_2.Распоряжение = &Распоряжение
+                   
+                    И ЭтапПроизводства2_2.ПометкаУдаления = ЛОЖЬ
+                    И ЭтапПроизводства2_2.Проведен = ИСТИНА
+                                    """
+        refs = APIERP.Refs_wet(wet_req_text)
+        ref_res = APIERP.Ref_wet('Распоряжение', 'Документы.ЗаказНаПроизводство2_2', key_zp)
+        refs.add_ref(ref_res)
+
+        key, data_rez = APIERP.get_wet_request(wet_req_text, refs=refs)
+
+        if key == 200:
+            list_etaps = data_rez['data']
+        else:
+            CQT.msgbox(f'Ошибка {key}')
+            return
+
+        def fnc_oform_tbl(tbl,*args):
+            t = CQT.TableContext(tbl)
+            t.hide_if_not_dev(CFG)
+            for row in t.rows():
+                row.apply_bool_emo('Нулевой')
+                row.set_value('Дата',F.dateStrToStr(row.value('Дата'),"%Y-%m-%dT%H:%M:%S","%d.%m.%Y %H:%M:%S",''))
+                row.set_value('ФактическоеНачалоЭтапа',F.dateStrToStr(row.value('Дата'),"%Y-%m-%dT%H:%M:%S","%d.%m.%Y %H:%M:%S",''))
+                row.set_value('ФактическоеОкончаниеЭтапа',F.dateStrToStr(row.value('Дата'),"%Y-%m-%dT%H:%M:%S","%d.%m.%Y %H:%M:%S",''))
+            pass
+
+
+        selected_etap = CQT.msgboxg_get_table(self,'Выберите этап',list_etaps,styleSheet=CQT.MES_CSS,
+                                              selectRows=True,ExtendedSelection=False,selection_from_tbl=True,func_oform_tbl=fnc_oform_tbl)
+        if not selected_etap:
+            return
+
+        ref_current_etap =selected_etap['_ref']
+        foreced_ref = True
+    else:
+        t_etaps = CQT.TableContext(tbl_etap)
+        current_etap_row_o = t_etaps.current_row()
+        if current_etap_row_o.no_selection:
+            if not t_etaps.tbl.rowCount():
+                return
+            elif t_etaps.tbl.rowCount() == 1:
+                current_etap_row_o = t_etaps.get_row(0)
+            else:
+                self.show()
+                CQT.blink_widget_border(t_etaps.tbl,2,msg=f'Не выбран этап')
+                return #Ref_Key
+        ref_current_etap = current_etap_row_o.value('Ref_Key')
+
+    if ref_current_etap is None:
+        return
+    
+    
+
     jur_obj = CMS.Jurnal_nar(self.bd_naryad,s_num_nar,fio)
     jur_obj.set_selected_fragment(s_num_jur)
     if jur_obj.selected_fragment_end_date == None:
@@ -223,15 +334,19 @@ def post_block_to_erp(self:mywindow,hook_prog_bar=None,*args):
             return
     hook_prog_bar.set(5)
     hook_prog_bar.text('Подготовка данных')
-    file_and_data_for_update_mes_db = jur_obj.create_data_trdz_for_erp(self, s_num_kpl, self.db_kplan,
+    dict_for_update_mes_db, list_data_for_update_mes_db, err = (
+        jur_obj.create_data_trdz_for_erp(self, s_num_kpl, self.db_kplan,
                                                 s_num_nar, self.bd_users, self.db_resxml,
-                                                self.DICT_PROFESSIONS, DICT_VID_RABOT=self.Data.DICT_VID_RABOT)
-    if file_and_data_for_update_mes_db == None:
+                                                self.DICT_PROFESSIONS,
+                                         DICT_VID_RABOT=self.Data.DICT_VID_RABOT,
+                                         ref_current_etap=ref_current_etap,foreced_ref=foreced_ref))
+    if dict_for_update_mes_db == None:
+        CQT.msgbox(err)
         return
 
     hook_prog_bar.set(10)
     hook_prog_bar.text('Обработка 1С...')
-    resp, msg = APIERP.post_trdz_json(file_and_data_for_update_mes_db[0],erp_base_name=self.ERP_base_name)
+    resp, msg = APIERP.post_trdz_json(dict_for_update_mes_db,erp_base_name=self.ERP_base_name)
     if resp != 200:
         if resp == 500:
             CQT.msgbox(f'В Пномер_жур №{s_num_jur}\n{msg}\nКод ошибки {resp}')
@@ -240,7 +355,7 @@ def post_block_to_erp(self:mywindow,hook_prog_bar=None,*args):
         return
     hook_prog_bar.set(90)
     hook_prog_bar.text('Оформление результата')
-    jur_obj.update_mes_db_trdz(file_and_data_for_update_mes_db[1])
+    jur_obj.update_mes_db_trdz(list_data_for_update_mes_db)
     fill_tbl_report_add(self)
     report_add_itemSelectionChanged(self,row)
     recalc_min_vigr_ERP_in_tbl_report(self)
@@ -249,32 +364,6 @@ def post_block_to_erp(self:mywindow,hook_prog_bar=None,*args):
     hook_prog_bar.close()
     CQT.msgbox(f'Успешно',time_life=0.5)
     pass
-
-
-def find_mes_key(self, file_and_data_for_update_mes_db: tuple): #05.03.2026
-    list_etaps_for_del = []
-    fl_naid_key_row_for_delete = False
-    m = ODAT.OrdersComposit(self.ERP_base_name)
-    for py_data in file_and_data_for_update_mes_db[0].values():
-        Ref_Key_py = py_data['Ref_Key_py']
-        for etap_name, val_etap in py_data['Этапы'].items():
-            resp = m.get_response('Document_ЭтапПроизводства2_2', f"""?$filter=Number eq '{etap_name}' 
-             and Распоряжение_Key eq guid'{Ref_Key_py}' &$select=Ref_Key, Статус, Трудозатраты/LineNumber, Трудозатраты/НомерЧертежа, 
-         Трудозатраты/ДатаВыполнения, Трудозатраты/ВидРабот_Key, Трудозатраты/Количество, Трудозатраты/Исполнитель""")
-            if resp:
-                etap_Ref= resp[0]['Ref_Key']
-            else:
-                CQT.msgbox(f'Этап {etap_name} не найден в ЕРП')
-                return
-            set_trdz_form_erp = {_['НомерЧертежа'] for _ in resp[0]['Трудозатраты']}
-            for item in val_etap['Традозатраты']:
-                list_etaps_for_del.append({'etap_Ref': etap_Ref,'etap_name':etap_name,'НомерЧертежа':item['Ключ_мес']})
-                if item['Ключ_мес'] in set_trdz_form_erp:
-                    fl_naid_key_row_for_delete =True
-                    break
-    return fl_naid_key_row_for_delete, list_etaps_for_del
-
-
 @CQT.progress_decorator
 @CQT.onerror
 def del_block_to_erp(self:mywindow,hook_prog_bar=None,*args):
@@ -296,6 +385,12 @@ def del_block_to_erp(self:mywindow,hook_prog_bar=None,*args):
     if  row == {}:
         CQT.msgbox(f'Не выбран блок журнала')
         return
+    if row['Дата выгрузки в ЕРП'] == '':
+        CQT.msgbox(f'Еще не выгружено')
+        return
+    if row['БД'] != '' and row['БД'] != self.USER_CONFIG.ERP_base_name['Значение']:
+        CQT.msgbox(f'БД ЕРП не совпадает с БД загрузки Трудов')
+        return
 
     fio = self.global_arm_oper_user_fio
     s_num_jur = int(row['Пномер_жур'])
@@ -314,26 +409,26 @@ def del_block_to_erp(self:mywindow,hook_prog_bar=None,*args):
     file_and_data_for_update_mes_db = jur_obj.load_data_trdz_for_erp(self,s_num_kpl,self.db_kplan,s_num_nar,self.bd_users,self.db_resxml)
     if file_and_data_for_update_mes_db == None:
         return
-    if file_and_data_for_update_mes_db[0] is None: #05.03.2026
-        new_labor_expenditures = jur_obj.create_data_trdz_for_erp(self, s_num_kpl, self.db_kplan, s_num_nar,
-                                                                             self.bd_users, self.db_resxml,
-                                                                             self.DICT_PROFESSIONS,
-                                                                             DICT_VID_RABOT=self.Data.DICT_VID_RABOT)
-        fl_naid_key_row_for_delete, list_etaps_for_del = find_mes_key(self, new_labor_expenditures)
-        if not fl_naid_key_row_for_delete:
-            return CQT.msgbox('Отметки данного журнала отсутствуют в ERP/MES')
-        if not CQT.msgboxgYN('В МЕС не найдена отметка выгрузки в ERP.\nУдалить запись из трудозатрат в ERP по номеру журнала?'):
-            return
-    else:
-        if row['Дата выгрузки в ЕРП'] == '':
-            CQT.msgbox(f'Еще не выгружено')
-            return
-
-        if row['БД'] != '' and row['БД'] != self.USER_CONFIG.ERP_base_name['Значение']:
-            CQT.msgbox(f'БД ЕРП не совпадает с БД загрузки Трудов')
-            return
-        fl_naid_key_row_for_delete, list_etaps_for_del = find_mes_key(self, file_and_data_for_update_mes_db)
-
+    fl_naid_key_row_for_delete = False
+    list_etaps_for_del = []
+    m = ODAT.OrdersComposit(self.ERP_base_name)
+    for py_data in file_and_data_for_update_mes_db[0].values():
+        Ref_Key_py = py_data['Ref_Key_py']
+        for etap_name, val_etap in py_data['Этапы'].items():
+            resp = m.get_response('Document_ЭтапПроизводства2_2', f"""?$filter=Number eq '{etap_name}' 
+             and Распоряжение_Key eq guid'{Ref_Key_py}' &$select=Ref_Key, Статус, Трудозатраты/LineNumber, Трудозатраты/НомерЧертежа, 
+         Трудозатраты/ДатаВыполнения, Трудозатраты/ВидРабот_Key, Трудозатраты/Количество, Трудозатраты/Исполнитель""")
+            if resp:
+                etap_Ref= resp[0]['Ref_Key']
+            else:
+                CQT.msgbox(f'Этап {etap_name} не найден в ЕРП')
+                return
+            set_trdz_form_erp = {_['НомерЧертежа'] for _ in resp[0]['Трудозатраты']}
+            for item in val_etap['Традозатраты']:
+                list_etaps_for_del.append({'etap_Ref': etap_Ref,'etap_name':etap_name,'НомерЧертежа':item['Ключ_мес']})
+                if item['Ключ_мес'] in set_trdz_form_erp:
+                    fl_naid_key_row_for_delete =True
+                    break
 
     if not fl_naid_key_row_for_delete:
         if not CQT.msgboxgYN(f'В ЕРП не найдены записи для удаления.\n'
@@ -362,6 +457,7 @@ def del_block_to_erp(self:mywindow,hook_prog_bar=None,*args):
     CQT.msgbox(f'Успешно',time_life=0.5)
     pass
 
+
 @CQT.progress_decorator
 @CQT.onerror
 def post_all_block_to_erp(self:mywindow,hook_prog_bar=None,*args):
@@ -371,16 +467,32 @@ def post_all_block_to_erp(self:mywindow,hook_prog_bar=None,*args):
     tbl = self.ui.tbl_report_add
     old_row = tbl.currentRow()
     old_colmn = tbl.currentColumn()
-
+    rez_list = []
+    EMOJ_OK= CEMOJ.EmojiMain.СтатусыПроизводства.success.symbol
+    EMOJ_WARN = CEMOJ.EmojiMain.СтатусыПроизводства.warning.symbol
+    EMOJ_ERR = CEMOJ.EmojiMain.СтатусыПроизводства.error.symbol
     for i in range(tbl.rowCount()):
         if tbl.isRowHidden(i): # 12.12.25 по задаче 100061422
             continue
+        fl_pass = False #fl_pass = True
         hook_prog_bar.open()
         hook_prog_bar.set(0)
         hook_prog_bar.text(f'{i+1}/{tbl.rowCount()} Проверки')
         row = CQT.get_dict_line_form_tbl(tbl,i)
+
+        rez_list.append({'Строка таблицы':i+1,'Пномер_жур':row['Пномер_жур'],'Наряд№':row['Наряд№'],
+                             'Номер_заказа':row['Номер_заказа'],'Результат':EMOJ_OK,'Прим.':''})
+        info_dict = rez_list[-1]
         if row['Дата выгрузки в ЕРП'] != '':
-            continue
+            info_dict['Результат'] = EMOJ_WARN
+            info_dict['Прим.'] = 'Дата выгрузка в ERP уже есть'
+            if not fl_pass:
+                continue
+        if row['Номер_заказа'] == 'ПРОСТОЙ':
+            info_dict['Результат'] = EMOJ_WARN
+            info_dict['Прим.'] = 'Наряд не закреплен за проектом'
+            if not fl_pass:
+                continue
         fio = self.global_arm_oper_user_fio
         s_num_jur = int(row['Пномер_жур'])
         s_num_kpl = int(row['НомКплан'])
@@ -389,33 +501,95 @@ def post_all_block_to_erp(self:mywindow,hook_prog_bar=None,*args):
         jur_obj.set_selected_fragment(s_num_jur)
         if F.strtodate(jur_obj.selected_fragment_start_date).date() != F.strtodate(
                 add_6_hours( jur_obj.selected_fragment_end_date,minus=True)).date():
-            CQT.msgbox(f'Дата закрытия блока наряда {row["Наряд№"]} не совпдаает с началом')
-            continue
+            info_dict['Результат'] = EMOJ_WARN
+            info_dict['Прим.'] = f'Дата закрытия блока наряда {row["Наряд№"]} не совпадает с началом'
+            if not fl_pass:
+                continue
         if row['Стоп'] == "Завершен" and row['Подтвержден'] == '':
-            CQT.msgbox(f'Завершенный наряд {row["Наряд№"]} не подтвержден')
-            continue
+            info_dict['Результат'] = EMOJ_WARN
+            info_dict['Прим.'] = f'Завершенный наряд {row["Наряд№"]} не подтвержден'
+            if not fl_pass:
+                continue
+        if jur_obj.selected_fragment_dict_row_start['Подытог_нормы'] == 0:
+            info_dict['Результат'] = EMOJ_WARN
+            info_dict['Прим.'] = f'Подытог_нормы к выгрузке = 0'
+            if not fl_pass:
+                continue
         hook_prog_bar.set(5)
         hook_prog_bar.text(f'{i+1}/{tbl.rowCount()} Подготовка данных')
-        file_and_data_for_update_mes_db = jur_obj.create_data_trdz_for_erp(self, s_num_kpl, self.db_kplan, s_num_nar,
-                                                                           self.bd_users, self.db_resxml,self.DICT_PROFESSIONS,DICT_VID_RABOT=self.Data.DICT_VID_RABOT)
-        if file_and_data_for_update_mes_db == None:
-            return
+        dict_for_update_mes_db, list_data_for_update_mes_db, err = jur_obj.create_data_trdz_for_erp(
+                        self, s_num_kpl, self.db_kplan, s_num_nar,
+                         self.bd_users, self.db_resxml,self.DICT_PROFESSIONS,DICT_VID_RABOT=self.Data.DICT_VID_RABOT)
+        if dict_for_update_mes_db == None:
+            info_dict['Результат'] = EMOJ_WARN
+            info_dict['Прим.'] = f'Завершенный наряд {row["Наряд№"]} не подтвержден'
+            if not fl_pass:
+                continue
+
+        check_state_etaps = True
+        for pr, data_pr in dict_for_update_mes_db.items():
+            for name_etap, etap_data in data_pr['Этапы'].items():
+                key_etap = etap_data['ref_Key_etap']
+
+                wet_req_text = f"""ВЫБРАТЬ 
+                                    ЭтапПроизводства2_2.Статус КАК Статус
+                                ИЗ
+                                    Документ.ЭтапПроизводства2_2 КАК ЭтапПроизводства2_2
+                                ГДЕ
+                                    ЭтапПроизводства2_2.Ссылка = &Ссылка
+                                """
+                refs = APIERP.Refs_wet(wet_req_text)
+                ref_res = APIERP.Ref_wet('Ссылка', 'Документы.ЭтапПроизводства2_2', key_etap)
+                refs.add_ref(ref_res)
+
+                key, data_rez = APIERP.get_wet_request(wet_req_text, refs=refs)
+
+                if key != 200:
+                    check_state_etaps = False
+                    info_dict['Результат'] = EMOJ_ERR
+                    info_dict['Прим.'] = f'Ошибка получения данных этапа {name_etap}, код ({key}) из ERP'
+                    break
+                state_etap =  data_rez['data'][0]['Статус']
+                if state_etap == 'Начат':
+                    if not fl_pass:
+                        continue
+                check_state_etaps =False
+                info_dict['Результат'] = EMOJ_ERR
+                info_dict['Прим.'] = f'Этап {name_etap} в статусе "{state_etap}"'
+                break
+
+        if not  check_state_etaps:
+            if not fl_pass:
+                continue
         hook_prog_bar.set(10)
         hook_prog_bar.text(f'{i+1}/{tbl.rowCount()}Обработка 1С...')
-        resp, msg = APIERP.post_trdz_json(file_and_data_for_update_mes_db[0],erp_base_name=self.ERP_base_name)
+        resp, msg = APIERP.post_trdz_json(dict_for_update_mes_db,erp_base_name=self.ERP_base_name)
         if resp != 200:
+            info_dict['Результат'] = EMOJ_ERR
+
             if resp == 500:
-                CQT.msgbox(f'В Пномер_жур №{s_num_jur}\n{msg}\nКод ошибки {resp}')
+                info_dict['Прим.'] = f'В Пномер_жур №{s_num_jur}\n{msg}\nКод ошибки {resp}'
             else:
-                CQT.msgbox(f'В Пномер_жур №{s_num_jur}\nОшибка отправки. Код ошибки {resp}')
-            return
-        jur_obj.update_mes_db_trdz(file_and_data_for_update_mes_db[1])
+                info_dict['Прим.'] = f'В Пномер_жур №{s_num_jur}\nОшибка отправки. Код ошибки {resp}'
+            if not fl_pass:
+                continue
+        rez_upd =  jur_obj.update_mes_db_trdz(list_data_for_update_mes_db)
+        if not rez_upd :
+            info_dict['Результат'] = EMOJ_ERR
+            info_dict['Прим.'] = f"1С создан, но ошибка записи отметки в БД МЕС"
+
+
     hook_prog_bar.set(90)
     hook_prog_bar.text('Оформление результата')
     fill_tbl_report_add(self)
     recalc_min_vigr_ERP_in_tbl_report(self)
     CQT.select_cell(tbl, old_row, old_colmn)
-    CQT.msgbox(f'Успешно',time_life=0.5)
+    def fnc_oform(tbl:CQT.QtWidgets.QTableWidget):
+        t = CQT.TableContext(tbl)
+        for row in t.rows():
+            row.set_height(72)
+    CQT.msgboxg_get_table_ok_inf(self,f'Результат выполнения для {self.global_arm_oper_user_fio}',rez_list,styleSheet=CQT.MES_CSS,showMaximized=True,func_oform_tbl=fnc_oform)
+    return
 
 
 @CQT.onerror
@@ -507,50 +681,68 @@ def calc_list_names_etaps(self,dict_line_form_tbl=None,*args):
             return
     else:
         row = dict_line_form_tbl
+    DTCLS.module_arm_oper.current_row_jurnal = row
     fio = self.global_arm_oper_user_fio
     s_num_jur = int(row['Пномер_жур'])
     s_num_kpl = int(row['НомКплан'])
     s_num_nar = int(row['Наряд№'])
     jur_obj = CMS.Jurnal_nar(self.bd_naryad,s_num_nar,fio)
     jur_obj.set_selected_fragment(s_num_jur)
-    file_and_data_for_update_mes_db = jur_obj.create_data_trdz_for_erp(self, s_num_kpl, self.db_kplan, s_num_nar,
-                                                                   self.bd_users, self.db_resxml,self.DICT_PROFESSIONS,DICT_VID_RABOT=self.Data.DICT_VID_RABOT)
-    if file_and_data_for_update_mes_db == None:
+
+    DTCLS.module_arm_oper.current_jur_obj = jur_obj  # для использования в ручном выборе этапа
+
+    dict_for_update_mes_db, list_data_for_update_mes_db, err = (
+        jur_obj.create_data_trdz_for_erp(self, s_num_kpl, self.db_kplan, s_num_nar,
+                      self.bd_users, self.db_resxml,self.DICT_PROFESSIONS,DICT_VID_RABOT=self.Data.DICT_VID_RABOT))
+    if dict_for_update_mes_db == None:
+        CQT.msgbox(err)
         return
     list_refs_names = []
 
     rez_dict = dict()
-    for py, py_val in file_and_data_for_update_mes_db[0].items():
+    for py, py_val in dict_for_update_mes_db.items():
         ref_key = py_val['Ref_Key_py']
         for etap_name, etap in py_val['Этапы'].items():
             if 'Традозатраты' in etap:
                 for dict_line in etap['Традозатраты']:
                     if etap_name not in rez_dict:
-                        rez_dict[etap_name] = {'Номер':etap_name,"Статус":"","Минут":0,"Ref_Key":"","DeletionMark":False,'ФактНачало':""}
+                        rez_dict[etap_name] = {"X":False,'Номер':etap_name, "Название":"",
+                                               "Статус":"","Минут":0,"Ref_Key":"",
+                                               'ФактНачало':"",
+                                               'ФактОкончание':""
+                                               }
                         list_refs_names.append({'etap_name':etap_name,"ref_key":ref_key})
                     rez_dict[etap_name]["Минут"] += dict_line['Количество_мин']
     if list_refs_names == []:
         CQT.msgbox(f'Видов работ для выгрузки в наряде не обнаружено(см. состав операций)')
         return [[]]
-    m = ODAT.OrdersComposit(self.ERP_base_name)
-    for item in list_refs_names:
-        code, resp = m.get_response('Document_ЭтапПроизводства2_2',f"""?$filter=Number eq '{item["etap_name"]}' 
-         and Распоряжение_Key eq guid'{item["ref_key"]}' &$select=Ref_Key, Статус, DeletionMark, ФактическоеНачалоЭтапа """,with_cod=True)
-        if code != 200:
-            CQT.msgbox(f'Ошибка получения данных:\n{resp}\n\nОбратиться к специалисту ЕРП')
-            return
-        if resp:
-            rez_dict[item["etap_name"]]["Статус"] = resp[0]['Статус']
-            rez_dict[item["etap_name"]]["Ref_Key"] = resp[0]['Ref_Key']
-            rez_dict[item["etap_name"]]["DeletionMark"] = resp[0]['DeletionMark']
-            rez_dict[item["etap_name"]]["ФактНачало"] = F.datetostr(F.strtodate(resp[0]['ФактическоеНачалоЭтапа'],"%Y-%m-%dT%H:%M:%S"),"%Y-%m-%d")
-            if resp[0]['DeletionMark']:
-                CQT.msgbox(f'Этап {item["etap_name"]} помечен на удаление!',icon_str='Warning')
-        else:
-            CQT.msgbox(f'Этап {item["etap_name"]} не найден ЕРП')
+
+    it = DTCLS.module_arm_oper.current_row_jurnal
+    etaps_o = APIERP.Etaps_erp(it['НомКплан'])
+    if etaps_o.err:
+        return
+    current_podr = DTCLS.app_self.current_podr_text
+    list_filtered_etaps = etaps_o.filtered_by_podr(current_podr)
+
+    for etap in list_filtered_etaps:
+        if not etap.Номер in rez_dict:
+            rez_dict[etap.Номер] = {"X":False,'Номер':etap.Номер,"Название":"","Статус":"",
+                                    "Минут":0,"Ref_Key":"",'ФактНачало':"",'ФактОкончание':""}
+        rez_dict[etap.Номер]["Статус"] = etap.Статус
+        rez_dict[etap.Номер]["Название"] = etap.НаименованиеЭтапа
+        rez_dict[etap.Номер]["Ref_Key"] = etap.ref
+        rez_dict[etap.Номер]["X"] = etap.emoj_deletion_mark
+        if etap.ФактическоеНачалоЭтапа:
+            rez_dict[etap.Номер]["ФактНачало"] = F.datetostr(
+                etap.ФактическоеНачалоЭтапа, "%Y-%m-%d")
+        if etap.ФактическоеОкончаниеЭтапа:
+            rez_dict[etap.Номер]["ФактОкончание"] = F.datetostr(
+                etap.ФактическоеОкончаниеЭтапа, "%Y-%m-%d")
+
 
     for etap in rez_dict.values():
         etap['Минут'] = round(etap['Минут'],3)
+
     rez_list = F.list_of_dicts_to_list_of_lists(list(rez_dict.values()))
     return rez_list
 @CQT.onerror
@@ -631,6 +823,48 @@ def btn_delete_block_from_etap(self:mywindow,*args):
 
 
 @CQT.onerror
+def btn_add_etap_erp(self:mywindow, *args):
+    current_podr = DTCLS.app_self.current_podr_text
+    if current_podr not in self.DICT_PODR_RC:
+        CQT.msgbox(f'Для {current_podr} связь не настроена')
+        return
+    code_podr = self.DICT_PODR_RC[current_podr]['Код']
+    ref_podr = self.DICT_PODR_RC[current_podr]['ref_СтруктураПредприятия']
+
+    it = DTCLS.module_arm_oper.current_row_jurnal
+    etaps_o = APIERP.Etaps_erp(it['НомКплан'])
+    list_permited_etap = etaps_o.get_permited_to_create_etaps(code_podr)
+    if not list_permited_etap:
+        CQT.msgbox(f"Этапы к созданию по {current_podr} отсутствуют")
+        return
+    def fnc_oform(tbl,*args):
+        t = CQT.TableContext(tbl)
+        t.hide_if_not_dev(DTCLS.CONFIG)
+        for row in t.rows():
+            clr = row.value('_color')
+            clr_o = CMS.Color(clr)
+            clr_o = clr_o.align_colors(level_percent=-30, saturation_percent=-20,copy=True)
+            row.set_color_font(*clr_o.rgb,col_name= 'Этап')
+
+    rez = CQT.msgboxg_get_table(self,'Выбрать этап для создания',list_permited_etap,styleSheet=CQT.MES_CSS,
+                                selection_from_tbl=True,ExtendedSelection=False,selectRows=True,func_oform_tbl=fnc_oform)
+    if not rez:
+        return
+    name_new_etap = rez['Этап']
+    rez, err_data = etaps_o.create_new_etap(name_new_etap,ref_podr)
+    if not rez or rez != 200:
+        if err_data:
+            CQT.msgboxg_get_table_ok_inf(self,"Ошибка создания",err_data,styleSheet=CQT.MES_CSS)
+        else:
+            CQT.msgbox(f'Неизвестная ошибка 1С')
+        return
+    self.tbl_report_add_itemSelectionChanged()
+    CQT.msgbox(f"Этап {err_data['ИмяЭтапа']} {name_new_etap} создан")
+
+
+
+
+@CQT.onerror
 def btn_start_etap_erp(self:mywindow, *args):
     tbl = self.ui.tbl_viev_etaps_name
     row = CQT.get_dict_line_form_tbl(tbl)
@@ -638,11 +872,8 @@ def btn_start_etap_erp(self:mywindow, *args):
         CQT.msgbox(f'Не выбрана строка')
         return
     ref_key = row['Ref_Key']
-    name_obj = row['Номер'] # 05.03.2026
-    body = {"Статус": "Начат"}
-    if row['ФактНачало'] == '0001-01-01':
-        body["ФактическоеНачалоЭтапа"] = F.now("%d.%m.%Y %H:%M:%S")
-    code, state = APIERP.patch_state_doc_znpr(ref_key,name_obj, body, erp_base_name=self.ERP_base_name)
+    name_obj = row['Номер']
+    code, state = APIERP.patch_state_doc_znpr(ref_key,name_obj,{"Статус": "Начат","ФактическоеНачалоЭтапа":F.now("%d.%m.%Y %H:%M:%S")},erp_base_name=self.ERP_base_name)
     if code != 200:
         CQT.msgbox(state)
         return
