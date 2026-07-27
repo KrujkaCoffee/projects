@@ -1,17 +1,22 @@
 import datetime
+import functools
 import pprint
 import requests
-import project_cust_38.Cust_Functions as F
-import project_cust_38.Cust_SQLite as CSQ
-import project_cust_38.Cust_odata_erp as CODATA
+import logging
+from subprocess import call as subprocess_call
 import json as JS
 import base64
-import project_cust_38.Cust_config as CFG
 import hashlib
 import sys
 import json
-from subprocess import call as subprocess_call
+
+import project_cust_38.Cust_config as CFG
 import project_cust_38.Cust_emoji as CEMOJ
+import project_cust_38.Cust_Functions as F
+import project_cust_38.Cust_SQLite as CSQ
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 USER_ERP = 'mes_user'
 PASS_ERP = '89Luham'
@@ -198,6 +203,42 @@ def post_res_json(json:dict, erp_base_name:str = 'ERP'):
                 "Код":None}
 
     return response.status_code, answ
+
+
+def ping_http_services(erp_base_name: str = 'ERP') -> bool:
+    response = None
+    try:
+        headers = dict(Accept='application/json')
+        url = f'{CFG.Config.project.ERB_BASE_URL}/{erp_base_name}/ru_RU/hs/mes/sysexchange/v1/ping/pong'
+        response = requests.get(url, headers=headers, auth=(USER_ERP, PASS_ERP), timeout=26)
+        response.raise_for_status()
+    except Exception as e:
+        logger.warning('Сервер 1С недоступен')
+        if response.status_code == 404:
+            logger.warning('HTTP Сервисы 1С не опубликованы')
+        return False
+    return True
+
+
+def ping_http_services_decorator(fn):
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        if not ping_http_services():
+            logger.warning(f'Вызов {fn.__name__!r} пропущен т.к. http сервисы 1С недоступны')
+            return None
+        return fn(*args, **kwargs)
+    return wrapper
+
+
+def is_validate_wet_response(api_response: tuple[int, dict | None]) -> bool:
+    try:
+        code, response = api_response
+        if code == 200 and response is not None and response['data'] is not None:
+            return True
+    except Exception as e:
+        logger.warning('Ошибка при валидации ответа 1С ' + str(e))
+        return False
+    return False
 
 
 def get_enum(name_enum:str, erp_base_name: str = 'ERP'):
