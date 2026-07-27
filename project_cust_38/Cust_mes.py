@@ -11443,12 +11443,12 @@ def calc_num_etap_from_name_etap(etap_name,s_num_kpl,Пномер_нар,ref_cur
         stages = APIERP.Etaps_erp.get_znpr_etaps_by_kpl(s_num_kpl)
     except APIERP.NotFoundNomenclature as e:
         msg = f"""Номенклатура привязанная к КПЛ занесена некорректно, необходимо: 
-1. Зайти в приложение МКарты. 
-2. Выбрать позицию {s_num_kpl}
-3. Зайти в режим редактирования (карандаш)
-4. В разделе пл_оуп перезанести номенклатуру_ерп
-5. Попробовать выгрузку снова 
-"""
+            1. Зайти в приложение МКарты. 
+            2. Выбрать позицию {s_num_kpl}
+            3. Зайти в режим редактирования (карандаш)
+            4. В разделе пл_оуп перезанести номенклатуру_ерп
+            5. Попробовать выгрузку снова 
+            """
         return False, msg
     for stage in stages:
         if etap_name.strip() == stage.НаименованиеЭтапа: #12.12.25
@@ -18055,6 +18055,49 @@ class TypesWorkingByDirections:
                         item[key] = val
             result.append(item)
         return result
+
+
+class DtoNotClosedGroups(typing.NamedTuple):
+    naryad_pk: int  # noqa
+    journa_pk: int  # noqa
+    fio: str
+
+
+def find_not_close_groups() -> list[DtoNotClosedGroups] | None:
+    """
+    Возвращает объекты журналов, принадлежащие группам нарядов, которые ещё не завершены.
+    """
+    query = """
+WITH RankedJournal AS (
+    SELECT
+        sub_j.*,
+        ROW_NUMBER() OVER (
+            PARTITION BY sub_j.ФИО, sub_j.Номер_наряда
+            ORDER BY DATETIME(sub_j.Дата) DESC
+        ) as rn
+    FROM jurnal sub_j
+    WHERE sub_j.Номер_наряда NOT IN (SELECT Номер_наряда FROM jurnal WHERE Статус = 'Завершен')
+)
+SELECT mx_j.Номер_наряда AS Номер_наряда, mx_j.Пномер AS Номер_журнала, mx_j.ФИО AS ФИО
+FROM naryad_groups ng
+INNER JOIN (
+    SELECT rj.Статус, rj.ФИО, rj.Номер_наряда, rj.Пномер
+    FROM RankedJournal rj
+    WHERE rj.rn = 1
+) mx_j ON mx_j.ФИО = ng.fio AND ng.id_nar = mx_j.Номер_наряда
+WHERE mx_j.Статус NOT IN ('Завершен', 'Приостановлен')
+    """
+    result = CSQ.custom_request_c(
+        CSQ.DB_NAMES.db_naryad,
+        query,
+        rez_dict=True,
+    )
+    if not isinstance(result, list):
+        return None
+    return [
+        DtoNotClosedGroups(naryad_pk=item['Номер_наряда'], journa_pk=item['Номер_журнала'], fio=item['ФИО'])
+        for item in result
+    ]
 
 # +++ 25.01.2026
 def get_start_stop_journal_pairs(
