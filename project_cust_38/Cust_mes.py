@@ -2497,7 +2497,7 @@ class Pozition(_Pozition_base):
             if data == None or data == False:
                 return False
             self.fact_jurnal_blolb_data = data #11.11.25
-        if self.fact_jurnal_blolb_data == None or self.fact_jurnal_blolb_data== '':
+        if F.is_empty_blob(self.fact_jurnal_blolb_data):
             return defaultdict(defaultdict)
         else:
             return F.from_binary_pickle(self.fact_jurnal_blolb_data)

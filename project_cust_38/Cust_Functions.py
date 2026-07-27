@@ -1396,6 +1396,8 @@ def from_binary_pickle(blob):
         print('Ошибка pickle:', type(e), e)
         raise
 
+def is_empty_blob(blob):
+    return blob in ('', b'', None)
 
 def load_file_pickle(putima)->dict:
     try:
