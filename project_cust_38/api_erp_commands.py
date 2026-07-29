@@ -214,7 +214,7 @@ def ping_http_services(erp_base_name: str = 'ERP') -> bool:
         response.raise_for_status()
     except Exception as e:
         logger.warning('Сервер 1С недоступен')
-        if response.status_code == 404:
+        if response and response.status_code == 404:
             logger.warning('HTTP Сервисы 1С не опубликованы')
         return False
     return True
