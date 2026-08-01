@@ -205,10 +205,10 @@ class mywindow(QtWidgets.QMainWindow):
         # ===================CHECKBOX
         self.ui.chk_autohide.clicked.connect(self.clck_chk_autohide)
         # ===================COMBOBOX
-        #self.ui.cmb_sort_c_report.activated.connect(lambda _, x=self: OTCH.vibor_sort_c_report_c(x))
-        self.ui.cmb_sort_c_report.setEnabled(False)
+
+
         self.ui.cmb_podrazdelenie.activated.connect(lambda _, x=self: OTCH.vibor_additional_sort_report(x))
-        # self.ui.cmb_sort_c_report.highlighted.connect(self.cmb_sort_c_report_primech)
+
         self.ui.cmb_napr.activated.connect(self.choose_direction)
         self.ui.cmb_gant_vert.activated.connect(lambda _, x=self: OTCH.vibor_pole_gant(x))
         # ===================RADIOBOX
@@ -286,13 +286,11 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.chk_autohide.setChecked(self.chk_autohide)
         self.ui.chk_autohide.blockSignals(False)
 
-        self.dict_sort_c_report_c = OTCH.DICT_VID_OTCH
 
-        #for i, report_c in enumerate(self.dict_sort_c_report_c.keys()):
-        #    self.ui.cmb_sort_c_report.addItem(report_c)
-        #    self.ui.cmb_sort_c_report.setItemData(i, self.dict_sort_c_report_c[report_c], QtCore.Qt.ToolTipRole)
-        self.vid_report_c = ''
-        self.fill_cmb_sorts_repot()
+        self.data_sort_reports = sorted(F.undeploy_dict_c(OTCH.DICT_VID_OTCH, '_name'),key=lambda x:x['Группа'])
+
+
+
 
         spis_napravl = list(self.DICT_NAPRAVL.keys())
         for napravl in spis_napravl:
@@ -371,31 +369,38 @@ class mywindow(QtWidgets.QMainWindow):
     def clck_chk_autohide(self,*args):
         CMS.save_tmp_val('chk_autohide', self.ui.chk_autohide.isChecked())
         self.chk_autohide = self.ui.chk_autohide.isChecked()
-    @CQT.onerror
-    def fill_cmb_sorts_repot(self, *args):
-        #list_bold = [True if _ == name_last else False for _ in list(self.dict_sort_c_report_c.keys())]
-        list_report_names = [_['Название'] for _ in self.dict_sort_c_report_c.values()]
-        list_report_tooltips = [_['Примечание'] for _ in self.dict_sort_c_report_c.values()]
-        list_report_data = [_ for _ in self.dict_sort_c_report_c.keys()]
-        CQT.fill_list_combobx(self,self.ui.cmb_sort_c_report,list_report_names,[],list_report_tooltips,list_data=list_report_data)
-        OTCH.vibor_sort_c_report_c(self)
+
+    def init_lbl_report(self):
+        lbl_report = CQT.CustLabel(self.ui.lbl_sort_c_report)
+
+        lbl_report.set_font(12)
+        lbl_report.set_multiline(True)
+        return lbl_report
 
     @CQT.onerror
     def select_last_used_report(self, *args):
-        name_last = CMS.load_tmp_path('last_used_report')
-        self.ui.cmb_sort_c_report.setCurrentText(name_last)
-        self.vid_report_c = name_last
+        name_last = CMS.load_tmp_stukt('last_used_report')
+        if not name_last:
+            return
+        report = [_ for _ in self.data_sort_reports if _['_name'] == name_last]
+        if not report:
+            return
+        report = report[0]
+
+        lbl_report = self.init_lbl_report()
+        lbl_report.set_data(f'{report['']} {report['Название']}', report['_name'],
+                            report['Примечание'])
+        lbl_report.set_user_data(report['Название'], 'clear_text')
         OTCH.vibor_sort_c_report_c(self)
 
     @CQT.onerror
     def select_report(self,*args):
-        template = F.undeploy_dict_c(self.dict_sort_c_report_c,'_name')
-
+        template = self.data_sort_reports[:]
         def fnc_oform(tbl:CQT.QtWidgets.QTableWidget):
             t = CQT.TableContext(tbl)
             t.hide_if_not_dev(DTCLS.CONFIG)
-            name_last = CMS.load_tmp_path('last_used_report')
-            row = t.find_row({'Название':name_last},True)
+            name_last = CMS.load_tmp_stukt('last_used_report')
+            row = t.find_row({'_name':name_last},True)
             if row:
                 t.set_selected_cell(row,'Название')
         for i, it in enumerate(template):
@@ -405,8 +410,10 @@ class mywindow(QtWidgets.QMainWindow):
                               func_oform_tbl=fnc_oform)
         if not rez:
             return
-        otch = rez['_name']
-        self.ui.cmb_sort_c_report.setCurrentIndex(self.ui.cmb_sort_c_report.findData(otch))
+
+        lbl_report = self.init_lbl_report()
+        lbl_report.set_data(f'{rez['']} {rez['Название']}',rez['_name'],rez['Примечание'])
+        lbl_report.set_user_data(rez['Название'], 'clear_text')
         OTCH.vibor_sort_c_report_c(self)
 
 
@@ -569,7 +576,9 @@ class mywindow(QtWidgets.QMainWindow):
             self.ui.le_path_save.setText(CMS.tmp_dir())
             return False
 
-        if self.vid_report_c == 'Анализ внеплана по видам работ':
+        lbl_report = CQT.CustLabel(self.ui.lbl_sort_c_report)
+        report_name = lbl_report.get_user_data()
+        if report_name == 'unplanned_work_analysis':
             if CMS.user_access(self.bd_naryad,
                                'просмотр_обновить_внеплан_кэф_по_анализ_внеплана_по_видам_работ',F.user_name(),False):
             #if USRCNF.Config.user_config.is_developer:  # 18.07.25
@@ -598,7 +607,7 @@ class mywindow(QtWidgets.QMainWindow):
                             pass
                     CQT.msgbox(f'Успешно')
 
-        if self.vid_report_c == 'Трудозатраты':
+        if report_name == 'labor_costs':
             return #отключено
             if not check_path_save(self):
                 return
@@ -636,7 +645,7 @@ class mywindow(QtWidgets.QMainWindow):
             CSQ.custom_request_c(self.bd_users,
                                  f"""UPDATE {name_book} SET {date_name_per} = 1 WHERE РЦ == "{rab_centr}" """)
 
-        if self.vid_report_c == 'Усредненная удельная трудоемкость сборки по видам':
+        if report_name == 'assembly_specific_labor_intensity':
             tbl = self.ui.tbl_report_c
             list = CQT.list_from_wtabl_c(tbl, hat_c=True, only_visible=True, rez_dict=True)
             for item in list:
@@ -663,7 +672,7 @@ class mywindow(QtWidgets.QMainWindow):
                     return
             CQT.msgbox(f'Успешно обновлено')
 
-        if self.vid_report_c == 'Выработка сотрудников':
+        if report_name == 'employees_output':
             if not CMS.user_access(DTCLS.app_self.bd_naryad, 'просмотрщик_выработка_сотрудников_выгрузка_в_ерп', F.user_name()):
                 return
             OTCH.upload_kty_into_erp(self)
@@ -721,44 +730,42 @@ class mywindow(QtWidgets.QMainWindow):
         if e.key() == 67 and e.modifiers() == (QtCore.Qt.ControlModifier | QtCore.Qt.ShiftModifier):
             if CQT.focus_is_QTableWidget():
                 CQT.copy_bufer_table(QtWidgets.QApplication.focusWidget())
-
+        lbl_report = CQT.CustLabel(self.ui.lbl_sort_c_report)
         if self.ui.tbl_report_c_filtr.hasFocus():
+            name_report = lbl_report.get_user_data()
             if e.key() == 16777220:
-                if self.ui.cmb_sort_c_report.currentText() == 'Журнал работ':
+                if name_report == 'work_log':
                     CMS.apply_summ_с(self,
                                                                                                       self.ui.tbl_report_c)
-                if self.ui.cmb_sort_c_report.currentText() == 'Выработка цеха понарядно':
+                if name_report == 'shop_output_by_work_order':
                     CMS.apply_summ_с(self,
                                                                                                       self.ui.tbl_report_c,
                                                                                                       sredn=True)
-                if self.ui.cmb_sort_c_report.currentText() == 'Выработка сотрудника':
+                if name_report == 'employee_output':
                     CMS.apply_summ_с(self,
                                                                                                       self.ui.tbl_report_c)
-                if self.ui.cmb_sort_c_report.currentText() == 'Понедельный график выработки и отгрузок':
+                if name_report == 'weekly_output_shipping_schedule':
                     CMS.apply_summ_с(self,
                                                                                                       self.ui.tbl_report_c,
                                                                                                       sredn=True)
-                if self.ui.cmb_sort_c_report.currentText() == 'Статистика нормо-весовых харктеристик МК':
+                if name_report == 'mk_weight_statistics':
                     CMS.apply_summ_с(self,
                                                                                                       self.ui.tbl_report_c,
                                                                                                       sredn=True)
-                if self.ui.cmb_sort_c_report.currentText() == 'План работ':
+
+                if name_report == 'material_norms_completed_orders':
                     CMS.apply_summ_с(self,
                                                                                                       self.ui.tbl_report_c,
                                                                                                       sredn=True)
-                if self.ui.cmb_sort_c_report.currentText() == 'Норматив материалов по завершенным нарядам':
+                if name_report == 'tech_card_log':
                     CMS.apply_summ_с(self,
                                                                                                       self.ui.tbl_report_c,
                                                                                                       sredn=True)
-                if self.ui.cmb_sort_c_report.currentText() == 'Журнал_техкарт':
+                if name_report == 'remarks_log':
                     CMS.apply_summ_с(self,
                                                                                                       self.ui.tbl_report_c,
                                                                                                       sredn=True)
-                if self.ui.cmb_sort_c_report.currentText() == 'Журнал_замечаний':
-                    CMS.apply_summ_с(self,
-                                                                                                      self.ui.tbl_report_c,
-                                                                                                      sredn=True)
-                if self.ui.cmb_sort_c_report.currentText() == 'График удельной производительности сборочного цеха':
+                if name_report == 'assembly_productivity_schedule':
                     CMS.apply_summ_с(self,
                                                                                                       self.ui.tbl_report_c,
                                                                                                       sredn=True)
@@ -771,10 +778,12 @@ class mywindow(QtWidgets.QMainWindow):
 
     @CQT.onerror
     def tbl_report_add_itemSelectionChanged(self,*args):
-        if self.vid_report_c == 'Отчетность персонала':
+        lbl_report = CQT.CustLabel(self.ui.lbl_sort_c_report)
+        report_name = lbl_report.get_user_data()
+        if report_name == 'personnel_reporting':
             RPTP.clck_tbl_report_add()
 
-        if self.vid_report_c == 'Трудозатраты':
+        if report_name == 'labor_costs':
 
             ARMOPER.report_add_itemSelectionChanged(self)
 
@@ -1089,7 +1098,9 @@ class mywindow(QtWidgets.QMainWindow):
             dir_folder = CMS.load_tmp_folder(self, "export_table")
             if dir_folder == None:
                 return
-            imaf = f'Отчет_{str(self.ui.cmb_sort_c_report.currentText())}_{F.now("%d.%m.%Y %H;%M")}.txt'
+            lbl_report = CQT.CustLabel(self.ui.lbl_sort_c_report)
+
+            imaf = f'Отчет_{lbl_report.text}_{F.now("%d.%m.%Y %H;%M")}.txt'
             spis = CQT.list_from_wtabl_c(self.ui.tbl_report_c, hat_c=True)
             spis = F.list_txt_table_c(spis)
             F.save_file(dir_folder + F.sep() + imaf, spis)
@@ -1123,7 +1134,8 @@ class mywindow(QtWidgets.QMainWindow):
             dir_folder = CMS.load_tmp_folder(self, "export_table")
             if dir_folder == None:
                 return
-            imaf = f'Отчет_{str(self.ui.cmb_sort_c_report.currentText())}_{F.now("%d.%m.%Y %H;%M")}.xlsx'
+            lbl_report = CQT.CustLabel(self.ui.lbl_sort_c_report)
+            imaf = f'Отчет_{lbl_report.text}_{F.now("%d.%m.%Y %H;%M")}.xlsx'
             #spis = CQT.list_from_wtabl_c(self.ui.tbl_report_c, hat_c=True, only_visible=True)
             #CEX.zap_spis(spis, dir_folder, imaf, '1', 1, 1, True, True, 'g')
             #F.open_dir_c(dir_folder)

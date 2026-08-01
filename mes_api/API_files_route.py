@@ -9,6 +9,8 @@ import subprocess
 import tarfile
 import tempfile
 import zipfile
+import json
+from datetime import datetime
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
@@ -96,24 +98,37 @@ def get_py_size():
         for file in files
     )
 
+def have_members(path: str):
+    try:
+        with tarfile.open(path, mode="r:gz") as tf:
+            members = tf.getmembers()
+            return len(members) > 0
+    except Exception as e:
+        logging.warning('[have_members] Ошибка', exc_info=e)
+    return False
 
-def download_and_archive_packages(packages: list[str]) -> str:
+
+def download_and_archive_packages(packages: list[str]) -> str | None:
     """Скачиваем и архивируем указанные пакеты."""
-    archive_name = 'downloaded_packages.tar.gz'
+    temp = pathlib.Path(tempfile.gettempdir()) / 'mes-packages'
+    unique_finger = hashlib.sha256(json.dumps(packages, sort_keys=True).encode(encoding='utf8')).hexdigest()
+    current_day = datetime.now().strftime('%d')
+    folder = temp / f'{unique_finger}{current_day}'
+    archive_name = f'packages.tar.gz'
+    path = temp / folder / archive_name
 
-    if not check_dns():
-        return archive_name
-    os.makedirs('temp_download', exist_ok=True)
-
-    for package in packages:
-        subprocess.run(['pip', 'download', package], cwd='temp_download', check=True)
-    with open('temp_download/pack.pickle', 'wb+') as f:
-        pickle.dump(packages, f)
-    with tarfile.open(archive_name, 'w:gz') as tar:
-        for filename in os.listdir('temp_download'):
-            tar.add(os.path.join('temp_download', filename), arcname=filename)
-    shutil.rmtree('temp_download')
-    return archive_name
+    if path.exists() and have_members(str(path)):
+        return str(path)
+    else:
+        if not check_dns():
+            return
+        folder.mkdir(exist_ok=True, parents=True)
+        for package in packages:
+            subprocess.run(['pip', 'download', package, '--no-cache-dir', '--only-binary=:all:'], cwd=str(folder), check=True)
+        with tarfile.open(str(path), 'w:gz') as tar:
+            for filename in os.listdir(str(folder)):
+                tar.add(str(folder / filename), arcname=filename)
+        return str(path)
 
 
 @router.get('/py/packages/list/')
@@ -130,9 +145,11 @@ def upload_dependencies(data: list[str]):
     try:
         if len(data) > 0:
             temp_download = download_and_archive_packages(data)
+            if temp_download is None:
+                return
             return FileResponse(temp_download, filename=temp_download)
     except Exception as e:
-        print(e)
+        logging.warning('Ошибка выдачи pip зависимостей', exc_info=e)
 
 
 @router.get('/py/')

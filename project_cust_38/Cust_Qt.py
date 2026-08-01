@@ -32,6 +32,10 @@ import project_cust_38.Cust_emoji as CEMOJ
 import sip
 from typing import TYPE_CHECKING
 
+try:
+    from qt_material import apply_stylesheet
+except:
+    ImportError(f'Не найден модуль qt_material')
 
 if TYPE_CHECKING:
     import project_cust_38.Cust_config as CFG
@@ -325,6 +329,30 @@ MES_EDIT_CSS = """
 FILTR_TOOLTIP = f"""фильтр по вхождению: \n* - любой символ\n! - не\n= - полное совпадение\n| - ИЛИ\n& - И
                         \n'... - RegEx \nдаты: <24-11-11 & >24-11-01 или >сегодня(-5) & <now()"""
 
+class ThemeManager:
+
+    @staticmethod
+    def apply(app):
+        try:
+            apply_stylesheet(
+                app,
+                theme="dark_teal.xml",
+            )
+        except:
+            print("Error applying theme, qt_material is not installed")
+
+
+    @staticmethod
+    def editable_cell(palette):
+        return palette.color(QtGui.QPalette.Base).getRgb()
+
+    @staticmethod
+    def readonly_cell(palette):
+        return palette.color(QtGui.QPalette.Base).darker(104).getRgb()
+
+    @staticmethod
+    def placeholder(palette):
+        return palette.color(QtGui.QPalette.Mid)
 
 class ColorPickReturn(enum.IntEnum):
     rgb = 1     # (255, 255, 255)
@@ -3191,7 +3219,7 @@ def number_selection_cell_by_row_and_column_c(tblw):
         column_number = idx.column()
     return row_number,column_number
 
-def convert_UI_into_PY_c(put:str|None = None):
+def convert_UI_into_PY_c(put:str|None = None)->bool:
     if F.is_frozen():
         print('Фрозен')
         return
@@ -3220,6 +3248,7 @@ def convert_UI_into_PY_c(put:str|None = None):
 
         # Проставляем .py дату изменения как у .ui
         os.utime(py_path, (ui_mtime, ui_mtime))
+        return True
 
 
 def clear_properties(widget: QtWidgets.QWidget, *, repolish: bool = True, recursive: bool = False) -> None:
@@ -3477,6 +3506,11 @@ def updates_enabled_keep_state(*objects):
                 pass
 
 # ======================= /TABLE RUNTIME STATES =========================
+
+def soft_clear_tbl(tbl:QtWidgets.QTableWidget):
+    tbl.setRowCount(0)
+    tbl.setColumnCount(0)
+
 
 def clear_tbl(tbl:QtWidgets.QTableWidget):
     policy = CFG.Config.table_runtime
@@ -5108,9 +5142,9 @@ class FillTableDelegator(QtWidgets.QStyledItemDelegate): # 26.03.2026
             if override:
                 rgb = override
             elif col not in self.editable_col_nomera:
-                rgb = (240, 240, 240)
+                rgb = ThemeManager.readonly_cell(option.palette) #(240, 240, 240)
             else:
-                rgb = (250, 250, 250)
+                rgb = ThemeManager.editable_cell(option.palette) #(250, 250, 250)
             if self.load_links and is_link_like(value):
                 cell = self.parent.cellWidget(index.row(), col)
                 if isinstance(cell, QtWidgets.QLabel):
@@ -5142,6 +5176,7 @@ class FillTableDelegator(QtWidgets.QStyledItemDelegate): # 26.03.2026
                 # Стандартная отрисовка для непустых ячеек
                 #if self.parent.styleSheet() != '':
                 #    super().paint(painter, option, index)
+
         self.prev_delegator.paint(painter, option, index)
 
     def createEditor(self, parent, option, index):
@@ -6276,32 +6311,55 @@ def onerror(funcd: typing.Callable = None, *, response_after_error: typing.Any =
 
                 list_trace = repr(traceback.extract_tb(exc_traceback)).split(',')
                 # list_trace.reverse()
-                counetr = 1
+                counetr = 0
                 root_err_fnc_name = ''
                 root_err_fnc_line = ''
                 root_err_fnc_file = ''
+                new_list_trace = []
+                new_list_trace_msg = []
+                BLUE = '\033[94m'
+                RESET = '\033[0m'
                 for i in range(len(list_trace)):
                     list_trace[i] = list_trace[i].replace('<FrameSummary', '') + ":"
                     if i % 2 == 0:
                         root_err_fnc_file = list_trace[i].split(F.sep())[-1]
+                        wet_path = list_trace[i].replace('file ', '').replace('[ ', '').replace(' ]', '')[:-1].strip()
                         list_trace[i] = f'Step {counetr}: ' + list_trace[i]
 
+                        abs_path = pathlib.Path(wet_path).absolute()
                         counetr += 1
                     else:
+
                         sub_list_trace = list_trace[i].split()
                         root_err_fnc_name = sub_list_trace[3].replace('>', '').replace(']', '')
                         root_err_fnc_line = sub_list_trace[1]
+                        new_list_trace.append(
+                            f'Step {counetr}: fnc {root_err_fnc_name}\n' + f' {BLUE}File "{abs_path.as_posix()}", line {root_err_fnc_line}{RESET}')
+                        new_list_trace_msg.append(
+                            f'Step {counetr}: fnc {root_err_fnc_name}\n' + f'   File "{abs_path.as_posix()}", line {root_err_fnc_line}')
 
                         list_trace[i] = f'''   fnc {root_err_fnc_name}\n        line {root_err_fnc_line}\n'''
 
-                tarcer = '\n'.join(list_trace)
+                tarcer = '\n'.join(new_list_trace)
+                tarcer_msg = '\n'.join(new_list_trace_msg)
 
                 filename, lineno, line = read_err(exc_traceback)
-                txt = (f'File: {root_err_fnc_file}\n    fnc {root_err_fnc_name} \n        line {root_err_fnc_line}:\n{'\n'.join([f'            {_}' for _ in line.split('\n')])}\n '
-                       f'unexpected error:\n   "{exc_instance}"\n'
-                       f'===============FRAMES START===================\n'
+
+                abs_path = pathlib.Path(filename).absolute()
+                txt = (
+                       f'\n\n===============FRAMES TRACEBACK START===================\n'
                        f'{tarcer}\n'
-                       f'===============FRAMES END===================\n\n')
+                       f'   {'\n'.join([f'{_}' for _ in line.split('\n')])}\n'
+                       f'   unexpected error:\n         "{exc_instance}"\n'
+                       f'===============FRAMES TRACEBACK END===================\n\n'
+                       )
+                txt_msg = (
+
+                       f'{tarcer_msg}\n\n'
+                       f'   {'\n'.join([f'{_}' for _ in line.split('\n')])}\n'
+                       f'   unexpected error:\n         "{exc_instance}"\n'
+
+                       )
                 print(txt)
                 arguments = '({pos}, {named})'.format(
                     pos=', '.join(str(arg) for arg in args),
@@ -6323,7 +6381,7 @@ def onerror(funcd: typing.Callable = None, *, response_after_error: typing.Any =
                 ]
                 add_error_line_in_debug_reestr(line)
                 QtCore.QTimer.singleShot(0, lambda:
-                    msgbox(txt, time_life=10, icon=QtWidgets.QMessageBox.Critical,app_self=app_self,fontsize=8))
+                    msgbox(txt_msg, time_life=10, icon=QtWidgets.QMessageBox.Critical,app_self=app_self,fontsize=8))
                 return response_after_error # 19.06.2026
         return wrapper
     if funcd is None:
@@ -6334,8 +6392,18 @@ def add_error_line_in_debug_reestr(line: list):
     if not F.is_debug():
         filename = F.now('%Y-%m.txt') # 24.12.2025
         path = fr'Z:\MES_setup\errors\debug\{filename}'
+
         with open(path, 'a+', encoding='utf8') as f:
             f.write('|'.join(str(column).replace('|', '%7C') for column in line) + '\n')
+        try:
+            app_name = F.name_of_executable_file_c().strip('.py')
+            user = str(F.user_name()).replace('.', '-')
+            finger = '-'.join((user, F.now('%Y-%m-%d-%H%M%S'), app_name))
+            srv_report_path = fr'Z:\MES_setup\errors\http_client_errors\{finger}.json'
+            from project_cust_38.Cust_client_socket import HttpSessionTelemetry as tcp_telemetry
+            tcp_telemetry.dump_jsonl(srv_report_path)
+        except Exception as e:
+            print()
 
 def add_err_to_debug(list, path):
     if F.existence_file_c(path) == False:
@@ -10667,14 +10735,26 @@ def adjust_last_column_width(table: QtWidgets.QTableWidget, *args):
     last_col_width = header.sectionSize(visible_cols[-1])
     free_width = table_width - used
     if free_width < 0:
-        free_width = 0
+        free_width_cutted = 0
+    else:
+        free_width_cutted = free_width
 
-    if free_width > last_col_width:
+    if free_width_cutted > last_col_width:
         # растягиваем последнюю видимую колонку
         with QSignalBlocker(header):
-            header.resizeSection(last_col, free_width)
-
-
+            header.resizeSection(last_col, free_width_cutted)
+    else:
+        if last_col_width < 11:
+            return
+        #print(f'{table.objectName()} free_width {free_width} < last_col_width  {last_col_width}')
+        free_wth_last = free_width+last_col_width
+        if free_wth_last < 0:
+            pass
+        else:#не хватает места для последней колонки
+            limit_last_col = round(last_col_width * 0.1)
+            if abs(free_wth_last) > limit_last_col:
+                with QSignalBlocker(header):
+                    header.resizeSection(last_col, limit_last_col)
 @onerror
 def load_column_widths(self='',
                        tbl: QtWidgets.QTableWidget | QtWidgets.QSplitter = None,
@@ -12595,3 +12675,40 @@ def qimage_to_binary(image: QtGui.QImage, fmt: str = 'PNG', output_b64_string: b
     if output_b64_string:
         return F.base64.b64encode(blob).decode('utf-8')
     return blob
+
+_OVERLAY_DATA = {}
+
+def apply_frame_overlay(frame: QtWidgets.QFrame,
+                        rgba=(0, 0, 0, 100)):
+    if frame not in _OVERLAY_DATA:
+        _OVERLAY_DATA[frame] = (
+            frame.palette(),
+            frame.autoFillBackground(),
+        )
+
+    parent = frame.parentWidget()
+    if parent is None:
+        return
+
+    pixmap = parent.grab(frame.geometry())
+
+    painter = QtGui.QPainter(pixmap)
+    painter.fillRect(pixmap.rect(), QtGui.QColor(*rgba))
+    painter.end()
+
+    palette = QtGui.QPalette(frame.palette())
+    palette.setBrush(QtGui.QPalette.Window, QtGui.QBrush(pixmap))
+    frame.setPalette(palette)
+    frame.setAutoFillBackground(True)
+    frame.update()
+
+
+def clear_frame_overlay(frame: QtWidgets.QFrame):
+    old = _OVERLAY_DATA.pop(frame, None)
+    if old is None:
+        return
+
+    palette, autofill = old
+    frame.setPalette(palette)
+    frame.setAutoFillBackground(autofill)
+    frame.update()

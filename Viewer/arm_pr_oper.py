@@ -29,7 +29,9 @@ def fill_tbl_report_add(self:mywindow,*args):
     self.global_arm_oper_user_fio = user_name
     nach = self.ui.le_start_of_period.text()
     konec = self.ui.le_end_of_period.text()
-    vid = self.ui.cmb_sort_c_report.currentText()
+    lbl_report = CQT.CustLabel(self.ui.lbl_sort_c_report)
+    vid = lbl_report.text
+    name_report = lbl_report.get_user_data()
     podrazd = self.ui.cmb_podrazdelenie.currentText()
 
     CQT.clear_tbl(tbl)

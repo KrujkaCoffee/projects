@@ -21,6 +21,12 @@ import shutil
 from typing import Any, Iterable, Mapping, Sequence
 
 import project_cust_38.Cust_Functions as F  # noqa
+from project_cust_38.db_identity import (
+    canonical_db_key,
+    equivalent_db_keys,
+    make_table_key,
+    split_table_key,
+)
 
 try:
     import Cust_postgresql_cache as CPG
@@ -388,12 +394,12 @@ class CacheBuilder:
             if key in seen:
                 continue
             seen.add(key)
-            db_key = pathlib.Path(db_path).stem or 'unknown_db'
+            db_key = canonical_db_key(db_path)
             result.append({
                 'db_path': db_path,
                 'db_key': db_key,
                 'table_name': table_name,
-                'table_key': f'{db_key}.{table_name}',
+                'table_key': make_table_key(db_key, table_name),
             })
         return result
 
@@ -598,8 +604,11 @@ class FileRequestCache:
             if not table_keys:
                 return ''
             policy = self.compute_policy(table_keys=table_keys)
+            if not policy.get('identity_ok') or not policy.get('cache_enabled'):
+                return ''
             return str(policy.get('dependency_fingerprint') or '')
         except Exception:
+            logger.exception('Не удалось пересчитать dependency fingerprint')
             return ''
 
     def is_entry_fresh(self, entry: Mapping[str, Any] | None, *, now: datetime.datetime | None = None) -> bool:
@@ -614,10 +623,13 @@ class FileRequestCache:
         if stale_after is not None and stale_after <= now:
             return False
         stored_dependency_fingerprint = str(entry.get('dependency_fingerprint') or '')
-        if stored_dependency_fingerprint:
-            current_dependency_fingerprint = self.current_dependency_fingerprint(str(entry.get('request_key') or ''))
-            if current_dependency_fingerprint and current_dependency_fingerprint != stored_dependency_fingerprint:
-                return False
+        # Old/ambiguous entries are never trusted. They will be rebuilt after a
+        # successful identity-aware policy calculation.
+        if not stored_dependency_fingerprint:
+            return False
+        current_dependency_fingerprint = self.current_dependency_fingerprint(str(entry.get('request_key') or ''))
+        if not current_dependency_fingerprint or current_dependency_fingerprint != stored_dependency_fingerprint:
+            return False
         logger.debug(f'Серверный фингерпринт {stored_dependency_fingerprint}')
 
         last_refresh = self.utils.parse_dt(entry.get('last_refresh_at')) or self.utils.parse_dt(entry.get('updated_at'))
@@ -650,31 +662,77 @@ class FileRequestCache:
             table_keys: Sequence[str],
             default_lifetime_sec: int = DEFAULT_CACHE_LIFETIME_SEC
     ) -> dict[str, Any]:
+        """Resolve canonical/legacy table aliases without mutating admin rows.
+
+        One physical identity may historically be named ``Naryad.naryad`` or
+        ``db_naryad.naryad``. A single existing row is reused verbatim. More
+        than one matching row is a hard conflict: cache lookup/storage is
+        disabled until an explicit maintenance migration resolves references.
+        """
         lifetime_sec = int(default_lifetime_sec)
         stale_candidates: list[datetime.datetime] = []
 
-        normalized_keys = []
-        seen = set()
-        for table_key in table_keys or ():
-            key = str(table_key or '').strip()
-            if not key:
+        requested_keys: list[str] = []
+        identities: dict[tuple[str, str], dict[str, Any]] = {}
+        for raw_table_key in table_keys or ():
+            table_key = str(raw_table_key or '').strip()
+            if not table_key:
                 continue
-            if key not in seen:
-                seen.add(key)
-                normalized_keys.append(key)
+            if table_key not in requested_keys:
+                requested_keys.append(table_key)
+            db_part, table_name = split_table_key(table_key)
+            table_name = str(table_name or '').strip()
+            if not table_name:
+                return {
+                    'cache_enabled': False,
+                    'identity_ok': False,
+                    'cache_lifetime_sec': lifetime_sec,
+                    'stale_after_dt': None,
+                    'dependency_fingerprint': '',
+                    'requested_table_keys': requested_keys,
+                    'resolved_table_keys': [],
+                    'missing_table_keys': [table_key],
+                    'identity_conflicts': [],
+                }
+            canonical = canonical_db_key(db_part)
+            marker = (canonical.casefold(), table_name.casefold())
+            identities.setdefault(marker, {
+                'canonical_db_key': canonical,
+                'table_name': table_name,
+                'requested': [],
+                'db_aliases': equivalent_db_keys(db_part),
+            })['requested'].append(table_key)
 
-        if not normalized_keys:
+        if not identities:
             return {
                 'cache_enabled': False,
+                'identity_ok': False,
                 'cache_lifetime_sec': lifetime_sec,
                 'stale_after_dt': None,
-                'dependency_fingerprint': ''
+                'dependency_fingerprint': '',
+                'requested_table_keys': requested_keys,
+                'resolved_table_keys': [],
+                'missing_table_keys': [],
+                'identity_conflicts': [],
             }
 
-        placeholders = ','.join(['%s'] * len(normalized_keys))
+        all_db_aliases = sorted({
+            str(alias).casefold()
+            for identity in identities.values()
+            for alias in identity['db_aliases']
+            if str(alias).strip()
+        })
+        all_table_names = sorted({
+            str(identity['table_name']).casefold()
+            for identity in identities.values()
+        })
+        db_placeholders = ','.join(['%s'] * len(all_db_aliases))
+        table_placeholders = ','.join(['%s'] * len(all_table_names))
         sql = f"""
             SELECT
                 table_key,
+                db_key,
+                table_name,
                 cache_enabled,
                 validity_mark,
                 updated_at,
@@ -682,63 +740,116 @@ class FileRequestCache:
                 stale_after_dt,
                 cache_lifetime_min
             FROM admin_physical_tables
-            WHERE table_key IN ({placeholders})
+            WHERE lower(db_key) IN ({db_placeholders})
+              AND lower(table_name) IN ({table_placeholders})
             ORDER BY table_key
         """
-
         dependency_rows = CPG.custom_request_pg(
             sql,
-            params=normalized_keys,
+            params=[*all_db_aliases, *all_table_names],
             rez_dict=True,
         )
-
         if not isinstance(dependency_rows, list):
-            logger.warning(f'Получен некорректный ответ при запросе информации о таблице: \n{pprint.pformat(dependency_rows)}\n\n')
+            logger.warning(
+                'Получен некорректный ответ при запросе identity таблиц: %s',
+                pprint.pformat(dependency_rows),
+            )
             return {
                 'cache_enabled': False,
+                'identity_ok': False,
                 'cache_lifetime_sec': lifetime_sec,
                 'stale_after_dt': None,
-                'dependency_fingerprint': ''
+                'dependency_fingerprint': '',
+                'requested_table_keys': requested_keys,
+                'resolved_table_keys': [],
+                'missing_table_keys': requested_keys,
+                'identity_conflicts': [],
             }
 
-        found_keys = {str(row.get('table_key') or '') for row in dependency_rows}
-        if len(found_keys) != len(normalized_keys):
+        resolved_rows: list[dict[str, Any]] = []
+        resolved_table_keys: list[str] = []
+        missing_table_keys: list[str] = []
+        identity_conflicts: list[dict[str, Any]] = []
+        for marker, identity in identities.items():
+            matches: list[dict[str, Any]] = []
+            seen_rows: set[str] = set()
+            for raw_row in dependency_rows:
+                row = dict(raw_row)
+                row_marker = (
+                    canonical_db_key(row.get('db_key')).casefold(),
+                    str(row.get('table_name') or '').casefold(),
+                )
+                if row_marker != marker:
+                    continue
+                row_key = str(row.get('table_key') or '').strip()
+                if not row_key or row_key in seen_rows:
+                    continue
+                seen_rows.add(row_key)
+                matches.append(row)
+            if not matches:
+                missing_table_keys.extend(identity['requested'])
+                continue
+            if len(matches) > 1:
+                identity_conflicts.append({
+                    'canonical_db_key': identity['canonical_db_key'],
+                    'table_name': identity['table_name'],
+                    'requested_table_keys': list(identity['requested']),
+                    'found_table_keys': [str(row.get('table_key') or '') for row in matches],
+                })
+                continue
+            row = matches[0]
+            resolved_rows.append(row)
+            resolved_table_keys.append(str(row.get('table_key') or ''))
+
+        identity_ok = not missing_table_keys and not identity_conflicts and len(resolved_rows) == len(identities)
+        if not identity_ok:
+            if identity_conflicts:
+                logger.error('Конфликт table identity; кэш отключён: %s', pprint.pformat(identity_conflicts))
+            if missing_table_keys:
+                logger.warning('Не найдены административные table identity; кэш отключён: %s', missing_table_keys)
             return {
                 'cache_enabled': False,
+                'identity_ok': False,
                 'cache_lifetime_sec': lifetime_sec,
                 'stale_after_dt': None,
-                'dependency_fingerprint': ''
+                'dependency_fingerprint': '',
+                'requested_table_keys': requested_keys,
+                'resolved_table_keys': resolved_table_keys,
+                'missing_table_keys': missing_table_keys,
+                'identity_conflicts': identity_conflicts,
             }
 
         cache_enabled = True
-
-        for row in dependency_rows:
+        for row in resolved_rows:
             raw_enabled = row.get('cache_enabled')
             is_enabled = bool(int(raw_enabled)) if raw_enabled not in (None, '', True, False) else bool(raw_enabled)
             if not is_enabled:
                 cache_enabled = False
-
             cache_lifetime_min = int(row.get('cache_lifetime_min') or (default_lifetime_sec // 60))
             lifetime_sec = min(lifetime_sec, max(1, cache_lifetime_min) * 60)
-
             stale_dt = self.utils.parse_dt(row.get('stale_after_dt'))
             if stale_dt is not None:
                 stale_candidates.append(stale_dt)
 
         stale_after_dt = min(stale_candidates).strftime('%Y-%m-%d %H:%M:%S') if stale_candidates else None
-
+        resolved_rows = sorted(resolved_rows, key=lambda row: str(row.get('table_key') or ''))
+        resolved_table_keys = [str(row.get('table_key') or '') for row in resolved_rows]
         dependency_fingerprint = self.utils.sha256_text(
             self.utils.json_dumps({
-                'table_keys': normalized_keys,
-                'rows': dependency_rows,
+                'resolved_table_keys': resolved_table_keys,
+                'rows': resolved_rows,
             })
         )
-
         return {
             'cache_enabled': cache_enabled,
+            'identity_ok': True,
             'cache_lifetime_sec': lifetime_sec,
             'stale_after_dt': stale_after_dt,
-            'dependency_fingerprint': dependency_fingerprint
+            'dependency_fingerprint': dependency_fingerprint,
+            'requested_table_keys': requested_keys,
+            'resolved_table_keys': resolved_table_keys,
+            'missing_table_keys': [],
+            'identity_conflicts': [],
         }
 
     def compute_policy_(self, *, table_keys: Sequence[str],
@@ -820,7 +931,7 @@ class FileRequestCache:
                     notes: str = '') -> dict[str, Any]:
         now = F.now()
         db_path = self.utils.normalize_path(db_path)
-        db_key = pathlib.Path(db_path).stem or 'unknown_db'
+        db_key = canonical_db_key(db_path)
         suspicious_empty = payload in (None, [], {}, (), True, False)
 
         if suspicious_empty:

@@ -1357,7 +1357,7 @@ def create_label_c(file, dir, ima_yar, put_ico=''):
 
 
 def save_file_pickle(putima, obj):
-    with open(putima, 'wb+') as f:
+    with open(putima, 'wb') as f:
         pickle.dump(obj, f)
 
 
@@ -1655,6 +1655,7 @@ def is_date(string: str, maska: str = "%Y-%m-%d %H:%M:%S"):
 def datetostr(date, format="%Y-%m-%d %H:%M:%S"):#"%d.%m.%Y"   "%Y-%m-%dT%H:%M:%S"
     return date.strftime(format)
 
+
 def dateStrToStr(date, format=None,format_out="%Y-%m-%d",onerror='None')->str|DT:#"%d.%m.%Y"   "%Y-%m-%dT%H:%M:%S"
     set_formats = {"%Y-%m-%d %H:%M:%S",
                    "%Y-%m-%dT%H:%M:%S",
@@ -1663,6 +1664,7 @@ def dateStrToStr(date, format=None,format_out="%Y-%m-%d",onerror='None')->str|DT
                    "%d.%m.%y",
                    "%d.%m.%Y %H:%M:%S",
                    "%d\n%m\n%y",
+                   "ДАТАВРЕМЯ(%Y, %m, %d, %H, %M, %S)"
                    }
     if date is None:
         raise TypeError(f'{str(date)} format err')
@@ -1674,14 +1676,21 @@ def dateStrToStr(date, format=None,format_out="%Y-%m-%d",onerror='None')->str|DT
         for format in set_formats:
             if is_date(date,format):
                 return strtodate(date, format)
-    else: 
-        
+    else:
         if isinstance(date,DT):
             return datetostr(date, format_out)
         if is_date(date, format_out):
             return date
         if format:
-            return datetostr(strtodate(date, format), format_out)
+            try:
+                rez_dt= datetostr(strtodate(date, format), format_out)
+                return rez_dt
+            except:
+                if onerror == 'None':
+                    raise TypeError(f'{str(date)} format {format} err')
+                else:
+                    return onerror
+
         for format in set_formats:
             if is_date(date,format):
                 return datetostr(strtodate(date, format), format_out)
@@ -2560,14 +2569,16 @@ def paste_bufer(text=''):
     return text + pyperclip.paste()
 
 
-def boolm(str:str)->bool:
-    if str is None:
+def boolm(str_data:str)->bool:
+    if isinstance(str_data, bool):
+        return str_data
+    if str_data is None:
         return False
-    if str.lower() in {'false','0',''}:
+    if str_data.lower() in {'false','0',''}:
         return False
-    if str.lower() in {'true','1'}:
+    if str_data.lower() in {'true','1'}:
         return True
-    raise Exception(f"boolm Не могу распознать '{str}'")
+    raise Exception(f"boolm Не могу распознать '{str_data}'")
 
 def valm(ch):
     if isinstance(ch,bool):
@@ -3462,6 +3473,50 @@ def get_all_attrs_with_properties(obj, include_private=False, prefer_properties=
                 result[name] = value  # перекрывает и property-имена
 
     return result
+
+def get_all_attrs(obj, include_private: bool = False) -> dict:
+    """
+    Возвращает словарь ``{attr_name: value}`` для всех обычных атрибутов
+    экземпляра (без учета ``property``).
+
+    Parameters
+    ----------
+    obj : object
+        Экземпляр любого класса.
+    include_private : bool, optional
+        Если ``False`` (по умолчанию) — атрибуты, имена которых начинаются
+        с ``_``, игнорируются.
+
+    Returns
+    -------
+    dict
+        Ключи — имена атрибутов экземпляра; значения — их текущие значения.
+
+    Examples
+    --------
+    >>> class Doc:
+    ...     def __init__(self, title):
+    ...         self._title = title
+    ...         self.author = "Иван"
+    ...
+    ...     @property
+    ...     def title(self):
+    ...         return self._title.upper()
+    ...
+    >>> doc = Doc("акт")
+    >>> get_all_attrs(doc)
+    {'author': 'Иван'}
+    >>> get_all_attrs(doc, include_private=True)
+    {'_title': 'акт', 'author': 'Иван'}
+    """
+    if include_private:
+        return dict(vars(obj))
+
+    return {
+        name: value
+        for name, value in vars(obj).items()
+        if not name.startswith("_")
+    }
 
 
 def parse_args(argv:list)->dict:

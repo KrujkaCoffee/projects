@@ -35,6 +35,11 @@ __all__ = [
     "ObjectManager",
     "SaveResult",
     "BaseModel",
+    "FieldRef",
+    "TableRef",
+    "RelationFieldPair",
+    "RelationSpec",
+    "Relationship",
 ]
 
 
@@ -1862,6 +1867,16 @@ class ModelMeta(type):
         cls.__fields__ = fields
         cls.__field_by_column__ = {field.db_column: name for name, field in fields.items()}
 
+        relations: OrderedDict[str, typing.Any] = OrderedDict()
+        for base in bases:
+            relations.update(getattr(base, "__relations__", {}) or {})
+        for attr_name, attr_value in cls.__dict__.items():
+            if attr_name.startswith("_"):
+                continue
+            if getattr(attr_value, "__mes_relationship__", False):
+                relations[attr_name] = attr_value
+        cls.__relations__ = relations
+
         pk_name = getattr(cls, "__pk__", None)
         if pk_name is None:
             for field_name, field in fields.items():
@@ -1885,6 +1900,11 @@ class ModelMeta(type):
 class BaseModel(typing.Generic[HintT], metaclass=ModelMeta):
     __abstract__ = True
     __table__: str | None = None
+    # Static identity is deliberately separate from __db__. Reading relation
+    # metadata must never call a DB/config-resolving callable.
+    __db_key__: str = ''
+    __canonical_db_key__: str = ''
+    __table_key__: str = ''
     __db__: str | typing.Callable[[], str] | None = None
     __attach_dbs__: tuple[str, ...] | list[str] | str | None = ()
     __pk__: str | None = None
@@ -1955,6 +1975,33 @@ class BaseModel(typing.Generic[HintT], metaclass=ModelMeta):
         if name not in cls.__fields__:
             raise OrmError(f"У модели {cls.__name__} нет поля {name!r}")
         return cls.__fields__[name]
+
+    @classmethod
+    def get_relation(cls, name: str):
+        if name not in getattr(cls, "__relations__", {}):
+            raise OrmError(f"У модели {cls.__name__} нет связи {name!r}")
+        return cls.__relations__[name]
+
+    @classmethod
+    def relation_specs(cls, *, strict: bool = True) -> dict[str, typing.Any]:
+        """Return normalized relation metadata.
+
+        Generated relations are part of the model contract. Silently returning a
+        descriptor after a resolution error made schema audits look successful
+        while runtime access failed later. ``strict=False`` remains available for
+        legacy diagnostics, but normal callers fail closed.
+        """
+        result: dict[str, typing.Any] = {}
+        for name, relation in (getattr(cls, "__relations__", {}) or {}).items():
+            if hasattr(relation, "as_relation_spec") and callable(relation.as_relation_spec):
+                try:
+                    result[name] = relation.as_relation_spec(cls)
+                    continue
+                except Exception:
+                    if strict:
+                        raise
+            result[name] = relation
+        return result
 
     @classmethod
     def bind_aliases(cls, aliases: dict[str, str] | None = None) -> dict[str, str]:
@@ -2431,3 +2478,26 @@ def _unwrap_optional(annotation: typing.Any) -> typing.Any:
         if len(args) == 1:
             return args[0]
     return annotation
+
+
+# Optional relation layer re-export. Kept at the end to avoid an import cycle:
+# context_relations is ORM-agnostic and only duck-types Field/BaseModel objects.
+try:  # production package path
+    from project_cust_38.context_relations import (  # type: ignore
+        FieldRef,
+        TableRef,
+        RelationFieldPair,
+        RelationSpec,
+        Relationship,
+    )
+except Exception:
+    try:  # local isolated tests
+        from context_relations import (  # type: ignore
+            FieldRef,
+            TableRef,
+            RelationFieldPair,
+            RelationSpec,
+            Relationship,
+        )
+    except Exception:
+        pass

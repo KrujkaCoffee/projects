@@ -17,9 +17,9 @@ def load_elements(self,spis,vid):
     self.figure = plt.figure(dpi= 80)
     self.canvas = FigureCanvas(self.figure)
     self.toolbar = NavigationToolbar(self.canvas, self)
-    if vid == 'Понедельный график выработки и отгрузок':
+    if vid == 'weekly_output_shipping_schedule':
         create_fig(self.figure.add_subplot(111),spis)
-    if vid == 'План-фактный анализ по месяцам':
+    if vid == 'monthly_plan_fact_schedule':
         create_fig_plan_fact(self.figure.add_subplot(111),spis,self)
     self.figure.subplots_adjust(0.03, 0.11, 0.98, 0.94)
     self.canvas.draw()

@@ -1,4 +1,7 @@
 import datetime
+import enum
+import json
+import pathlib
 import stat
 import os
 import pickle
@@ -7,6 +10,7 @@ import shutil
 import getpass
 import sys
 import logging
+import typing
 import zipfile
 import re
 import subprocess
@@ -17,6 +21,7 @@ from typing import List
 from pathlib import Path, PurePosixPath
 
 import requests
+from packaging.utils import canonicalize_name
 
 SRV_ADDRESS = 'http://mesinfo.powerz.ru:20011'
 
@@ -24,6 +29,14 @@ KEY_SRV_HASH = 'PROJECT_CUST_SRV_HASH'
 KEY_SERVER_NOT_AVAILABLE = 'KEY_SERVER_NOT_AVAILABLE'
 
 logging.basicConfig(level=logging.INFO)
+
+class ClientState(typing.NamedTuple):
+    MES_PROJECT_CUST_38_HASH: str
+    MES_APP_HASH: str
+    MES_LAST_UPDATE: str
+
+    def dump(self):
+        ...
 
 
 def check_network_drive_connection(network_drive: str = 'Z:', network_path: str = r"\\powerz\share\ProdSoft"):
@@ -82,9 +95,49 @@ def ping(fn):
         os.environ[KEY_SERVER_NOT_AVAILABLE] = '1'
     return wrapper
 
+class ValidateStates(str, enum.Enum):
+    INTER_IS_AVAILABLE = 'INTER_IS_AVAILABLE'
+    INTER_LIBRARIES_IS_ACTUAL = 'INTER_IS_AVAILABLE'
+
+
+class ValidateStorage:
+    inter_is_checked: bool = False
+    inter_libraries_checked: bool = False
+
+    inter_is_available: bool = False
+    inter_libs_is_actual: bool = False
+
+
+def validator(state_attribute: ValidateStates):
+    def wrap_func(fn):
+        def wrap(*args, **kwargs):
+            if state_attribute == ValidateStates.INTER_IS_AVAILABLE:
+                if ValidateStorage.inter_is_checked:
+                    return ValidateStorage.inter_libs_is_actual
+                new_state = fn(*args, **kwargs)
+                if new_state is None:
+                    return
+                state, message = new_state
+                ValidateStorage.inter_is_checked = True
+                ValidateStorage.inter_is_available = state
+                return state
+            if state_attribute == ValidateStates.INTER_LIBRARIES_IS_ACTUAL:
+                ...
+                # ValidateStorage.inter_libraries_checked = state
+            # return state
+        return wrap
+    return wrap_func
 
 class LoneInterpreter:
+    INSTALL_PACKAGES_SCRIPT_NAME = 'install_lib.bat'
+
     def __init__(self):
+        self.__srv_info = None
+        self.__cached_user_libs = None
+        self.info_libs_is_actual = False
+        self.interpreter_is_available = False
+        self.need_validate_available = True
+
         self.home_path = str(Path().home() / 'MES')
         self.server_url = f'{SRV_ADDRESS}/files'
         self.system_interpreter_path = r'Z:\Setup\python.zip'
@@ -94,13 +147,15 @@ class LoneInterpreter:
 
     @property
     def DICT_PROG(self):
-
         from project_cust_38 import Cust_SQLite as CSQ
         apps_response = CSQ.custom_request_c(
-            'SRV:BD_users.db',
+            CSQ.DB_NAMES.db_users,
             'SELECT app AS Имя, path AS Путь, module AS Название FROM app_config WHERE is_ui = 1 AND path != ""',
             rez_dict=True
         )
+        if apps_response is None:
+            apps_response = [{'Имя': 'МКарты', 'Название': 'MKart.py', 'Путь': r'Z:\Mkarti\embed'}, {'Имя': 'Просмотр', 'Название': 'Viewer.py', 'Путь': r'Z:\Viewer\embed'}, {'Имя': 'Техкарты', 'Название': 'TehKart.py', 'Путь': r'Z:\Tehkarti\embed'}, {'Имя': 'Создание2', 'Название': 'Sozdanie.py', 'Путь': r'Z:\Sozdanye2\embed'}, {'Имя': 'Выполнение2', 'Название': 'vipoln.py', 'Путь': r'Z:\Vipolnenie2\embed'}, {'Имя': 'csv', 'Название': 'csv.py', 'Путь': r'Z:\csv\embed'}, {'Имя': 'Аутсорс', 'Название': 'Outsourcing.py', 'Путь': r'Z:\Outsourcing\embed'}, {'Имя': 'КонструкторРС', 'Название': 'constr_rc.py', 'Путь': r'Z:\сonstructorRS\embed'}, {'Имя': 'АРМ_складского_работника', 'Название': 'arm_ww.py', 'Путь': r'Z:\arm_ww\embed'}]
+
         apps = {}
         for item in apps_response:
             item['Путь'] = item['Путь'].replace('\\embed', '')
@@ -147,17 +202,60 @@ class LoneInterpreter:
             logging.error('[LoneInterpreter.__server_inter_size]Не удалось запросить актуальный хэш python интерпретатора')
             logging.error(e)
 
+    def get_installed_packages(self):
+        from packaging.utils import canonicalize_name
+        if self.info_libs_is_actual and self.__cached_user_libs:
+            return self.__cached_user_libs
+        result = subprocess.run(
+            [
+                self.python_path,
+                "-m",
+                "pip",
+                "list",
+                "--format=json",
+                "--disable-pip-version-check",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            creationflags=subprocess.CREATE_NO_WINDOW
+        )
+
+        packages = json.loads(result.stdout)
+        installed = {}
+
+        for package in packages:
+            name = canonicalize_name(package["name"])
+
+            if name == "pip":
+                continue
+
+            installed[name] = package["version"]
+
+        libs = [
+            f"{name}=={installed[name]}"
+            for name in sorted(installed)
+        ]
+
+        self.info_libs_is_actual = bool(libs)
+        self.__cached_user_libs = libs
+        return libs
+
+    def generate_hash2(self, package_list):
+        content = "\n".join(package_list).encode("utf-8")
+        return hashlib.sha256(content).hexdigest()
+
     def __main_inter_size(self):
         """Возвращает общий размер всех файлов в указанной директории в байтах."""
-        temp = tempfile.gettempdir()
-        path = Path(temp) / 'mes_libs' / 'lib_hash.pickle'
+        # temp = tempfile.gettempdir()
+        # path = Path(temp) / 'mes_libs' / 'lib_hash.pickle'
         if not os.path.exists(self.python_path): return False
         try:
-            if not subprocess.run([self.python_path, r'Z:\Setup\generate_hash.py'], check=True, encoding='utf8'):
-                return logging.error(f'[python]Не удалось актуализировать хэш у библиотек с аргументами [python={self.python_path}, hash_path={path}]')
-            usr_py_info = pickle.load(path.open('rb'))
-            usr_hash = usr_py_info.get('packages_hash')
-
+            # if not subprocess.run([self.python_path, r'Z:\Setup\generate_hash.py'], check=True, encoding='utf8'):
+            #     return logging.error(f'[python]Не удалось актуализировать хэш у библиотек с аргументами [python={self.python_path}, hash_path={path}]')
+            package_list = self.get_installed_packages()
+            usr_hash = self.generate_hash2(package_list=package_list)
             if usr_hash and len(usr_hash) == 64:
                 return usr_hash
         except Exception as e:
@@ -167,13 +265,11 @@ class LoneInterpreter:
         if not os.path.exists(self.python_path):
             return False
         try:
+            srv_info = self.server_interpreter_info
             if srv_info is None:
-                srv_info = self.get_srv_size()
-            if isinstance(srv_info, dict) and all(key in srv_info for key in ('packages', 'size')):
-                srv_packages = srv_info['packages']
-                usr_packages = self.get_installed_packages()
-                necessary_libs = set(srv_packages).difference(usr_packages)
-                return not bool(necessary_libs)
+                return False
+            necessary_libs = self.check_uninstalled_packages()
+            return not bool(necessary_libs)
         except Exception as e:
             logging.error(e)
 
@@ -188,6 +284,7 @@ class LoneInterpreter:
             extract_to = os.path.join(self.home_path, 'py')
             if self.unzip_file(filename, extract_to):
                 self.is_actual = True
+            self.info_libs_is_actual = False
         except Exception as e:
             print(e)
 
@@ -221,7 +318,61 @@ class LoneInterpreter:
         except requests.exceptions.RequestException as e:
             print(f"Ошибка при скачивании файла: {e}")
 
-    def check_python_available(self, python_path: str):
+    @validator(ValidateStates.INTER_IS_AVAILABLE)
+    def check_python_available(
+            self,
+            python_path: str | Path,
+            timeout: float = 4.0,
+    ) -> tuple[bool, str]:
+        python_exe = Path(python_path)# / "python.exe"
+
+        try:
+            result = subprocess.run(
+                [
+                    str(python_exe),
+                    "-I",  # не учитывать PYTHONPATH и пользовательские настройки
+                    "-S",  # не загружать site-packages
+                    "-B",  # не создавать __pycache__
+                    "-c",
+                    (
+                        "import sys, json; "
+                        "print(json.dumps({"
+                        "'status': 'ok', "
+                        "'version': list(sys.version_info[:3])"
+                        "}))"
+                    ),
+                ],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=timeout,
+                cwd=str(python_exe.parent),
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+        except FileNotFoundError:
+            return False, f"Python не найден: {python_exe}"
+
+        except PermissionError:
+            return False, f"Нет прав на запуск: {python_exe}"
+
+        except subprocess.TimeoutExpired:
+            return False, f"Python не ответил за {timeout} сек."
+
+        except OSError as error:
+            return False, f"Ошибка запуска Python: {error}"
+
+        if result.returncode != 0:
+            error_text = result.stderr.strip() or result.stdout.strip()
+            return False, error_text or f"Код завершения: {result.returncode}"
+
+        if '"status": "ok"' not in result.stdout:
+            return False, f"Неожиданный ответ Python: {result.stdout!r}"
+        return True, result.stdout.strip()
+
+    def check_python_available2(self, python_path: str):
         python_exec_path = str(Path(python_path) / 'python.exe')
         if not os.path.exists(python_exec_path):
             return False
@@ -232,18 +383,18 @@ class LoneInterpreter:
         except subprocess.CalledProcessError:
             return False
 
-    def get_installed_packages(self):
-        """Получаем список установленных пакетов и их версий."""
-        temp = tempfile.gettempdir()
-        path = Path(temp) / 'mes_libs' / 'lib_hash.pickle'
-        if not os.path.exists(self.python_path): return False
-        if not subprocess.run([self.python_path, r'Z:\Setup\generate_hash.py'], check=True, encoding='utf8', creationflags=subprocess.CREATE_NO_WINDOW):
-            return logging.error(
-                f'[python]Не удалось актуализировать хэш у библиотек с аргументами [python={self.python_path}, hash_path={path}]')
-        usr_py_info = pickle.load(path.open('rb'))
-        usr_packages = usr_py_info.get('packages')
-        if isinstance(usr_packages, list):
-            return usr_packages
+    # def get_installed_packages(self):
+    #     """Получаем список установленных пакетов и их версий."""
+    #     temp = tempfile.gettempdir()
+    #     path = Path(temp) / 'mes_libs' / 'lib_hash.pickle'
+    #     if not os.path.exists(self.python_path): return False
+    #     if not subprocess.run([self.python_path, r'Z:\Setup\generate_hash.py'], check=True, encoding='utf8', creationflags=subprocess.CREATE_NO_WINDOW):
+    #         return logging.error(
+    #             f'[python]Не удалось актуализировать хэш у библиотек с аргументами [python={self.python_path}, hash_path={path}]')
+    #     usr_py_info = pickle.load(path.open('rb'))
+    #     usr_packages = usr_py_info.get('packages')
+    #     if isinstance(usr_packages, list):
+    #         return usr_packages
 
     def get_py_size(self):
         return sum(
@@ -264,32 +415,88 @@ class LoneInterpreter:
         if response.ok:
             return response.json()
 
-    def download_srv_packages(self, libs: List[str]):
-        temp_dir = tempfile.gettempdir()
-        response = requests.post(f'{self.server_url}/py/packages/', json=list(libs), verify=False)
-        temp_libs = Path(temp_dir) / 'mes_libs'
-        temp_libs.mkdir(exist_ok=True, parents=True)
-        if response.ok:
+    def xcopy(self, source: str, dest: str, force: bool = False):
+        try:
+            if not force and os.path.exists(dest):
+                return True
             try:
-                with tarfile.open(fileobj=io.BytesIO(response.content), mode="r:gz") as tar:
-                    tar.extractall(str(temp_libs))
-                    for lib in libs:
-                        script_folder = Path(r'Z:\Setup') / 'install_lib.bat'
-                        lib_name, version = lib.split('==')
-                        subprocess.check_call([str(script_folder), self.python_path, str(temp_libs), lib_name, version], shell=True)
+                shutil.rmtree(dest)
             except Exception as e:
-                logging.error(f'Ошибка во время установки библиотек {libs}', exc_info=True)
+                ...
+            shutil.copy2(source, dest)
 
-    def actualize_py_libs(self):
+            return True
+        except Exception as e:
+            logging.error(f'Ошибка при копировании {source}\n в: {dest}\n', exc_info=e)
+        return False
+
+    def have_members(self, path: str):
+        try:
+            with tarfile.open(path, mode="r:gz") as tf:
+                members = tf.getmembers()
+                return len(members) > 0
+        except Exception as e:
+            logging.warning('[have_members] Ошибка', exc_info=e)
+        return False
+
+    def download_srv_packages(self, libs: List[str]):
+        self.info_libs_is_actual = False
+        temp_dir = tempfile.gettempdir()
+        tmp_folder = pathlib.Path(temp_dir) / self.INSTALL_PACKAGES_SCRIPT_NAME
+
+        script_folder = pathlib.Path(r'Z:\Setup') / self.INSTALL_PACKAGES_SCRIPT_NAME
+        response = requests.post(f'{self.server_url}/py/packages/', json=list(libs), verify=False)
+        current_day = datetime.datetime.now().strftime('%Y%m%d')
+        unique_key = hashlib.sha256(json.dumps(libs, sort_keys=True).encode('utf-8')).hexdigest() + current_day
+        temp_libs = pathlib.Path(temp_dir) / 'mes_libs' / unique_key
+        if temp_libs.exists() and self.have_members(str(temp_libs)):
+            subprocess.check_call([str(tmp_folder), self.python_path, str(temp_libs), "", ""],
+                                  shell=True)
+        else:
+            temp_libs.mkdir(exist_ok=True, parents=True)
+            if response.ok:
+                try:
+                    with tarfile.open(fileobj=io.BytesIO(response.content), mode="r:gz") as tar:
+                        tar.extractall(str(temp_libs))
+
+                        if not self.xcopy(str(script_folder), str(tmp_folder), force=True):
+                            return
+
+                        subprocess.check_call([str(tmp_folder), self.python_path, str(temp_libs), "", ""],
+                                              shell=True)
+                except Exception as e:
+                    import traceback
+                    traceback.print_exc()
+                    logging.error(f'Ошибка во время установки библиотек {libs}', exc_info=True)
+
+    def check_uninstalled_packages(self) -> List[str] | None:
+        srv_info = self.server_interpreter_info
+        if srv_info is None:
+            logging.warning('Не удалось запросить серверные библиотеки')
+            return None
+        usr_pack_ver = set(canonicalize_name(pack) for pack in self.get_installed_packages())
+        srv_pack_ver = {canonicalize_name(pack): pack for pack in srv_info['packages']}
+        necessary_libs = set(srv_pack_ver.keys()).difference(usr_pack_ver)
+        if necessary_libs:
+            return [srv_pack_ver[pack] for pack in necessary_libs]
+        return []
+
+    @property
+    def server_interpreter_info(self):
+        if self.__srv_info:
+            return self.__srv_info
         srv_info = self.get_srv_size()
         if isinstance(srv_info, dict) and all(key in srv_info for key in ('packages', 'size')):
-            srv_packages = [item.split('==')[0] for item in srv_info['packages']]
-            usr_packages = [item.split('==')[0] for item in self.get_installed_packages()]
-            necessary_libs = set(srv_packages).difference(usr_packages)
-            if necessary_libs:
-                self.download_srv_packages(necessary_libs)
-            if self.check_actual_interpreter(srv_info):
-                logging.info('Библитеки успешно обновлены')
+            self.__srv_info = srv_info
+            return srv_info
+        return None
+
+    def actualize_py_libs(self):
+        necessary_libs = self.check_uninstalled_packages()
+        if necessary_libs:
+            self.download_srv_packages(necessary_libs)
+        if self.check_actual_interpreter():
+            logging.info('Библитеки успешно обновлены')
 
     def check_python_home_version(self):
         return self.check_python_available(self.python_folder) and self.check_actual_interpreter()
@@ -297,6 +504,8 @@ class LoneInterpreter:
 
 class ProjectCust38:
     def __init__(self, window = None, project_cust_dir: str = None):
+        self.last_server_hash = None
+
         self.is_download = False
         self.content = None
         self.PUT_PO_UMOLCH = str(Path().home() / 'MES')
@@ -310,6 +519,7 @@ class ProjectCust38:
         self.BASE_URL = SRV_ADDRESS
         self.PROJECT_CUST_FILE_URL = f'{self.BASE_URL}/files/project-cust/'
         self.PROJECT_CUST_HASH_URL = f'{self.BASE_URL}/files/project-cust/hash/'
+        self.last_hash = None
 
     def __enter__(self):
         if not self.is_download:
@@ -368,10 +578,13 @@ class ProjectCust38:
     def __srv_hash(self):
         if srv_hash := os.environ.get(KEY_SRV_HASH):
             return srv_hash
+        if self.last_server_hash:
+            return self.last_server_hash
         try:
             response = requests.get(self.PROJECT_CUST_HASH_URL, timeout=3)
             response.raise_for_status()
             new_hash = response.json()
+            self.last_server_hash = new_hash
         except Exception as e:
             logging.error('[project_cust] Ошибка при запросе хэша', exc_info=e)
             return
@@ -414,8 +627,10 @@ class ProjectCust38:
             return True
         if not os.path.exists(path):
             return False
-        user_hash = self.__user_hash(path)
+        user_hash = self.last_hash = self.__user_hash(path)
         server_hash = self.__srv_hash()
+        if server_hash is None:
+            return False
         logging.info(f'[ProjectCust38.check_project_cust_38] User hash {user_hash}')
         logging.info(f'[ProjectCust38.check_project_cust_38] Server hash {server_hash}')
         return server_hash == user_hash
@@ -502,7 +717,7 @@ class Main:
         print('SRV_DIR:', srv_dir)
         self.developers = ()
         self.current_dir = usr_dir
-        self.app_executor = None
+        self.app_executor = self.app_hash = None
         self.server_dir = srv_dir
         self.app_name = app_name
         self.ip = None
@@ -519,6 +734,13 @@ class Main:
         self.ignore_files = ['Thumbs.db', self.pickle_name, '.gitignore', 'python', 'window_free.vbs', 'window.vbs', 'run.bat', 'ver', 'mini_git.py', 'remote_run.bat'] + list(SET_PY_FILES)  #  игонрируются _*
         self.ignore_dirs = ['venv', 'clients_errors', '__pycache__', '.idea', '.git', 'Scripts', 'Lib', 'project_cust_38'] + list(SET_PY_FILES)
         self.project_cust = ProjectCust38(project_cust_dir=project_cust_dir)
+
+    def dump_context(self):
+        state = ClientState(
+            MES_APP_HASH=self.app_hash,
+            MES_PROJECT_CUST_38_HASH=self.project_cust.last_hash,
+            MES_LAST_UPDATE=datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        )
 
     def push(self, no_update: bool = False):
         if no_update:
@@ -602,7 +824,7 @@ class Main:
 
     def client_actions(self):
         logging.info('[mini_git]client actions')
-
+        self.have_difference()
         if Path().absolute().drive != 'Z:':
             try: # обновление библиотек python
                 self.interpreter.actualize_py_libs()
@@ -793,6 +1015,10 @@ class Main:
             for f, h in srv_files.items():
                 if usr_files.get(f) != h:
                     print(f'{f} {usr_files.get(f)}  {h}')
+            self.app_hash = hashlib.sha256(
+                json.dumps(usr_files, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode(
+                'utf8')
+            ).hexdigest()
         except Exception as e:
             print(e)
         return not all(usr_files.get(f) == h for f, h in srv_files.items() if Path(f).name not in self.ignore_files)

@@ -13,9 +13,7 @@ import project_cust_38.Cust_Functions as F
 import project_cust_38.Cust_SQLite as CSQ
 import project_cust_38.Cust_Qt as CQT
 import project_cust_38.Cust_mes as CMS
-from lxml.etree import DTD
 from project_cust_38 import Cust_config as CFG
-from PyQt5.QtCore import QDate
 from PyQt5 import QtGui, QtCore, QtWidgets
 import gui_kal_plan as GPL
 import gui_vol_plan as VPL
@@ -1251,7 +1249,7 @@ def btn_pl_ok_add_poz_click(self, *args):
         list_add = F.trim_collection(list_add)  # 05.06.2025
         if 'пл_оуп.ПКК' not in list_add:
             CQT.msgbox(f'Таблица не содержит необходимых данных')
-            CMS.send_err_msg_dev_chat('Ошибка редактирования поля',
+            CMS.send_err_msg_dev_chat('Ошибка добавления новой позиции',
                                       [
                                           {'k': 'user', 'v': DTCLS.USER_CONFIG.User.ФИОк},
                                           {'k': 'poki', 'v': DTCLS.PLACE.poki},
@@ -1721,6 +1719,7 @@ def gui_mode_off():
     DTCLS.edit_tabel_current_month = None
     DTCLS.ADD_POZ_MODE = False
     DTCLS.EDIT_POZ_MODE = False
+    print('gui_mode_off')
 
 def _____________________LOAD_DB____________________():pass
 @CQT.onerror
@@ -5827,8 +5826,10 @@ def btn_pl_add_poz_click(self):
         self.ui.btn_pl_mode.setHidden(True)
         self.ui.tbl_pl_add_poz.setHidden(False)
         DTCLS.ADD_POZ_MODE = True
+        print('DTCLS.ADD_POZ_MODE = True')
 
     if not DTCLS.ADD_POZ_MODE:
+        gui_mode_off()
         add_poz_mode_on()
         if not load_tbl_add_new_poz(self):
             gui_mode_off()
@@ -5850,9 +5851,9 @@ def btn_pl_settings(self:mywindow):
         self.ui.fr_pl_etap.setHidden(True)
 
         DTCLS.SETTINGS_PL_MODE = True
-
+        print('DTCLS.SETTINGS_PL_MODE = True')
     if not DTCLS.SETTINGS_PL_MODE:
-
+        gui_mode_off()
         self.ui.chk_autorepeat_update_fact.blockSignals(True)
         if CMS.is_autorepeat_update_fact(CFG.Config.project.db_naryad,self.place.poki):
             self.ui.chk_autorepeat_update_fact.setChecked(True)
@@ -5960,8 +5961,10 @@ def btn_pl_edit_poz_click(self: mywindow):
         self.ui.btn_pl_mode.setHidden(True)
         self.ui.tbl_pl_add_poz.setHidden(False)
         DTCLS.EDIT_POZ_MODE = True
+        print('DTCLS.EDIT_POZ_MODE = True')
 
     if not DTCLS.EDIT_POZ_MODE:
+        gui_mode_off()
         load_tbl_edit_poz(self)
         gui_edit_poz_mode_on()
     else:

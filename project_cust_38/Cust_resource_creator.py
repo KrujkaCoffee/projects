@@ -427,7 +427,7 @@ class CurrentUser:
                 ГДЕ
                     Пользователи.Наименование = "{name}"
                 """
-        key, data_rez = APIERP.get_wet_request(req_text, lazy_method_huours=LAZY_METHOD_HUOURS)
+        key, data_rez = APIERP.get_wet_request(req_text)
         if key != 200:
             raise ConnectionError(f'Ошибка получения данных Пользователи из ERP')
 
@@ -436,7 +436,6 @@ class CurrentUser:
 
         self.name = name
         self.ref_key = data_rez['data'][0]['ref_key']
-
 
 
 

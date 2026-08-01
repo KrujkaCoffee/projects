@@ -4,6 +4,7 @@ import collections
 import enum
 import json
 import typing
+import operator
 
 from PyQt5 import QtWidgets, QtGui, QtCore
 from PyQt5.QtWinExtras import QtWin
@@ -351,7 +352,7 @@ class mywindow(QtWidgets.QMainWindow):
         CMS.dict_rc(self, self.bd_users)
         self.DICT_RC_FULL = F.deploy_dict_c(spis_rc, 'Код')
 
-        dict_tip = CSQ.custom_request_c(self.db_naryd, """SELECT * FROM Тип_мк1""", rez_dict=True)
+        dict_tip = CSQ.custom_request_c(self.db_naryd, """SELECT * FROM Тип_мк""", rez_dict=True)
         self.DICT_TIP_MK = F.deploy_dict_c(dict_tip, 'Имя')
 
         spis_status = CSQ.custom_request_c(self.db_naryd, f'SELECT DISTINCT jurnal.Статус FROM jurnal', hat_c=False, one_column=True)
@@ -755,6 +756,10 @@ class mywindow(QtWidgets.QMainWindow):
             if key_val == 16777220:
                 CMS.apply_filtr_c(self, self.ui.tbl_prosm_nar_zadan_filtr, self.ui.tbl_prosm_nar_zadan)
         if self.ui.tbl_dse.hasFocus():
+            if key_val  == QtCore.Qt.Key_Plus:
+                self.change_dse_cnt(operator.add)
+            elif key_val == QtCore.Qt.Key_Minus:
+                self.change_dse_cnt(operator.sub)
             if key_val == 16777220:
                 if self.ui.tbl_dse.currentColumn() == CQT.num_col_by_name_c(self.ui.tbl_dse, 'В работу,шт.'):
                     self.raschet_naruada_time_tmp()
@@ -912,8 +917,8 @@ class mywindow(QtWidgets.QMainWindow):
             self.DICT_ACCESS_PROJ_MONTH[month].add(item['ПУ'])
 
     @CQT.onerror
-    def tab_clcik(self, nom, *args):
-        raise Exception('test')
+    @CQT.progress_decorator
+    def tab_clcik(self, nom, hook_prog_bar, *args):
         hook_prog_bar.set(10)
         hook_prog_bar.text('Обработка')
         if CMS.kontrol_ver(self.versia, self.NAME_MODULE_BASE) == False:
@@ -1223,6 +1228,25 @@ class mywindow(QtWidgets.QMainWindow):
                     tbl.item(i, nk_vrab).setText("0")
                 else:
                     tbl.item(i, nk_vrab).setText(str(int(vrab - kol_ed)))
+
+    def change_dse_cnt(self, operator_):
+        tbl = self.ui.tbl_dse
+        nk_check = CQT.num_col_by_name_c(tbl, 'Чек')
+        nk_kol = CQT.num_col_by_name_c(tbl, 'Количество,шт.')
+        nk_vrab = CQT.num_col_by_name_c(tbl, 'В работу,шт.')
+        nk_osv = CQT.num_col_by_name_c(tbl, 'Освоено,шт.')
+
+        for i in range(tbl.rowCount()):
+            if tbl.cellWidget(i, nk_check).isChecked():
+                kol = F.valm(tbl.item(i, nk_kol).text())
+                osv = F.valm(tbl.item(i, nk_osv).text())
+                rab = F.valm(tbl.item(i, nk_vrab).text())
+                limit = kol - osv
+                new_cnt = operator_(rab, 1)
+                if new_cnt < 0 or new_cnt > limit:
+                    tbl.item(i, nk_vrab).setText(str(rab))
+                else:
+                    tbl.item(i, nk_vrab).setText(str(int(new_cnt)))
 
     @CQT.onerror
     def create_peresilniy(self, *args):

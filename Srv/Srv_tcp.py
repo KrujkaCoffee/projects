@@ -281,6 +281,33 @@ class HTTPSrv:
         start_compute_after = time.time()
         policy = self.request_cache.compute_policy(table_keys=table_keys)
         logger.debug(f'Формирование фингерпринта завершено за: {time.time() - start_compute_after:.2f} ')
+        resolved_table_keys = list(policy.get('resolved_table_keys') or [])
+        if (
+                not policy.get('identity_ok')
+                or not policy.get('cache_enabled')
+                or not resolved_table_keys
+                or not policy.get('dependency_fingerprint')
+        ):
+            # Do not rename/delete any live admin/cache row here. Ambiguous or
+            # missing identity simply makes this request non-cacheable until an
+            # explicit maintenance migration resolves it.
+            logger.warning(
+                'Кэш запроса пропущен: identity_ok=%r cache_enabled=%r '
+                'requested=%r resolved=%r missing=%r conflicts=%r',
+                policy.get('identity_ok'),
+                policy.get('cache_enabled'),
+                table_keys,
+                resolved_table_keys,
+                policy.get('missing_table_keys'),
+                policy.get('identity_conflicts'),
+            )
+            self._set_cache_headers(
+                request_key=request_key,
+                entry=None,
+                status=SQLCACHE.CACHE_STATUS.BYPASS,
+                data_sent='1',
+            )
+            return None
         store_start = time.time()
         entry = self.request_cache.store_entry(
             request_key=request_key,
@@ -295,7 +322,7 @@ class HTTPSrv:
             },
             payload=payload,
             body_hash=SQLCACHE.build_body_hash(payload),
-            table_keys=table_keys,
+            table_keys=resolved_table_keys,
             dependency_fingerprint=policy.get('dependency_fingerprint') or '',
             cache_lifetime_sec=int(policy.get('cache_lifetime_sec') or SQLCACHE.DEFAULT_CACHE_LIFETIME_SEC),
             stale_after_dt=policy.get('stale_after_dt'),

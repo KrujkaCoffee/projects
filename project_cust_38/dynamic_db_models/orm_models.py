@@ -2,10 +2,10 @@ from __future__ import annotations
 """Автогенерированный manifest схем project_cust_38."""
 
 MANIFEST = {
-    "admin_schema_hash": "89f978d9f9fe96c106771a7376fb165d1ac4bfb58cc19bbb61b9c066ce507a86",
-    "artifact_version": "89f978d9f9fe",
-    "generated_at_utc": "2026-07-08 14:12:30",
-    "generator_version": "1.1.0",
+    "admin_schema_hash": "b548ce9a9bdf91407a6d38e2858e3814cb814af75bf3b18bfd97b59414e1265b",
+    "artifact_version": "bfc76c32e3d1",
+    "generated_at_utc": "2026-07-29T09:36:12+00:00",
+    "generator_version": "1.2.0",
     "hint_names": [
         "KroFilesHint",
         "KroFilesCreateHint",
@@ -160,40 +160,6 @@ MANIFEST = {
         "MCld20271001AsSmartListCallable",
         "MCld20271001CreateCallable",
         "MCld20271001UpdateCallable",
-        "KroCausesHint",
-        "KroCausesCreateHint",
-        "KroCausesUpdateHint",
-        "KroCausesFilterHint",
-        "KroCausesQuerySetProtocol",
-        "KroCausesObjectManagerProtocol",
-        "KroCausesQueryCallable",
-        "KroCausesFilterCallable",
-        "KroCausesExcludeCallable",
-        "KroCausesGetCallable",
-        "KroCausesFirstCallable",
-        "KroCausesCountCallable",
-        "KroCausesAllCallable",
-        "KroCausesValuesCallable",
-        "KroCausesAsSmartListCallable",
-        "KroCausesCreateCallable",
-        "KroCausesUpdateCallable",
-        "NomenHint",
-        "NomenCreateHint",
-        "NomenUpdateHint",
-        "NomenFilterHint",
-        "NomenQuerySetProtocol",
-        "NomenObjectManagerProtocol",
-        "NomenQueryCallable",
-        "NomenFilterCallable",
-        "NomenExcludeCallable",
-        "NomenGetCallable",
-        "NomenFirstCallable",
-        "NomenCountCallable",
-        "NomenAllCallable",
-        "NomenValuesCallable",
-        "NomenAsSmartListCallable",
-        "NomenCreateCallable",
-        "NomenUpdateCallable",
         "JurnalHint",
         "JurnalCreateHint",
         "JurnalUpdateHint",
@@ -211,6 +177,57 @@ MANIFEST = {
         "JurnalAsSmartListCallable",
         "JurnalCreateCallable",
         "JurnalUpdateCallable",
+        "KroCausesHint",
+        "KroCausesCreateHint",
+        "KroCausesUpdateHint",
+        "KroCausesFilterHint",
+        "KroCausesQuerySetProtocol",
+        "KroCausesObjectManagerProtocol",
+        "KroCausesQueryCallable",
+        "KroCausesFilterCallable",
+        "KroCausesExcludeCallable",
+        "KroCausesGetCallable",
+        "KroCausesFirstCallable",
+        "KroCausesCountCallable",
+        "KroCausesAllCallable",
+        "KroCausesValuesCallable",
+        "KroCausesAsSmartListCallable",
+        "KroCausesCreateCallable",
+        "KroCausesUpdateCallable",
+        "NaryadHint",
+        "NaryadCreateHint",
+        "NaryadUpdateHint",
+        "NaryadFilterHint",
+        "NaryadQuerySetProtocol",
+        "NaryadObjectManagerProtocol",
+        "NaryadQueryCallable",
+        "NaryadFilterCallable",
+        "NaryadExcludeCallable",
+        "NaryadGetCallable",
+        "NaryadFirstCallable",
+        "NaryadCountCallable",
+        "NaryadAllCallable",
+        "NaryadValuesCallable",
+        "NaryadAsSmartListCallable",
+        "NaryadCreateCallable",
+        "NaryadUpdateCallable",
+        "NomenHint",
+        "NomenCreateHint",
+        "NomenUpdateHint",
+        "NomenFilterHint",
+        "NomenQuerySetProtocol",
+        "NomenObjectManagerProtocol",
+        "NomenQueryCallable",
+        "NomenFilterCallable",
+        "NomenExcludeCallable",
+        "NomenGetCallable",
+        "NomenFirstCallable",
+        "NomenCountCallable",
+        "NomenAllCallable",
+        "NomenValuesCallable",
+        "NomenAsSmartListCallable",
+        "NomenCreateCallable",
+        "NomenUpdateCallable",
         "KroAgreementStatesHint",
         "KroAgreementStatesCreateHint",
         "KroAgreementStatesUpdateHint",
@@ -273,147 +290,141 @@ MANIFEST = {
         "Подразделения",
         "ФизическиеЛица",
         "MCld20271001",
-        "KroCauses",
-        "Nomen",
         "Jurnal",
+        "KroCauses",
+        "Naryad",
+        "Nomen",
         "KroAgreementStates",
         "KroDeviations",
         "Mk"
     ],
-    "notes": "generated into C:\\srv_mes\\srv_mes\\project_cust_38\\dynamic_db_models",
-    "table_fields_hash": "185a2d6ed5ce752266c5d83a15b428566f11fc2289b3df29915191830dbd9603",
+    "notes": "generated into C:\\Users\\A.A.Fedorov\\MES\\ideal_context\\project_cust_38\\dynamic_db_models",
+    "relation_specs_hash": "80bd1e5f89625a0b15ef870b512b07adbcf2b4f7dd5065699b951891a5aefb85",
+    "table_fields_hash": "594db2a5fce6798c5231c4a9a6b6894729a487322b482220b80222e2cecc7d4e",
     "table_signatures": {
         "BD_files.kro_files": {
-            "api_hash": "ff78f1fcb1a2a55341e18434aa207b47f6f6d024ae10b42a407a4054ac168dd9",
-            "cache_hash": "6b5722aa72a55e062a579669681c15a10386f2680e2f2347ee9b501fae6d30a1",
+            "api_hash": "6c0bd03375468e4dec031a1eb6a7db09d2998269cfd2849411dcfb8d24c62ada",
+            "cache_hash": "6d2dfb5a8931350641461305c2601634ff963f8e67d41b0071a2abc0a1629c8a",
             "db_key": "BD_files",
             "table_name": "kro_files",
             "ui_hash": "19958342d1f7661512df767b74ff30e81338ec5108088cc122b66e470aeb5c73"
         },
         "BD_users.eq_2027_10_01": {
-            "api_hash": "00f13fddd974f072a87f981c81cda265a80b8e7689d3090fd942a5e5cdb30693",
+            "api_hash": "a0722a91b8aeeee338326285eda3c4c008247951ab6b4e6b3c603a7342f37441",
             "cache_hash": "f0141c35387676e156d220764551d5413d2f41e436ec6ac5b0a3da3191de906e",
             "db_key": "BD_users",
             "table_name": "eq_2027_10_01",
             "ui_hash": "c303cbe9e19d5696247f8547bd02feae03bc3bb19b21ba29c7a1551cbbb85544"
         },
         "BD_users.jurnaltdz_2027_10_01": {
-            "api_hash": "7cb424f51ac775284d6e664d505fb2c36e29d37c02b67caf405c73254078ef39",
+            "api_hash": "c75781f65bcdb1e7d78915540b6f129f73d586627939cf2f9e72a33142a6822d",
             "cache_hash": "fd8cc34d0c636d8168582f0f7eed28eb33b12251edb25ad67cd4f5f5110ff830",
             "db_key": "BD_users",
             "table_name": "jurnaltdz_2027_10_01",
             "ui_hash": "c303cbe9e19d5696247f8547bd02feae03bc3bb19b21ba29c7a1551cbbb85544"
         },
         "BD_users.mtdz_2027_10_01": {
-            "api_hash": "771f94f267a0663364f85cf7d30cf4562a7dc66a946593608c43b348073a482a",
-            "cache_hash": "a56b0b32a58db0ca34c4a55cecc86644dd4e49f2aae9606bf487e679d044c5b8",
+            "api_hash": "3c4d7998f9bf739dde56b5f474a096006500ce5f4fe51fa08b2606247cc8791d",
+            "cache_hash": "d08b3cd90744e15a006d5417eeda38e02a937bd8ccb2058cea3375aaf4a9bde7",
             "db_key": "BD_users",
             "table_name": "mtdz_2027_10_01",
             "ui_hash": "c303cbe9e19d5696247f8547bd02feae03bc3bb19b21ba29c7a1551cbbb85544"
         },
         "BD_users.rm_2027_10_01": {
-            "api_hash": "15a8dab794aa100e76c75198aa85d5806fd7b2a6b70291e57830436a9087e88f",
+            "api_hash": "297d1bb3eeffb8ca6dafd025a0475a3ba09fa1e5eefafac0393a8717de687f62",
             "cache_hash": "dceeb1505aab89f28f8cd22bbd4f0a7fc67a16889f46dd0c81fb5c700353e089",
             "db_key": "BD_users",
             "table_name": "rm_2027_10_01",
             "ui_hash": "c303cbe9e19d5696247f8547bd02feae03bc3bb19b21ba29c7a1551cbbb85544"
         },
         "BD_users.КадроваяИстория": {
-            "api_hash": "64be1242ad1029891b52dd30c5db4b3a3843a31b72a9f4376ef0dabdc5c4f74b",
-            "cache_hash": "2ac12174eef2d3033b2c6b0997762aab541b50695f5dffbdfea1669900220f21",
+            "api_hash": "484572070da01eb03b129adcf7482ccbcb1fbc42b1b461eb9a661d53d7dde1ac",
+            "cache_hash": "59bf5bc55f9ed801164da1880c03290cbdc0ca80c7b2350cfd9c9d796a8fff56",
             "db_key": "BD_users",
             "table_name": "КадроваяИстория",
             "ui_hash": "20bbeaaac5f8427af775681f7ed7ea33c9c8434330857cd4720f28a4694259d6"
         },
         "BD_users.Подразделения": {
-            "api_hash": "175dfc83ca72d3eb08d8ad2ec30bd9178b2cd1d055d673b60413df6227b4bcfd",
+            "api_hash": "e48e1143bfe4fffaa1f5eee30720049bd4c937ee31c291a514c5b1568ad68b85",
             "cache_hash": "05e660c56b684719a239b10305429c89e1eb8683833394c8252ef091717106c3",
             "db_key": "BD_users",
             "table_name": "Подразделения",
             "ui_hash": "14e6492db5667d61e853a6f95acf890baa4b90cc3683e0996d3dd7c86b4a138b"
         },
         "BD_users.ФизическиеЛица": {
-            "api_hash": "33f656d534adb7a9da3b03cfafbfa328824edfaaae98fdbdb644f3a21f7e25fb",
-            "cache_hash": "85beaa029ebd0eb5112dd7ecc4da150a96e42d83650189e5849cbd283e938491",
+            "api_hash": "3c403dee26c66dbc4b7bacfd2c46e9244da3eb1000c21a2bbf53453c4029219f",
+            "cache_hash": "d26be1355abb599b93ad740894e968c3748ec990d79c298859cbade1f789ef9a",
             "db_key": "BD_users",
             "table_name": "ФизическиеЛица",
             "ui_hash": "37457e2afa9e2d81bd10f057e7f68b18e8f7e414ed559ff1a194987518412e8c"
         },
         "DB_kplan.m_cld_2027_10_01": {
-            "api_hash": "69f68af5bd518309a09544a980868ac8ee6d4b380fda3e69000042f1fa63df3d",
-            "cache_hash": "f6b486b6b952037536579957fd3be9954840de87bdfac3443ffee2a1387102c4",
+            "api_hash": "a4bcf2b8df372e2fe94046e670949dad2e56966802c9e3a1ed866edbf92894a2",
+            "cache_hash": "4d452ff797db8bb99f9463a3eddcebcca6a04f47a952ef215fbd377af6fdb68a",
             "db_key": "DB_kplan",
             "table_name": "m_cld_2027_10_01",
             "ui_hash": "c303cbe9e19d5696247f8547bd02feae03bc3bb19b21ba29c7a1551cbbb85544"
         },
         "DB_nomenklatura_erp.nomen": {
-            "api_hash": "44ae6a643bccf4ce51ab892cb1e5cf62f8039971b4cb5ebe9461cb6d488ce4bb",
-            "cache_hash": "ad23d9a3cddd74b7cd7a004183f3883a087fbbf3349fffe1ee99d5590e98bde9",
+            "api_hash": "029fa35bbdf5fabe3d1a77d1ed9e281b22ea3016861e4afb661290d3b50555c5",
+            "cache_hash": "71e70a32b37fb6a3508b9249324a0828a11a6ed5c424771546927cc2209ef770",
             "db_key": "DB_nomenklatura_erp",
             "table_name": "nomen",
             "ui_hash": "42d40a4f9c9a60ecc0ff833369d72c9442e63853c03fc0eda8068befa3c42d90"
         },
-        "Naryad.jurnal": {
-            "api_hash": "4ff30727e1b2616bf776b28bba18746e090be3855ece30568aa98cd82fd3b613",
-            "cache_hash": "2043b51706fd0d07ab4426fea8c1dfe1b0a897a46e8911e792681e2acfea907d",
-            "db_key": "Naryad",
-            "table_name": "jurnal",
-            "ui_hash": "70337576df0d8cfd53b0d9d28e1b936120662868c707a4121de15a883a8270ad"
-        },
         "Naryad.kro_agreement_states": {
-            "api_hash": "0267be5e253ee57ee9eee8031f42340305b0266d77127f3cbe01a092cdc532f0",
-            "cache_hash": "8dff2fbf44b94f81990715cd44795cb92e6bcfd5c45572dd894404424c99e9bf",
+            "api_hash": "189f769186ad3ebda35dca5dc2837d7c07f70999ce8799880a8a8551defe6d2b",
+            "cache_hash": "cadce53fc7794ea9d587fb0142ca5641526ef2a42e99abffb8860e6df352f109",
             "db_key": "Naryad",
             "table_name": "kro_agreement_states",
             "ui_hash": "19db503df00cc53acf7cb7f561e12b8d196de0f3aab1b4b072876a7d638b2405"
         },
         "Naryad.kro_deviations": {
-            "api_hash": "d3a7e1e56249c35863a4e92a7c0f508af6ace0ba1d0c21daf7201a27b8405b44",
-            "cache_hash": "07c5a3a03774ab8134b3aebcac6cb66fdf62f97afe484a0caacc882bed8bc722",
+            "api_hash": "270ae03594a965facd11c9b42bfdf90ce54c199d98d00fde34f61cc833dd6e8d",
+            "cache_hash": "7d5658410594ac58aea62795a865fce99b5df068d8256ff9443886395667d549",
             "db_key": "Naryad",
             "table_name": "kro_deviations",
             "ui_hash": "f82dcdf68c5d7fdc17dcff03944beef7d2cebcd954b85481c7ec385ac26408f8"
         },
         "Naryad.mk": {
-            "api_hash": "bfcbae04f0aa7c0e42870d7b428839c9d9d6dc2b906aab9d804ca76306b167f6",
-            "cache_hash": "1c0b18270992e9f4effe28edeb5a66ac5a72f1e14e53b347a6141117f5f894ef",
+            "api_hash": "ac9ab40c053f286c45ce4bce5a1f00981da8925528870fbe04a73f8917d1246a",
+            "cache_hash": "00183cc3944722b09465b02f11011906a73403d63ad518de11bf17975a0fef3e",
             "db_key": "Naryad",
             "table_name": "mk",
             "ui_hash": "c1c82a5dfba1277741238310d8e28b5d9ebf08b9a054bc8320bbc838580a46b5"
         },
+        "db_naryad.jurnal": {
+            "api_hash": "d162daf61e0fe6993c3af447f82c80ca4fa0a534007db8a2303518d701bfce7f",
+            "cache_hash": "1f8d6911af51e0524959ba0c577c1099105f059396de489fca35c1c5daf22015",
+            "db_key": "db_naryad",
+            "table_name": "jurnal",
+            "ui_hash": "7e13f7d42cc0fce0bd6578f2502b6edf7b81c01d893f81fd446ce7a9a54e58ee"
+        },
         "db_naryad.kro_causes": {
-            "api_hash": "de134b335ca1b11e23c57bc5e96638ce4333db42c6e1dd7a194f695e1838d272",
+            "api_hash": "3fab5897b5f6b10c6f8817b7da83eea5ef21cfaf2b2f7913c8c5d479da2e71d0",
             "cache_hash": "e9402a7085314af4979181daf662efdfe8a52a8b4462b358b1ead6888f1e933e",
             "db_key": "db_naryad",
             "table_name": "kro_causes",
             "ui_hash": "205f10ae025c8864095ac6a4fe1e0df6797c44bd3b4ef2150b0cbd72e5400d9d"
+        },
+        "db_naryad.naryad": {
+            "api_hash": "60a57109866f2c096b753ad7c65ee5085a049fe14d0de08c13fff73fe9c8caf7",
+            "cache_hash": "b6884e06e14bcc5b43371c6c6b937df80de6f91b03b84dbcdd1fde3dd3aefd06",
+            "db_key": "db_naryad",
+            "table_name": "naryad",
+            "ui_hash": "5f4453aa7b52b85520b2adc508e06a42e8dc956a884c6dcb3d33b78fe898caa9"
         }
     }
 }
-ARTIFACT_VERSION = '89f978d9f9fe'
-GENERATED_AT_UTC = '2026-07-08 14:12:30'
+ARTIFACT_VERSION = 'bfc76c32e3d1'
+GENERATED_AT_UTC = '2026-07-29T09:36:12+00:00'
 
 
 from typing import TYPE_CHECKING, ClassVar
 
 from project_cust_38.Cust_orm import BaseModel, IntField, FloatField, StrField, BoolField, DateTimeField, BlobField, JsonTextField, ListTextField
+from project_cust_38.context_relations import Relationship, RelationFieldPair
 from .orm_hints import *
-from project_cust_38 import Cust_config as CFG         #noqa
-from project_cust_38 import Cust_client_socket as CCS  # noqa
-
-def db(db_key: str):
-    def wrap():
-        alias_instance = getattr(CCS.Servers, db_key, None)
-        if alias_instance:
-            db_alias = alias_instance.alias
-        else:
-            db_alias = f"{db_key}.db"
-        server = CCS.Servers[db_alias]
-        if server is None:
-            print(f"[Cust_orm] Ключ сервера: {db_key!r} не найден!")
-            return server
-        return server
-    return wrap
 
 class KroFiles(BaseModel[KroFilesHint]): # noqa
     if TYPE_CHECKING:
@@ -428,7 +439,10 @@ class KroFiles(BaseModel[KroFilesHint]): # noqa
         update: "KroFilesUpdateCallable"
 
     __table__ = 'kro_files'
-    __db__ = db('BD_files')
+    __db_key__ = 'BD_files'
+    __canonical_db_key__ = 'BD_files'
+    __table_key__ = 'BD_files.kro_files'
+    __db__ = 'SRV:BD_files.db'
     __pk__ = 'id'
     ALIASES = {
     "byte_data_packed": "byte_data_packed",
@@ -459,7 +473,10 @@ class Eq20271001(BaseModel[Eq20271001Hint]): # noqa
         update: "Eq20271001UpdateCallable"
 
     __table__ = 'eq_2027_10_01'
-    __db__ = db('BD_users')
+    __db_key__ = 'BD_users'
+    __canonical_db_key__ = 'BD_users'
+    __table_key__ = 'BD_users.eq_2027_10_01'
+    __db__ = 'SRV:BD_users.db'
     __pk__ = 'id'
     ALIASES = {}
 
@@ -478,7 +495,10 @@ class Jurnaltdz20271001(BaseModel[Jurnaltdz20271001Hint]): # noqa
         update: "Jurnaltdz20271001UpdateCallable"
 
     __table__ = 'jurnaltdz_2027_10_01'
-    __db__ = db('BD_users')
+    __db_key__ = 'BD_users'
+    __canonical_db_key__ = 'BD_users'
+    __table_key__ = 'BD_users.jurnaltdz_2027_10_01'
+    __db__ = 'SRV:BD_users.db'
     __pk__ = 'id'
     ALIASES = {}
 
@@ -497,7 +517,10 @@ class Mtdz20271001(BaseModel[Mtdz20271001Hint]): # noqa
         update: "Mtdz20271001UpdateCallable"
 
     __table__ = 'mtdz_2027_10_01'
-    __db__ = db('BD_users')
+    __db_key__ = 'BD_users'
+    __canonical_db_key__ = 'BD_users'
+    __table_key__ = 'BD_users.mtdz_2027_10_01'
+    __db__ = 'SRV:BD_users.db'
     __pk__ = 'id'
     ALIASES = {}
 
@@ -516,7 +539,10 @@ class Rm20271001(BaseModel[Rm20271001Hint]): # noqa
         update: "Rm20271001UpdateCallable"
 
     __table__ = 'rm_2027_10_01'
-    __db__ = db('BD_users')
+    __db_key__ = 'BD_users'
+    __canonical_db_key__ = 'BD_users'
+    __table_key__ = 'BD_users.rm_2027_10_01'
+    __db__ = 'SRV:BD_users.db'
     __pk__ = 'id'
     ALIASES = {}
 
@@ -535,7 +561,10 @@ class КадроваяИстория(BaseModel[КадроваяИсторияHin
         update: "КадроваяИсторияUpdateCallable"
 
     __table__ = 'КадроваяИстория'
-    __db__ = db('BD_users')
+    __db_key__ = 'BD_users'
+    __canonical_db_key__ = 'BD_users'
+    __table_key__ = 'BD_users.КадроваяИстория'
+    __db__ = 'SRV:BD_users.db'
     __pk__ = 'id'
     ALIASES = {
     "id": "id",
@@ -576,7 +605,10 @@ class Подразделения(BaseModel[ПодразделенияHint]): # n
         update: "ПодразделенияUpdateCallable"
 
     __table__ = 'Подразделения'
-    __db__ = db('BD_users')
+    __db_key__ = 'BD_users'
+    __canonical_db_key__ = 'BD_users'
+    __table_key__ = 'BD_users.Подразделения'
+    __db__ = 'SRV:BD_users.db'
     __pk__ = 'id'
     ALIASES = {
     "for_deletion": "for_deletion",
@@ -605,7 +637,10 @@ class ФизическиеЛица(BaseModel[ФизическиеЛицаHint]):
         update: "ФизическиеЛицаUpdateCallable"
 
     __table__ = 'ФизическиеЛица'
-    __db__ = db('BD_users')
+    __db_key__ = 'BD_users'
+    __canonical_db_key__ = 'BD_users'
+    __table_key__ = 'BD_users.ФизическиеЛица'
+    __db__ = 'SRV:BD_users.db'
     __pk__ = 'id'
     ALIASES = {
     "computer_name": "computer_name",
@@ -650,11 +685,66 @@ class MCld20271001(BaseModel[MCld20271001Hint]): # noqa
         update: "MCld20271001UpdateCallable"
 
     __table__ = 'm_cld_2027_10_01'
-    __db__ = db('DB_kplan')
+    __db_key__ = 'DB_kplan'
+    __canonical_db_key__ = 'DB_kplan'
+    __table_key__ = 'DB_kplan.m_cld_2027_10_01'
+    __db__ = 'SRV:DB_kplan.db'
     __pk__ = 'id'
     ALIASES = {}
 
     pass
+
+class Jurnal(BaseModel[JurnalHint]): # noqa
+    if TYPE_CHECKING:
+        object_manager: ClassVar["JurnalObjectManagerProtocol"]
+        query: ClassVar["JurnalQueryCallable"]
+        filter: ClassVar["JurnalFilterCallable"]
+        exclude: ClassVar["JurnalExcludeCallable"]
+        get: ClassVar["JurnalGetCallable"]
+        count: ClassVar["JurnalCountCallable"]
+        values: ClassVar["JurnalValuesCallable"]
+        create: ClassVar["JurnalCreateCallable"]
+        update: "JurnalUpdateCallable"
+
+    __table__ = 'jurnal'
+    __db_key__ = 'db_naryad'
+    __canonical_db_key__ = 'Naryad'
+    __table_key__ = 'db_naryad.jurnal'
+    __db__ = 'SRV:Naryad.db'
+    __pk__ = 'Пномер'
+    ALIASES = {
+    "base_ERP": "base_ERP",
+    "Дата": "Дата",
+    "Дата_выгрузки_ЕРП": "Дата_выгрузки_ЕРП",
+    "Минут_выгружено_ЕРП": "Минут_выгружено_ЕРП",
+    "Ном_заверш": "Ном_заверш",
+    "Номер_наряда": "Номер_наряда",
+    "Пномер": "Пномер",
+    "Подытог": "Подытог",
+    "Подытог_нормы": "Подытог_нормы",
+    "Примечание": "Примечание",
+    "Статус": "Статус",
+    "ФИО": "ФИО",
+    "ФИО_выгрузки_ЕРП": "ФИО_выгрузки_ЕРП",
+    "Файл_выгрузки_ЕРП": "Файл_выгрузки_ЕРП",
+    "Штамп": "Штамп"
+}
+
+    Пномер: int = IntField(db_column='Пномер', default=None, nullable=False, primary_key=True)
+    Дата: str | None = StrField(db_column='Дата', default=None, nullable=True, primary_key=False)
+    Штамп: float | None = FloatField(db_column='Штамп', default=None, nullable=True, primary_key=False)
+    Номер_наряда: int | None = IntField(db_column='Номер_наряда', default=None, nullable=True, primary_key=False)
+    ФИО: str | None = StrField(db_column='ФИО', default=None, nullable=True, primary_key=False)
+    Подытог: float | None = FloatField(db_column='Подытог', default=None, nullable=True, primary_key=False)
+    Подытог_нормы: float | None = FloatField(db_column='Подытог_нормы', default=None, nullable=True, primary_key=False)
+    Статус: str | None = StrField(db_column='Статус', default=None, nullable=True, primary_key=False)
+    Примечание: str | None = StrField(db_column='Примечание', default=None, nullable=True, primary_key=False)
+    Ном_заверш: int | None = IntField(db_column='Ном_заверш', default=None, nullable=True, primary_key=False)
+    Дата_выгрузки_ЕРП: str | None = StrField(db_column='Дата_выгрузки_ЕРП', default=None, nullable=True, primary_key=False)
+    ФИО_выгрузки_ЕРП: str | None = StrField(db_column='ФИО_выгрузки_ЕРП', default=None, nullable=True, primary_key=False)
+    Файл_выгрузки_ЕРП: bytes | None = BlobField(db_column='Файл_выгрузки_ЕРП', default=None, nullable=True, primary_key=False)
+    Минут_выгружено_ЕРП: float | None = FloatField(db_column='Минут_выгружено_ЕРП', default=None, nullable=True, primary_key=False)
+    base_ERP: int | None = IntField(db_column='base_ERP', default=None, nullable=True, primary_key=False)
 
 class KroCauses(BaseModel[KroCausesHint]): # noqa
     if TYPE_CHECKING:
@@ -669,7 +759,10 @@ class KroCauses(BaseModel[KroCausesHint]): # noqa
         update: "KroCausesUpdateCallable"
 
     __table__ = 'kro_causes'
-    __db__ = db('db_naryad')
+    __db_key__ = 'db_naryad'
+    __canonical_db_key__ = 'Naryad'
+    __table_key__ = 'db_naryad.kro_causes'
+    __db__ = 'SRV:Naryad.db'
     __pk__ = 'id'
     ALIASES = {
     "descr": "descr",
@@ -682,6 +775,112 @@ class KroCauses(BaseModel[KroCausesHint]): # noqa
     name: str | None = StrField(db_column='name', default=None, nullable=True, primary_key=False)
     text: str | None = StrField(db_column='text', default=None, nullable=True, primary_key=False)
     descr: str | None = StrField(db_column='descr', default=None, nullable=True, primary_key=False)
+
+class Naryad(BaseModel[NaryadHint]): # noqa
+    if TYPE_CHECKING:
+        object_manager: ClassVar["NaryadObjectManagerProtocol"]
+        query: ClassVar["NaryadQueryCallable"]
+        filter: ClassVar["NaryadFilterCallable"]
+        exclude: ClassVar["NaryadExcludeCallable"]
+        get: ClassVar["NaryadGetCallable"]
+        count: ClassVar["NaryadCountCallable"]
+        values: ClassVar["NaryadValuesCallable"]
+        create: ClassVar["NaryadCreateCallable"]
+        update: "NaryadUpdateCallable"
+
+    __table__ = 'naryad'
+    __db_key__ = 'db_naryad'
+    __canonical_db_key__ = 'Naryad'
+    __table_key__ = 'db_naryad.naryad'
+    __db__ = 'SRV:Naryad.db'
+    __pk__ = 'Пномер'
+    ALIASES = {
+    "month_closing_block": "month_closing_block",
+    "АвтоПодтвержд": "АвтоПодтвержд",
+    "Автор": "Автор",
+    "Аутсорсинг": "Аутсорсинг",
+    "Виды_работ": "Виды_работ",
+    "Внеплан": "Внеплан",
+    "ДСЕ": "ДСЕ",
+    "ДСЕ_ID": "ДСЕ_ID",
+    "Дата": "Дата",
+    "Заводской_комплект": "Заводской_комплект",
+    "Задание": "Задание",
+    "Категория_внепл": "Категория_внепл",
+    "Кол_повт_приемок": "Кол_повт_приемок",
+    "Компл_Дата": "Компл_Дата",
+    "Компл_ФИО": "Компл_ФИО",
+    "Компл_адрес": "Компл_адрес",
+    "Компл_номер_тара": "Компл_номер_тара",
+    "Коэф_норм_созд": "Коэф_норм_созд",
+    "Коэфф_сложности": "Коэфф_сложности",
+    "Номер_замечания_журнал": "Номер_замечания_журнал",
+    "Номер_мк": "Номер_мк",
+    "Норма_времени": "Норма_времени",
+    "Обособленная_расценка": "Обособленная_расценка",
+    "Опер_время": "Опер_время",
+    "Опер_колво": "Опер_колво",
+    "Операции": "Операции",
+    "Пномер": "Пномер",
+    "Подтвержд_вып": "Подтвержд_вып",
+    "Подтвержд_вып_дата": "Подтвержд_вып_дата",
+    "Подтвержд_вып_фио": "Подтвержд_вып_фио",
+    "Примечание": "Примечание",
+    "Профессии": "Профессии",
+    "РЦ_наряд": "РЦ_наряд",
+    "Распред_ФИО": "Распред_ФИО",
+    "Распред_дата": "Распред_дата",
+    "Твремя": "Твремя",
+    "ФИО": "ФИО",
+    "ФИО2": "ФИО2",
+    "ФИО_для_ОТК": "ФИО_для_ОТК",
+    "ФИО_для_ОТК_от_мастера": "ФИО_для_ОТК_от_мастера",
+    "Фвремя": "Фвремя",
+    "Фвремя2": "Фвремя2"
+}
+
+    Пномер: int = IntField(db_column='Пномер', default=None, nullable=False, primary_key=True)
+    Дата: str | None = StrField(db_column='Дата', default=None, nullable=True, primary_key=False)
+    Автор: str | None = StrField(db_column='Автор', default=None, nullable=True, primary_key=False)
+    Номер_мк: int | None = IntField(db_column='Номер_мк', default=None, nullable=True, primary_key=False)
+    Внеплан: int | None = IntField(db_column='Внеплан', default=None, nullable=True, primary_key=False)
+    Задание: str | None = StrField(db_column='Задание', default=None, nullable=True, primary_key=False)
+    Компл_ФИО: str | None = StrField(db_column='Компл_ФИО', default=None, nullable=True, primary_key=False)
+    Компл_Дата: str | None = StrField(db_column='Компл_Дата', default=None, nullable=True, primary_key=False)
+    Компл_номер_тара: str | None = StrField(db_column='Компл_номер_тара', default=None, nullable=True, primary_key=False)
+    Компл_адрес: str | None = StrField(db_column='Компл_адрес', default=None, nullable=True, primary_key=False)
+    Распред_ФИО: str | None = StrField(db_column='Распред_ФИО', default=None, nullable=True, primary_key=False)
+    ФИО: str | None = StrField(db_column='ФИО', default=None, nullable=True, primary_key=False)
+    Фвремя: float | None = FloatField(db_column='Фвремя', default=None, nullable=True, primary_key=False)
+    ФИО2: str | None = StrField(db_column='ФИО2', default=None, nullable=True, primary_key=False)
+    Фвремя2: float | None = FloatField(db_column='Фвремя2', default=None, nullable=True, primary_key=False)
+    Твремя: float | None = FloatField(db_column='Твремя', default=None, nullable=True, primary_key=False)
+    Норма_времени: float | None = FloatField(db_column='Норма_времени', default=None, nullable=True, primary_key=False)
+    ДСЕ: str | None = StrField(db_column='ДСЕ', default=None, nullable=True, primary_key=False)
+    ДСЕ_ID: str | None = StrField(db_column='ДСЕ_ID', default=None, nullable=True, primary_key=False)
+    Операции: str | None = StrField(db_column='Операции', default=None, nullable=True, primary_key=False)
+    Опер_время: str | None = StrField(db_column='Опер_время', default=None, nullable=True, primary_key=False)
+    Опер_колво: str | None = StrField(db_column='Опер_колво', default=None, nullable=True, primary_key=False)
+    Примечание: str | None = StrField(db_column='Примечание', default=None, nullable=True, primary_key=False)
+    Коэфф_сложности: float | None = FloatField(db_column='Коэфф_сложности', default=None, nullable=True, primary_key=False)
+    Подтвержд_вып: int | None = IntField(db_column='Подтвержд_вып', default=None, nullable=True, primary_key=False)
+    Категория_внепл: int | None = IntField(db_column='Категория_внепл', default=None, nullable=True, primary_key=False)
+    Виды_работ: str | None = StrField(db_column='Виды_работ', default=None, nullable=True, primary_key=False)
+    Номер_замечания_журнал: str | None = StrField(db_column='Номер_замечания_журнал', default=None, nullable=True, primary_key=False)
+    Подтвержд_вып_дата: str | None = StrField(db_column='Подтвержд_вып_дата', default=None, nullable=True, primary_key=False)
+    Подтвержд_вып_фио: str | None = StrField(db_column='Подтвержд_вып_фио', default=None, nullable=True, primary_key=False)
+    Профессии: str | None = StrField(db_column='Профессии', default=None, nullable=True, primary_key=False)
+    РЦ_наряд: str | None = StrField(db_column='РЦ_наряд', default=None, nullable=True, primary_key=False)
+    ФИО_для_ОТК: str | None = StrField(db_column='ФИО_для_ОТК', default=None, nullable=True, primary_key=False)
+    ФИО_для_ОТК_от_мастера: str | None = StrField(db_column='ФИО_для_ОТК_от_мастера', default=None, nullable=True, primary_key=False)
+    Коэф_норм_созд: float | None = FloatField(db_column='Коэф_норм_созд', default=None, nullable=True, primary_key=False)
+    Аутсорсинг: int | None = IntField(db_column='Аутсорсинг', default=None, nullable=True, primary_key=False)
+    Обособленная_расценка: int | None = IntField(db_column='Обособленная_расценка', default=None, nullable=True, primary_key=False)
+    Заводской_комплект: str | None = StrField(db_column='Заводской_комплект', default=None, nullable=True, primary_key=False)
+    Кол_повт_приемок: int = IntField(db_column='Кол_повт_приемок', default=0, nullable=False, primary_key=False)
+    Распред_дата: str | None = StrField(db_column='Распред_дата', default=None, nullable=True, primary_key=False)
+    month_closing_block: str | None = StrField(db_column='month_closing_block', default=None, nullable=True, primary_key=False)
+    АвтоПодтвержд: int | None = IntField(db_column='АвтоПодтвержд', default=None, nullable=True, primary_key=False)
 
 class Nomen(BaseModel[NomenHint]): # noqa
     if TYPE_CHECKING:
@@ -696,7 +895,10 @@ class Nomen(BaseModel[NomenHint]): # noqa
         update: "NomenUpdateCallable"
 
     __table__ = 'nomen'
-    __db__ = db('DB_nomenklatura_erp')
+    __db_key__ = 'DB_nomenklatura_erp'
+    __canonical_db_key__ = 'DB_nomenklatura_erp'
+    __table_key__ = 'DB_nomenklatura_erp.nomen'
+    __db__ = 'SRV:DB_nomenklatura_erp.db'
     __pk__ = 'Пномер'
     ALIASES = {
     "Ref_Key": "Ref_Key",
@@ -746,55 +948,6 @@ class Nomen(BaseModel[NomenHint]): # noqa
     poki: int | None = IntField(db_column='poki', default=None, nullable=True, primary_key=False)
     Вид_Ref_Key: str | None = StrField(db_column='Вид_Ref_Key', default=None, nullable=True, primary_key=False)
 
-class Jurnal(BaseModel[JurnalHint]): # noqa
-    if TYPE_CHECKING:
-        object_manager: ClassVar["JurnalObjectManagerProtocol"]
-        query: ClassVar["JurnalQueryCallable"]
-        filter: ClassVar["JurnalFilterCallable"]
-        exclude: ClassVar["JurnalExcludeCallable"]
-        get: ClassVar["JurnalGetCallable"]
-        count: ClassVar["JurnalCountCallable"]
-        values: ClassVar["JurnalValuesCallable"]
-        create: ClassVar["JurnalCreateCallable"]
-        update: "JurnalUpdateCallable"
-
-    __table__ = 'jurnal'
-    __db__ = db('Naryad')
-    __pk__ = 'Пномер'
-    ALIASES = {
-    "base_ERP": "base_ERP",
-    "Дата": "Дата",
-    "Дата_выгрузки_ЕРП": "Дата_выгрузки_ЕРП",
-    "Минут_выгружено_ЕРП": "Минут_выгружено_ЕРП",
-    "Ном_заверш": "Ном_заверш",
-    "Номер_наряда": "Номер_наряда",
-    "Пномер": "Пномер",
-    "Подытог": "Подытог",
-    "Подытог_нормы": "Подытог_нормы",
-    "Примечание": "Примечание",
-    "Статус": "Статус",
-    "ФИО": "ФИО",
-    "ФИО_выгрузки_ЕРП": "ФИО_выгрузки_ЕРП",
-    "Файл_выгрузки_ЕРП": "Файл_выгрузки_ЕРП",
-    "Штамп": "Штамп"
-}
-
-    Пномер: int = IntField(db_column='Пномер', default=None, nullable=False, primary_key=True)
-    Дата: str | None = StrField(db_column='Дата', default=None, nullable=True, primary_key=False)
-    Штамп: float | None = FloatField(db_column='Штамп', default=None, nullable=True, primary_key=False)
-    Номер_наряда: int | None = IntField(db_column='Номер_наряда', default=None, nullable=True, primary_key=False)
-    ФИО: str | None = StrField(db_column='ФИО', default=None, nullable=True, primary_key=False)
-    Подытог: float | None = FloatField(db_column='Подытог', default=None, nullable=True, primary_key=False)
-    Подытог_нормы: float | None = FloatField(db_column='Подытог_нормы', default=None, nullable=True, primary_key=False)
-    Статус: str | None = StrField(db_column='Статус', default=None, nullable=True, primary_key=False)
-    Примечание: str | None = StrField(db_column='Примечание', default=None, nullable=True, primary_key=False)
-    Ном_заверш: int | None = IntField(db_column='Ном_заверш', default=None, nullable=True, primary_key=False)
-    Дата_выгрузки_ЕРП: str | None = StrField(db_column='Дата_выгрузки_ЕРП', default=None, nullable=True, primary_key=False)
-    ФИО_выгрузки_ЕРП: str | None = StrField(db_column='ФИО_выгрузки_ЕРП', default=None, nullable=True, primary_key=False)
-    Файл_выгрузки_ЕРП: bytes | None = BlobField(db_column='Файл_выгрузки_ЕРП', default=None, nullable=True, primary_key=False)
-    Минут_выгружено_ЕРП: float | None = FloatField(db_column='Минут_выгружено_ЕРП', default=None, nullable=True, primary_key=False)
-    base_ERP: int | None = IntField(db_column='base_ERP', default=None, nullable=True, primary_key=False)
-
 class KroAgreementStates(BaseModel[KroAgreementStatesHint]): # noqa
     if TYPE_CHECKING:
         object_manager: ClassVar["KroAgreementStatesObjectManagerProtocol"]
@@ -808,7 +961,10 @@ class KroAgreementStates(BaseModel[KroAgreementStatesHint]): # noqa
         update: "KroAgreementStatesUpdateCallable"
 
     __table__ = 'kro_agreement_states'
-    __db__ = db('Naryad')
+    __db_key__ = 'Naryad'
+    __canonical_db_key__ = 'Naryad'
+    __table_key__ = 'Naryad.kro_agreement_states'
+    __db__ = 'SRV:Naryad.db'
     __pk__ = 'id'
     ALIASES = {
     "agreement_id": "agreement_id",
@@ -843,7 +999,10 @@ class KroDeviations(BaseModel[KroDeviationsHint]): # noqa
         update: "KroDeviationsUpdateCallable"
 
     __table__ = 'kro_deviations'
-    __db__ = db('Naryad')
+    __db_key__ = 'Naryad'
+    __canonical_db_key__ = 'Naryad'
+    __table_key__ = 'Naryad.kro_deviations'
+    __db__ = 'SRV:Naryad.db'
     __pk__ = 'id'
     ALIASES = {
     "after_file_id": "after_file_id",
@@ -876,7 +1035,10 @@ class Mk(BaseModel[MkHint]): # noqa
         update: "MkUpdateCallable"
 
     __table__ = 'mk'
-    __db__ = db('Naryad')
+    __db_key__ = 'Naryad'
+    __canonical_db_key__ = 'Naryad'
+    __table_key__ = 'Naryad.mk'
+    __db__ = 'SRV:Naryad.db'
     __pk__ = 'Пномер'
     ALIASES = {
     "check_execute_opers": "check_execute_opers",
@@ -944,6 +1106,20 @@ class Mk(BaseModel[MkHint]): # noqa
     ТипВыгрузкиТрЗт: int | None = IntField(db_column='ТипВыгрузкиТрЗт', default=None, nullable=True, primary_key=False)
     xml_with_pki: float | None = FloatField(db_column='xml_with_pki', default=None, nullable=True, primary_key=False)
 
+    naryads: list[Naryad] | None = Relationship(
+        'Naryad',
+        relation_key='rel_naryad_mk_to_db_naryad_naryad',
+        field_pairs=(
+            RelationFieldPair('Пномер', 'Номер_мк', role='direct', operator='=', pair_join_type=''),
+        ),
+        cardinality='one_to_many',
+        missing_policy='none',
+        join_type='LEFT JOIN',
+        on_many='error',
+        select_prefix='naryads',
+        notes='Черновик связи. Будет записан после сохранения связи и пар полей.',
+    )
+
 __all__ = [
     "KroFiles",
     "Eq20271001",
@@ -954,9 +1130,10 @@ __all__ = [
     "Подразделения",
     "ФизическиеЛица",
     "MCld20271001",
-    "KroCauses",
-    "Nomen",
     "Jurnal",
+    "KroCauses",
+    "Naryad",
+    "Nomen",
     "KroAgreementStates",
     "KroDeviations",
     "Mk"
