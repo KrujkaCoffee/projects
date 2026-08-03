@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import pickle
 
 if __name__ == "__main__":
     import sys
@@ -82,9 +81,9 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
         DTCLS.init_data()
 
         DTCLS.module_manage_sub_app.shablons_res = CLSS.ShablonsRes()
-        self.load_s_shab(CLSS.Type_entitys.Res)
+        self.load_s_shab(CLSS.Type_entitys.Res,True)
         DTCLS.module_manage_sub_app.shablons_eve = CLSS.ShablonsEve()
-        self.load_s_shab(CLSS.Type_entitys.Eve)
+        self.load_s_shab(CLSS.Type_entitys.Eve,True)
         DTCLS.module_manage_sub_app.info_o = CLSS.Info(self.ui.tbl_info,self.ui.btn_info_ok,self.ui.btn_info_cansel)
         DTCLS.module_manage_sub_app.resources = CLSS.Resources()
         self.load_resources(True)
@@ -94,6 +93,8 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
         self.load_crosses(True)
 
         self.fill_cmb_reports()
+        DTCLS.module_manage_sub_app.user_config_sub_plan = CLSS.UserConfigSubPlan()
+        DTCLS.module_manage_sub_app.user_config_sub_plan.load_config()
 
     def _load_free_css(self):
         theme_path = F.sep().join([F.path_to_execut_file_c(), 'css'])
@@ -408,6 +409,9 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
             F.save_file_pickle(file_name, data)
 
     def load_s_shab(self,current_settings_mode:CLSS.Type_entity, reload_ui=False):
+        if reload_ui:
+            CQT.soft_clear_tbl(self.ui.tbl_s_list_shabl)
+
         name = current_settings_mode.name
         name_pl = DTSUB.subj_pl.name
         file_name = f"{name}_{name_pl}.json"
@@ -515,7 +519,7 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
         if DTSUB.current_focus_type is CLSS.FocusTypes.EVENT:
             mnger_shablons = DTSUB.shablons_eve
             mnger_dims = DTSUB.events
-        if DTCLS.curren_frame is CLSS.FocusTypes.RESOURCE:
+        if DTSUB.current_focus_type is CLSS.FocusTypes.RESOURCE:
             mnger_shablons = DTSUB.shablons_res
             mnger_dims = DTSUB.resources
 
@@ -527,11 +531,18 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
             CQT.msgbox("Нет шаблонов")
             return
         def fnc_oform_tbl(tbl:CQT.QtWidgets.QTableWidget,*args,**kwargs):
+            if DTSUB.current_focus_type is CLSS.FocusTypes.EVENT:
+                mnger_shablons = DTSUB.shablons_eve
+
+            if DTSUB.current_focus_type is CLSS.FocusTypes.RESOURCE:
+                mnger_shablons = DTSUB.shablons_res
+
             t = CQT.TableContext(tbl)
             for row in t.rows():
-                clr_o = row.value('color',get_cust_content=True)
-
-                row.set_color_background(*clr_o.rgba,'color')
+                id = int( row.value('id',get_cust_content=True))
+                obj = mnger_shablons.get(id)
+                clr_o = obj.color.value
+                row.set_color_background(*clr_o.rgba,'name')
             t.hide_if_not_dev(CFG,forced_text=True)
 
         shabl = CQT.msgboxg_get_table(self,'Выбор шаблона',list_shabl,styleSheet=CQT.MES_EDIT_CSS,selectRows=True,
@@ -581,6 +592,8 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
             self.list_resources_reload()
         if self.ui.tbl_events.hasFocus():
             self.list_events_reload()
+        if self.ui.tbl_gr.hasFocus():
+            self.select_report()
 
 
     def ____________resources__________________(self):
@@ -603,8 +616,11 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
             self.info_resource(resource_o)
         self.apply_cross_filter(id_res=id)
     @CQT.onerror()
-    def list_resources_reload(self):
-        template_list,template_list_data,template_aliases  = DTSUB.resources.template_list()
+    def list_resources_reload(self,clear=False):
+        if clear:
+            template_list, template_list_data, template_aliases = ([], [], {})
+        else:
+            template_list,template_list_data,template_aliases  = DTSUB.resources.template_list()
         tbl = self.ui.tbl_resuorces
         CQT.fill_wtabl(template_list,tbl,styleSheet=CQT.MES_EDIT_CSS,dict_or_list_user_data=template_list_data,
                        aliases_header=template_aliases,auto_type=True,sortingEnabled=True,selectionBehavior='SelectRows')
@@ -628,6 +644,9 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
             F.save_file_pickle(file_name, data)
 
     def load_resources(self, reload_ui=False):
+        if reload_ui:
+            self.list_resources_reload(clear=True)
+
         name = DTSUB.subj_pl.name
         file_name = f"{name}_resources.json"
         if not F.existence_file_c(file_name):
@@ -674,6 +693,8 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
 
 
     def load_events(self, reload_ui=False):
+        if reload_ui:
+            self.list_events_reload(clear=True)
         name = DTSUB.subj_pl.name
         file_name = f"{name}_events.json"
         if not F.existence_file_c(file_name):
@@ -688,8 +709,11 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
 
 
     @CQT.onerror()
-    def list_events_reload(self):
-        template_list,template_list_data,template_aliases  = DTSUB.events.template_list()
+    def list_events_reload(self,clear=False):
+        if clear:
+            template_list, template_list_data, template_aliases = ([],[],{})
+        else:
+            template_list,template_list_data,template_aliases  = DTSUB.events.template_list()
         tbl = self.ui.tbl_events
         CQT.fill_wtabl(template_list,tbl,styleSheet=CQT.MES_EDIT_CSS,dict_or_list_user_data=template_list_data,
                        aliases_header=template_aliases,auto_type=True,sortingEnabled=True,selectionBehavior='SelectRows')
@@ -732,10 +756,14 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
 
 
     @CQT.onerror()
-    def list_crosses_reload(self):
+    def list_crosses_reload(self,clear=False):
+
         by_res = DTSUB.filtr_cross_by_res
         by_eve = DTSUB.filtr_cross_by_eve
-        template_list,template_list_data,template_aliases  = DTSUB.crosses.template_list(by_res=by_res,by_eve=by_eve)
+        if clear:
+            template_list, template_list_data, template_aliases = ([],[],{})
+        else:
+            template_list,template_list_data,template_aliases  = DTSUB.crosses.template_list(by_res=by_res,by_eve=by_eve)
         for it in template_list:
             id_eve = it['eve']
             eve:CLSS.Event = DTSUB.events.get(id_eve)
@@ -824,6 +852,8 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
             F.save_file_pickle(file_name, data)
 
     def load_crosses(self, reload_ui=False):
+        if reload_ui:
+            self.list_crosses_reload(clear=True)
         name = DTSUB.subj_pl.name
         file_name = f"{name}_crosses.json"
         if not F.existence_file_c(file_name):
@@ -838,33 +868,80 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
 
     def ____________outputs__________________(self):
         pass
+
+    @staticmethod
+    @CQT.onerror
+    def apply_user_config(name_gr, list_text, list_data, sort=True, filter=True)->tuple[list, list]:
+        def filter_and_sort(list_data, sort=True, filter=True):
+            new_list_data = list_data
+            if filter:
+                new_list_data = [{k: v for k, v in _.items() if k not in ucfg or (k in ucfg and ucfg[k].enable)} for _
+                                 in new_list_data]
+            if sort:
+                new_list_data = [F.sort_dict_by_sample(_, ucfg) for _ in new_list_data]
+            return new_list_data
+
+        ucfg: dict[str, CLSS.UserConfigSubPlanElement] = DTSUB.user_config_sub_plan.oform_reports[name_gr]
+        list_text = filter_and_sort(list_text, sort=sort, filter=filter)
+        list_data = filter_and_sort(list_data, sort=sort, filter=filter)
+        return list_text, list_data
+
     @CQT.onerror
     def select_report(self):
         t = CQT.TableContext(self.ui.tbl_gr)
         CQT.clear_tbl(t.tbl)
-        data = CQT.get_cmb_current_data(self.ui.cmb_type_gr)
-        if not data:
+        name_gr = CQT.get_cmb_current_data(self.ui.cmb_type_gr)
+        if not name_gr:
             return
-        if data == 'table':
-            list_crosses = CLSS.CrossManager.get_ordered_data(DTSUB.resources,DTSUB.events,DTSUB.crosses)
-            with open(r'C:\Users\A.A.Fedorov\MES\ideal_context\list_crosses.pickle', 'rb') as f:
-                list_crosses = pickle.load(f)
-            dict_text,dict_data, dict_aliases = CLSS.CrossManager.templates(list_crosses)
-            F.save_file_pickle('list_crosses.pickle', list_crosses)
-            CQT.fill_wtabl(dict_text,self.ui.tbl_gr,styleSheet=CQT.MES_EDIT_CSS,dict_or_list_user_data = dict_data,
+        list_crosses = CLSS.CrossManager.get_ordered_data(DTSUB.resources, DTSUB.events, DTSUB.crosses)
+        if name_gr == 'table':
+
+            list_text,list_data,dict_descr, dict_aliases = CLSS.CrossManager.templates(list_crosses)
+            list_text, list_data = self.apply_user_config(name_gr, list_text,list_data)
+
+
+
+            CQT.fill_wtabl(list_text,self.ui.tbl_gr,styleSheet=CQT.MES_EDIT_CSS,dict_or_list_user_data = list_data,
                            aliases_header=dict_aliases,auto_type=True,sortingEnabled=True)
 
-        t = CQT.TableContext(self.ui.tbl_gr)
-        t.hide_if_not_dev(CFG,True)
-        for row in t.rows():
-            clr_res:CMS.Color = row.value('res.color',get_cust_content=True)
-            clr_eve:CMS.Color = row.value('eve.color',get_cust_content=True)
-            clr_res_sh:CMS.Color = row.value('res_sh.color',get_cust_content=True)
-            clr_eve_sh:CMS.Color = row.value('eve_sh.color',get_cust_content=True)
-            row.set_color_background(*clr_res.rgba,col_name='res.name')
-            row.set_color_background(*clr_eve.rgba,col_name='eve.name')
-            row.set_color_background(*clr_res_sh.rgba,col_name='res_sh.name')
-            row.set_color_background(*clr_eve_sh.rgba,col_name='eve_sh.name')
+            t = CQT.TableContext(self.ui.tbl_gr)
+            t.hide_if_not_dev(CFG,True)
+            clr_names = {
+                'res.color':       'res.name',
+                'eve.color':       'eve.name',
+                'res_sh.color':    'res_sh.name',
+                'eve_sh.color':    'eve_sh.name',
+            }
+
+            for row in t.rows():
+                for clr_name, col_name in clr_names.items():
+                    if clr_name in t.nf and col_name in t.nf:
+
+                        clr:CMS.Color = row.value(clr_name,get_cust_content=True)
+                        row.set_color_background(*clr.rgba, col_name=col_name)
+
+        if name_gr == 'pivottable':
+            list_text,list_data,dict_descr, dict_aliases = CLSS.CrossManager.templates(list_crosses)
+            list_text, list_data = self.apply_user_config(name_gr, list_text,list_data)
+
+            CQT.fill_wtabl(list_text, self.ui.tbl_gr, styleSheet=CQT.MES_EDIT_CSS, dict_or_list_user_data=list_data,
+                           aliases_header=dict_aliases, auto_type=True, sortingEnabled=True)
+            return
+            t = CQT.TableContext(self.ui.tbl_gr)
+            t.hide_if_not_dev(CFG, True)
+            clr_names = {
+                'res.color': 'res.name',
+                'eve.color': 'eve.name',
+                'res_sh.color': 'res_sh.name',
+                'eve_sh.color': 'eve_sh.name',
+            }
+
+            for row in t.rows():
+                for clr_name, col_name in clr_names.items():
+                    if clr_name in t.nf and col_name in t.nf:
+                        clr: CMS.Color = row.value(clr_name, get_cust_content=True)
+                        row.set_color_background(*clr.rgba, col_name=col_name)
+
         #TODO: делать настройки
 
 
@@ -877,6 +954,70 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
                               first_void=True,
                               list_data=[_.name for _ in template])
         self.ui.cmb_type_gr.setMaxVisibleItems(len(template)+1)
+
+
+    def __________presets_settings__________(self):pass
+    def report_preset(self):
+        name_gr = CQT.get_cmb_current_data(self.ui.cmb_type_gr)
+        if name_gr == 'table':
+            list_crosses = CLSS.CrossManager.get_ordered_data(DTSUB.resources, DTSUB.events, DTSUB.crosses)
+
+            list_text,list_data,dict_descr, dict_aliases = CLSS.CrossManager.templates(list_crosses)
+            list_text, list_data = self.apply_user_config(name_gr, list_text, list_data,filter=False )
+
+            ucfg: dict[str, CLSS.UserConfigSubPlanElement] = DTSUB.user_config_sub_plan.oform_reports[name_gr]
+            template_settings = []
+            aliases_settings = {'description':'Описание', 'alias':'Название', 'enabled':'Видимость'}
+            for i, name in enumerate(list_text[0].keys()):
+                alias = dict_aliases[name]
+                if alias.startswith('_') or name.startswith('_'):
+                    continue
+                descr = dict_descr[name]
+                enabled = True
+                if name in ucfg:
+                    enabled = ucfg[name].enable
+                template_settings.append({'_name':name,'_order':i, 'alias':alias, 'enabled':enabled, 'description':descr})
+
+            def fnc_switch(app_self, tbl: CQT.QtWidgets.QTableWidget, value: bool, i: int, j: int, *args):
+                t = CQT.TableContext(tbl)
+                row = t.get_row(i)
+                row.set_value(t.name_by_idx(j), str(value))
+            def fnc_drdr(tbl:CQT.QtWidgets.QTableWidget,i_row_old:int, i_row_new:int, *args):
+                t = CQT.TableContext(tbl)
+                row = t.get_row(i_row_new)
+                CQT.add_check_box_switcher(t.tbl,row.i,t.nf['enabled'],F.boolm(row.value('enabled')),fnc_switch,self_obj=self)
+
+            def fnc_oform_tbl(tbl:CQT.QtWidgets.QTableWidget,*args):
+                t = CQT.TableContext(tbl)
+
+
+
+                for row in t.rows():
+                    CQT.add_check_box_switcher(t.tbl,row.i,t.nf['enabled'],F.boolm(row.value('enabled')),fnc_switch,self_obj=self)
+
+            def fnc_ok(t: CQT.TableContext, *args) -> None:
+                rez = []
+
+                for row in t.rows():
+                    name = row.value('_name')
+                    enabled = F.boolm(row.value('enabled'))
+                    new_order = row.i
+                    rez.append({'name': name, 'enabled': enabled, 'new_order': new_order})
+                return rez
+
+
+
+            rez = CQT.msgboxg_get_table(self,'Настройки графика',template_settings,'Применить','Отмена',func_oform_tbl=fnc_oform_tbl,
+                                  ExtendedSelection=False,selectRows=True,styleSheet=CQT.MES_CSS,aliases_header=aliases_settings,fnc_drag_drop=fnc_drdr,
+                                        func_validate_t=fnc_ok
+                                        )
+
+            if not rez:
+                return
+
+            data =rez
+            DTSUB.user_config_sub_plan.save_config(CLSS.Reports.get_by_name(name_gr), data)
+            self.select_report()
 
 
     def _____________________________(self):pass

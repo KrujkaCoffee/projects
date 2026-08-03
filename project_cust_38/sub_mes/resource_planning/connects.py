@@ -70,7 +70,7 @@ def _on_focus_changed(self:Plwindow, old_widget, new_widget, *args):
 
             if DTSUB.tmp_overlay:
                 DTSUB.tmp_overlay.clear_background()
-            DTSUB.tmp_overlay = COV.apply_blur(self.ui.fr_resources, interactive=True)
+            DTSUB.tmp_overlay = COV.apply_blur(self.ui.fr_resources, radius=1, interactive=True)
 
 
         if DTCLS.curren_frame is DTSUB.fr_res:
@@ -83,7 +83,7 @@ def _on_focus_changed(self:Plwindow, old_widget, new_widget, *args):
 
             if DTSUB.tmp_overlay:
                 DTSUB.tmp_overlay.clear_background()
-            DTSUB.tmp_overlay = COV.apply_blur(self.ui.fr_events, interactive=True)
+            DTSUB.tmp_overlay = COV.apply_blur(self.ui.fr_events, radius=1, interactive=True)
     # Проверяем, что новый виджет находится внутри нашего фрейма
     if new_widget and new_widget.parent().__class__ == CQT.QtWidgets.QFrame:
         new_fr = new_widget.parent()
@@ -149,6 +149,7 @@ def load_btns(sub_self):
     sub_self.ui.btn_s_shab_save.clicked.connect(sub_self.s_shab_save)
     sub_self.ui.btn_cross_add.clicked.connect(sub_self.cross_add)
     sub_self.ui.btn_cross_show_all.clicked.connect(sub_self.cross_show_all)
+    sub_self.ui.btn_report_preset.clicked.connect(sub_self.report_preset)
 
 def key_release_event(sub_self:Plwindow, key:int, mod:CQT.QtCore.Qt.KeyboardModifiers):
     if key == 16777268:#F5

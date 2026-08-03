@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from  PyQt5.QtWidgets import QFrame
     from project_cust_38.sub_mes.resource_planning.manage_res_pl import (Plwindow,)
     from project_cust_38.sub_mes.resource_planning.clses import  (ShablonsRes,ShablonsEve,Type_entity,SubjectPl,
-                                                                  Info,Resources,Events,Crosses)
+                                                                  Info,Resources,Events,Crosses,UserConfigSubPlan)
 
     from project_cust_38.dynamic_db_models.orm_models import Подразделения as orm_Подразделения
     from project_cust_38.dynamic_db_models.orm_models import ФизическиеЛица as orm_ФизическиеЛица
@@ -53,6 +53,7 @@ class data_manage_sub_app(SingletonMeta):
     crosses: Crosses = None
     filtr_cross_by_res: int|None = None
     filtr_cross_by_eve: int|None = None
+    user_config_sub_plan: UserConfigSubPlan = None
 
 class data_app(SingletonMeta):
     if CFG.Config.place.poki == None:

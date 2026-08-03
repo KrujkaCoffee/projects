@@ -436,7 +436,7 @@ class _BaseEntity():
         attr = getattr(self,key,'_None')
         if attr !='_None':
             if isinstance(attr,_Attribute):
-                print('Установка атрибута только через метод .set_value')
+                print('Установка атрибута только через метод _Attribute .set_value')
                 return
         super().__setattr__(key,value)
 
@@ -1239,10 +1239,11 @@ class CrossEntity():
                                                      user_hidden=False, for_list=True, for_details=True, for_new=True,
                                                      order=30)
 
-    def template(self)->dict:
+    def template(self)->tuple[dict,dict,dict,dict]:
         dict_text = dict()
         dict_data = dict()
         dict_aliases = dict()
+        dict_descr = dict()
 
         list_cross_entity_attrs = [(name,_) for name, _ in F.get_all_attrs(self).items() if isinstance(_,_Attribute) and _.info.for_report]
         list_cross_entity_attrs.sort(key= lambda k: k[1].info.order)
@@ -1252,6 +1253,7 @@ class CrossEntity():
             if isinstance(cross_entity_attr_o.value,Cdt):
                 dict_text[cross_entity_attr_name] = cross_entity_attr_o.value.to_string_ru_wo_s()
                 dict_data[cross_entity_attr_name] = cross_entity_attr_o.value
+                dict_descr[cross_entity_attr_name] = cross_entity_attr_o.info.description
                 alias = cross_entity_attr_o.info.alias
                 if cross_entity_attr_o.info.report_user_hidden:
                     alias = f'_{alias}'
@@ -1283,8 +1285,9 @@ class CrossEntity():
                 dict_aliases[name_full] = alias_full
                 dict_text[name_full] = val
                 dict_data[name_full] = dim_o.value
+                dict_descr[name_full] = dim_o.info.description
 
-        return dict_text,dict_data ,dict_aliases
+        return dict_text,dict_data ,dict_descr, dict_aliases
 
 
     def __repr__(self):
@@ -1333,13 +1336,14 @@ class CrossManager():
         return result
 
     @staticmethod
-    def templates(list_crosses:list[CrossEntity])->tuple[list[dict],list[dict],dict]:
+    def templates(list_crosses:list[CrossEntity])->tuple[list[dict],list[dict],dict,dict]:
         if not list_crosses:
-            return ([],[],{})
+            return ([],[],[],{})
         return (
             [_.template()[0] for _ in list_crosses],
             [_.template()[1] for _ in list_crosses],
             [_.template()[2] for _ in list_crosses][0],
+            [_.template()[3] for _ in list_crosses][0],
         )
 
 
@@ -1351,9 +1355,63 @@ class Report():
 
 class Reports():
     table = Report("table", "", "Таблица")
+    pivottable = Report("pivot_table", "", "Сводная таблица")
     gant = Report("gant", "", "Гант")
 
     @classmethod
     def template(cls):
         dict_attrs = F.get_all_attrs(cls)
         return  [_ for _ in dict_attrs.values() if isinstance(_,Report)]
+    @classmethod
+    def get_by_name(cls, name:str)->Report|None:
+        for k,v in F.get_all_attrs(cls).items():
+            if k == name:
+                return v
+
+class UserConfigSubPlanElement:
+    def __init__(self, name:str, enable:bool, order:int):
+        self.name = name
+        self.enable = enable
+        self.order = order
+
+class UserConfigSubPlan:
+    def __init__(self):
+        self.oform_reports:dict[str,UserConfigSubPlanElement] = dict()
+
+    def _gen_path(self,report:Report):
+        user_dir = CQT.qt_tmp_dir()
+        pathf = F.sep().join([user_dir, f'{report.name}.pickle'])
+        return pathf
+    def save_config(self,report:Report,data):
+        dict_data = dict()
+        tmp_list = []
+        for it in data:
+            tmp_list.append(UserConfigSubPlanElement(it['name'],it['enabled'],it['new_order']))
+        tmp_list.sort(key=lambda x:x.order)
+        for it in tmp_list:
+            dict_data[it.name] = it
+
+
+        F.save_file_pickle(self._gen_path(report),dict_data)
+        self._apply_data(report,dict_data)
+
+
+    def _apply_data(self,report:Report,data):
+        self.oform_reports[report.name] = data
+
+    def reload_config(self,report:Report):
+        pathf = self._gen_path(report)
+        data = dict()
+        if F.existence_file_c(pathf):
+            data = F.load_file_pickle(pathf)
+        self._apply_data(report,data)
+    def load_config(self):
+        for report in F.get_all_attrs(Reports,attr_type=Report).values():
+
+            pathf = self._gen_path(report)
+            data = dict()
+            if F.existence_file_c(pathf):
+                data = F.load_file_pickle(pathf)
+            self._apply_data(report,data)
+
+
