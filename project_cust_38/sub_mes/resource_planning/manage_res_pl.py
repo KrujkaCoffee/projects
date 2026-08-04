@@ -84,7 +84,7 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
         self.load_s_shab(CLSS.Type_entitys.Res,True)
         DTCLS.module_manage_sub_app.shablons_eve = CLSS.ShablonsEve()
         self.load_s_shab(CLSS.Type_entitys.Eve,True)
-        DTCLS.module_manage_sub_app.info_o = CLSS.Info(self.ui.tbl_info,self.ui.btn_info_ok,self.ui.btn_info_cansel)
+        DTCLS.module_manage_sub_app.info_o = CLSS.Info(self.ui.tbl_info,self.ui.btn_info_ok,self.ui.btn_info_cancel, self.ui.btn_info_new_attr)
         DTCLS.module_manage_sub_app.resources = CLSS.Resources()
         self.load_resources(True)
         DTCLS.module_manage_sub_app.events = CLSS.Events()

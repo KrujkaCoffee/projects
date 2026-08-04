@@ -13,6 +13,62 @@ import copy
 T = TypeVar("T")
 
 DTSUB = DTCLS.module_manage_sub_app
+class MesMetaClass:
+    pass
+class ErpMetaClass:
+    pass
+
+
+class MainTypes:
+    """Класс для хранения информации о типах данных"""
+
+    def __init__(self, name: str, text: str, inner_data: dict = None):
+        self.name = name
+        self.text = text
+        self.inner_data = inner_data if inner_data is not None else dict()
+
+    def __repr__(self):
+        return f"MainTypes(name='{self.name}', text='{self.text}')"
+
+TYPE_MAP = {
+        str: MainTypes("str", "Текст"),
+        int: MainTypes("int", "Целое число"),
+        float: MainTypes("float", "Число с плавающей точкой"),
+        bool: MainTypes("bool", "Логический (Истина/Ложь)"),
+        complex: MainTypes("complex", "Комплексное число"),
+
+        list: MainTypes("list", "Список"),
+        tuple: MainTypes("tuple", "Кортеж"),
+        dict: MainTypes("dict", "Словарь"),
+        set: MainTypes("set", "Множество"),
+        frozenset: MainTypes("frozenset", "Неизменяемое множество"),
+
+        bytes: MainTypes("bytes", "Байты"),
+        bytearray: MainTypes("bytearray", "Массив байтов"),
+        memoryview: MainTypes("memoryview", "Представление памяти"),
+        type(None): MainTypes("NoneType", "Пустое значение (None)"),
+        range: MainTypes("range", "Диапазон"),
+
+        # Пользовательские типы
+        MesMetaClass: MainTypes("MesMetaClass", "Данные МЕС",{
+                                                            "plan":MainTypes("plan", "План производства"),
+                                                            "naryad":MainTypes("plan", "Наряды"),
+                                                        }),
+        ErpMetaClass: MainTypes("ErpMetaClass", "Данные ERP"),
+    }
+
+
+def get_type_name(value_or_type) -> str:
+
+    if isinstance(value_or_type, type):
+        py_type = value_or_type
+    else:
+
+        py_type = type(value_or_type)
+    rez = TYPE_MAP.get(py_type, f"Неизвестный тип ({py_type.__name__})")
+    if isinstance(rez,MainTypes):
+        return rez.text
+    return rez
 
 class UiMode():
     LIST = "list"
@@ -21,28 +77,104 @@ class UiMode():
 
 
 
+class _AttributeInfoMeta():
+    def __init__(self, type: type, val:object, name: str, comment:str, text: str, description: str, order: int,
+                 show_new_templ:bool,emoj:str):
+        self.type = type
+        self.name = name
+        self.comment = comment
+        self.text = text
+        self.description = description
+        self.order = order
+        self.val: object = val
+        self.show_new_templ = show_new_templ
+        self.emoj = emoj
 
-@dataclass(slots=True, frozen=True)
+    @property
+    def alias_adduced(self)-> str:
+        return  self.text
+
+    def set_value(self,value):
+        if self.type != type(value) and type(value) is not type(None):
+            raise TypeError(f"_AttributeInfoMeta Expected {self.type}, got {type(value)}")
+        self.val = value
+
+    def to_ui(self):
+        if self.name =='type':
+            return get_type_name(self.type)
+        return f'{self.val}'
+
+    def to_service_val(self):
+        return self
+
+    def __repr__(self):
+        return f"_AttributeInfoMeta(name='{self.name}', type={self.type.__name__})"
+
+@dataclass
 class _AttributeInfo:
-    type: type
-    alias: str#для юзера
-    description: str
-    protected: bool=True#для юзера
-    user_hidden: bool=False#для юзера аналог _
-    for_list: bool = True#для списка
-    for_details: bool= True#для деталировки
-    for_new: bool = True#для создания
-    order: int = 99999#для юзера
-    for_report: bool = True#для отчета
-    report_user_hidden: bool = False#для юзера аналог _
+    def __init__(self):
+        self.type: _AttributeInfoMeta = _AttributeInfoMeta(type, None,'type',  '', 'Тип','Тип данных', 0,True, '⚙️')
+        self.alias: _AttributeInfoMeta = _AttributeInfoMeta(str, '','alias', 'для юзера','Имя','Имя атрибута', 5,True, '🏷️')
+        self.description: _AttributeInfoMeta = _AttributeInfoMeta(str,'', 'description', '','Описание','Описание атрибута', 10,True, '📝')
+        self.protected: _AttributeInfoMeta = _AttributeInfoMeta(bool, True, 'protected', 'для юзера','Изменяемый','Возможность изменить', 10,True, '🛡️')
+        self.user_hidden:_AttributeInfoMeta = _AttributeInfoMeta(bool, False, 'user_hidden', 'для юзера аналог _','Скрытый','Видимость для пользователя', 15,True, '👀')
+        self.for_list: _AttributeInfoMeta = _AttributeInfoMeta(bool, True, 'for_list', 'для списка','Вывод в таблицах','Вывод в таблице списка', 20,True, '📋')
+        self.for_details: _AttributeInfoMeta = _AttributeInfoMeta(bool, True, 'for_details', 'для деталировки','Вывод в свойствах','Вывод в таблице свойства', 25,True, '🔍')
+        self.for_new: _AttributeInfoMeta = _AttributeInfoMeta(bool, True, 'for_new', 'для создания','Вывод при создании','Вывод при создании нового объекта', 30,True, '✨')
+        self.order: _AttributeInfoMeta = _AttributeInfoMeta(int, 99999, 'order', 'порядок отображения','Порядок вывода','Порядок вывода в таблицах', 35,True, '🔢')
+        self.for_report: _AttributeInfoMeta = _AttributeInfoMeta(bool, True, 'for_report', 'для отчета','Вывод в отчетах','Вывод в отчетах', 40,True, '📊')
+        self.report_user_hidden: _AttributeInfoMeta = _AttributeInfoMeta(bool, False, 'report_user_hidden', 'для юзера аналог _','Скрытый в отчетах','Скрытый в отчетах', 45,True, '👁️‍🗨️')
+        self.attr_view: _AttributeInfoMeta = _AttributeInfoMeta(str, '', 'attr_view', 'имя поля представления типа составного','Представление типа','Как выглядит значение объекта в ячейках', 3,True, '🧩️')
+
+    def __getattribute__(self, name):
+        obj = object.__getattribute__(self, name)
+        if isinstance(obj, _AttributeInfoMeta):
+            return obj.val
+        else:
+            return obj
+        raise AttributeError(f"_AttributeInfo object has no attribute '{name}'")
+
+    def __setattr__(self, name, value):
+        if hasattr(self, name):
+            meta = self._meta(name)
+            val = getattr(self, name)
+            if isinstance(meta, _AttributeInfoMeta):
+                meta.set_value(value )
+                return
+            else:
+                super().__setattr__(name, value)
+        # Иначе обычное присваивание
+        super().__setattr__(name, value)
+
+    def _meta(self,name):
+        return object.__getattribute__(self, name)
 
     @property
     def alias_adduced(self)-> str:
         return f'_{self.alias}' if self.user_hidden else self.alias
 
+    def _template_new(self):
+        data_attrs = [v for k,v in  F.get_all_attrs(self).items() if  isinstance(v,_AttributeInfoMeta) and v.show_new_templ]
+        data_attrs.sort(key=lambda x: x.order)
+        return (
+            {v.name:self.to_ui(v.name) for v in data_attrs},
+            {v.name:self.to_service_val(v.name) for v in data_attrs},
+            {v.name: v.alias_adduced for v in data_attrs},
+            {v.name: v.description for v in data_attrs},
+            {v.name: v.emoj for v in data_attrs},
+        )
+        return  data_attrs
 
-def __repr__(self):
-    return f"_AttributeInfo(type={self.type.__name__}, alias='{self.alias}', desc='{self.description[:20]}{'...' if len(self.description) > 20 else ''}', protected={self.protected})"
+    def to_ui(self,name:str):
+        attr:_AttributeInfoMeta =  self._meta(name)
+        return attr.to_ui()
+
+    def to_service_val(self,name:str):
+        attr:_AttributeInfoMeta = self._meta(name)
+        return attr.to_service_val()
+
+    def __repr__(self):
+        return f"_AttributeInfo(type={str(self.type)}, alias='{self.alias}', desc='{self.description[:20]}{'...' if len(self.description) > 20 else ''}', protected={self.protected})"
 
 
 
@@ -55,14 +187,14 @@ class _Attribute(Generic[T]):
     def set_value(self, value: T,forced: bool=False):
         if not forced and self.info.protected:
             return False
-        if self.info.type != type(value):
+        type_attr = self.info.type
+        if type_attr != type(value):
             raise TypeError(f"Expected {self.info.type}, got {type(value)}")
-
-        if self.info.type in (int, float):
+        if type_attr in (int, float):
             value = F.valm(value)
-        if self.info.type is bool:
+        if type_attr is bool:
             value = F.boolm(value)
-        if self.info.type is Cdt:
+        if type_attr is Cdt:
             pass
         self.value = value
         return True
@@ -84,7 +216,18 @@ class _Attribute(Generic[T]):
 
     def __repr__(self):
         return f"_Attribute({self.info.alias}={self.value})"
+    @classmethod
+    def template_new(cls)->tuple[list[dict],list[dict]]:
+        dict_text_attrs, dict_data_attrs, dict_aliases,dict_descr,dict_emoj = _AttributeInfo()._template_new()
+        rez_text = []
+        rez_data = []
+        for k,v in dict_text_attrs.items():
+            tmp_dict_text = {'_name':k,'':dict_emoj[k], 'Свойство':dict_aliases[k],'Значение':v,'Описание':dict_descr[k]}
+            tmp_dict_data = {'_name':k,'':dict_emoj[k], 'Свойство':dict_aliases[k],'Значение':dict_data_attrs[k],'Описание':dict_descr[k]}
+            rez_text.append(tmp_dict_text)
+            rez_data.append(tmp_dict_data)
 
+        return rez_text, rez_data
 
 
     @classmethod
@@ -104,21 +247,20 @@ class _Attribute(Generic[T]):
              report_user_hidden: bool = False
 
     ) -> '_Attribute[T]':
+        obj_info =  _AttributeInfo()
+        obj_info.type = type_val
+        obj_info.alias = alias
+        obj_info.description = description
+        obj_info.protected = protected
+        obj_info.user_hidden = user_hidden
+        obj_info.for_list = for_list
+        obj_info.for_details = for_details
+        obj_info.for_new = for_new
+        obj_info.order = order
+        obj_info.for_report = for_report
+        obj_info.report_user_hidden = report_user_hidden
 
-        return cls(
-            info=_AttributeInfo(
-                type=type_val,
-                alias=alias,
-                description=description,
-                protected=protected,
-                user_hidden=user_hidden,
-                for_list=for_list,
-                for_details=for_details,
-                for_new=for_new,
-                order=order,
-                for_report = for_report,
-                report_user_hidden = report_user_hidden
-            ),
+        return cls(info=obj_info,
             value=value,
         )
 
@@ -328,10 +470,11 @@ class FocusTypes():
     RESOURCE:str = "resource"
 class Info():
 
-    def __init__(self,ui_tbl,ui_btn_ok,ui_btn_cancel):
+    def __init__(self,ui_tbl,ui_btn_ok,ui_btn_cancel,ui_btn_new_attr):
         self._ui:CQT.QtWidgets.QTableWidget = ui_tbl
         self._ui_ok:CQT.QtWidgets.QPushButton = ui_btn_ok
         self._ui_cancel:CQT.QtWidgets.QPushButton = ui_btn_cancel
+        self._ui_new_attr:CQT.QtWidgets.QPushButton = ui_btn_new_attr
         self.t:CQT.TableContext = CQT.TableContext(self._ui)
         self._raw_data = None
         self._dict_data = None
@@ -341,6 +484,7 @@ class Info():
         self.fnc_update_data = None
         self.protected_names:list|tuple|set = None
         self._ui_cancel.clicked.connect(self._fill_data)
+        self._ui_new_attr.clicked.connect(self._new_attr)
 
     def clear(self):
         CQT.soft_clear_tbl(self.t.tbl)
@@ -372,6 +516,100 @@ class Info():
         self._fill_data()
         self._ui_ok.setEnabled(True)
         self._ui_cancel.setEnabled(True)
+
+    def _new_attr(self):
+        def fnc_oform(tbl:CQT.QtWidgets.QTableWidget,*args):
+
+            def fnc_switch(tbl:CQT.QtWidgets.QTableWidget,val:bool,i,j,*args):
+                pass
+
+            t = CQT.TableContext(tbl)
+            for row in t.rows():
+                attr_o:_AttributeInfoMeta = row.value('Значение',get_cust_content=True)
+                attr_o_type = attr_o.type
+                if attr_o_type is type:
+                    def fnc_select_type(lbl: CQT.InteractiveLabelInstance, sub_self, i, j, row: CQT.TableRow):
+                        def fnc_oform_tbl_type(tbl:CQT.QtWidgets.QTableWidget,*args):
+                            t = CQT.TableContext(tbl)
+                            for row in t.rows():
+                                pass
+                            t.hide_if_not_dev(CFG)
+
+                        def add_types_tmplate(template,template_data,inner_data,parent:str='', lvl=0)->tuple[list,list]:
+                            if parent:
+                                parent= f'{parent}.'
+                            for k, v in inner_data.items():
+                                name = k
+                                if not isinstance(k,str):
+                                    name = k.__name__
+                                tmp_dict_text = {'_name': name, "":"", '_parent':parent, 'Тип': f'{" "*4*lvl}{v.text}'}
+                                tmp_dict_data = {'_name': name, "":"", '_parent':parent,'Тип': v}
+
+                                template.append(tmp_dict_text)
+                                template_data.append(tmp_dict_text)
+                                if v.inner_data:
+                                    template, template_data = add_types_tmplate(template, template_data, v.inner_data,parent = name, lvl= lvl+1)
+                            return  template, template_data
+                        template = []
+                        template_data = []
+                        template, template_data = add_types_tmplate(template, template_data,TYPE_MAP)
+
+                        rez = CQT.msgboxg_get_table(DTSUB.sub_self,'Выбор типа данных',template,
+                                        styleSheet=CQT.MES_EDIT_CSS,func_oform_tbl=fnc_oform_tbl_type,
+                                                    dict_or_list_user_data=template_data,selectRows=True,selection_from_tbl=True
+                                        )
+                        if not rez:
+                            return
+                        pass
+
+                    widg = CQT.add_interactive_label(t.tbl, row.i, t.nf['Значение'], row.value('Значение'),
+                                                     parent_self=DTSUB.sub_self, grab_style_from_cell=True,
+                                                     autoupdate_column_size=False)
+                    widg.add_button('...', 'Выбор',
+                                    fnc_select_type,
+                                    cell_val=row, img_path=F.sep().join([F.path_to_caller_file_c(),
+                                                                             'icons', 'btn_select']))
+
+                elif attr_o_type in (str,int,float):
+                    if attr_o.name == 'attr_view':
+                        def fnc_select_type_attr_view(lbl: CQT.InteractiveLabelInstance, sub_self, i, j, row: CQT.TableRow):
+                            t = row.ctx
+                            row_type = t.find_row({'_name':'type'},True)
+                            type:_AttributeInfoMeta = row_type.value('Значение',get_cust_content=True)
+                            if type.val is None:
+                                CQT.msgbox(f'Не выбран Тип')
+                                return
+
+                        widg = CQT.add_interactive_label(t.tbl, row.i, t.nf['Значение'], row.value('Значение'),
+                                                         parent_self=DTSUB.sub_self, grab_style_from_cell=True,
+                                                         autoupdate_column_size=False)
+                        widg.add_button('...', 'Выбор',
+                                        fnc_select_type_attr_view,
+                                        cell_val=row, img_path=F.sep().join([F.path_to_caller_file_c(),
+                                                                             'icons', 'btn_select']))
+
+
+                    else:
+                        row.set_editable('Значение', True)
+                elif attr_o_type is bool:
+                    CQT.add_check_box_switcher(t.tbl,row.i,t.nf['Значение'],attr_o.val,fnc_switch)
+                else:
+                    raise Exception(f'Неизвестный тип {attr_o_type}')
+
+            t.hide_if_not_dev(CFG,True)
+
+
+        if self._raw_data is None:
+            return
+        if DTSUB.current_settings_mode == Type_entitys.Res:
+            list_text, list_data = _Attribute.template_new()
+            rez = CQT.msgboxg_get_table(DTSUB.sub_self,'Создание атрибута',list_text,dict_or_list_user_data=list_data,
+                                        styleSheet=CQT.MES_EDIT_CSS,func_oform_tbl=fnc_oform
+                                        )
+            if not  rez:
+                return
+            pass
+
     def _fill_data(self):
         if self._raw_data is None:
             return
