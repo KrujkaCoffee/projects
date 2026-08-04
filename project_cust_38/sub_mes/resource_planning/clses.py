@@ -36,6 +36,10 @@ class _AttributeInfo:
     for_report: bool = True#для отчета
     report_user_hidden: bool = False#для юзера аналог _
 
+    @property
+    def alias_adduced(self)-> str:
+        return f'_{self.alias}' if self.user_hidden else self.alias
+
 
 def __repr__(self):
     return f"_AttributeInfo(type={self.type.__name__}, alias='{self.alias}', desc='{self.description[:20]}{'...' if len(self.description) > 20 else ''}', protected={self.protected})"
@@ -75,8 +79,13 @@ class _Attribute(Generic[T]):
                 return True
         return False
 
+    def __hash__(self):
+        return hash(self.value)
+
     def __repr__(self):
         return f"_Attribute({self.info.alias}={self.value})"
+
+
 
     @classmethod
     def attr(cls,
@@ -533,14 +542,14 @@ class _BaseEntity():
         data = F.sort_dict_by_key(data,lambda k: data[k].info.order)
         return ({k :self.to_ui(k) for k,v in data.items() if  v.info.for_details} ,
                 {k :self.to_service_val(k) for k,v in data.items() if  v.info.for_details} ,
-                {k : f'_{v.info.alias}' if v.info.user_hidden else v.info.alias for k,v in data.items()})
+                {k : v.info.alias_adduced for k,v in data.items()})
 
     def template(self)->dict:
         data = F.get_all_attrs_with_properties(self)
         data = F.sort_dict_by_key(data, lambda k: data[k].info.order)
         return ({k: self.to_ui(k) for k,v in data.items() if  v.info.for_list},
                 {k: self.to_service_val(k) for k, v in data.items() if v.info.for_list},
-                {k : f'_{v.info.alias}' if v.info.user_hidden else v.info.alias for k,v in data.items()})
+                {k : v.info.alias_adduced for k,v in data.items()})
 
 
     def __repr__(self):
@@ -798,14 +807,15 @@ class _BaseDimension:
         data = F.sort_dict_by_key(data,lambda k: data[k].info.order)
         return ({k :self.to_ui(k) for k,v in data.items() if  v.info.for_details} ,
                 {k :self.to_service_val(k) for k,v in data.items() if  v.info.for_details} ,
-                {k : f'_{v.info.alias}' if v.info.user_hidden else v.info.alias for k,v in data.items()})
+                {k : v.info.alias_adduced for k,v in data.items()})
 
     def template(self)->dict:
         data = F.get_all_attrs_with_properties(self)
         data = F.sort_dict_by_key(data, lambda k: data[k].info.order)
         return ({k: self.to_ui(k) for k,v in data.items() if  v.info.for_list},
                 {k: self.to_service_val(k) for k, v in data.items() if v.info.for_list},
-                {k : f'_{v.info.alias}' if v.info.user_hidden else v.info.alias for k,v in data.items()})
+                {k : v.info.alias_adduced for k,v in data.items()})
+
 
     def template_new(self)->tuple[list[dict],list[dict]]:
         attrs:list[tuple[str,_Attribute]] = [(k,_) for k, _ in F.get_all_attrs(self).items() if isinstance(_,_Attribute)]
@@ -1091,14 +1101,14 @@ class Cross():
         data = F.sort_dict_by_key(data, lambda k: data[k].info.order)
         return ({k: self.to_ui(k) for k, v in data.items() if v.info.for_details},
                 {k: self.to_service_val(k) for k, v in data.items() if v.info.for_details},
-                {k: f'_{v.info.alias}' if v.info.user_hidden else v.info.alias for k, v in data.items()})
+                {k: v.info.alias_adduced for k, v in data.items()})
 
     def template_list(self) -> dict:
         data = F.get_all_attrs_with_properties(self)
         data = F.sort_dict_by_key(data, lambda k: data[k].info.order)
         return ({k: self.to_ui(k) for k, v in data.items() if v.info.for_list},
                 {k: self.to_service_val(k) for k, v in data.items() if v.info.for_list},
-                {k: f'_{v.info.alias}' if v.info.user_hidden else v.info.alias for k, v in data.items()})
+                {k: v.info.alias_adduced for k, v in data.items()})
 
 class Crosses():
     def __init__(self):
@@ -1119,7 +1129,8 @@ class Crosses():
                 cross:Cross = it['cross']
                 if cross.start.value and cross.end.value:
                     tmp_data.append(cross.end.value)
-            rez[id] = max(tmp_data)
+            if tmp_data:
+                rez[id] = max(tmp_data)
         return rez
     def calc_min(self)->dict[int,Cdt]:
         rez = dict()
@@ -1129,7 +1140,8 @@ class Crosses():
                 cross:Cross = it['cross']
                 if cross.start.value and cross.end.value:
                     tmp_data.append(cross.start.value)
-            rez[id] = min(tmp_data)
+            if tmp_data:
+                rez[id] = min(tmp_data)
         return rez
 
     def _gen_new_id(self) -> int:
@@ -1239,6 +1251,25 @@ class CrossEntity():
                                                      user_hidden=False, for_list=True, for_details=True, for_new=True,
                                                      order=30)
 
+    def full_name(self,cross_entity_attr_name,dim_attr_name)-> str:
+        if dim_attr_name:
+            return f'{cross_entity_attr_name}.{dim_attr_name}'
+        return cross_entity_attr_name
+    def full_alias(self,cross_entity_attr_name,dim_attr_name)-> str:
+        at_cross_entity_attr_o = getattr(self,cross_entity_attr_name)
+        dim_o = at_cross_entity_attr_o.value
+        cross_entity_attr_alias = at_cross_entity_attr_o.info.alias
+        attr_dim = getattr(dim_o,dim_attr_name)
+        if isinstance(attr_dim,_Attribute) and attr_dim.info.alias:
+            pref = ''
+            if attr_dim.info.user_hidden:
+                pref = '_'
+            return f'{pref}{cross_entity_attr_alias}.{attr_dim.info.alias}'
+
+        if cross_entity_attr_alias:
+            return f'{cross_entity_attr_alias}'
+        return dim_o.info.alias
+
     def template(self)->tuple[dict,dict,dict,dict]:
         dict_text = dict()
         dict_data = dict()
@@ -1254,9 +1285,8 @@ class CrossEntity():
                 dict_text[cross_entity_attr_name] = cross_entity_attr_o.value.to_string_ru_wo_s()
                 dict_data[cross_entity_attr_name] = cross_entity_attr_o.value
                 dict_descr[cross_entity_attr_name] = cross_entity_attr_o.info.description
-                alias = cross_entity_attr_o.info.alias
-                if cross_entity_attr_o.info.report_user_hidden:
-                    alias = f'_{alias}'
+                alias = cross_entity_attr_o.info.alias_adduced
+
                 dict_aliases[cross_entity_attr_name] = alias
                 continue
 
@@ -1272,16 +1302,10 @@ class CrossEntity():
                     if isinstance(val,Cdt):
                         val = val.to_string_ru_wo_s()
 
-                alias_full = dim_o.info.alias
-                name_full = dim_attr_name
-                if cross_entity_attr_name:
-                    alias_full = f'{cross_entity_attr_alias}'
-                    name_full = cross_entity_attr_name
-                    if dim_o.info.alias:
-                        alias_full = f'{cross_entity_attr_alias}.{dim_o.info.alias}'
-                        name_full = f'{cross_entity_attr_name}.{dim_attr_name}'
-                if dim_o.info.report_user_hidden:
-                    alias_full = f'_{alias_full}'
+                alias_full = self.full_alias(cross_entity_attr_name,dim_attr_name)
+
+                name_full = self.full_name(cross_entity_attr_name,dim_attr_name)
+
                 dict_aliases[name_full] = alias_full
                 dict_text[name_full] = val
                 dict_data[name_full] = dim_o.value
@@ -1336,6 +1360,61 @@ class CrossManager():
         return result
 
     @staticmethod
+    def templates_pivot(list_crosses:list[CrossEntity],order_res:dict[int,int] = None)->tuple[list[dict],list[dict],list[dict],list[dict],dict,dict]:
+        if not list_crosses:
+            return ([],[],[],[],{},{})
+        list_text_v_sub = []
+        list_data_v_sub = []
+        list_text = []
+        list_data = []
+        dict_aliases = dict()
+        dict_descr = dict()
+
+        dict_crosses:dict[tuple,CrossEntity] = {(_.res.value,_.eve.value):_ for _ in list_crosses}
+        list_res:list[_Attribute[Resource]] = list(set([_.res for _ in list_crosses]))
+        list_eve = list(set([_.eve for _ in list_crosses]))
+        if not list_res:
+            return ([],[],[],[],{},{})
+        list_text_v_sub,list_data_v_sub,aliases = ([_.value.template()[0] for _ in list_res],
+                                                   [_.value.template()[1] for _ in list_res],
+                                                   [_.value.template()[2] for _ in list_res][0])
+        dict_aliases = copy.deepcopy(aliases)
+        [[dict_descr.update({k: v.info.description}) for k,v in F.get_all_attrs(_.value,attr_type=_Attribute).items()] for _ in list_res]
+        dict_aliases['res.id'] =   list_crosses[0].full_alias('res','id')
+
+        for at_res in list_res:
+            res = at_res.value
+            tmp_dict_text = {'res.id':res.to_ui('id')}
+            tmp_dict_data = {'res.id':res.to_service_val('id')}
+
+
+            for at_eve in list_eve:
+                eve = at_eve.value
+                val = ''
+                cross = None
+                if (res,eve) in dict_crosses:
+                    cross = dict_crosses[(res,eve)]
+                    val = f'{cross.start.value.to_string_ru_wo_s()} - {cross.end.value.to_string_ru_wo_s()}'
+                tmp_dict_text[eve.to_service_val('id')] = val
+                tmp_dict_data[eve.to_service_val('id')] = cross
+                dict_aliases[eve.to_service_val('id')] = str(eve)
+                dict_descr[eve.to_service_val('id')] = eve.to_ui('descr')
+            list_text.append(tmp_dict_text)
+            list_data.append(tmp_dict_data)
+        if order_res:
+            list_text.sort(key=lambda x:  order_res[x['res.id']] if x['res.id'] in order_res else 0)
+            list_data.sort(key=lambda x:  order_res[x['res.id']] if x['res.id'] in order_res else 0)
+            list_text_v_sub.sort(key=lambda x:  order_res[x['id']] if x['id'] in order_res else 0)
+            list_data_v_sub.sort(key=lambda x:  order_res[x['id']] if x['id'] in order_res else 0)
+
+
+        return  (list_text_v_sub,
+                list_data_v_sub,
+                list_text,
+                list_data,
+                dict_aliases,
+                dict_descr)
+    @staticmethod
     def templates(list_crosses:list[CrossEntity])->tuple[list[dict],list[dict],dict,dict]:
         if not list_crosses:
             return ([],[],[],{})
@@ -1346,6 +1425,12 @@ class CrossManager():
             [_.template()[3] for _ in list_crosses][0],
         )
 
+    @staticmethod
+    def get_cross_entity(resources:Resources,events:Events,crosses:Crosses,id_cross:int)->CrossEntity|None:
+        ordered_data = CrossManager.get_ordered_data(resources=resources,events=events,crosses=crosses)
+        for it in ordered_data:
+            if it.cross.value.id.value == id_cross:
+                return it
 
 class Report():
     def __init__(self, name, descr,text):

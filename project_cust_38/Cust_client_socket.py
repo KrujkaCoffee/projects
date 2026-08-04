@@ -318,16 +318,27 @@ class _ServerItem(UserString):
         self.alias = alias
         self.absolute_path = absolute_path
         self.port = port
+        self.attribute_name = None
 
 class _ClassDict(type):
     def __init__(cls, name, bases, dct):
         super().__init__(name, bases, dct)
         cls._declared_attrs = {k: dct.get(k) for k in dct.get("__annotations__", {})}
-        cls.__by_alias = {attr.alias: attr for name, attr in cls._declared_attrs.items() if isinstance(attr, _ServerItem)}
-        cls.__by_name = {attr: attr for attr in cls._declared_attrs.values()}
+        cls.__by_alias = {}
+        cls.__iter = []
+        cls.__by_name = {}
+        for name, attr in cls._declared_attrs.items():
+            if isinstance(attr, _ServerItem):
+                cls.__by_alias[attr.alias] = attr
+                cls.__iter.append(attr)
+                attr.attribute_name = name
+            cls.__by_name[name] = attr
 
     def __getitem__(cls, item):
         return cls.__by_alias.get(item) or cls.__by_name.get(item)
+
+    def __iter__(self) -> typing.Iterator[_ServerItem]:
+        return iter(self.__iter)
 
 
 class Servers(metaclass=_ClassDict):

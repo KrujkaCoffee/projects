@@ -40,6 +40,7 @@ __all__ = [
     "RelationFieldPair",
     "RelationSpec",
     "Relationship",
+    "GroupByTypes",
 ]
 
 

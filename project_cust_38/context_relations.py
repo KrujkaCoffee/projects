@@ -1,19 +1,3 @@
-# -*- coding: utf-8 -*-
-"""Declarative relationship/enrichment layer for MES context registers.
-
-This module is intentionally independent from the concrete ORM implementation.
-It accepts normal strings as before, but also accepts ORM-like Field objects
-(`name`, `db_column`, `model`) and model classes (`__table__`, `__fields__`).
-
-Main responsibilities:
-    * describe table-to-table relationships separately from register fields;
-    * resolve Field objects into stable FieldRef/TableRef metadata;
-    * provide lazy Relationship descriptor for ORM models;
-    * enrich rows in memory before RegisterRuntime;
-    * generate SQL SELECT/JOIN fragments for virtual registers and reports;
-    * serialize RelationSpec into the admin metadata tables agreed for stage 1.
-"""
-
 from __future__ import annotations
 
 from collections import defaultdict
@@ -66,15 +50,15 @@ __all__ = [
 
 
 class RelationError(Exception):
-    """Base relation-stage exception."""
+    """Базовое исключение для связи."""
 
 
 class RelationMissingError(RelationError):
-    """Required related object was not found."""
+    """Требуемый связанный объект не найден."""
 
 
 class RelationCardinalityError(RelationError):
-    """A one-shaped relation returned several rows."""
+    """Отношение с ожидаемым одним результатом вернуло несколько строк."""
 
 
 class RelationJoinType(str, Enum):
@@ -82,7 +66,6 @@ class RelationJoinType(str, Enum):
     INNER = 'INNER JOIN'
 
 
-# Backwards-compatible alias used by the first prototype/tests.
 JoinType = RelationJoinType
 
 
@@ -94,7 +77,7 @@ class RelationCardinality(str, Enum):
 
 
 class Cardinality(str, Enum):
-    """Compatibility shape enum from the prototype: one/many."""
+    """Перечисление совместимости по “форме” из прототипа: one/many."""
 
     ONE = 'one'
     MANY = 'many'
@@ -106,11 +89,11 @@ class RelationShape(str, Enum):
 
 
 class MissingPolicy(str, Enum):
-    NONE = 'none'          # lazy: None; SQL/enrichment: LEFT behavior
-    EMPTY = 'empty'        # lazy: [];   SQL/enrichment: LEFT behavior
-    RAISE = 'raise'        # lazy/enrichment: raise; SQL: usually INNER/post-check
-    DROP = 'drop'          # SQL/enrichment: INNER behavior / skip row
-    DEFAULT = 'default'    # lazy/enrichment: default_factory
+    NONE = 'none'
+    EMPTY = 'empty'
+    RAISE = 'raise'
+    DROP = 'drop'
+    DEFAULT = 'default'
 
 
 class OnManyPolicy(str, Enum):
@@ -120,7 +103,6 @@ class OnManyPolicy(str, Enum):
     LIST = 'list'
 
 
-# Backwards-compatible alias used by the first prototype/tests.
 OnMany = OnManyPolicy
 
 
@@ -242,18 +224,9 @@ def _is_model_cls(value: Any) -> bool:
 
 
 def _accepts_keyword(callable_obj: Any, keyword_name: str) -> bool:
-    """Return whether a callable accepts a keyword without executing it.
-
-    Relation loading must not catch a broad ``TypeError`` and then repeat the
-    query: the first call may already have reached the database and failed from
-    inside user/runtime code.  Signature inspection lets us preserve legacy
-    target models without a dangerous double execution.
-    """
     try:
         signature = inspect.signature(callable_obj)
     except (TypeError, ValueError):
-        # BaseModel's public contract accepts executor. Unknown callables are
-        # treated as modern; a genuine TypeError must be allowed to surface.
         return True
     if keyword_name in signature.parameters:
         parameter = signature.parameters[keyword_name]
@@ -268,12 +241,6 @@ def _accepts_keyword(callable_obj: Any, keyword_name: str) -> bool:
 
 
 def _resolve_model_reference(value: Any, *, owner: Any = None, required: bool = True) -> Any:
-    """Resolve a forward model reference without importing MES runtime modules.
-
-    Generated models live in one module and may reference a class declared
-    later in that module.  A string/class/lambda is therefore sufficient; no
-    import of CFG, CMS or context_admin is needed.
-    """
     if _is_model_cls(value):
         return value
 
@@ -282,7 +249,6 @@ def _resolve_model_reference(value: Any, *, owner: Any = None, required: bool = 
         module = sys.modules.get(getattr(owner, '__module__', '')) if owner is not None else None
         candidate = getattr(module, value, None) if module is not None else None
         if not _is_model_cls(candidate) and module is not None:
-            # Also accept a stable table_key string for hand-written models.
             for item in vars(module).values():
                 if not _is_model_cls(item):
                     continue
@@ -311,14 +277,11 @@ def _model_db_key(model: Any) -> str:
     db = getattr(model, '__db__', None)
     if isinstance(db, str):
         return _db_alias(db)
-    # Do not eagerly call __db__ callables here: in the project they may touch
-    # runtime config. A stable table key can still be provided via __table_key__.
     return ''
 
 
 @dataclass(frozen=True)
 class TableRef:
-    """Stable reference to a physical/admin table or ORM model table."""
 
     table_key: str = ''
     table_name: str = ''
@@ -349,7 +312,6 @@ class TableRef:
 
 @dataclass(frozen=True)
 class FieldRef:
-    """Resolved field metadata accepted by relations/register specs."""
 
     field_name: str
     db_column: str = ''
@@ -543,31 +505,21 @@ class ResolvedRelationFieldPair:
 
 @dataclass(frozen=True)
 class RelationSpec:
-    """Declarative table/model relationship for stage 1.
 
-    The class keeps compatibility with the previous prototype (`name`,
-    `local_field`, `remote_field`, `target_table`) and also supports the
-    normalized metadata design (`relation_key`, table refs and field_pairs).
-    """
-
-    # compatibility / identity
     name: str = ''
     relation_key: str = ''
     relation_name: str = ''
 
-    # tables/models
     source_table: TableLike | None = None
     target_table: TableLike | None = None
     target_model: Any = None
     source_db: str | None = None
     target_db: str | None = None
 
-    # one-pair shortcut, kept for ergonomic declarations
     local_field: FieldLike | None = None
     remote_field: FieldLike | None = 'Пномер'
     field_pairs: tuple[RelationFieldPair, ...] = ()
 
-    # semantics
     cardinality: str = RelationCardinality.MANY_TO_ONE.value
     shape: str = ''
     join_type: str = ''
@@ -575,7 +527,6 @@ class RelationSpec:
     on_many: str = OnManyPolicy.ERROR.value
     on_many_policy: str = ''
 
-    # output/enrichment
     select_mode: str = SelectMode.ONLY.value
     select_fields: tuple[FieldLike, ...] = ()
     select_prefix: str = ''
@@ -618,15 +569,11 @@ class RelationSpec:
         for pair in pairs:
             if not isinstance(pair, RelationFieldPair):
                 raise RelationError(f'field_pairs должен содержать RelationFieldPair, получено {pair!r}')
-            # Validate now; keep original pair values for later model-aware resolution.
             pair.resolve(source_table=src_table, target_table=target_table)
             normalized_pairs.append(pair)
 
         selected = tuple(item for item in (self.select_fields or ()) if item not in (None, ''))
         if select_mode == SelectMode.ONLY.value and not selected:
-            # For pure relationship/lazy descriptors select_fields may be empty. It
-            # only matters for row enrichment / SQL compiler, where a clearer error
-            # will be raised if selected output is requested.
             selected = tuple()
 
         first_pair = normalized_pairs[0] if normalized_pairs else None
@@ -761,7 +708,6 @@ class RelationRegistry:
 
 
 class RelationResolver:
-    """In-memory row enrichment stage."""
 
     def __init__(self, registry: RelationRegistry | None = None) -> None:
         self.registry = registry or RelationRegistry()
@@ -1040,7 +986,6 @@ class SQLRelationCompiler:
 
 
 def _annotation_shape(annotation: Any) -> tuple[str | None, bool | None, Any]:
-    """Return (shape, optional, item_type) inferred from annotation."""
     if annotation is None:
         return None, None, None
     if isinstance(annotation, str):
@@ -1065,20 +1010,6 @@ def _annotation_shape(annotation: Any) -> tuple[str | None, bool | None, Any]:
 
 
 class Relationship:
-    """Lazy ORM-like relationship descriptor.
-
-    Minimal declaration:
-
-        mk: MkModel | None = Relationship(
-            MkModel,
-            local_field=Номер_мк,
-            remote_field=MkModel.Пномер,
-        )
-
-    The descriptor only stores metadata and lazy-loading behavior. Query JOINs are
-    generated by RelationSpec/SQLRelationCompiler so many-relations do not
-    accidentally multiply register movement rows.
-    """
 
     __mes_relationship__ = True
 
@@ -1142,8 +1073,6 @@ class Relationship:
         except Exception:
             pass
         self._inferred_shape, self._inferred_optional, _ = _annotation_shape(ann)
-        # Keep the owner's relation registry in descriptor form; ModelMeta in Cust_orm
-        # may replace this with RelationSpec records later, but this works for plain classes.
         relations = dict(getattr(owner, '__relations__', {}) or {})
         relations[name] = self
         try:
@@ -1184,7 +1113,6 @@ class Relationship:
         pairs = self.field_pairs
         if not pairs and self.local_field not in (None, ''):
             pairs = (RelationFieldPair(self.local_field, self.remote_field or 'pk'),)
-        # Resolve 'pk' remote shorthand against target model.
         fixed_pairs: list[RelationFieldPair] = []
         target = self.resolve_target_model()
         for pair in pairs:
@@ -1275,8 +1203,6 @@ class Relationship:
             value = _get_value(instance, local_ref)
             local_values.append(value)
             if target is None:
-                # A custom loader owns remote resolution; retain only a stable
-                # cache key and do not require target metadata.
                 continue
             right_field = pair.right_field
             if right_field in ('pk', '__pk__'):
@@ -1309,10 +1235,6 @@ class Relationship:
         if self.loader is not None:
             return self.loader(instance, cache_value, self)
 
-        # The source instance may live in another SQLite database. Reusing
-        # instance._db here silently redirected cross-database relationships to
-        # the wrong file. The target model owns its DB; only a custom executor is
-        # shared so tests/transports remain injectable.
         executor = getattr(instance, '_executor', None)
         try:
             pk_name = target.pk_name() if hasattr(target, 'pk_name') else getattr(target, '__pk__', None)
@@ -1381,9 +1303,6 @@ class Relationship:
         raise RelationError(f'Не умею загрузить relationship {self.name!r} через target_model={target!r}')
 
 
-# ----- Admin metadata helpers -------------------------------------------------
-
-
 def relation_to_admin_records(spec: RelationSpec) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     spec = spec.normalized()
     source = resolve_table_ref(spec.source_table)
@@ -1444,9 +1363,6 @@ def relation_from_admin_records(header: Mapping[str, Any], pairs: Iterable[Mappi
         field_pairs=tuple(field_pairs),
         notes=str(header.get('notes') or ''),
     ).normalized()
-
-
-# ----- Legacy bridges ---------------------------------------------------------
 
 
 def relation_from_state_field(state_field: Any, *, name: str | None = None) -> RelationSpec | None:

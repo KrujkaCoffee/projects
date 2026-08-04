@@ -539,7 +539,7 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
 
             t = CQT.TableContext(tbl)
             for row in t.rows():
-                id = int( row.value('id',get_cust_content=True))
+                id = int(row.value('id',get_cust_content=True))
                 obj = mnger_shablons.get(id)
                 clr_o = obj.color.value
                 row.set_color_background(*clr_o.rgba,'name')
@@ -866,8 +866,110 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
         if reload_ui:
             self.list_crosses_reload()
 
-    def ____________outputs__________________(self):
+    def ____________outputs_graph_________________(self):
         pass
+    @CQT.onerror
+    def on_layout_changed(self, *args):
+        if not getattr(self,'_sort_clicked',False):
+            return
+        print('clicked')
+        t_sub = CQT.TableContext(self.ui.tbl_gr_v_sub)
+
+        order_res = {int(_.value('id')) : _.i for _ in t_sub.rows()}
+        list_crosses = CLSS.CrossManager.get_ordered_data(DTSUB.resources, DTSUB.events, DTSUB.crosses)
+        list_text_v_sub, list_data_v_sub, list_text, list_data, dict_aliases, dict_descr = CLSS.CrossManager.templates_pivot(
+            list_crosses,order_res= order_res)
+        self._fill_right_part_pivot_table(list_text,list_data,dict_aliases)
+        self._sort_clicked = False
+
+    @CQT.onerror
+    def on_sort_changed(self, logical_index: int, order: Qt.SortOrder):
+        self._sort_clicked = True
+
+
+
+    @CQT.onerror
+    def select_graph_sub_tbl(self):
+        tbl = self.ui.tbl_gr_v_sub
+        name_gr = CQT.get_cmb_current_data(self.ui.cmb_type_gr)
+        t = CQT.TableContext(tbl)
+        row = t.current_row()
+        if row.no_selection:
+            return
+        DTSUB.info_o.clear()
+        clmn_name = t.current_column_name()
+        dim_name, attr_name = None, None
+
+        if name_gr == CLSS.Reports.pivottable.name:
+            id_res = int(row.value('id'))
+            res = DTSUB.resources.get(id_res)
+            if res:
+                self.info_resource(res)
+            return
+
+
+    @CQT.onerror
+    def select_graph(self):
+        tbl = self.ui.tbl_gr
+        name_gr = CQT.get_cmb_current_data(self.ui.cmb_type_gr)
+        t = CQT.TableContext(tbl)
+        row = t.current_row()
+        if row.no_selection:
+            return
+        DTSUB.info_o.clear()
+        clmn_name = t.current_column_name()
+        dim_name, attr_name = None, None
+
+        if name_gr == CLSS.Reports.pivottable.name:
+
+            if isinstance(clmn_name,str):
+                if '.' in clmn_name:
+                    dim_name, attr_name = clmn_name.split('.')
+            elif isinstance(clmn_name,int):
+                eve = DTSUB.events.get(clmn_name)
+                if eve:
+                    self.info_resource(eve)
+                return
+        if name_gr == CLSS.Reports.table.name:
+
+            if isinstance(clmn_name,str):
+                if '.' in clmn_name:
+                    dim_name, attr_name = clmn_name.split('.')
+
+            if dim_name and attr_name:
+                id_cross = int(row.value('cross.id'))
+                entity = CLSS.CrossManager.get_cross_entity(DTSUB.resources, DTSUB.events, DTSUB.crosses,id_cross)
+                if not entity:
+                    return
+                obj = getattr(entity, dim_name,None)
+                if obj is None:
+                    return
+                if isinstance(obj, CLSS._Attribute):
+                    obj = obj.value
+                if isinstance(obj,(CLSS.Resource, CLSS.Event,CLSS.Cross)):
+                    self.info_resource(obj)
+                else:
+                    pass
+
+    def _fill_right_part_pivot_table(self, list_text, list_data,dict_aliases):
+        CQT.fill_wtabl(list_text, self.ui.tbl_gr, styleSheet=CQT.MES_EDIT_CSS, dict_or_list_user_data=list_data,
+                       aliases_header=dict_aliases, auto_type=True, sortingEnabled=False, hide_head_rows=True)
+
+        t = CQT.TableContext(self.ui.tbl_gr)
+
+        t.hide_if_not_dev(CFG, True)
+
+        for row in t.rows():
+            for clmn_name, j in t.nf.items():
+                if not F.is_numeric(clmn_name):
+                    continue
+                val = row.value(clmn_name)
+                if not val:
+                    continue
+                eve_o = DTSUB.events.get(int(clmn_name))
+
+                clr: CMS.Color = eve_o.color.value
+                row.set_color_background(*clr.rgba, col_name=clmn_name)
 
     @staticmethod
     @CQT.onerror
@@ -888,6 +990,7 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
 
     @CQT.onerror
     def select_report(self):
+        self.ui.tbl_gr_v_sub.setVisible(False)
         t = CQT.TableContext(self.ui.tbl_gr)
         CQT.clear_tbl(t.tbl)
         name_gr = CQT.get_cmb_current_data(self.ui.cmb_type_gr)
@@ -920,29 +1023,37 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
                         clr:CMS.Color = row.value(clr_name,get_cust_content=True)
                         row.set_color_background(*clr.rgba, col_name=col_name)
 
-        if name_gr == 'pivottable':
-            list_text,list_data,dict_descr, dict_aliases = CLSS.CrossManager.templates(list_crosses)
-            list_text, list_data = self.apply_user_config(name_gr, list_text,list_data)
+        if name_gr == 'pivot_table':
+            self.ui.tbl_gr_v_sub.setVisible(True)
 
-            CQT.fill_wtabl(list_text, self.ui.tbl_gr, styleSheet=CQT.MES_EDIT_CSS, dict_or_list_user_data=list_data,
+            list_text_v_sub, list_data_v_sub, list_text, list_data,dict_aliases, dict_descr = CLSS.CrossManager.templates_pivot(list_crosses)
+            #list_text, list_data = self.apply_user_config(name_gr, list_text,list_data)
+
+
+
+            CQT.fill_wtabl(list_text_v_sub, self.ui.tbl_gr_v_sub, styleSheet=CQT.MES_EDIT_CSS, dict_or_list_user_data=list_data_v_sub,
                            aliases_header=dict_aliases, auto_type=True, sortingEnabled=True)
-            return
+            t_sub = CQT.TableContext(self.ui.tbl_gr_v_sub)
+            t_sub.hide_if_not_dev(CFG, True)
+
+            for row in t_sub.rows():
+                id_res = int(row.value('id'))
+                res:CLSS.Resource = DTSUB.resources.get(id_res)
+                clr: CMS.Color = res.color.value
+                row.set_color_background(*clr.rgba, col_name='name')
+                if 'shablon' in t_sub.nf:
+                    sh_o = res.get_shablon()
+                    clr = sh_o.color.value
+                    row.set_color_background(*clr.rgba, col_name='shablon')
+
+
+            self._fill_right_part_pivot_table(list_text,list_data,dict_aliases)
+
             t = CQT.TableContext(self.ui.tbl_gr)
-            t.hide_if_not_dev(CFG, True)
-            clr_names = {
-                'res.color': 'res.name',
-                'eve.color': 'eve.name',
-                'res_sh.color': 'res_sh.name',
-                'eve_sh.color': 'eve_sh.name',
-            }
+            t.sync_vertical_scroll(t_sub)
+            t_sub.set_vertical_scroll_visible(False)
 
-            for row in t.rows():
-                for clr_name, col_name in clr_names.items():
-                    if clr_name in t.nf and col_name in t.nf:
-                        clr: CMS.Color = row.value(clr_name, get_cust_content=True)
-                        row.set_color_background(*clr.rgba, col_name=col_name)
 
-        #TODO: делать настройки
 
 
 

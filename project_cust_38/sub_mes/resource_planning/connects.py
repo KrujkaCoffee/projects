@@ -136,6 +136,11 @@ def load_tbls(sub_self):
     sub_self.ui.tbl_resuorces.clicked.connect(lambda: sub_self.select_resource())
     sub_self.ui.tbl_events.clicked.connect(lambda: sub_self.select_event())
     sub_self.ui.tbl_cross.clicked.connect(lambda: sub_self.select_cross())
+    sub_self.ui.tbl_gr.clicked.connect(lambda: sub_self.select_graph())
+    sub_self.ui.tbl_gr_v_sub.clicked.connect(lambda: sub_self.select_graph_sub_tbl())
+
+    sub_self.ui.tbl_gr_v_sub.horizontalHeader().sortIndicatorChanged.connect(sub_self.on_sort_changed)
+    sub_self.ui.tbl_gr_v_sub.model().layoutChanged.connect(sub_self.on_layout_changed)
 def load_cmbs(sub_self):
     sub_self.ui.cmb_select_sbjpl.currentIndexChanged.connect(lambda: sub_self.select_sbjpl())
     sub_self.ui.cmb_type_gr.currentIndexChanged.connect(lambda: sub_self.select_report())

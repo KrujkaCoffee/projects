@@ -7,22 +7,13 @@ import logging
 import pathlib
 import re
 import os
-import sqlite3
 import uuid
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
 from project_cust_38 import Cust_SQLite as CSQ  # noqa
 from project_cust_38 import Cust_Functions as F  # noqa
-from project_cust_38.db_identity import (
-    canonical_db_key,
-    equivalent_db_keys,
-    make_table_key as _make_canonical_table_key,
-    resolve_db_identity,
-    split_table_key,
-    server_db_path,
-    srv_db_name,
-)
+from project_cust_38.Cust_orm.db_identity import key_resolver
 
 try:
     import Cust_postgresql_cache as CPG
@@ -30,6 +21,7 @@ except Exception as e:
     CPG = None
 
 logger = logging.getLogger(__name__)
+
 
 __all__ = [
     'ADMIN_TABLES',
@@ -62,10 +54,7 @@ EXCLUDED_PREFIXES = ('m_', 'mtdz_', 'eq_', 'rm_', 'jurnaltdz_', 'm_cld_')
 
 
 class TableIdentityConflictError(RuntimeError):
-    """Several admin rows represent one physical database/table identity.
-
-    The server must stop rather than guess which table_key owns cache and
-    invalidation state. Resolution/migration is an explicit maintenance task.
+    """Несколько административных строк представляют одну базу данных/табличную идентичность.
     """
 
 
@@ -114,16 +103,11 @@ def _coerce_bool(value: Any, default: int = 0) -> int:
 
 
 def resolve_db_key(db_path: str | pathlib.Path | None) -> str:
-    """Compatibility wrapper returning the canonical physical file stem.
-
-    Historic values such as ``db_naryad`` remain accepted by
-    :mod:`db_identity`, but new metadata is always written as ``Naryad``.
-    """
-    return canonical_db_key(db_path)
+    return key_resolver.canonical_db_key(db_path)
 
 
 def make_table_key(db_key: str, table_name: str) -> str:
-    return _make_canonical_table_key(db_key, table_name)
+    return key_resolver.make_table_key(db_key, table_name)
 
 
 def guess_python_name(field_name: str) -> str:
@@ -331,20 +315,20 @@ class ContextAdminRepo:
 
     @staticmethod
     def _identity_aliases(db_key_or_path: Any) -> tuple[str, ...]:
-        return equivalent_db_keys(db_key_or_path)
+        return key_resolver.equivalent_db_keys(db_key_or_path)
 
     @staticmethod
     def _validate_identity_row(row: Mapping[str, Any]) -> None:
         table_key = str(row.get('table_key') or '').strip()
         db_key = str(row.get('db_key') or '').strip()
         table_name = str(row.get('table_name') or '').strip()
-        key_db, key_table = split_table_key(table_key)
+        key_db, key_table = key_resolver.split_table_key(table_key)
         errors: list[str] = []
         if not table_key or not db_key or not table_name or not key_table:
             errors.append('неполная identity')
         if key_table and key_table.casefold() != table_name.casefold():
             errors.append(f'table_key table={key_table!r} != table_name={table_name!r}')
-        if key_db and canonical_db_key(key_db).casefold() != canonical_db_key(db_key).casefold():
+        if key_db and key_resolver.canonical_db_key(key_db).casefold() != key_resolver.canonical_db_key(db_key).casefold():
             errors.append(f'table_key db={key_db!r} != db_key={db_key!r}')
         if errors:
             raise TableIdentityConflictError(
@@ -358,18 +342,10 @@ class ContextAdminRepo:
             table_name: str,
             raise_on_conflict: bool = True,
     ) -> dict[str, Any]:
-        """Resolve a physical table without rewriting any existing key.
-
-        ``Naryad`` and historic ``db_naryad`` are aliases of one physical DB.
-        If one matching row exists, its current ``table_key`` remains the
-        authoritative cache/invalidation key. If two matching rows exist, the
-        method refuses to choose: an automatic merge could orphan relation,
-        field and request-cache rows.
-        """
         table_name = str(table_name or '').strip()
-        identity = resolve_db_identity(db_key_or_path)
+        identity = key_resolver.resolve_db_identity(db_key_or_path)
         aliases = self._identity_aliases(db_key_or_path)
-        canonical_table_key = _make_canonical_table_key(identity.canonical_key, table_name)
+        canonical_table_key = key_resolver.make_table_key(identity.canonical_key, table_name)
         if not table_name:
             return {
                 'canonical_db_key': identity.canonical_key,
@@ -429,7 +405,6 @@ class ContextAdminRepo:
         }
 
     def audit_table_identity_conflicts(self) -> list[dict[str, Any]]:
-        """Read-only audit. It never updates admin/cache tables."""
         rows = CPG.custom_request_pg(
             f"""SELECT table_key, db_key, table_name
             FROM {ADMIN_TABLES['physical_tables']}
@@ -438,12 +413,12 @@ class ContextAdminRepo:
         ) or []
         grouped: dict[tuple[str, str], list[dict[str, Any]]] = {}
         for row in rows:
-            canonical = canonical_db_key(row.get('db_key'))
+            canonical = key_resolver.canonical_db_key(row.get('db_key'))
             marker = (canonical.casefold(), str(row.get('table_name') or '').casefold())
             grouped.setdefault(marker, []).append(dict(row))
         return [
             {
-                'canonical_db_key': canonical_db_key(items[0].get('db_key')),
+                'canonical_db_key': key_resolver.canonical_db_key(items[0].get('db_key')),
                 'table_name': items[0].get('table_name'),
                 'rows': items,
             }
@@ -549,7 +524,7 @@ class ContextAdminRepo:
             source_table_key: str,
             target_table_key: str,
             cardinality: str = 'many_to_one',
-            shape: str = 'one',  # compatibility input; derived from cardinality, not persisted
+            shape: str = 'one',
             join_type: str = 'LEFT JOIN',
             missing_policy: str = 'none',
             on_many_policy: str = 'error',
@@ -680,9 +655,7 @@ class ContextAdminRepo:
         ) or []
 
     def get_srv_nickname(self, abs_path: str) -> str:
-        # Pure path/alias conversion. Importing Cust_client_socket here used to
-        # pull a large runtime graph into schema/invalidation paths.
-        return srv_db_name(abs_path)
+        return key_resolver.srv_db_name(abs_path)
 
     def bootstrap_physical_table(
             self,
@@ -715,8 +688,6 @@ class ContextAdminRepo:
         )
         existing_row = identity_state.get('row') or {}
         if existing_row:
-            # Preserve the key already referenced by fields, relations and
-            # request-cache rows. Renaming is an explicit migration only.
             db_key = str(existing_row.get('db_key') or identity_state['canonical_db_key'])
             table_key = str(existing_row.get('table_key') or identity_state['canonical_table_key'])
         else:
@@ -1036,7 +1007,7 @@ class ContextAdminRepo:
         raw_key = str(db_key or '').strip()
         if not raw_key:
             return ''
-        return server_db_path(raw_key)
+        return key_resolver.server_db_path(raw_key)
 
     def disable_removed_table_fields(self, *, table_key: str, current_field_names: Sequence[str]) -> bool:
         current = [str(name) for name in current_field_names if str(name).strip()]
@@ -1188,7 +1159,7 @@ class ContextAdminRepo:
         db_path = _normalize_path(db_path)
         if not db_path.startswith('SRV:'):
             return db_path
-        return _normalize_path(server_db_path(db_path))
+        return _normalize_path(key_resolver.server_db_path(db_path))
 
     def _schema_read_db_path(self, db_path: str) -> str:
         db_path = _normalize_path(db_path)

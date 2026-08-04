@@ -21,12 +21,8 @@ import shutil
 from typing import Any, Iterable, Mapping, Sequence
 
 import project_cust_38.Cust_Functions as F  # noqa
-from project_cust_38.db_identity import (
-    canonical_db_key,
-    equivalent_db_keys,
-    make_table_key,
-    split_table_key,
-)
+from project_cust_38.Cust_orm.db_identity import key_resolver
+
 
 try:
     import Cust_postgresql_cache as CPG
@@ -51,6 +47,7 @@ logger = logging.getLogger()
 
 _LOCAL_SQL_CACHE_DIR = pathlib.Path(tempfile.gettempdir()) / 'mes_local_sql_cache'
 _LOCAL_SQL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
 
 class CACHE_STATUS:
     BYPASS = 'BYPASS'
@@ -394,12 +391,12 @@ class CacheBuilder:
             if key in seen:
                 continue
             seen.add(key)
-            db_key = canonical_db_key(db_path)
+            db_key = key_resolver.canonical_db_key(db_path)
             result.append({
                 'db_path': db_path,
                 'db_key': db_key,
                 'table_name': table_name,
-                'table_key': make_table_key(db_key, table_name),
+                'table_key': key_resolver.make_table_key(db_key, table_name),
             })
         return result
 
@@ -623,8 +620,6 @@ class FileRequestCache:
         if stale_after is not None and stale_after <= now:
             return False
         stored_dependency_fingerprint = str(entry.get('dependency_fingerprint') or '')
-        # Old/ambiguous entries are never trusted. They will be rebuilt after a
-        # successful identity-aware policy calculation.
         if not stored_dependency_fingerprint:
             return False
         current_dependency_fingerprint = self.current_dependency_fingerprint(str(entry.get('request_key') or ''))
@@ -662,13 +657,6 @@ class FileRequestCache:
             table_keys: Sequence[str],
             default_lifetime_sec: int = DEFAULT_CACHE_LIFETIME_SEC
     ) -> dict[str, Any]:
-        """Resolve canonical/legacy table aliases without mutating admin rows.
-
-        One physical identity may historically be named ``Naryad.naryad`` or
-        ``db_naryad.naryad``. A single existing row is reused verbatim. More
-        than one matching row is a hard conflict: cache lookup/storage is
-        disabled until an explicit maintenance migration resolves references.
-        """
         lifetime_sec = int(default_lifetime_sec)
         stale_candidates: list[datetime.datetime] = []
 
@@ -680,7 +668,7 @@ class FileRequestCache:
                 continue
             if table_key not in requested_keys:
                 requested_keys.append(table_key)
-            db_part, table_name = split_table_key(table_key)
+            db_part, table_name = key_resolver.split_table_key(table_key)
             table_name = str(table_name or '').strip()
             if not table_name:
                 return {
@@ -694,13 +682,13 @@ class FileRequestCache:
                     'missing_table_keys': [table_key],
                     'identity_conflicts': [],
                 }
-            canonical = canonical_db_key(db_part)
+            canonical = key_resolver.canonical_db_key(db_part)
             marker = (canonical.casefold(), table_name.casefold())
             identities.setdefault(marker, {
                 'canonical_db_key': canonical,
                 'table_name': table_name,
                 'requested': [],
-                'db_aliases': equivalent_db_keys(db_part),
+                'db_aliases': key_resolver.equivalent_db_keys(db_part),
             })['requested'].append(table_key)
 
         if not identities:
@@ -776,7 +764,7 @@ class FileRequestCache:
             for raw_row in dependency_rows:
                 row = dict(raw_row)
                 row_marker = (
-                    canonical_db_key(row.get('db_key')).casefold(),
+                    key_resolver.canonical_db_key(row.get('db_key')).casefold(),
                     str(row.get('table_name') or '').casefold(),
                 )
                 if row_marker != marker:
@@ -931,7 +919,7 @@ class FileRequestCache:
                     notes: str = '') -> dict[str, Any]:
         now = F.now()
         db_path = self.utils.normalize_path(db_path)
-        db_key = canonical_db_key(db_path)
+        db_key = key_resolver.canonical_db_key(db_path)
         suspicious_empty = payload in (None, [], {}, (), True, False)
 
         if suspicious_empty:
@@ -947,7 +935,6 @@ class FileRequestCache:
                 'last_refresh_at': now,
                 'result_state': 'empty',
             }
-        # payload_bytes = self.serialize_payload(payload)
         payload_bytes, payload_is_compressed = self.serialize_payload(payload)
         logger.debug(f'Ключ: {request_key} статус компрессии: {payload_is_compressed}')
 
@@ -961,7 +948,6 @@ class FileRequestCache:
             'body_hash': body_hash,
             'payload_bytes': payload_bytes,
             'payload_is_compressed': payload_is_compressed,
-            # 'data_version': 1,
             'result_state': 'filled',
             'dependency_fingerprint': dependency_fingerprint or '',
             'cache_lifetime_sec': int(cache_lifetime_sec or DEFAULT_CACHE_LIFETIME_SEC),
@@ -1014,8 +1000,6 @@ class FileRequestCache:
         }
 
     def delete_entry(self, request_key: str) -> None:
-        # state_delete_payload = self._remove_payload(request_key) # todo
-
         state_delete_payload_1 = CPG.custom_request_pg( f'DELETE FROM {REQUEST_CACHE_TABLES_TABLE} WHERE request_key = {request_key!r}')
         state_delete_payload_2 = CPG.custom_request_pg(f'DELETE FROM {REQUEST_CACHE_META_TABLE} WHERE request_key = {request_key!r}')
         logger.info(f'Удаление строк из таблицы: {REQUEST_CACHE_TABLES_TABLE} Статус: {state_delete_payload_1}')
@@ -1037,7 +1021,7 @@ class FileRequestCache:
         update_invalidated = CPG.custom_request_pg(f"UPDATE {REQUEST_CACHE_META_TABLE} SET invalidated_at = {now!r}, updated_at = {now!r}{set_notes} WHERE request_key IN ({joined_req})")
         logger.debug(f'Статус обновления метки инвалидации: {update_invalidated}')
         return len(request_keys)
-    ###
+
     def invalidate_by_table_names(self, table_names, notes: str = '', return_details: bool = False):
         names = []
         seen = set()
