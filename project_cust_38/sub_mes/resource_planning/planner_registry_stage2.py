@@ -13,6 +13,122 @@ PLANNER_SCHEMA = "planner"
 ADMIN_SCHEMA = "public"
 
 
+POSTGRES_MIGRATION_SQL = r"""
+CREATE SCHEMA IF NOT EXISTS planner;
+
+CREATE TABLE IF NOT EXISTS planner.planner_sources (
+    source_key text PRIMARY KEY,
+    subject_code text NOT NULL,
+    table_key text NOT NULL,
+    caption text NOT NULL,
+    identity_field_name text NOT NULL,
+    is_enabled integer DEFAULT 1 NOT NULL CHECK (is_enabled IN (0, 1)),
+    sort_order integer DEFAULT 0 NOT NULL,
+    updated_at text DEFAULT to_char(CURRENT_TIMESTAMP, 'YYYY-MM-DD HH24:MI:SS') NOT NULL,
+    CONSTRAINT fk_planner_sources_table
+        FOREIGN KEY (table_key)
+        REFERENCES public.admin_physical_tables(table_key)
+        ON DELETE RESTRICT,
+    CONSTRAINT fk_planner_sources_identity
+        FOREIGN KEY (table_key, identity_field_name)
+        REFERENCES public.admin_table_fields(table_key, field_name)
+        ON DELETE RESTRICT,
+    CONSTRAINT uq_planner_sources_subject_table UNIQUE (subject_code, table_key),
+    CONSTRAINT uq_planner_sources_source_table UNIQUE (source_key, table_key)
+);
+
+CREATE TABLE IF NOT EXISTS planner.planner_source_roles (
+    role_key text PRIMARY KEY,
+    source_key text NOT NULL,
+    role text NOT NULL CHECK (role IN ('resource', 'event', 'attribute')),
+    CONSTRAINT fk_planner_source_roles_source
+        FOREIGN KEY (source_key)
+        REFERENCES planner.planner_sources(source_key)
+        ON DELETE CASCADE,
+    CONSTRAINT uq_planner_source_roles UNIQUE (source_key, role)
+);
+
+CREATE TABLE IF NOT EXISTS planner.planner_requisites (
+    requisite_key text PRIMARY KEY,
+    source_key text NOT NULL,
+    table_key text NOT NULL,
+    field_name text NOT NULL,
+    caption text NOT NULL,
+    is_selectable integer DEFAULT 1 NOT NULL CHECK (is_selectable IN (0, 1)),
+    is_filterable integer DEFAULT 0 NOT NULL CHECK (is_filterable IN (0, 1)),
+    is_groupable integer DEFAULT 0 NOT NULL CHECK (is_groupable IN (0, 1)),
+    semantic_role text DEFAULT 'attribute' NOT NULL
+        CHECK (semantic_role IN ('attribute', 'label', 'start', 'end', 'color', 'group')),
+    sort_order integer DEFAULT 0 NOT NULL,
+    CONSTRAINT fk_planner_requisites_source
+        FOREIGN KEY (source_key, table_key)
+        REFERENCES planner.planner_sources(source_key, table_key)
+        ON DELETE CASCADE,
+    CONSTRAINT fk_planner_requisites_field
+        FOREIGN KEY (table_key, field_name)
+        REFERENCES public.admin_table_fields(table_key, field_name)
+        ON DELETE RESTRICT,
+    CONSTRAINT uq_planner_requisites_source_field UNIQUE (source_key, field_name)
+);
+
+CREATE TABLE IF NOT EXISTS planner.planner_presentations (
+    presentation_key text PRIMARY KEY,
+    source_key text NOT NULL,
+    source_table_key text NOT NULL,
+    source_field_name text NOT NULL,
+    result_table_key text NOT NULL,
+    result_field_name text NOT NULL,
+    caption text NOT NULL,
+    presentation_kind text NOT NULL CHECK (presentation_kind IN ('direct', 'relation')),
+    missing_policy text DEFAULT 'none' NOT NULL CHECK (missing_policy IN ('none', 'error')),
+    on_many_policy text DEFAULT 'error' NOT NULL CHECK (on_many_policy IN ('error')),
+    is_default integer DEFAULT 0 NOT NULL CHECK (is_default IN (0, 1)),
+    sort_order integer DEFAULT 0 NOT NULL,
+    CONSTRAINT fk_planner_presentations_source
+        FOREIGN KEY (source_key, source_table_key)
+        REFERENCES planner.planner_sources(source_key, table_key)
+        ON DELETE CASCADE,
+    CONSTRAINT fk_planner_presentations_source_field
+        FOREIGN KEY (source_table_key, source_field_name)
+        REFERENCES public.admin_table_fields(table_key, field_name)
+        ON DELETE RESTRICT,
+    CONSTRAINT fk_planner_presentations_result_field
+        FOREIGN KEY (result_table_key, result_field_name)
+        REFERENCES public.admin_table_fields(table_key, field_name)
+        ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS planner.planner_presentation_steps (
+    presentation_step_key text PRIMARY KEY,
+    presentation_key text NOT NULL,
+    step_no integer DEFAULT 0 NOT NULL CHECK (step_no >= 0),
+    relation_key text NOT NULL,
+    CONSTRAINT fk_planner_presentation_steps_presentation
+        FOREIGN KEY (presentation_key)
+        REFERENCES planner.planner_presentations(presentation_key)
+        ON DELETE CASCADE,
+    CONSTRAINT fk_planner_presentation_steps_relation
+        FOREIGN KEY (relation_key)
+        REFERENCES public.admin_table_relations(relation_key)
+        ON DELETE RESTRICT,
+    CONSTRAINT uq_planner_presentation_steps_no UNIQUE (presentation_key, step_no)
+);
+
+CREATE INDEX IF NOT EXISTS idx_planner_sources_subject
+    ON planner.planner_sources(subject_code, is_enabled, sort_order, source_key);
+
+CREATE INDEX IF NOT EXISTS idx_planner_requisites_source
+    ON planner.planner_requisites(source_key, sort_order, requisite_key);
+
+CREATE INDEX IF NOT EXISTS idx_planner_presentations_source
+    ON planner.planner_presentations(source_key, sort_order, presentation_key);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_planner_presentations_default
+    ON planner.planner_presentations(source_key)
+    WHERE is_default = 1;
+""".strip()
+
+
 class PlannerRegistryError(Exception):
     """Базовая ошибка регистрационного контура планировщика."""
 
@@ -1553,6 +1669,10 @@ def _run_demo() -> int:
             root = widgets.QWidget(self)
             self.setCentralWidget(root)
             layout = widgets.QVBoxLayout(root)
+            info = widgets.QLabel(
+                "Стенд работает в памяти: продактовые БД и admin_* не изменяются.", root
+            )
+            layout.addWidget(info)
             splitter = widgets.QSplitter(QtCore.Qt.Horizontal, root)
             layout.addWidget(splitter, 1)
 
@@ -1883,6 +2003,7 @@ def _run_demo() -> int:
 
 
 __all__ = [
+    "POSTGRES_MIGRATION_SQL",
     "PlannerRegistryError",
     "PlannerValidationError",
     "PlannerCatalogError",

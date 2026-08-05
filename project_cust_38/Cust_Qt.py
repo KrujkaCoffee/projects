@@ -2440,6 +2440,12 @@ class TableContext:
             header.sectionMoved.connect(self._on_header_moved)
             self._header_drdrop_connected = True
 
+    def sync_horizontal_scroll(self, sub_t: TableContext):
+        sync_horizontal_scroll(self.tbl, sub_t.tbl)
+
+    def sync_vertical_scroll(self, sub_t: TableContext):
+        sync_vertical_scroll(self.tbl, sub_t.tbl)
+
 
 class CustUserRoles():
     table = 1
@@ -2869,6 +2875,88 @@ class Cust_progress_bar:
             }}
         """)
 
+
+class CustLabel():
+    """
+    QLabel с пользовательскими данными через setProperty().
+    """
+    def __init__(self, lbl:QtWidgets.QLabel):
+        self.lbl = lbl
+
+    @property
+    def text(self)-> str:
+        return self.lbl.text()
+
+    def set_multiline(self, enabled: bool = True):
+        """
+        Включить или выключить многострочность.
+
+        Args:
+            enabled: True - многострочный, False - одна строка
+        """
+        self.lbl.setWordWrap(enabled)
+
+        if enabled:
+            self.lbl.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+            self.lbl.setMinimumHeight(0)
+            self.lbl.setMaximumHeight(16777215)
+        else:
+            font_metrics = self.lbl.fontMetrics()
+            line_height = font_metrics.height()
+            self.lbl.setMaximumHeight(line_height + 4)
+            self.lbl.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+
+    def set_data(self, text:str='', user_data= None,tooltip:str = ''):
+        self.lbl.setText(text)
+        self.set_user_data(user_data,'user_data')
+        self.lbl.setToolTip(tooltip)
+
+    def set_user_data(self, value, key: str = "user_data"):
+        """Сохранить данные."""
+        self.lbl.setProperty(key, value)
+
+    def get_user_data(self, default=None, key: str = "user_data"):
+        """Получить данные."""
+        value = self.lbl.property(key)
+        return value if value is not None else default
+
+    def set_font(self, size: int = None, bold: bool = False, italic: bool = False,
+                 family: str = None, underline: bool = False):
+        """
+        Установить шрифт для лейбла.
+
+        Args:
+            size: Размер шрифта (например, 14, 20)
+            bold: Жирный (True/False)
+            italic: Курсив (True/False)
+            family: Название шрифта (например, "Arial", "Times New Roman")
+            underline: Подчёркнутый (True/False)
+        """
+        font = self.lbl.font()
+
+        if family:
+            font.setFamily(family)
+
+        if size:
+            font.setPointSize(size)
+
+        font.setBold(bold)
+        font.setItalic(italic)
+        font.setUnderline(underline)
+
+        self.lbl.setFont(font)
+
+    def set_text_color(self, r: int, g: int, b: int, a: int = 255):
+        """
+        Установить цвет текста.
+
+        Args:
+            r: Красный (0-255)
+            g: Зелёный (0-255)
+            b: Синий (0-255)
+            a: Альфа-прозрачность (0-255), по умолчанию 255 (непрозрачный)
+        """
+        self.lbl.setStyleSheet(f"color: rgba({r}, {g}, {b}, {a});")
 
 def progress_decorator(fn):
     """
@@ -3793,7 +3881,7 @@ def name_col_by_num(obj, num, not_found_val=None):
     if obj.metaObject().className() == 'QTableWidget':
         if obj.horizontalHeaderItem(num) != None:
             name = obj.horizontalHeaderItem(num).data(QtCore.Qt.UserRole)
-            if not name:
+            if name is None:
                 name = obj.horizontalHeaderItem(num).text()
             return name
 
@@ -6637,8 +6725,39 @@ def sync_v_scrollbar_policy(tblf, tbl):
             tblf.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
     QtCore.QTimer.singleShot(0, _do)
 
+def sync_vertical_scroll(tbl,tblf):
+    # отключаем старые подключения через сохранённые ссылки
+    old_vscroll_conn = getattr(tblf, '_vscroll_conn', None)
+    if old_vscroll_conn:
+        try:
+            tbl.verticalScrollBar().valueChanged.disconnect(old_vscroll_conn)
+        except (TypeError, RuntimeError):
+            pass
+    def mod_vscroll(tbl, tblf, val):
+        tblf.verticalScrollBar().setValue(val)
+    # сохраняем ссылки на слоты
+    tblf._vscroll_conn = tblf.verticalScrollBar().setValue
 
+    tbl.verticalScrollBar().valueChanged.connect(
+        partial(mod_vscroll, tbl, tblf))
+    tblf.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
 
+def sync_horizontal_scroll(tbl,tblf):
+    # отключаем старые подключения через сохранённые ссылки
+    old_scroll_conn = getattr(tblf, '_scroll_conn', None)
+    if old_scroll_conn:
+        try:
+            tbl.horizontalScrollBar().valueChanged.disconnect(old_scroll_conn)
+        except (TypeError, RuntimeError):
+            pass
+    def mod_scroll(tbl, tblf, val):
+        tblf.horizontalScrollBar().setValue(val)
+    # сохраняем ссылки на слоты
+    tblf._scroll_conn = tblf.horizontalScrollBar().setValue
+
+    tbl.horizontalScrollBar().valueChanged.connect(
+        partial(mod_scroll, tbl, tblf))
+    tblf.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
 
 def _load_tbl(tbl:QtWidgets.QTableWidget,tblf:QtWidgets.QTableWidget,hidden_scrol=False,count_rows=1):
     h_tbl = tbl.horizontalHeader()
@@ -6671,14 +6790,7 @@ def _load_tbl(tbl:QtWidgets.QTableWidget,tblf:QtWidgets.QTableWidget,hidden_scro
     #print(f"_load_tbl после find_height: {h_tbl.receivers(h_tbl.sectionResized)}")
     if hidden_scrol:
         tblf.verticalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Stretch)
-
-        # отключаем старые подключения через сохранённые ссылки
-        old_scroll_conn = getattr(tblf, '_scroll_conn', None)
-        if old_scroll_conn:
-            try:
-                tbl.horizontalScrollBar().valueChanged.disconnect(old_scroll_conn)
-            except (TypeError, RuntimeError):
-                pass
+        sync_horizontal_scroll(tbl, tblf)
 
         old_resize_conn = getattr(tblf, '_resize_conn', None)
         if old_resize_conn:
@@ -6687,23 +6799,11 @@ def _load_tbl(tbl:QtWidgets.QTableWidget,tblf:QtWidgets.QTableWidget,hidden_scro
             except (TypeError, RuntimeError):
                 pass
 
-        # сохраняем ссылки на слоты
-        tblf._scroll_conn = tblf.horizontalScrollBar().setValue
-        #tblf._resize_conn = tblf.setColumnWidth
-
         def sync_columns(tblf, logicalIndex, oldSize, newSize):
             tblf.setColumnWidth(logicalIndex, newSize)
 
-
-        def mod_scroll(tbl,tblf,val):
-            tblf.horizontalScrollBar().setValue(val)
-
-
         tblf._resize_conn = partial(sync_columns, tblf)
         tbl.horizontalHeader().sectionResized.connect(tblf._resize_conn)
-        tbl.horizontalScrollBar().valueChanged.connect(
-            partial(mod_scroll, tbl,tblf))
-        tblf.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         tblf.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.Fixed)
         sync_v_scrollbar_policy(tblf,tbl)
         
@@ -8277,7 +8377,7 @@ def msgboxg_get_table(self, msg, dict_or_list, btn0_name="✔ Ввод", btn1_na
                       styleSheet=None,parent_self=None,sortingEnabled=False,yesNoMode=False,not_standart_close=False,
                       save_column_sort_hh: bool = False,aliases_header=None,SelectionMode=None,showFullScreen=False,
                       showMaximized=False,fnc_drag_drop=None,property_in_rez=False,max_width_clms=200,fnc_dbl_clck=None,
-                      fnc_currentItemChanged=None,auto_type=False,dict_or_list_user_data=None)->(
+                      fnc_currentItemChanged=None,auto_type=False,dict_or_list_user_data=None,func_validate_t=None)->(
         list[dict]|tuple[list[dict],dict[str,str]]|dict[str,str]):
     """
     :param selectionBehavior: SelectItems|SelectRows|SelectColumns
@@ -8339,6 +8439,10 @@ def msgboxg_get_table(self, msg, dict_or_list, btn0_name="✔ Ввод", btn1_na
         if func_validate is not None:
             dict_tbl = list_from_wtabl_c(dialog_tbl.ui.tbl, rez_dict=True)
             rez = func_validate(dict_tbl)
+            return ret(rez)
+        if func_validate_t is not None:
+
+            rez = func_validate_t(TableContext(dialog_tbl.ui.tbl))
             return ret(rez)
 
         if ExtendedSelection:

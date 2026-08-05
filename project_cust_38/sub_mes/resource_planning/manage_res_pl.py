@@ -95,6 +95,7 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
         self.fill_cmb_reports()
         DTCLS.module_manage_sub_app.user_config_sub_plan = CLSS.UserConfigSubPlan()
         DTCLS.module_manage_sub_app.user_config_sub_plan.load_config()
+        DTCLS.module_manage_sub_app.custom_types = CLSS.CustomTypes()
 
     def _load_free_css(self):
         theme_path = F.sep().join([F.path_to_execut_file_c(), 'css'])

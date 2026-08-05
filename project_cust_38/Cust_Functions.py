@@ -3474,7 +3474,7 @@ def get_all_attrs_with_properties(obj, include_private=False, prefer_properties=
 
     return result
 
-def get_all_attrs(obj, include_private: bool = False) -> dict:
+def get_all_attrs(obj, include_private: bool = False, attr_type: type | tuple[type, ...] | None = None,) -> dict:
     """
     Возвращает словарь ``{attr_name: value}`` для всех обычных атрибутов
     экземпляра (без учета ``property``).
@@ -3494,28 +3494,26 @@ def get_all_attrs(obj, include_private: bool = False) -> dict:
 
     Examples
     --------
-    >>> class Doc:
-    ...     def __init__(self, title):
-    ...         self._title = title
-    ...         self.author = "Иван"
-    ...
-    ...     @property
-    ...     def title(self):
-    ...         return self._title.upper()
-    ...
-    >>> doc = Doc("акт")
-    >>> get_all_attrs(doc)
-    {'author': 'Иван'}
-    >>> get_all_attrs(doc, include_private=True)
+    # >>> class Doc:
+    # ...     def __init__(self, title):
+    # ...         self._title = title
+    # ...         self.author = "Иван"
+    # ...
+    # ...     @property
+    # ...     def title(self):
+    # ...         return self._title.upper()
+    # ...
+    # >>> doc = Doc("акт")
+    # >>> get_all_attrs(doc)
+    # {'author': 'Иван'}
+    # >>> get_all_attrs(doc, include_private=True)
     {'_title': 'акт', 'author': 'Иван'}
     """
-    if include_private:
-        return dict(vars(obj))
-
     return {
         name: value
         for name, value in vars(obj).items()
-        if not name.startswith("_")
+        if (include_private or not name.startswith("_"))
+        and (attr_type is None or isinstance(value, attr_type))
     }
 
 

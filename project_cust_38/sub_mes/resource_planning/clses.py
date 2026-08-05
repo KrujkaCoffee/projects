@@ -10,65 +10,57 @@ from project_cust_38.sub_mes.resource_planning.dataClass_res_pl import data_app 
 from typing import Generic, TypeVar
 from project_cust_38.Cust_mes import Color
 import copy
+import project_cust_38.api_erp_commands as APIERP
+
 T = TypeVar("T")
 
 DTSUB = DTCLS.module_manage_sub_app
+class Mes_type:
+    pass
+
+class Erp_type:
+    pass
+class Plan(Mes_type):
+    pass
+
+class Naryad(Mes_type):
+    pass
+
 class MesMetaClass:
+    plan = Plan
+    naryad = Naryad
+
+
+class ClientOrder(Erp_type):
     pass
+class ProductionOrder(Erp_type):
+    pass
+
+class ErpDocuments:
+    ClientOrder = ClientOrder
+    ProductionOrder = ProductionOrder
+class ErpReferences:
+    pass
+
 class ErpMetaClass:
-    pass
+    ErpDocuments = ErpDocuments
+    ErpReferences = ErpReferences
 
 
 class MainTypes:
     """Класс для хранения информации о типах данных"""
 
-    def __init__(self, name: str, text: str, inner_data: dict = None):
+    def __init__(self, name: str, text: str, value:object, inner_data: dict = None, emoji:str = ''):
         self.name = name
         self.text = text
+        self.value = value
         self.inner_data = inner_data if inner_data is not None else dict()
-
+        self.emoji = emoji
     def __repr__(self):
         return f"MainTypes(name='{self.name}', text='{self.text}')"
 
-TYPE_MAP = {
-        str: MainTypes("str", "Текст"),
-        int: MainTypes("int", "Целое число"),
-        float: MainTypes("float", "Число с плавающей точкой"),
-        bool: MainTypes("bool", "Логический (Истина/Ложь)"),
-        complex: MainTypes("complex", "Комплексное число"),
-
-        list: MainTypes("list", "Список"),
-        tuple: MainTypes("tuple", "Кортеж"),
-        dict: MainTypes("dict", "Словарь"),
-        set: MainTypes("set", "Множество"),
-        frozenset: MainTypes("frozenset", "Неизменяемое множество"),
-
-        bytes: MainTypes("bytes", "Байты"),
-        bytearray: MainTypes("bytearray", "Массив байтов"),
-        memoryview: MainTypes("memoryview", "Представление памяти"),
-        type(None): MainTypes("NoneType", "Пустое значение (None)"),
-        range: MainTypes("range", "Диапазон"),
-
-        # Пользовательские типы
-        MesMetaClass: MainTypes("MesMetaClass", "Данные МЕС",{
-                                                            "plan":MainTypes("plan", "План производства"),
-                                                            "naryad":MainTypes("plan", "Наряды"),
-                                                        }),
-        ErpMetaClass: MainTypes("ErpMetaClass", "Данные ERP"),
-    }
 
 
-def get_type_name(value_or_type) -> str:
-
-    if isinstance(value_or_type, type):
-        py_type = value_or_type
-    else:
-
-        py_type = type(value_or_type)
-    rez = TYPE_MAP.get(py_type, f"Неизвестный тип ({py_type.__name__})")
-    if isinstance(rez,MainTypes):
-        return rez.text
-    return rez
 
 class UiMode():
     LIST = "list"
@@ -78,6 +70,7 @@ class UiMode():
 
 
 class _AttributeInfoMeta():
+
     def __init__(self, type: type, val:object, name: str, comment:str, text: str, description: str, order: int,
                  show_new_templ:bool,emoj:str):
         self.type = type
@@ -101,7 +94,7 @@ class _AttributeInfoMeta():
 
     def to_ui(self):
         if self.name =='type':
-            return get_type_name(self.type)
+            return DTSUB.custom_types.get_full_type_name(self.type)
         return f'{self.val}'
 
     def to_service_val(self):
@@ -366,6 +359,147 @@ class Cdt():
             return f"Cdt('{self.to_string_ru()}')"
         return "Cdt(None)"
 
+
+class CustomTypes:
+    TYPE_MAP = {
+        "str": MainTypes("str", "Текст", value=str, emoji="🔠"),
+        "int": MainTypes("int", "Целое число", value=int, emoji="🔢"),
+        "float": MainTypes("float", "Число с плавающей точкой", value=float, emoji="➗"),
+        "bool": MainTypes("bool", "Логический (Истина/Ложь)", value=bool, emoji="✅"),
+        "Cdt": MainTypes("Cdt", "Дата", value=Cdt, emoji="📅"),
+
+        # Пользовательские типы
+        "MesMetaClass": MainTypes(
+            "MesMetaClass",
+            "Данные МЕС",
+            value=MesMetaClass,
+            inner_data={
+                "plan": MainTypes("plan", "План производства", value=MesMetaClass.plan, emoji="📈"),
+                "naryad": MainTypes("naryad", "Наряды", value=MesMetaClass.naryad, emoji="🧾"),
+            },
+            emoji="🏭"
+        ),
+
+        "ErpMetaClass": MainTypes(
+            "ErpMetaClass",
+            "Данные ERP",
+            value=ErpMetaClass,
+            inner_data={
+                "Документы": MainTypes(
+                    "Документы",
+                    "Документы",
+                    value=ErpMetaClass.ErpDocuments,
+                    inner_data={
+                        "ЗаказКлиента": MainTypes(
+                            "ЗаказКлиента",
+                            "Заказ клиента",
+                            value= ErpMetaClass.ErpDocuments.ClientOrder
+                        ),
+                        "ЗаказНаПроизводство2_2": MainTypes(
+                            "ЗаказНаПроизводство2_2",
+                            "Заказ на производство",
+                            value=ErpMetaClass.ErpDocuments.ProductionOrder
+                        ),
+                    },
+                    emoji="📄"
+                ),
+                "Справочники": MainTypes(
+                    "Справочники",
+                    "Справочники",
+                    value=ErpMetaClass.ErpReferences,
+                    emoji="📚"
+                ),
+            },
+            emoji="💼"
+        ),
+    }
+
+    def __init__(self):
+        pass
+
+    def _find_type_by_path(self, data: dict, path_parts: list) -> MainTypes:
+
+        if not path_parts:
+            return None
+
+        current_key = path_parts[0]
+
+        if current_key in data:
+            current_type = data[current_key]
+
+            if len(path_parts) == 1:
+                return current_type
+
+            if isinstance(current_type, MainTypes) and current_type.inner_data:
+                return self._find_type_by_path(current_type.inner_data, path_parts[1:])
+
+        return None
+
+    def get_type(self, full_name: str) -> MainTypes:
+
+        if not full_name:
+            return None
+
+        path_parts = full_name.split('.')
+        return self._find_type_by_path(self.TYPE_MAP, path_parts)
+
+    def _find_type_by_value(self,data: dict, target_value, path: list = None) -> tuple:
+
+        if path is None:
+            path = []
+
+        for key, main_type in data.items():
+            if isinstance(main_type, MainTypes):
+                if main_type.value == target_value:
+                    return main_type, path + [main_type.name]
+                if main_type.inner_data:
+                    found, found_path = self._find_type_by_value(
+                        main_type.inner_data,
+                        target_value,
+                        path + [main_type.name]
+                    )
+                    if found:
+                        return found, found_path
+
+        return None, None
+
+    def get_full_type_name(self,obj_or_value:object|MainTypes) -> str:
+        if isinstance(obj_or_value, MainTypes):
+            target_value = obj_or_value.value
+        else:
+            target_value = obj_or_value
+        found, path = self._find_type_by_value(self.TYPE_MAP, target_value)
+
+        if found:
+            return '.'.join(path)
+
+        if hasattr(obj_or_value, '__name__'):
+            return f"Неизвестный_тип.{obj_or_value.__name__}"
+        return f"Неизвестный_тип.{str(obj_or_value)}"
+    def template(self)->tuple[list,list]:
+        template = []
+        template_data = []
+        template, template_data = self._add_types_tmplate(template, template_data, self.TYPE_MAP)
+        return template, template_data
+    def _add_types_tmplate(self, template, template_data, inner_data, parent: str = '', lvl=0) -> tuple[list, list]:
+        if parent:
+            parent = f'{parent}.'
+        for k, v in inner_data.items():
+            name = v.name
+
+            tmp_dict_text = {'_name': name, "": v.emoji, '_parent': parent, 'Тип': f'{" " * 4 * lvl}{v.text}'}
+            tmp_dict_data = {'_name': name, "": v.emoji, '_parent': parent, 'Тип': v}
+
+            template.append(tmp_dict_text)
+            template_data.append(tmp_dict_text)
+            if v.inner_data:
+                template, template_data = self._add_types_tmplate(template, template_data, v.inner_data, parent=f'{parent}{name}',
+                                                            lvl=lvl + 1)
+        return template, template_data
+
+
+
+
 class UserPh():
     def __init__(self, ref:str):
         self.ref_ph:str = ref
@@ -516,7 +650,7 @@ class Info():
         self._fill_data()
         self._ui_ok.setEnabled(True)
         self._ui_cancel.setEnabled(True)
-
+    @CQT.onerror
     def _new_attr(self):
         def fnc_oform(tbl:CQT.QtWidgets.QTableWidget,*args):
 
@@ -528,6 +662,7 @@ class Info():
                 attr_o:_AttributeInfoMeta = row.value('Значение',get_cust_content=True)
                 attr_o_type = attr_o.type
                 if attr_o_type is type:
+                    @CQT.onerror
                     def fnc_select_type(lbl: CQT.InteractiveLabelInstance, sub_self, i, j, row: CQT.TableRow):
                         def fnc_oform_tbl_type(tbl:CQT.QtWidgets.QTableWidget,*args):
                             t = CQT.TableContext(tbl)
@@ -535,24 +670,7 @@ class Info():
                                 pass
                             t.hide_if_not_dev(CFG)
 
-                        def add_types_tmplate(template,template_data,inner_data,parent:str='', lvl=0)->tuple[list,list]:
-                            if parent:
-                                parent= f'{parent}.'
-                            for k, v in inner_data.items():
-                                name = k
-                                if not isinstance(k,str):
-                                    name = k.__name__
-                                tmp_dict_text = {'_name': name, "":"", '_parent':parent, 'Тип': f'{" "*4*lvl}{v.text}'}
-                                tmp_dict_data = {'_name': name, "":"", '_parent':parent,'Тип': v}
-
-                                template.append(tmp_dict_text)
-                                template_data.append(tmp_dict_text)
-                                if v.inner_data:
-                                    template, template_data = add_types_tmplate(template, template_data, v.inner_data,parent = name, lvl= lvl+1)
-                            return  template, template_data
-                        template = []
-                        template_data = []
-                        template, template_data = add_types_tmplate(template, template_data,TYPE_MAP)
+                        template, template_data = DTSUB.custom_types.template()
 
                         rez = CQT.msgboxg_get_table(DTSUB.sub_self,'Выбор типа данных',template,
                                         styleSheet=CQT.MES_EDIT_CSS,func_oform_tbl=fnc_oform_tbl_type,
@@ -560,7 +678,17 @@ class Info():
                                         )
                         if not rez:
                             return
-                        pass
+                        rez = rez[0]
+                        new_type_name = rez['_parent'] + rez['_name']
+                        new_type:MainTypes = DTSUB.custom_types.get_type(new_type_name)
+                        new_meta:_AttributeInfoMeta = row.value('Значение',get_cust_content=True)
+                        row.set_value('Значение', new_type.text)
+                        #DTSUB.custom_types.get_full_type_name(new_type)
+                        new_meta.set_value(new_type.value)
+                        row.set_value('Значение', new_meta,set_cust_content=True)
+                        lbl.set_text(new_type.text)
+
+
 
                     widg = CQT.add_interactive_label(t.tbl, row.i, t.nf['Значение'], row.value('Значение'),
                                                      parent_self=DTSUB.sub_self, grab_style_from_cell=True,
@@ -575,10 +703,14 @@ class Info():
                         def fnc_select_type_attr_view(lbl: CQT.InteractiveLabelInstance, sub_self, i, j, row: CQT.TableRow):
                             t = row.ctx
                             row_type = t.find_row({'_name':'type'},True)
-                            type:_AttributeInfoMeta = row_type.value('Значение',get_cust_content=True)
-                            if type.val is None:
+                            meta:_AttributeInfoMeta = row_type.value('Значение',get_cust_content=True)
+                            if meta.val is None:
                                 CQT.msgbox(f'Не выбран Тип')
                                 return
+                            type = meta.val
+                            full_path = DTSUB.custom_types.get_full_type_name(type)
+                            print(f'представление {full_path}')
+
 
                         widg = CQT.add_interactive_label(t.tbl, row.i, t.nf['Значение'], row.value('Значение'),
                                                          parent_self=DTSUB.sub_self, grab_style_from_cell=True,

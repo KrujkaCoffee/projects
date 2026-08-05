@@ -26,6 +26,13 @@ RE_COUNT_SRV = 4
 
 DB_NAMES = CSQS.Servers # Содержит алиасы всех серверов БД
 
+SQLITE_TYPES = (
+    type(None),
+    int,
+    float,
+    str,
+    bytes,
+)
 # Пример result = CSQ.custom_request_c(CSQ.DB_NAMES.db_users,'DELETE from app_config')
 
 

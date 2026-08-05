@@ -1310,7 +1310,6 @@ def _run_demo() -> int:
             self.conninfo.setPlaceholderText(
                 "postgresql://user:password@host:5432/database"
             )
-            self.conninfo.setText("postgresql://postgres:Adr1959967 @srv-mes:5432/postgres")
             self.conninfo.setEchoMode(QtWidgets.QLineEdit.Password)
             form.addRow("PostgreSQL DSN:", self.conninfo)
             layout.addLayout(form)
