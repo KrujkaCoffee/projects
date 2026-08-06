@@ -315,6 +315,9 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
                                  fnc_edit_cells= fnc_edit_cells,
                                  protected_names = dimention_o.get_protected_names(), fnc_oform= func_oform)
     def info_shablon(self,shablon_o,read_only=False):
+        def fnc_add_attr():
+            self.info_shablon(shablon_o,read_only=read_only)
+
         def fnc_update_data(t:CQT.TableContext,delta:dict):
             if shablon_o.set_data(delta):
                 if DTSUB.current_settings_mode:
@@ -392,7 +395,7 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
         data, dict_data, dict_aliases = shablon_o.full_template()
         DTSUB.info_o.update_info(data,dict_data,not read_only,fnc_update_data=fnc_update_data,dict_aliases=dict_aliases,
                                  fnc_edit_cells= fnc_edit_cells,
-                                 protected_names = shablon_o.get_protected_names(),fnc_oform= func_oform)
+                                 protected_names = shablon_o.get_protected_names(),fnc_oform= func_oform,fnc_add_attr=fnc_add_attr)
 
 
     def _____________settings__________________(self):

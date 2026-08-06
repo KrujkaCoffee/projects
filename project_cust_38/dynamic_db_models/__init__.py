@@ -9,10 +9,9 @@ __all__ = [
     "Подразделения",
     "ФизическиеЛица",
     "MCld20271001",
-    "Jurnal",
     "KroCauses",
-    "Naryad",
     "Nomen",
+    "Jurnal",
     "KroAgreementStates",
     "KroDeviations",
     "Mk"

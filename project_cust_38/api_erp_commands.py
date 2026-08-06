@@ -205,6 +205,23 @@ def post_res_json(json:dict, erp_base_name:str = 'ERP'):
     return response.status_code, answ
 
 
+def get_meta(erp_base_name: str = 'ERP',path: str = 'Документы.ЗаказКлиента') -> tuple[int, dict]:
+    response = None
+    try:
+        headers = dict(Accept='application/json')
+        url = f'{CFG.Config.project.ERB_BASE_URL}/{erp_base_name}/ru_RU/hs/mes/sysexchange/v1/metadata/none'
+        json = {"path":path}
+        response = requests.get(url, headers=headers, params=json, auth=(USER_ERP, PASS_ERP), timeout=26)
+        if response.status_code == 200:
+            return response.status_code, JS.loads(F.convert_binary_to_data(response.content))
+        else:
+            return response.status_code, None
+    except Exception as e:
+        logger.warning('Ошибка при валидации ответа 1С ' + str(e))
+        return False
+    return False
+
+
 def ping_http_services(erp_base_name: str = 'ERP') -> bool:
     response = None
     try:

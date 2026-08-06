@@ -594,7 +594,7 @@ class Color_tbl():
 
     @property
     def as_color_o(self)->Color:
-        return Color(*self.rgb)
+        return Color(tuple(self.rgb))
 
     def __init__(self,val:float|int,revers=False,dark_mode=False):
         """
@@ -11463,6 +11463,65 @@ def calc_num_etap_from_name_etap(etap_name,s_num_kpl,Пномер_нар,ref_cur
         Нужно обратиться в ПДО для корректировки\n\nТекущий список этапов:\n {list_etaps_str}
     '''
 
+
+
+
+def gen_tbl_new_vnepl_for_b24(vnepl_o_id: int)->list[dict]:
+    def get_code(ref)->str:
+        if not ref:
+            return ''
+
+        text = f"""ВЫБРАТЬ
+                                Номенклатура.Код КАК Код
+                            ИЗ
+                                Справочник.Номенклатура КАК Номенклатура
+                            ГДЕ
+                                Номенклатура.Ссылка = &Ссылка
+                                                            """
+
+        refs = APIERP.Refs_wet(text)
+        ref_obj = APIERP.Ref_wet('Ссылка', 'Справочники.Номенклатура', ref)
+        refs.add_ref(ref_obj)
+        key, res = APIERP.get_wet_request(text=text, refs=refs)
+        if key == 200:
+            data = res['data'][0]
+            return data['Код']
+        return ''
+
+    query = f"""SELECT 
+    знпр.№ERP as "номер заказа (КЭ)", 
+    jur_vnepl.МК as "номер маршрутной карты", 
+    пл_оуп.Номенклатура_ЕРП as "номенклатура (наименование и код изделия)", 
+    пл_оуп.Номенклатура_ЕРП_ref as "_Номенклатура_ЕРП_ref", 
+    mk.НомКплан as "строчка КПЛ", 
+    jur_vnepl.ФИО as "ФИО сотрудника, открывшего внеплан", 
+    пл_топ.Отв_технолог as "ФИО ответственного технолога", 
+    jur_vnepl.Запрос as "текст запроса", 
+    jur_vnepl.Примечание_цех_техн as "комментарий цехового технолога при его добавлении."
+        FROM jur_vnepl 
+    INNER JOIN mk ON mk.Пномер = jur_vnepl.МК
+    INNER JOIN пл_оуп ON пл_оуп.НомПл = mk.НомКплан
+    INNER JOIN пл_топ ON пл_топ.НомПл = mk.НомКплан
+    INNER JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП
+    WHERE jur_vnepl.Пномер = {vnepl_o_id}"""
+    rez = CSQ.custom_request_c(CFG.Config.project.db_naryad,query,rez_dict=True,attach_dbs=(CFG.Config.project.db_kplan)) # 11.11.25
+    for it in rez:
+        code = ''
+        try:
+            code = get_code(it["_Номенклатура_ЕРП_ref"])
+        except:
+            pass
+        if code:
+            it["номенклатура (наименование и код изделия)"] = f"{it['номенклатура (наименование и код изделия)']} ({code})"
+        it.pop("_Номенклатура_ЕРП_ref")
+
+    return  [{'Свойство':k,'Значение':str(v)} for k,v in rez[0].items()]
+
+def send_tbl_new_vnepl_into_b24(base_msg,table:list[dict]):
+    template = CB24.MessageBuilder(base_msg)  # Инициализация (базовое сообщение)
+    template.add_table(table)  # Добавить табличную часть
+    template.send_by_chat_id('chat105539')  # Итоговая отправка #'chat105539' - prod (chat103927-test)
+
 def create_nar_prosoy(fio:str, primech, koef, dop_prim_prost='', num_bad_bar='',
         pk_mk: int = None,
         code_category: int = None,
@@ -11510,6 +11569,7 @@ def create_nar_prosoy(fio:str, primech, koef, dop_prim_prost='', num_bad_bar='',
     nom_new_nar = int(rez['Пномер'])
 
     dict_status_out = DICT_STATUS_OUT
+    dict_id_new_vnepl = dict()
     if primech == "Ошибка нормирования и технологии":
         nar = Naryads(int(num_bad_bar),db_naryd)
         nar.get_mk()
@@ -11517,9 +11577,12 @@ def create_nar_prosoy(fio:str, primech, koef, dop_prim_prost='', num_bad_bar='',
         line = [kplan, nar.Номер_мк, F.now(), glob_login,
                 f'Ошибка нормирования и технологии ({dop_prim_prost.strip()}) по наряду {num_bad_bar}', int(0), dict_status_out[4],int(num_bad_bar),nom_new_nar,
                 code_category]
-        CSQ.custom_request_c(CFG.Config.project.db_naryad, f"""INSERT INTO jur_vnepl (Кплан_номер, МК, Дата, ФИО,
-         Запрос, Кплан_номер, Статус, Номер_наряда_с_ошибкой, Номер_внепланового_наряда, code_category)
-                                      VALUES ({CSQ.questions_for_mask(line)});""", list_of_lists_c=[line])
+        dict_id_new_vnepl: dict[str] = CSQ.custom_request_c(CFG.Config.project.db_naryad, f"""INSERT INTO jur_vnepl (Кплан_номер, МК, Дата, ФИО,
+                 Запрос, Кплан_номер, Статус, Номер_наряда_с_ошибкой, Номер_внепланового_наряда, code_category)
+                                              VALUES ({CSQ.questions_for_mask(line)}) RETURNING Пномер;""",
+                                               list_of_lists_c=[line], rez_dict=True, one=True)
+
+
     if code_category == 18: # 18/03/2026
         pk_kpl = CSQ.custom_request_c(CFG.Config.project.db_naryad,
                                       f'SELECT НомКплан FROM mk WHERE Пномер = {pk_mk}',
@@ -11527,9 +11590,13 @@ def create_nar_prosoy(fio:str, primech, koef, dop_prim_prost='', num_bad_bar='',
         comment = f"({dop_prim_prost.strip()})" if dop_prim_prost.strip() else ""
         line = [pk_kpl, pk_mk, F.now(), glob_login,
                 f'Финишный ОТК {comment} по мк {pk_mk}', int(0), dict_status_out[2],int(num_bad_bar),nom_new_nar, code_category, pk_mk, pk_remark]
-        CSQ.custom_request_c(CFG.Config.project.db_naryad, f"""INSERT INTO jur_vnepl (Кплан_номер, МК, Дата, ФИО,
+        dict_id_new_vnepl: dict[str] = CSQ.custom_request_c(CFG.Config.project.db_naryad, f"""INSERT INTO jur_vnepl (Кплан_номер, МК, Дата, ФИО,
          Запрос, Кплан_номер, Статус, Номер_наряда_с_ошибкой, Номер_внепланового_наряда, code_category, Номер_нов_мк, Журнал_замеч_номер)
-                                      VALUES ({CSQ.questions_for_mask(line)});""", list_of_lists_c=[line])
+                                      VALUES ({CSQ.questions_for_mask(line)}) RETURNING Пномер;""", list_of_lists_c=[line], rez_dict=True, one=True)
+    if dict_id_new_vnepl:
+        tbl = gen_tbl_new_vnepl_for_b24(dict_id_new_vnepl['Пномер'])
+        send_tbl_new_vnepl_into_b24('Открытие внеплана',tbl)
+
     return nom_new_nar
 
 
