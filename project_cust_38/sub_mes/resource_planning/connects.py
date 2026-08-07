@@ -155,7 +155,7 @@ def load_btns(sub_self):
     sub_self.ui.btn_cross_add.clicked.connect(sub_self.cross_add)
     sub_self.ui.btn_cross_show_all.clicked.connect(sub_self.cross_show_all)
     sub_self.ui.btn_report_preset.clicked.connect(sub_self.report_preset)
-    # btn_info_new_attr -> CLSS.Info
+
 
 def key_release_event(sub_self:Plwindow, key:int, mod:CQT.QtCore.Qt.KeyboardModifiers):
     if key == 16777268:#F5

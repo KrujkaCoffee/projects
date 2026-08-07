@@ -447,6 +447,7 @@ class XlFormula:
             xl_widgets.create_status_checkbox(row)
             xl_widgets.create_server_status_circle(row)
             xl_widgets.create_strict_status_checkbox(row)
+            CQT.add_btn(tbl, row, 3, 'xxxxxxxxxx')
 
     def fix_column_size(self):
         ignore = ('Операции', 'Переходы')

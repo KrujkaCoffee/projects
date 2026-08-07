@@ -2003,7 +2003,6 @@ def _run_demo() -> int:
 
 
 __all__ = [
-    "POSTGRES_MIGRATION_SQL",
     "PlannerRegistryError",
     "PlannerValidationError",
     "PlannerCatalogError",

@@ -34,7 +34,6 @@ import project_cust_38.sub_mes.resource_planning.connects as _con
 from project_cust_38 import dynamic_db_models as DDM
 from project_cust_38 import Cust_orm as CORM
 import project_cust_38.sub_mes.resource_planning.clses as CLSS
-from project_cust_38.sub_mes.resource_planning import planner_mes_types
 
 
 from typing import  TYPE_CHECKING
@@ -85,7 +84,7 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
         self.load_s_shab(CLSS.Type_entitys.Res,True)
         DTCLS.module_manage_sub_app.shablons_eve = CLSS.ShablonsEve()
         self.load_s_shab(CLSS.Type_entitys.Eve,True)
-        DTCLS.module_manage_sub_app.info_o = CLSS.Info(self.ui.tbl_info,self.ui.btn_info_ok,self.ui.btn_info_cancel, self.ui.btn_info_new_attr)
+        DTCLS.module_manage_sub_app.info_o = CLSS.Info(self.ui.tbl_info,self.ui.btn_info_ok,self.ui.btn_info_cancel)
         DTCLS.module_manage_sub_app.resources = CLSS.Resources()
         self.load_resources(True)
         DTCLS.module_manage_sub_app.events = CLSS.Events()
@@ -96,9 +95,7 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
         self.fill_cmb_reports()
         DTCLS.module_manage_sub_app.user_config_sub_plan = CLSS.UserConfigSubPlan()
         DTCLS.module_manage_sub_app.user_config_sub_plan.load_config()
-
-        DTCLS.module_manage_sub_app.planner_mes_types = planner_mes_types.PlannerMesTypeCatalog()
-        DTCLS.module_manage_sub_app.custom_types = CLSS.CustomTypes(DTCLS.module_manage_sub_app.planner_mes_types)
+        DTCLS.module_manage_sub_app.custom_types = CLSS.CustomTypes()
 
     def _load_free_css(self):
         theme_path = F.sep().join([F.path_to_execut_file_c(), 'css'])
@@ -318,8 +315,7 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
                                  fnc_edit_cells= fnc_edit_cells,
                                  protected_names = dimention_o.get_protected_names(), fnc_oform= func_oform)
     def info_shablon(self,shablon_o,read_only=False):
-        def fnc_add_attr():
-            self.info_shablon(shablon_o,read_only=read_only)
+
 
         def fnc_update_data(t:CQT.TableContext,delta:dict):
             if shablon_o.set_data(delta):
@@ -344,7 +340,7 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
                 return True
             return False
 
-        def func_oform(t:CQT.TableContext,*args,**kwargs):
+        def func_oform(t:CQT.TableContext,info_o:CLSS.Info,*args,**kwargs):
             # ==========================emoj==========================================
 
             row_emo = t.find_row({'_name':'emoj'},first=True)
@@ -392,13 +388,48 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
 
             t.hide_if_not_dev(CFG,forced_text=True)
             pass
+            # ==========================clr==========================================
+            def fnd_click_btn_add_attr(path,i,j, addit_data, *args):
+                if info_o.add_new_attr():
+                    shablon_o.upadte_child_attrs(DTSUB.resources)
+                    self.info_shablon(shablon_o,read_only=read_only)
+            def fnd_click_btn_del_attr(sub_self:Plwindow,i,j, *args):
+                pass
+            def fnd_click_btn_edit_attr(sub_self:Plwindow,i,j, *args):
+                pass
+            row_cust_attr = t.find_row({'_name': 'cust_attrs'}, first=True)
+
+            CQT.add_image(row_cust_attr.tbl,row_cust_attr.i,row_cust_attr.nf['Дств'],tooltip= 'Добавить атрибут', conn_func_click=
+                        fnd_click_btn_add_attr, addit_data=  DTSUB.sub_self, path= F.sep().join([F.path_to_caller_file_c(),
+                                                                     'icons', 'btn_add']),stylesheet=DTSUB.sub_self.styleSheet())
+
+            t_sub = row_cust_attr.value('Значение',sub_table=True,as_table_context=True)
+            if t_sub:
+
+                for sub_row in t_sub.rows():
+
+                    CQT.add_image(t_sub.tbl, sub_row.i, sub_row.nf['ca_del'], tooltip='Удалить атрибут',
+                                  conn_func_click=
+                                  fnd_click_btn_del_attr, addit_data=DTSUB.sub_self,
+                                  path=F.sep().join([F.path_to_caller_file_c(),
+                                                     'icons', 'btn_del']), stylesheet=DTSUB.sub_self.styleSheet())
+
+                    CQT.add_image(t_sub.tbl, sub_row.i, sub_row.nf['ca_edit'], tooltip='Изменить атрибут',
+                                  conn_func_click=
+                                  fnd_click_btn_edit_attr, addit_data=DTSUB.sub_self,
+                                  path=F.sep().join([F.path_to_caller_file_c(),
+                                                     'icons', 'btn_edit']), stylesheet=DTSUB.sub_self.styleSheet())
+                t_sub.hide_if_not_dev(CFG,True)
+
 
 
 
         data, dict_data, dict_aliases = shablon_o.full_template()
+        dict_aliases:dict
+        dict_aliases.update(CLSS.CustAttrs.aliases())
         DTSUB.info_o.update_info(data,dict_data,not read_only,fnc_update_data=fnc_update_data,dict_aliases=dict_aliases,
                                  fnc_edit_cells= fnc_edit_cells,
-                                 protected_names = shablon_o.get_protected_names(),fnc_oform= func_oform,fnc_add_attr=fnc_add_attr)
+                                 protected_names = shablon_o.get_protected_names(),fnc_oform= func_oform)
 
 
     def _____________settings__________________(self):
@@ -1140,7 +1171,9 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
 
     def _____________________________(self):pass
 if __name__ == "__main__":
-    app = CQT.QtWidgets.QApplication(sys.argv)
+    from project_cust_38.Cust_application import install_crash_guard, SafeApplication
+    app = SafeApplication(sys.argv)
+    install_crash_guard(app, app_name='',user_name='', log_qt_warnings=False,log_qt_debug_info=False, enable_native_fault_handler=False)
     #CQT.ThemeManager.apply(app)
     sub_window = Plwindow(None,CLSS.SubjectsPl.rab_place)
     sub_window.showMaximized()

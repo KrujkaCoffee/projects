@@ -68,12 +68,13 @@ class ErpMetaClass:
 class MainTypes:
     """Класс для хранения информации о типах данных"""
 
-    def __init__(self, name: str, text: str, value:object, inner_data: dict = None, emoji:str = ''):
+    def __init__(self, name: str, text: str, value:object, inner_data: dict = None, emoji:str = '',selectable:bool=True):
         self.name = name
         self.text = text
         self.value = value
         self.inner_data = inner_data if inner_data is not None else dict()
         self.emoji = emoji
+        self.selectable = selectable
     def __repr__(self):
         return f"MainTypes(name='{self.name}', text='{self.text}')"
 
@@ -136,7 +137,6 @@ class _AttributeInfo:
         self.for_report: _AttributeInfoMeta = _AttributeInfoMeta(bool, True, 'for_report', 'для отчета','Вывод в отчетах','Вывод в отчетах', 40,True, '📊')
         self.report_user_hidden: _AttributeInfoMeta = _AttributeInfoMeta(bool, False, 'report_user_hidden', 'для юзера аналог _','Скрытый в отчетах','Скрытый в отчетах', 45,True, '👁️‍🗨️')
         self.attr_view: _AttributeInfoMeta = _AttributeInfoMeta(str, '', 'attr_view', 'имя поля представления типа составного','Представление типа','Как выглядит значение объекта в ячейках', 3,True, '🧩️')
-        self.base_attr: _AttributeInfoMeta = _AttributeInfoMeta(bool, True, 'base_attr', 'Базовый','Базовый','Базовый', 53,False, '')
 
     def __getattribute__(self, name):
         obj = object.__getattribute__(self, name)
@@ -188,38 +188,7 @@ class _AttributeInfo:
     def __repr__(self):
         return f"_AttributeInfo(type={str(self.type)}, alias='{self.alias}', desc='{self.description[:20]}{'...' if len(self.description) > 20 else ''}', protected={self.protected})"
 
-    def to_flat_dict(self) -> dict[str, object]:
-        """
-        Возвращает словарь {имя_поля: текущее_значение}
-        для всех атрибутов, которые являются _AttributeInfoMeta.
-        """
-        result = {}
-        # Перебираем все атрибуты экземпляра (не включая служебные)
-        for name in dir(self):
-            if name.startswith('_'):
-                continue
-            try:
-                attr = getattr(self, name)
-            except AttributeError:
-                continue
-            # Проверяем, является ли атрибут нашим мета‑объектом
-            if isinstance(attr, _AttributeInfoMeta):
-                # Берём его текущее значение (поле .val)
-                result[name] = attr.val
-        return result
 
-    @classmethod
-    def from_flat_dict(cls, data: dict[str, object]) -> '_AttributeInfo':
-        """
-        Восстанавливает объект из плоского словаря.
-        Предполагается, что словарь содержит только значения полей.
-        """
-        obj = cls()  # создаём экземпляр с дефолтными мета‑объектами
-        for name, value in data.items():
-            if hasattr(obj, name):
-                # Устанавливаем значение через setattr – он сам найдёт мета‑объект и обновит его .val
-                setattr(obj, name, value)
-        return obj
 
 
 @dataclass(slots=True)
@@ -259,37 +228,6 @@ class _Attribute(Generic[T]):
 
     def __repr__(self):
         return f"_Attribute({self.info.alias}={self.value})"
-
-    def serialize(self)-> dict:
-        val = None
-        if isinstance(self.value, (CSQ.SQLITE_TYPES)):
-            val =  self.value
-        else:
-            try:
-                val = self.value.serialize()
-            except:
-                pass
-            raise Exception("Not supported")
-
-        return {'value': val, 'info': self.info.to_flat_dict()}
-
-    @classmethod
-    def deserialize(cls, data: dict) -> '_Attribute':
-        info = _AttributeInfo.from_flat_dict(data['info'])
-        if isinstance(data['value'], (CSQ.SQLITE_TYPES)):
-            val = data['value']
-        else:
-            type_attr = info.type
-            #TODO:
-            try:
-                val = type_attr.serialize(data['value'])
-            except:
-                pass
-            raise Exception("Not supported")
-        return  cls(info=info,
-            value=val,
-        )
-
     @classmethod
     def template_new(cls)->tuple[list[dict],list[dict]]:
         dict_text_attrs, dict_data_attrs, dict_aliases,dict_descr,dict_emoj = _AttributeInfo()._template_new()
@@ -445,22 +383,29 @@ class Cdt():
 
 class CustomTypes:
     TYPE_MAP = {
-        "str": MainTypes("str", "Текст", value=str, emoji="🔠"),
-        "int": MainTypes("int", "Целое число", value=int, emoji="🔢"),
-        "float": MainTypes("float", "Число с плавающей точкой", value=float, emoji="➗"),
-        "bool": MainTypes("bool", "Логический (Истина/Ложь)", value=bool, emoji="✅"),
-        "Cdt": MainTypes("Cdt", "Дата", value=Cdt, emoji="📅"),
+        "BaseTypes": MainTypes(
+            "BaseTypes",
+            "Базовые типы",
+            value=None,
+            inner_data={
+                "str": MainTypes("str", "Текст", value=str, emoji="🔠"),
+                "int": MainTypes("int", "Целое число", value=int, emoji="🔢"),
+                "float": MainTypes("float", "Число с плавающей точкой", value=float, emoji="➗"),
+                "bool": MainTypes("bool", "Логический (Истина/Ложь)", value=bool, emoji="✅"),
+                "Cdt": MainTypes("Cdt", "Дата", value=Cdt, emoji="📅"),
+            },
+            emoji="🧱",
+            selectable=False,
+        ),
 
         # Пользовательские типы
         "MesMetaClass": MainTypes(
             "MesMetaClass",
             "Данные МЕС",
             value=MesMetaClass,
-            inner_data={
-                "plan": MainTypes("plan", "План производства", value=MesMetaClass.plan, emoji="📈"),
-                "naryad": MainTypes("naryad", "Наряды", value=MesMetaClass.naryad, emoji="🧾"),
-            },
-            emoji="🏭"
+            inner_data={},
+            emoji="🏭",
+            selectable=False,
         ),
 
         "ErpMetaClass": MainTypes(
@@ -484,21 +429,43 @@ class CustomTypes:
                             value=ErpMetaClass.ErpDocuments.ProductionOrder
                         ),
                     },
-                    emoji="📄"
-                ),
-                "Справочники": MainTypes(
-                    "Справочники",
-                    "Справочники",
-                    value=ErpMetaClass.ErpReferences,
-                    emoji="📚"
+                    emoji="📄",
+                    selectable=False,
                 ),
             },
-            emoji="💼"
+            emoji="💼",
+            selectable=False,
         ),
     }
 
-    def __init__(self):
-        pass
+    def __init__(self,planner_mes_types=None):
+        self.TYPE_MAP = copy.deepcopy(self.TYPE_MAP)
+        self.planner_mes_types = planner_mes_types
+        self.mes_error = ''
+        self.mes_warnings = tuple()
+
+    def refresh_mes_types(self):
+        root:MainTypes = self.TYPE_MAP["MesMetaClass"]
+        root.inner_data = {}
+        root.text = "Данные МЕС"
+        self.mes_error = ''
+        self.mes_warnings = tuple()
+        if self.planner_mes_types is None:
+            root.text = "Данные МЕС (не настроено)"
+            return
+        try:
+            entries = self.planner_mes_types.reload(Mes_type)
+        except Exception as exc:
+            self.mes_error = str(exc)
+            root.text = "Данные МЕС (недоступно)"
+            return
+        root.inner_data = {
+            item.token: MainTypes(item.token, item.caption, value=item.value, emoji="🗂️")
+            for item in entries
+        }
+        self.mes_warnings = self.planner_mes_types.warnings
+        if not root.inner_data:
+            root.text = "Данные МЕС (нет регистраций)"
 
     def _find_type_by_path(self, data: dict, path_parts: list) -> MainTypes:
 
@@ -524,7 +491,10 @@ class CustomTypes:
             return None
 
         path_parts = full_name.split('.')
-        return self._find_type_by_path(self.TYPE_MAP, path_parts)
+        result = self._find_type_by_path(self.TYPE_MAP, path_parts)
+        if result is None and len(path_parts) == 1:
+            result = self._find_type_by_path(self.TYPE_MAP["BaseTypes"].inner_data,path_parts)
+        return result
 
     def _find_type_by_value(self,data: dict, target_value, path: list = None) -> tuple:
 
@@ -546,19 +516,6 @@ class CustomTypes:
 
         return None, None
 
-    def get_mainType_o_by_type(self,obj_or_value:object,drop_base:bool=False) -> MainTypes:
-
-        target_value = obj_or_value
-        found, path = self._find_type_by_value(self.TYPE_MAP, target_value)
-
-        if found:
-            if drop_base:
-                path = path[1:]
-            return found
-
-        if hasattr(obj_or_value, '__name__'):
-            return f"Неизвестный_тип.{obj_or_value.__name__}"
-        return f"Неизвестный_тип.{str(obj_or_value)}"
     def get_full_type_name(self,obj_or_value:object|MainTypes,drop_base:bool=False) -> str:
         if isinstance(obj_or_value, MainTypes):
             target_value = obj_or_value.value
@@ -567,7 +524,9 @@ class CustomTypes:
         found, path = self._find_type_by_value(self.TYPE_MAP, target_value)
 
         if found:
-            if drop_base:
+            if path and path[0] == 'BaseTypes':
+                path = path[1:]
+            elif drop_base:
                 path = path[1:]
             return '.'.join(path)
 
@@ -586,11 +545,11 @@ class CustomTypes:
         for k, v in inner_data.items():
             name = v.name
 
-            tmp_dict_text = {'_name': name, "": v.emoji, '_parent': parent, 'Тип': f'{" " * 4 * lvl}{v.text}'}
-            tmp_dict_data = {'_name': name, "": v.emoji, '_parent': parent, 'Тип': v}
+            tmp_dict_text = {'_name': name, "": v.emoji, '_parent': parent, '_selectable':v.selectable, 'Тип': f'{" " * 4 * lvl}{v.text}'}
+            tmp_dict_data = {'_name': name, "": v.emoji, '_parent': parent, '_selectable':v.selectable, 'Тип': v}
 
             template.append(tmp_dict_text)
-            template_data.append(tmp_dict_text)
+            template_data.append(tmp_dict_data)
             if v.inner_data:
                 template, template_data = self._add_types_tmplate(template, template_data, v.inner_data, parent=f'{parent}{name}',
                                                             lvl=lvl + 1)
@@ -703,10 +662,11 @@ class FocusTypes():
     RESOURCE:str = "resource"
 class Info():
 
-    def __init__(self,ui_tbl,ui_btn_ok,ui_btn_cancel):
+    def __init__(self,ui_tbl,ui_btn_ok,ui_btn_cancel,ui_btn_new_attr):
         self._ui:CQT.QtWidgets.QTableWidget = ui_tbl
         self._ui_ok:CQT.QtWidgets.QPushButton = ui_btn_ok
         self._ui_cancel:CQT.QtWidgets.QPushButton = ui_btn_cancel
+        self._ui_new_attr:CQT.QtWidgets.QPushButton = ui_btn_new_attr
         self.t:CQT.TableContext = CQT.TableContext(self._ui)
         self._raw_data = None
         self._dict_data = None
@@ -716,7 +676,7 @@ class Info():
         self.fnc_update_data = None
         self.protected_names:list|tuple|set = None
         self._ui_cancel.clicked.connect(self._fill_data)
-
+        self._ui_new_attr.clicked.connect(self._new_attr)
 
     def clear(self):
         CQT.soft_clear_tbl(self.t.tbl)
@@ -724,7 +684,7 @@ class Info():
         self._ui_cancel.setEnabled(False)
 
     def update_info(self,template:dict,dict_data:dict,editable_val:bool=False,dict_aliases:dict=None,
-                    fnc_oform=None,fnc_update_data=None,fnc_edit_cells=None,protected_names=None):
+                    fnc_oform=None,fnc_update_data=None,fnc_edit_cells=None,protected_names=None,fnc_add_attr=None):
         """
         def fnc_update_data(t:CQT.TableContext,delta:dict):
             pass
@@ -745,14 +705,13 @@ class Info():
         self.fnc_oform = fnc_oform
         self.fnc_update_data = fnc_update_data
         self.fnc_edit_cells = fnc_edit_cells
+        self.fnc_add_attr = fnc_add_attr
         self.protected_names = protected_names
         self._fill_data()
         self._ui_ok.setEnabled(True)
         self._ui_cancel.setEnabled(True)
-    def add_new_attr(self)->bool|None:
-        return self._new_attr()
     @CQT.onerror
-    def _new_attr(self)->bool|None:
+    def _new_attr(self):
         def fnc_oform(tbl:CQT.QtWidgets.QTableWidget,*args):
 
             def fnc_cell_edit_bool(tbl:CQT.QtWidgets.QTableWidget, item:CQT.QtWidgets.QTableWidgetItem, t:CQT.TableContext):
@@ -767,6 +726,24 @@ class Info():
             def fnc_switch(tbl:CQT.QtWidgets.QTableWidget,val:bool,i,j,*args):
                 pass
 
+            def selected_row(data):
+                if isinstance(data,list):
+                    return data[0] if data else None
+                if isinstance(data,dict):
+                    return data
+
+            def set_attr_view(row:CQT.TableRow,value:str,text:str=''):
+                meta_view_type: _AttributeInfoMeta = row.value('Значение',get_cust_content=True)
+                meta_view_type.set_value(value)
+                row.set_value('Значение',meta_view_type,set_cust_content=True)
+                view_text = text or value
+                row.set_value('Значение',view_text)
+                cell_widget = row.tbl.cellWidget(row.i,row.nf['Значение'])
+                if cell_widget is not None:
+                    label_instance = cell_widget.property('_interactive_label_instance')
+                    if label_instance is not None:
+                        label_instance.set_text(view_text)
+
             t = CQT.TableContext(tbl)
             for row in t.rows():
                 attr_o:_AttributeInfoMeta = row.value('Значение',get_cust_content=True)
@@ -777,43 +754,49 @@ class Info():
                         def fnc_oform_tbl_type(tbl:CQT.QtWidgets.QTableWidget,*args):
                             t = CQT.TableContext(tbl)
                             for row in t.rows():
-                                pass
+                                if not row.value('_selectable',get_cust_content=True):
+                                    row.set_font_format(bold=True,col_name='Тип')
                             t.hide_if_not_dev(CFG)
 
+                        DTSUB.custom_types.refresh_mes_types()
                         template, template_data = DTSUB.custom_types.template()
 
                         rez = CQT.msgboxg_get_table(DTSUB.sub_self,'Выбор типа данных',template,
                                         styleSheet=CQT.MES_EDIT_CSS,func_oform_tbl=fnc_oform_tbl_type,
-                                                    dict_or_list_user_data=template_data,selectRows=True,selection_from_tbl=True
+                                                    dict_or_list_user_data=template_data,selectRows=True,selection_from_tbl=True,
+                                                    ExtendedSelection=False,
+                                                    SelectionMode='SingleSelection'
                                         )
                         if not rez:
                             return
-                        rez = rez[0]
+                        rez = selected_row(rez)
+                        if not rez or not rez.get('_name'):
+                            CQT.msgbox('Выберите конкретный тип данных.')
+                            return
                         new_type_name = rez['_parent'] + rez['_name']
                         new_type:MainTypes = DTSUB.custom_types.get_type(new_type_name)
+                        if new_type is None or not new_type.selectable:
+                            if new_type and new_type.value is MesMetaClass:
+                                msg = DTSUB.custom_types.mes_error or 'Нет зарегистрированных справочников МЕС.'
+                                if DTSUB.custom_types.mes_warnings:
+                                    msg += '\n' + '\n'.join(DTSUB.custom_types.mes_warnings)
+                                CQT.msgbox(msg)
+                            else:
+                                CQT.msgbox('Выберите конкретный тип внутри раздела.')
+                            return
                         new_meta:_AttributeInfoMeta = row.value('Значение',get_cust_content=True)
                         row.set_value('Значение', new_type.text)
-                        #DTSUB.custom_types.get_full_type_name(new_type)
                         new_meta.set_value(new_type.value)
                         row.set_value('Значение', new_meta,set_cust_content=True)
                         lbl.set_text(new_type.text)
 
-                        #====================clear view=================================
                         row_view_type = row.ctx.find_row({'_name':'attr_view'},first=True)
-                        meta_view_type: _AttributeInfoMeta = row_view_type.value('Значение', get_cust_content=True)
-                        meta_view_type.set_value('')
-                        row_view_type.set_value('Значение', meta_view_type,set_cust_content=True)
-                        row_view_type.set_value('Значение', meta_view_type.to_ui())
-                        # ================================================================
-                        # ====================name=================================
-                        row_alias = row.ctx.find_row({'_name': 'alias'}, first=True)
-                        row_alias.set_value('Значение', new_type.text)
-                        row_alias.set_value('Значение', new_type.text,set_cust_content=True)
-
-                        # ================================================================
-
+                        set_attr_view(row_view_type,'')
                         if issubclass(new_meta.val,(Erp_type,Mes_type)):
                             row_view_type.hide(False)
+                            if issubclass(new_meta.val,Mes_type):
+                                presentation = DTSUB.planner_mes_types.default_presentation(new_meta.val)
+                                set_attr_view(row_view_type,presentation.presentation_key,presentation.caption)
                         else:
                             row_view_type.hide(True)
 
@@ -836,7 +819,6 @@ class Info():
                                 CQT.msgbox(f'Не выбран Тип')
                                 return
                             type = meta.val
-                            full_path = DTSUB.custom_types.get_full_type_name(type)
 
                             if issubclass(type, Erp_type):
                                 template = type.template()
@@ -871,8 +853,36 @@ class Info():
 
 
                             if issubclass(type, Mes_type):
-                                data = type.template()
-                                #TODO для МЕС
+                                template = DTSUB.planner_mes_types.presentation_template(type)
+
+                                def fnc_oform_tbl_mes_attr_view(tbl:CQT.QtWidgets.QTableWidget,*args):
+                                    t = CQT.TableContext(tbl)
+                                    for presentation_row in t.rows():
+                                        if presentation_row.value('') == '⭐':
+                                            presentation_row.set_font_format(bold=True,col_name='Представление')
+                                        if presentation_row.value('Фильтр'):
+                                            presentation_row.set_font_format(italic=True,col_name='Фильтр')
+                                    t.hide_if_not_dev(CFG)
+
+                                rez = CQT.msgboxg_get_table(DTSUB.sub_self, 'Выбор представления МЕС', template,
+                                                            styleSheet=CQT.MES_CSS,
+                                                            func_oform_tbl=fnc_oform_tbl_mes_attr_view,
+                                                            selectRows=True,
+                                                            selection_from_tbl=True,
+                                                            sortingEnabled=True,
+                                                            ExtendedSelection=False,
+                                                            SelectionMode='SingleSelection'
+                                                            )
+                                if not rez:
+                                    return
+                                rez = selected_row(rez)
+                                if not rez or not rez.get('_name'):
+                                    CQT.msgbox('Выберите представление МЕС.')
+                                    return
+                                presentation_key = rez.get('_presentation_key') or rez.get('_name')
+                                presentation_text = rez.get('Представление') or presentation_key
+                                set_attr_view(row,presentation_key,presentation_text)
+                                lbl.set_text(presentation_text)
                             pass
 
                         widg = CQT.add_interactive_label(t.tbl, row.i, t.nf['Значение'], row.value('Значение'),
@@ -882,6 +892,10 @@ class Info():
                                         fnc_select_type_attr_view,
                                         cell_val=row, img_path=F.sep().join([F.path_to_caller_file_c(),
                                                                              'icons', 'btn_select']))
+                        row_type = row.ctx.find_row({'_name':'type'},True)
+                        meta_type:_AttributeInfoMeta = row_type.value('Значение',get_cust_content=True)
+                        if meta_type.val is None or not issubclass(meta_type.val,(Erp_type,Mes_type)):
+                            row.hide(True)
                     else:
                         row.set_editable('Значение', True)
                 elif attr_o_type is bool:
@@ -904,6 +918,12 @@ class Info():
                     if isinstance(value,_AttributeInfoMeta):
                         value= value.val
                     rez[row.value('_name')] = value
+                if rez.get('type') is None:
+                    CQT.msgbox('Не выбран тип нового атрибута.')
+                    return False
+                if issubclass(rez['type'],(Erp_type,Mes_type)) and not rez.get('attr_view'):
+                    CQT.msgbox('Не выбрано представление составного типа.')
+                    return False
                 return rez
 
             list_text, list_data = _Attribute.template_new()
@@ -921,16 +941,17 @@ class Info():
             id = self._dict_data['id']
             res_o:ShablonRes = DTSUB.shablons_res.get(id)
             res_o.add_new_custom_attr(new_attr)
-            return True
+            if self.fnc_add_attr:
+                self.fnc_add_attr()
 
-
+            #TODO добавить
     def _fill_data(self):
         if self._raw_data is None:
             return
         CQT.fill_wtabl(self.transponate(self._raw_data,self.dict_aliases,self._dict_data),self.t.tbl,
                        {},
                        styleSheet=CQT.MES_EDIT_CSS if self.editable_val else CQT.MES_CSS,auto_type=False,
-                       selectionMode='SingleSelection',dict_or_list_user_data=self.transponate(self._dict_data,self.dict_aliases,self._dict_data),aliases_header=self.dict_aliases)
+                       selectionMode='SingleSelection',dict_or_list_user_data=self.transponate(self._dict_data,self.dict_aliases,self._dict_data))
 
         CQT.load_column_widths(tbl=self.t.tbl,tmp_dir= CQT.qt_tmp_dir())
 
@@ -945,7 +966,7 @@ class Info():
                 row.hide(True)
 
         if self.fnc_oform:
-            self.fnc_oform(self.t,self)
+            self.fnc_oform(self.t)
 
         self._ui_ok.setVisible(self.editable_val)
         self._ui_cancel.setVisible(self.editable_val)
@@ -985,40 +1006,11 @@ class Info():
             dict_aliases = dict()
         if dict_data is None:
             dict_data = dict()
-        return [{'_name':k, '_data':dict_data.get(k,v), 'Свойство':dict_aliases.get(k,k),'Дств':"",'Значение':v}  for k,v in template.items()]
+        return [{'_name':k, '_data':dict_data.get(k,v), 'Свойство':dict_aliases.get(k,k),'Значение':v}  for k,v in template.items()]
 
 
-class CustAttrs():
-    def __init__(self):
-        pass
-    def get_dict_attrs(self)->dict[str,_Attribute]:
-        return  F.get_all_attrs(self,attr_type=_Attribute)
-    def for_ui(self):
-        data_cust_attr:dict[str,_Attribute] = F.get_all_attrs(self,attr_type=_Attribute)
-        return [{'_name':k, 'ca_alias':v.info.alias, 'ca_type':DTSUB.custom_types.get_mainType_o_by_type(v.info.type).name, 'ca_del':'','ca_edit':'', 'ca_description':v.info.description} for k,v in data_cust_attr.items()]
-    @classmethod
-    def aliases(cls):
-        return {'ca_alias': 'Имя',
-                'ca_type': 'Тип',
-                'ca_del':'    ',
-                'ca_edit':'    ',
-                'ca_description':'Описание'}
-    def serialize(self)->dict[dict]:
-        dict_attrs:dict[str,_Attribute] = self.get_dict_attrs()
-        return {k:v.serialize() for k,v in dict_attrs.items()}
-    @classmethod
-    def deserialize(cls, data:dict[_Attribute])->'CustAttrs':
-        obj = cls()
-        {setattr(obj,k,v) for k,v in data.items()}
-        return obj
 
-    def _gen_new_cust_attr_name(self):
-        return f'custattr_{F.get_time_shtamp_c()}'
-    def add_new_attr(self,data):
-        name = self._gen_new_cust_attr_name()
-        data.info.base_attr = False
-        self.__setattr__(name, data)
-        print(f'New attr {name} added')
+
 
 class _BaseEntity():
     _TYPE_ENTITY: Type_entity = None
@@ -1035,30 +1027,21 @@ class _BaseEntity():
         if color is None:
             color = Color.random()
         self.id:_Attribute[int] =            _Attribute.attr(id, int,        alias= '№',       description='', protected=True,user_hidden=True,for_list=True, for_details=True,for_new=True, report_user_hidden=True, order=1)
-        self.type_entity:_Attribute[Type_entity] =   _Attribute.attr(type_entity, Type_entity, alias= 'Тип',     description='', protected=True,user_hidden=True,for_list=True,  for_details=True,order=66)
+        self.type_entity:_Attribute[Type_entity] =   _Attribute.attr(type_entity, Type_entity, alias= 'Тип',     description='', protected=True,user_hidden=True,for_list=True,  for_details=True)
         self.emoj:_Attribute[str] =          _Attribute.attr(emoj, str,         alias= '',        description='', protected=False,user_hidden=False,for_list=True,   for_details=True,order=23)
         self.name:_Attribute[str]  =         _Attribute.attr(name, str,         alias= 'Имя',     description='', protected=False,user_hidden=False,for_list=True,   for_details=True,order=44)
         self.description:_Attribute[str] =   _Attribute.attr(description, str,         alias= 'Описание',description='', protected=False,user_hidden=False,for_list=True,    for_details=True,order=55)
         self.for_delete:_Attribute[bool] =   _Attribute.attr(for_delete, bool,         alias= 'Удал.',description='', protected=False,user_hidden=False,for_list=True,    for_details=True, for_report = False, order=12)
         self.color:_Attribute[Color] =   _Attribute.attr(color, Color,         alias= 'Цвет',description='', protected=False,user_hidden=False,for_list=False,    for_details=True, report_user_hidden = True, order=33)
-        self.cust_attrs:_Attribute[CustAttrs] =   _Attribute.attr(CustAttrs(), CustAttrs,    alias= 'Доп. атрибуты',description='Для формиарования ресурсов и событий', protected=False,user_hidden=False, for_list=False,    for_details=True, report_user_hidden = True, order=77)
 
-    def upadte_child_attrs(self,resources: 'Resources'):
-        for it in resources.get_by_shablon(self.id.value):
-            it: 'Resource'
-            attrs_sh = self.cust_attrs.value.get_dict_attrs()
-            for name, cust_attr in attrs_sh.items():
-                if hasattr(it,name):
-                    continue
-                setattr(it,name,copy.deepcopy(cust_attr))
-            for name, cust_attr in it.get_dict_cust_attrs().items():
-                if name not in attrs_sh:
-                    delattr(it,name)
 
+    def _gen_new_cust_attr_name(self):
+        return f'custattr_{F.get_time_shtamp_c()}'
     def add_new_custom_attr(self,data:_Attribute):
-        cust_attr_o = self.cust_attrs.value
-        cust_attr_o.add_new_attr(data)
-
+        name = self._gen_new_cust_attr_name()
+        self.__setattr__(name,data)
+        print(f'New attr {name} added')
+        pass
 
     def to_dump(self,attr_name):
         attr_value:_Attribute = getattr(self,attr_name)
@@ -1066,8 +1049,6 @@ class _BaseEntity():
         if attr_name == 'type_entity':
             val = val.serialize()
         if attr_name == 'color':
-            val = val.serialize()
-        if attr_name == 'cust_attrs':
             val = val.serialize()
         if isinstance(val, (CSQ.SQLITE_TYPES)):
             return val
@@ -1092,9 +1073,6 @@ class _BaseEntity():
         if attr_name == 'type_entity':
             attr_in: Type_entity = attr_val.value
             return attr_in.for_ui
-        if attr_name == 'cust_attrs':
-            attr_in: CustAttrs = attr_val.value
-            return attr_in.for_ui()
         return attr_val.value
     def from_ui(self,attr_name, value):
         if attr_name == 'for_delete':
@@ -1350,14 +1328,11 @@ class _BaseDimension:
     def __str__(self):
         return f'{self.emoj.value} {self.name.value}'
 
-
     @classmethod
     def _manager_shablons(cls)->'ShablonsRes|ShablonsEve':
         raise NotImplementedError
     def check_order_dates(self,*args,**kwargs)->bool:
         return True
-    def get_dict_cust_attrs(self)->dict[str,_Attribute]:
-        return {k:v for k, v in F.get_all_attrs(self,attr_type=_Attribute).items() if not v.info.base_attr}
     def get_protected_names(self)->list[str]:
         data:dict[str,_Attribute] = F.get_all_attrs_with_properties(self)
         return [k for k, v in data.items() if v.info.protected]
@@ -1521,10 +1496,6 @@ class _BaseDimensions:
     _TYPE_CLS:Resource|Event = None
     def __init__(self):
         self.dict_elems:dict[int,_TYPE_CLS] = dict()
-
-    def get_by_shablon(self,id_shablon:int)->list[_TYPE_CLS]:
-        return [_ for _ in self.dict_elems.values() if _.shablon.value == id_shablon]
-
 
     def get(self, id:int)->_TYPE_CLS:
         return self.dict_elems[id]
@@ -2111,5 +2082,4 @@ class UserConfigSubPlan:
             if F.existence_file_c(pathf):
                 data = F.load_file_pickle(pathf)
             self._apply_data(report,data)
-
 

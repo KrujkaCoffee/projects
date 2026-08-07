@@ -3,7 +3,6 @@ from __future__ import annotations
 import pprint
 import zlib
 
-import copy
 import datetime
 import logging
 import os
@@ -21,7 +20,12 @@ import shutil
 from typing import Any, Iterable, Mapping, Sequence
 
 import project_cust_38.Cust_Functions as F  # noqa
-from project_cust_38.Cust_orm.db_identity import key_resolver
+
+from project_cust_38 import Cust_Functions as F
+if typing.TYPE_CHECKING:
+    import project_cust_38.Cust_orm.db_identity
+else:
+    db_identity = F.LazyModule("project_cust_38.Cust_orm.db_identity", namespace=globals(), global_name="db_identity")
 
 
 try:
@@ -391,12 +395,12 @@ class CacheBuilder:
             if key in seen:
                 continue
             seen.add(key)
-            db_key = key_resolver.canonical_db_key(db_path)
+            db_key = db_identity.key_resolver.canonical_db_key(db_path)
             result.append({
                 'db_path': db_path,
                 'db_key': db_key,
                 'table_name': table_name,
-                'table_key': key_resolver.make_table_key(db_key, table_name),
+                'table_key': db_identity.key_resolver.make_table_key(db_key, table_name),
             })
         return result
 
@@ -668,7 +672,7 @@ class FileRequestCache:
                 continue
             if table_key not in requested_keys:
                 requested_keys.append(table_key)
-            db_part, table_name = key_resolver.split_table_key(table_key)
+            db_part, table_name = db_identity.key_resolver.split_table_key(table_key)
             table_name = str(table_name or '').strip()
             if not table_name:
                 return {
@@ -682,13 +686,13 @@ class FileRequestCache:
                     'missing_table_keys': [table_key],
                     'identity_conflicts': [],
                 }
-            canonical = key_resolver.canonical_db_key(db_part)
+            canonical = db_identity.key_resolver.canonical_db_key(db_part)
             marker = (canonical.casefold(), table_name.casefold())
             identities.setdefault(marker, {
                 'canonical_db_key': canonical,
                 'table_name': table_name,
                 'requested': [],
-                'db_aliases': key_resolver.equivalent_db_keys(db_part),
+                'db_aliases': db_identity.key_resolver.equivalent_db_keys(db_part),
             })['requested'].append(table_key)
 
         if not identities:
@@ -764,7 +768,7 @@ class FileRequestCache:
             for raw_row in dependency_rows:
                 row = dict(raw_row)
                 row_marker = (
-                    key_resolver.canonical_db_key(row.get('db_key')).casefold(),
+                    db_identity.key_resolver.canonical_db_key(row.get('db_key')).casefold(),
                     str(row.get('table_name') or '').casefold(),
                 )
                 if row_marker != marker:
@@ -919,7 +923,7 @@ class FileRequestCache:
                     notes: str = '') -> dict[str, Any]:
         now = F.now()
         db_path = self.utils.normalize_path(db_path)
-        db_key = key_resolver.canonical_db_key(db_path)
+        db_key = db_identity.key_resolver.canonical_db_key(db_path)
         suspicious_empty = payload in (None, [], {}, (), True, False)
 
         if suspicious_empty:
@@ -980,7 +984,7 @@ class FileRequestCache:
         insert_fields_results = []
         if table_keys:
             rows = [[request_key, table_key] for table_key in dict.fromkeys(str(item) for item in table_keys if item not in (None, ''))]
-            a = CPG.custom_request_pg(f'INSERT INTO {REQUEST_CACHE_TABLES_TABLE}(request_key, table_key) VALUES (%s, %s)', params=rows)
+            a = CPG.custom_request_pg(f'INSERT INTO {REQUEST_CACHE_TABLES_TABLE}(request_key, table_key) VALUES (%s, %s) ON CONFLICT (request_key, table_key) DO NOTHING', params=rows)
             insert_fields_results.append(a)
         logger.debug(f'Вставленные в {REQUEST_CACHE_TABLES_TABLE!r} ключи: {insert_fields_results}')
         return {

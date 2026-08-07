@@ -58,6 +58,13 @@ formatter = logging.Formatter(
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 
+ITEM_BUTTON_META_ROLE = Qt.UserRole + 7101
+ITEM_BUTTON_HANDLE_ROLE = Qt.UserRole + 7102
+ITEM_BUTTON_PAYLOAD_ROLE = Qt.UserRole + 7103
+
+_DELEGATE_BUTTON_REGISTRY_ATTR = '_delegate_button_handles'
+_DELEGATE_BUTTON_COUNTER = count(1)
+
 if __name__ == '__main__':
     exit()
 
@@ -2568,9 +2575,9 @@ class TableRow:
         j = self._col_index(col_name)
         return self.tbl.item(self.i, j)
 
-    def widget(self, col_name: str) -> QtWidgets.QTableWidget | None:
+    def widget(self, col_name: str):
         j = self._col_index(col_name)
-        return self.tbl.cellWidget(self.i, j)
+        return get_btn(self.tbl, self.i, j)
 
 
 
@@ -2586,6 +2593,8 @@ class TableRow:
                 if as_table_context:
                     return TableContext(wid)
                 return wid
+            else:
+                return
         if get_cust_content:
             return getCustData(item,modifier=100 + num)
         return item.text()
@@ -3601,6 +3610,9 @@ def soft_clear_tbl(tbl:QtWidgets.QTableWidget):
 
 
 def clear_tbl(tbl:QtWidgets.QTableWidget):
+    clear_delegate_buttons = globals().get('_clear_delegate_button_handles')
+    if callable(clear_delegate_buttons):
+        clear_delegate_buttons(tbl)
     policy = CFG.Config.table_runtime
     with table_runtime_state(tbl, CFG.TableRuntimeState.CLEARING, 'clear_tbl'):
         ctx = getattr(tbl, "_table_context", None)
@@ -4988,7 +5000,489 @@ def add_label_link(object_tbl, i,j, file, name,conn_func_label_link=None,parent_
         else:
             lbl.linkActivated.connect(lambda : conn_func_label_link(lnk, i,j,name,file))
 
-def add_btn(item:QTableWidget, i, j, text='', val=True, conn_func_checked_row_col = '', self = '',img_path='',height = '',fontsize='',
+
+def _button_qcolor(value):
+    if value in (None, ''):
+        return None
+    if isinstance(value, QtGui.QColor):
+        color = QtGui.QColor(value)
+    elif isinstance(value, (tuple, list)):
+        color = QtGui.QColor(*value)
+    else:
+        color = QtGui.QColor(str(value))
+    return color if color.isValid() else None
+
+
+def _delegate_button_registry(table: QtWidgets.QTableWidget, create: bool = False) -> dict:
+    registry = getattr(table, _DELEGATE_BUTTON_REGISTRY_ATTR, None)
+    if registry is None and create:
+        registry = {}
+        setattr(table, _DELEGATE_BUTTON_REGISTRY_ATTR, registry)
+    return registry if registry is not None else {}
+
+
+def _delegate_button_from_item(item: QtWidgets.QTableWidgetItem | None):
+    if item is None:
+        return None
+    table = item.tableWidget()
+    if table is None:
+        return None
+    key = item.data(ITEM_BUTTON_HANDLE_ROLE)
+    if key is None:
+        return None
+    return _delegate_button_registry(table).get(key)
+
+
+def _delegate_button_from_index(index: QtCore.QModelIndex, table: QtWidgets.QTableWidget):
+    if not index.isValid():
+        return None
+    key = index.data(ITEM_BUTTON_HANDLE_ROLE)
+    if key is None:
+        return None
+    return _delegate_button_registry(table).get(key)
+
+
+def _clear_delegate_button_handles(table: QtWidgets.QTableWidget):
+    registry = getattr(table, _DELEGATE_BUTTON_REGISTRY_ATTR, None)
+    if not registry:
+        return
+    for handle in tuple(registry.values()):
+        try:
+            handle.deleteLater()
+        except RuntimeError:
+            pass
+    registry.clear()
+
+
+class DelegateButtonHandle(QtCore.QObject):
+    """
+    Объект повторяет имитирует QAbstractButton
+    """
+    clicked = QtCore.pyqtSignal(bool)
+    pressed = QtCore.pyqtSignal()
+    released = QtCore.pyqtSignal()
+    toggled = QtCore.pyqtSignal(bool)
+
+    def __init__(self, table: QtWidgets.QTableWidget,
+                 item: QtWidgets.QTableWidgetItem, key: int):
+        super().__init__(table)
+        self._table = table
+        self._item = item
+        self._key = key
+        self._text = ''
+        self._tool_tip = ''
+        self._enabled = True
+        self._visible = True
+        self._checkable = False
+        self._checked = False
+        self._down = False
+        self._flat = False
+        self._icon = QtGui.QIcon()
+        self._icon_path = ''
+        self._icon_size = QtCore.QSize()
+        self._font = QtGui.QFont(table.font())
+        self._fixed_height = None
+        self._minimum_size = QtCore.QSize()
+        self._contents_margins = QtCore.QMargins(0, 0, 0, 0)
+        self._alignment = int(Qt.AlignLeft | Qt.AlignVCenter)
+        self._style_sheet = ''
+        self._style_background = None
+        self._style_border = None
+        self._style_border_width = 0
+        self._background = None
+        self._hover_background = None
+        self._border = None
+        self._foreground = None
+        self._border_radius = 4
+        self._detached = False
+        self._old_tool_tip = item.data(Qt.ToolTipRole)
+        self._sync_meta()
+
+    @property
+    def key(self) -> int:
+        return self._key
+
+    def tableWidget(self):
+        return self._table
+
+    def item(self):
+        return self._item
+
+    def row(self) -> int:
+        try:
+            return self._item.row()
+        except RuntimeError:
+            return -1
+
+    def column(self) -> int:
+        try:
+            return self._item.column()
+        except RuntimeError:
+            return -1
+
+    def index(self) -> QtCore.QModelIndex:
+        row, column = self.row(), self.column()
+        if row < 0 or column < 0:
+            return QtCore.QModelIndex()
+        return self._table.model().index(row, column)
+
+    def geometry(self) -> QtCore.QRect:
+        index = self.index()
+        if not index.isValid():
+            return QtCore.QRect()
+        return self._table.visualRect(index)
+
+    def width(self) -> int:
+        column = self.column()
+        return self._table.columnWidth(column) if column >= 0 else 0
+
+    def height(self) -> int:
+        if self._fixed_height is not None:
+            return self._fixed_height
+        row = self.row()
+        return self._table.rowHeight(row) if row >= 0 else 0
+
+    def _sync_meta(self):
+        if self._detached:
+            return
+        try:
+            with QSignalBlocker(self._table):
+                self._item.setData(ITEM_BUTTON_META_ROLE, {
+                    'text': self._text,
+                    'tool_tip': self._tool_tip,
+                    'enabled': self._enabled,
+                    'visible': self._visible,
+                    'checkable': self._checkable,
+                    'checked': self._checked,
+                    'down': self._down,
+                    'icon_path': self._icon_path,
+                    'fixed_height': self._fixed_height,
+                    'alignment': self._alignment,
+                })
+        except RuntimeError:
+            self._detached = True
+
+    def update(self):
+        if self._detached:
+            return
+        try:
+            index = self.index()
+            if index.isValid():
+                self._table.viewport().update(self._table.visualRect(index))
+            else:
+                self._table.viewport().update()
+        except RuntimeError:
+            self._detached = True
+
+    repaint = update
+
+    def setEnabled(self, value: bool):
+        self._enabled = bool(value)
+        if not self._enabled:
+            self._down = False
+        self._sync_meta()
+        self.update()
+
+    def isEnabled(self) -> bool:
+        return self._enabled
+
+    def setDisabled(self, value: bool):
+        self.setEnabled(not value)
+
+    def setVisible(self, value: bool):
+        self._visible = bool(value)
+        if not self._visible:
+            self._down = False
+        self._sync_meta()
+        self.update()
+
+    def isVisible(self) -> bool:
+        return self._visible
+
+    def show(self):
+        self.setVisible(True)
+
+    def hide(self):
+        self.setVisible(False)
+
+    def setCheckable(self, value: bool):
+        value = bool(value)
+        if self._checkable == value:
+            return
+        self._checkable = value
+        if not value and self._checked:
+            self._checked = False
+            self.toggled.emit(False)
+        self._sync_meta()
+        self.update()
+
+    def isCheckable(self) -> bool:
+        return self._checkable
+
+    def setChecked(self, value: bool):
+        if not self._checkable:
+            return
+        value = bool(value)
+        if self._checked == value:
+            return
+        self._checked = value
+        self._sync_meta()
+        self.update()
+        self.toggled.emit(value)
+
+    def isChecked(self) -> bool:
+        return self._checked
+
+    def toggle(self):
+        if self._checkable:
+            self.setChecked(not self._checked)
+
+    def setDown(self, value: bool):
+        value = bool(value) and self._enabled and self._visible
+        if self._down == value:
+            return
+        self._down = value
+        self._sync_meta()
+        self.update()
+
+    def isDown(self) -> bool:
+        return self._down
+
+    def setText(self, value):
+        self._text = '' if value is None else str(value)
+        self._sync_meta()
+        self.update()
+
+    def text(self) -> str:
+        return self._text
+
+    def setToolTip(self, value):
+        self._tool_tip = '' if value is None else str(value)
+        try:
+            with QSignalBlocker(self._table):
+                self._item.setData(Qt.ToolTipRole, self._tool_tip)
+        except RuntimeError:
+            self._detached = True
+        self._sync_meta()
+
+    def toolTip(self) -> str:
+        return self._tool_tip
+
+    def setIcon(self, icon):
+        self._icon_path = ''
+        if isinstance(icon, QtGui.QIcon):
+            self._icon = QtGui.QIcon(icon)
+        elif isinstance(icon, QtGui.QPixmap):
+            self._icon = QtGui.QIcon(icon)
+        else:
+            self._icon_path = str(icon or '')
+            self._icon = QtGui.QIcon(self._icon_path)
+        self._sync_meta()
+        self.update()
+
+    def setIconPath(self, path):
+        self._icon_path = str(path or '')
+        self._icon = QtGui.QIcon(self._icon_path)
+        self._sync_meta()
+        self.update()
+
+    def icon(self) -> QtGui.QIcon:
+        return QtGui.QIcon(self._icon)
+
+    def setIconSize(self, size):
+        self._icon_size = QtCore.QSize(size)
+        self.update()
+
+    def iconSize(self) -> QtCore.QSize:
+        return QtCore.QSize(self._icon_size)
+
+    def setFont(self, font: QtGui.QFont):
+        self._font = QtGui.QFont(font)
+        self.update()
+
+    def font(self) -> QtGui.QFont:
+        return QtGui.QFont(self._font)
+
+    def setFixedHeight(self, value):
+        try:
+            value = max(1, int(value))
+        except (TypeError, ValueError):
+            return
+        self._fixed_height = value
+        row = self.row()
+        if row >= 0 and self._table.rowHeight(row) < value:
+            self._table.setRowHeight(row, value)
+        self._sync_meta()
+        self.update()
+
+    def setMinimumSize(self, *args):
+        if len(args) == 1:
+            self._minimum_size = QtCore.QSize(args[0])
+        elif len(args) == 2:
+            self._minimum_size = QtCore.QSize(int(args[0]), int(args[1]))
+        row, column = self.row(), self.column()
+        if row >= 0 and self._minimum_size.height() > self._table.rowHeight(row):
+            self._table.setRowHeight(row, self._minimum_size.height())
+        if column >= 0 and self._minimum_size.width() > self._table.columnWidth(column):
+            self._table.setColumnWidth(column, self._minimum_size.width())
+        self.update()
+
+    def minimumSize(self) -> QtCore.QSize:
+        return QtCore.QSize(self._minimum_size)
+
+    def setContentsMargins(self, left, top, right, bottom):
+        self._contents_margins = QtCore.QMargins(int(left), int(top), int(right), int(bottom))
+        self.update()
+
+    def contentsMargins(self) -> QtCore.QMargins:
+        return QtCore.QMargins(self._contents_margins)
+
+    def setAlignment(self, alignment):
+        self._alignment = int(alignment)
+        self._sync_meta()
+        self.update()
+
+    def alignment(self) -> int:
+        return self._alignment
+
+    def setFlat(self, value: bool):
+        self._flat = bool(value)
+        self.update()
+
+    def isFlat(self) -> bool:
+        return self._flat
+
+    def setSizePolicy(self, *args):
+        return None # Делегат заполняет прямоугольник ячейки, отдельная size policy ему не нужна.
+
+    def setGeometry(self, *args):
+        return None # Геометрию задаёт item view через option.rect.
+
+    @staticmethod
+    def _extract_css_color(style: str, property_name: str):
+        match = re.search(rf'{re.escape(property_name)}\s*:\s*([^;]+)', style, flags=re.I)
+        if not match:
+            return None
+        raw = match.group(1).strip()
+        rgb_match = re.search(r'rgba?\s*\(([^)]+)\)', raw, flags=re.I)
+        if rgb_match:
+            values = [part.strip() for part in rgb_match.group(1).split(',')]
+            try:
+                nums = [int(float(value)) for value in values]
+                if len(nums) == 3:
+                    return QtGui.QColor(*nums)
+                if len(nums) >= 4:
+                    return QtGui.QColor(nums[0], nums[1], nums[2], nums[3])
+            except (TypeError, ValueError):
+                return None
+        return _button_qcolor(raw)
+
+    def setStyleSheet(self, style: str):
+        # Нужная совместимость с blink_obj_c: распознаём фон и простую рамку.
+        self._style_sheet = str(style or '')
+        self._style_background = self._extract_css_color(self._style_sheet, 'background-color')
+        border_match = re.search(
+            r'border\s*:\s*(\d+)px\s+[^;]*?((?:rgba?\([^)]*\))|#[0-9a-fA-F]{3,8}|[A-Za-z]+)',
+            self._style_sheet,
+            flags=re.I,
+        )
+        self._style_border = None
+        self._style_border_width = 0
+        if border_match:
+            self._style_border_width = int(border_match.group(1))
+            self._style_border = self._extract_css_color(
+                f'border-color:{border_match.group(2)};', 'border-color'
+            )
+        self.update()
+
+    def styleSheet(self) -> str:
+        return self._style_sheet
+
+    def setCellStyle(self, *, background=None, hover_background=None,
+                     border=None, foreground=None, border_radius: int | None = None):
+        """Опциональные локальные цвета. None означает: взять текущую тему."""
+        self._background = _button_qcolor(background)
+        self._hover_background = _button_qcolor(hover_background)
+        self._border = _button_qcolor(border)
+        self._foreground = _button_qcolor(foreground)
+        if border_radius is not None:
+            self._border_radius = max(0, int(border_radius))
+        self.update()
+
+    def _activate(self):
+        if not self._enabled or not self._visible:
+            return
+        if self._checkable:
+            self.setChecked(not self._checked)
+        self.clicked.emit(self._checked if self._checkable else False)
+
+    def click(self):
+        if not self._enabled or not self._visible:
+            return
+        self.setDown(True)
+        self.pressed.emit()
+        self.setDown(False)
+        self.released.emit()
+        self._activate()
+
+    def animateClick(self, msec: int = 100):
+        if not self._enabled or not self._visible:
+            return
+        self.setDown(True)
+        self.pressed.emit()
+
+        def release_button():
+            if self._detached:
+                return
+            self.setDown(False)
+            self.released.emit()
+            self._activate()
+
+        QtCore.QTimer.singleShot(max(0, int(msec)), release_button)
+
+    def _detach_from_item(self):
+        if self._detached:
+            return
+        self._detached = True
+        try:
+            with QSignalBlocker(self._table):
+                if self._item.data(ITEM_BUTTON_HANDLE_ROLE) == self._key:
+                    self._item.setData(ITEM_BUTTON_HANDLE_ROLE, None)
+                    self._item.setData(ITEM_BUTTON_META_ROLE, None)
+                    self._item.setData(Qt.ToolTipRole, self._old_tool_tip)
+        except RuntimeError:
+            pass
+        registry = getattr(self._table, _DELEGATE_BUTTON_REGISTRY_ATTR, None)
+        if registry is not None:
+            registry.pop(self._key, None)
+        try:
+            self._table.viewport().update()
+        except RuntimeError:
+            pass
+
+    def deleteLater(self):
+        self._detach_from_item()
+        return super().deleteLater()
+
+
+def get_btn(table: QtWidgets.QTableWidget, row: int, column: int):
+    """Возвращает обычную кнопку ячейки либо её делегатную обёртку."""
+    widget = table.cellWidget(row, column)
+    if widget is not None:
+        return widget
+    return _delegate_button_from_item(table.item(row, column))
+
+
+def is_btn_item(item_or_index) -> bool:
+    if isinstance(item_or_index, DelegateButtonHandle):
+        return True
+    if isinstance(item_or_index, QtCore.QModelIndex):
+        return item_or_index.data(ITEM_BUTTON_HANDLE_ROLE) is not None
+    if isinstance(item_or_index, QtWidgets.QTableWidgetItem):
+        return item_or_index.data(ITEM_BUTTON_HANDLE_ROLE) is not None
+    return False
+
+def add_btn_push_btn(item:QTableWidget, i, j, text='', val=True, conn_func_checked_row_col = '', self = '',img_path='',height = '',fontsize='',
             cell_val=None,checkable:bool= False,initial_state:bool=False):
     __MUTABLE_CELLS_KEY = '__MUTABLE_CELLS_KEY'
     __MUTABLE_RESIZE_EVENT = '__MUTABLE_RESIZE_EVENT'
@@ -5005,14 +5499,8 @@ def add_btn(item:QTableWidget, i, j, text='', val=True, conn_func_checked_row_co
         btn.setChecked(initial_state)
     if height != '':
         btn.setFixedHeight(height)
-    if img_path != '':
-        if F.existence_file_c(img_path):
-            icon1 = QtGui.QIcon()
-            icon1.addPixmap(QtGui.QPixmap(img_path), QtGui.QIcon.Normal, QtGui.QIcon.Off)
-            btn.setIcon(icon1)
-            btn.setIconSize(QtCore.QSize(btn.height(), btn.height()))
-            btn.setToolTip(btn.text())
-            btn.setText('')
+
+
     btn.setFont(item.font())
     if fontsize != '':
         font = btn.font()
@@ -5038,6 +5526,14 @@ def add_btn(item:QTableWidget, i, j, text='', val=True, conn_func_checked_row_co
     btn.setMinimumSize(item.columnWidth(j), item.rowHeight(i))
     btn.setContentsMargins(0, 0, 0, 0) # 26.03.2026
     item.setCellWidget(i, j, btn)
+    if img_path != '':
+        if F.existence_file_c(img_path):
+            icon1 = QtGui.QIcon()
+            icon1.addPixmap(QtGui.QPixmap(img_path), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+            btn.setIcon(icon1)
+            btn.setIconSize(QtCore.QSize(btn.height(), btn.height()))
+            btn.setToolTip(btn.text())
+            btn.setText('')
 
     def resize_btn(*args):
         if is_table_updating(item) or is_table_sorting(item): #03.04.2026
@@ -5059,32 +5555,212 @@ def add_btn(item:QTableWidget, i, j, text='', val=True, conn_func_checked_row_co
     resize_btn()
     return btn
 
+
+def add_btn(item:QTableWidget, i, j, text='', val=True, conn_func_checked_row_col = '', self = '',img_path='',height = '',fontsize='',
+            cell_val=None,checkable:bool= False,initial_state:bool=False):
+    if not isinstance(item, QtWidgets.QTableWidget):
+        raise TypeError(f'add_btn ожидает QTableWidget, получено: {type(item).__name__}')
+
+    if i < 0 or j < 0:
+        raise IndexError(f'Некорректная ячейка кнопки: row={i}, column={j}')
+
+    if i >= item.rowCount():
+        item.setRowCount(i + 1)
+    if j >= item.columnCount():
+        item.setColumnCount(j + 1)
+
+    old_widget = item.cellWidget(i, j)
+    if old_widget is not None:
+        item.removeCellWidget(i, j)
+        old_widget.deleteLater()
+
+    cell_item = item.item(i, j)
+    if cell_item is None:
+        cell_item = QtWidgets.QTableWidgetItem()
+        item.setItem(i, j, cell_item)
+
+    old_handle = _delegate_button_from_item(cell_item)
+    if old_handle is not None:
+        old_handle.deleteLater()
+
+    flags = cell_item.flags()
+    flags |= Qt.ItemIsEnabled | Qt.ItemIsSelectable
+    flags &= ~Qt.ItemIsEditable
+    with QSignalBlocker(item):
+        cell_item.setFlags(flags)
+
+    registry = _delegate_button_registry(item, create=True)
+    key = next(_DELEGATE_BUTTON_COUNTER)
+    handle = DelegateButtonHandle(item, cell_item, key)
+    registry[key] = handle
+    with QSignalBlocker(item):
+        cell_item.setData(ITEM_BUTTON_HANDLE_ROLE, key)
+
+    handle.setEnabled(val)
+    handle.setCheckable(checkable)
+    if checkable:
+        handle.setChecked(initial_state)
+
+    button_font = QtGui.QFont(item.font())
+    if fontsize != '':
+        try:
+            button_font.setPointSize(int(fontsize))
+        except (TypeError, ValueError):
+            pass
+    handle.setFont(button_font)
+
+    if height != '':
+        handle.setFixedHeight(height)
+
+    icon = QtGui.QIcon()
+    icon_path = ''
+    if isinstance(img_path, QtGui.QIcon):
+        icon = QtGui.QIcon(img_path)
+    elif isinstance(img_path, QtGui.QPixmap):
+        icon = QtGui.QIcon(img_path)
+    elif img_path not in ('', None):
+        icon_path = str(img_path)
+        icon = QtGui.QIcon(icon_path)
+        if icon.isNull():
+            icon = QtGui.QIcon.fromTheme(icon_path)
+
+    if not icon.isNull():
+        handle.setIcon(icon)
+        handle._icon_path = icon_path
+        handle.setToolTip(text)
+        handle.setText('')
+    else:
+        handle.setText(text)
+
+    if conn_func_checked_row_col != '' and callable(conn_func_checked_row_col):
+        def call_old_contract(checked=False, btn_handle=handle,
+                              callback=conn_func_checked_row_col,
+                              parent_self=self, payload=cell_val):
+            row = btn_handle.row()
+            column = btn_handle.column()
+            if row < 0 or column < 0:
+                return
+            has_payload = payload is not None
+            if parent_self == '':
+                if has_payload:
+                    callback(row, column, payload)
+                else:
+                    callback(row, column)
+            else:
+                if has_payload:
+                    callback(parent_self, row, column, payload)
+                else:
+                    callback(parent_self, row, column)
+
+        handle.clicked.connect(call_old_contract)
+
+    delegate_cls = globals().get('FillTableDelegator')
+    if delegate_cls is None:
+        raise RuntimeError('FillTableDelegator ещё не инициализирован')
+    active_delegate = item.itemDelegate()
+    if not isinstance(active_delegate, delegate_cls):
+        stored_delegate = delegate_cls.get_delegate(item)
+        if stored_delegate is not None:
+            delegate_cls.ensure_fill_table_delegate(
+                item,
+                stored_delegate.editable_col_nomera,
+                stored_delegate.load_links,
+            )
+        else:
+            delegate_cls.ensure_fill_table_delegate(item)
+
+    item.setMouseTracking(True)
+    item.viewport().setMouseTracking(True)
+    handle._sync_meta()
+    handle.update()
+    return handle
+
+
+def add_btn_item(
+        tbl: QtWidgets.QTableWidget,
+        i: int,
+        j: int,
+        text: str = '',
+        payload=None,
+        *,
+        align=Qt.AlignCenter | Qt.AlignVCenter,
+        bg=None,
+        bg_hover=None,
+        border=None,
+        fg=None,
+        radius: int = 4,
+        bold: bool = False,
+):
+    handle = add_btn(tbl, i, j, text=text, cell_val=payload)
+    handle.setAlignment(align)
+    font = handle.font()
+    font.setBold(bool(bold))
+    handle.setFont(font)
+    handle.setCellStyle(
+        background=bg,
+        hover_background=bg_hover,
+        border=border,
+        foreground=fg,
+        border_radius=radius,
+    )
+    cell_item = tbl.item(i, j)
+    with QSignalBlocker(tbl):
+        cell_item.setData(ITEM_BUTTON_PAYLOAD_ROLE, payload)
+    return cell_item
+
+
 class ClickedLabel(QtWidgets.QLabel):
     clicked = QtCore.pyqtSignal()
 
-    def mouseReleaseEvent(self, e):
-        super().mouseReleaseEvent(e)
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._pixmap = None
 
-        self.clicked.emit()
+    def setImage(self, pixmap: QtGui.QPixmap):
+        self._pixmap = pixmap
+        self._updatePixmap()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._updatePixmap()
+
+    def _updatePixmap(self):
+        if self._pixmap and not self._pixmap.isNull():
+            self.setPixmap(
+                self._pixmap.scaled(
+                    self.contentsRect().size(),
+                    QtCore.Qt.KeepAspectRatio,
+                    QtCore.Qt.SmoothTransformation
+                )
+            )
+
+    def mouseReleaseEvent(self, event):
+        super().mouseReleaseEvent(event)
+        if event.button() == QtCore.Qt.LeftButton:
+            self.clicked.emit()
 
 def get_img_size(path):
     return  QPixmap(path).width() , QPixmap(path).height()
 
-def add_image(item, i, j, path='', self = '',w = 16, h = 16,conn_func_click = None):
+def add_image(item, i, j, path='', self = '',w = None, h = None,conn_func_click = None,tooltip = '',addit_data=None,stylesheet=None):
     lbl = ClickedLabel()
-    fon = QPixmap(path)
-    lbl.setFixedWidth(w)
-    lbl.setFixedHeight(h)
-    lbl.setFrameShape(QtWidgets.QFrame.Box)
-    lbl.setFrameShadow(QtWidgets.QFrame.Raised)
-    pixmap = fon.scaled(lbl.size(), Qt.KeepAspectRatio)
-    lbl.setPixmap(pixmap)
+    lbl.setImage(QtGui.QPixmap(path))
+
     lbl.setCursor(QtGui.QCursor(Qt.PointingHandCursor))
-    lbl.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+
     if conn_func_click:
-        lbl.clicked.connect(lambda: conn_func_click( path,i, j))
+        if addit_data:
+            lbl.clicked.connect(lambda: conn_func_click(path, i, j, addit_data))
+        else:
+            lbl.clicked.connect(lambda: conn_func_click( path,i, j))
+    if stylesheet:
+        dummy_btn = QtWidgets.QPushButton()
+        dummy_btn.setStyleSheet(stylesheet)
+        style = dummy_btn.styleSheet().replace("QPushButton", "QLabel")
+        lbl.setStyleSheet(style)
 
     item.setCellWidget(i, j, lbl)
+    lbl.setToolTip(tooltip)
 
 def add_label(item:QtWidgets.QTableWidget, i:int, j:int, text='', self = '',w = 16, h = 16):
     lbl = QtWidgets.QLabel()
@@ -5182,6 +5858,12 @@ class FillTableDelegator(QtWidgets.QStyledItemDelegate): # 26.03.2026
         self.colorful_edit = is_table_colorful_edit(self.parent)
         self.load_links = load_links
         self.temp_colors = {}  # (row, col) -> (r,g,b)
+        self._pressed_button_key = None
+        self._keyboard_button_key = None
+
+        self._button_style_proxy = QtWidgets.QPushButton(parent)
+        self._button_style_proxy.setAttribute(Qt.WA_DontShowOnScreen, True)
+        self._button_style_proxy.hide()
 
     def configure(self, editable_col_nomera=set(), load_links=False):
         self.editable_col_nomera = editable_col_nomera
@@ -5192,19 +5874,21 @@ class FillTableDelegator(QtWidgets.QStyledItemDelegate): # 26.03.2026
     def ensure_fill_table_delegate(self, tbl: QtWidgets.QTableWidget,
                                    editable_col_nomera=set(),
                                    load_links: bool = False) -> FillTableDelegator:
+        active = tbl.itemDelegate()
         current = getattr(tbl, self.__KEY_FILL_TABLE_ITEM_DELEGATE, None)
-        if isinstance(current, FillTableDelegator) and tbl.itemDelegate() is current:
+        if isinstance(current, FillTableDelegator) and active is current:
             current.configure(editable_col_nomera, load_links)
             return current
 
-        base_delegate = getattr(tbl, self.__KEY_BASE_ITEM_DELEGATE, None)
-        if base_delegate is None:
-            active = tbl.itemDelegate()
-            if isinstance(active, FillTableDelegator):
-                base_delegate = active.prev_delegator
-            else:
-                base_delegate = active
-            setattr(tbl, self.__KEY_BASE_ITEM_DELEGATE, base_delegate)
+        if isinstance(active, FillTableDelegator):
+            active.configure(editable_col_nomera, load_links)
+            setattr(tbl, self.__KEY_FILL_TABLE_ITEM_DELEGATE, active)
+            return active
+
+        # Если после fill_wtabl был установлен иной делегат, оборачиваем именно
+        # текущий объект. Так кнопка не отключает валидатор/отрисовщик границ.
+        base_delegate = active
+        setattr(tbl, self.__KEY_BASE_ITEM_DELEGATE, base_delegate)
 
         delegate = FillTableDelegator(tbl, editable_col_nomera, load_links)
         delegate.prev_delegator = base_delegate
@@ -5212,62 +5896,321 @@ class FillTableDelegator(QtWidgets.QStyledItemDelegate): # 26.03.2026
         setattr(tbl, self.__KEY_FILL_TABLE_ITEM_DELEGATE, delegate)
         tbl.setItemDelegate(delegate)
         return delegate
+
     @classmethod
     def get_delegate(cls, tbl) -> FillTableDelegator | None:
-        d = tbl.itemDelegate()
-        return d if isinstance(d, cls) else None
+        active = tbl.itemDelegate()
+        if isinstance(active, cls):
+            return active
+        stored = getattr(tbl, cls.__KEY_FILL_TABLE_ITEM_DELEGATE, None)
+        return stored if isinstance(stored, cls) else None
+
+    def _button_handle(self, index: QtCore.QModelIndex):
+        return _delegate_button_from_index(index, self.parent)
+
+    def _button_handle_by_key(self, key):
+        if key is None:
+            return None
+        return _delegate_button_registry(self.parent).get(key)
+
+    @staticmethod
+    def _button_rect(option_rect: QtCore.QRect, handle: DelegateButtonHandle) -> QtCore.QRect:
+        rect = option_rect.adjusted(2, 2, -2, -2)
+        fixed_height = handle._fixed_height
+        if fixed_height is not None and fixed_height < rect.height():
+            top = rect.top() + max(0, (rect.height() - fixed_height) // 2)
+            rect.setTop(top)
+            rect.setHeight(fixed_height)
+        return rect
+
+    def _paint_empty_cell(self, painter: QtGui.QPainter,
+                          option: QtWidgets.QStyleOptionViewItem,
+                          index: QtCore.QModelIndex):
+        cell_option = QtWidgets.QStyleOptionViewItem(option)
+        self.initStyleOption(cell_option, index)
+        cell_option.text = ''
+        cell_option.icon = QtGui.QIcon()
+        try:
+            cell_option.features &= ~QtWidgets.QStyleOptionViewItem.HasDisplay
+            cell_option.features &= ~QtWidgets.QStyleOptionViewItem.HasDecoration
+        except Exception:
+            pass
+        style = self.parent.style()
+        style.drawControl(QtWidgets.QStyle.CE_ItemViewItem, cell_option, painter, self.parent)
+
+    def _paint_button(self, painter: QtGui.QPainter,
+                      option: QtWidgets.QStyleOptionViewItem,
+                      index: QtCore.QModelIndex,
+                      handle: DelegateButtonHandle):
+        painter.save()
+        try:
+            self._paint_empty_cell(painter, option, index)
+            rect = self._button_rect(option.rect, handle)
+            if not rect.isValid():
+                return
+
+            proxy = self._button_style_proxy
+            proxy.setFont(handle.font())
+            proxy.setEnabled(handle.isEnabled())
+            proxy.setCheckable(handle.isCheckable())
+            proxy.setChecked(handle.isChecked())
+            proxy.setDown(handle.isDown())
+            proxy.setFlat(handle.isFlat())
+
+            button_option = QtWidgets.QStyleOptionButton()
+            button_option.initFrom(proxy)
+            button_option.rect = rect
+            button_option.palette = QtGui.QPalette(proxy.palette())
+            button_option.text = handle.text()
+            button_option.icon = handle.icon()
+            if handle.isFlat():
+                button_option.features |= QtWidgets.QStyleOptionButton.Flat
+
+            state = QtWidgets.QStyle.State_Active
+            if handle.isEnabled():
+                state |= QtWidgets.QStyle.State_Enabled
+            if option.state & QtWidgets.QStyle.State_MouseOver:
+                state |= QtWidgets.QStyle.State_MouseOver
+            if handle.isDown():
+                state |= QtWidgets.QStyle.State_Sunken
+            elif not handle.isFlat():
+                state |= QtWidgets.QStyle.State_Raised
+            if handle.isCheckable() and handle.isChecked():
+                state |= QtWidgets.QStyle.State_On
+            else:
+                state |= QtWidgets.QStyle.State_Off
+            if option.state & QtWidgets.QStyle.State_HasFocus:
+                state |= QtWidgets.QStyle.State_HasFocus
+            button_option.state = state
+
+            icon_size = handle.iconSize()
+            if not icon_size.isValid() or icon_size.isEmpty():
+                side = max(8, min(24, rect.height() - 6, rect.width() - 6))
+                icon_size = QtCore.QSize(side, side)
+            button_option.iconSize = icon_size
+
+            hover = bool(option.state & QtWidgets.QStyle.State_MouseOver)
+            custom_background = _button_qcolor(
+                self.temp_colors.get((index.row(), index.column()))
+            )
+            if custom_background is None:
+                custom_background = handle._style_background
+            if custom_background is None:
+                custom_background = handle._hover_background if hover and handle._hover_background else handle._background
+
+            style = proxy.style()
+            if custom_background is None and handle._border is None and handle._style_border is None:
+                style.drawControl(QtWidgets.QStyle.CE_PushButtonBevel,
+                                  button_option, painter, proxy)
+            else:
+                background = custom_background
+                if background is None:
+                    group = QtGui.QPalette.Active if handle.isEnabled() else QtGui.QPalette.Disabled
+                    background = button_option.palette.color(group, QtGui.QPalette.Button)
+                border = handle._style_border or handle._border
+                if border is None:
+                    border = button_option.palette.color(QtGui.QPalette.Mid)
+                border_width = handle._style_border_width or 1
+                painter.setRenderHint(QtGui.QPainter.Antialiasing, True)
+                painter.setPen(QtGui.QPen(border, border_width))
+                painter.setBrush(background)
+                painter.drawRoundedRect(rect, handle._border_radius, handle._border_radius)
+
+            contents = style.subElementRect(
+                QtWidgets.QStyle.SE_PushButtonContents,
+                button_option,
+                proxy,
+            )
+            if not contents.isValid():
+                contents = rect.adjusted(4, 2, -4, -2)
+            margins = handle.contentsMargins()
+            contents = contents.adjusted(
+                margins.left(), margins.top(), -margins.right(), -margins.bottom()
+            )
+
+            icon = handle.icon()
+            text = handle.text()
+            has_icon = not icon.isNull()
+            painter.setFont(handle.font())
+
+            group = QtGui.QPalette.Active if handle.isEnabled() else QtGui.QPalette.Disabled
+            foreground = handle._foreground or button_option.palette.color(
+                group, QtGui.QPalette.ButtonText
+            )
+            painter.setPen(foreground)
+
+            text_rect = QtCore.QRect(contents)
+            if has_icon:
+                mode = QtGui.QIcon.Disabled if not handle.isEnabled() else (
+                    QtGui.QIcon.Active if hover else QtGui.QIcon.Normal
+                )
+                icon_state = QtGui.QIcon.On if handle.isChecked() else QtGui.QIcon.Off
+                if text:
+                    icon_rect = QtCore.QRect(
+                        contents.left(),
+                        contents.top() + max(0, (contents.height() - icon_size.height()) // 2),
+                        icon_size.width(),
+                        icon_size.height(),
+                    )
+                    icon.paint(painter, icon_rect, Qt.AlignCenter, mode, icon_state)
+                    text_rect.setLeft(icon_rect.right() + 5)
+                else:
+                    icon_rect = QtCore.QRect(
+                        contents.center().x() - icon_size.width() // 2,
+                        contents.center().y() - icon_size.height() // 2,
+                        icon_size.width(),
+                        icon_size.height(),
+                    )
+                    icon.paint(painter, icon_rect, Qt.AlignCenter, mode, icon_state)
+
+            if text:
+                font_metrics = QtGui.QFontMetrics(handle.font())
+                elided = font_metrics.elidedText(
+                    text,
+                    Qt.ElideRight,
+                    max(0, text_rect.width() - 3),
+                )
+                painter.drawText(text_rect.adjusted(3, 0, -2, 0), handle.alignment(), elided)
+
+            if state & QtWidgets.QStyle.State_HasFocus:
+                focus_option = QtWidgets.QStyleOptionFocusRect()
+                focus_option.initFrom(proxy)
+                focus_option.rect = rect.adjusted(3, 3, -3, -3)
+                focus_option.state = state
+                focus_option.backgroundColor = button_option.palette.color(QtGui.QPalette.Button)
+                style.drawPrimitive(QtWidgets.QStyle.PE_FrameFocusRect,
+                                    focus_option, painter, proxy)
+        finally:
+            painter.restore()
 
     def paint(self, painter: QtGui.QPainter, option, index: QtCore.QModelIndex):
+        handle = self._button_handle(index)
+        if handle is not None and handle.isVisible():
+            self._paint_button(painter, option, index, handle)
+            return
+
         col = index.column()
         row = index.row()
         value = index.data()
-
         placeholder_text = '...'
-
         override = self.temp_colors.get((row, col))
 
         if self.colorful_edit:
             if override:
                 rgb = override
             elif col not in self.editable_col_nomera:
-                rgb = ThemeManager.readonly_cell(option.palette) #(240, 240, 240)
+                rgb = ThemeManager.readonly_cell(option.palette)
             else:
-                rgb = ThemeManager.editable_cell(option.palette) #(250, 250, 250)
+                rgb = ThemeManager.editable_cell(option.palette)
             if self.load_links and is_link_like(value):
                 cell = self.parent.cellWidget(index.row(), col)
                 if isinstance(cell, QtWidgets.QLabel):
                     cell.setStyleSheet(f'background-color:rgba{*rgb, 255};')
             option.backgroundBrush = QtGui.QBrush(QtGui.QColor(*rgb))
             painter.fillRect(option.rect, option.backgroundBrush)
-            if not value and placeholder_text and is_cell_editable(self.parent,index.row(),col):  # Если данных нет
-                # Сохраняем настройки пера
-                old_pen = painter.pen()
-
-                # Получаем текущий шрифт
+            if not value and placeholder_text and is_cell_editable(self.parent,index.row(),col):
+                painter.save()
                 font = painter.font()
-
-                # Уменьшаем размер (например, на 2 пункта)
-                new_size = max(6, font.pointSize() - 4)  # Не меньше 6 пунктов
+                new_size = max(6, font.pointSize() - 4)
                 font.setPointSize(new_size)
-
-                # Устанавливаем новый шрифт
                 painter.setFont(font)
-
-                painter.setPen(QColor(190, 190, 190))  # Серый для плейсхолдера
+                painter.setPen(ThemeManager.placeholder(option.palette))
                 painter.drawText(option.rect, Qt.AlignCenter, placeholder_text)
-                # Восстанавливаем перо
-
-                painter.setPen(old_pen)
-
-            else:
-                pass
-                # Стандартная отрисовка для непустых ячеек
-                #if self.parent.styleSheet() != '':
-                #    super().paint(painter, option, index)
+                painter.restore()
 
         self.prev_delegator.paint(painter, option, index)
 
+    def editorEvent(self, event, model, option, index):
+        event_type = event.type()
+        handle = self._button_handle(index)
+
+        # Mouse release обязан снять состояние и у кнопки, над которой мышь уже
+        # не находится, поэтому обрабатывается до проверки текущего index.
+        if event_type == QtCore.QEvent.MouseButtonRelease and self._pressed_button_key is not None:
+            pressed_key = self._pressed_button_key
+            pressed_handle = self._button_handle_by_key(pressed_key)
+            self._pressed_button_key = None
+            if pressed_handle is not None:
+                pressed_handle.setDown(False)
+                pressed_handle.released.emit()
+            same_button = handle is not None and handle.key == pressed_key
+            inside = same_button and option.rect.contains(event.pos())
+            if same_button and inside and handle.isEnabled() and handle.isVisible():
+                handle._activate()
+            return pressed_handle is not None
+
+        if handle is None or not handle.isVisible():
+            return self.prev_delegator.editorEvent(event, model, option, index)
+
+        if event_type in (QtCore.QEvent.MouseButtonPress, QtCore.QEvent.MouseButtonDblClick):
+            if event.button() != Qt.LeftButton or not option.rect.contains(event.pos()):
+                return False
+            if not handle.isEnabled():
+                return True
+            self.parent.setCurrentIndex(index)
+            self._pressed_button_key = handle.key
+            handle.setDown(True)
+            handle.pressed.emit()
+            return True
+
+        if event_type == QtCore.QEvent.MouseMove and self._pressed_button_key is not None:
+            pressed_handle = self._button_handle_by_key(self._pressed_button_key)
+            if pressed_handle is not None:
+                pressed_handle.setDown(
+                    pressed_handle.key == handle.key and option.rect.contains(event.pos())
+                )
+                return True
+
+        if event_type == QtCore.QEvent.KeyPress and event.key() in (
+                Qt.Key_Space, Qt.Key_Return, Qt.Key_Enter):
+            if not handle.isEnabled() or event.isAutoRepeat():
+                return True
+            self._keyboard_button_key = handle.key
+            handle.setDown(True)
+            handle.pressed.emit()
+            return True
+
+        if event_type == QtCore.QEvent.KeyRelease and event.key() in (
+                Qt.Key_Space, Qt.Key_Return, Qt.Key_Enter):
+            if event.isAutoRepeat():
+                return True
+            key = self._keyboard_button_key
+            self._keyboard_button_key = None
+            keyboard_handle = self._button_handle_by_key(key)
+            if keyboard_handle is not None:
+                keyboard_handle.setDown(False)
+                keyboard_handle.released.emit()
+                if keyboard_handle.key == handle.key:
+                    keyboard_handle._activate()
+            return key is not None
+
+        return False
+
+    def sizeHint(self, option, index):
+        handle = self._button_handle(index)
+        if handle is None or not handle.isVisible():
+            return self.prev_delegator.sizeHint(option, index)
+
+        base = self.prev_delegator.sizeHint(option, index)
+        font_metrics = QtGui.QFontMetrics(handle.font())
+        width = 8
+        if handle.text():
+            width += font_metrics.horizontalAdvance(handle.text()) + 8
+        if not handle.icon().isNull():
+            icon_size = handle.iconSize()
+            if not icon_size.isValid() or icon_size.isEmpty():
+                icon_size = QtCore.QSize(20, 20)
+            width += icon_size.width() + (5 if handle.text() else 4)
+        height = handle._fixed_height or max(base.height(), font_metrics.height() + 8)
+        minimum = handle.minimumSize()
+        return QtCore.QSize(
+            max(base.width(), width, minimum.width()),
+            max(base.height(), height, minimum.height()),
+        )
+
     def createEditor(self, parent, option, index):
+        if self._button_handle(index) is not None:
+            return None
         return self.prev_delegator.createEditor(parent, option, index)
 
     def setEditorData(self, editor, index):
@@ -10969,6 +11912,10 @@ def delete_cellWidget(table:QtWidgets.QTableWidget,row:int, column:int):
     if widget is not None:
         table.removeCellWidget(row, column)
         widget.deleteLater()  # освобождает объект корректно
+        return
+    button = _delegate_button_from_item(table.item(row, column))
+    if button is not None:
+        button.deleteLater()
     
 def delete_obj(obj):
     try:
@@ -11780,6 +12727,8 @@ class InteractiveLabelInstance(QtCore.QObject):
         self.grab_style_from_cell = grab_style_from_cell
 
         self.container = QtWidgets.QWidget()
+        self.container.instance = self
+        self.container.setObjectName(self.__unique_label_key(self.table, row, column))
         self.container.setAutoFillBackground(True)
 
         self.hlayout = QtWidgets.QHBoxLayout(self.container)
@@ -11852,6 +12801,20 @@ class InteractiveLabelInstance(QtCore.QObject):
             index = self.table.model().index(item.row(), item.column())
             rect = self.table.visualRect(index)
             self.table.viewport().repaint(rect)
+
+    @classmethod
+    def __unique_label_key(cls, table: QTableWidget, row: int, column: int):
+        return f'{cls.__class__.__name__}-{table.objectName()}-{row}-{column}'
+
+    @classmethod
+    def get_label_instance(cls,
+                           table: QTableWidget,
+                           row: int, column: int
+        ) -> InteractiveLabelInstance | None:
+        f = table.findChild(QtWidgets.QWidget, cls.__unique_label_key(table, row, column))
+        if not f:
+            return None
+        return getattr(f, 'instance', None)
 
     def _table_current_cell_is_this(self) -> bool:
         table = self.table
