@@ -96,15 +96,12 @@ class PlannerRuntimeSession:
         runtime: Any | None = None,
         *,
         runtime_factory: Callable[[str], Any] | None = None,
-        # conninfo_provider: Callable[[], str] | None = None,
     ) -> None:
         def conninfo_provider():
             return "postgresql://postgres:Adr1959967 @srv-mes:5432/postgres"
         self._runtime = runtime
         self._runtime_factory = runtime_factory or runtime_api.PlannerRegistryRuntime.connect
-        self._conninfo_provider = conninfo_provider or (
-            lambda: os.getenv(PLANNER_CONNINFO_ENV, "")
-        )
+        self._conninfo_provider = conninfo_provider
         self._lock = threading.RLock()
         self._closed = False
 

@@ -68,12 +68,13 @@ class ErpMetaClass:
 class MainTypes:
     """Класс для хранения информации о типах данных"""
 
-    def __init__(self, name: str, text: str, value:object, inner_data: dict = None, emoji:str = ''):
+    def __init__(self, name: str, text: str, value:object, inner_data: dict = None, emoji:str = '',selectable:bool=True):
         self.name = name
         self.text = text
         self.value = value
         self.inner_data = inner_data if inner_data is not None else dict()
         self.emoji = emoji
+        self.selectable = selectable
     def __repr__(self):
         return f"MainTypes(name='{self.name}', text='{self.text}')"
 
@@ -456,11 +457,9 @@ class CustomTypes:
             "MesMetaClass",
             "Данные МЕС",
             value=MesMetaClass,
-            inner_data={
-                "plan": MainTypes("plan", "План производства", value=MesMetaClass.plan, emoji="📈"),
-                "naryad": MainTypes("naryad", "Наряды", value=MesMetaClass.naryad, emoji="🧾"),
-            },
-            emoji="🏭"
+            inner_data={},
+            emoji="🏭",
+            selectable=False,
         ),
 
         "ErpMetaClass": MainTypes(
@@ -497,8 +496,34 @@ class CustomTypes:
         ),
     }
 
-    def __init__(self):
-        pass
+    def __init__(self,planner_mes_types=None):
+        self.TYPE_MAP = copy.deepcopy(self.TYPE_MAP)
+        self.planner_mes_types = planner_mes_types
+        self.mes_error = ''
+        self.mes_warnings = tuple()
+
+    def refresh_mes_types(self):
+        root:MainTypes = self.TYPE_MAP["MesMetaClass"]
+        root.inner_data = {}
+        root.text = "Данные МЕС"
+        self.mes_error = ''
+        self.mes_warnings = tuple()
+        if self.planner_mes_types is None:
+            root.text = "Данные МЕС (не настроено)"
+            return
+        try:
+            entries = self.planner_mes_types.reload(Mes_type)
+        except Exception as exc:
+            self.mes_error = str(exc)
+            root.text = "Данные МЕС (недоступно)"
+            return
+        root.inner_data = {
+            item.token: MainTypes(item.token,item.caption,value=item.value,emoji="🗂️")
+            for item in entries
+        }
+        self.mes_warnings = self.planner_mes_types.warnings
+        if not root.inner_data:
+            root.text = "Данные МЕС (нет регистраций)"
 
     def _find_type_by_path(self, data: dict, path_parts: list) -> MainTypes:
 
@@ -586,8 +611,8 @@ class CustomTypes:
         for k, v in inner_data.items():
             name = v.name
 
-            tmp_dict_text = {'_name': name, "": v.emoji, '_parent': parent, 'Тип': f'{" " * 4 * lvl}{v.text}'}
-            tmp_dict_data = {'_name': name, "": v.emoji, '_parent': parent, 'Тип': v}
+            tmp_dict_text = {'_name': name, "": v.emoji, '_parent': parent, '_selectable':v.selectable,  'Тип': f'{" " * 4 * lvl}{v.text}'}
+            tmp_dict_data = {'_name': name, "": v.emoji, '_parent': parent,'_selectable':v.selectable,  'Тип': v}
 
             template.append(tmp_dict_text)
             template_data.append(tmp_dict_text)
@@ -767,6 +792,24 @@ class Info():
             def fnc_switch(tbl:CQT.QtWidgets.QTableWidget,val:bool,i,j,*args):
                 pass
 
+            def selected_row(data):
+                if isinstance(data,list):
+                    return data[0] if data else None
+                if isinstance(data,dict):
+                    return data
+
+            def set_attr_view(row:CQT.TableRow,value:str,text:str=''):
+                meta_view_type: _AttributeInfoMeta = row.value('Значение',get_cust_content=True)
+                meta_view_type.set_value(value)
+                row.set_value('Значение',meta_view_type,set_cust_content=True)
+                view_text = text or value
+                row.set_value('Значение',view_text)
+                cell_widget = row.tbl.cellWidget(row.i,row.nf['Значение'])
+                if cell_widget is not None:
+                    label_instance = cell_widget.property('_interactive_label_instance')
+                    if label_instance is not None:
+                        label_instance.set_text(view_text)
+
             t = CQT.TableContext(tbl)
             for row in t.rows():
                 attr_o:_AttributeInfoMeta = row.value('Значение',get_cust_content=True)
@@ -777,9 +820,11 @@ class Info():
                         def fnc_oform_tbl_type(tbl:CQT.QtWidgets.QTableWidget,*args):
                             t = CQT.TableContext(tbl)
                             for row in t.rows():
-                                pass
+                                if not row.value('_selectable',get_cust_content=True):
+                                    row.set_font_format(bold=True,col_name='Тип')
                             t.hide_if_not_dev(CFG)
 
+                        DTSUB.custom_types.refresh_mes_types()
                         template, template_data = DTSUB.custom_types.template()
 
                         rez = CQT.msgboxg_get_table(DTSUB.sub_self,'Выбор типа данных',template,
@@ -788,7 +833,10 @@ class Info():
                                         )
                         if not rez:
                             return
-                        rez = rez[0]
+                        rez = selected_row(rez)
+                        if not rez or not rez.get('_name'):
+                            CQT.msgbox('Выберите конкретный тип данных.')
+                            return
                         new_type_name = rez['_parent'] + rez['_name']
                         new_type:MainTypes = DTSUB.custom_types.get_type(new_type_name)
                         new_meta:_AttributeInfoMeta = row.value('Значение',get_cust_content=True)
@@ -814,6 +862,9 @@ class Info():
 
                         if issubclass(new_meta.val,(Erp_type,Mes_type)):
                             row_view_type.hide(False)
+                            if issubclass(new_meta.val,Mes_type):
+                                presentation = DTSUB.planner_mes_types.default_presentation(new_meta.val)
+                                set_attr_view(row_view_type,presentation.presentation_key,presentation.caption)
                         else:
                             row_view_type.hide(True)
 
@@ -871,8 +922,36 @@ class Info():
 
 
                             if issubclass(type, Mes_type):
-                                data = type.template()
-                                #TODO для МЕС
+                                template = DTSUB.planner_mes_types.presentation_template(type)
+
+                                def fnc_oform_tbl_mes_attr_view(tbl:CQT.QtWidgets.QTableWidget,*args):
+                                    t = CQT.TableContext(tbl)
+                                    for presentation_row in t.rows():
+                                        if presentation_row.value('') == '⭐':
+                                            presentation_row.set_font_format(bold=True,col_name='Представление')
+                                        if presentation_row.value('Фильтр'):
+                                            presentation_row.set_font_format(italic=True,col_name='Фильтр')
+                                    t.hide_if_not_dev(CFG)
+
+                                rez = CQT.msgboxg_get_table(DTSUB.sub_self, 'Выбор представления МЕС', template,
+                                                            styleSheet=CQT.MES_CSS,
+                                                            func_oform_tbl=fnc_oform_tbl_mes_attr_view,
+                                                            selectRows=True,
+                                                            selection_from_tbl=True,
+                                                            sortingEnabled=True,
+                                                            ExtendedSelection=False,
+                                                            SelectionMode='SingleSelection'
+                                                            )
+                                if not rez:
+                                    return
+                                rez = selected_row(rez)
+                                if not rez or not rez.get('_name'):
+                                    CQT.msgbox('Выберите представление МЕС.')
+                                    return
+                                presentation_key = rez.get('_presentation_key') or rez.get('_name')
+                                presentation_text = rez.get('Представление') or presentation_key
+                                set_attr_view(row,presentation_key,presentation_text)
+                                lbl.set_text(presentation_text)
                             pass
 
                         widg = CQT.add_interactive_label(t.tbl, row.i, t.nf['Значение'], row.value('Значение'),

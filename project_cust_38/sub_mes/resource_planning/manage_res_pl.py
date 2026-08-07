@@ -34,6 +34,7 @@ import project_cust_38.sub_mes.resource_planning.connects as _con
 from project_cust_38 import dynamic_db_models as DDM
 from project_cust_38 import Cust_orm as CORM
 import project_cust_38.sub_mes.resource_planning.clses as CLSS
+from project_cust_38.sub_mes.resource_planning import planner_mes_types
 
 
 from typing import  TYPE_CHECKING
@@ -80,6 +81,12 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
 
         DTCLS.init_data()
 
+        planner_mes_types_o = getattr(DTSUB,'planner_mes_types',None)
+        if planner_mes_types_o is not None:
+            planner_mes_types_o.close()
+        DTSUB.planner_mes_types = planner_mes_types.PlannerMesTypeCatalog()
+        DTSUB.custom_types = CLSS.CustomTypes(DTSUB.planner_mes_types)
+
         DTCLS.module_manage_sub_app.shablons_res = CLSS.ShablonsRes()
         self.load_s_shab(CLSS.Type_entitys.Res,True)
         DTCLS.module_manage_sub_app.shablons_eve = CLSS.ShablonsEve()
@@ -95,7 +102,9 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
         self.fill_cmb_reports()
         DTCLS.module_manage_sub_app.user_config_sub_plan = CLSS.UserConfigSubPlan()
         DTCLS.module_manage_sub_app.user_config_sub_plan.load_config()
-        DTCLS.module_manage_sub_app.custom_types = CLSS.CustomTypes()
+        DTSUB.planner_mes_types = planner_mes_types.PlannerMesTypeCatalog()
+
+        DTCLS.module_manage_sub_app.custom_types = CLSS.CustomTypes(DTSUB.planner_mes_types)
 
     def _load_free_css(self):
         theme_path = F.sep().join([F.path_to_execut_file_c(), 'css'])
@@ -134,7 +143,11 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
 
 
     def closeEvent(self, event):
-        pass
+        planner_mes_types_o = getattr(DTSUB,'planner_mes_types',None)
+        if planner_mes_types_o is not None:
+            planner_mes_types_o.close()
+            DTSUB.planner_mes_types = None
+        event.accept()
 
     def _____________subjects_________________(self):
         pass
