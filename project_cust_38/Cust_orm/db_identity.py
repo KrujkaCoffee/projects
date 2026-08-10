@@ -41,7 +41,8 @@ class DbKeyResolver:
     IDENTITY_BY_TOKEN: dict[str, DbIdentity] = dict()
 
     def __getattribute__(self, item):
-        if item not in ("KNOWN_IDENTITIES", "IDENTITY_BY_TOKEN", "_identity_lookup", "fill_cls_attributes"):
+        if not item.startswith('_') and item not in ("KNOWN_IDENTITIES", "IDENTITY_BY_TOKEN", "_identity_lookup", "fill_cls_attributes",
+                        'make_db_identity', 'DEFAULT_SERVER_ROOT', '_normalized_token', '_strip_db_suffix'):
             if (not object.__getattribute__(self, "KNOWN_IDENTITIES")
                     or not object.__getattribute__(self, "IDENTITY_BY_TOKEN")):
                 identities = tuple(
@@ -109,7 +110,7 @@ class DbKeyResolver:
         return result
 
     def resolve_db_identity(self, value: Any) -> DbIdentity:
-        token = self.normalized_token(value)
+        token = self._normalized_token(value)
         if not token:
             return DbIdentity(self.UNKNOWN_DB_KEY, "")
 

@@ -7,7 +7,7 @@ import project_cust_38.Cust_Qt as CQT
 import project_cust_38.Cust_Functions as F
 import project_cust_38.Cust_SQLite  as CSQ
 import project_cust_38.Cust_mes as CMS
-from project_cust_38 import Cust_b24 as B24
+
 from project_cust_38.Cust_config import Config as CFG
 
 from typing import TYPE_CHECKING
@@ -15,6 +15,25 @@ if TYPE_CHECKING:
     from Sozdanie import mywindow
 
 dict_status_out = CMS.DICT_STATUS_OUT
+
+
+
+def send_msg(self:mywindow,id:int=None,base_msg:str=None):
+    if not base_msg:
+        base_msg = ''
+    if not id:
+        t = CQT.TableContext(self.ui.tbl_outplan)
+        row = t.current_row()
+        if row.no_selection:
+            return
+        id = int(row.value('Пномер'))
+    else:
+        if not  CFG.place.poki == 1:
+            return
+    tbl = CMS.gen_tbl_new_vnepl_for_b24(id)
+    CMS.send_tbl_new_vnepl_into_b24(base_msg,tbl)
+    pass
+
 
 
 @CQT.onerror
@@ -66,9 +85,11 @@ def outplan_ok(self:mywindow, *args, **kwargs):
 
     line = [int(nom_mk), F.now(), self.glob_login, msg_inic.lower(), int(nom_kpl), dict_status_out[1],
             str_list_selection_naruad]
-    CSQ.custom_request_c(self.db_naryd, f"""INSERT INTO jur_vnepl (МК, Дата, ФИО, Запрос,
+    dict_id_new_vnepl: dict[str] = CSQ.custom_request_c(self.db_naryd, f"""INSERT INTO jur_vnepl (МК, Дата, ФИО, Запрос,
                                             Кплан_номер, Статус, Номер_наряда_с_ошибкой)
-                                              VALUES ({CSQ.questions_for_mask(line)});""", list_of_lists_c=[line])
+                                              VALUES ({CSQ.questions_for_mask(line)}) RETURNING Пномер;""", list_of_lists_c=[line], rez_dict=True, one=True)
+
+    send_msg(self,dict_id_new_vnepl['Пномер'],'Открытие внеплана')
     load_form(self)
     CQT.clear_tbl(self.ui.tbl_select_nar)
     print('Успешно')
@@ -213,7 +234,7 @@ def tbl_outplan_change_cell(self:mywindow, *args):
         val = tbl.item(row, clmn).text()
         CSQ.custom_request_c(self.db_naryd, f"""UPDATE jur_vnepl SET Примечание_цех_техн = ? WHERE Пномер = ?;""",
                              list_of_lists_c=[val, snum])
-
+        send_msg(self,snum,'Добавление комментария цехового технолога')
 
 
 @CQT.onerror
@@ -261,11 +282,12 @@ def confirm_row(self:mywindow, *args):
     if not CQT.msgboxgYN(f"Утвердить статус {dict_row['Статус']} в заявке с причиной \n {dict_row['Запрос']}"):
         return
     tmp = [F.now()]
+    snum = int(dict_row['Пномер'])
     new_row = CSQ.custom_request_c(self.db_naryd, f"""UPDATE jur_vnepl SET  (Утверждено)
-       = ({CSQ.questions_for_mask(tmp)}) WHERE Пномер == {int(dict_row['Пномер'])} RETURNING *""", list_of_lists_c=tmp, rez_dict=True, one=True)
+       = ({CSQ.questions_for_mask(tmp)}) WHERE Пномер == {snum} RETURNING *""", list_of_lists_c=tmp, rez_dict=True, one=True)
 
     apply_otk_after_confirm(new_row['Кплан_номер'], new_row['code_category'], new_row['Номер_внепланового_наряда'])
-
+    send_msg(self, snum, 'Утверждение внеплана')
     load_form(self)
     CQT.msgbox('Успешно')
 
@@ -356,13 +378,15 @@ def apply_row_technolog(self:mywindow):
         if CQT.msgboxgYN(f'Не указана новая МК!\n Создаем МК ?'):
            return
     tmp = [dict_row['Статус'],dict_row['Журнал_замеч_номер'],dict_row['Номер_нов_мк']]
+    snum = int(dict_row['Пномер'])
     new_row = CSQ.custom_request_c(self.db_naryd,f"""UPDATE jur_vnepl SET  (Статус, Журнал_замеч_номер,Номер_нов_мк)
-   = ({CSQ.questions_for_mask(tmp)}) WHERE Пномер == {int(dict_row['Пномер'])} RETURNING *""",list_of_lists_c=tmp, rez_dict=True, one=True)
+   = ({CSQ.questions_for_mask(tmp)}) WHERE Пномер == {snum} RETURNING *""",list_of_lists_c=tmp, rez_dict=True, one=True)
 
     apply_otk_after_confirm(new_row['Кплан_номер'], new_row['code_category'], new_row['Номер_внепланового_наряда'])
     if dict_row['Номер_внепланового_наряда'] != '0':
         nar = CMS.Naryads(int(dict_row['Номер_внепланового_наряда']),self.db_naryd)
         nar.set_koef_nar(0.0001)
+    send_msg(self, snum, 'Смена статуса внеплана')
     load_form(self)
     CQT.msgbox('Успешно')
 
@@ -382,11 +406,13 @@ def tbl_out_select_row(self:mywindow):
         self.ui.tbl_outplan.item(row,col).setText(text)
 
         key = F.dict_key_from_value(dict_status_out,text)
-        if key == 4:
-            tmp = [text]
-            dict_row = CQT.get_dict_line_form_tbl(self.ui.tbl_outplan,row)
-            CSQ.custom_request_c(self.db_naryd, f"""UPDATE jur_vnepl SET  (Статус)
-            = ({CSQ.questions_for_mask(tmp)}) WHERE Пномер == {int(dict_row['Пномер'])}""", list_of_lists_c=[tmp])
+
+        tmp = [text]
+        dict_row = CQT.get_dict_line_form_tbl(self.ui.tbl_outplan,row)
+        snum = int(dict_row['Пномер'])
+        CSQ.custom_request_c(self.db_naryd, f"""UPDATE jur_vnepl SET  (Статус)
+        = ({CSQ.questions_for_mask(tmp)}) WHERE Пномер == {snum}""", list_of_lists_c=[tmp])
+        send_msg(self, snum, 'Смена статуса внеплана')
         if key in (2,3):
             tbl.removeCellWidget(row, col)
         pass

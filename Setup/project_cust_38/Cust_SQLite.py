@@ -1,5 +1,4 @@
 import copy
-import os.path
 import sqlite3
 import re
 import datetime as DT
@@ -26,7 +25,6 @@ RE_COUNT_SRV = 4
 
 DB_NAMES = CSQS.Servers # Содержит алиасы всех серверов БД
 
-# Пример result = CSQ.custom_request_c(CSQ.DB_NAMES.db_users,'DELETE from app_config')
 
 
 def resolve_srv_target(bd: str):

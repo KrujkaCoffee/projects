@@ -1060,7 +1060,7 @@ def check_add_poz(list_add:dict)->bool:
                 FROM plan 
               INNER JOIN пл_оуп ON пл_оуп.НомПл = plan.Пномер 
               INNER JOIN status_poz ON status_poz.Пномер = plan.Статус 
-             WHERE plan.Позиция = "{list_add['plan.Позиция']}" AND  plan.Статус IN (1, 2, 3, 5, 7, 8, 9) AND  
+             WHERE plan.poki = {CFG.Config.place.poki} AND plan.Позиция = "{list_add['plan.Позиция']}" AND  plan.Статус IN (1, 2, 3, 5, 7, 8, 9) AND  
               пл_оуп.№проекта = "{list_add['пл_оуп.№проекта']}" {postfix_erp} """,rez_dict=True)
     if rez:
         if not CQT.msgboxg_get_table(DTCLS.app_self,

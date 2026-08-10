@@ -929,7 +929,9 @@ def viev_etaps_name_itemSelectionChanged(self:mywindow,*args):
 
 @CQT.onerror
 def report_add_itemSelectionChanged(self,dict_line_form_tbl=None,*args):
-    if self.vid_report_c == 'Трудозатраты':
+    lbl_report = CQT.CustLabel(self.ui.lbl_sort_c_report)
+    report_name = lbl_report.get_user_data()
+    if report_name == 'labor_costs':
         tbl_name = self.ui.tbl_viev_etaps_name
         data = calc_list_names_etaps(self,dict_line_form_tbl)
         CQT.clear_tbl(tbl_name)

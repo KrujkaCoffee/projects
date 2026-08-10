@@ -73,53 +73,6 @@ KOEF_NORMIROVSCHICI = 1 / 1.15
 
 
 
-DICT_VID_OTCH = {'': "",
-                 'Исполнение плана месяца': '',
-                 'Выполнение проектов находящихся в производстве без привязке к периоду':'Задача № 100046611 Моренко',
-                 'Распределение работ по направлениям': 'Для МХ',
-                 'Отклонения от плановых дат по проектам': "Для совещания",
-                 'Усредненная удельная трудоемкость сборки по видам': "Для совещания",
-                 'Внеплановые работы по направлениям': "Для совещания",
-                 'План-фактный график по месяцам': "Для совещания",
-                 'График удельной производительности сборочного цеха': "Для совещания",
-                 '---------------------------------------------------':'',
-                 'Не выгруженные в 1С наряды':"для сборочного к примеру, допустим оператор выгружает 25.12 а там есть работники с не подтвержденными нарядами (к примеру таких 10 нарядов), и чтоб это не сидеть и не переписывать, а так спустя там день другой, зайти и посмотреть и видеть что тому то тому не выгружены тз",
-                 'Трудозатраты': "Сверка для выгрузки трудозатрат в ЕРП",
-                'Отчет по отклонениям табеля и трудозатрат':'Для оператора производственного учета',
-                '--------------------------------------------------':'',
-                'Журнал работ': "",
-                'Текущие работы': "",
-                 'Выработка сотрудника': "",
-                 'Выработка сотрудников': "",
-                 'Отчетность персонала': "",
-                 '-------------------------------------------------': '',
-                 'Динамика производительности сотрудников': "Задача № 100045854 от  13.11.2024 13:06",
-                 'Понедельный график выработки и отгрузок': "",
-                 'Выработка цеха понарядно': "",
-                 'Статистика нормо-весовых харктеристик МК': "",
-                 'Селекторное': "",
-                 'Отчет для селектора': "по ТЗ Моренко от 03.03.2025",
-                 'Выработка цеха по направлению': "",
-                 'Внеплановые работы': "",
-                 'Матрицы компетенций': "по ТЗ  100060096 от 24.11.2025",
-                 '-------------------------------------------------': '',
-                 'Неосвоенный_вес_по_созданным_нарядам': "",
-                 'Норматив материалов по завершенным нарядам': "",
-                 'Сравнение норм времени по направлениям': "",
-                 'Журнал_техкарт': "",
-                 'Выработка_ТОП': "",
-                 'Журнал_замечаний': "",
-                 'Журнал замечаний динамика': "Для совещания",
-                 'Реестр проектов в работе': "по ТЗ от ГД 25.01.2024",
-                 'Анализ эффективности работ на минуту': 'по ТЗ от ГД 30.05.2024',
-                 'Анализ внеплана по видам работ': 'по ТЗ от ГД 04.06.2024',
-                 'ПланФакт наряды с внепланом': 'по ТЗ от Р 06.06.2024',
-                 'О выработке сотрудников за месяц': "Отчет для ФЭО",
-                 'Отчет по загрузке оборудования': 'по ТЗ от П 09.2024',
-                 'Отчет по проекту': 'по ТЗ от CC 13.02.2025',
-                 'Компоновщик': ''
-                 }
-
 
 DICT_VID_OTCH =  {
     "monthly_plan_execution": {
@@ -445,21 +398,24 @@ def vibor_additional_sort_report(self: mywindow, *args):
         self.ui.cmb_addit_sort_c_report.clear()
         self.ui.cmb_addit_sort_c_report.addItems(list_users)
 
-    vid = self.ui.cmb_sort_c_report.currentText()
-    
-    if vid == 'Выработка сотрудника':
+    lbl_report = CQT.CustLabel(self.ui.lbl_sort_c_report)
+
+    name_report = lbl_report.get_user_data()
+
+    if name_report == 'employee_output':
         podr = self.ui.cmb_podrazdelenie.currentText()
         if podr == '':
             return
         fill_cmb_addit_sort_c_report_by_podr(self,podr)
         self.ui.cmb_addit_sort_c_report.setEnabled(True) #08.07.25
-    if vid == 'Динамика производительности сотрудников':
+
+    if name_report == 'employee_productivity_dynamics':
         podr = self.ui.cmb_podrazdelenie.currentText()
         if podr == '':
             return
         fill_cmb_addit_sort_c_report_by_podr(self,podr)
 
-    if vid == 'Отчетность персонала':
+    if name_report == 'personnel_reporting':
         type_rep = self.ui.cmb_podrazdelenie.currentText()
         if type_rep == '':
             return
@@ -472,7 +428,7 @@ def vibor_additional_sort_report(self: mywindow, *args):
         else:
             self.ui.cmb_addit_sort_c_report.setDisabled(True)
 
-    if vid == 'Матрицы компетенций':
+    if name_report == 'competency_matrix':
         type_rep = self.ui.cmb_podrazdelenie.currentData(CQT.Qt.UserRole)
         self.ui.cmb_addit_sort_c_report.clear()
         if type_rep == '':
@@ -489,14 +445,14 @@ def _______SELECT_REPORT_____________():
 
 @CQT.onerror
 def vibor_sort_c_report_c(self: mywindow, *args):
-    vid = self.ui.cmb_sort_c_report.currentText()
-    name_otch = self.ui.cmb_sort_c_report.currentData(QtCore.Qt.UserRole)
-    slug = F.clear_row_for_file_name_c(F.transliteration(vid))
+    lbl_report = CQT.CustLabel(self.ui.lbl_sort_c_report)
+    clear_text = lbl_report.get_user_data('clear_text','clear_text')
+    name_otch = lbl_report.get_user_data()
+    slug = F.clear_row_for_file_name_c(F.transliteration(clear_text))
     # from PyQt5 import QtWidgets
     # self.ui.tbl_report_c: QtWidgets.QTableWidget
     self.ui.tbl_report_c.setObjectName(f'tbl_report_c_{slug}')
     self.ui.tbl_report_c_filtr.setObjectName(f'tbl_report_c_filtr_{slug}')
-    self.vid_report_c = vid
     self.ui.fr_params_plan.setHidden(True)
     self.ui.le_end_of_period.setEnabled(True)
     self.ui.le_start_of_period.setEnabled(True)
@@ -504,8 +460,23 @@ def vibor_sort_c_report_c(self: mywindow, *args):
     self.ui.rbut_end_of_period.setEnabled(True)
     self.ui.cmb_addit_sort_c_report.setEnabled(False)
 
+    if name_otch == 'diver_trdz_1c_mes':
+        dat = F.date_add_days(F.datetostr(DT.today()), -1)
 
-    if vid == 'Матрицы компетенций':
+        konec = F.start_end_dates_c(date=dat, vid='d')[1]
+        nach = F.start_end_dates_c(date=dat, vid='d')[0]
+        if konec == self.ui.le_end_of_period.text() and nach == self.ui.le_start_of_period.text():
+            pass
+        else:
+            if CQT.msgboxgYN(f'Установить даты периода текущим днем?'):
+                self.ui.le_end_of_period.setText(konec)
+                self.ui.le_start_of_period.setText(nach)
+                # self.ui.fr_params_plan.setHidden(False)
+        cmb = self.ui.cmb_podrazdelenie
+        cmb.clear()
+        cmb.addItem('-')
+
+    if name_otch == 'competency_matrix':
         now = F.now("")
         dates = F.start_end_dates_c(now, '', 'd', "%Y-%m-%d %H:%M:%S")
         konec = dates[1]
@@ -541,7 +512,7 @@ def vibor_sort_c_report_c(self: mywindow, *args):
         MKRO.fill_cmb_to_select_regime()
         CQT.select_cmb_by_data(self.ui.cmb_podrazdelenie, MKRO.Regimes.insert.name)
 
-    if vid == 'Отчетность персонала':
+    if name_otch == 'personnel_reporting':
         now = F.now("")
         dates = F.start_end_dates_c(now, '', 'm', "%Y-%m-%d %H:%M:%S")
         konec = dates[1]
@@ -554,7 +525,7 @@ def vibor_sort_c_report_c(self: mywindow, *args):
         RPTP.init_rules()
 
 
-    if vid == 'Не выгруженные в 1С наряды':
+    if name_otch == 'not_exported_work_orders':
         next_month = F.now("")
         konec = F.start_end_dates_c(next_month, '', 'm', "%Y-%m-%d %H:%M:%S")[1]
         nach = F.start_end_dates_c(next_month, '', 'm', "%Y-%m-%d %H:%M:%S")[0]
@@ -563,7 +534,7 @@ def vibor_sort_c_report_c(self: mywindow, *args):
         podrazdel_none(self)
 
 
-    if vid == 'Отчет по отклонениям табеля и трудозатрат':
+    if name_otch == 'timesheet_labor_deviation_report':
         next_month = F.now("") - relativedelta(months=1)
         konec = F.start_end_dates_c(next_month, '', 'm', "%Y-%m-%d %H:%M:%S")[1]
         nach = F.start_end_dates_c(next_month, '', 'm', "%Y-%m-%d %H:%M:%S")[0]
@@ -572,7 +543,7 @@ def vibor_sort_c_report_c(self: mywindow, *args):
         podrazdel_none(self)
 
 
-    if vid == 'Выполнение проектов находящихся в производстве без привязке к периоду':
+    if name_otch == 'active_projects_execution':
         self.ui.le_start_of_period.setText("2023-01-01 00:00:01")
         last_month = F.now("")
         konec = F.start_end_dates_c(last_month, '', 'm', "%Y-%m-%d %H:%M:%S")[0]
@@ -582,7 +553,7 @@ def vibor_sort_c_report_c(self: mywindow, *args):
         podrazdel_none(self)
 
 
-    if vid == 'Исполнение плана месяца':
+    if name_otch == 'monthly_plan_execution':
         self.ui.le_start_of_period.setText("2023-01-01 00:00:01")
         self.ui.le_end_of_period.setText("2023-01-01 00:00:01")
         self.ui.cmb_podrazdelenie.setEnabled(True)
@@ -598,7 +569,7 @@ def vibor_sort_c_report_c(self: mywindow, *args):
         list_month_str = [_['Дата'] for _ in list_month]
         self.ui.cmb_podrazdelenie.addItems(list_month_str)
 
-    if vid == 'Распределение работ по направлениям':
+    if name_otch == 'work_distribution_by_direction':
         self.ui.le_start_of_period.setText("2023-01-01 00:00:01")
         last_month = F.now("")
         konec = F.start_end_dates_c(last_month, '', 'm', "%Y-%m-%d %H:%M:%S")[0]
@@ -606,14 +577,14 @@ def vibor_sort_c_report_c(self: mywindow, *args):
         self.ui.cmb_podrazdelenie.clear()
         self.ui.cmb_podrazdelenie.setDisabled(True)
         podrazdel_none(self)
-    if vid == 'Отклонения от плановых дат по проектам':
+    if name_otch == 'project_schedule_deviations':
         dat = F.date_add_days(F.datetostr(DT.today()), -31)
         konec = F.start_end_dates_c(date=dat, vid='m')[1]
         nach = '2023-01-01 00:00:00'
         self.ui.le_start_of_period.setText(nach)
         self.ui.le_end_of_period.setText(konec)
         podrazdel_none(self)
-    if vid == 'Выработка_ТОП':
+    if name_otch == 'top_output':
         next_month = F.now("") - relativedelta(months=1)
         konec = F.start_end_dates_c(next_month, '', 'm', "%Y-%m-%d %H:%M:%S")[1]
         nach = F.start_end_dates_c(next_month, '', 'm', "%Y-%m-%d %H:%M:%S")[0]
@@ -624,14 +595,14 @@ def vibor_sort_c_report_c(self: mywindow, *args):
                               'По сотрудникам выходные за год',
                               'По направлениям за год', 'По сотрудникам за год',
                               'По направлениям будни за год', 'По сотрудникам будни за год', ])
-    if vid == 'Усредненная удельная трудоемкость сборки по видам':
+    if name_otch == 'assembly_specific_labor_intensity':
         dat = F.date_add_days(F.datetostr(DT.today()), -31)
         konec = F.start_end_dates_c(date=dat, vid='m')[1]
         nach = F.start_end_dates_c(dat)[0]
         self.ui.le_start_of_period.setText(nach)
         self.ui.le_end_of_period.setText(konec)
         podrazdel_none(self)
-    if vid == 'Внеплановые работы по направлениям':
+    if name_otch == 'unplanned_work_by_direction':
         dat = F.date_add_days(F.datetostr(DT.today()), -31)
         nach, konec = F.start_end_dates_c(date=dat, vid='y') #07.07.25
         # nach = '2023-01-01 00:00:00'
@@ -649,7 +620,7 @@ def vibor_sort_c_report_c(self: mywindow, *args):
         self.ui.cmb_gant_tochnost_dat.addItem('')
         self.ui.cmb_gant_tochnost_dat.addItems(list_etaps)
 
-    if vid == 'План-фактный график по месяцам':
+    if name_otch == 'monthly_plan_fact_schedule':
         dat = F.date_add_days(F.datetostr(DT.today()), -31)
         konec = F.start_end_dates_c(date=dat, vid='m')[1]
         nach = '2024-01-01 00:00:00'
@@ -657,7 +628,7 @@ def vibor_sort_c_report_c(self: mywindow, *args):
         self.ui.le_end_of_period.setText(konec)
         podrazdel_none(self)
 
-    if vid == 'График удельной производительности сборочного цеха':
+    if name_otch == 'assembly_productivity_schedule':
         nach = '2024-01-01 00:00:00'
         dat = F.date_add_days(F.datetostr(DT.today()), -31)
         konec = F.start_end_dates_c(date=dat, vid='m')[1]
@@ -665,7 +636,7 @@ def vibor_sort_c_report_c(self: mywindow, *args):
         self.ui.le_end_of_period.setText(konec)
         podrazdel_none(self)
 
-    if vid == 'Норматив материалов по завершенным нарядам':
+    if name_otch == 'material_norms_completed_orders':
         next_month = F.now("") - relativedelta(months=1)
         konec = F.start_end_dates_c(next_month, '', 'm', "%Y-%m-%d %H:%M:%S")[1]
         nach = F.start_end_dates_c(next_month, '', 'm', "%Y-%m-%d %H:%M:%S")[0]
@@ -673,12 +644,12 @@ def vibor_sort_c_report_c(self: mywindow, *args):
         self.ui.le_start_of_period.setText(nach)
         podrazdel_none(self)
 
-    if vid == 'Неосвоенный_вес_по_созданным_нарядам':
+    if name_otch == 'created_work_orders_unprocessed_weight':
         self.ui.le_end_of_period.setEnabled(False)
         self.ui.le_start_of_period.setEnabled(False)
         podrazdel_kod(self)
 
-    if vid == 'О выработке сотрудников за месяц':
+    if name_otch == 'monthly_employee_output_report':
         dat = F.date_add_days(F.datetostr(DT.today()), -1)
         konec = F.start_end_dates_c(date=dat, vid='m')[1]
         nach = F.start_end_dates_c(date=dat, vid='m')[0]
@@ -686,7 +657,7 @@ def vibor_sort_c_report_c(self: mywindow, *args):
         self.ui.le_start_of_period.setText(nach)
         podrazdel_none(self)
 
-    if vid == 'Трудозатраты':
+    if name_otch == 'labor_costs':
         dat = F.date_add_days(F.datetostr(DT.today()), -1)
 
         konec = F.start_end_dates_c(date=dat, vid='d')[1]
@@ -709,10 +680,10 @@ def vibor_sort_c_report_c(self: mywindow, *args):
             self.ui.cmb_podrazdelenie.addItem(podr)
 
         # podrazdel_kod(self)
-    if vid == 'Статистика нормо-весовых харктеристик МК':
+    if name_otch == 'mk_weight_statistics':
         podrazdel_kod(self)
 
-    if vid == 'Выработка цеха по направлению':
+    if name_otch == 'shop_output_by_direction':
         dat = F.date_add_days(F.datetostr(DT.today()), -30)
         konec = F.start_end_dates_c(date=dat, vid='m')[1]
         nach = F.start_end_dates_c(date=dat, vid='m')[0]
@@ -723,129 +694,105 @@ def vibor_sort_c_report_c(self: mywindow, *args):
         self.ui.cmb_podrazdelenie.clear()
         self.ui.cmb_podrazdelenie.addItem('')
         self.ui.cmb_podrazdelenie.addItems(list_etaps)
-    if vid == 'Выработка цеха понарядно':
+    if name_otch == 'shop_output_by_work_order':
         podrazdel_kod(self)
-    if vid == 'Журнал работ':
+    if name_otch == 'work_log':
         nach_kon_mes(self, 'kon')
         podrazdel_none(self)
-    if vid == 'Внеплановые работы':
+    if name_otch == 'unplanned_work':
         nach_kon_mes(self, 'kon')
         podrazdel_none(self)
-    if vid == 'Выработка сотрудника':
+    if name_otch == 'employee_output':
         nach_kon_mes(self, 'kon')
         fill_podrazd_by_empl_full(self)
 
-    if vid == 'Динамика производительности сотрудников':
+    if name_otch == 'employee_productivity_dynamics':
         nach_kon_mes(self, 'kon')
         fill_podrazd_by_empl_full(self)
         #emploee(self)
-    if vid == 'Выработка сотрудников':
+    if name_otch == 'employees_output':
         nach_kon_mes(self, kon='end')
         podrazdel_from_dolgn_etap(self)
-    if vid == 'Текущие работы':
+    if name_otch == 'current_work':
         nach_kon_mes(self, 'kon')
         podrazdel_kod(self)
 
-    if vid == 'Понедельный график выработки и отгрузок':
+    if name_otch == 'weekly_output_shipping_schedule':
         nach = '2023-01-01 00:00:00'
         self.ui.le_start_of_period.setText(nach)
         podrazdel_kod(self)
-    if vid == 'Селекторное':
+    if name_otch == 'selector_report':
         self.ui.le_start_of_period.setText(F.now("%Y-%m-%d %H:%M:%S"))
         self.ui.le_end_of_period.setText(F.now("%Y-%m-%d %H:%M:%S"))
         self.ui.cmb_podrazdelenie.clear()
         self.ui.cmb_podrazdelenie.addItems(
             ('Добавлено', 'Закрыто', 'Не закрыто', 'По плану закрыть', 'Просрочены', 'Все'))
         self.ui.cmb_podrazdelenie.setDisabled(False)
-    if vid == 'План-фактный анализ по месяцам':
-        self.ui.le_start_of_period.setText("2022-09-01 00:00:00")
-        last_month = F.now("") - relativedelta(months=1)
-        konec = F.start_end_dates_c(last_month, '', 'm', "%Y-%m-%d %H:%M:%S")[0]
-        self.ui.le_end_of_period.setText(konec)
-        self.ui.cmb_podrazdelenie.clear()
-        self.ui.cmb_podrazdelenie.addItems(list(self.DICT_NAPRAVL.keys()))
-        self.ui.cmb_podrazdelenie.addItem('Все')
-        self.ui.cmb_podrazdelenie.setDisabled(False)
-    if vid == 'Длина сварных швов к выработке':
-        self.ui.le_start_of_period.setText("2022-09-01 00:00:00")
-        last_month = F.now("") - relativedelta(months=1)
-        konec = F.start_end_dates_c(last_month, '', 'm', "%Y-%m-%d %H:%M:%S")[0]
-        self.ui.le_end_of_period.setText(konec)
-        self.ui.cmb_podrazdelenie.clear()
-        self.ui.cmb_podrazdelenie.addItems(list(self.DICT_NAPRAVL.keys()))
-        self.ui.cmb_podrazdelenie.addItem('Все')
-        self.ui.cmb_podrazdelenie.setDisabled(False)
-    if vid == 'Журнал_техкарт':
+    if name_otch == 'tech_card_log':
         dat = F.date_add_days(F.datetostr(DT.today()), -1)
         konec = F.start_end_dates_c(date=dat, vid='d')[1]
         nach = F.start_end_dates_c(date=dat, vid='d')[0]
         self.ui.le_end_of_period.setText(konec)
         self.ui.le_start_of_period.setText(nach)
         podrazdel_none(self)
-    if vid == 'Журнал_замечаний':
+    if name_otch == 'remarks_log':
         last_month = F.now("") - relativedelta(months=1)
         konec = F.start_end_dates_c(last_month, '', 'm', "%Y-%m-%d %H:%M:%S")[1]
         nach = F.start_end_dates_c(last_month, '', 'm', "%Y-%m-%d %H:%M:%S")[0]
         self.ui.le_end_of_period.setText(konec)
         self.ui.le_start_of_period.setText(nach)
         podrazdel_none(self)
-    if vid == 'Отчет для селектора':
+    if name_otch == 'selector_detailed_report':
         last_month = F.now("") - relativedelta(months=1)
         konec = F.start_end_dates_c(last_month, '', 'm', "%Y-%m-%d %H:%M:%S")[1]
         nach = F.start_end_dates_c(last_month, '', 'm', "%Y-%m-%d %H:%M:%S")[0]
         self.ui.le_end_of_period.setText(konec)
         self.ui.le_start_of_period.setText(nach)
         podrazdel_none(self)
-    if vid == 'Журнал замечаний динамика':
+    if name_otch == 'remarks_dynamics':
         dat = F.date_add_days(F.datetostr(DT.today()), -31)
         konec = F.start_end_dates_c(date=dat, vid='m')[1]
         nach = '2023-01-01 00:00:00'
         self.ui.le_start_of_period.setText(nach)
         self.ui.le_end_of_period.setText(konec)
         podrazdel_none(self)
-    if vid == 'Сравнение норм времени по направлениям':
+    if name_otch == 'time_norm_comparison_by_direction':
         last_month = F.now("") - relativedelta(months=1)
         konec = F.start_end_dates_c(last_month, '', 'm', "%Y-%m-%d %H:%M:%S")[1]
         self.ui.le_start_of_period.setText("2023-01-01 00:00:00")
         self.ui.le_end_of_period.setText(konec)
         podrazdel_none(self)
-    # +++++++++++ отчет - Реестр проектов в работе
-    if vid == 'Реестр проектов в работе':
-        # last_month = F.now("") - relativedelta(months=1)
-        # konec = F.start_end_dates_c(last_month, '', 'm', "%Y-%m-%d %H:%M:%S")[1]
-        # self.ui.le_start_of_period.setText("2023-01-01 00:00:00")
-        # self.ui.le_end_of_period.setText(konec)
+
+    if name_otch == 'projects_in_progress_registry':
+
         podrazdel_kod(self)
-    # +++++++++++ отчет - Реестр проектов в работе
-    if vid == 'Анализ эффективности работ на минуту':
+
+    if name_otch == 'work_efficiency_per_minute':
         last_month = F.now("") - relativedelta(months=1)
         konec = F.start_end_dates_c(last_month, '', 'm', "%Y-%m-%d %H:%M:%S")[1]
         self.ui.le_start_of_period.setText("2024-04-01 00:00:00")
         self.ui.le_end_of_period.setText(konec)
         podrazdel_none(self)
-    if vid == 'Анализ внеплана по видам работ':
+    if name_otch == 'unplanned_work_analysis':
         last_month = F.now("") - relativedelta(months=1)
         konec = F.start_end_dates_c(last_month, '', 'm', "%Y-%m-%d %H:%M:%S")[1]
         self.ui.le_start_of_period.setText("2024-04-01 00:00:00")
         self.ui.le_end_of_period.setText(konec)
         podrazdel_none(self)
-    if vid == 'ПланФакт наряды с внепланом':
+    if name_otch == 'plan_fact_orders_with_unplanned':
         last_month = F.now("") - relativedelta(months=1)
         konec = F.start_end_dates_c(last_month, '', 'm', "%Y-%m-%d %H:%M:%S")[1]
         self.ui.le_start_of_period.setText("2024-04-01 00:00:00")
         self.ui.le_end_of_period.setText(konec)
         podrazdel_none(self)
-    if vid == 'Отчет по загрузке оборудования':
-        # last_month = F.now("") - relativedelta(months=1)
-        # konec = F.start_end_dates_c(last_month, '', 'm', "%Y-%m-%d %H:%M:%S")[1]
-        # self.ui.le_start_of_period.setText("2024-04-01 00:00:00")
-        # self.ui.le_end_of_period.setText(konec)
+    if name_otch == 'equipment_load_report':
+
         podrazdel_none(self)
-    if vid == 'Отчет по проекту':
+    if name_otch == 'project_report':
         self.ui.cmb_podrazdelenie.setDisabled(False)
         self.ui.cmb_podrazdelenie.clear()
         self.ui.cmb_podrazdelenie.addItem('Выбрать год в календаре')
-    if vid == 'Компоновщик':
+    if name_otch == 'report_builder':
         name_type_path = 'viewer_builder_excel_path'
         path = CMS.load_tmp_path(name_type_path)
         file_path = CQT.f_dialog_name(self, 'Выбрать файл', path,'*.xlsx')
@@ -900,10 +847,10 @@ def nach_kon_mes(self, kon="today", *args):
         self.ui.le_end_of_period.setText(konec)
     self.ui.le_start_of_period.setText(nach)
 
-def check_interval(vid: str, start: str, end: str):
+def check_interval(report_name: str, start: str, end: str):
     if not F.is_date(start) or not F.is_date(end):
         return
-    if vid == 'Анализ внеплана по видам работ':
+    if report_name == 'unplanned_work_analysis':
         interval = F.strtodate(start) - F.strtodate(end)
         if interval.days > 190:
             CQT.msgbox('Интервал дат для данного отчета не должен превышать 6 месяца ')
@@ -916,11 +863,10 @@ def _______GENERATE_REPORT_____________():
 @CQT.progress_decorator
 @CQT.onerror
 def report_c(self: mywindow,hook_prog_bar=None,  *args):
-    def oform_tbl(vid):
+    def oform_tbl(report_name):
         tbl = self.ui.tbl_report_c
-        self.vid_report_c = vid
 
-        if vid == 'Выработка сотрудника':
+        if report_name == 'employee_output':
             col_bad = CMS.Color_tbl(0)
             col_good = CMS.Color_tbl(100)
 
@@ -961,7 +907,7 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
             #     CQT.font_cell_size_format(tbl, tbl.rowCount() - 2, j, bold=True)
             CQT._load_tbl(tbl,self.ui.tbl_report_c_filtr,True)
 
-        if vid == 'Трудозатраты':
+        if report_name == 'labor_costs':
             #self.ui.tbl_report_c.setToolTip(
             #    f'Необходимо попасть в диапазон от {self.PROC_OTKL_TRUDOZATRAT[0]} до {self.PROC_OTKL_TRUDOZATRAT[1]}')
             nk_proc = CQT.num_col_by_name_c(self.ui.tbl_report_c, 'Соответствие_%')
@@ -987,7 +933,7 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
                 obj_col = CMS.Color_tbl(koef)
                 CQT.set_color_wtab_c(self.ui.tbl_report_c, i, nf_post_erp, obj_col.r, obj_col.g, obj_col.b)
 
-        if vid == 'Отчет по отклонениям табеля и трудозатрат':
+        if report_name == 'timesheet_labor_deviation_report':
             tbl = self.ui.tbl_report_c
 
             list_vals = []
@@ -1030,7 +976,7 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
                     clr_p_r,clr_p_g,clr_p_b = self.DICT_PODR_RC[tbl.item(i,nf_podr).text()]['Цвет'].split(',')
                     CQT.set_color_wtab_c(tbl, i, nf_podr, clr_p_r,clr_p_g,clr_p_b)
                 
-        if vid == 'Матрицы компетенций':
+        if report_name == 'competency_matrix':
             tbl = self.ui.tbl_report_c
             t = CQT.TableContext(tbl)
             t.hide('id_user')
@@ -1049,8 +995,9 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
     self.ui.le_path_save.setEnabled(True)
     nach = self.ui.le_start_of_period.text()
     konec = self.ui.le_end_of_period.text()
-    vid = self.ui.cmb_sort_c_report.currentText()
-    vid_data = self.ui.cmb_sort_c_report.currentData(QtCore.Qt.UserRole)
+    lbl_report = CQT.CustLabel(self.ui.lbl_sort_c_report)
+    clear_text = lbl_report.get_user_data('', 'clear_text')
+    report_name = lbl_report.get_user_data()
     podrazd = self.ui.cmb_podrazdelenie.currentText()
     podrazd_data = self.ui.cmb_podrazdelenie.currentData(QtCore.Qt.UserRole)
 
@@ -1058,7 +1005,7 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
     self.ui.fr_mk_zamech.setHidden(True)
     self.ui.frame.setHidden(True)
     self.ui.fr_personal.setHidden(True)
-    if not check_interval(vid, nach, konec):
+    if not check_interval(report_name, nach, konec):
         return
 
     if nach == '' or F.is_date(nach) == False:
@@ -1067,7 +1014,7 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
     if konec == '' or F.is_date(konec) == False:
         CQT.msgbox('Не корректная дата конца')
         return
-    if vid == '':
+    if clear_text == '':
         CQT.msgbox('Не выбран вид отчета')
         return
     if podrazd == '':
@@ -1091,7 +1038,7 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
     self.permission = False
     self.global_arm_oper_user_fio = None
     clear_graf(self)
-    CMS.save_tmp_path('last_used_report',vid)
+    CMS.save_tmp_stukt(report_name, 'last_used_report')
     # self.fill_cmb_sorts_repot()
     hook_prog_bar.set(5)
     hook_prog_bar.text('Расчет данных')
@@ -1104,75 +1051,77 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
 
     fnc_oform = None
     self.DICT_ALIASES_FIELDS_REPORT = None
-    if vid_data == 'by_open_naryads':
+
+    if report_name == 'diver_trdz_1c_mes':
+        rez_spis, fnc_oform = diver_trdz_1c_mes(self,nach,konec)
+
+    if report_name == 'by_open_naryads':
         rez_spis, fnc_oform = report_by_open_naryads(self,nach,konec)
 
-    if vid_data == 'manage_kro':
+    if report_name == 'manage_kro':
         if podrazd_data == 'insert':
             rez_spis = report_add_new_kro(self,nach,konec)
         if podrazd_data == 'report':
             rez_spis = report_kro(self,nach,konec)
 
-    if vid == 'Матрицы компетенций':
+    if report_name == 'competency_matrix':
         if podrazd_data == 'by_depatment':
             rez_spis = report_matrix_competence_by_depatment(self,nach,konec)
         elif podrazd_data == 'by_emploee':
             rez_spis = report_matrix_competence(self,nach)
 
-    if vid == 'Компоновщик':
+    if report_name == 'report_builder':
         rez_spis = report_excel_builder(self)
 
-    if vid == 'Не выгруженные в 1С наряды':
+    if report_name == 'not_exported_work_orders':
         rez_spis = not_upload_erp_nar(self, nach, konec)
 
-    if vid == 'Динамика производительности сотрудников':
+    if report_name == 'employee_productivity_dynamics':
         rez_spis = dinam_proizv_sotr(self, nach, konec, add_val)
-    if vid == 'Отчет по отклонениям табеля и трудозатрат':
+    if report_name == 'timesheet_labor_deviation_report':
         rez_spis = otkl_tabel_trdz(self, nach, konec, podrazd)
-    if vid == 'Выполнение проектов находящихся в производстве без привязке к периоду':
+    if report_name == 'active_projects_execution':
         rez_spis = ispoln_pl_month_all(self, self.db_kplan, self.db_resxml, self.bd_naryad, self.bd_users, self.Data.DICT_PROFESSIONS,
                                    self.Data.DICT_VID_RABOT, podrazd)
-    if vid == 'Исполнение плана месяца':
+    if report_name == 'monthly_plan_execution':
         rez_spis = ispoln_pl_month(self.db_kplan, self.db_resxml, self.bd_naryad, self.Data.DICT_PROFESSIONS,
                                    self.Data.DICT_VID_RABOT, podrazd)
-    if vid == 'Распределение работ по направлениям':
+    if report_name == 'work_distribution_by_direction':
         rez_spis = raspredelenie_po_naprfvleniam_proc(self, nach, konec)
-    if vid == 'Отклонения от плановых дат по проектам':
+    if report_name == 'project_schedule_deviations':
         rez_spis = divergence_of_date_proj(self, nach, konec)
-    if vid == 'Выработка_ТОП':
+    if report_name == 'top_output':
         rez_spis = virabotka_top(self, nach, konec, podrazd)
-    if vid == 'Усредненная удельная трудоемкость сборки по видам':
+    if report_name == 'assembly_specific_labor_intensity':
         rez_spis = udel_trud_sort_c(self, nach, konec)
         self.ui.btn_save_txt.setDisabled(False)
         self.ui.fr_save_txt.setHidden(False)
-    if vid == 'Внеплановые работы по направлениям':
+    if report_name == 'unplanned_work_by_direction':
         napr = podrazd
         podrazd = self.ui.cmb_gant_tochnost_dat.currentText()
         if podrazd == '':
             podrazd = 'Сборка+сварка'
         rez_spis = vneplan_po_napravl(self, nach, konec, napr, podrazd)
-    if vid == 'План-фактный график по месяцам':
+    if report_name == 'monthly_plan_fact_schedule':
         rez_spis = plan_fact_grafic_mes(self, nach, konec)
-    if vid == 'График удельной производительности сборочного цеха':
+    if report_name == 'assembly_productivity_schedule':
         rez_spis = gr_ud_proizv_cexa(self, nach, konec)
-    if vid == 'Журнал_замечаний':
+    if report_name == 'remarks_log':
         rez_spis = jurnal_zamech(self, nach, konec)
         self.ui.fr_mk_zamech.setHidden(False)
         ZMCH.load_table_add(self)
         ZMCH.load_table_zamech(self)
-    if vid == 'Журнал замечаний динамика':
+    if report_name == 'remarks_dynamics':
         rez_spis = jurnal_zamech_dinamic(self, nach, konec)
-    if vid == 'Журнал_техкарт':
+    if report_name == 'tech_card_log':
         rez_spis = jurnal_tk(self, nach, konec)
-    if vid == 'Норматив материалов по завершенным нарядам':
+    if report_name == 'material_norms_completed_orders':
         rez_spis = norm_mat_po_zav_nar(self, nach, konec)
-    if vid == 'Неосвоенный_вес_по_созданным_нарядам':
+    if report_name == 'created_work_orders_unprocessed_weight':
         rez_spis = neosv_ves_po_sozd_nar(self, podrazd)
-    if vid == 'О выработке сотрудников за месяц':
+    if report_name == 'monthly_employee_output_report':
         rez_spis = virabotka_sotr_za_mes(self, nach, konec)
-    if vid == 'План-фактный анализ по месяцам':
-        rez_spis = plan_fact_mes(self, nach, konec, podrazd)
-    if vid == 'Отчетность персонала':
+    if report_name == 'personnel_reporting':
         rez_spis = None
 
         date_start = F.strtodate(self.ui.le_start_of_period.text())
@@ -1187,7 +1136,7 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
             RPTP.load_pers_report()
         self.ui.fr_personal.setHidden(False)
 
-    if vid == 'Трудозатраты':
+    if report_name == 'labor_costs':
         self.ui.fr_params_plan.setHidden(False)
         self.current_podr_text = podrazd
         self.current_podr_data = podrazd_data
@@ -1204,58 +1153,54 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
         CQT.set_color_sort_cell_table_c(self.ui.tbl_viev_etaps_name, SelectionRow=True)
         CQT.set_color_sort_cell_table_c(self.ui.tbl_viev_etaps_erp, SelectionRow=True)
 
-    if vid == 'Статистика нормо-весовых харктеристик МК':
+    if report_name == 'mk_weight_statistics':
         rez_spis = statistic_normoweight_MK_c(self, nach, konec, podrazd)
-    if vid == 'Выработка цеха по направлению':
+    if report_name == 'shop_output_by_direction':
         rez_spis = virabotka_ceha(self, nach, konec, podrazd, f_napravl=True)
-    if vid == 'Выработка цеха понарядно':
+    if report_name == 'shop_output_by_work_order':
         rez_spis = virabotka_ceha_ponaryadno(self, nach, konec, podrazd)
-    if vid == 'Журнал работ':
+    if report_name == 'work_log':
         rez_spis = jurnal_rabot(self, nach, konec)
-    if vid == 'Внеплановые работы':
+    if report_name == 'unplanned_work':
         rez_spis = vneplan_rabot(self, nach, konec)
-    if vid == 'Выработка сотрудника':
+    if report_name == 'employee_output':
         rez_spis = virabotka_sotr(self, nach, konec, add_val)
-    if vid == 'Выработка сотрудников':
+    if report_name == 'employees_output':
         rez_spis = virabotka_sotrudnikov(self, nach, konec, podrazd)
         self.ui.fr_save_txt.setHidden(False)
         self.ui.btn_save_txt.setText(f'Выгрузить в ЕРП')
         self.ui.le_path_save.setEnabled(False)
         self.ui.btn_save_txt.setDisabled(False)
-    if vid == 'Текущие работы':
+    if report_name == 'current_work':
         rez_spis = tekush_raboty(self, podrazd)
-    if vid == 'Понедельный график выработки и отгрузок':
+    if report_name == 'weekly_output_shipping_schedule':
         rez_spis = ponedelniy_grafik_vir_otgr(self, nach, konec, podrazd)
-    if vid == 'План работ':
-        self.ui.fr_params_plan.setHidden(False)
-        rez_spis = plan_rabot_preload(self, nach, konec, podrazd)
-    if vid == 'Селекторное':
+
+    if report_name == 'selector_report':
         rez_spis = report_c_selector(self, nach, konec, podrazd)
-    if vid == 'Отчет для селектора':
+    if report_name == 'selector_detailed_report':
         rez_spis = report_c_selector_2(self, nach, konec, podrazd)
-    if vid == 'Сравнение норм времени по направлениям':
+    if report_name == 'time_norm_comparison_by_direction':
         rez_spis = sravn_nv_napr(self, nach, konec)
-    if vid == 'Длина сварных швов к выработке':
-        rez_spis = svar_vir(self, nach, konec)
-    # --------------------- 'Реестр проектов в работе'
-    if vid == 'Реестр проектов в работе':
+
+    if report_name == 'projects_in_progress_registry':
         rez_spis = ready_procent_ver2(self, nach, konec, podrazd)
-    # --------------------- 'Реестр проектов в работе'
-    # F.save_file('debug.txt',self.debug)
-    if vid == 'Анализ эффективности работ на минуту':
+
+
+    if report_name == 'work_efficiency_per_minute':
         rez_spis = analysis_effectiv_work_per_minute(self, nach, konec, podrazd)
-    if vid == 'Анализ внеплана по видам работ':
+    if report_name == 'unplanned_work_analysis':
 
         rez_spis = analysis_vneplan_by_vid_rab(self, nach, konec, podrazd)
         self.ui.fr_save_txt.setHidden(False)
         self.ui.btn_save_txt.setText(f'Выгрузить коэфф. в БД')
         self.ui.le_path_save.setEnabled(False)
         self.ui.btn_save_txt.setDisabled(False)
-    if vid == 'ПланФакт наряды с внепланом':
+    if report_name == 'plan_fact_orders_with_unplanned':
         rez_spis = planfact_nar_s_vneplan(self, nach, konec, podrazd)
-    if vid == 'Отчет по загрузке оборудования':
+    if report_name == 'equipment_load_report':
         rez_spis = report_of_load_machine(self, nach,konec, podrazd)
-    if vid == 'Отчет по проекту':
+    if report_name == 'project_report':
         rez_spis = report_by_proj(self, nach, konec, podrazd)
 
 
@@ -1278,53 +1223,51 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
         fnc_oform(tbl)
 
     # --- только оформление таблицы
-    if vid in (
-            'Трудозатраты',
-            'Отчет по отклонениям табеля и трудозатрат',
-            'Выработка сотрудника',
-            'Матрицы компетенций',
+    if report_name in (
+            'labor_costs',
+            'timesheet_labor_deviation_report',
+            'employee_output',
+            'competency_matrix',
     ):
-        oform_tbl(vid)
+        oform_tbl(report_name)
 
     # --- apply_summ_с со sredn=True
-    if vid in (
-            'Реестр проектов в работе',
-            'Выработка цеха понарядно',
-            'Понедельный график выработки и отгрузок',
-            'Статистика нормо-весовых харктеристик МК',
-            'План работ',
-            'План-фактный анализ по месяцам',
-            'О выработке сотрудников за месяц',
-            'Неосвоенный_вес_по_созданным_нарядам',
-            'Норматив материалов по завершенным нарядам',
-            'Журнал_техкарт',
-            'Журнал_замечаний',
-            'Сравнение норм времени по направлениям',
-            'График удельной производительности сборочного цеха',
-            'Выработка_ТОП',
-            'Отклонения от плановых дат по проектам',
-            'План-фактный график по месяцам',
-            'Динамика производительности сотрудников'
+    if report_name in (
+            'projects_in_progress_registry',
+            'shop_output_by_work_order',
+            'weekly_output_shipping_schedule',
+            'mk_weight_statistics',
+            'monthly_employee_output_report',
+            'created_work_orders_unprocessed_weight',
+            'material_norms_completed_orders',
+            'tech_card_log',
+            'remarks_log',
+            'time_norm_comparison_by_direction',
+            'assembly_productivity_schedule',
+            'top_output',
+            'project_schedule_deviations',
+            'monthly_plan_fact_schedule',
+            'employee_productivity_dynamics'
     ):
         CMS.apply_summ_с(self, tbl, sredn=True)
 
     # --- apply_summ_с со sredn=False
-    if vid in ('Распределение работ по направлениям',
-               'Выработка сотрудников',
-               'Журнал работ',
-               'Выработка сотрудника'
+    if report_name in ('work_distribution_by_direction',
+               'employees_output',
+               'work_log',
+               'employee_output'
                ):
         CMS.apply_summ_с(self, tbl, sredn=False)
 
     # --- отдельное оформление плана
-    if vid in (
-            'Исполнение плана месяца',
-            'Выполнение проектов находящихся в производстве без привязке к периоду'
+    if report_name in (
+            'monthly_plan_execution',
+            'active_projects_execution'
     ):
         oform_tbl_execute_monh_plan(tbl)
 
     # --- особый случай с правами
-    if vid == 'Журнал_замечаний':
+    if report_name == 'remarks_log':
         self.permission = CMS.user_access(
             self.bd_naryad,
             'просмотр_журнал_замечаний_корректировка_вн',
@@ -2306,11 +2249,13 @@ def  report_matrix_competence(self:mywindow, day:str):
                         b=40)
         )
         try:
-            CQT.output_gant(parent_self, fig, parent_self.browser, parent_self.vid_report_c + '_' + parent_self.ui.cmb_podrazdelenie.currentText())
+            lbl_report = CQT.CustLabel(parent_self.ui.lbl_sort_c_report)
+            clear_text = lbl_report.get_user_data('clear_text', 'clear_text')
+            CQT.output_gant(parent_self, fig, parent_self.browser, clear_text + '_' + parent_self.ui.cmb_podrazdelenie.currentText())
         except PermissionError: #05.02.2026
             import tempfile
             CQT.output_gant(parent_self, fig, parent_self.browser,
-                            parent_self.vid_report_c + '_' + parent_self.ui.cmb_podrazdelenie.currentText(),
+                            clear_text + '_' + parent_self.ui.cmb_podrazdelenie.currentText(),
                             dir=tempfile.gettempdir()
                             )
 
@@ -2321,6 +2266,7 @@ def  report_matrix_competence(self:mywindow, day:str):
     def fnc_gen_grafic_comp(self:mywindow, comp:MTXCMP.Competence):
         CQT.msgbox(f'В разработке')
         return
+        parent_self =  self
         users_map = CSQ.custom_request_c(CFG.Config.project.db_users,
                             f"""SELECT competence_vals.value, 
                             competence_vals.created_at, competence_vals.id_comp
@@ -2476,8 +2422,9 @@ def  report_matrix_competence(self:mywindow, day:str):
                         t=40,
                         b=40)
         )
-
-        CQT.output_gant(parent_self, fig, parent_self.browser, parent_self.vid_report_c + '_' + parent_self.ui.cmb_podrazdelenie.currentText())
+        lbl_report = CQT.CustLabel(parent_self.ui.lbl_sort_c_report)
+        clear_text = lbl_report.get_user_data('clear_text', 'clear_text')
+        CQT.output_gant(parent_self, fig, parent_self.browser, clear_text + '_' + parent_self.ui.cmb_podrazdelenie.currentText())
         tab = parent_self.ui.tabw_otchet
         tab.setCurrentIndex(CQT.number_table_by_name_c(tab,'График'))
         return
@@ -2557,7 +2504,8 @@ def  report_matrix_competence(self:mywindow, day:str):
 
 @CQT.onerror
 def report_by_open_naryads(self:mywindow, nach_data, kon_data):
-
+    lbl_report = CQT.CustLabel(self.ui.lbl_sort_c_report)
+    clear_text = lbl_report.get_user_data('clear_text', 'clear_text')
     dict_de = F.grouping_list_dicts(
             CSQ.custom_request_c(self.bd_users, f"""SELECT rab_c.Код, rab_c.ref_Подразделения   FROM rab_c
     
@@ -2630,7 +2578,7 @@ SELECT
     rez = CSQ.custom_request_c(self.bd_naryad, text, rez_dict=True, attach_dbs=(self.db_kplan))
 
     if rez is None:
-        CQT.msgbox(f'Ошибка запроса {self.vid_report_c}')
+        CQT.msgbox(f'Ошибка запроса {clear_text}')
         return None, None
     def calc_delta(nr:float,fact:float):
         delta = ''
@@ -2869,7 +2817,7 @@ def otkl_tabel_trdz(self:mywindow, nach_data, kon_data, podrazd):
         'Сборочный цех Производства',
     }
     set_fields_hat = {'Должность','Статус','Подразделение','ДатаИзмененияДолжности'}
-    'Отчет по отклонениям табеля и трудозатрат'
+
     str_date_start = F.datetostr(nach_data_obj,"%Y-%m-%dT%H:%M:%S")
     str_date_kon = F.datetostr(kon_data_obj,"%Y-%m-%dT%H:%M:%S")
     m = ODAT.OrdersComposit(self.ERP_base_name)
@@ -3238,6 +3186,8 @@ def create_podreport_c(self, *args):
 @CQT.onerror
 def create_gant(self, *args):
     def fig_gr_dinam_proizv(self, spis):
+        lbl_report = CQT.CustLabel(self.ui.lbl_sort_c_report)
+        clear_text = lbl_report.get_user_data('clear_text', 'clear_text')
         fig = go.Figure()
         if not spis:
             return fig
@@ -3270,12 +3220,14 @@ def create_gant(self, *args):
 
         # Edit the layout
         fig.update_layout(
-            title=f'{self.vid_report_c}',
+            title=f'{clear_text}',
             xaxis_title='Группировка `Подтвержд. вып. дата` нарядов по неделям',
             yaxis_title='Минуты')
         return fig
 
     def fig_sravn_norm_vr_po_napr(self, spis, dict_color):
+        lbl_report = CQT.CustLabel(self.ui.lbl_sort_c_report)
+        clear_text = lbl_report.get_user_data('clear_text', 'clear_text')
         month = [_[0] for _ in spis[1:]]
         dict_fields = dict()
         for j, field in enumerate(spis[0][1:]):
@@ -3300,12 +3252,14 @@ def create_gant(self, *args):
 
         # Edit the layout
         fig.update_layout(
-            title=f'{self.vid_report_c}  "(Тп-Тф)*100/Тп" (абс - как абсолютное значение разницы план-факт)',
+            title=f'{clear_text}  "(Тп-Тф)*100/Тп" (абс - как абсолютное значение разницы план-факт)',
             xaxis_title='Месяц',
             yaxis_title='%')
         return fig
 
     def fig_gr_ud_prt_cex(self, spis):
+        lbl_report = CQT.CustLabel(self.ui.lbl_sort_c_report)
+        clear_text = lbl_report.get_user_data('clear_text', 'clear_text')
         month = [_[0] for _ in spis[1:]]
         postov = [_[1] for _ in spis[1:]]
         virabotka = [_[2] for _ in spis[1:]]
@@ -3372,12 +3326,14 @@ def create_gant(self, *args):
                                  mode='lines+text'))
         # Edit the layout
         fig.update_layout(
-            title=f'{self.vid_report_c}',
+            title=f'{clear_text}',
             xaxis_title='Месяц',
             yaxis_title='')
         return fig
 
     def fig_gr_pf_gr_mes(self, spis):
+        lbl_report = CQT.CustLabel(self.ui.lbl_sort_c_report)
+        clear_text = lbl_report.get_user_data('clear_text', 'clear_text')
         # [['Месяц', 'План, н-см.', 'Отгрузка, т.', 'Факт, н-см.', 'Внеплан, н-см.', 'Сумм. Факт, н-см.']]
         month = [_[0] for _ in spis[1:]]
         # plan_tonn = [_[1] for _ in spis[1:]]
@@ -3453,12 +3409,14 @@ def create_gant(self, *args):
                                  mode='lines+text'))
         # Edit the layout
         fig.update_layout(
-            title=f'{self.vid_report_c}',
+            title=f'{clear_text}',
             xaxis_title='Месяц',
             yaxis_title='')
         return fig
 
     def fig_gr_vnepl_rab(self, spis, napravl=''):
+        lbl_report = CQT.CustLabel(self.ui.lbl_sort_c_report)
+        clear_text = lbl_report.get_user_data('clear_text', 'clear_text')
         gp = check_import_modyle('gant_ploty')
         if gp is None:
             import gant_ploty as gp
@@ -3536,40 +3494,42 @@ def create_gant(self, *args):
 
         # Edit the layout
         fig.update_layout(
-            title=f'{self.vid_report_c}. {napravl}',
+            title=f'{clear_text}. {napravl}',
             xaxis_title='Месяц',
             yaxis_title='')
         return fig
-
-    if self.vid_report_c == 'Динамика производительности сотрудников':
+    lbl_report = CQT.CustLabel(self.ui.lbl_sort_c_report)
+    report_name = lbl_report.get_user_data()
+    report_clear_text = lbl_report.get_user_data('clear_text','clear_text')
+    if report_name == 'employee_productivity_dynamics':
         if args == None or len(args) == 0:
             return
         fig = fig_gr_dinam_proizv(self, args[0])
         load_browser(self)
-        CQT.output_gant(self, fig, self.browser, self.vid_report_c + '_' + self.ui.cmb_addit_sort_c_report.currentText())
+        CQT.output_gant(self, fig, self.browser, report_clear_text + '_' + self.ui.cmb_addit_sort_c_report.currentText())
 
-    if self.vid_report_c == 'Внеплановые работы по направлениям':
+    if report_name == 'unplanned_work_by_direction':
         if args == None or len(args) == 0:
             return
         fig = fig_gr_vnepl_rab(self, args[0], args[-1])
         load_browser(self)
-        CQT.output_gant(self, fig, self.browser, self.vid_report_c + '_' + self.ui.cmb_podrazdelenie.currentText())
+        CQT.output_gant(self, fig, self.browser, report_clear_text + '_' + self.ui.cmb_podrazdelenie.currentText())
 
-    if self.vid_report_c == 'План-фактный график по месяцам':
+    if report_name == 'monthly_plan_fact_schedule':
         if args == None or len(args) == 0:
             return
         fig = fig_gr_pf_gr_mes(self, args[0])
         load_browser(self)
-        CQT.output_gant(self, fig, self.browser, self.vid_report_c + '_' + self.ui.cmb_podrazdelenie.currentText())
+        CQT.output_gant(self, fig, self.browser, report_clear_text + '_' + self.ui.cmb_podrazdelenie.currentText())
 
-    if self.vid_report_c == 'График удельной производительности сборочного цеха':
+    if report_name == 'assembly_productivity_schedule':
         if args == None or len(args) == 0:
             return
         fig = fig_gr_ud_prt_cex(self, args[0])
         load_browser(self)
-        CQT.output_gant(self, fig, self.browser, self.vid_report_c + '_' + self.ui.cmb_podrazdelenie.currentText())
+        CQT.output_gant(self, fig, self.browser, report_clear_text + '_' + self.ui.cmb_podrazdelenie.currentText())
 
-    if self.vid_report_c == 'Сравнение норм времени по направлениям':
+    if report_name == 'time_norm_comparison_by_direction':
         if args == None or len(args) == 0:
             return
         data_list = args[0]
@@ -3579,22 +3539,13 @@ def create_gant(self, *args):
         dict_color = F.deploy_dict_c(dict_color, 'name')
         fig = fig_sravn_norm_vr_po_napr(self, data_list, dict_color)
         load_browser(self)
-        CQT.output_gant(self, fig, self.browser, self.vid_report_c + '_' + self.ui.cmb_podrazdelenie.currentText())
+        CQT.output_gant(self, fig, self.browser, report_clear_text + '_' + self.ui.cmb_podrazdelenie.currentText())
 
-    if self.vid_report_c == 'План работ':
-        if self.plan_for_gant == '' or self.ui.cmb_gant_vert.currentText() == '' or self.ui.cmb_gant_colour == '':
-            return
-        fig = gp.fig_podetalno_narc_projects(self.plan_for_gant, self.ui.cmb_gant_vert.currentText(),
-                                             self.ui.cmb_gant_vert_val.currentText(),
-                                             self.ui.cmb_gant_colour.currentText(),
-                                             self.ui.cmb_gant_tochnost_dat.currentText())
-        CQT.output_gant(self, fig, self.browser, self.vid_report_c + '_' + self.ui.cmb_podrazdelenie.currentText())
-
-    if self.vid_report_c == 'Журнал замечаний динамика':
+    if report_name == 'remarks_dynamics':
         if args == None or len(args) == 0:
             return
         dict_podrs = F.deploy_dict_c(F.list_of_lists_to_list_of_dicts(F.dict_of_dicts_to_list_of_lists(self.DICT_RC)),'empl_Подразделение')
-        title = self.vid_report_c
+        title = report_clear_text
         labels_cod_wet = [_ for _ in args[0][0].keys() if _ != 'month']
         colors = ['rgb(67,67,67)', 'rgb(115,115,115)', 'rgb(49,130,189)', 'rgb(189,189,189)']
         colors = []
@@ -3714,9 +3665,9 @@ def create_gant(self, *args):
                                 showarrow=False))
 
         fig.update_layout(annotations=annotations)
-        CQT.output_gant(self, fig, self.browser, self.vid_report_c + '_' + self.ui.cmb_podrazdelenie.currentText())
+        CQT.output_gant(self, fig, self.browser, report_clear_text + '_' + self.ui.cmb_podrazdelenie.currentText())
 
-    if self.vid_report_c == 'Журнал_замечаний':
+    if report_name == 'remarks_log':
         if args == None or len(args) == 0:
             return
         data_list = args[0]
@@ -3802,7 +3753,7 @@ def create_gant(self, *args):
             margin=dict(t=30, l=0, r=0, b=0),
         )
         # STOP(По задаче 100054795 ) 28.05.2025
-        CQT.output_gant(self, fig, self.browser, self.vid_report_c + '_' + self.ui.cmb_podrazdelenie.currentText())
+        CQT.output_gant(self, fig, self.browser, report_clear_text + '_' + self.ui.cmb_podrazdelenie.currentText())
 
 
 @CQT.onerror
@@ -3852,32 +3803,33 @@ def calendar_click(self, date_start:datetime.datetime=None, date_end:datetime.da
             start_mode = True
         if date_end:
             end_mode = True
-
+    lbl_report = CQT.CustLabel(self.ui.lbl_sort_c_report)
+    name_report = lbl_report.get_user_data()
     if start_mode:
         self.ui.le_start_of_period.setText(F.datetostr(date_start, "%Y-%m-%d 00:00:00"))
-        if self.ui.cmb_sort_c_report.currentText() == 'Матрицы компетенций':
+        if name_report == 'competency_matrix':
             konec = F.start_end_dates_c(date=self.ui.le_start_of_period.text(), vid='d')[1]
             self.ui.le_end_of_period.setText(konec)
-        if self.ui.cmb_sort_c_report.currentText() == 'Трудозатраты':
+        if name_report == 'labor_costs':
             konec = F.start_end_dates_c(date=self.ui.le_start_of_period.text(), vid='d')[1]
             self.ui.le_end_of_period.setText(konec)
-        if self.ui.cmb_sort_c_report.currentText() == 'О выработке сотрудников за месяц':
+        if name_report == 'monthly_employee_output_report':
             konec = F.start_end_dates_c(date=self.ui.le_start_of_period.text(), vid='m')[1]
             self.ui.le_end_of_period.setText(konec)
 
     if end_mode:
         self.ui.le_end_of_period.setText(F.datetostr(date_end, "%Y-%m-%d 23:59:59"))
-        if self.ui.cmb_sort_c_report.currentText() == 'Матрицы компетенций':
+        if name_report == 'competency_matrix':
             nach = F.start_end_dates_c(date=self.ui.le_end_of_period.text(), vid='d')[0]
             self.ui.le_start_of_period.setText(nach)
-        if self.ui.cmb_sort_c_report.currentText() == 'Трудозатраты':
+        if name_report == 'labor_costs':
             nach = F.start_end_dates_c(date=self.ui.le_end_of_period.text(), vid='d')[0]
             self.ui.le_start_of_period.setText(nach)
-        if self.ui.cmb_sort_c_report.currentText() == 'О выработке сотрудников за месяц':
+        if name_report == 'monthly_employee_output_report':
             nach = F.start_end_dates_c(date=self.ui.le_end_of_period.text(), vid='m')[0]
             self.ui.le_start_of_period.setText(nach)
 
-    if self.vid_report_c == 'Отчет по проекту' :
+    if name_report == 'project_report' :
         self.ui.le_start_of_period.setText(F.datetostr(date_start, "%Y-%m-%d 00:00:00"))
         self.ui.le_end_of_period.setText(F.datetostr(date_end, "%Y-%m-%d 23:59:59"))
         years  = range(F.strtodate(self.ui.le_start_of_period.text()).year, F.strtodate(self.ui.le_end_of_period.text()).year+1)
@@ -4085,6 +4037,8 @@ def ready_procent(self):
 
 @CQT.onerror
 def planfact_nar_s_vneplan(self: mywindow, nach, konec, podrazd=None, *args):
+    lbl_report = CQT.CustLabel(self.ui.lbl_sort_c_report)
+    clear_text = lbl_report.get_user_data('clear_text', 'clear_text')
     tbl = [['Заказ наряд на изделие ',
             'н/ч норматив',
             'н/ч факт',
@@ -4101,7 +4055,7 @@ def planfact_nar_s_vneplan(self: mywindow, nach, konec, podrazd=None, *args):
                         "Сборочный цех Производства",
                         type_nar,
                         item['Подтвержд_вып_дата']])
-    F.save_file(f'self.vid_report_c.txt', tbl)
+    F.save_file(f'{clear_text}.txt', tbl)
     return tbl
 
 
@@ -4681,7 +4635,8 @@ def report_c_selector_2(self, nach, konec, vid, *args):
     return rez
 
 @CQT.onerror
-def report_c_selector(self, nach, konec, vid, *args):
+def report_c_selector(self, nach, konec, type_action, *args):
+
     list_zamech = CSQ.custom_request_c(self.bd_selector, '''SELECT * FROM zamech''', hat_c=True, rez_dict=True)
     hat_c = list(list_zamech[0].keys())
     block_add = []
@@ -4718,22 +4673,22 @@ def report_c_selector(self, nach, konec, vid, *args):
                 if d_plan < d_zaversh:
                     block_prosrochka.append(item)
 
-    if vid == 'Добавлено':
+    if type_action == 'Добавлено':
         block_add = F.list_of_dicts_to_list_of_lists(block_add)
         return block_add
-    if vid == 'Закрыто':
+    if type_action == 'Закрыто':
         block_zakr = F.list_of_dicts_to_list_of_lists(block_zakr)
         return block_zakr
-    if vid == 'Не закрыто':
+    if type_action == 'Не закрыто':
         block_nezakr = F.list_of_dicts_to_list_of_lists(block_nezakr)
         return block_nezakr
-    if vid == 'Все':
+    if type_action == 'Все':
         list_zamech = F.list_of_dicts_to_list_of_lists(list_zamech)
         return list_zamech
-    if vid == 'По плану закрыть':
+    if type_action == 'По плану закрыть':
         block_plan = F.list_of_dicts_to_list_of_lists(block_plan)
         return block_plan
-    if vid == 'Просрочены':
+    if type_action == 'Просрочены':
         block_prosrochka = F.list_of_dicts_to_list_of_lists(block_prosrochka)
         return block_prosrochka
     return
@@ -4846,6 +4801,8 @@ def jurnal_rabot(self, data_nach, data_kon, *args): #28.01.2026
 
 @CQT.onerror
 def plan_rabot_preload(self, nach, konec, podrazd):
+    lbl_report = CQT.CustLabel(self.ui.lbl_sort_c_report)
+    clear_text = lbl_report.get_user_data('clear_text', 'clear_text')
     gp = check_import_modyle('gant_ploty')
     if gp is None:
         import gant_ploty as gp
@@ -4869,7 +4826,7 @@ def plan_rabot_preload(self, nach, konec, podrazd):
         fig = gp.fig_podetalno_narc_projects(self.plan_for_gant, 'РЦ',
                                              "01030",
                                              "ДСЕ", self.ui.cmb_gant_tochnost_dat.currentText())
-        CQT.output_gant(self, fig, self.browser, self.vid_report_c + '_' + self.ui.cmb_podrazdelenie.currentText())
+        CQT.output_gant(self, fig, self.browser, clear_text + '_' + self.ui.cmb_podrazdelenie.currentText())
     except:
         CQT.msgbox(f'Проблема с выводом графика')
     return rez_spis
@@ -4916,7 +4873,7 @@ def ponedelniy_grafik_vir_otgr(self, data_nach, data_kon, etap, *args):
         self.parent_for_grafic.removeWidget(self.canvas)
     except:
         pass
-    GR.load_elements(self, rez_gr, 'Понедельный график выработки и отгрузок')
+    GR.load_elements(self, rez_gr, 'weekly_output_shipping_schedule')
     self.parent_for_grafic.addWidget(self.toolbar)
     self.parent_for_grafic.addWidget(self.canvas)
     rez.append(['' for _ in rez[0]])
@@ -6601,178 +6558,6 @@ def vneplan_po_napravl(self, data_nach, data_kon, vid, etap='Сборка+сва
     return rez
 
 
-def plan_fact_mes(self, data_nach, data_kon, vid, *args):
-    GR = check_import_modyle('grafics')
-    if GR is None:
-        import grafics as GR
-    def clac_fio_for_pfanal(self, fio, summ_ves_vir_vneplan, time):
-        if fio != '' and fio in self.DICT_EMPLOEE:
-            prof = self.DICT_EMPLOEE[fio]
-            if prof in self.DICT_PROFESSIONS_NAME:
-                if self.DICT_PROFESSIONS_NAME[prof]['этап'] == 'Сборка+сварка':
-                    summ_ves_vir_vneplan += F.valm(time)
-        return summ_ves_vir_vneplan
-
-    self.DICT_NN_NTK = CMS.load_dict_dse(self.db_dse)
-
-    TUPLE_DOUBLE_SHOVOV = (
-    'Т3', "Н2", "С7", "С12", "С14", "С15", "С16", "С43", "С21", "С45", "С23", "С25", "С26", "С27", "С39",
-    "С40", "У5", "У7", "У8", "У10", "Т7", "Т2", "Т8", "Т9", "Т5",)
-
-    list_month_plan = CSQ.custom_request_c(self.db_kplan, """SELECT * FROM mnts_plan""", rez_dict=True)
-    list_month_fact = CSQ.custom_request_c(self.bd_naryad, """SELECT * FROM mk WHERE Дата_завершения != '' """,
-                                           rez_dict=True)
-    rez = [['Месяц', 'План, н-см.', 'Отгрузка, кг.', 'Факт, н-см.', 'Внеплан, н-см.', 'Сумм. Факт, н-см.',
-            'Сумм св_швов, м.']]
-    dict_cat_vnepl = dict()
-    poki = CFG.Config.place.poki
-    list_kat_vnepl = CSQ.custom_request_c(self.bd_naryad, f"""SELECT value FROM category_vnepl WHERE kod > 0 and poki = {poki}""",
-                                          one_column=True, hat_c=False)
-    for kat in list_kat_vnepl:
-        rez[0].append(kat)
-        dict_cat_vnepl[kat] = 0
-    for item in list_month_plan:
-        summ_ves = 0
-        for kat in dict_cat_vnepl.keys():
-            dict_cat_vnepl[kat] = 0
-
-        data = item['Дата']
-        if vid == 'Все':
-            ves_pl = 0
-            for vid_tmp in self.DICT_NAPRAVL.keys():
-                if vid_tmp in item:
-                    ves_pl += item[vid_tmp]
-        else:
-            ves_pl = item[vid]
-        for mk in list_month_fact:
-
-            if mk['Направление'] == vid or vid == 'Все':
-                dat_str = mk['Дата_завершения']
-                dat_f = \
-                F.start_end_dates_c(F.strtodate(dat_str, "%Y-%m-%d %H:%M:%S"), '', vid='m', format_out="%Y-%m-%d")[0]
-                if dat_f == data:
-                    summ_ves += mk['Вес']
-        nach_data, kon_data = F.start_end_dates_c(F.strtodate(data, "%Y-%m-%d"), '', vid='m',
-                                                  format_out="%Y-%m-%d %H:%M:%S")
-        place = USRCNF.Config.place
-        if vid == 'Все':
-            custom_request_c = f"""SELECT DISTINCT
-            naryad.Пномер, naryad.Твремя, naryad.Номер_мк, naryad.Внеплан, 
-naryad.ФИО  as ФИО , naryad.ФИО2  as ФИО2, 
-            naryad.Фвремя, naryad.Фвремя2, naryad.Примечание,naryad.ДСЕ,naryad.Опер_колво, naryad.Операции, naryad.Опер_время, naryad.Виды_работ, mk.Вид, 
-mk.Вес, mk.Номер_заказа, mk.Номер_проекта, mk.Дата_завершения, mk.Количество, category_vnepl.value as Категория_внепл FROM jurnal
-            INNER JOIN naryad ON jurnal.Номер_наряда = naryad.Пномер
-            INNER JOIN mk ON mk.Пномер = naryad.Номер_мк 
-            INNER JOIN category_vnepl ON category_vnepl.kod = naryad.Категория_внепл AND category_vnepl.poki = {place.poki}
-            WHERE naryad.Внеплан != {place.КодыНарядов.НеподтвержденныйВнеплан} AND naryad.Подтвержд_вып == 1 and 
-            jurnal.Статус == "Завершен" and datetime(jurnal.Дата) > datetime("{nach_data}") 
-            and datetime(jurnal.Дата) < datetime("{kon_data}")
-"""
-        else:
-            custom_request_c = f"""
-                SELECT DISTINCT
-                    naryad.Пномер, 
-                    naryad.Твремя, 
-                    naryad.Номер_мк, 
-                    naryad.Внеплан, 
-                    naryad.ФИО as ФИО , 
-                    naryad.ФИО2 as ФИО2, 
-                    naryad.Фвремя, 
-                    naryad.Фвремя2, 
-                    naryad.Примечание,
-                    naryad.ДСЕ,
-                    naryad.Опер_колво, 
-                    naryad.Операции, 
-                    naryad.Опер_время, 
-                    naryad.Виды_работ, 
-                    mk.Вид, 
-                    mk.Вес, 
-                    mk.Номер_заказа, 
-                    mk.Номер_проекта, 
-                    mk.Дата_завершения, 
-                    mk.Количество,
-                    category_vnepl.value as Категория_внепл 
-                FROM jurnal
-                    INNER JOIN naryad ON jurnal.Номер_наряда = naryad.Пномер
-                    INNER JOIN mk ON mk.Пномер = naryad.Номер_мк 
-                    INNER JOIN category_vnepl ON category_vnepl.kod = naryad.Категория_внепл AND category_vnepl.poki = {place.poki}
-                    WHERE mk.Вид = "{vid}" AND naryad.Внеплан != {place.КодыНарядов.НеподтвержденныйВнеплан} AND naryad.Подтвержд_вып == 1 and 
-                        jurnal.Статус == "Завершен" and datetime(jurnal.Дата) > datetime("{nach_data}") 
-                        and datetime(jurnal.Дата) < datetime("{kon_data}")
-            """
-        list_zav_nar_po = CSQ.custom_request_c(self.bd_naryad, custom_request_c, rez_dict=True)
-        summ_ves_vir = 0
-        summ_ves_vir_vneplan = 0
-        l_svar = 0
-        for item in list_zav_nar_po:
-            if item['Внеплан'] == 0:
-                list_oper = item['Операции'].split('|')
-                list_oper_time = item['Опер_время'].split('|')
-                list_dse = item['ДСЕ'].split('|')
-                list_kolvo_dse = item['Опер_колво'].split("|")
-                for i_o, oper in enumerate(list_oper):
-                    oper_nom, oper_name = oper.split('$')
-                    if oper_name in self.DICT_ETAPI:
-                        if self.DICT_ETAPI[oper_name] == 'Сборка+сварка':
-                            add_ = F.valm(list_oper_time[i_o])
-                            if item['ФИО'] != '' and item['ФИО2'] != '':
-                                add_ = add_ / 2
-                            summ_ves_vir += add_
-                    if oper_name == 'Сварка':
-                        dse_name, dse_nn = list_dse[i_o].split('$')
-                        kol_vo_dse = F.valm(list_kolvo_dse[i_o])
-                        name_file = self.DICT_NN_NTK[dse_nn]['Номер_техкарты'] + "_" + dse_nn + ".pickle"
-                        path = F.sep().join([self.data_f, r"MKart\data", str(item['Номер_мк']), name_file])
-                        if F.existence_file_c(path):
-                            tk = F.open_file_c(path, pickl=True)
-                            for i_f in range(11, len(tk)):
-                                list_item_f = tk[i_f].split('|')
-                                if list_item_f[20] == '0':
-                                    break
-                                if list_item_f[0] == oper_name and list_item_f[2] == oper_nom:
-                                    values = list_item_f[14].split("$")
-                                    if len(values) > 1:
-                                        row_len = values[2].split(';')
-                                        row_sort_c = values[1].split(';')
-                                        for i_s in range(len(row_len)):
-                                            if row_sort_c[i_s].upper() in TUPLE_DOUBLE_SHOVOV:
-                                                val_shva = F.valm(row_len[i_s]) * 2
-                                            else:
-                                                val_shva = F.valm(row_len[i_s])
-                                            l_svar += val_shva * kol_vo_dse / 1000
-                                    else:
-                                        print('Сварка' + str(values))
-            if item['Внеплан'] == 2:
-                if item['Виды_работ'] == "":
-                    summ_ves_vir_vneplan = clac_fio_for_pfanal(self, item['ФИО'], summ_ves_vir_vneplan, item['Твремя'])
-                    summ_ves_vir_vneplan = clac_fio_for_pfanal(self, item['ФИО2'], summ_ves_vir_vneplan, item['Твремя'])
-                else:
-                    if item['Виды_работ'] in self.DICT_VID_RABOT:
-                        if self.DICT_VID_RABOT[item['Виды_работ']]['этап'] == 'Сборка+сварка':
-                            summ_ves_vir_vneplan += F.valm(item['Твремя']) * bool(item['ФИО'])
-                            summ_ves_vir_vneplan += F.valm(item['Твремя']) * bool(item['ФИО2'])
-                            if item['Категория_внепл'] in dict_cat_vnepl:
-                                dict_cat_vnepl[item['Категория_внепл']] += F.valm(item['Твремя']) * bool(item['ФИО'])
-                                dict_cat_vnepl[item['Категория_внепл']] += F.valm(item['Твремя']) * bool(item['ФИО2'])
-
-        summ_ves_vir = summ_ves_vir / 480
-        summ_ves_vir_vneplan = summ_ves_vir_vneplan / 480
-        summ_ves_fact = summ_ves_vir + summ_ves_vir_vneplan
-        k = 0
-        if summ_ves_vir > 0:
-            k = summ_ves_fact / summ_ves_vir
-        tmp = [data, round(ves_pl / PROIZVODITELNOST_POST_SM), round(summ_ves / 100, 3), round(summ_ves_vir),
-               round(summ_ves_vir_vneplan), round(summ_ves_fact), round(l_svar * k)]
-        for kat in dict_cat_vnepl.keys():
-            tmp.append(round(dict_cat_vnepl[kat] / 480))
-        rez.append(tmp)
-    GR.load_elements(self, rez, 'План-фактный анализ по месяцам')
-    self.parent_for_grafic.addWidget(self.toolbar)
-    self.parent_for_grafic.addWidget(self.canvas)
-    rez.append(['' for _ in rez[0]])
-    rez.append(['' for _ in rez[0]])
-    return rez
-
 
 def clear_graf(self):
     try:
@@ -6785,6 +6570,106 @@ def clear_graf(self):
     except:
         pass
 
+
+@CQT.onerror
+def diver_trdz_1c_mes(self, data_nach, data_kon, podrazd='-', *args):
+    PRJ = CFG.Config.project
+    custom_request_c = f"""SELECT знпр.Ref_Key_py as "_ref_zp", jurnal.Пномер as "_id_jur",
+     знпр.№ERP as ПУ, знпр.№проекта as "Проект", plan.Пномер as "КПЛ",
+     mk.Пномер as "МК",   jurnal.ФИО, "" as Должность, 
+     "" as Подразделение, naryad.Пномер as "Наряд", 
+     jurnal.Дата as Дата,
+    jurnal.Подытог_нормы AS "Минут\nнормы",
+    "" as "Расхождениe\nнаряд",
+    jurnal.Минут_выгружено_ЕРП AS "Выгружено\n ЕРП(МЕС)",
+    "" as "Расхождениe\nвыгрузка",
+     "" as "Труды\nв ЕРП"
+    
+    
+    
+     FROM jurnal INNER JOIN naryad ON jurnal.Номер_наряда = naryad.Пномер  
+     INNER JOIN mk ON mk.Пномер = naryad.Номер_мк
+     INNER JOIN Тип_мк ON Тип_мк.Пномер = mk.Тип
+     LEFT JOIN plan ON plan.Пномер = mk.НомКплан 
+     LEFT JOIN пл_оуп ON пл_оуп.НомПл = plan.Пномер
+     LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП
+    WHERE jurnal.Подытог <> 0 AND jurnal.Статус = 'Начат'   and mk.Пномер != 0  AND plan.poki = {self.place.poki}
+    and datetime(jurnal.Дата) > datetime("{data_nach}") 
+    and datetime(jurnal.Дата) <= datetime("{data_kon}") ;""" #Тип_мк.Имя as "Тип МК", naryad.Подтвержд_вып_дата as "Подтвержден", jurnal.Подытог_нормы AS "Минут\nнормы","" as "Расхождениe\nнаряд",
+    rez_jur = CSQ.custom_request_c(PRJ.db_naryad,custom_request_c,rez_dict=True,attach_dbs=PRJ.db_kplan)
+
+
+
+    for i in range(len(rez_jur)):
+        fio = rez_jur[i]['ФИО']
+        if fio in self.DICT_EMPLOEE_FULL_WITH_DEL:
+            rez_jur[i]["Подразделение"] = self.DICT_EMPLOEE_FULL_WITH_DEL[fio]["Подразделение"]
+            rez_jur[i]["Должность"] = self.DICT_EMPLOEE_FULL_WITH_DEL[fio]["Должность"]
+
+    list_zp_ref = list(set([_['_ref_zp'] for _ in rez_jur]))
+    list_zp_ref_str_name = [(f'Расп{i}',_) for i,_ in enumerate( list_zp_ref)]
+    wet_req_text = f"""
+            ВЫБРАТЬ
+            ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЭтапПроизводства2_2Трудозатраты.Ссылка.Распоряжение)) КАК _ЗП,
+            ЭтапПроизводства2_2Трудозатраты.ВидРабот КАК ВидРабот,
+            ЭтапПроизводства2_2Трудозатраты.Количество КАК Количество,
+            ЭтапПроизводства2_2Трудозатраты.Исполнитель КАК Исполнитель,
+            ЭтапПроизводства2_2Трудозатраты.ДатаВыполнения КАК ДатаВыполнения,
+            ЭтапПроизводства2_2Трудозатраты.НомерЧертежа КАК НомерЧертежа
+        
+        ИЗ
+            Документ.ЭтапПроизводства2_2.Трудозатраты КАК ЭтапПроизводства2_2Трудозатраты
+        ГДЕ
+            ЭтапПроизводства2_2Трудозатраты.Ссылка.Распоряжение В ( {', '.join([f'&{_[0]}' for _ in list_zp_ref_str_name])})
+    """
+    refs = APIERP.Refs_wet(wet_req_text)
+    for it in list_zp_ref_str_name:
+        ref_res = APIERP.Ref_wet(it[0], 'Документы.ЗаказНаПроизводство2_2', it[1])
+        refs.add_ref(ref_res)
+
+    key, data_rez = APIERP.get_wet_request(wet_req_text, refs=refs)
+
+    if key == 200:
+        list_etaps = data_rez['data']
+    else:
+        CQT.msgbox(f'Ошибка {key}')
+        return
+    dict_data_erp = dict()
+    for it in list_etaps:
+        key_row = it['НомерЧертежа']
+        if '_' not in key_row:
+            continue
+        id_j_erp = key_row.split('_')[0]
+        if id_j_erp not in  dict_data_erp:
+            dict_data_erp[id_j_erp] = 0
+        dict_data_erp[id_j_erp] += it['Количество']
+
+    for it in rez_jur:
+        id_jur_str = str( it['_id_jur'])
+        if id_jur_str in dict_data_erp:
+            it["Труды\nв ЕРП"] = round(dict_data_erp[id_jur_str],2)
+            if round(it["Труды\nв ЕРП"],1) != round(it["Минут\nнормы"],1):
+                it["Расхождениe\nнаряд"] = round(it["Труды\nв ЕРП"]-it["Минут\nнормы"],2)
+            if round(it["Труды\nв ЕРП"],1) != round(it["Выгружено\n ЕРП(МЕС)"],1):
+                it["Расхождениe\nвыгрузка"] = round(it["Труды\nв ЕРП"]-it["Выгружено\n ЕРП(МЕС)"],2)
+
+
+
+
+    def fnc_oform(tbl:CQT.QtWidgets.QTableWidget):
+        t = CQT.TableContext(tbl)
+        for row in t.rows():
+            delta = row.value("Расхождениe\nнаряд")
+            if delta:
+                row.set_color_background(*CMS.Color_tbl(10).as_color_o.rgba, col_name="Минут\nнормы")
+
+            delta = row.value("Расхождениe\nвыгрузка")
+            if delta:
+                if F.valm(delta) > 0.1:
+                    row.set_color_background(*CMS.Color_tbl(10).as_color_o.rgba, col_name="Выгружено\n ЕРП(МЕС)")
+        t.hide_if_not_dev(CFG,forced_text=True)
+
+    return rez_jur, fnc_oform
 
 @CQT.onerror
 def trudozatraty(self, data_nach, data_kon, podrazd='-', *args):
@@ -6841,16 +6726,16 @@ def trudozatraty(self, data_nach, data_kon, podrazd='-', *args):
 
     self.PROC_OTKL_TRUDOZATRAT = [85, 110]
     custom_request_c = f"""SELECT ФИО, "" as Должность, "" as Подразделение, "" as Режим,  sum(Подытог) AS "Сумм_Минут",
-      sum(Подытог_нормы) AS "Сумм_Минут_нормы" ,  sum(Минут_выгружено_ЕРП) AS "Минут_выгружено_ЕРП", 
-     Пномер, Номенклатура, Номер_заказа, Номер_проекта 
-    FROM (SELECT jurnal.ФИО, jurnal.Подытог, jurnal.Подытог_нормы, jurnal.Минут_выгружено_ЕРП, mk.Пномер, 
-    mk.Номенклатура, mk.Номер_заказа, mk.Номер_проекта 
-     FROM jurnal INNER JOIN naryad ON jurnal.Номер_наряда = naryad.Пномер 
-     INNER JOIN mk ON mk.Пномер = naryad.Номер_мк
-     LEFT JOIN plan ON plan.Пномер = mk.НомКплан AND plan.poki = {self.place.poki}
-    WHERE jurnal.Подытог <> 0 AND jurnal.Статус = 'Начат' 
-    and datetime(jurnal.Дата) > datetime("{data_nach}") 
-    and datetime(jurnal.Дата) <= datetime("{data_kon}")) GROUP BY ФИО;"""
+          sum(Подытог_нормы) AS "Сумм_Минут_нормы" ,  sum(Минут_выгружено_ЕРП) AS "Минут_выгружено_ЕРП", 
+         Пномер, Номенклатура, Номер_заказа, Номер_проекта 
+        FROM (SELECT jurnal.ФИО, jurnal.Подытог, jurnal.Подытог_нормы, jurnal.Минут_выгружено_ЕРП, mk.Пномер, 
+        mk.Номенклатура, mk.Номер_заказа, mk.Номер_проекта 
+         FROM jurnal INNER JOIN naryad ON jurnal.Номер_наряда = naryad.Пномер 
+         INNER JOIN mk ON mk.Пномер = naryad.Номер_мк
+         LEFT JOIN plan ON plan.Пномер = mk.НомКплан AND plan.poki = {self.place.poki}
+        WHERE jurnal.Подытог <> 0 AND jurnal.Статус = 'Начат' 
+        and datetime(jurnal.Дата) > datetime("{data_nach}") 
+        and datetime(jurnal.Дата) <= datetime("{data_kon}")) GROUP BY ФИО;"""
     rez_jur = CSQ.custom_request_c(self.bd_naryad, custom_request_c, hat_c=True, rez_dict=True, attach_dbs=(self.db_kplan))
     set_mk = set()
 
@@ -7885,6 +7770,9 @@ def virabotka_ceha(self, data_nach, data_kon, etap, f_napravl=False, *args):
 
 
 def clck_otch(self: mywindow, *args):
+    lbl_report = CQT.CustLabel(self.ui.lbl_sort_c_report)
+    report_name = lbl_report.get_user_data()
+
     def change_kod_vp(self: mywindow, text, row, col, *args):
         print([text, row, col])
         nk_prim = CQT.num_col_by_name_c(self.ui.tbl_report_c, 'Пояснение_вп')
@@ -7914,7 +7802,7 @@ def clck_otch(self: mywindow, *args):
         self.ui.tbl_report_c.removeCellWidget(row, col)
         return True
 
-    if self.vid_report_c == 'Журнал_замечаний':
+    if report_name == 'remarks_log':
         if not self.permission:
             return
         nk_kod_vp = CQT.num_col_by_name_c(self.ui.tbl_report_c, 'Код_вп')
@@ -7953,18 +7841,20 @@ def clck_otch(self: mywindow, *args):
         CQT.set_cell_editable(self.ui.tbl_report_c, row, nk_prim, True)
         CQT.set_color_wtab_c(self.ui.tbl_report_c, row, nk_prim, 245, 245, 245)
 
-    if self.vid_report_c == "Трудозатраты":
+    if report_name == "labor_costs":
         arm_pr_oper = check_import_modyle('arm_pr_oper')
         if arm_pr_oper is None:
             import arm_pr_oper
         arm_pr_oper.fill_tbl_report_add(self)
 
-    if self.vid_report_c == "Отчетность персонала":
+    if report_name == "personnel_reporting":
         RPTP.clck_user()
 
 @CQT.onerror
 def dbl_clck_otch(self, *args):
-    if self.ui.cmb_sort_c_report.currentText() == 'Понедельный график выработки и отгрузок':
+    lbl_report = CQT.CustLabel(self.ui.lbl_sort_c_report)
+    report_name = lbl_report.get_user_data()
+    if report_name == 'weekly_output_shipping_schedule':
         column = self.ui.tbl_report_c.currentColumn()
         row = self.ui.tbl_report_c.currentRow()
         nk_nach = CQT.num_col_by_name_c(self.ui.tbl_report_c, 'Дата начала')
@@ -7974,13 +7864,24 @@ def dbl_clck_otch(self, *args):
         self.ui.le_start_of_period.setText(nach)
         self.ui.le_end_of_period.setText(kon)
         current_ceh = self.ui.cmb_podrazdelenie.currentText()
+
+        report = None
         if column == 0:
-            self.ui.cmb_sort_c_report.setCurrentText("Выработка цеха по виду")
+            report = [_ for _ in self.data_sort_reports if _['_name'] == "shop_output_by_work_order"]
+
+
         else:
-            self.ui.cmb_sort_c_report.setCurrentText("Выработка цеха по направлению")
+            report = [_ for _ in self.data_sort_reports if _['_name'] == "shop_output_by_direction"]
+
+        if not report:
+            return
+        report = report[0]
+        lbl_report.set_data((f'{report['']} {report['Название']}', report['_name'],
+                             report['Примечание']))
+
         self.ui.cmb_podrazdelenie.setCurrentText("current_ceh")
         report_c(self)
-    if self.vid_report_c == "Отчетность персонала":
+    if report_name == "personnel_reporting":
         RPTP.dbl_clck_user()
 
 @CQT.onerror

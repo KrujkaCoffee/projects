@@ -240,7 +240,8 @@ class mywindow(QtWidgets.QMainWindow):
                                                                  )
         ) or (
                 USRCNF.Config.place.poki == 0 and USRCNF.Config.user_config.User and
-                USRCNF.Config.user_config.User.Подразделение in ('Цех механической обработки Производства'
+                USRCNF.Config.user_config.User.Подразделение in ('Цех механической обработки Производства',
+            'Отдел комплектации'
                                                                  )
         )
         ):

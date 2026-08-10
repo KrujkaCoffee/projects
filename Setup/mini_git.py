@@ -40,22 +40,26 @@ class ClientState(typing.NamedTuple):
 
 
 def check_network_drive_connection(network_drive: str = 'Z:', network_path: str = r"\\powerz\share\ProdSoft"):
-    print(f'==== Проверка подключения диска: {network_drive!r} ====')
-    if os.path.exists(network_drive):
-        print(f'Диск {network_drive!r} подключен')
-        return True
-    commands = (
-        ["net", "use", f"{network_drive}", network_path],
-        ['explorer', 'Z:\\']
-    )
-    for cmd in commands:
-        result = subprocess.run(cmd, capture_output=True, text=True, shell=True, encoding='cp866')
-        if os.path.exists(network_path):
+    try:
+        print(f'==== Проверка подключения диска: {network_drive!r} ====')
+        if os.path.exists(network_drive):
             print(f'Диск {network_drive!r} подключен')
             return True
-        print(result.stderr)
-    print(f'Не удалось подключится к диску {network_drive!r}')
-    return False
+        commands = (
+            ["net", "use", f"{network_drive}", network_path],
+            ['explorer', 'Z:\\']
+        )
+        for cmd in commands:
+            result = subprocess.run(cmd, capture_output=True, text=True, shell=True, encoding='cp866')
+            if os.path.exists(network_path):
+                print(f'Диск {network_drive!r} подключен')
+                return True
+            print(result.stderr)
+        print(f'Не удалось подключится к диску {network_drive!r}')
+        return False
+    except Exception as e:
+        logging.error('Ошибка проверки подключения к диску Z:',exc_info=e)
+        return True
 
 class Crypt:
     def generate_file_hash(self, file_path):
@@ -450,8 +454,9 @@ class LoneInterpreter:
         unique_key = hashlib.sha256(json.dumps(libs, sort_keys=True).encode('utf-8')).hexdigest() + current_day
         temp_libs = pathlib.Path(temp_dir) / 'mes_libs' / unique_key
         if temp_libs.exists() and self.have_members(str(temp_libs)):
-            subprocess.check_call([str(tmp_folder), self.python_path, str(temp_libs), "", ""],
-                                  shell=True)
+            for lib in libs:
+                subprocess.check_call([str(tmp_folder), self.python_path, str(temp_libs), lib.split('=')[0], lib.split('=')[1]],
+                                      shell=True)
         else:
             temp_libs.mkdir(exist_ok=True, parents=True)
             if response.ok:
@@ -461,9 +466,12 @@ class LoneInterpreter:
 
                         if not self.xcopy(str(script_folder), str(tmp_folder), force=True):
                             return
-
-                        subprocess.check_call([str(tmp_folder), self.python_path, str(temp_libs), "", ""],
-                                              shell=True)
+                        for lib in libs:
+                            subprocess.check_call([str(tmp_folder), self.python_path, str(temp_libs), lib.split('=')[0],
+                                                   lib.split('=')[1]],
+                                                  shell=True)
+                        # subprocess.check_call([str(tmp_folder), self.python_path, str(temp_libs), "", ""],
+                        #                       shell=True)
                 except Exception as e:
                     import traceback
                     traceback.print_exc()
@@ -493,6 +501,7 @@ class LoneInterpreter:
 
     def actualize_py_libs(self):
         necessary_libs = self.check_uninstalled_packages()
+        print('NECESSARY LIBS:', necessary_libs)
         if necessary_libs:
             self.download_srv_packages(necessary_libs)
         if self.check_actual_interpreter():
@@ -988,6 +997,11 @@ class Main:
             path = self.pickle_path
         if os.path.exists(path):
             os.chmod(path, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
+
+        try:
+            os.remove(path)
+        except Exception:
+            logging.error(f'Ошибка при удалении: {path}', exc_info=e)
 
         with open(path, 'wb+') as file:
             pickle.dump(save_full_dir_dict, file)

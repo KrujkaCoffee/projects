@@ -129,7 +129,7 @@ def oform(tbl:QtWidgets.QTableWidget):
     for k in t.nf.keys():
         if k.startswith('_'):
             t.hide(k)
-    t.add_column_events('Foundation_document',double_click=True,on_double_click=tbl_cellDoubleClicked)
+    t.add_column_events('Foundation_document',on_double_click=tbl_cellDoubleClicked)
     #clr_good = CMS.Color_tbl(90).rgb
     #for row in t.rows():
     #    if F.valm(row.value('Available')) >= F.valm(row.value('Quantity')):

@@ -288,9 +288,6 @@ class HTTPSrv:
                 or not resolved_table_keys
                 or not policy.get('dependency_fingerprint')
         ):
-            # Do not rename/delete any live admin/cache row here. Ambiguous or
-            # missing identity simply makes this request non-cacheable until an
-            # explicit maintenance migration resolves it.
             logger.warning(
                 'Кэш запроса пропущен: identity_ok=%r cache_enabled=%r '
                 'requested=%r resolved=%r missing=%r conflicts=%r',

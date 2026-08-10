@@ -11467,6 +11467,7 @@ def calc_num_etap_from_name_etap(etap_name,s_num_kpl,Пномер_нар,ref_cur
 
 
 def gen_tbl_new_vnepl_for_b24(vnepl_o_id: int)->list[dict]:
+
     def get_code(ref)->str:
         if not ref:
             return ''
@@ -11515,12 +11516,21 @@ def gen_tbl_new_vnepl_for_b24(vnepl_o_id: int)->list[dict]:
             it["номенклатура (наименование и код изделия)"] = f"{it['номенклатура (наименование и код изделия)']} ({code})"
         it.pop("_Номенклатура_ЕРП_ref")
 
-    return  [{'Свойство':k,'Значение':str(v)} for k,v in rez[0].items()]
+    return  '\n'.join( [f'{k}: {v}' for k,v in rez[0].items()])
 
-def send_tbl_new_vnepl_into_b24(base_msg,table:list[dict]):
+def send_tbl_new_vnepl_into_b24(base_msg,table:list[dict]|str):
+    if not table:
+        return
     template = CB24.MessageBuilder(base_msg)  # Инициализация (базовое сообщение)
-    template.add_table(table)  # Добавить табличную часть
-    template.send_by_chat_id('chat105539')  # Итоговая отправка #'chat105539' - prod (chat103927-test)
+    fl_send = False
+    if isinstance(table,str):
+        template.add_message(table)
+        fl_send = True
+    elif isinstance(table,list):
+        template.add_table(table)  # Добавить табличную часть
+        fl_send = True
+    if fl_send:
+        template.send_by_chat_id('chat105539')  # Итоговая отправка #'chat105539' - prod (chat103927-test)
 
 def create_nar_prosoy(fio:str, primech, koef, dop_prim_prost='', num_bad_bar='',
         pk_mk: int = None,
@@ -11594,9 +11604,9 @@ def create_nar_prosoy(fio:str, primech, koef, dop_prim_prost='', num_bad_bar='',
          Запрос, Кплан_номер, Статус, Номер_наряда_с_ошибкой, Номер_внепланового_наряда, code_category, Номер_нов_мк, Журнал_замеч_номер)
                                       VALUES ({CSQ.questions_for_mask(line)}) RETURNING Пномер;""", list_of_lists_c=[line], rez_dict=True, one=True)
     if dict_id_new_vnepl:
-        tbl = gen_tbl_new_vnepl_for_b24(dict_id_new_vnepl['Пномер'])
-        send_tbl_new_vnepl_into_b24('Открытие внеплана',tbl)
-
+        if CFG.Config.place.poki == 1:
+            tbl = gen_tbl_new_vnepl_for_b24(dict_id_new_vnepl['Пномер'])
+            send_tbl_new_vnepl_into_b24('Открытие внеплана',tbl)
     return nom_new_nar
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 import base64
+import enum
 import pprint
 import struct
 from collections import defaultdict
@@ -1476,12 +1477,35 @@ def get_convert_di(li):
         i['Уровень'] = di[int(i['Уровень'])]
     return li
 
+class BranchState(str, enum.Enum):
+    OPEN = CEMOJ.ДокументыДанные.minus.symbol
+    CLOSED = CEMOJ.ДокументыДанные.plus.symbol
+
+def hide_branch_children(row_index: int):
+    t = CQT.TableContext(DTCLS.app_self.ui.tbl_red_tree)
+    with CQT.table_updating(t):
+        row = t.get_row(row_index)
+        lvl_str = row.value('Уровень')
+        if not F.is_numeric(lvl_str):
+            return
+        previous_lvl = int(lvl_str)
+        t = CQT.TableContext(DTCLS.app_self.ui.tbl_red_tree)
+        for i_row in t.rows():
+            if i_row.i <= row.i:
+                continue
+            current_level = int(i_row.value('Уровень'))
+            if previous_lvl >= current_level: break
+            if i_row.value('b'):
+                i_row.set_value('b', BranchState.CLOSED.value)
+            i_row.hide()
+        row.set_value('b', BranchState.CLOSED.value)
+        return
+
+
 @CQT.onerror
 def fill_tab_to_level(self, table: QtWidgets.QTableWidget, list_rows = None):
     if CQT.is_table_updating(table):
         return
-    plus = CEMOJ.ДокументыДанные.plus.symbol
-    minus = CEMOJ.ДокументыДанные.minus.symbol
     @CQT.onerror
     def fnc_click_red_tree(index:QtCore.QModelIndex,*args):
 
@@ -1489,8 +1513,6 @@ def fill_tab_to_level(self, table: QtWidgets.QTableWidget, list_rows = None):
         j = index.column()
         if j != 0:
             return
-        plus = CEMOJ.ДокументыДанные.plus.symbol
-        minus = CEMOJ.ДокументыДанные.minus.symbol
         t = CQT.TableContext(DTCLS.app_self.ui.tbl_red_tree)
         with CQT.table_updating(t):
             row = t.get_row(i)
@@ -1499,27 +1521,27 @@ def fill_tab_to_level(self, table: QtWidgets.QTableWidget, list_rows = None):
             if not F.is_numeric(lvl_str):
                 return
             previous_lvl = int(lvl_str)
-            if symbol == minus:
+            if symbol == BranchState.OPEN:
                 for i_row in t.rows():
                     if i_row.i<=row.i:
                         continue
                     current_level = int(i_row.value('Уровень'))
                     if previous_lvl >= current_level: break
                     if i_row.value('b'):
-                        i_row.set_value('b', plus)
+                        i_row.set_value('b', BranchState.CLOSED.value)
                     i_row.hide()
-                row.set_value('b',plus)
+                row.set_value('b', BranchState.CLOSED.value)
                 return
-            if symbol == plus:
+            if symbol == BranchState.CLOSED:
                 for i_row in t.rows():
                     if i_row.i<=row.i:
                         continue
                     current_level = int(i_row.value('Уровень'))
                     if previous_lvl >= current_level: break
                     if i_row.value('b'):
-                        i_row.set_value('b', minus)
+                        i_row.set_value('b', BranchState.OPEN.value)
                     i_row.hide(False)
-                row.set_value('b',minus)
+                row.set_value('b', BranchState.OPEN.value)
                 return
     with CQT.table_updating(table):
         if list_rows is None:
@@ -1530,15 +1552,21 @@ def fill_tab_to_level(self, table: QtWidgets.QTableWidget, list_rows = None):
 
         table.clicked.disconnect()
         table.clicked.connect(fnc_click_red_tree)
+        lvl_nk = CQT.num_col_by_name_c(table, 'Наименование')
+
         for row_idx, obj in enumerate(tree_obj):
-            lvl_nk = CQT.num_col_by_name_c(table, 'Наименование')
             row_item = table.item(row_idx, lvl_nk)
             level = obj.level
             tabs = '      ' * level
             row_item.setText(tabs + row_item.text().strip())
             gray_value = 130 + ((level + 1) * 25)
             if obj.is_root:
-                btn_text = plus if obj.child and table.isRowHidden(row_idx + 1) else minus
+                have_hidden_children = obj.child and table.isRowHidden(row_idx + 1)
+                btn_text = BranchState.CLOSED.value if have_hidden_children else BranchState.OPEN.value
+
+                if obj.is_closed_branch() and not have_hidden_children:
+                    hide_branch_children(row_idx)
+                    btn_text = BranchState.CLOSED.value
                 font = QtGui.QFont()
                 font.setBold(True)
                 font.setPixelSize(16)
@@ -1632,6 +1660,11 @@ class TreeKnotBranch:
     @property
     def is_root(self):
         return self.child and self.child.level > self.level
+
+    def is_closed_branch(self):
+        if self.item.get('b') == BranchState.CLOSED:
+            return True
+        return False
 
     def calc_children(self):
         child = self.child

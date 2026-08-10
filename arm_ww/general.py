@@ -241,12 +241,12 @@ def select_storages():
             menu_builder.add_menu(f'{CEMOJ.EmojiMain.СтатусыПроизводства.success_tin.symbol*2}\tВыбрать все', fnc_select_all)
             menu_builder.add_menu(f'{CEMOJ.EmojiMain.ДокументыДанные.revers.symbol}\tРеверс', fnc_revers_all)
 
-        t.add_column_events('chk',context_menu=True,on_context_menu=fnc_context,parent_self=DTCLS.app_self)
+        t.add_column_events('chk',on_context_menu=fnc_context,parent_self=DTCLS.app_self)
 
         t.hide('ref')
 
     def fnc_ok(btn:QtWidgets.QPushButton, dialog:CQT.Dialog_tbl, tbl:QtWidgets.QTableWidget):
-        if btn.text() == 'Принять':
+        if dialog.is_btn_yes_role(btn):
             selected_storages = set()
             t = CQT.TableContext(tbl)
             for row in t.rows():

@@ -19,6 +19,7 @@ import recalc_norm as RECLC
 import equipment_rc as EQRC
 import tabel_edit as TABEL
 import tatkuz_molding as TTKZ
+import xl_dse_loader as xl_dse_loader
 from functools import partial
 from typing import TYPE_CHECKING
 
@@ -180,6 +181,7 @@ def btns(self: mywindow):
     ui.btn_korr_nom.clicked.connect(self.btn_korr_nom)
     ui.btn_del_poz_nom.clicked.connect(self.del_nom)
     ui.pushButton_ass_nomen_MK.clicked.connect(self.ass_dse_to_mk)
+    ui.pushButton_create_dse_from_excel.clicked.connect(lambda *args: xl_dse_loader.ExcelNomenclatureImporter(self))
     # CQT.set_color_sort_cell_table_c(butt_vib_nomen)
 
     ui.btn_obnov_pr.clicked.connect(self.obn_spis_pr)

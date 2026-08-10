@@ -26,9 +26,6 @@ class TaskBind:
     dse_name: str
     oper_num: str
     oper_name: str
-    oper_code: str
-    rc_code: str
-    rc_name: str
 
     @property
     def oper_key(self) -> str:
@@ -49,15 +46,6 @@ class TaskBuildOptions:
     bullet_lists: bool = True
     section_for_render_naryad_info: str = 'Операция'
     group_by_sections = ('Материалы', )
-    show_auto_destination: bool = True
-
-
-@dataclass(frozen=True)
-class RouteDestination:
-    """Следующая точка технологического маршрута для операции."""
-    kind: str
-    dse: Optional[dict]
-    operation: Optional[dict]
 
 class Option(NamedTuple):
     name: str
@@ -65,9 +53,6 @@ class Option(NamedTuple):
     exclude: bool = False
     section: str = None
     sort_rank: int = 0
-
-
-ROUTE_TRANSFER_OPERATION_MARKERS = ('перемещ', 'комплект')
 
 KEY_ALIASES = (
     # Системные
@@ -177,23 +162,14 @@ def _split_pipe(raw: Any, sep: str = '|') -> list[str]:
 
 
 def parse_naryad_bindings(
-    task_instance: CMS.Naryads,
-        route: list[dict]
+    task_instance: CMS.Naryads
 ) -> list[TaskBind]:
     bindings: list[TaskBind] = []
-    if not route:
-        return
-    route_by_oper_dse = {
-        (str(dse.get('Номерпп')), str(oper['Опер_номер'])): oper
-        for dse in route
-        for oper in (dse.get('Операции', []) or [])
-    }
     for i, param in enumerate(task_instance.params):
         dse_data = param['ДСЕ'].split('$', maxsplit=1)
         nn, name = dse_data, ''
         if len(dse_data) == 2:
             nn, name = dse_data
-        oper_credentials = route_by_oper_dse[(str(param['ДСЕ_ID']), str(param['Операции_номер']))]
         bindings.append(
             TaskBind(
                 idx=i,
@@ -201,11 +177,8 @@ def parse_naryad_bindings(
                 qty_text=str(param['Опер_колво']).strip(),
                 dse_name=name,
                 dse_nn=nn,
-                oper_num=str(oper_credentials['Опер_номер']),
-                oper_name=oper_credentials['Опер_наименование'],
-                oper_code=oper_credentials['Опер_код'], # todo
-                rc_code=oper_credentials['Опер_РЦ_наименование'],
-                rc_name=oper_credentials['Опер_РЦ_код'],
+                oper_num=str(param['Операции_номер']),
+                oper_name=param['Операции_имя']
             )
         )
     return bindings
@@ -235,196 +208,6 @@ def index_route(route: list[dict] | None) -> tuple[dict[int, dict], dict[tuple[i
                     pass
 
     return dse_by_id, op_by_dse_and_key
-
-
-def is_route_transfer_operation(operation_name: Any) -> bool:
-    """Операции, для которых назначение надо брать из маршрута, а не из перехода."""
-    name = str(operation_name or '').strip().casefold()
-    return any(marker in name for marker in ROUTE_TRANSFER_OPERATION_MARKERS)
-
-
-def _route_id_key(value: Any) -> str:
-    """Сравнимый ключ ID, устойчивый к значениям 12, '12' и '12.0'."""
-    text = str(value or '').strip()
-    try:
-        number = float(text.replace(',', '.'))
-        if number.is_integer():
-            return str(int(number))
-    except (TypeError, ValueError):
-        pass
-    return text.casefold()
-
-
-def _operation_number_key(value: Any) -> str:
-    text = str(value or '').strip()
-    if text.isdigit():
-        return str(int(text))
-    return text.casefold()
-
-
-def _operation_name_key(value: Any) -> str:
-    return re.sub(r'\s+', ' ', str(value or '')).strip().casefold()
-
-
-def _find_operation_index(operations: list[dict], oper_num: Any, oper_name: Any) -> Optional[int]:
-    number_key = _operation_number_key(oper_num)
-    name_key = _operation_name_key(oper_name)
-
-    for idx, operation in enumerate(operations):
-        if (
-            _operation_number_key(operation.get('Опер_номер')) == number_key
-            and _operation_name_key(operation.get('Опер_наименование')) == name_key
-        ):
-            return idx
-
-    for idx, operation in enumerate(operations):
-        if number_key and _operation_number_key(operation.get('Опер_номер')) == number_key:
-            return idx
-    for idx, operation in enumerate(operations):
-        if name_key and _operation_name_key(operation.get('Опер_наименование')) == name_key:
-            return idx
-    return None
-
-
-def _find_parent_dse(route: list[dict], dse_index: int) -> Optional[dict]:
-    """Находит ДСЕ, в которую входит текущая ДСЕ, по уровням дерева маршрута."""
-    try:
-        current_level = int(route[dse_index].get('Уровень'))
-    except (TypeError, ValueError):
-        return None
-
-    for idx in range(dse_index - 1, -1, -1):
-        candidate = route[idx]
-        try:
-            candidate_level = int(candidate.get('Уровень'))
-        except (TypeError, ValueError):
-            continue
-        if candidate_level < current_level:
-            return candidate
-    return None
-
-
-def resolve_route_destination(
-    *,
-    route: list[dict] | None,
-    dse_id: Any,
-    oper_num: Any,
-    oper_name: Any,
-) -> Optional[RouteDestination]:
-    """
-    Возвращает следующую операцию текущей ДСЕ. Если текущая операция последняя,
-    возвращает первую операцию родительской (следующей сборочной) ДСЕ.
-    """
-    route = [dse for dse in (route or []) if isinstance(dse, dict)]
-    wanted_dse_id = _route_id_key(dse_id)
-    dse_index = next(
-        (
-            idx for idx, dse in enumerate(route)
-            if _route_id_key(dse.get('Номерпп')) == wanted_dse_id
-        ),
-        None,
-    )
-    if dse_index is None:
-        return None
-
-    current_dse = route[dse_index]
-    operations = [op for op in (current_dse.get('Операции') or []) if isinstance(op, dict)]
-    operation_index = _find_operation_index(operations, oper_num, oper_name)
-    if operation_index is None:
-        return None
-
-    if operation_index + 1 < len(operations):
-        return RouteDestination(
-            kind='next_operation',
-            dse=current_dse,
-            operation=operations[operation_index + 1],
-        )
-    for i in range(dse_index, len(route)):
-        parent_dse = _find_parent_dse(route, dse_index)
-        if parent_dse is None:
-            return RouteDestination(kind='route_end', dse=current_dse, operation=None)
-
-        parent_operations = [op for op in (parent_dse.get('Операции') or []) if isinstance(op, dict)]
-        if len(parent_operations) <= 1:
-            continue
-        return RouteDestination(
-            kind='next_dse',
-            dse=parent_dse,
-            operation=parent_operations[1] if parent_operations else None,
-        )
-
-
-def _route_dse_title(dse: dict | None) -> str:
-    if not isinstance(dse, dict):
-        return ''
-    name = str(dse.get('Наименование') or '').strip()
-    number = str(dse.get('Номенклатурный_номер') or '').strip()
-    return ' '.join(value for value in (name, number) if value)
-
-
-def _route_operation_title(operation: dict | None) -> str:
-    if not isinstance(operation, dict):
-        return ''
-    number = str(operation.get('Опер_номер') or '').strip()
-    name = str(operation.get('Опер_наименование') or '').strip()
-    # return ' '.join(value for value in (number, name) if value)
-    return f'{name} из '
-
-
-def _destination_place(operation: dict | None, source_code: str, source_name: str) -> str:
-    if not isinstance(operation, dict):
-        return ''
-    rc_code = str(operation.get('Опер_РЦ_код') or '').strip()
-    rc_name = str(operation.get('Опер_РЦ_наименование') or '').strip()
-    department = str(operation.get('Опер_наименование_подразделения') or '').strip()
-
-    rc = ' '.join(value for value in (rc_code, rc_name) if value)
-
-    parts = []
-    if rc_code:
-        parts.append(f'{source_name}({source_code}) ➜ {rc_name}({rc_code})')
-    # if department and department.casefold() != rc_name.casefold():
-    #     parts.append(f'«{department}»')
-    return ', '.join(parts)
-
-
-def automatic_destination_text(
-    *,
-    route: list[dict] | None,
-    dse_id: Any,
-    oper_num: Any,
-    oper_name: Any,
-    work_place_code: str,
-    work_place_name: str,
-    oper_db_info: dict
-) -> Optional[str]:
-    if not oper_db_info.get('is_route_transfer_operation'):
-        return None
-
-    destination = resolve_route_destination(
-        route=route,
-        dse_id=dse_id,
-        oper_num=oper_num,
-        oper_name=oper_name,
-    )
-    if destination is None:
-        return ''
-    if destination.kind == 'route_end':
-        return 'Конец маршрута'
-
-    # operation_title = _route_operation_title(destination.operation)
-    operation_title = f'{oper_name} из '
-    place = _destination_place(destination.operation, source_code=work_place_code, source_name=work_place_name)
-    details = ' '.join(value for value in (operation_title, place) if value)
-
-    if destination.kind == 'next_dse':
-        # dse_title = _route_dse_title(destination.dse)
-        target = ''
-        if details: # ➝
-            target += f'; {details}'
-        return f'{target}'
-
-    return f'{details or "следующая операция маршрута"}'
 
 
 def _binding_context(b: TaskBind) -> dict[str, Any]:
@@ -595,30 +378,9 @@ def build_task_text_from_route(
     grouped_fields = group_by_selected_fields(data, options)
     grouped_fields = sorted(grouped_fields, key=lambda x: ranks.get(x.split('.')[0], 999))
 
-    opers_by_nn_oper_code = {
-        (str(dse['Номерпп']), str(oper['Опер_номер'])): oper
-        for dse in route
-        for oper in (dse.get('Операции', []) or [])
-    }
-    dict_by_code, _ = CMS.calc_dicts_opers(CFG.Config.place.poki)
-
     for b in bindings:
         dse = dse_by_id.get(b.dse_id) if b.dse_id is not None else None
         op = op_by_dse_and_key.get((b.dse_id, b.oper_key)) if b.dse_id is not None else None
-        auto_destination = None
-        if options.show_auto_destination:
-            tg_oper_code = b.oper_code
-            tg_rc_code = b.rc_code
-            tg_rc_name = b.rc_name
-            auto_destination = automatic_destination_text(
-                route=route,
-                dse_id=b.dse_id,
-                oper_num=b.oper_num,
-                oper_name=b.oper_name,
-                work_place_code=tg_rc_code,
-                work_place_name=tg_rc_name,
-                oper_db_info=dict_by_code[tg_oper_code]
-            )
 
         ctx = {
             'ДСЕ': dse or {},
@@ -637,7 +399,6 @@ def build_task_text_from_route(
 
         previous_section = None
         nar_info_rendered = False
-        auto_destination_rendered = False
         for sel in grouped_fields:
             sel = (sel or '').strip()
 
@@ -663,9 +424,6 @@ def build_task_text_from_route(
                     space + _render_oper_header(b, show_qty=options.show_qty_in_oper_header)
                 )
                 nar_info_rendered = True
-                if auto_destination:
-                    out_lines.append(options.indent * 2 + auto_destination)
-                    auto_destination_rendered = True
 
             label = print_label_for_selector(sel)
 
@@ -680,9 +438,6 @@ def build_task_text_from_route(
             else:
                 out_lines.append(options.indent * rank + f'{label}: {lines[0]}')
             previous_section = section
-
-        if auto_destination and not auto_destination_rendered:
-            out_lines.append(options.indent * 2 + auto_destination)
 
     return '\n'.join(out_lines).strip() + ('\n' if out_lines else '')
 
@@ -702,16 +457,15 @@ def compose_task_for_print(
     naryad_instance = CMS.Naryads(db_naryad=CFG.Config.project.db_naryad, p_nom_or_row=int(nom_nar))
 
     mk = naryad_instance.Номер_мк
-    route = CMS.load_res(int(mk))
 
     bindings = parse_naryad_bindings(
-        task_instance=naryad_instance,
-        route=route
+        task_instance=naryad_instance
     )
 
     if not bindings:
         return nar_info.zadanie if fallback_to_saved else ''
 
+    route = CMS.load_res(int(mk))
 
     text = build_task_text_from_route(
         bindings=bindings,

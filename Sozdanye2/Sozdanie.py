@@ -420,6 +420,8 @@ class mywindow(QtWidgets.QMainWindow):
         #self.dev_add_vnepl_nars()
     def action_tmp(self,*args):
         #self.dev_add_vnepl_nars()
+        outplan.send_msg(self)
+
         pass
 
     def load_users(self):

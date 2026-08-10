@@ -6,6 +6,7 @@ import hashlib
 import importlib
 import json
 import keyword
+import logging
 import os
 import pathlib
 import re
@@ -13,7 +14,8 @@ import shutil
 import tempfile
 from typing import Any
 
-from project_cust_38.db_identity import canonical_db_key, split_table_key, srv_db_name
+# from project_cust_38.Cust_orm.db_identity import canonical_db_key, split_table_key, srv_db_name
+from project_cust_38.Cust_orm import db_identity
 
 
 GENERATOR_VERSION = '1.2.0'
@@ -27,13 +29,6 @@ CURRENT_MODULE_FOLDER = pathlib.Path(__file__).resolve().parent
 
 
 def _module_root() -> pathlib.Path:
-    """Locate the repository root without importing MES configuration.
-
-    The generator normally lives in ``Srv/`` while generated artifacts live in
-    the sibling ``project_cust_38/`` directory.  The old implementation created
-    an accidental ``Srv/project_cust_38`` tree when no explicit output path was
-    supplied.
-    """
     start = pathlib.Path(__file__).resolve().parent
     for candidate in (start, *start.parents):
         if (candidate / CORE_FOLDER_NAME).is_dir():
@@ -71,12 +66,6 @@ def _utc_now_text() -> str:
 
 
 def _load_admin_backend():
-    """Import the DB-aware admin layer only for an explicit command.
-
-    Rendering helpers and importing this generator stay side-effect free.  The
-    MES admin module imports the SQL/config contour, so it must never be pulled
-    merely to obtain a naming helper or type mapping.
-    """
     return importlib.import_module('project_cust_38.context_admin')
 
 
@@ -112,12 +101,7 @@ def _guess_orm_field_class(db_type: str | None) -> str:
 
 
 def _default_expression_for_orm_field(orm_field_class: str, nullable: bool) -> str:
-    """Return source code, not a Python string value.
 
-    The generator embeds this result directly into ``Field(default=...)``.
-    Quoting it with ``!r`` would turn ``None``/``0`` into the strings
-    ``'None'``/``'0'`` and silently corrupt default semantics.
-    """
     if nullable:
         return 'None'
     return {
@@ -191,11 +175,6 @@ def _enabled_tables(tables: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _validate_table_identities(tables: list[dict[str, Any]]) -> None:
-    """Validate table_key/db_key/table_name and fail on alias duplicates.
-
-    Existing legacy prefixes are accepted, but the three columns must still
-    describe the same physical identity.  No row is renamed here.
-    """
     grouped: dict[tuple[str, str], list[str]] = {}
     errors: list[str] = []
     for table in _enabled_tables(tables):
@@ -205,7 +184,7 @@ def _validate_table_identities(tables: list[dict[str, Any]]) -> None:
         if not table_key or not db_key or not table_name:
             errors.append(f'неполная identity: table_key={table_key!r}, db_key={db_key!r}, table_name={table_name!r}')
             continue
-        key_db, key_table = split_table_key(table_key)
+        key_db, key_table = db_identity.key_resolver.split_table_key(table_key)
         if not key_table:
             errors.append(f'table_key={table_key!r} не содержит разделитель db.table')
             continue
@@ -214,11 +193,11 @@ def _validate_table_identities(tables: list[dict[str, Any]]) -> None:
                 f'table_key={table_key!r} указывает таблицу {key_table!r}, '
                 f'но table_name={table_name!r}'
             )
-        if canonical_db_key(key_db).casefold() != canonical_db_key(db_key).casefold():
+        if db_identity.key_resolver.canonical_db_key(key_db).casefold() != db_identity.key_resolver.canonical_db_key(db_key).casefold():
             errors.append(
                 f'table_key={table_key!r} и db_key={db_key!r} принадлежат разным БД'
             )
-        marker = (canonical_db_key(db_key).casefold(), table_name.casefold())
+        marker = (db_identity.key_resolver.canonical_db_key(db_key).casefold(), table_name.casefold())
         grouped.setdefault(marker, []).append(table_key)
     conflicts = [sorted(set(keys)) for keys in grouped.values() if len(set(keys)) > 1]
     if conflicts:
@@ -231,7 +210,6 @@ def _validate_table_identities(tables: list[dict[str, Any]]) -> None:
 
 
 def _model_name_map(tables: list[dict[str, Any]]) -> dict[str, str]:
-    """Stable names; prefix with db_key only when table names collide."""
     _validate_table_identities(tables)
     enabled = _enabled_tables(tables)
     base_names = [_orm_class_name(str(table.get('table_name') or '')) for table in enabled]
@@ -240,7 +218,7 @@ def _model_name_map(tables: list[dict[str, Any]]) -> dict[str, str]:
     used: set[str] = set()
     for table, base_name in zip(enabled, base_names):
         table_key = str(table.get('table_key') or '')
-        stable_identity = f"{canonical_db_key(table.get('db_key'))}.{table.get('table_name') or ''}"
+        stable_identity = f"{db_identity.key_resolver.canonical_db_key(table.get('db_key'))}.{table.get('table_name') or ''}"
         name = base_name if counts.get(base_name, 0) == 1 else _orm_class_name(stable_identity)
         original = name
         suffix = 2
@@ -371,7 +349,6 @@ def _append_typed_dict_body(lines: list[str], fields: list[dict[str, Any]], *, e
 
 
 def _append_filter_hint_body(lines: list[str], fields: list[dict[str, Any]]) -> None:
-    appended = False
     used_names: set[str] = set()
     lines.append('    pk: Any')
     lines.append('    pk__in: list[Any] | tuple[Any, ...] | set[Any]')
@@ -733,15 +710,9 @@ def _prepare_relation_declarations(
         if not relation_key:
             raise ValueError(f'Relation без relation_key: {relation!r}')
         if source_table_key not in table_by_key:
-            raise ValueError(
-                f'Relation {relation_key!r}: source_table_key={source_table_key!r} '
-                'не входит в активный набор генерируемых таблиц'
-            )
+            continue
         if target_table_key not in table_by_key:
-            raise ValueError(
-                f'Relation {relation_key!r}: target_table_key={target_table_key!r} '
-                'не входит в активный набор генерируемых таблиц'
-            )
+            continue
 
         relation_name = _relation_python_name(relation)
         if relation_name in seen_names[source_table_key]:
@@ -951,8 +922,8 @@ def _render_orm_models(
         manager_hint_name = _manager_hint_name(class_name)
         pk_field = next((field for field in fields if field.get('is_pk')), None)
         pk_python_name = _field_python_name(pk_field) if pk_field is not None else 'id'
-        canonical_key = canonical_db_key(table.get('db_key'))
-        db_reference = srv_db_name(canonical_key)
+        canonical_key = db_identity.key_resolver.canonical_db_key(table.get('db_key'))
+        db_reference = db_identity.key_resolver.srv_db_name(canonical_key)
         lines.extend([
             f'class {class_name}(BaseModel[{hint_name}]): # noqa',
             '    if TYPE_CHECKING:',
@@ -999,7 +970,6 @@ def _render_orm_models(
 
 
 def _render_manager_hint_classes(tables: list[dict[str, Any]], grouped: dict[str, list[dict[str, Any]]]) -> list[str]:
-    """Совместимый stub: manager/queryset/proxy-контракты теперь генерируются в orm_hints.py."""
     return []
 
 
@@ -1094,7 +1064,8 @@ def _load_existing_manifest(out_dir: pathlib.Path) -> dict[str, Any] | None:
     if manifest_json.exists():
         try:
             return json.loads(manifest_json.read_text(encoding='utf-8'))
-        except Exception:
+        except Exception as e:
+            logging.error('Ошибка при дампе манифеста', exc_info=e)
             return None
     return None
 
@@ -1219,7 +1190,6 @@ def generate_schema_artifacts(*, debug: bool = False, output_dir: str | pathlib.
     relations = repo.get_relations(only_enabled=True)
     relation_pairs = repo.get_relation_field_pairs()
     _validate_table_identities(tables)
-    # Validation happens before any output file is touched.
     _prepare_relation_declarations(tables, all_table_fields, relations, relation_pairs)
     model_names = _collect_model_names(tables)
 
