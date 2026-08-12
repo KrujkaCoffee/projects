@@ -276,9 +276,7 @@ def btn_config_fields(*args):
 
     for tbl_mes, val in dict_result_change['Этап плана'].items():
         rez = CSQ.custom_request_c(CFG.Config.project.db_kplan, f"""UPDATE podrazdel
-                        SET  (alias)
-                            = (?)
-                                WHERE Имя = "{tbl_mes}" ;""", list_of_lists_c=[val])
+                        SET alias = ? WHERE Имя = "{tbl_mes}" ;""", list_of_lists_c=[val])
         if not rez:
             CQT.msgbox(f'Ошибка обновления таблицы {tbl_mes}')
         fl_edit = True
@@ -287,8 +285,7 @@ def btn_config_fields(*args):
         if 'field_alias' in data_name_mes:
             val = data_name_mes['field_alias']
             rez = CSQ.custom_request_c(CFG.Config.project.db_kplan, f"""UPDATE info_fields_kpl
-                                    SET  (alias_usr)
-                                        = (?)
+                                    SET alias_usr = ?
                                             WHERE s_num = {s_num} ;""", list_of_lists_c=[val])
             if not rez:
                 CQT.msgbox(f'Ошибка обновления поля {s_num}')
@@ -297,9 +294,7 @@ def btn_config_fields(*args):
         if 'description' in data_name_mes:
             val = data_name_mes['description']
             rez = CSQ.custom_request_c(CFG.Config.project.db_kplan, f"""UPDATE info_fields_kpl
-                                    SET  (nickname)
-                                        = (?)
-                                            WHERE s_num = {s_num} ;""", list_of_lists_c=[val])
+                                    SET nickname = ? WHERE s_num = {s_num} ;""", list_of_lists_c=[val])
             if not rez:
                 CQT.msgbox(f'Ошибка обновления описаня для {s_num}')
             fl_edit = True
@@ -545,9 +540,12 @@ def tbl_kal_pl_cellChanged(self: mywindow, *args):
         s_num = int(
             data_row[field_o.parent_tbale.source_table_primary_name.name_mes
             ])  # поле которое имеет ссылку на УИД по которому можно найти запись ячейки в ее таблице.
-        rez = CSQ.custom_request_c(self.db_kplan, f"""UPDATE {field_o.select_db_tbl_name} SET ({field_o.field_mes})
-                = (?) WHERE {field_o.parent_tbale.table_primary_name} 
-          == {s_num};""", list_of_lists_c=[new_val])
+        rez = CSQ.custom_request_c(
+            self.db_kplan,
+            f"""UPDATE {field_o.select_db_tbl_name} 
+            SET {field_o.field_mes} = ? 
+            WHERE {field_o.parent_tbale.table_primary_name} = {s_num};""",
+            list_of_lists_c=[new_val])
         if rez:
             with QtCore.QSignalBlocker(tbl):
                 row.set_value(name_field, str(new_val))
@@ -1026,7 +1024,7 @@ def check_add_poz(list_add:dict)->bool:
     msg_erp = ''
     if list_add['знпр.№ERP']:
         postfix_erp = f"""AND 
-               пл_оуп.№ERP = "{list_add['знпр.№ERP']}"""
+               пл_оуп.№ERP = '{list_add['знпр.№ERP']}'"""
         msg_erp = f"\nERP: '{list_add['знпр.№ERP']}',"
 
     DICT_FIELDS = DTCLS.FIELDS_DB_INFO.dict_fields
@@ -1053,15 +1051,18 @@ def check_add_poz(list_add:dict)->bool:
                                      WindowTitle=f'{CEMOJ.EmojiMain.Эмоции.confused} Ошибки при проверке',
                                      styleSheet=CQT.MES_CSS)
         return False
-
-
+    napravl_deyat = list_add['plan.Направление_деятельности']
     rez = CSQ.custom_request_c(DTCLS.db_kplan, f"""SELECT plan.Пномер ,plan.Дата_внесения, plan.Позиция, 
             пл_оуп.№проекта, пл_оуп.№ERP ,  status_poz.Имя as Статус, пл_оуп.Количество
                 FROM plan 
               INNER JOIN пл_оуп ON пл_оуп.НомПл = plan.Пномер 
               INNER JOIN status_poz ON status_poz.Пномер = plan.Статус 
-             WHERE plan.poki = {CFG.Config.place.poki} AND plan.Позиция = "{list_add['plan.Позиция']}" AND  plan.Статус IN (1, 2, 3, 5, 7, 8, 9) AND  
-              пл_оуп.№проекта = "{list_add['пл_оуп.№проекта']}" {postfix_erp} """,rez_dict=True)
+             WHERE plan.poki = {CFG.Config.place.poki} 
+             AND plan.Позиция = "{list_add['plan.Позиция']}" 
+             AND plan.Статус IN (1, 2, 3, 5, 7, 8, 9)
+             AND plan.Направление_деятельности = {napravl_deyat}
+             AND пл_оуп.№проекта = "{list_add['пл_оуп.№проекта']}" {postfix_erp} """,
+                               rez_dict=True)
     if rez:
         if not CQT.msgboxg_get_table(DTCLS.app_self,
             f"Уже существует позиции в базе",rez,'Продолжить','Отмена',yesNoMode=True,styleSheet=CQT.MES_CSS):
@@ -1269,7 +1270,6 @@ def btn_pl_ok_add_poz_click(self, *args):
 
         if not check_add_poz(list_add):
             return  False, None
-
         pkk_id = 0
         if link:
             pkk_id = upload_pkk(link)
@@ -1335,7 +1335,7 @@ def btn_pl_ok_add_poz_click(self, *args):
                Вес_кг
 
                ) =
-                ({"?, ".join([""] * len(vals)) + "?"}) WHERE НомПл == {pnom};""", list_of_lists_c=vals)
+                ({"?, ".join([""] * len(vals)) + "?"}) WHERE НомПл = {pnom};""", list_of_lists_c=vals)
 
         if s_num_py != 0:
             fill_oup_fields_from_znpr(self, pnom)
@@ -1344,10 +1344,8 @@ def btn_pl_ok_add_poz_click(self, *args):
             vals = [list_add['пл_ко.Вес_ВО'].replace(',', '.'),
                     ]
 
-            CSQ.custom_request_c(self.db_kplan, f"""UPDATE пл_ко SET(
-                           Вес_ВО
-                           ) =
-                            (?) WHERE НомПл == {pnom};""", list_of_lists_c=vals)
+            CSQ.custom_request_c(self.db_kplan, f"""UPDATE пл_ко SET 
+                           Вес_ВО = ? WHERE НомПл = {pnom};""", list_of_lists_c=vals)
 
 
         obj_msg = CMS.Msg_b24(self.db_kplan, self.bd_naryad, self.db_resxml, self.db_users, pnom)
@@ -1508,7 +1506,7 @@ def btn_pl_ok_add_poz_click(self, *args):
             list_vals = [delta_dict[_.name_mes] for _ in list_fields_o]
             list_fields = [_.field_mes for _ in list_fields_o]
 
-            rez = CSQ.custom_request_c(self.db_kplan, f"""UPDATE {tbl_o.name} SET({','.join(list_fields)}) =
+            rez = CSQ.custom_request_c(self.db_kplan, f"""UPDATE {tbl_o.name} SET ({','.join(list_fields)}) =
              ({'?,'.join(['' for _ in list_fields]) + '?'}) WHERE {prim_key} = {tmp_pnom};""", list_of_lists_c=list_vals)
             print(f'{rez}: updated- {tbl_o.name}')
         fill_changes_into_user_tbl(delta_dict, pnom)
@@ -1979,7 +1977,7 @@ def load_table_db(self, hook_prog_bar=None):
                 SELECT DISTINCT пл_оуп.НомПл, знпр.client_order_Key,  знпр.client_order_num
                   FROM знпр
                        INNER JOIN
-                       пл_оуп ON пл_оуп.Пномер_ЗП == знпр.s_num
+                       пл_оуп ON пл_оуп.Пномер_ЗП = знпр.s_num
                  WHERE client_order_Key != "" and пл_оуп.НомПл IN ({CSQ.prepare_list_to_tuple(list_kpls)});
         """, rez_dict=True)
         dict_refs_zp = F.deploy_dict_c(list_refs_zc,'НомПл')
@@ -1998,7 +1996,7 @@ def load_table_db(self, hook_prog_bar=None):
                 SELECT DISTINCT пл_оуп.НомПл, знпр.Ref_Key_py, знпр.Год, знпр.№ERP
                   FROM знпр
                        INNER JOIN
-                       пл_оуп ON пл_оуп.Пномер_ЗП == знпр.s_num
+                       пл_оуп ON пл_оуп.Пномер_ЗП = знпр.s_num
                  WHERE Ref_Key_py != "" and пл_оуп.НомПл IN ({CSQ.prepare_list_to_tuple(list_kpls)});
         """, rez_dict=True,lazy_method_hours= 0.1)
         dict_refs_zp = F.deploy_dict_c(list_refs_zp, 'НомПл')
@@ -2464,7 +2462,7 @@ def load_table_db(self, hook_prog_bar=None):
             r, g, b = self.Data_plan.DICT_STATUS_POZ[s_num_state]['color'].split(';')
             state_name = self.Data_plan.DICT_STATUS_POZ[s_num_state]['Имя']
             CSQ.custom_request_c(cfg.db_kplan,
-                                 f"""UPDATE plan SET (Статус) = ({s_num_state}) 
+                                 f"""UPDATE plan SET Статус = {s_num_state}
                                  WHERE Пномер in ({CSQ.prepare_list_to_tuple(list_s_num)})""")
             with CQT.table_updating(t.tbl):
                 for row_tbl in range(t.tbl.rowCount()):
@@ -2495,7 +2493,7 @@ def load_table_db(self, hook_prog_bar=None):
 
             else:
                 s_num_pozs = CSQ.custom_request_c(cfg.db_kplan,
-                                                  f"""SELECT Пномер FROM plan WHERE Группа == "{gr}";""",
+                                                  f"""SELECT Пномер FROM plan WHERE Группа = "{gr}";""",
                                                   hat_c=False, one_column=True
                                                   )
             pozitions = CMS.Pozitions(s_num_pozs, cfg.db_kplan, cfg.db_naryad,
@@ -2761,7 +2759,7 @@ class Gant_handler():
         name_field_snom = self.tbl_db.table_primary_name
         return CSQ.custom_request_c(DTCLS.db_kplan,
                              f"""UPDATE {table} SET {name_field} = "{new_date}" 
-                    WHERE {name_field_snom} == {self.poz_gant.poz_id};""")
+                    WHERE {name_field_snom} = {self.poz_gant.poz_id};""")
 
     def select_block_range(self):
         self.current_row.tbl.setRangeSelected(
@@ -2993,7 +2991,7 @@ def add_user_into_rule(self: mywindow, *args):
 
         str_old = CSQ.custom_request_c(DTCLS.db_kplan, f"""SELECT 
                   users_rule
-                     FROM info_fields_kpl WHERE s_num ={s_num_field}; """, hat_c=False, one=True, one_column=True)
+                     FROM info_fields_kpl WHERE s_num = {s_num_field}; """, hat_c=False, one=True, one_column=True)
         set_old = set([_ for _ in str_old.split(';') if _ and _ in logins_all])
 
         set_in = copy.copy(set_in_templ)
@@ -3017,9 +3015,10 @@ def add_user_into_rule(self: mywindow, *args):
         return
     for s_num_field, set_logins in report_data.items():
         str_new_rule = ';'.join(sorted(list(set_logins)))
-        rez = CSQ.custom_request_c(DTCLS.db_kplan, f"""UPDATE info_fields_kpl SET (users_rule) =
-                (?) WHERE s_num = {s_num_field}""",
-                                   list_of_lists_c=[[str_new_rule]])
+        rez = CSQ.custom_request_c(
+            DTCLS.db_kplan,
+            f"""UPDATE info_fields_kpl SET users_rule = ? WHERE s_num = {s_num_field}""",
+            list_of_lists_c=[[str_new_rule]])
         if not rez:
             CQT.msgbox(f'Ошибка записи')
             return
@@ -3059,10 +3058,10 @@ def test_fnc(*args):
             ref = DICT_nomen[it['Номенклатура_ЕРП']]
             if ref == it['Номенклатура_ЕРП_ref']:
                 continue
-            CSQ.custom_request_c(CFG.Config.project.db_kplan,f""" UPDATE пл_оуп
-            SET  (Номенклатура_ЕРП_ref)
-                    = ("{ref}")
-                            WHERE НомПл == {it['НомПл']} ;
+            CSQ.custom_request_c(
+                CFG.Config.project.db_kplan,
+                f""" UPDATE пл_оуп SET Номенклатура_ЕРП_ref = "{ref}"
+                            WHERE НомПл = {it['НомПл']} ;
                 """)
         F.save_file_pickle('list_free.pickle',list_free)
     #upadte_ref_nomens()
@@ -3606,10 +3605,10 @@ def check_kpl_by_erp(self: mywindow, hook_prog_bar=None):
     list_poz = CSQ.custom_request_c(self.db_kplan, f"""SELECT plan.Пномер, знпр.Ref_Key_py, знпр.Год, пл_оуп.НомПл, 
     пл_оуп.№ERP, пл_оуп.Номенклатура_ЕРП, пл_оуп.Количество, пл_топ.Спецификация_ЕРП, пл_оуп.Дата_отгрузки_ПУ, 
        пл_оуп.№проекта, status_poz.Имя as status, пл_оуп.Дата_заявки_на_произв FROM пл_оуп 
-        INNER JOIN plan ON plan.Пномер == пл_оуп.НомПл
-        INNER JOIN пл_топ ON пл_топ.НомПл == пл_оуп.НомПл
-        INNER JOIN знпр ON знпр.s_num == пл_оуп.Пномер_ЗП
-        INNER JOIN status_poz ON status_poz.Пномер == plan.Статус
+        INNER JOIN plan ON plan.Пномер = пл_оуп.НомПл
+        INNER JOIN пл_топ ON пл_топ.НомПл = пл_оуп.НомПл
+        INNER JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП
+        INNER JOIN status_poz ON status_poz.Пномер = plan.Статус
          WHERE  plan.poki = {self.place.poki} and 
             datetime(пл_оуп.Дата_заявки_на_произв || '00:00:01') > datetime('{begin_year}')""", rez_dict=True)
 
@@ -3802,7 +3801,7 @@ def check_kpl_by_erp(self: mywindow, hook_prog_bar=None):
 
 def update_date_kplmk_from_narmk(self: mywindow):
     query = f"""SELECT plan.МК,  пл_топ.НомПл , пл_топ.Дата_МК FROM пл_топ INNER JOIN 
-     plan ON plan.Пномер ==  пл_топ.НомПл 
+     plan ON plan.Пномер = пл_топ.НомПл 
      WHERE пл_топ.Дата_МК != "" and plan.МК <> 0 and plan.poki = {self.place.poki};"""
     res = F.deploy_dict_c(CSQ.custom_request_c(self.db_kplan, query, rez_dict=True), 'МК')
     list_mk = [str(_) for _ in res.keys()]
@@ -3885,7 +3884,7 @@ def pl_cr_mk(self: mywindow, *args):
         return
     pnom = int(tbl.item(row, nf_pnom).text())
 
-    self.dict_cur_poz_cr_mk = CSQ.custom_request_c(self.db_kplan, f"""SELECT    пл_оуп.№проекта as "Проект", 
+    self.dict_cur_poz_cr_mk = CSQ.custom_request_c(self.db_kplan, f"""SELECT пл_оуп.№проекта as "Проект", 
     пл_оуп.№ERP as "№ERP",  napravl_deyat.Псевдоним as "Вид",
                  napravlenie.name as "Направление",  пл_оуп.Количество as "Количество", plan.Позиция, 
                  plan.Пномер as "Пномер", пл_оуп.Номенклатура_ЕРП as "Номен. ЕРП"  FROM пл_оуп  INNER JOIN plan ON пл_оуп.НомПл = plan.Пномер,
@@ -3914,7 +3913,7 @@ def checking_positions_for_closed_mk(window: QtWidgets.QWidget, poz_nums: list[i
         list_if_status = CSQ.custom_request_c(
             CFG.Config.project.db_naryad,
             f"""SELECT Дата_завершения, Пномер, НомКплан as "КПЛ", Статус FROM mk
-         WHERE НомКплан IN ({list_joined_poz_pk}) AND Статус == 'Открыта';""", rez_dict=True) #28.11.2025
+         WHERE НомКплан IN ({list_joined_poz_pk}) AND Статус = 'Открыта';""", rez_dict=True) #28.11.2025
         list_open_mk = []
         for item in list_if_status:
             if item['Дата_завершения'] == "":
@@ -4306,9 +4305,9 @@ def dict_norm_from_res(self:mywindow, res, dict_norm='', koef_vneplana=1, koef_p
 
         list_fact = CSQ.custom_request_c(self.bd_naryad,
                                          f"""SELECT Пномер, Твремя,
-                                          ФИО,  ФИО2, (Фвремя + Фвремя2) as Фвремя, ДСЕ_ID, Операции,
+                                          ФИО, ФИО2, (Фвремя + Фвремя2) as Фвремя, ДСЕ_ID, Операции,
                                            Опер_время, Опер_колво, Подтвержд_вып FROM 
-                                            naryad WHERE naryad.Номер_мк == {s_num_mk} and (ФИО != '' or ФИО2 != '') and Аутсорсинг == 0""",
+                                            naryad WHERE naryad.Номер_мк = {s_num_mk} and (ФИО != '' or ФИО2 != '') and Аутсорсинг = 0""",
                                          rez_dict=True)
 
         for nar in list_fact:
@@ -4852,7 +4851,7 @@ def btn_pl_load_norm(self: mywindow):
         return dict_norm
 
     def load_norm_vo(self, pnom: int, dict_norm: dict):
-        item = CSQ.custom_request_c(self.db_kplan, f"""SELECT * FROM пл_топ WHERE НомПл == {pnom}""", one=True,
+        item = CSQ.custom_request_c(self.db_kplan, f"""SELECT * FROM пл_топ WHERE НомПл = {pnom}""", one=True,
                                     rez_dict=True)
         if item['Уд_вес_ВО'] == '' or item['Уд_вес_ВО'] == 0:
             CQT.msgbox(f'Не указан Уд_вес_ВО')
@@ -4974,7 +4973,7 @@ def btn_pl_load_norm(self: mywindow):
         return
 
     list_mk = CSQ.custom_request_c(self.bd_naryad, f"""SELECT Пномер,Количество,Дата_завершения,Вес,Тип FROM mk WHERE 
-    НомКплан == {poz.Пномер} AND На_удал == 0;""", rez_dict=True)
+    НомКплан = {poz.Пномер} AND На_удал = 0;""", rez_dict=True)
     descr_predv_res = poz.dict_tables['пл_топ']['Предв_спецификация_ЕРП'].strip() #00-065171
 
     DICT_NAMES_ETAP_FROM_ERP = dict()
@@ -5038,7 +5037,7 @@ def btn_pl_load_norm(self: mywindow):
                 code_predv_res = res_get_wet[0]['Код'].strip()
                 name_predv_res = res_get_wet[0]['Наименование'].strip()
                 CSQ.custom_request_c(self.db_kplan,
-                                     f'''UPDATE пл_топ SET Предв_спецификация_ЕРП = "{code_predv_res}" WHERE НомПл == {pnom};''')
+                                     f'''UPDATE пл_топ SET Предв_спецификация_ЕРП = "{code_predv_res}" WHERE НомПл = {pnom};''')
 
         else:
             code_predv_res = descr_predv_res
@@ -5583,7 +5582,7 @@ def update_plan_main_tbl(self: mywindow):
         cmb.addItem('')
         cmb.addItem('Не в плане')
         rez = CSQ.custom_request_c(self.db_kplan, f"""SELECT Дата  
-         FROM mnts_plan WHERE file_poz_plan IS NOT NULL AND poki == {self.place.poki} ORDER BY Дата""",
+         FROM mnts_plan WHERE file_poz_plan IS NOT NULL AND poki = {self.place.poki} ORDER BY Дата""",
                                    rez_dict=True)
         for month in rez:
             if month['Дата']:
@@ -6465,7 +6464,7 @@ def get_line_to_edit_podr(self, pnom, podr:CMS.Table_db_info )->list[dict]:
     name_field =  podr.table_primary_full_name
 
     list_itog = CSQ.custom_request_c(self.db_kplan, f"""SELECT * FROM 
-                        {podr.name} WHERE {name_field} == {pnom}
+                        {podr.name} WHERE {name_field} = {pnom}
                          """, one=True, rez_dict=True)
     return [list_itog]
 

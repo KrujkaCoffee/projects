@@ -1,3 +1,4 @@
+import collections
 import difflib
 import enum
 import os
@@ -12,7 +13,6 @@ import base64
 import typing
 from functools import reduce
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal, InvalidOperation
 from typing import Any, Optional
 from enum import Enum
 import dataclasses
@@ -2454,7 +2454,7 @@ def checking_positions_for_closed_mk(task: Task) -> bool:
         """
         is_done = True
         for pnum in pk_kpl:
-            CSQ.custom_request_c(
+            result = CSQ.custom_request_c(
                 CFG.Config.project.db_kplan,
                 f"""UPDATE plan SET Статус = 4 WHERE Пномер = {pnum}""",
                 debug=DEBUG
@@ -2508,37 +2508,15 @@ def update_status_mes(task: Task):
 
 
 
+ERP_PRODUCTION_CHANGE_QUEUE = 'MES.ERP/ЗП.Этапы.КонтрольИзменений'
 ERP_PRODUCTION_ORDER_OBJECT = 'ДокументОбъект.ЗаказНаПроизводство2_2'
 ERP_PRODUCTION_STAGE_OBJECT = 'ДокументОбъект.ЭтапПроизводства2_2'
-ERP_STAGES_NEED_REFRESH = 1
-PRODUCTION_QTY_CONTROL_SCALE = Decimal('10')
+PLAN_STATUS_FINISHED = 4
 
-
-@dataclasses.dataclass(frozen=True, slots=True)
-class ProductionOrderQuantityDiff:
-    changed: bool
-    score: int
-    erp_lines: tuple[dict, ...]
-    mes_lines: tuple[dict, ...]
-    erp_total: Decimal
-    mes_total: Decimal
-    erp_qty_x10_sum: Decimal
-    mes_qty_x10_sum: Decimal
-    erp_position_qty_x10_sum: Decimal
-    mes_position_qty_x10_sum: Decimal
-    row_count_changed: bool
-    total_changed: bool
-    qty_x10_changed: bool
-    position_qty_x10_changed: bool
-    line_changes: tuple[dict, ...]
-
-
-
-
-
-
-
-
+ERP_CLOSED_STAGE_STATUSES = frozenset({
+    'закрыт',
+    'завершен',
+})
 
 
 def get_chat_id_by_document_prefix(prefix: str, chat_action: str = None) -> str | None:
@@ -2548,83 +2526,106 @@ def get_chat_id_by_document_prefix(prefix: str, chat_action: str = None) -> str 
 
     query = f"""
     SELECT place_chat_info.chat_id
-    FROM places 
-    INNER JOIN place_chat_info ON place_chat_info.poki = places.poki 
+    FROM places
+    INNER JOIN place_chat_info ON place_chat_info.poki = places.poki
     WHERE substr(doc_prefix, 1, 2) = {prefix!r} {action_where}
     """
     return CSQ.custom_request_c(
-        CSQ.DB_NAMES.db_naryad, query, hat_c=False, one=True, one_column=True, debug=DEBUG) or None
+        CFG.Config.project.db_naryad,
+        query,
+        hat_c=False,
+        one=True,
+        one_column=True,
+        debug=DEBUG,
+    ) or None
+
+class StageCredentials(typing.NamedTuple):
+    order_key: str
+    stage_key: str
+    number: str
+    nomen_key: str
+    stage_name: str
 
 class ProductionOrderEventHandler:
-    def resolve_order_ref_key_from_production_event(self, credentials: dict) -> str:
-        """
-            Принимает
-                @GUID - Ref_Key этапа связанного с ЗНПР
 
-        Возвращает Ref_Key ЗаказаНаПроизводство2_2"""
-        object_name = credentials.get('obj_full_name')
-        object_guid = str(credentials.get('GUID') or '').strip()
 
-        if object_name == ERP_PRODUCTION_ORDER_OBJECT:
-            if not object_guid:
-                raise ValueError('Для события ЗП не передан GUID')
-            return object_guid
+    def resolve_order_ref_key_from_stage_event(self, credentials: dict) -> StageCredentials:
+        """Определяет Ref_Key родительской ЗП по GUID изменённого этапа."""
+        explicit_order_ref = str(
+            credentials.get('order_GUID')
+            or credentials.get('order_ref_key')
+            or credentials.get('Распоряжение_Key')
+            or ''
+        ).strip()
+        if explicit_order_ref:
+            return explicit_order_ref
 
-        if object_name != ERP_PRODUCTION_STAGE_OBJECT:
-            raise ValueError(f'Неизвестный тип производственного события: {object_name!r}')
-
-        if not object_guid:
+        stage_ref_key = str(credentials.get('GUID') or '').strip()
+        if not stage_ref_key:
             raise ValueError('Для события этапа не передан GUID этапа')
 
         client = ERP.OrdersComposit()
         code, response = client.get_response(
             doc_name='Document_ЭтапПроизводства2_2',
             wet_filtr=(
-                f"?$filter=Ref_Key eq guid'{object_guid}'"
-                f"&$select=Распоряжение_Key"
+                f"?$filter=Ref_Key eq guid'{stage_ref_key}'"
+                f"&$expand=Спецификация"
+                f"&$top=1"
+                f"&$select=Ref_Key,НаименованиеЭтапа,Number,Распоряжение_Key,Спецификация/ОсновноеИзделиеНоменклатура_Key"
             ),
             with_cod=True,
         )
         if code != 200:
             raise ConnectionError(
                 'Не удалось определить ЗП по изменённому этапу. '
-                f'Код ERP: {code}; ответ: {response}; Ref_Key этапа: {object_guid}'
+                f'Код ERP: {code}; ответ: {response}; Ref_Key этапа: {stage_ref_key}'
             )
         if not isinstance(response, list):
             raise TypeError(
                 'ERP вернула некорректный ответ при поиске ЗП по этапу: '
-                f'ожидался list, получен {type(response).__name__}; ответ: {response}'
+                f'ожидался list, получен {type(response).__name__}'
             )
         if not response:
             raise ValueError(
                 'Этап производства не найден в ERP по переданному GUID. '
-                f'Для события этапа 1С должна передать GUID этапа и желательно order_GUID=Распоряжение_Key. '
-                f'Ref_Key этапа: {object_guid}'
+                f'Ref_Key этапа: {stage_ref_key}'
             )
 
-        resolved = response[0].get('Распоряжение_Key')
-        if not resolved:
+        order_ref_key = str(response[0].get('Распоряжение_Key') or '').strip()
+        nomen_ref_key = (response[0].get('Спецификация', {}) or {}).get('ОсновноеИзделиеНоменклатура_Key') or ''
+        stage_name = (response[0].get('НаименованиеЭтапа', '') or '')
+        stage_number = (response[0].get('Number', '') or '')
+        if not order_ref_key:
             raise ValueError(
-                'У изменённого этапа ERP не заполнено Распоряжение_Key, '
-                'поэтому MES не может определить родительскую ЗП. '
-                f'Ref_Key этапа: {object_guid}'
+                'У изменённого этапа ERP не заполнено Распоряжение_Key. '
+                f'Ref_Key этапа: {stage_ref_key}'
             )
-        return str(resolved)
+        if not nomen_ref_key:
+            raise ValueError(
+                'У изменённого этапа ERP не найдено ОсновноеИзделиеНоменклатура_Key. '
+                f'Ref_Key этапа: {stage_ref_key}'
+            )
+        return StageCredentials(
+            stage_key=stage_ref_key,
+            order_key=order_ref_key,
+            number=stage_number,
+            nomen_key=nomen_ref_key,
+            stage_name=stage_name,
+        )
 
-    def save_production_change_task_result(
+    def save_task_result(
             self,
             task: Task,
             result: dict,
             *,
             chat_accepted: bool | None = None,
     ) -> bool:
-        """Сохраняет результат consumer в exchange.message_status для последующей отладки."""
         payload = dict(result)
         payload.setdefault('task_id', task.pk)
-        payload.setdefault('queue', 'MES.ERP/ЗП.Этапы.КонтрольИзменений')
+        payload.setdefault('queue', ERP_PRODUCTION_CHANGE_QUEUE)
         payload['updated_at'] = F.now()
 
-        fields = ['message_status = ?']
+        fields = ['result_report = ?']
         params = [pickle.dumps(payload)]
         if chat_accepted is not None:
             fields.append('chat_accepted = ?')
@@ -2635,15 +2636,9 @@ class ProductionOrderEventHandler:
             db_files,
             f"UPDATE exchange SET {', '.join(fields)} WHERE id = ?",
             list_of_lists_c=params,
-            debug=DEBUG
+            debug=DEBUG,
         )
-        if saved is False or saved is None:
-            logger.error(
-                '[ERP_PRODUCTION_CHANGE] Не удалось сохранить результат задачи id=%s',
-                task.pk,
-            )
-            return False
-        return True
+        return saved is not False and saved is not None
 
     def find_mes_production_order(self, order_ref_key: str) -> dict | None:
         rows = CSQ.custom_request_c(
@@ -2653,594 +2648,597 @@ class ProductionOrderEventHandler:
                 s_num,
                 Ref_Key_py,
                 №ERP,
-                №проекта,
-                Статус_поз_ЕРП,
-                Дата_заявки_на_произв,
-                Этапы_ЕРП
+                №проекта
             FROM знпр
             WHERE lower(Ref_Key_py) = lower(?);
             """,
             list_of_lists_c=[order_ref_key],
             rez_dict=True,
-            debug=DEBUG
+            debug=DEBUG,
         )
         if not isinstance(rows, list):
             raise ConnectionError('Не удалось прочитать таблицу знпр')
         return rows[0] if rows else None
 
-
-    def load_mes_production_positions(self, order_s_num: int) -> list[dict]:
+    def load_open_mes_positions(self, oder_ref: str, nomen_ref_key: str) -> list[dict]:
         rows = CSQ.custom_request_c(
             CFG.Config.project.db_kplan,
             """
             SELECT DISTINCT
-                пл_оуп.НомПл,
-                пл_оуп.НомПартии_ЗП,
-                пл_оуп.Количество,
+                plan.Пномер AS НомПл,
+                пл_оуп.№ERP,
                 пл_оуп.№проекта,
                 plan.Позиция,
-                plan.poki
+                plan.Статус AS Статус_позиции,
+                plan.poki,
+                пл_оуп.НомПартии_ЗП,
+                пл_оуп.Количество,
+                пл_оуп.Номенклатура_ЕРП_ref
             FROM пл_оуп
-            LEFT JOIN plan
-                   ON plan.Пномер = пл_оуп.НомПл
-            WHERE пл_оуп.Пномер_ЗП = ?
-            ORDER BY пл_оуп.НомПл;
+            INNER JOIN plan
+                    ON plan.Пномер = пл_оуп.НомПл
+            INNER JOIN знпр
+                    ON знпр.s_num = пл_оуп.Пномер_ЗП
+            WHERE знпр.Ref_Key_py = ?
+              AND plan.Статус IN (3,5,7,8)
+              AND пл_оуп.Номенклатура_ЕРП_ref = ?
+            ORDER BY plan.Пномер;
             """,
-            list_of_lists_c=[order_s_num],
+            list_of_lists_c=[[oder_ref, nomen_ref_key]],
             rez_dict=True,
-            debug=DEBUG
+            debug=DEBUG,
         )
         if not isinstance(rows, list):
             raise ConnectionError('Не удалось определить связанные позиции календарного плана')
-        return rows
 
+        # Пл_оуп теоретически может дать несколько строк на один КПЛ.
+        unique_positions = {}
+        for row in rows:
+            kpl = row.get('НомПл')
+            if kpl is not None:
+                unique_positions[int(kpl)] = row
+        return list(unique_positions.values())
 
-    def mark_production_stages_need_refresh(self, order_s_num: int, *, is_test: bool = False) -> bool:
+    @staticmethod
+    def normalize_stage_status(value: Any) -> str:
+        return ' '.join(str(value or '').split()).casefold()
+
+    def get_stage_state_for_kpl(self, kpl: int) -> dict:
+        from project_cust_38 import api_erp_commands as APIERP
+
+        try:
+            stages = APIERP.Etaps_erp.get_znpr_etaps_by_kpl(kpl)
+        except (APIERP.NotFoundNomenclature, ValueError) as ex:
+            # Ошибка связи конкретного КПЛ: не повторяем бесконечно всю задачу,
+            # но и не разрешаем автоматическое завершение позиции.
+            return {
+                'all_closed': False,
+                'stages_count': 0,
+                'open_stages': [],
+                'configuration_error': str(ex),
+                'detail': 'Не удалось определить этапы из-за связи ЗП/номенклатуры',
+            }
+
+        if not isinstance(stages, list):
+            raise TypeError(
+                f'get_znpr_etaps_by_kpl({kpl}) вернула {type(stages).__name__}, ожидался list'
+            )
+
+        # Нулевой этап не является производственным этапом позиции.
+        active_stages = [
+            stage for stage in stages
+            if not bool(getattr(stage, 'ПометкаУдаления', False))
+            and not bool(getattr(stage, 'НЭ_НулевойЭтап', False))
+        ]
+        if not active_stages:
+            return {
+                'all_closed': False,
+                'stages_count': 0,
+                'open_stages': [],
+                'detail': 'Для позиции не найдены рабочие этапы ERP',
+            }
+
+        open_stages = []
+        # for stage in active_stages:
+        #     status = self.normalize_stage_status(getattr(stage, 'Статус', ''))
+        #     if status not in ERP_CLOSED_STAGE_STATUSES:
+        #         open_stages.append({
+        #             'number': getattr(stage, 'Номер', None),
+        #             'name': getattr(stage, 'НаименованиеЭтапа', None),
+        #             'status': getattr(stage, 'Статус', None),
+        #         })
+
+        return {
+            'all_closed': not open_stages,
+            'stages_count': len(active_stages),
+            'open_stages': open_stages,
+            'detail': (
+                'Все рабочие этапы ERP завершены'
+                if not open_stages
+                else 'Не все рабочие этапы ERP завершены'
+            ),
+        }
+
+    def load_mk_state_for_kpl(self, kpl: int) -> dict:
+        rows = CSQ.custom_request_c(
+            CFG.Config.project.db_naryad,
+            """
+            SELECT
+                Пномер,
+                НомКплан AS КПЛ,
+                Статус,
+                Дата_завершения
+            FROM mk
+            WHERE НомКплан = ?
+              AND Статус != 'НаУдаление'
+            ORDER BY Пномер;
+            """,
+            list_of_lists_c=[kpl],
+            rez_dict=True,
+            debug=DEBUG,
+        )
+        if not isinstance(rows, list):
+            raise ConnectionError(f'Не удалось получить МК по КПЛ {kpl}')
+
+        if not rows:
+            return {
+                'all_closed': False,
+                'mk_count': 0,
+                'open_mk': [],
+                'detail': 'По позиции не найдены МК',
+            }
+
+        open_mk = []
+        for mk in rows:
+            status_closed = str(mk.get('Статус') or '').strip().casefold() == 'закрыта'
+            finish_date_set = bool(str(mk.get('Дата_завершения') or '').strip())
+            if not (status_closed and finish_date_set):
+                open_mk.append(mk)
+
+        return {
+            'all_closed': not open_mk,
+            'mk_count': len(rows),
+            'open_mk': open_mk,
+            'detail': 'Все МК закрыты' if not open_mk else 'Есть незакрытые МК',
+        }
+
+    def finish_plan_positions(self, kpl_list: list[int], *, is_test: bool = False) -> bool:
+        if not kpl_list:
+            return True
+
         if is_test:
             logger.info(
-                '[ERP_PRODUCTION_CHANGE][TEST] Пропущена запись Этапы_ЕРП = 1 '
-                f'для знпр.s_num={order_s_num}'
+                '[ERP_STAGE_COMPLETION][TEST] Пропущено закрытие plan.Пномер IN %s',
+                kpl_list,
             )
             return True
+
+        placeholders = ','.join('?' for _ in kpl_list)
         result = CSQ.custom_request_c(
             CFG.Config.project.db_kplan,
-            """
-            UPDATE знпр
-            SET Этапы_ЕРП = ?
-            WHERE s_num = ?;
+            f"""
+            UPDATE plan
+            SET Статус = ?
+            WHERE Пномер IN ({placeholders})
+              AND Статус != ?;
             """,
-            list_of_lists_c=[ERP_STAGES_NEED_REFRESH, order_s_num],
-            debug=DEBUG
+            list_of_lists_c=[
+                PLAN_STATUS_FINISHED,
+                *kpl_list,
+                PLAN_STATUS_FINISHED,
+            ],
+            debug=DEBUG,
         )
         return result is not False and result is not None
 
-    def build_stage_change_message(
-            self,
-            credentials: dict,
-            order_row: dict,
-            positions: list[dict],
-            previous_status: Any,
-    ) -> str:
-        lines = [
-            '[B]ERP → MES: изменён этап производства[/B]',
-            '',
-            f'№ERP: {order_row.get("№ERP") or "—"}',
-            f'Проект: {order_row.get("№проекта") or "—"}',
-            '',
-            '[B]Диспетчеру ПДО необходимо:[/B]',
-            '1. Проверить состав этапов по ЗП.',
-            '2. Корректность номера партии пл_оуп.НомПартии_ЗП',
+    def evaluate_positions(self, positions: list[dict], *, is_test: bool = False, allow_write: bool = True) -> list[dict]:
+        """Сначала собирает состояния всех позиций, затем применяет закрытие.
+
+        Это уменьшает риск частичного закрытия, если запрос ERP упал на одном
+        из следующих КПЛ.
+        """
+        evaluations = []
+        for position in positions:
+            kpl = int(position['НомПл'])
+            stage_state = self.get_stage_state_for_kpl(kpl)
+            item = {
+                **position,
+                'kpl': kpl,
+                'stage_state': stage_state,
+                'mk_state': None,
+                'result': 'stages_in_progress',
+            }
+
+            if stage_state.get('configuration_error'):
+                item['result'] = 'stage_data_error'
+                evaluations.append(item)
+                continue
+
+            if not stage_state['all_closed']:
+                evaluations.append(item)
+                continue
+
+            mk_state = self.load_mk_state_for_kpl(kpl)
+            item['mk_state'] = mk_state
+            if not mk_state['all_closed']:
+                item['result'] = 'blocked_by_mk' if mk_state['mk_count'] else 'mk_not_found'
+                evaluations.append(item)
+                continue
+
+            item['result'] = 'ready_to_finish'
+            evaluations.append(item)
+
+        ready_kpl = [
+            item['kpl'] for item in evaluations
+            if item['result'] == 'ready_to_finish'
         ]
-        if positions:
-            lines.extend(['', f'[B]Связанные позиции календарного плана: {len(positions)}[/B]'])
-            max_pos = 8
-            for position in positions[:max_pos]:
-                lines.append(
-                    f'• КПЛ {position.get("НомПл") or "—"} | '
-                    f'партия {position.get("НомПартии_ЗП") or "—"} | '
-                    f'количество {position.get("Количество") or "—"} | '
-                    f'позиция {position.get("Позиция") or "—"}'
+        if allow_write:
+            if not self.finish_plan_positions(ready_kpl, is_test=is_test):
+                raise ConnectionError(
+                    f'Не удалось перевести позиции КПЛ {ready_kpl} в статус «Завершена»'
                 )
-            if len(positions) > max_pos:
-                lines.append(f'...и ещё {len(positions) - max_pos} позиций.')
+
+        final_result = 'would_finish' if is_test else 'finished'
+        for item in evaluations:
+            if item['result'] == 'ready_to_finish':
+                item['result'] = final_result
+
+        return evaluations
+
+    def get_stage_subdocs(self, stage_reference: str = '1083b3ab-873c-11f0-a44a-30e1716be59f'):
+        from project_cust_38 import api_erp_commands as APIERP
+
+        query = """
+ВЫБРАТЬ
+	СУММА(ДвижениеПродукцииИМатериаловПродукция.Количество) КАК КоличествоНоменклатуры,
+	УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ДвижениеПродукцииИМатериаловПродукция.Номенклатура.Ссылка) КАК Номенклатура_Key
+ИЗ
+	Документ.ДвижениеПродукцииИМатериалов КАК ДвижениеПродукцииИМатериалов
+		ЛЕВОЕ СОЕДИНЕНИЕ Документ.ЭтапПроизводства2_2 КАК ЭтапПроизводства2_2
+		ПО (ДвижениеПродукцииИМатериалов.Распоряжение = ЭтапПроизводства2_2.Ссылка)
+	ЛЕВОЕ СОЕДИНЕНИЕ Документ.ДвижениеПродукцииИМатериалов.Товары КАК ДвижениеПродукцииИМатериаловПродукция
+		ПО (ДвижениеПродукцииИМатериаловПродукция.Ссылка = ДвижениеПродукцииИМатериалов.Ссылка)
+ГДЕ
+	ЭтапПроизводства2_2.Ссылка = &ЭтапПроизводства
+	И ЭтапПроизводства2_2.ПометкаУдаления = ЛОЖЬ
+	И ЭтапПроизводства2_2.Проведен = ИСТИНА
+	И ДвижениеПродукцииИМатериалов.Проведен = ИСТИНА
+	И ДвижениеПродукцииИМатериалов.ПометкаУдаления = ЛОЖЬ
+	И ДвижениеПродукцииИМатериалов.ХозяйственнаяОперация = Значение(Перечисление.ХозяйственныеОперации.ПередачаПродукцииИзПроизводства)
+	И ДвижениеПродукцииИМатериалов.Статус = ЗНАЧЕНИЕ(Перечисление.СтатусыДвиженияПродукцииИМатериалов.Принято)
+	И ЭтапПроизводства2_2.Статус = ЗНАЧЕНИЕ(Перечисление.СтатусыЭтаповПроизводства2_2.Завершен)
+СГРУППИРОВАТЬ ПО
+	УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ДвижениеПродукцииИМатериаловПродукция.Номенклатура.Ссылка)
+        """
+
+        refs = APIERP.Refs_wet(text_req=query)
+        refs.add_ref(
+            APIERP.Ref_wet('ЭтапПроизводства', 'Документы.ЭтапПроизводства2_2', stage_reference))
+        # refs.add_ref(
+            # APIERP.Ref_wet('Номенклатура', 'Справочники.Номенклатура', nomen_reference))
+
+        response = APIERP.get_wet_request(query, refs=refs)
+        match response:
+            case (200, {'data': [*elements]}):
+                return elements
+            case _:
+                return None
+
+    def build_completion_message(
+            self,
+            order_row: dict,
+            evaluations: list[dict],
+            *,
+            stage_credentials: StageCredentials,
+            is_test: bool = False,
+            allow_write: bool = True
+    ) -> str | None:
+        finished = [item for item in evaluations if item['result'] in ('finished', 'would_finish')]
+        blocked = [item for item in evaluations if item['result'] in ('blocked_by_mk', 'mk_not_found', 'stage_data_error')]
+
+        if not finished and not blocked:
+            return None
+
+        # title = '[B]ERP → MES: контроль завершения позиций КПЛ[/B]'
+        # title = f'[B]По {order_row.get("№ERP") or "—"} создан документ "Передача продукции из производства"[/B]'
+        title = f'[B]По этапу {stage_credentials.number}({stage_credentials.stage_name}) создан документ "Передача продукции из производства"[/B]'
+
+        if is_test:
+            title = f'[B][TEST]По этапу {stage_credentials.number}({stage_credentials.stage_name}) создан документ "Передача продукции из производства"[/B]'
+
+        lines = [
+            title,
+            f'>> ЗП: {order_row.get("№ERP") or "—"}',
+            f'>> Проект: {order_row.get("№проекта") or "—"}',
+        ]
+
+        if finished and allow_write:
+            lines.extend([
+                '',
+                '[B]В статус «Завершена» были переведены следующие позиции:[/B]'])
+            for item in finished:
+                lines.append(
+                    f'• КПЛ {item["kpl"]} | позиция {item.get("Позиция") or "—"}. '
+                )
+
+        if blocked:
+            sublines = ['']
+            if allow_write:
+                sublines = [
+                    '',
+                    '[B]Следующие позиции не были автоматически переведены в статус «Завершен», поскольку по ним остаются незакрытые МК:[/B]'
+                ]
+            for item in blocked:
+                if item['result'] == 'stage_data_error':
+                #     sublines.append(
+                #         f'• КПЛ {item["kpl"]} | позиция {item.get("Позиция") or "—"}: '
+                #         'не удалось определить этапы ERP. Проверьте связь позиции с ЗП и номенклатурой.'
+                #     )
+                    continue
+                #
+                if item['result'] == 'mk_not_found':
+                #     sublines.append(
+                #         f'• КПЛ {item["kpl"]} | позиция {item.get("Позиция") or "—"}: '
+                #         'этапы ERP закрыты, но МК не найдены.'
+                #     )
+                    continue
+
+                open_mk = item['mk_state']['open_mk']
+                mk_numbers = ', '.join(str(mk.get('Пномер')) for mk in open_mk) or '—'
+                # suffix = '' if len(open_mk) <= 10 else f' и ещё {len(open_mk) - 10}'
+                sublines.append(
+                    f'• КПЛ {item["kpl"]} | позиция {item.get("Позиция") or "—"}: '
+                    f'этапы ERP закрыты, но остались незакрытые МК:\n>> {mk_numbers}'
+                )
+            if len(sublines) > 1:
+                lines.extend(sublines)
+
         return '\n'.join(lines)
 
+    def send_message(self, task: Task, message: str | None) -> bool | None:
+        if not message:
+            return None
 
-    def send_production_change_message(self, task: Task, message: str) -> bool | None:
         chat_id = TEST_CHAT if task.is_test else task.chat_id
         if not chat_id:
             logger.info(
-                '[ERP_PRODUCTION_CHANGE] Чат Битрикс не настроен. '
-                'Сообщение сохранено только в журнале:\n%s',
+                '[ERP_STAGE_COMPLETION] Чат не настроен. Сообщение:\n%s',
                 message,
             )
             return None
+
         try:
-            result = CB24.B24Sender().send_msg_by_chat_id(chat_id=chat_id, msg=message)
-            return bool(result)
+            return bool(CB24.B24Sender().send_msg_by_chat_id(chat_id=chat_id, msg=message))
         except Exception as ex:
             logger.error(
-                '[ERP_PRODUCTION_CHANGE] Ошибка отправки сообщения в Битрикс',
+                '[ERP_STAGE_COMPLETION] Ошибка отправки сообщения в Битрикс',
                 exc_info=ex,
                 stack_info=True,
             )
             return False
 
-    def load_erp_production_order_quantities(self, order_ref_key: str) -> list[dict]:
-        """Читает из ERP только номер строки и количество табличной части «Продукция»."""
-        from project_cust_38 import api_erp_commands as APIERP
-
-        request_text = """
-            ВЫБРАТЬ
-                ЗаказНаПроизводство2_2Продукция.НомерСтроки КАК LineNumber,
-                ЗаказНаПроизводство2_2Продукция.Количество КАК Количество
-            ИЗ
-                Документ.ЗаказНаПроизводство2_2.Продукция
-                    КАК ЗаказНаПроизводство2_2Продукция
-            ГДЕ
-                ЗаказНаПроизводство2_2Продукция.Ссылка = &Ссылка
-            УПОРЯДОЧИТЬ ПО
-                ЗаказНаПроизводство2_2Продукция.НомерСтроки
-        """
-
-        refs = APIERP.Refs_wet(request_text)
-        refs.add_ref(
-            APIERP.Ref_wet(
-                name_var='Ссылка',
-                path_conf_1c='Документы.ЗаказНаПроизводство2_2',
-                ref_key=order_ref_key,
-            )
-        )
-        code, response = APIERP.get_wet_request(
-            request_text,
-            refs,
-            lazy_method_huours=0,
-        )
-        if code != 200:
-            raise ConnectionError(
-                f'Ошибка чтения табличной части ЗП из ERP. Код ответа: {code}; ответ: {response}'
-            )
-        if not isinstance(response, dict):
-            raise TypeError(
-                'Некорректный ответ ERP по табличной части ЗП: '
-                f'ожидался dict, получен {type(response).__name__}'
-            )
-
-        rows = response.get('data')
-        if not isinstance(rows, list):
-            raise TypeError('В ответе ERP отсутствует список data по табличной части ЗП')
-
-        result = []
-        for sequence, row in enumerate(rows, start=1):
-            if not isinstance(row, dict):
-                raise TypeError(
-                    'Некорректная строка табличной части ЗП: '
-                    f'ожидался dict, получен {type(row).__name__}'
-                )
-            try:
-                source_position = int(row.get('LineNumber'))
-            except (TypeError, ValueError):
-                source_position = sequence
-            result.append({
-                'sequence': sequence,
-                'source_position': source_position,
-                'quantity': self.normalize_production_quantity(row.get('Количество')),
-            })
-
-        return sorted(result, key=lambda item: (item['source_position'], item['sequence']))
-
-    def normalize_production_quantity(self, value: Any) -> Decimal:
-        text_value = str(0 if value is None else value).strip().replace(',', '.')
-        if text_value == '':
-            text_value = '0'
-        try:
-            return Decimal(text_value).normalize()
-        except (InvalidOperation, ValueError) as ex:
-            raise ValueError(f'Некорректное количество продукции: {value!r}') from ex
-
-    def load_mes_production_order_quantities(self, order_s_num: int) -> list[dict]:
-        rows = CSQ.custom_request_c(
-            CFG.Config.project.db_kplan,
-            """
-            SELECT
-                пл_оуп.НомПл,
-                пл_оуп.НомПартии_ЗП,
-                пл_оуп.Количество,
-                пл_оуп.№проекта,
-                plan.Позиция
-            FROM пл_оуп
-            LEFT JOIN plan
-                   ON plan.Пномер = пл_оуп.НомПл
-            WHERE пл_оуп.Пномер_ЗП = ?
-            ORDER BY
-                CASE
-                    WHEN пл_оуп.НомПартии_ЗП IS NULL
-                         OR TRIM(CAST(пл_оуп.НомПартии_ЗП AS TEXT)) = ''
-                    THEN 1 ELSE 0
-                END,
-                CAST(пл_оуп.НомПартии_ЗП AS INTEGER),
-                пл_оуп.НомПл;
-            """,
-            list_of_lists_c=[order_s_num],
-            rez_dict=True,
-            debug=DEBUG
-        )
-        if not isinstance(rows, list):
-            raise ConnectionError('Не удалось прочитать связанные позиции ЗП из MES')
-
-        result = []
-        for sequence, row in enumerate(rows, start=1):
-            source_position = row.get('НомПартии_ЗП')
-            try:
-                source_position = int(source_position)
-            except (TypeError, ValueError):
-                source_position = None
-            result.append({
-                'sequence': sequence,
-                'source_position': source_position,
-                'quantity': self.normalize_production_quantity(row.get('Количество')),
-                'kpl': row.get('НомПл'),
-                'project': row.get('№проекта'),
-                'plan_position': row.get('Позиция'),
-            })
-        return result
-
-    def compare_production_order_quantities(
-            self,
-            erp_lines: list[dict],
-            mes_lines: list[dict],
-    ) -> ProductionOrderQuantityDiff:
-        erp_total = sum((row['quantity'] for row in erp_lines), start=Decimal(0))
-        mes_total = sum((row['quantity'] for row in mes_lines), start=Decimal(0))
-
-        erp_control = self.calc_production_quantity_control(erp_lines)
-        mes_control = self.calc_production_quantity_control(mes_lines)
-
-        row_count_changed = erp_control['row_count'] != mes_control['row_count']
-        total_changed = erp_total != mes_total
-        qty_x10_changed = erp_control['qty_x10_sum'] != mes_control['qty_x10_sum']
-        position_qty_x10_changed = (
-                erp_control['position_qty_x10_sum'] != mes_control['position_qty_x10_sum']
-        )
-
-        changes = []
-        max_count = max(len(erp_lines), len(mes_lines))
-        for index in range(max_count):
-            erp_row = erp_lines[index] if index < len(erp_lines) else None
-            mes_row = mes_lines[index] if index < len(mes_lines) else None
-
-            if erp_row is None:
-                changes.append({
-                    'kind': 'missing_in_erp',
-                    'sequence': index + 1,
-                    'erp_quantity': None,
-                    'mes_quantity': mes_row['quantity'],
-                    'erp_position': None,
-                    'mes_position': mes_row.get('source_position'),
-                    'kpl': mes_row.get('kpl'),
-                    'project': mes_row.get('project'),
-                    'plan_position': mes_row.get('plan_position'),
-                })
-                continue
-
-            if mes_row is None:
-                changes.append({
-                    'kind': 'missing_in_mes',
-                    'sequence': index + 1,
-                    'erp_quantity': erp_row['quantity'],
-                    'mes_quantity': None,
-                    'erp_position': erp_row.get('source_position'),
-                    'mes_position': None,
-                    'kpl': None,
-                    'project': None,
-                    'plan_position': None,
-                })
-                continue
-
-            if erp_row['quantity'] != mes_row['quantity']:
-                changes.append({
-                    'kind': 'quantity_changed',
-                    'sequence': index + 1,
-                    'erp_quantity': erp_row['quantity'],
-                    'mes_quantity': mes_row['quantity'],
-                    'erp_position': erp_row.get('source_position'),
-                    'mes_position': mes_row.get('source_position'),
-                    'kpl': mes_row.get('kpl'),
-                    'project': mes_row.get('project'),
-                    'plan_position': mes_row.get('plan_position'),
-                })
-
-        # Баллы нужны только для быстрой оценки масштаба события в сообщении.
-        # 3 — изменилось число строк, 2 — изменилась общая контрольная сумма,
-        # 2 — изменилось распределение количества по порядку, 1 — каждое
-        # конкретное отличие по порядковой позиции.
-        score = (
-                abs(len(erp_lines) - len(mes_lines)) * 3
-                + int(qty_x10_changed) * 2
-                + int(position_qty_x10_changed) * 2
-                + len(changes)
-        )
-        return ProductionOrderQuantityDiff(
-            changed=bool(row_count_changed or qty_x10_changed or position_qty_x10_changed or changes),
-            score=score,
-            erp_lines=tuple(erp_lines),
-            mes_lines=tuple(mes_lines),
-            erp_total=erp_total,
-            mes_total=mes_total,
-            erp_qty_x10_sum=erp_control['qty_x10_sum'],
-            mes_qty_x10_sum=mes_control['qty_x10_sum'],
-            erp_position_qty_x10_sum=erp_control['position_qty_x10_sum'],
-            mes_position_qty_x10_sum=mes_control['position_qty_x10_sum'],
-            row_count_changed=row_count_changed,
-            total_changed=total_changed,
-            qty_x10_changed=qty_x10_changed,
-            position_qty_x10_changed=position_qty_x10_changed,
-            line_changes=tuple(changes),
-        )
-
-    def quantity_to_text(self, value: Decimal | Any) -> str:
-        try:
-            decimal_value = value if isinstance(value, Decimal) else self.normalize_production_quantity(value)
-            if decimal_value == decimal_value.to_integral():
-                return str(int(decimal_value))
-            return format(decimal_value, 'f').rstrip('0').rstrip('.')
-        except Exception:
-            return str(value)
-
-    def quantity_x10_mark(self, value: Decimal | Any) -> Decimal:
-        quantity = value if isinstance(value, Decimal) else self.normalize_production_quantity(value)
-        return (quantity * PRODUCTION_QTY_CONTROL_SCALE).normalize()
-
-    def calc_production_quantity_control(self, lines: list[dict]) -> dict[str, Decimal | int]:
-        qty_x10_sum = Decimal(0)
-        position_qty_x10_sum = Decimal(0)
-
-        for position, row in enumerate(lines, start=1):
-            mark = self.quantity_x10_mark(row.get('quantity'))
-            qty_x10_sum += mark
-            position_qty_x10_sum += Decimal(position) * mark
-
-        return {
-            'row_count': len(lines),
-            'qty_x10_sum': qty_x10_sum.normalize(),
-            'position_qty_x10_sum': position_qty_x10_sum.normalize(),
-        }
-
-    def build_order_quantity_change_message(
-            self,
-            credentials: dict,
-            order_row: dict,
-            diff: ProductionOrderQuantityDiff,
-            previous_status: Any,
-    ) -> str:
-        lines = [
-            '[B]ERP → MES: Изменение количества продукции документе "Заказ на производство"[/B]',
-            '',
-            f'№ERP: {order_row.get("№ERP") or "—"}',
-            f'Проект: {order_row.get("№проекта") or "—"}',
-        ]
-
-        if diff.line_changes:
-            lines.extend(['', '[B]Различия по порядковым позициям:[/B]'])
-
-        lines.extend([
-            '',
-            '[B]Оператору производственного учёта / ПДО:[/B]',
-            '1. Проверить состав этапов по ЗП.',
-            '2. Корректность номера партии пл_оуп.НомПартии_ЗП',
-            '3. Проверить соответствие строк ЗП позициям КПЛ'
-        ])
-        return '\n'.join(lines)
-
-
-    def production_change_diff_payload(self, diff: ProductionOrderQuantityDiff) -> dict:
-        """Преобразует Decimal в простой сериализуемый результат endpoint."""
-        line_changes = []
-        for change in diff.line_changes:
-            row = dict(change)
-            for key in ('erp_quantity', 'mes_quantity'):
-                if row.get(key) is not None:
-                    row[key] = self.quantity_to_text(row[key])
-            line_changes.append(row)
-        return {
-            'changed': diff.changed,
-            'score': diff.score,
-            'erp_row_count': len(diff.erp_lines),
-            'mes_row_count': len(diff.mes_lines),
-            'erp_total_quantity': self.quantity_to_text(diff.erp_total),
-            'mes_total_quantity': self.quantity_to_text(diff.mes_total),
-            'erp_qty_x10_sum': self.quantity_to_text(diff.erp_qty_x10_sum),
-            'mes_qty_x10_sum': self.quantity_to_text(diff.mes_qty_x10_sum),
-            'erp_position_qty_x10_sum': self.quantity_to_text(diff.erp_position_qty_x10_sum),
-            'mes_position_qty_x10_sum': self.quantity_to_text(diff.mes_position_qty_x10_sum),
-            'row_count_changed': diff.row_count_changed,
-            'total_changed': diff.total_changed,
-            'qty_x10_changed': diff.qty_x10_changed,
-            'position_qty_x10_changed': diff.position_qty_x10_changed,
-            'line_changes': line_changes,
-            'comparison_basis': (
-                'Количество строк, Σ(Количество×10), Σ(Порядок×Количество×10) '
-                'и количество по порядковым позициям; наименование номенклатуры не сравнивается'
-            ),
-        }
-
-
+class StageHandlerTask(Task):
+    allow_write = True
+MESSAGES = {}
 # Обработчик ЗНПР/Этапы знпр
-def process_erp_production_change(task: Task) -> bool:
+def process_erp_production_change(task: StageHandlerTask) -> bool:
+    global MESSAGES
+    task.allow_write = True
+
     credentials = dict(task.credentials or {})
     object_name = credentials.get('obj_full_name')
     handler = ProductionOrderEventHandler()
+
+
     base_result = {
         'state': 'processing',
         'ok': False,
         'event_type': object_name,
         'object_guid': credentials.get('GUID'),
     }
-    if object_name == ERP_PRODUCTION_STAGE_OBJECT:
-        base_result['stage_ref_key'] = credentials.get('GUID')
-        base_result['order_ref_key_source'] = (
-            'event.order_GUID' if credentials.get('order_GUID') else 'stage.Распоряжение_Key'
-        )
+    if credentials.get('status') != 'Завершен':
+        handler.save_task_result(task, {
+            **base_result,
+            'state': 'ignored',
+            'ok': True,
+            'detail': 'Событие не имеет статус завершения',
+        })
+        return True
+    if object_name == ERP_PRODUCTION_ORDER_OBJECT:
+        handler.save_task_result(task, {
+            **base_result,
+            'state': 'ignored',
+            'ok': True,
+            'detail': 'Событие заказа на производство не требует обработки',
+        })
+        return True
+
+    if object_name != ERP_PRODUCTION_STAGE_OBJECT:
+        handler.save_task_result(task, {
+            **base_result,
+            'state': 'rejected',
+            'error': f'Неизвестный тип производственного события: {object_name!r}',
+        })
+        return True
 
     try:
-        try:
-            order_ref_key = handler.resolve_order_ref_key_from_production_event(credentials)
-        except ValueError as ex:
-            handler.save_production_change_task_result(task, {
+        stage_credentials = handler.resolve_order_ref_key_from_stage_event(credentials)
+        base_result['order_ref_key'] = stage_credentials.order_key
+
+        positions = handler.load_open_mes_positions(stage_credentials.order_key, stage_credentials.nomen_key)
+        if not positions:
+            handler.save_task_result(task, {
                 **base_result,
-                'state': 'rejected',
-                'error': str(ex),
-                'detail': 'Событие отклонено из-за некорректных входных данных',
+                'state': 'completed',
+                'ok': True,
+                'positions_checked': 0,
+                'detail': 'У ЗП нет незавершённых позиций календарного плана',
+            })
+            return True
+        mes_nomen_counter = collections.defaultdict(int)
+        stage_reference = credentials.get('GUID')
+        kpl_to_edit = set()
+        for position in positions:
+            nomen_ref = position['Номенклатура_ЕРП_ref']
+            if F.is_unique_identifier(nomen_ref):
+                nomen_count = position['Количество']
+                mes_nomen_counter[nomen_ref] += F.valm(nomen_count)
+                kpl_to_edit.add(position['НомПл'])
+            else:
+                handler.save_task_result(task, {
+                    **base_result,
+                    'state': 'skipped',
+                    'ok': True,
+                    'credential_mes': position,
+                    'detail': 'Не удалось определить ref_key номенклатуры',
+                })
+                logging.warning(f'Найдена некорректная ссылка номенклатуры строка: {position}')
+                return False
+
+        out_doc_nomens = handler.get_stage_subdocs(stage_reference)
+        if out_doc_nomens is None:
+            logger.warning(f'Некорректный ответ от 1с по поиску этапа производства: {stage_reference!r}')
+            return False
+        _1c_count_by_nomen = F.deploy_dict_c(out_doc_nomens, 'Номенклатура_Key')
+        for nomen_ref, count in _1c_count_by_nomen.items():
+            if nomen_ref in mes_nomen_counter and F.valm(mes_nomen_counter[nomen_ref]) == F.valm(count):
+                mes_nomen_counter.pop(nomen_ref)
+        if mes_nomen_counter:
+            handler.save_task_result(task, {
+                **base_result,
+                'credential_1c': _1c_count_by_nomen,
+                'credential_mes': mes_nomen_counter,
+                'state': 'skipped',
+                'ok': True,
+                'detail': 'Суммы позиций к номенклатурам не совпали',
             })
             return True
 
-        base_result['order_ref_key'] = order_ref_key
-        order_row = handler.find_mes_production_order(order_ref_key)
-
-        if order_row is None:
-            result = {
+        order_row = positions[0]
+        num_erp = str(order_row.get('№ERP') or '')
+        task_prefix = num_erp[:2]
+        if task_prefix == 'КЭ':
+            task.allow_write = False
+        if task_prefix == 'ТК':
+            handler.save_task_result(task, {
                 **base_result,
-                'state': 'completed',
+                'credential_1c': _1c_count_by_nomen,
+                'credential_mes': mes_nomen_counter,
+                'state': 'skipped',
                 'ok': True,
-                'matched_order': False,
-                'confirmed_change': False,
-                'refresh_marked': False,
-                'notification_sent': False,
-                'notification_skipped': True,
-                'detail': 'ЗП по Ref_Key не найдена в MES',
-            }
-            handler.save_production_change_task_result(task, result, chat_accepted=True)
-            return True
-
-        order_s_num = int(order_row['s_num'])
-        previous_status = order_row.get('Этапы_ЕРП')
-        num_erp = order_row.get('№ERP') or ''
-        base_result.update({
-            'matched_order': True,
-            'order_s_num': order_s_num,
-            'order_number': num_erp,
-            'project': order_row.get('№проекта'),
-            'previous_status': previous_status,
-        })
-        chat_id = get_chat_id_by_document_prefix(prefix=num_erp[:2], chat_action='Занесение новых проектов в МЕС')
-        if not chat_id:
-            result = {
-                **base_result,
-                'state': 'completed',
-                'ok': True,
-                'matched_order': False,
-                'confirmed_change': False,
-                'refresh_marked': False,
-                'notification_sent': False,
-                'notification_skipped': True,
-                'detail': 'Не найден чат для оповещения',
-            }
-            handler.save_production_change_task_result(task, result, chat_accepted=True)
-            return True
-        task.chat_id = chat_id
-        if object_name == ERP_PRODUCTION_STAGE_OBJECT:
-            if not handler.mark_production_stages_need_refresh(order_s_num, is_test=task.is_test):
-                raise ConnectionError('Не удалось установить Этапы_ЕРП = 1')
-
-            positions = handler.load_mes_production_positions(order_s_num)
-            message = handler.build_stage_change_message(
-                credentials,
-                order_row,
-                positions,
-                previous_status,
-            )
-            notified = handler.send_production_change_message(task, message)
-            delivery_ok = notified is not False
-            notification_sent = notified is True
-            result = {
-                **base_result,
-                'state': 'completed' if delivery_ok else 'retrying',
-                'ok': True,
-                'confirmed_change': True,
-                'refresh_marked': True,
-                'current_status': ERP_STAGES_NEED_REFRESH,
-                'affected_positions': len(positions),
-                'notification_sent': notification_sent,
-                'notification_skipped': notified is None,
-                'detail': (
-                    'Изменение этапа принято; снимок этапов поставлен '
-                    'на повторную загрузку'
-                ),
-            }
-            handler.save_production_change_task_result(task, result, chat_accepted=notification_sent)
-            return delivery_ok
-
-        erp_lines = handler.load_erp_production_order_quantities(order_ref_key)
-        mes_lines = handler.load_mes_production_order_quantities(order_s_num)
-        diff = handler.compare_production_order_quantities(erp_lines, mes_lines)
-        comparison = handler.production_change_diff_payload(diff)
-
-        if not diff.changed:
-            logger.info(
-                '[ERP_PRODUCTION_CHANGE] ЗП %s была записана в ERP, '
-                'но количество продукции по порядковым строкам не изменилось',
-                order_row.get('№ERP') or order_ref_key,
-            )
-            handler.save_production_change_task_result(task, {
-                **base_result,
-                'state': 'completed',
-                'ok': True,
-                'confirmed_change': False,
-                'refresh_marked': False,
-                'notification_sent': False,
-                'comparison': comparison,
-                'detail': (
-                    'ЗП записана в ERP, но контрольные суммы количества '
-                    'между ERP и MES не изменились'
-                ),
+                'detail': 'Пропуск документов Таткуза',
             })
             return True
+        # if not task.chat_id and num_erp:
+        #     try:
+        #         task.chat_id = get_chat_id_by_document_prefix(
+        #             prefix=num_erp[:2],
+        #             chat_action='Занесение новых проектов в МЕС',
+        #         )
+        #     except Exception as ex:
+        #         logger.warning(
+        #             '[ERP_STAGE_COMPLETION] Не удалось определить чат для ЗП %s: %s',
+        #             num_erp,
+        #             ex,
+        #         )
 
-        if not handler.mark_production_stages_need_refresh(order_s_num, is_test=task.is_test):
-            raise ConnectionError('Не удалось установить Этапы_ЕРП = 1')
-
-        message = handler.build_order_quantity_change_message(
-            credentials,
+        evaluations = handler.evaluate_positions(positions, is_test=task.is_test, allow_write=task.allow_write)
+        message = handler.build_completion_message(
             order_row,
-            diff,
-            previous_status,
+            evaluations,
+            stage_credentials=stage_credentials,
+            is_test=task.is_test,
+            allow_write=task.allow_write,
         )
-        notified = handler.send_production_change_message(task, message)
-        delivery_ok = notified is not False
-        notification_sent = notified is True
+        if message not in MESSAGES:
+            notified = handler.send_message(task, message)
+            if notified:
+                MESSAGES[message] = True
+        else:
+            notified = True
+        compact_results = []
+        for item in evaluations:
+            compact_results.append({
+                'kpl': item['kpl'],
+                'position': item.get('Позиция'),
+                'result': item['result'],
+                'stages_count': item['stage_state']['stages_count'],
+                'open_stages_count': len(item['stage_state']['open_stages']),
+                'mk_count': (item['mk_state'] or {}).get('mk_count'),
+                'open_mk_count': len((item['mk_state'] or {}).get('open_mk', [])),
+                'stage_data_error': item['stage_state'].get('configuration_error'),
+            })
+
+        finished_count = sum(
+            1 for item in evaluations
+            if item['result'] in ('finished', 'would_finish')
+        )
+        blocked_by_mk_count = sum(
+            1 for item in evaluations
+            if item['result'] in ('blocked_by_mk', 'mk_not_found')
+        )
+        stage_data_error_count = sum(
+            1 for item in evaluations
+            if item['result'] == 'stage_data_error'
+        )
+
         result = {
             **base_result,
-            'state': 'completed' if delivery_ok else 'retrying',
+            'state': 'completed',
             'ok': True,
-            'confirmed_change': True,
-            'refresh_marked': True,
-            'current_status': ERP_STAGES_NEED_REFRESH,
-            'affected_positions': len(mes_lines),
-            'notification_sent': notification_sent,
+            'positions_checked': len(evaluations),
+            'positions_finished': finished_count,
+            'positions_blocked_by_mk': blocked_by_mk_count,
+            'positions_with_stage_data_error': stage_data_error_count,
+            'notification_sent': notified is True,
             'notification_skipped': notified is None,
-            'comparison': comparison,
+            'notification_failed': notified is False,
+            'positions': compact_results,
             'detail': (
-                'Изменение количества подтверждено; этапы поставлены '
-                'на повторную загрузку'
+                f'Проверено позиций: {len(evaluations)}; '
+                f'завершено: {finished_count}; '
+                f'ожидают закрытия МК: {blocked_by_mk_count}; '
+                f'ошибок связи этапов: {stage_data_error_count}'
             ),
         }
-        handler.save_production_change_task_result(task, result, chat_accepted=notification_sent)
-        return delivery_ok
+        handler.save_task_result(task, result, chat_accepted=notified is True)
+        return True
+
+    except ValueError as ex:
+        handler.save_task_result(task, {
+            **base_result,
+            'state': 'rejected',
+            'ok': False,
+            'error': str(ex),
+            'detail': 'Событие невозможно обработать из-за входных данных или связей ERP',
+        })
+        return True
 
     except Exception as ex:
         logger.error(
-            '[ERP_PRODUCTION_CHANGE] Ошибка обработки производственного события',
+            '[ERP_STAGE_COMPLETION] Ошибка обработки события этапа',
             exc_info=ex,
             stack_info=True,
         )
-        handler.save_production_change_task_result(task, {
+        handler.save_task_result(task, {
             **base_result,
             'state': 'retrying',
             'ok': False,
             'error': str(ex),
-            'detail': 'Временная ошибка обработки; служба повторит задачу',
+            'detail': 'Временная ошибка обработки; задача будет повторена',
         })
         return False
+
+
+class TaskHandler:
+    producer: typing.Callable[[str, B24Bucket], list]
+    consumer: typing.Callable[[Task], bool]
+    check: bool
+    chat_id: None # todo переделать на callable
+    interval: int
+    new_task_format: bool
+    services: dict = None
+
 
 commands = {
     'bitrix24.Сделка.Завершение': {
@@ -3326,13 +3324,24 @@ commands = {
         'producer': None,
         'consumer': process_erp_production_change,
         'check': True,
-        'chat_id': '',
-        'interval': 60,
+        'chat_id': 'chat104902',
+        'interval': 60 * 60,
         'new_task_format': True,
         'services': None,
-    },
-
+    }
 }
+#
+# commands = {
+#     'MES.ERP/ЗП.Этапы.КонтрольИзменений': {
+#         'producer': None,
+#         'consumer': process_erp_production_change,
+#         'check': True,
+#         'chat_id': 'chat104902',
+#         'interval': 60 * 60,
+#         'new_task_format': True,
+#         'services': None,
+#     }
+# }
 
 def check_commands():
     return
@@ -3402,6 +3411,8 @@ def check_values():
 
 def handle_tasks():
     logging.info('Выполнение накопленных событий...')
+    global MESSAGES
+    MESSAGES.clear()
     for queue, (fn_info, fn_handle, check, chat_key, interval, new_task_format, services_key) in commands.items():
         logging.info(f'[{queue}]Старт обработки')
         query = f'SELECT * FROM exchange WHERE queue = {queue!r} AND (finished IN ("", 0) OR finished IS NULL)'

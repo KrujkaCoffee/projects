@@ -245,16 +245,20 @@ def save_red_tree(self: mywindow):
         tree_instance = TreeKnotList(list_of_dicts)
         for i, branch in enumerate(tree_instance): # type: TreeKnotBranch
             item = branch.item
-            weight = item['Масса/М1,М2,М3'].split("/")
-            if len(weight) <= 1 or weight[1] == '':
-                wei_col = CQT.num_col_by_name_c(self.ui.tbl_red_tree, 'Масса/М1,М2,М3')
-                item['Масса/М1,М2,М3'] = '//'
-                self.ui.tbl_red_tree.item(i, wei_col).setText('//')
+
             template = {
                 'Строка': i + 1,
                 'Наименование': item['Наименование'],
                 'Обозначение': item['Обозначение'],
             }
+            weight = item['Масса/М1,М2,М3'].split("/")
+            if branch.summ == 0:
+                list_of_errs.append({**template, "Ошибка": "Вес равен нулю"})
+            if len(weight) <= 1 or weight[1] == '':
+                wei_col = CQT.num_col_by_name_c(self.ui.tbl_red_tree, 'Масса/М1,М2,М3')
+                item['Масса/М1,М2,М3'] = '//'
+                self.ui.tbl_red_tree.item(i, wei_col).setText('//')
+
             if not is_simple:
                 if 'Не найден в БД' in item['Наименование_аналог']:
                     list_of_errs.append({**template, "Ошибка": "не найден аналог в номенклатуре ДСЕ"})

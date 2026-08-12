@@ -12941,7 +12941,9 @@ class InteractiveLabelInstance(QtCore.QObject):
 
     def eventFilter(self, obj: QtCore.QObject, event: QtCore.QEvent) -> bool:
         event_type = event.type()
-        if obj is self.table and event.type() == QEvent.Paint and self.grab_style_from_cell and self.cell_item:
+        get_self_attr = lambda attr: getattr(self, attr, None)
+
+        if obj is get_self_attr('table') and event.type() == QEvent.Paint and self.grab_style_from_cell and self.cell_item:
 
             item: QtWidgets.QTableWidgetItem = self.cell_item
 
@@ -12952,7 +12954,7 @@ class InteractiveLabelInstance(QtCore.QObject):
                 self._last_bg_color, self._last_text_color = back_color, font_color
                 self.label.setStyleSheet(f'background-color: {back_color.name()}; color: {font_color.name()}')
 
-        if obj is self.editor:
+        if obj is get_self_attr('editor'):
             if event_type == QtCore.QEvent.KeyPress:
                 key_event: QtGui.QKeyEvent = event
                 key = key_event.key()
@@ -12975,7 +12977,7 @@ class InteractiveLabelInstance(QtCore.QObject):
                 QtCore.QTimer.singleShot(0, self.commit_edit)
                 return False
 
-        if obj in (self.label, self.container):
+        if obj in (get_self_attr('label'), get_self_attr('container')):
             if (
                     event_type == QtCore.QEvent.MouseButtonDblClick
                     and self.config.start_on_double_click
@@ -12984,7 +12986,7 @@ class InteractiveLabelInstance(QtCore.QObject):
                 if mouse_event.button() == QtCore.Qt.LeftButton:
                     return self.start_edit()
 
-        if self.config.start_on_f2 and event_type == QtCore.QEvent.KeyPress:
+        if get_self_attr('config') and self.config.start_on_f2 and event_type == QtCore.QEvent.KeyPress:
             key_event: QtGui.QKeyEvent = event
             if key_event.key() == QtCore.Qt.Key_F2 and self._table_current_cell_is_this():
                 return self.start_edit()

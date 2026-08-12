@@ -224,7 +224,7 @@ class mywindow(QtWidgets.QMainWindow):
             CQT.msgbox(f'база нарядов занята')
             quit()
         rez = self.DICT_KOD_OPER = F.deploy_dict_c(
-            CSQ.custom_request_c(self.bd_naryad, f"""SELECT kod, name FROM operacii WHERE poki == {self.place.poki}""",
+            CSQ.custom_request_c(self.bd_naryad, f"""SELECT kod, name FROM operacii WHERE poki = {self.place.poki}""",
                                  rez_dict=True, conn=conn_naryad,
                                  cur=cur_naryad), 'name')
         if rez == False:
@@ -1260,11 +1260,11 @@ class mywindow(QtWidgets.QMainWindow):
             self.ui.cmb_nom_jur_vneplan.clear()
             self.ui.cmb_nom_jur_vneplan.addItem('')
             query = f"""SELECT jur_vnepl.Пномер, jur_vnepl.Запрос FROM jur_vnepl 
-                        INNER JOIN mk ON mk.Пномер == jur_vnepl.МК  
-                        INNER JOIN plan ON plan.Пномер == mk.НомКплан  
-                        WHERE jur_vnepl.Номер_нов_мк == 0 and  mk.Статус == 'Открыта' 
+                        INNER JOIN mk ON mk.Пномер = jur_vnepl.МК  
+                        INNER JOIN plan ON plan.Пномер = mk.НомКплан  
+                        WHERE jur_vnepl.Номер_нов_мк = 0 and  mk.Статус = 'Открыта' 
                         and  jur_vnepl.Статус != 'Отклонено' 
-                         and plan.poki == {self.place.poki};"""
+                         and plan.poki = {self.place.poki};"""
             list_vneplan = CSQ.custom_request_c(self.bd_naryad, query, one_column=False, hat_c=False, rez_dict=True,
                                                 attach_dbs=self.db_kplan)
             for i, item in enumerate(list_vneplan):
@@ -1457,7 +1457,7 @@ class mywindow(QtWidgets.QMainWindow):
         nk_nom_mk = CQT.num_col_by_name_c(tbl, 'Пномер')
         nom_mk = int(tbl.item(tbl.currentRow(), nk_nom_mk).text())
         query = f'''SELECT data, Head FROM xml 
-                WHERE Номер_мк == {int(nom_mk)}
+                WHERE Номер_мк = {int(nom_mk)}
                             '''
         rez_xml = CSQ.custom_request_c(self.db_resxml, query)
         xml = rez_xml[-1][0]
@@ -1476,7 +1476,7 @@ class mywindow(QtWidgets.QMainWindow):
             return
         nk_nom_mk = CQT.num_col_by_name_c(tbl, 'Пномер')
         nom_mk = int(tbl.item(tbl.currentRow(), nk_nom_mk).text())
-        res = CSQ.custom_request_c(self.db_resxml, f'''SELECT data FROM res WHERE Номер_мк == {nom_mk};''', hat_c=False,
+        res = CSQ.custom_request_c(self.db_resxml, f'''SELECT data FROM res WHERE Номер_мк = {nom_mk};''', hat_c=False,
                                    one=True)
         if res == False:
             CQT.msgbox(f'ОШибка')
@@ -1628,7 +1628,7 @@ class mywindow(QtWidgets.QMainWindow):
             conn, cur = CSQ.connect_bd(self.db_resxml)
             for i in range(tbl.rowCount()):
                 if not tbl.isRowHidden(i):
-                    query = f'''SELECT data FROM res WHERE Номер_мк == {int(tbl.item(i, nk_nom_mk).text())}
+                    query = f'''SELECT data FROM res WHERE Номер_мк = {int(tbl.item(i, nk_nom_mk).text())}
                                         '''
                     res = F.from_binary_pickle(CSQ.custom_request_c(self.db_resxml, query, conn)[-1][0])
                     if res == False:
@@ -1649,7 +1649,7 @@ class mywindow(QtWidgets.QMainWindow):
         tbl.scrollToBottom()
 
     def zaversh_naryad(self, nom_nar, conn):
-        custom_request_c = f'''SELECT ФИО, Фвремя, ФИО2, Фвремя2 FROM naryad WHERE Пномер == {nom_nar}'''
+        custom_request_c = f'''SELECT ФИО, Фвремя, ФИО2, Фвремя2 FROM naryad WHERE Пномер = {nom_nar}'''
         naryad = CSQ.custom_request_c(self.bd_naryad, custom_request_c, rez_dict=True, conn=conn)[0]
         flag_zav = True
         if naryad['ФИО'] == "" and naryad['ФИО2'] == "":
@@ -1768,7 +1768,7 @@ class mywindow(QtWidgets.QMainWindow):
 
         self.naryad__ = f'''SELECT mk.Пномер, mk.Тип, mk.НомКплан, naryad.Пномер as Номер_Наряда, naryad.ФИО , 
         naryad.ФИО2, naryad.Подтвержд_вып_фио  FROM mk INNER JOIN naryad ON mk.Пномер = naryad.Номер_мк WHERE
-                (naryad.ФИО != "" and naryad.Фвремя == "") or (naryad.ФИО2 != "" and naryad.Фвремя2 == "")'''
+                (naryad.ФИО != "" and naryad.Фвремя = "") or (naryad.ФИО2 != "" and naryad.Фвремя2 = "")'''
         custom_request_c = self.naryad__
         dict_nezversh_nar = CSQ.custom_request_c(self.bd_naryad, custom_request_c, rez_dict=True)
 
@@ -2062,10 +2062,12 @@ class mywindow(QtWidgets.QMainWindow):
         #TODO не учтен случай когда ЕРП РС есть, но нормы в МК меньше, и нужно увеличить не превышая ЕРП рес
 
         list_nar = CSQ.custom_request_c(USRCNF.Config.project.db_naryad,
-                    f'SELECT * FROM naryad WHERE Номер_мк == {int(nom_mk)}',rez_dict=True)
+                    f'SELECT * FROM naryad WHERE Номер_мк = {int(nom_mk)}',rez_dict=True)
         msg_error_ingr_time =  f'''введен строгий запрет на редактирование маршрутных карт в сторону 
                                                увеличения трудоемкости свыше трудоемкости указанной в рабочей
                                                ресурсной спецификации'''
+        type_recalc = ""
+
         if res:
             for i in range(0, len(res)):
                 nn = res[i]['Номенклатурный_номер'].strip()
@@ -2085,6 +2087,7 @@ class mywindow(QtWidgets.QMainWindow):
                 tech_card._update_params_oper(self.DICT_OP_NAME)
                 if vid == '' or vid == 'vrem': #05.07.25
                     tech_card.recalc_opers(list_oper_names, self.DICT_OP_NAME)
+
                 for tk_idx, tk in enumerate(tech_card.tk['bodys']):
                     for j, oper in enumerate(tk['opers']):
                         dse = res[i]
@@ -2096,7 +2099,7 @@ class mywindow(QtWidgets.QMainWindow):
                         rez_spis_doc = []
 
                         materials = []
-                        kolvo_koef = self.kol_v_uzel(res, i, 'Наименование', 'Количество', 'Уровень')
+                        kolvo_koef = self.kol_v_uzel(res, i, 'Наименование', 'Количество_ед', 'Уровень')
                         kolvo_summ = kolvo_koef * int(dse['Количество_ед']) * count_izd
                         for material in oper['materials']:
                             materials.append(CMS.add_mat_into_rez_spis(
@@ -2154,10 +2157,23 @@ class mywindow(QtWidgets.QMainWindow):
                                 res[i]['Операции'][j]['Переходы'] = spis_per
 
                         if vid == 'mat':
+                            string_normalizer = lambda key: f'{key[:40]}...' if len(str(key)) > 40 else key
+                            get_dict_attr = lambda key, collection: {key: string_normalizer(collection.get(key, ''))}
                             if res[i]['Операции'][j]['Материалы'] != materials:
-                                journal.extend(materials) #03.09.25
+                                type_recalc = "Материалы"
+
+                                journal.extend([{
+                                    **get_dict_attr('Мат_код', mat),
+                                    **get_dict_attr('Мат_наименование', mat),
+                                    **get_dict_attr('Мат_норма', mat),
+                                    **get_dict_attr('Мат_норма_ед', mat)}
+                                    for mat in materials
+                                    if isinstance(mat, dict)
+                                ])
                                 res[i]['Операции'][j]['Материалы'] = materials
                         if vid == 'vrem':
+                            type_recalc = "Нормы времени"
+
                             tpz_new, tpz_old = oper['t_pz'], operation['Опер_Тпз']
                             if round(res[i]['Операции'][j]['Опер_Тпз'], 3) != round(oper['t_pz'], 3):
                                 row_j = [nn, oper['name_ver'], 'Опер_Тпз', tpz_old, oper['t_pz']]
@@ -2185,6 +2201,8 @@ class mywindow(QtWidgets.QMainWindow):
 
 
                         if vid == 'rc':
+                            type_recalc = "Рабочие центра"
+
                             if res[i]['Операции'][j]['Опер_РЦ_код'] != oper['rab_centr']:
                                 for nar in list_nar:
                                     nar_obj = CMS.Naryads(nar)
@@ -2196,6 +2214,7 @@ class mywindow(QtWidgets.QMainWindow):
                                 res[i]['Операции'][j]['Опер_РЦ_код'] = oper['rab_centr']
 
                         if vid == 'prof':
+                            type_recalc = "Профессии"
                             if res[i]['Операции'][j]['Опер_профессия_код'] != oper['profession']:
                                 if oper['profession'] not in self.DICT_PROF_CODE:
                                     CQT.msgbox(f"Код проф. {oper['profession']} отсутствует в БД")
@@ -2215,8 +2234,11 @@ class mywindow(QtWidgets.QMainWindow):
             if len(journal) > 1:
                 if not self.USER_CONFIG.is_developer:
                     user = F.user_full_namre()
-                    result = CB24.B24Sender().send_msg_table(journal, 'chat83112', f'{user} пересчитал(а) МК {nom_mk}')
-                    result = CB24.B24Sender().send_msg_table(journal, 'chat41228', f'{user} пересчитал(а) МК {nom_mk}')
+                    result = CB24.B24Sender().send_msg_table(journal, 'chat83112', f'{user} пересчитал(а) {type_recalc} МК {nom_mk}')
+                    result = CB24.B24Sender().send_msg_table_by_action(
+                        action='Готовность Маршрутных карт',
+                        title=f'{user} пересчитал(а) {type_recalc!r} МК {nom_mk}',
+                        tbl=journal)
                     if not result:
                         CQT.msgbox('Ошибка отправки сообщения в б24')
                 else:
@@ -2359,7 +2381,7 @@ class mywindow(QtWidgets.QMainWindow):
         n_k = CQT.num_col_by_name_c(tbl, 'Пномер')
         nom_mk = int(tbl.item(tbl.currentRow(), n_k).text())
         query = f'''SELECT mk.Количество FROM mk 
-            WHERE Пномер == {int(nom_mk)}
+            WHERE Пномер = {int(nom_mk)}
                         '''
         rez = CSQ.custom_request_c(self.bd_naryad, query)
 
@@ -2370,7 +2392,7 @@ class mywindow(QtWidgets.QMainWindow):
             return
 
         query = f'''SELECT data, Head FROM xml 
-            WHERE Номер_мк == {int(nom_mk)}
+            WHERE Номер_мк = {int(nom_mk)}
                         '''
         rez_xml = CSQ.custom_request_c(self.db_resxml, query)
         xml = rez_xml[-1][0]
@@ -3290,31 +3312,32 @@ class mywindow(QtWidgets.QMainWindow):
         if self.tabl_nomenk.currentRow() == -1:
             CQT.msgbox('Не выбрана номенклатура')
             return
+        current_row = CQT.get_dict_line_form_tbl(self.tabl_nomenk)
+        pk = current_row.get('Пномер')
+        nn = current_row.get('Номенклатурный_номер')
+        name = current_row.get('Наименование')
+        tk_num = current_row.get('Номер_техкарты')
+        comment = current_row.get('Примечание') or ''
         rez = CQT.msgboxgYN(
             f'Откорректировать строку для {self.tabl_nomenk.item(self.tabl_nomenk.currentRow(), 1).text()}?')
         if rez == False:
             return
 
-        if self.tabl_nomenk.item(self.tabl_nomenk.currentRow(), 3).text() == "":
-
+        if tk_num == "":
             CSQ.custom_request_c(self.db_dse, f"""UPDATE dse SET Номенклатурный_номер = ?, Наименование = ?, 
-            Примечание, = ? WHERE Пномер == {int(self.tabl_nomenk.item(self.tabl_nomenk.currentRow(), 0).text())};""",
-                                 (self.tabl_nomenk.item(self.tabl_nomenk.currentRow(), 1).text(),
-                                  self.tabl_nomenk.item(self.tabl_nomenk.currentRow(), 2).text(),
-                                  self.tabl_nomenk.item(self.tabl_nomenk.currentRow(), 4).text().replace("|", "-"))
-                                 )
-
+            Примечание = ? WHERE Пномер = {int(pk)};""",
+                                 list_of_lists_c=[nn, name, comment.replace("|", "-")])
         else:
             rez = CQT.msgboxgYN(
                 f'Откорректировать <Номенклатурный_номер> невозможно, т.к. техкарта уже создана.'
                 f' Внести корректировку в <Наименование> и <Примечание> ?')
-            if rez == False:
+            if not rez:
                 return
 
-            CSQ.custom_request_c(self.db_dse, f"""UPDATE dse SET Наименование = ?, 
-                    Примечание, = ? WHERE Пномер == {int(self.tabl_nomenk.item(self.tabl_nomenk.currentRow(), 0).text())};""",
-                                 (self.tabl_nomenk.item(self.tabl_nomenk.currentRow(), 2).text(),
-                                  self.tabl_nomenk.item(self.tabl_nomenk.currentRow(), 4).text().replace("|", "-")))
+            CSQ.custom_request_c(
+                self.db_dse,
+                f"""UPDATE dse SET Наименование = ?, Примечание = ? WHERE Пномер = {int(pk)};""",
+                list_of_lists_c=[name, comment])
         self.zapoln_tabl_nomenkl()
         # CQT.set_color_of_obj_c(self.ui.btn_korr_nom)
         CQT.msgbox(f'Изменения успешно записаны')
@@ -3479,7 +3502,7 @@ class mywindow(QtWidgets.QMainWindow):
         # qery = CSQ.find_in_db_c(self.bd_naryad, 'mk', {'Пномер': int(nom_tek_mk)},
         #                      ['Статус', 'Дата_завершения', 'Основание'])
         qery = CSQ.custom_request_c(self.bd_naryad, f"""SELECT Статус, Дата_завершения, Основание FROM mk 
-        WHERE Пномер == {int(nom_tek_mk)};""", hat_c=False)
+        WHERE Пномер = {int(nom_tek_mk)};""", hat_c=False)
 
         if qery[0][0] == "Открыта":
             # rez = CSQ.update_bd_sql(self.bd_naryad, 'mk', {'Статус': 'Закрыта'}, {'Пномер': int(nom_tek_mk)})
@@ -3632,7 +3655,7 @@ class mywindow(QtWidgets.QMainWindow):
         ves, self.ves_res_list = self.raschet_vesa_dse(self.res)
 
         check_line_db = CSQ.custom_request_c(self.db_resxml,
-                                             f"""SELECT * FROM res WHERE Номер_мк == {int(nom_tek_mk)}""", one=True)
+                                             f"""SELECT * FROM res WHERE Номер_мк = {int(nom_tek_mk)}""", one=True)
 
         if len(check_line_db) > 1:
             res_pickle = F.to_binary_pickle(self.res)
@@ -3670,7 +3693,7 @@ class mywindow(QtWidgets.QMainWindow):
         nom_tek_mk = self.tabl_mk.item(row, CQT.num_col_by_name_c(self.tabl_mk, 'Пномер')).text()
         kolvo = int(self.tabl_mk.item(row, CQT.num_col_by_name_c(self.tabl_mk, 'Количество')).text())
         query = f'''SELECT data as xml FROM xml 
-                    WHERE Номер_мк == {int(nom_tek_mk)}'''
+                    WHERE Номер_мк = {int(nom_tek_mk)}'''
         rez = CSQ.custom_request_c(self.db_resxml, query)
         if rez == False or len(rez) == 1:
             CQT.msgbox(f'Ошибка загузки XML')
@@ -3704,7 +3727,7 @@ class mywindow(QtWidgets.QMainWindow):
         conn, cur = CSQ.connect_bd(self.bd_naryad)
         # qery = CSQ.find_in_db_c(self.bd_naryad, 'mk', {'Пномер': int(nom_tek_mk)}, ['Статус', 'Прогресс', 'Основание', 'Количество'], conn=conn,cur=cur)
         qery = CSQ.custom_request_c(self.bd_naryad, f"""SELECT Статус, Прогресс, Основание, Количество, Дата_завершения, Номер_заказа 
-            FROM mk WHERE Пномер == {int(nom_tek_mk)};""", conn=conn, cur=cur, rez_dict=True, one=True)
+            FROM mk WHERE Пномер = {int(nom_tek_mk)};""", conn=conn, cur=cur, rez_dict=True, one=True)
         if qery['Статус'] == "Закрыта":
             if qery['Номер_заказа'] == "-":
                 CSQ.close_bd(conn, cur)
@@ -3722,7 +3745,7 @@ class mywindow(QtWidgets.QMainWindow):
 
             query = f'''SELECT xml.data as xml, res.data as Ресурсная, xml.Head as xml_head FROM xml 
                                             INNER JOIN res ON res.Номер_мк = xml.Номер_мк
-                                            WHERE xml.Номер_мк == {int(nom_tek_mk)}'''
+                                            WHERE xml.Номер_мк = {int(nom_tek_mk)}'''
             rez = CSQ.custom_request_c(self.db_resxml, query)
 
             if len(rez) == 1:
@@ -3889,19 +3912,13 @@ class mywindow(QtWidgets.QMainWindow):
 
     def zapoln_tabl_nomenkl(self):
         tabl_nomenk = self.ui.table_nomenkl
-        conn, cur = CSQ.connect_bd(self.db_dse)
-        # spis = CSQ.list_from_db_sql_c(self.db_dse, 'dse', False, True,conn=conn, cur=cur)
         spis = CSQ.custom_request_c(self.db_dse,
-                                    f"""SELECT Пномер,Номенклатурный_номер,Наименование,Номер_техкарты,Примечание FROM dse WHERE poki == {self.place.poki};""",
+                                    f"""SELECT Пномер,Номенклатурный_номер,Наименование,Номер_техкарты,Примечание FROM dse WHERE poki = {self.place.poki};""",
                                     hat_c=True)
-        CSQ.close_bd(conn, cur)
         red_nom = {1, 2, 4}
         CQT.fill_wtabl_old_c(self, spis, tabl_nomenk, 0, red_nom, (), (), 200, True, '',
                              max_vis_row=20)
         CMS.fill_filtr_c(self, self.ui.tbl_filtr_nomenkl, tabl_nomenk, hidden_scroll=True)
-        # tabl_nomenk.setMouseTracking(True)
-        # tabl_nomenk.selectRow(tabl_nomenk.rowCount()-1)
-        # CQT.set_color_of_obj_c(self.ui.btn_korr_nom)
 
     @CQT.onerror
     def load_tab_mk(self):
@@ -5481,12 +5498,12 @@ class mywindow(QtWidgets.QMainWindow):
         CSQ.custom_request_c(self.bd_naryad, """INSERT INTO  zagot(Ном_МК,Прим_резка,Вес_по_рес) VALUES (?,?,?);""",
                              conn=CONN,
                              cur=cur, list_of_lists_c=[[int(nom), '', self.ves_res_list]])
-        check_zagot = CSQ.custom_request_c(self.bd_naryad, f"""SELECT * FROM zagot WHERE Ном_МК == {int(nom)}""")
+        check_zagot = CSQ.custom_request_c(self.bd_naryad, f"""SELECT * FROM zagot WHERE Ном_МК = {int(nom)}""")
         if len(check_zagot) == 1:
             CSQ.custom_request_c(self.bd_naryad, """INSERT INTO  zagot(Ном_МК,Прим_резка,Вес_по_рес) VALUES (?,?,?);""",
                                  conn=CONN,
                                  cur=cur, list_of_lists_c=[[int(nom), '', self.ves_res_list]])
-            check_zagot = CSQ.custom_request_c(self.bd_naryad, f"""SELECT * FROM zagot WHERE Ном_МК == {int(nom)}""")
+            check_zagot = CSQ.custom_request_c(self.bd_naryad, f"""SELECT * FROM zagot WHERE Ном_МК = {int(nom)}""")
             if len(check_zagot) == 1:
                 CQT.msgbox(f'Ошибка загрузки МК, не внесена строка в журнал zagot нужно внести вручную')
 
@@ -5984,7 +6001,7 @@ class mywindow(QtWidgets.QMainWindow):
             nom_mk = int(tbl.item(row, nk_pnom).text())
             try:
                 query = f'''SELECT data, Head FROM xml 
-                                   WHERE Номер_мк == {nom_mk}
+                                   WHERE Номер_мк = {nom_mk}
                                                '''
                 rez_xml = CSQ.custom_request_c(self.db_resxml, query)
                 xml = rez_xml[-1][0]
@@ -6151,7 +6168,7 @@ class mywindow(QtWidgets.QMainWindow):
         unavailable_types = CMS.XML_get_unavailable_xml_types(xml_head)
         s_bd = []
         spis_rc = self.SPIS_RC
-        custom_request_c = f'''SELECT * FROM nomen WHERE П5 == "1" '''
+        custom_request_c = f'''SELECT * FROM nomen WHERE П5 = "1" '''
         nomenklatura = CSQ.custom_request_c(self.bd_nomen, custom_request_c)
         DICT_NN_NTK = CMS.load_dict_dse(self.db_dse)
 
@@ -6393,11 +6410,11 @@ class mywindow(QtWidgets.QMainWindow):
             return
         bin_xml = F.load_file_convert_to_binary(path_file)
 
-        check_line_db = CSQ.custom_request_c(self.db_resxml, f"""SELECT * FROM xml WHERE Номер_мк == {pnom}""",
+        check_line_db = CSQ.custom_request_c(self.db_resxml, f"""SELECT * FROM xml WHERE Номер_мк = {pnom}""",
                                              one=True)
 
         if len(check_line_db) > 1:
-            CSQ.custom_request_c(self.db_resxml, """UPDATE xml SET(data) = (?);""",
+            CSQ.custom_request_c(self.db_resxml, """UPDATE xml SET data = ?;""",
                                  list_of_lists_c=[[bin_xml]])
             CQT.msgbox(f'Успешно обновлено')
         else:
