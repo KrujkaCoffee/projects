@@ -17954,7 +17954,7 @@ class TypesWorkingByDirections:
             return dialog.reject()
         current_row = tbl.currentRow()
         row = CQT.get_dict_line_form_tbl(tbl, tbl.currentRow())
-        if not isinstance(row, dict):
+        if not row or not isinstance(row, dict): # 12.08.2026
             return dialog.accept()
         if row['ВидыНоменклатуры']:
             return dialog.accept()
@@ -17989,7 +17989,7 @@ class TypesWorkingByDirections:
                                        func_btn0=lambda *args: self.check_selected_type(parent, *args),
                                        not_standart_close=True,
                                        ExtendedSelection=False)
-        if not isinstance(result, dict):
+        if not result or not isinstance(result, dict):
             return
         new_pk = result['Пномер']
         new_name = result['Имя']

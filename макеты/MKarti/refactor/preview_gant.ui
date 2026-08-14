@@ -1,0 +1,859 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>Form</class>
+ <widget class="QWidget" name="Form">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>2450</width>
+    <height>300</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Form</string>
+  </property>
+  <widget class="QFrame" name="fr_gant_and_poz">
+   <property name="geometry">
+    <rect>
+     <x>10</x>
+     <y>40</y>
+     <width>2364</width>
+     <height>198</height>
+    </rect>
+   </property>
+   <property name="frameShape">
+    <enum>QFrame::StyledPanel</enum>
+   </property>
+   <property name="frameShadow">
+    <enum>QFrame::Raised</enum>
+   </property>
+   <layout class="QHBoxLayout" name="horizontalLayout_44">
+    <property name="spacing">
+     <number>3</number>
+    </property>
+    <property name="leftMargin">
+     <number>0</number>
+    </property>
+    <property name="topMargin">
+     <number>0</number>
+    </property>
+    <property name="rightMargin">
+     <number>0</number>
+    </property>
+    <property name="bottomMargin">
+     <number>0</number>
+    </property>
+    <item>
+     <widget class="QFrame" name="fr_gant_local_tbl">
+      <property name="frameShape">
+       <enum>QFrame::StyledPanel</enum>
+      </property>
+      <property name="frameShadow">
+       <enum>QFrame::Raised</enum>
+      </property>
+      <layout class="QVBoxLayout" name="verticalLayout_35">
+       <property name="spacing">
+        <number>3</number>
+       </property>
+       <property name="leftMargin">
+        <number>0</number>
+       </property>
+       <property name="topMargin">
+        <number>0</number>
+       </property>
+       <property name="rightMargin">
+        <number>0</number>
+       </property>
+       <property name="bottomMargin">
+        <number>0</number>
+       </property>
+       <item>
+        <layout class="QHBoxLayout" name="horizontalLayout_16">
+         <property name="spacing">
+          <number>2</number>
+         </property>
+         <item>
+          <widget class="QFrame" name="fr_plan_day_edit">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Maximum" vsizetype="Preferred">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>33</width>
+             <height>0</height>
+            </size>
+           </property>
+           <property name="frameShape">
+            <enum>QFrame::Box</enum>
+           </property>
+           <property name="frameShadow">
+            <enum>QFrame::Raised</enum>
+           </property>
+           <layout class="QHBoxLayout" name="horizontalLayout_37">
+            <property name="spacing">
+             <number>3</number>
+            </property>
+            <property name="leftMargin">
+             <number>0</number>
+            </property>
+            <property name="topMargin">
+             <number>0</number>
+            </property>
+            <property name="rightMargin">
+             <number>0</number>
+            </property>
+            <property name="bottomMargin">
+             <number>0</number>
+            </property>
+            <item>
+             <widget class="QPushButton" name="btn_plan_day_edit_recalc">
+              <property name="minimumSize">
+               <size>
+                <width>0</width>
+                <height>33</height>
+               </size>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>32</width>
+                <height>33</height>
+               </size>
+              </property>
+              <property name="text">
+               <string>пересчет плана под факт</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLineEdit" name="le_plan_day_edit_recalc_hour_per_day">
+              <property name="minimumSize">
+               <size>
+                <width>170</width>
+                <height>33</height>
+               </size>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>170</width>
+                <height>33</height>
+               </size>
+              </property>
+              <property name="font">
+               <font>
+                <pointsize>12</pointsize>
+               </font>
+              </property>
+              <property name="toolTip">
+               <string>Часов в день на концовку</string>
+              </property>
+              <property name="placeholderText">
+               <string>число дней/дата завершения</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="btn_plan_day_edit_set_weekend">
+              <property name="minimumSize">
+               <size>
+                <width>0</width>
+                <height>33</height>
+               </size>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>32</width>
+                <height>33</height>
+               </size>
+              </property>
+              <property name="text">
+               <string>Назначить &quot;Выходной&quot; (+shift - удаление)</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btn_plan_on_of_day_edit_frame">
+           <property name="minimumSize">
+            <size>
+             <width>24</width>
+             <height>0</height>
+            </size>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>24</width>
+             <height>44</height>
+            </size>
+           </property>
+           <property name="font">
+            <font>
+             <family>Wingdings 3</family>
+             <pointsize>12</pointsize>
+            </font>
+           </property>
+           <property name="toolTip">
+            <string>Управление днями</string>
+           </property>
+           <property name="text">
+            <string>|</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="Line" name="line_6">
+           <property name="orientation">
+            <enum>Qt::Vertical</enum>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QFrame" name="fr_local_gant_edit">
+           <property name="minimumSize">
+            <size>
+             <width>55</width>
+             <height>0</height>
+            </size>
+           </property>
+           <property name="frameShape">
+            <enum>QFrame::Panel</enum>
+           </property>
+           <property name="frameShadow">
+            <enum>QFrame::Raised</enum>
+           </property>
+           <layout class="QHBoxLayout" name="horizontalLayout_58">
+            <property name="spacing">
+             <number>9</number>
+            </property>
+            <property name="leftMargin">
+             <number>0</number>
+            </property>
+            <property name="topMargin">
+             <number>0</number>
+            </property>
+            <property name="rightMargin">
+             <number>0</number>
+            </property>
+            <property name="bottomMargin">
+             <number>0</number>
+            </property>
+            <item>
+             <widget class="QFrame" name="fr_local_gant_nach">
+              <property name="minimumSize">
+               <size>
+                <width>44</width>
+                <height>0</height>
+               </size>
+              </property>
+              <property name="frameShape">
+               <enum>QFrame::Panel</enum>
+              </property>
+              <property name="frameShadow">
+               <enum>QFrame::Raised</enum>
+              </property>
+              <layout class="QHBoxLayout" name="horizontalLayout_54">
+               <property name="spacing">
+                <number>0</number>
+               </property>
+               <property name="leftMargin">
+                <number>0</number>
+               </property>
+               <property name="topMargin">
+                <number>0</number>
+               </property>
+               <property name="rightMargin">
+                <number>0</number>
+               </property>
+               <property name="bottomMargin">
+                <number>0</number>
+               </property>
+               <item>
+                <widget class="QLabel" name="label">
+                 <property name="maximumSize">
+                  <size>
+                   <width>55</width>
+                   <height>46</height>
+                  </size>
+                 </property>
+                 <property name="text">
+                  <string> Нач: </string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QLineEdit" name="le_edit_local_gant_nach">
+                 <property name="minimumSize">
+                  <size>
+                   <width>150</width>
+                   <height>33</height>
+                  </size>
+                 </property>
+                 <property name="maximumSize">
+                  <size>
+                   <width>150</width>
+                   <height>33</height>
+                  </size>
+                 </property>
+                 <property name="font">
+                  <font>
+                   <pointsize>12</pointsize>
+                  </font>
+                 </property>
+                 <property name="text">
+                  <string>0</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QPushButton" name="btn_clear_edit_local_gant_nach">
+                 <property name="minimumSize">
+                  <size>
+                   <width>33</width>
+                   <height>33</height>
+                  </size>
+                 </property>
+                 <property name="maximumSize">
+                  <size>
+                   <width>33</width>
+                   <height>33</height>
+                  </size>
+                 </property>
+                 <property name="text">
+                  <string>Очистить</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QPushButton" name="btn_pickup_date_nach">
+                 <property name="maximumSize">
+                  <size>
+                   <width>33</width>
+                   <height>33</height>
+                  </size>
+                 </property>
+                 <property name="sizeIncrement">
+                  <size>
+                   <width>33</width>
+                   <height>33</height>
+                  </size>
+                 </property>
+                 <property name="text">
+                  <string>Взять дату с ганта</string>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="btn_edit_local_gant_left">
+              <property name="minimumSize">
+               <size>
+                <width>0</width>
+                <height>33</height>
+               </size>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>32</width>
+                <height>33</height>
+               </size>
+              </property>
+              <property name="text">
+               <string>Сместить даты влево</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLineEdit" name="le_edit_local_gant_full_etap">
+              <property name="minimumSize">
+               <size>
+                <width>0</width>
+                <height>33</height>
+               </size>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>33</width>
+                <height>33</height>
+               </size>
+              </property>
+              <property name="toolTip">
+               <string>Весь этап</string>
+              </property>
+              <property name="text">
+               <string>0</string>
+              </property>
+              <property name="placeholderText">
+               <string/>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="btn_edit_local_gant_right">
+              <property name="minimumSize">
+               <size>
+                <width>0</width>
+                <height>33</height>
+               </size>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>32</width>
+                <height>33</height>
+               </size>
+              </property>
+              <property name="text">
+               <string>Сместить даты вправо</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QFrame" name="fr_local_gant_kon">
+              <property name="minimumSize">
+               <size>
+                <width>55</width>
+                <height>0</height>
+               </size>
+              </property>
+              <property name="frameShape">
+               <enum>QFrame::Panel</enum>
+              </property>
+              <property name="frameShadow">
+               <enum>QFrame::Raised</enum>
+              </property>
+              <layout class="QHBoxLayout" name="horizontalLayout_57">
+               <property name="spacing">
+                <number>0</number>
+               </property>
+               <property name="leftMargin">
+                <number>0</number>
+               </property>
+               <property name="topMargin">
+                <number>0</number>
+               </property>
+               <property name="rightMargin">
+                <number>0</number>
+               </property>
+               <property name="bottomMargin">
+                <number>0</number>
+               </property>
+               <item>
+                <widget class="QLabel" name="label_2">
+                 <property name="maximumSize">
+                  <size>
+                   <width>55</width>
+                   <height>46</height>
+                  </size>
+                 </property>
+                 <property name="text">
+                  <string> Зав: </string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QLineEdit" name="le_edit_local_gant_kon">
+                 <property name="minimumSize">
+                  <size>
+                   <width>150</width>
+                   <height>33</height>
+                  </size>
+                 </property>
+                 <property name="maximumSize">
+                  <size>
+                   <width>150</width>
+                   <height>33</height>
+                  </size>
+                 </property>
+                 <property name="font">
+                  <font>
+                   <pointsize>12</pointsize>
+                  </font>
+                 </property>
+                 <property name="text">
+                  <string>0</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QPushButton" name="btn_clear_edit_local_gant_kon">
+                 <property name="minimumSize">
+                  <size>
+                   <width>33</width>
+                   <height>33</height>
+                  </size>
+                 </property>
+                 <property name="maximumSize">
+                  <size>
+                   <width>33</width>
+                   <height>33</height>
+                  </size>
+                 </property>
+                 <property name="text">
+                  <string>Очистить</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QPushButton" name="btn_pickup_date_kon">
+                 <property name="minimumSize">
+                  <size>
+                   <width>33</width>
+                   <height>33</height>
+                  </size>
+                 </property>
+                 <property name="maximumSize">
+                  <size>
+                   <width>33</width>
+                   <height>33</height>
+                  </size>
+                 </property>
+                 <property name="sizeIncrement">
+                  <size>
+                   <width>0</width>
+                   <height>0</height>
+                  </size>
+                 </property>
+                 <property name="baseSize">
+                  <size>
+                   <width>0</width>
+                   <height>0</height>
+                  </size>
+                 </property>
+                 <property name="text">
+                  <string>Взять дату с ганта</string>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+         </item>
+         <item>
+          <widget class="QCheckBox" name="chk_link_gant_blocks">
+           <property name="toolTip">
+            <string>Связывать блоки ганта при перемещении</string>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="Line" name="line">
+           <property name="orientation">
+            <enum>Qt::Vertical</enum>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btn_recalc_gant_forced">
+           <property name="minimumSize">
+            <size>
+             <width>33</width>
+             <height>33</height>
+            </size>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>33</width>
+             <height>33</height>
+            </size>
+           </property>
+           <property name="text">
+            <string>Пересчитать гант</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="horizontalSpacer_11">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+         <item>
+          <widget class="Line" name="line_27">
+           <property name="orientation">
+            <enum>Qt::Vertical</enum>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btn_copy_excel">
+           <property name="minimumSize">
+            <size>
+             <width>0</width>
+             <height>33</height>
+            </size>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>32</width>
+             <height>33</height>
+            </size>
+           </property>
+           <property name="text">
+            <string>Сохранить диаграмму позиции Excel</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QFrame" name="fr_setup_etaps">
+           <property name="minimumSize">
+            <size>
+             <width>22</width>
+             <height>0</height>
+            </size>
+           </property>
+           <property name="frameShape">
+            <enum>QFrame::StyledPanel</enum>
+           </property>
+           <property name="frameShadow">
+            <enum>QFrame::Raised</enum>
+           </property>
+           <layout class="QHBoxLayout" name="horizontalLayout_42">
+            <property name="spacing">
+             <number>0</number>
+            </property>
+            <property name="leftMargin">
+             <number>0</number>
+            </property>
+            <property name="topMargin">
+             <number>0</number>
+            </property>
+            <property name="rightMargin">
+             <number>0</number>
+            </property>
+            <property name="bottomMargin">
+             <number>0</number>
+            </property>
+            <item>
+             <widget class="Line" name="line_7">
+              <property name="orientation">
+               <enum>Qt::Vertical</enum>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="label_13">
+              <property name="text">
+               <string>Заполнить гант: </string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="btn_set_start_end_dates_clnd">
+              <property name="minimumSize">
+               <size>
+                <width>33</width>
+                <height>33</height>
+               </size>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>33</width>
+                <height>16777215</height>
+               </size>
+              </property>
+              <property name="text">
+               <string>Выбрать диапазон дат в календаре</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="btn_set_start_end_dates">
+              <property name="minimumSize">
+               <size>
+                <width>33</width>
+                <height>33</height>
+               </size>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>33</width>
+                <height>33</height>
+               </size>
+              </property>
+              <property name="text">
+               <string>Получить диапазон дат по диапазону ячеек ганта</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLineEdit" name="le_start_set_dates_etaps">
+              <property name="minimumSize">
+               <size>
+                <width>150</width>
+                <height>0</height>
+               </size>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>150</width>
+                <height>33</height>
+               </size>
+              </property>
+              <property name="font">
+               <font>
+                <pointsize>14</pointsize>
+               </font>
+              </property>
+              <property name="placeholderText">
+               <string>Дата начала</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLineEdit" name="le_end_set_dates_etaps">
+              <property name="minimumSize">
+               <size>
+                <width>150</width>
+                <height>33</height>
+               </size>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>150</width>
+                <height>33</height>
+               </size>
+              </property>
+              <property name="font">
+               <font>
+                <pointsize>14</pointsize>
+               </font>
+              </property>
+              <property name="placeholderText">
+               <string>Дата завершения</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="btn_set_dates_etaps">
+              <property name="maximumSize">
+               <size>
+                <width>32</width>
+                <height>33</height>
+               </size>
+              </property>
+              <property name="text">
+               <string>Проставить этапы (границы по этапам)</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="btn_del_dates_etaps">
+              <property name="minimumSize">
+               <size>
+                <width>32</width>
+                <height>33</height>
+               </size>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>32</width>
+                <height>33</height>
+               </size>
+              </property>
+              <property name="text">
+               <string>Удалить этапы</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="horizontalLayout_56">
+         <property name="spacing">
+          <number>0</number>
+         </property>
+         <item>
+          <widget class="QTableWidget" name="tbl_limit_gant">
+           <property name="maximumSize">
+            <size>
+             <width>68</width>
+             <height>16777215</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QTableWidget" name="tbl_preview"/>
+         </item>
+        </layout>
+       </item>
+      </layout>
+     </widget>
+    </item>
+    <item>
+     <widget class="QFrame" name="fr_poz_from_exel">
+      <property name="minimumSize">
+       <size>
+        <width>40</width>
+        <height>0</height>
+       </size>
+      </property>
+      <property name="frameShape">
+       <enum>QFrame::StyledPanel</enum>
+      </property>
+      <property name="frameShadow">
+       <enum>QFrame::Raised</enum>
+      </property>
+      <layout class="QVBoxLayout" name="verticalLayout_62">
+       <property name="spacing">
+        <number>3</number>
+       </property>
+       <property name="leftMargin">
+        <number>0</number>
+       </property>
+       <property name="topMargin">
+        <number>0</number>
+       </property>
+       <property name="rightMargin">
+        <number>0</number>
+       </property>
+       <property name="bottomMargin">
+        <number>0</number>
+       </property>
+       <item>
+        <widget class="QPushButton" name="btn_select_exel_file">
+         <property name="text">
+          <string>Выбрать файл</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QTableWidget" name="tbl_poz_from_exel">
+         <property name="selectionMode">
+          <enum>QAbstractItemView::SingleSelection</enum>
+         </property>
+         <property name="selectionBehavior">
+          <enum>QAbstractItemView::SelectRows</enum>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

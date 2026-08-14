@@ -578,7 +578,7 @@ def custom_request_c(
         one_column=False,
         attach_dbs: tuple | str=(),
         lazy_method_hours: float = 0,
-        debug: bool = True
+        debug: bool = False
 ) -> bool | None | list[dict] | list[list] | list | object|dict[str]:
     """
         Пример RETURNING(many):
