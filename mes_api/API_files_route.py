@@ -11,6 +11,7 @@ import tarfile
 import tempfile
 import zipfile
 import json
+import sysconfig
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException
@@ -109,7 +110,7 @@ def have_members(path: str):
     return False
 
 
-def download_and_archive_packages(packages: list[str]) -> str | None:
+def download_and_archive_packages_deprecated(packages: list[str]) -> str | None:
     """Скачиваем и архивируем указанные пакеты."""
     temp = pathlib.Path(tempfile.gettempdir()) / 'mes-packages'
     unique_finger = hashlib.sha256(json.dumps(packages, sort_keys=True).encode(encoding='utf8')).hexdigest()
@@ -145,6 +146,130 @@ def download_and_archive_packages(packages: list[str]) -> str | None:
             return str(path)
         return None
 
+def archive_is_valid(path: pathlib.Path) -> bool:
+    """Проверяет структуру архива и полностью читает его содержимое."""
+
+    if not path.is_file() or path.stat().st_size == 0:
+        return False
+
+    files_found = False
+
+    try:
+        with tarfile.open(path, 'r:gz') as tar:
+            for member in tar:
+                if not member.isfile():
+                    continue
+
+                files_found = True
+                source = tar.extractfile(member)
+
+                if source is None:
+                    return False
+                while source.read(1024 * 1024):
+                    pass
+
+        return files_found
+
+    except (OSError, EOFError, tarfile.TarError):
+        return False
+
+def download_and_archive_packages(
+    packages: list[str],
+) -> str | None:
+    """Скачивает согласованный набор пакетов и создаёт архив."""
+
+    normalized_packages = sorted({
+        package.strip()
+        for package in packages
+        if package.strip()
+    })
+
+    if not normalized_packages:
+        return None
+
+    cache_dir = pathlib.Path(tempfile.gettempdir()) / 'mes-packages'
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    fingerprint_data = {
+        'packages': normalized_packages,
+        'python': f'{sys.version_info.major}.{sys.version_info.minor}',
+        'implementation': sys.implementation.name,
+        'platform': sysconfig.get_platform(),
+    }
+
+    fingerprint = hashlib.sha256(
+        json.dumps(
+            fingerprint_data,
+            ensure_ascii=False,
+            sort_keys=True,
+        ).encode('utf-8')
+    ).hexdigest()
+
+    current_day = datetime.now().strftime('%Y-%m-%d')
+    archive_path = cache_dir / f'{fingerprint}-{current_day}.tar.gz'
+
+    if archive_is_valid(archive_path):
+        return str(archive_path)
+
+    staging_dir = pathlib.Path(
+        tempfile.mkdtemp(
+            prefix=f'{fingerprint}-',
+            dir=cache_dir,
+        )
+    )
+
+    download_dir = staging_dir / 'downloads'
+    candidate_archive = staging_dir / 'packages.tar.gz'
+
+    try:
+        download_dir.mkdir()
+
+        subprocess.run(
+            [
+                sys.executable,
+                '-m',
+                'pip',
+                'download',
+                '--no-cache-dir',
+                '--only-binary=:all:',
+                '--timeout',
+                '30',
+                '--retries',
+                '3',
+                '--dest',
+                str(download_dir),
+                *normalized_packages,
+            ],
+            check=True,
+            timeout=15 * 60,
+        )
+
+        downloaded_files = sorted(
+            file_path
+            for file_path in download_dir.iterdir()
+            if file_path.is_file()
+        )
+
+        if not downloaded_files:
+            raise RuntimeError('pip не загрузил ни одного пакета')
+
+        with tarfile.open(candidate_archive, 'w:gz') as tar:
+            for file_path in downloaded_files:
+                tar.add(file_path, arcname=file_path.name)
+
+        if not archive_is_valid(candidate_archive):
+            raise RuntimeError('Созданный архив не прошёл проверку')
+
+        if not archive_is_valid(archive_path):
+            os.replace(candidate_archive, archive_path)
+
+        if not archive_is_valid(archive_path):
+            raise RuntimeError('Итоговый архив повреждён')
+
+        return str(archive_path)
+
+    finally:
+        shutil.rmtree(staging_dir, ignore_errors=True)
 
 @router.get('/py/packages/list/')
 def get_list_srv_packages():
@@ -157,23 +282,41 @@ def get_list_srv_packages():
 @router.post('/py/packages/')
 def upload_dependencies(data: list[str]):
     """Маршрут для загрузки зависимостей и отправки недостающих."""
+    if not data:
+        return {}
     try:
-        if len(data) > 0:
-            temp_download = download_and_archive_packages(data)
-            if temp_download is None:
-                return ''
-            return FileResponse(temp_download, filename=temp_download)
-    except Exception as e:
-        logging.warning('Ошибка выдачи pip зависимостей', exc_info=e)
-        return ''
+        archive_path = download_and_archive_packages(data)
+        if archive_path is None:
+            message = 'Не удалось подготовить зависимости'
+            logging.warning(message)
+            return {"status": "error", "detail": message}
+        return FileResponse(
+            path=archive_path,
+            filename='packages.tar.gz',
+            media_type='application/gzip',
+        )
+    except HTTPException as e:
+        logging.warning('Ошибка при загрузке pip пакетов', exc_info=e)
+    except subprocess.TimeoutExpired:
+        logging.exception('Превышено время загрузки pip-зависимостей')
+        return {"status": "error", "detail": 'Превышено время загрузки зависимостей'}
+    except subprocess.CalledProcessError:
+        logging.exception('pip не смог загрузить зависимости')
+        return {"status": "error", "detail": 'Не удалось загрузить зависимости'}
+    except Exception:
+        logging.exception('Ошибка выдачи pip-зависимостей')
+        return {"status": "error", "detail": 'Ошибка подготовки архива зависимостей'}
 
 
 @router.get('/py/')
 async def download_python_archive():
-    filepath = api_srv_config.FILES_PYTHON_INTERPRETER_PATH
-    if os.path.exists(filepath):
-        return FileResponse(filepath, filename='python.zip')
-    return {'error': 'File not found'}
+    try:
+        filepath = api_srv_config.FILES_PYTHON_INTERPRETER_PATH
+        if os.path.exists(filepath):
+            return FileResponse(filepath, filename='python.zip')
+        return {'error': 'File not found'}
+    except Exception as e:
+        return ''
 
 
 @router.get('/py/hash/')
