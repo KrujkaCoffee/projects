@@ -2370,7 +2370,14 @@ class mywindow(QtWidgets.QMainWindow):
         return rez[0]
 
 
-app = QtWidgets.QApplication(sys.argv)
+from project_cust_38.Cust_application import  SafeApplication, install_crash_guard
+app = SafeApplication(sys.argv)
+install_crash_guard(
+    app,
+    app_name='Выполнение',
+    show_popup=True,
+    user_name=F.user_name()
+)
 args = sys.argv[1:]
 myappid = 'Powerz.BAG.SustControlWork.20.07.2021'  # !!!
 QtWin.setCurrentProcessExplicitAppUserModelID(myappid)

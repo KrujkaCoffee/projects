@@ -1174,7 +1174,14 @@ class mywindow(QtWidgets.QMainWindow):
             F.open_dir_c(dir_folder)
 
 
-app = QtWidgets.QApplication(['', '--no-sandbox'])
+from project_cust_38.Cust_application import SafeApplication, install_crash_guard
+app = SafeApplication(sys.argv)
+install_crash_guard(
+    app,
+    app_name='Просмотрщик',
+    show_popup=True,
+    user_name=F.user_name()
+)
 
 args = sys.argv[1:]
 myappid = 'Powerz.BAG.SystCreateWork.1.0.4'  # !!!
