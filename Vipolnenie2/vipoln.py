@@ -1982,9 +1982,9 @@ class mywindow(QtWidgets.QMainWindow):
             self.replace_abstract_name(nom_nar, self.glob_fio) # 15.07.25 по задаче 100056733
         CQT.msgbox('Наряд успешно запущен')
 
-        self.clear_naryad_bar()
-        self.select_default_tab()
-        if not self.ui.chk_come_back.isChecked():  # если стоит галочка вернуться обратно то...
+        if self.ui.chk_come_back.isChecked(): # если стоит галочка вернуться обратно то...
+            self.clear_naryad_bar()
+            self.select_default_tab()
             self.load_naruad()
 
     def select_default_tab(self):
@@ -2314,7 +2314,10 @@ class mywindow(QtWidgets.QMainWindow):
         self.clear_naryad_bar()
 
         CQT.msgbox(f'Наряд успешно {vid_stop}')
-
+        if self.ui.chk_come_back.isChecked():  # если стоит галочка вернуться обратно то...
+            self.clear_naryad_bar()
+            self.select_default_tab()
+            self.load_naruad()
 
     @CQT.onerror
     def add_opoveshenie(self, vid_stop, nom_nar, nom_mk, fio, primech):#OFF
