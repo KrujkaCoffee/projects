@@ -2,10 +2,10 @@ from __future__ import annotations
 """Автогенерированный manifest схем project_cust_38."""
 
 MANIFEST = {
-    "admin_schema_hash": "89f978d9f9fe96c106771a7376fb165d1ac4bfb58cc19bbb61b9c066ce507a86",
-    "artifact_version": "89f978d9f9fe",
-    "generated_at_utc": "2026-07-08 14:12:30",
-    "generator_version": "1.1.0",
+    "admin_schema_hash": "8280867c736be9b0bc78c3b18328e7a501fc9f10eaf60c85f642ed6f023d3235",
+    "artifact_version": "ccf81e091e30",
+    "generated_at_utc": "2026-08-17T11:38:13+00:00",
+    "generator_version": "1.2.0",
     "hint_names": [
         "KroFilesHint",
         "KroFilesCreateHint",
@@ -24,74 +24,23 @@ MANIFEST = {
         "KroFilesAsSmartListCallable",
         "KroFilesCreateCallable",
         "KroFilesUpdateCallable",
-        "Eq20271001Hint",
-        "Eq20271001CreateHint",
-        "Eq20271001UpdateHint",
-        "Eq20271001FilterHint",
-        "Eq20271001QuerySetProtocol",
-        "Eq20271001ObjectManagerProtocol",
-        "Eq20271001QueryCallable",
-        "Eq20271001FilterCallable",
-        "Eq20271001ExcludeCallable",
-        "Eq20271001GetCallable",
-        "Eq20271001FirstCallable",
-        "Eq20271001CountCallable",
-        "Eq20271001AllCallable",
-        "Eq20271001ValuesCallable",
-        "Eq20271001AsSmartListCallable",
-        "Eq20271001CreateCallable",
-        "Eq20271001UpdateCallable",
-        "Jurnaltdz20271001Hint",
-        "Jurnaltdz20271001CreateHint",
-        "Jurnaltdz20271001UpdateHint",
-        "Jurnaltdz20271001FilterHint",
-        "Jurnaltdz20271001QuerySetProtocol",
-        "Jurnaltdz20271001ObjectManagerProtocol",
-        "Jurnaltdz20271001QueryCallable",
-        "Jurnaltdz20271001FilterCallable",
-        "Jurnaltdz20271001ExcludeCallable",
-        "Jurnaltdz20271001GetCallable",
-        "Jurnaltdz20271001FirstCallable",
-        "Jurnaltdz20271001CountCallable",
-        "Jurnaltdz20271001AllCallable",
-        "Jurnaltdz20271001ValuesCallable",
-        "Jurnaltdz20271001AsSmartListCallable",
-        "Jurnaltdz20271001CreateCallable",
-        "Jurnaltdz20271001UpdateCallable",
-        "Mtdz20271001Hint",
-        "Mtdz20271001CreateHint",
-        "Mtdz20271001UpdateHint",
-        "Mtdz20271001FilterHint",
-        "Mtdz20271001QuerySetProtocol",
-        "Mtdz20271001ObjectManagerProtocol",
-        "Mtdz20271001QueryCallable",
-        "Mtdz20271001FilterCallable",
-        "Mtdz20271001ExcludeCallable",
-        "Mtdz20271001GetCallable",
-        "Mtdz20271001FirstCallable",
-        "Mtdz20271001CountCallable",
-        "Mtdz20271001AllCallable",
-        "Mtdz20271001ValuesCallable",
-        "Mtdz20271001AsSmartListCallable",
-        "Mtdz20271001CreateCallable",
-        "Mtdz20271001UpdateCallable",
-        "Rm20271001Hint",
-        "Rm20271001CreateHint",
-        "Rm20271001UpdateHint",
-        "Rm20271001FilterHint",
-        "Rm20271001QuerySetProtocol",
-        "Rm20271001ObjectManagerProtocol",
-        "Rm20271001QueryCallable",
-        "Rm20271001FilterCallable",
-        "Rm20271001ExcludeCallable",
-        "Rm20271001GetCallable",
-        "Rm20271001FirstCallable",
-        "Rm20271001CountCallable",
-        "Rm20271001AllCallable",
-        "Rm20271001ValuesCallable",
-        "Rm20271001AsSmartListCallable",
-        "Rm20271001CreateCallable",
-        "Rm20271001UpdateCallable",
+        "CompetenceValsHint",
+        "CompetenceValsCreateHint",
+        "CompetenceValsUpdateHint",
+        "CompetenceValsFilterHint",
+        "CompetenceValsQuerySetProtocol",
+        "CompetenceValsObjectManagerProtocol",
+        "CompetenceValsQueryCallable",
+        "CompetenceValsFilterCallable",
+        "CompetenceValsExcludeCallable",
+        "CompetenceValsGetCallable",
+        "CompetenceValsFirstCallable",
+        "CompetenceValsCountCallable",
+        "CompetenceValsAllCallable",
+        "CompetenceValsValuesCallable",
+        "CompetenceValsAsSmartListCallable",
+        "CompetenceValsCreateCallable",
+        "CompetenceValsUpdateCallable",
         "КадроваяИсторияHint",
         "КадроваяИсторияCreateHint",
         "КадроваяИсторияUpdateHint",
@@ -143,40 +92,23 @@ MANIFEST = {
         "ФизическиеЛицаAsSmartListCallable",
         "ФизическиеЛицаCreateCallable",
         "ФизическиеЛицаUpdateCallable",
-        "MCld20271001Hint",
-        "MCld20271001CreateHint",
-        "MCld20271001UpdateHint",
-        "MCld20271001FilterHint",
-        "MCld20271001QuerySetProtocol",
-        "MCld20271001ObjectManagerProtocol",
-        "MCld20271001QueryCallable",
-        "MCld20271001FilterCallable",
-        "MCld20271001ExcludeCallable",
-        "MCld20271001GetCallable",
-        "MCld20271001FirstCallable",
-        "MCld20271001CountCallable",
-        "MCld20271001AllCallable",
-        "MCld20271001ValuesCallable",
-        "MCld20271001AsSmartListCallable",
-        "MCld20271001CreateCallable",
-        "MCld20271001UpdateCallable",
-        "KroCausesHint",
-        "KroCausesCreateHint",
-        "KroCausesUpdateHint",
-        "KroCausesFilterHint",
-        "KroCausesQuerySetProtocol",
-        "KroCausesObjectManagerProtocol",
-        "KroCausesQueryCallable",
-        "KroCausesFilterCallable",
-        "KroCausesExcludeCallable",
-        "KroCausesGetCallable",
-        "KroCausesFirstCallable",
-        "KroCausesCountCallable",
-        "KroCausesAllCallable",
-        "KroCausesValuesCallable",
-        "KroCausesAsSmartListCallable",
-        "KroCausesCreateCallable",
-        "KroCausesUpdateCallable",
+        "MesAuthSessionsHint",
+        "MesAuthSessionsCreateHint",
+        "MesAuthSessionsUpdateHint",
+        "MesAuthSessionsFilterHint",
+        "MesAuthSessionsQuerySetProtocol",
+        "MesAuthSessionsObjectManagerProtocol",
+        "MesAuthSessionsQueryCallable",
+        "MesAuthSessionsFilterCallable",
+        "MesAuthSessionsExcludeCallable",
+        "MesAuthSessionsGetCallable",
+        "MesAuthSessionsFirstCallable",
+        "MesAuthSessionsCountCallable",
+        "MesAuthSessionsAllCallable",
+        "MesAuthSessionsValuesCallable",
+        "MesAuthSessionsAsSmartListCallable",
+        "MesAuthSessionsCreateCallable",
+        "MesAuthSessionsUpdateCallable",
         "NomenHint",
         "NomenCreateHint",
         "NomenUpdateHint",
@@ -228,23 +160,23 @@ MANIFEST = {
         "KroAgreementStatesAsSmartListCallable",
         "KroAgreementStatesCreateCallable",
         "KroAgreementStatesUpdateCallable",
-        "KroDeviationsHint",
-        "KroDeviationsCreateHint",
-        "KroDeviationsUpdateHint",
-        "KroDeviationsFilterHint",
-        "KroDeviationsQuerySetProtocol",
-        "KroDeviationsObjectManagerProtocol",
-        "KroDeviationsQueryCallable",
-        "KroDeviationsFilterCallable",
-        "KroDeviationsExcludeCallable",
-        "KroDeviationsGetCallable",
-        "KroDeviationsFirstCallable",
-        "KroDeviationsCountCallable",
-        "KroDeviationsAllCallable",
-        "KroDeviationsValuesCallable",
-        "KroDeviationsAsSmartListCallable",
-        "KroDeviationsCreateCallable",
-        "KroDeviationsUpdateCallable",
+        "KroCausesHint",
+        "KroCausesCreateHint",
+        "KroCausesUpdateHint",
+        "KroCausesFilterHint",
+        "KroCausesQuerySetProtocol",
+        "KroCausesObjectManagerProtocol",
+        "KroCausesQueryCallable",
+        "KroCausesFilterCallable",
+        "KroCausesExcludeCallable",
+        "KroCausesGetCallable",
+        "KroCausesFirstCallable",
+        "KroCausesCountCallable",
+        "KroCausesAllCallable",
+        "KroCausesValuesCallable",
+        "KroCausesAsSmartListCallable",
+        "KroCausesCreateCallable",
+        "KroCausesUpdateCallable",
         "MkHint",
         "MkCreateHint",
         "MkUpdateHint",
@@ -265,133 +197,102 @@ MANIFEST = {
     ],
     "model_names": [
         "KroFiles",
-        "Eq20271001",
-        "Jurnaltdz20271001",
-        "Mtdz20271001",
-        "Rm20271001",
+        "CompetenceVals",
         "КадроваяИстория",
         "Подразделения",
         "ФизическиеЛица",
-        "MCld20271001",
-        "KroCauses",
+        "MesAuthSessions",
         "Nomen",
         "Jurnal",
         "KroAgreementStates",
-        "KroDeviations",
+        "KroCauses",
         "Mk"
     ],
     "notes": "generated into C:\\srv_mes\\srv_mes\\project_cust_38\\dynamic_db_models",
-    "table_fields_hash": "185a2d6ed5ce752266c5d83a15b428566f11fc2289b3df29915191830dbd9603",
+    "relation_specs_hash": "f747d7b8ca87f98ef3d8c6deaf22913dfaf03e5bcc07528cc949503e7ff2ee6e",
+    "table_fields_hash": "ea673fd99758080eec3aec577b7549401670c26e029719ee37ed7f6feb8ca405",
     "table_signatures": {
         "BD_files.kro_files": {
-            "api_hash": "ff78f1fcb1a2a55341e18434aa207b47f6f6d024ae10b42a407a4054ac168dd9",
-            "cache_hash": "6b5722aa72a55e062a579669681c15a10386f2680e2f2347ee9b501fae6d30a1",
+            "api_hash": "6c0bd03375468e4dec031a1eb6a7db09d2998269cfd2849411dcfb8d24c62ada",
+            "cache_hash": "6d2dfb5a8931350641461305c2601634ff963f8e67d41b0071a2abc0a1629c8a",
             "db_key": "BD_files",
             "table_name": "kro_files",
             "ui_hash": "19958342d1f7661512df767b74ff30e81338ec5108088cc122b66e470aeb5c73"
         },
-        "BD_users.eq_2027_10_01": {
-            "api_hash": "00f13fddd974f072a87f981c81cda265a80b8e7689d3090fd942a5e5cdb30693",
-            "cache_hash": "f0141c35387676e156d220764551d5413d2f41e436ec6ac5b0a3da3191de906e",
+        "BD_users.competence_vals": {
+            "api_hash": "f4b335bd42b56c2d152e5964a55558b8a637eb30002e8e5bc30a62fb51d2457c",
+            "cache_hash": "f27fda2ecf8f09b0a374a877fc362853c5aca3ac444365d2aacf9a72e5afb9c8",
             "db_key": "BD_users",
-            "table_name": "eq_2027_10_01",
-            "ui_hash": "c303cbe9e19d5696247f8547bd02feae03bc3bb19b21ba29c7a1551cbbb85544"
-        },
-        "BD_users.jurnaltdz_2027_10_01": {
-            "api_hash": "7cb424f51ac775284d6e664d505fb2c36e29d37c02b67caf405c73254078ef39",
-            "cache_hash": "fd8cc34d0c636d8168582f0f7eed28eb33b12251edb25ad67cd4f5f5110ff830",
-            "db_key": "BD_users",
-            "table_name": "jurnaltdz_2027_10_01",
-            "ui_hash": "c303cbe9e19d5696247f8547bd02feae03bc3bb19b21ba29c7a1551cbbb85544"
-        },
-        "BD_users.mtdz_2027_10_01": {
-            "api_hash": "771f94f267a0663364f85cf7d30cf4562a7dc66a946593608c43b348073a482a",
-            "cache_hash": "a56b0b32a58db0ca34c4a55cecc86644dd4e49f2aae9606bf487e679d044c5b8",
-            "db_key": "BD_users",
-            "table_name": "mtdz_2027_10_01",
-            "ui_hash": "c303cbe9e19d5696247f8547bd02feae03bc3bb19b21ba29c7a1551cbbb85544"
-        },
-        "BD_users.rm_2027_10_01": {
-            "api_hash": "15a8dab794aa100e76c75198aa85d5806fd7b2a6b70291e57830436a9087e88f",
-            "cache_hash": "dceeb1505aab89f28f8cd22bbd4f0a7fc67a16889f46dd0c81fb5c700353e089",
-            "db_key": "BD_users",
-            "table_name": "rm_2027_10_01",
-            "ui_hash": "c303cbe9e19d5696247f8547bd02feae03bc3bb19b21ba29c7a1551cbbb85544"
+            "table_name": "competence_vals",
+            "ui_hash": "7dd410d7dfc59673671c27c56fd938048fb50c7d1334f9a5c82d77232bd9f507"
         },
         "BD_users.КадроваяИстория": {
-            "api_hash": "64be1242ad1029891b52dd30c5db4b3a3843a31b72a9f4376ef0dabdc5c4f74b",
-            "cache_hash": "2ac12174eef2d3033b2c6b0997762aab541b50695f5dffbdfea1669900220f21",
+            "api_hash": "484572070da01eb03b129adcf7482ccbcb1fbc42b1b461eb9a661d53d7dde1ac",
+            "cache_hash": "b9ed5525de9623232ab7860b9667be1c4882f15d3fad891c4b8dac1d8776438a",
             "db_key": "BD_users",
             "table_name": "КадроваяИстория",
-            "ui_hash": "20bbeaaac5f8427af775681f7ed7ea33c9c8434330857cd4720f28a4694259d6"
+            "ui_hash": "eeb77c0a4178cc26290f8e456a0fd240eba3494f7edddf840952f376b0507cc8"
         },
         "BD_users.Подразделения": {
-            "api_hash": "175dfc83ca72d3eb08d8ad2ec30bd9178b2cd1d055d673b60413df6227b4bcfd",
-            "cache_hash": "05e660c56b684719a239b10305429c89e1eb8683833394c8252ef091717106c3",
+            "api_hash": "e48e1143bfe4fffaa1f5eee30720049bd4c937ee31c291a514c5b1568ad68b85",
+            "cache_hash": "a03da4dddd04a4a76de600ddbc661bf11fde669dfb3b11f9c168fc09c74b036a",
             "db_key": "BD_users",
             "table_name": "Подразделения",
-            "ui_hash": "14e6492db5667d61e853a6f95acf890baa4b90cc3683e0996d3dd7c86b4a138b"
+            "ui_hash": "d245fb029e2b6d4a6dd4889f95fa6be652be029f2a6242642ce575a00c18afe5"
         },
         "BD_users.ФизическиеЛица": {
-            "api_hash": "33f656d534adb7a9da3b03cfafbfa328824edfaaae98fdbdb644f3a21f7e25fb",
-            "cache_hash": "85beaa029ebd0eb5112dd7ecc4da150a96e42d83650189e5849cbd283e938491",
+            "api_hash": "3c403dee26c66dbc4b7bacfd2c46e9244da3eb1000c21a2bbf53453c4029219f",
+            "cache_hash": "84a97cf8dedb2bbc6dd61988c9a918aac23613b08452f3742c5e3c42fcae3df1",
             "db_key": "BD_users",
             "table_name": "ФизическиеЛица",
-            "ui_hash": "37457e2afa9e2d81bd10f057e7f68b18e8f7e414ed559ff1a194987518412e8c"
-        },
-        "DB_kplan.m_cld_2027_10_01": {
-            "api_hash": "69f68af5bd518309a09544a980868ac8ee6d4b380fda3e69000042f1fa63df3d",
-            "cache_hash": "f6b486b6b952037536579957fd3be9954840de87bdfac3443ffee2a1387102c4",
-            "db_key": "DB_kplan",
-            "table_name": "m_cld_2027_10_01",
-            "ui_hash": "c303cbe9e19d5696247f8547bd02feae03bc3bb19b21ba29c7a1551cbbb85544"
+            "ui_hash": "0554ad6e4072df2e01d309fd71bc17c01834cf594487e95360cd47a315ecad1e"
         },
         "DB_nomenklatura_erp.nomen": {
-            "api_hash": "44ae6a643bccf4ce51ab892cb1e5cf62f8039971b4cb5ebe9461cb6d488ce4bb",
-            "cache_hash": "ad23d9a3cddd74b7cd7a004183f3883a087fbbf3349fffe1ee99d5590e98bde9",
+            "api_hash": "029fa35bbdf5fabe3d1a77d1ed9e281b22ea3016861e4afb661290d3b50555c5",
+            "cache_hash": "e4ec104dead76375487e66fce021a2f1fd67dbdc91700508ae2cac686a1b7fd2",
             "db_key": "DB_nomenklatura_erp",
             "table_name": "nomen",
-            "ui_hash": "42d40a4f9c9a60ecc0ff833369d72c9442e63853c03fc0eda8068befa3c42d90"
+            "ui_hash": "43ef1cce4ba26f5925e47d92a86e285bcd6a90e62c30ac416a742f21fd166f3a"
         },
         "Naryad.jurnal": {
-            "api_hash": "4ff30727e1b2616bf776b28bba18746e090be3855ece30568aa98cd82fd3b613",
-            "cache_hash": "2043b51706fd0d07ab4426fea8c1dfe1b0a897a46e8911e792681e2acfea907d",
+            "api_hash": "b56dabcd06cda3e60304a7971bb3c77a79306c2a20adb77bf5fa2fc15221ccf6",
+            "cache_hash": "3baf04b4b49692f5f084d747fcd758095d2700cdf23a0899a42810e12478e77b",
             "db_key": "Naryad",
             "table_name": "jurnal",
-            "ui_hash": "70337576df0d8cfd53b0d9d28e1b936120662868c707a4121de15a883a8270ad"
+            "ui_hash": "7e13f7d42cc0fce0bd6578f2502b6edf7b81c01d893f81fd446ce7a9a54e58ee"
         },
         "Naryad.kro_agreement_states": {
-            "api_hash": "0267be5e253ee57ee9eee8031f42340305b0266d77127f3cbe01a092cdc532f0",
-            "cache_hash": "8dff2fbf44b94f81990715cd44795cb92e6bcfd5c45572dd894404424c99e9bf",
+            "api_hash": "189f769186ad3ebda35dca5dc2837d7c07f70999ce8799880a8a8551defe6d2b",
+            "cache_hash": "936eee906daedcfff42aacb219b78cb2337a441ea1cb768b6d3313b4a609a253",
             "db_key": "Naryad",
             "table_name": "kro_agreement_states",
-            "ui_hash": "19db503df00cc53acf7cb7f561e12b8d196de0f3aab1b4b072876a7d638b2405"
+            "ui_hash": "2b8ce33e3e43125b92956c4bf4fdabac6f25ae62ac4938ee96123005a5d2f62e"
         },
-        "Naryad.kro_deviations": {
-            "api_hash": "d3a7e1e56249c35863a4e92a7c0f508af6ace0ba1d0c21daf7201a27b8405b44",
-            "cache_hash": "07c5a3a03774ab8134b3aebcac6cb66fdf62f97afe484a0caacc882bed8bc722",
+        "Naryad.kro_causes": {
+            "api_hash": "abdaa35c7bf3b17b60cb700b2457e6a45d44faca0ee9bdc0b5b94892d6b9f117",
+            "cache_hash": "ae4b62ed566cea4fc67587f79c1ee8b5400215519f46bd9ff83be5a1e4c6540a",
             "db_key": "Naryad",
-            "table_name": "kro_deviations",
-            "ui_hash": "f82dcdf68c5d7fdc17dcff03944beef7d2cebcd954b85481c7ec385ac26408f8"
-        },
-        "Naryad.mk": {
-            "api_hash": "bfcbae04f0aa7c0e42870d7b428839c9d9d6dc2b906aab9d804ca76306b167f6",
-            "cache_hash": "1c0b18270992e9f4effe28edeb5a66ac5a72f1e14e53b347a6141117f5f894ef",
-            "db_key": "Naryad",
-            "table_name": "mk",
-            "ui_hash": "c1c82a5dfba1277741238310d8e28b5d9ebf08b9a054bc8320bbc838580a46b5"
-        },
-        "db_naryad.kro_causes": {
-            "api_hash": "de134b335ca1b11e23c57bc5e96638ce4333db42c6e1dd7a194f695e1838d272",
-            "cache_hash": "e9402a7085314af4979181daf662efdfe8a52a8b4462b358b1ead6888f1e933e",
-            "db_key": "db_naryad",
             "table_name": "kro_causes",
             "ui_hash": "205f10ae025c8864095ac6a4fe1e0df6797c44bd3b4ef2150b0cbd72e5400d9d"
+        },
+        "Naryad.mk": {
+            "api_hash": "3113c1a8e2086f6fca45e9fb7a5e1100729d080f4a5e51c5510b71502917060d",
+            "cache_hash": "96d8f8756310cdfd1e5ec29a76a36b5cb452310031697cd12f6bbe5be7fd969e",
+            "db_key": "Naryad",
+            "table_name": "mk",
+            "ui_hash": "1be4251f87f8a395bf182d3e3e78923b70920613d08265048ae3df98c410404a"
+        },
+        "db_flet.mes_auth_sessions": {
+            "api_hash": "1b72e3d5926a1663cb765e58c0e7b3779a836e15a7d25275eb5c35be5e2c741b",
+            "cache_hash": "3df70eda86df58336d349e5bfeca1f56988e5a40bdfe752d5b4a26e52ee8acd4",
+            "db_key": "db_flet",
+            "table_name": "mes_auth_sessions",
+            "ui_hash": "4476c86ae3b92171aedd9d961d0599a2026269a4a864a45d2423ad3b11e0ddf1"
         }
     }
 }
-ARTIFACT_VERSION = '89f978d9f9fe'
-GENERATED_AT_UTC = '2026-07-08 14:12:30'
+ARTIFACT_VERSION = 'ccf81e091e30'
+GENERATED_AT_UTC = '2026-08-17T11:38:13+00:00'
 
 
 from typing import TYPE_CHECKING, Any, Protocol, TypedDict, Unpack
@@ -400,19 +301,15 @@ from project_cust_38.Cust_orm import SaveResult, SmartList, SmartRow
 
 if TYPE_CHECKING:
     from .orm_models import KroFiles
-    from .orm_models import Eq20271001
-    from .orm_models import Jurnaltdz20271001
-    from .orm_models import Mtdz20271001
-    from .orm_models import Rm20271001
+    from .orm_models import CompetenceVals
     from .orm_models import КадроваяИстория
     from .orm_models import Подразделения
     from .orm_models import ФизическиеЛица
-    from .orm_models import MCld20271001
-    from .orm_models import KroCauses
+    from .orm_models import MesAuthSessions
     from .orm_models import Nomen
     from .orm_models import Jurnal
     from .orm_models import KroAgreementStates
-    from .orm_models import KroDeviations
+    from .orm_models import KroCauses
     from .orm_models import Mk
 
 class KroFilesHint(TypedDict, total=False): # noqa
@@ -502,6 +399,7 @@ class KroFilesObjectManagerProtocol(Protocol): # noqa
     def count(self, **_kwargs: Unpack[KroFilesFilterHint]) -> int: ...
     def create(
         self,
+        *,
         _db: str | None = None,
         _attach_dbs: Any = None,
         _executor: Any = None,
@@ -517,6 +415,7 @@ class KroFilesObjectManagerProtocol(Protocol): # noqa
     def update(
         self,
         pk: Any,
+        *,
         _db: str | None = None,
         _attach_dbs: Any = None,
         _executor: Any = None,
@@ -558,6 +457,7 @@ class KroFilesAsSmartListCallable(Protocol): # noqa
 class KroFilesCreateCallable(Protocol): # noqa
     def __call__(
         self,
+        *,
         db: str | None = None,
         attach_dbs: Any = None,
         executor: Any = None,
@@ -573,6 +473,7 @@ class KroFilesCreateCallable(Protocol): # noqa
 class KroFilesUpdateCallable(Protocol): # noqa
     def __call__(
         self,
+        *,
         name_user: str | None = ...,
         path_user: str | None = ...,
         size_packed_bytes: int | None = ...,
@@ -581,415 +482,166 @@ class KroFilesUpdateCallable(Protocol): # noqa
         **_kwargs: Any,
     ) -> bool: ...
 
-class Eq20271001Hint(TypedDict, total=False): # noqa
+class CompetenceValsHint(TypedDict, total=False): # noqa
+    s_num: int
+    id_comp: int | None
+    id_user: str | None
+    value: int
+    created_at: str | None
+
+class CompetenceValsCreateHint(CompetenceValsHint, total=False): # noqa
     pass
 
-class Eq20271001CreateHint(Eq20271001Hint, total=False): # noqa
-    pass
+class CompetenceValsUpdateHint(TypedDict, total=False): # noqa
+    id_comp: int | None
+    id_user: str | None
+    value: int
+    created_at: str | None
 
-class Eq20271001UpdateHint(TypedDict, total=False): # noqa
-    pass
-
-class Eq20271001FilterHint(TypedDict, total=False): # noqa
+class CompetenceValsFilterHint(TypedDict, total=False): # noqa
     pk: Any
     pk__in: list[Any] | tuple[Any, ...] | set[Any]
     pk__isnull: bool
+    s_num: int
+    s_num__in: list[int] | tuple[int, ...] | set[int]
+    s_num__isnull: bool
+    s_num__gt: int
+    s_num__gte: int
+    s_num__lt: int
+    s_num__lte: int
+    id_comp: int | None
+    id_comp__in: list[int | None] | tuple[int | None, ...] | set[int | None]
+    id_comp__isnull: bool
+    id_comp__gt: int | None
+    id_comp__gte: int | None
+    id_comp__lt: int | None
+    id_comp__lte: int | None
+    id_user: str | None
+    id_user__in: list[str | None] | tuple[str | None, ...] | set[str | None]
+    id_user__isnull: bool
+    id_user__contains: str
+    id_user__icontains: str
+    value: int
+    value__in: list[int] | tuple[int, ...] | set[int]
+    value__isnull: bool
+    value__gt: int
+    value__gte: int
+    value__lt: int
+    value__lte: int
+    created_at: str | None
+    created_at__in: list[str | None] | tuple[str | None, ...] | set[str | None]
+    created_at__isnull: bool
+    created_at__contains: str
+    created_at__icontains: str
 
-class Eq20271001QuerySetProtocol(Protocol): # noqa
-    def using(self, db: str | None = None, attach_dbs: Any = None) -> "Eq20271001QuerySetProtocol": ...
-    def with_executor(self, executor: Any) -> "Eq20271001QuerySetProtocol": ...
-    def filter(self, **kwargs: Unpack[Eq20271001FilterHint]) -> "Eq20271001QuerySetProtocol": ...
-    def exclude(self, **kwargs: Unpack[Eq20271001FilterHint]) -> "Eq20271001QuerySetProtocol": ...
-    def where(self, sql: str, params: Any = None) -> "Eq20271001QuerySetProtocol": ...
-    def order_by(self, *fields: str) -> "Eq20271001QuerySetProtocol": ...
-    def limit(self, value: int | None) -> "Eq20271001QuerySetProtocol": ...
+class CompetenceValsQuerySetProtocol(Protocol): # noqa
+    def using(self, db: str | None = None, attach_dbs: Any = None) -> "CompetenceValsQuerySetProtocol": ...
+    def with_executor(self, executor: Any) -> "CompetenceValsQuerySetProtocol": ...
+    def filter(self, **kwargs: Unpack[CompetenceValsFilterHint]) -> "CompetenceValsQuerySetProtocol": ...
+    def exclude(self, **kwargs: Unpack[CompetenceValsFilterHint]) -> "CompetenceValsQuerySetProtocol": ...
+    def where(self, sql: str, params: Any = None) -> "CompetenceValsQuerySetProtocol": ...
+    def order_by(self, *fields: str) -> "CompetenceValsQuerySetProtocol": ...
+    def limit(self, value: int | None) -> "CompetenceValsQuerySetProtocol": ...
     def all(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
     def as_smartlist(self, *, by_aliases: bool = False, by_db_columns: bool = True, aliases: dict[str, str] | None = None) -> SmartList: ...
     def values(self, *fields: str, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
-    def first(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> "Eq20271001 | SmartRow | None": ...
-    def get(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **kwargs: Unpack[Eq20271001FilterHint]) -> "Eq20271001 | SmartRow": ...
+    def first(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> "CompetenceVals | SmartRow | None": ...
+    def get(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **kwargs: Unpack[CompetenceValsFilterHint]) -> "CompetenceVals | SmartRow": ...
     def count(self) -> int: ...
 
-class Eq20271001ObjectManagerProtocol(Protocol): # noqa
-    def query(self, *, _db: str | None = None, _attach_dbs: Any = None, _executor: Any = None) -> "Eq20271001QuerySetProtocol": ...
-    def using(self, _db: str | None = None, _attach_dbs: Any = None) -> "Eq20271001QuerySetProtocol": ...
-    def with_executor(self, _executor: Any) -> "Eq20271001QuerySetProtocol": ...
-    def filter(self, **_kwargs: Unpack[Eq20271001FilterHint]) -> "Eq20271001QuerySetProtocol": ...
-    def exclude(self, **_kwargs: Unpack[Eq20271001FilterHint]) -> "Eq20271001QuerySetProtocol": ...
-    def where(self, sql: str, params: Any = None) -> "Eq20271001QuerySetProtocol": ...
-    def order_by(self, *fields: str) -> "Eq20271001QuerySetProtocol": ...
-    def limit(self, value: int | None) -> "Eq20271001QuerySetProtocol": ...
+class CompetenceValsObjectManagerProtocol(Protocol): # noqa
+    def query(self, *, _db: str | None = None, _attach_dbs: Any = None, _executor: Any = None) -> "CompetenceValsQuerySetProtocol": ...
+    def using(self, _db: str | None = None, _attach_dbs: Any = None) -> "CompetenceValsQuerySetProtocol": ...
+    def with_executor(self, _executor: Any) -> "CompetenceValsQuerySetProtocol": ...
+    def filter(self, **_kwargs: Unpack[CompetenceValsFilterHint]) -> "CompetenceValsQuerySetProtocol": ...
+    def exclude(self, **_kwargs: Unpack[CompetenceValsFilterHint]) -> "CompetenceValsQuerySetProtocol": ...
+    def where(self, sql: str, params: Any = None) -> "CompetenceValsQuerySetProtocol": ...
+    def order_by(self, *fields: str) -> "CompetenceValsQuerySetProtocol": ...
+    def limit(self, value: int | None) -> "CompetenceValsQuerySetProtocol": ...
     def all(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
-    def as_smartlist(self, *, by_aliases: bool = False, by_db_columns: bool = True, aliases: dict[str, str] | None = None, **_kwargs: Unpack[Eq20271001FilterHint]) -> SmartList: ...
+    def as_smartlist(self, *, by_aliases: bool = False, by_db_columns: bool = True, aliases: dict[str, str] | None = None, **_kwargs: Unpack[CompetenceValsFilterHint]) -> SmartList: ...
     def values(self, *fields: str, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
-    def first(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **_kwargs: Unpack[Eq20271001FilterHint]) -> "Eq20271001 | SmartRow | None": ...
-    def get(self, pk: Any = ..., *, _db: str | None = None, _attach_dbs: Any = None, _executor: Any = None, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **_kwargs: Unpack[Eq20271001FilterHint]) -> "Eq20271001 | SmartRow": ...
-    def count(self, **_kwargs: Unpack[Eq20271001FilterHint]) -> int: ...
+    def first(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **_kwargs: Unpack[CompetenceValsFilterHint]) -> "CompetenceVals | SmartRow | None": ...
+    def get(self, pk: Any = ..., *, _db: str | None = None, _attach_dbs: Any = None, _executor: Any = None, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **_kwargs: Unpack[CompetenceValsFilterHint]) -> "CompetenceVals | SmartRow": ...
+    def count(self, **_kwargs: Unpack[CompetenceValsFilterHint]) -> int: ...
     def create(
         self,
+        *,
         _db: str | None = None,
         _attach_dbs: Any = None,
         _executor: Any = None,
+        s_num: int = ...,
+        id_comp: int | None = ...,
+        id_user: str | None = ...,
+        value: int = ...,
+        created_at: str | None = ...,
         **_kwargs: Any,
-    ) -> "Eq20271001": ...
+    ) -> "CompetenceVals": ...
 
     def update(
         self,
         pk: Any,
+        *,
         _db: str | None = None,
         _attach_dbs: Any = None,
         _executor: Any = None,
+        id_comp: int | None = ...,
+        id_user: str | None = ...,
+        value: int = ...,
+        created_at: str | None = ...,
         **_kwargs: Any,
     ) -> SaveResult: ...
 
-class Eq20271001QueryCallable(Protocol): # noqa
-    def __call__(self, *, db: str | None = None, attach_dbs: Any = None, executor: Any = None) -> "Eq20271001QuerySetProtocol": ...
+class CompetenceValsQueryCallable(Protocol): # noqa
+    def __call__(self, *, db: str | None = None, attach_dbs: Any = None, executor: Any = None) -> "CompetenceValsQuerySetProtocol": ...
 
-class Eq20271001FilterCallable(Protocol): # noqa
-    def __call__(self, **kwargs: Unpack[Eq20271001FilterHint]) -> "Eq20271001QuerySetProtocol": ...
+class CompetenceValsFilterCallable(Protocol): # noqa
+    def __call__(self, **kwargs: Unpack[CompetenceValsFilterHint]) -> "CompetenceValsQuerySetProtocol": ...
 
-class Eq20271001ExcludeCallable(Protocol): # noqa
-    def __call__(self, **kwargs: Unpack[Eq20271001FilterHint]) -> "Eq20271001QuerySetProtocol": ...
+class CompetenceValsExcludeCallable(Protocol): # noqa
+    def __call__(self, **kwargs: Unpack[CompetenceValsFilterHint]) -> "CompetenceValsQuerySetProtocol": ...
 
-class Eq20271001GetCallable(Protocol): # noqa
-    def __call__(self, pk: Any = ..., *, db: str | None = None, attach_dbs: Any = None, executor: Any = None, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **kwargs: Unpack[Eq20271001FilterHint]) -> "Eq20271001 | SmartRow": ...
+class CompetenceValsGetCallable(Protocol): # noqa
+    def __call__(self, pk: Any = ..., *, db: str | None = None, attach_dbs: Any = None, executor: Any = None, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **kwargs: Unpack[CompetenceValsFilterHint]) -> "CompetenceVals | SmartRow": ...
 
-class Eq20271001FirstCallable(Protocol): # noqa
-    def __call__(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **kwargs: Unpack[Eq20271001FilterHint]) -> "Eq20271001 | SmartRow | None": ...
+class CompetenceValsFirstCallable(Protocol): # noqa
+    def __call__(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **kwargs: Unpack[CompetenceValsFilterHint]) -> "CompetenceVals | SmartRow | None": ...
 
-class Eq20271001CountCallable(Protocol): # noqa
-    def __call__(self, **kwargs: Unpack[Eq20271001FilterHint]) -> int: ...
+class CompetenceValsCountCallable(Protocol): # noqa
+    def __call__(self, **kwargs: Unpack[CompetenceValsFilterHint]) -> int: ...
 
-class Eq20271001AllCallable(Protocol): # noqa
+class CompetenceValsAllCallable(Protocol): # noqa
     def __call__(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
 
-class Eq20271001ValuesCallable(Protocol): # noqa
+class CompetenceValsValuesCallable(Protocol): # noqa
     def __call__(self, *fields: str, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
 
-class Eq20271001AsSmartListCallable(Protocol): # noqa
-    def __call__(self, *, by_aliases: bool = False, by_db_columns: bool = True, aliases: dict[str, str] | None = None, **kwargs: Unpack[Eq20271001FilterHint]) -> SmartList: ...
+class CompetenceValsAsSmartListCallable(Protocol): # noqa
+    def __call__(self, *, by_aliases: bool = False, by_db_columns: bool = True, aliases: dict[str, str] | None = None, **kwargs: Unpack[CompetenceValsFilterHint]) -> SmartList: ...
 
-class Eq20271001CreateCallable(Protocol): # noqa
+class CompetenceValsCreateCallable(Protocol): # noqa
     def __call__(
         self,
+        *,
         db: str | None = None,
         attach_dbs: Any = None,
         executor: Any = None,
+        s_num: int = ...,
+        id_comp: int | None = ...,
+        id_user: str | None = ...,
+        value: int = ...,
+        created_at: str | None = ...,
         **_kwargs: Any,
-    ) -> "Eq20271001": ...
+    ) -> "CompetenceVals": ...
 
-class Eq20271001UpdateCallable(Protocol): # noqa
+class CompetenceValsUpdateCallable(Protocol): # noqa
     def __call__(
         self,
-        **_kwargs: Any,
-    ) -> bool: ...
-
-class Jurnaltdz20271001Hint(TypedDict, total=False): # noqa
-    pass
-
-class Jurnaltdz20271001CreateHint(Jurnaltdz20271001Hint, total=False): # noqa
-    pass
-
-class Jurnaltdz20271001UpdateHint(TypedDict, total=False): # noqa
-    pass
-
-class Jurnaltdz20271001FilterHint(TypedDict, total=False): # noqa
-    pk: Any
-    pk__in: list[Any] | tuple[Any, ...] | set[Any]
-    pk__isnull: bool
-
-class Jurnaltdz20271001QuerySetProtocol(Protocol): # noqa
-    def using(self, db: str | None = None, attach_dbs: Any = None) -> "Jurnaltdz20271001QuerySetProtocol": ...
-    def with_executor(self, executor: Any) -> "Jurnaltdz20271001QuerySetProtocol": ...
-    def filter(self, **kwargs: Unpack[Jurnaltdz20271001FilterHint]) -> "Jurnaltdz20271001QuerySetProtocol": ...
-    def exclude(self, **kwargs: Unpack[Jurnaltdz20271001FilterHint]) -> "Jurnaltdz20271001QuerySetProtocol": ...
-    def where(self, sql: str, params: Any = None) -> "Jurnaltdz20271001QuerySetProtocol": ...
-    def order_by(self, *fields: str) -> "Jurnaltdz20271001QuerySetProtocol": ...
-    def limit(self, value: int | None) -> "Jurnaltdz20271001QuerySetProtocol": ...
-    def all(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
-    def as_smartlist(self, *, by_aliases: bool = False, by_db_columns: bool = True, aliases: dict[str, str] | None = None) -> SmartList: ...
-    def values(self, *fields: str, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
-    def first(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> "Jurnaltdz20271001 | SmartRow | None": ...
-    def get(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **kwargs: Unpack[Jurnaltdz20271001FilterHint]) -> "Jurnaltdz20271001 | SmartRow": ...
-    def count(self) -> int: ...
-
-class Jurnaltdz20271001ObjectManagerProtocol(Protocol): # noqa
-    def query(self, *, _db: str | None = None, _attach_dbs: Any = None, _executor: Any = None) -> "Jurnaltdz20271001QuerySetProtocol": ...
-    def using(self, _db: str | None = None, _attach_dbs: Any = None) -> "Jurnaltdz20271001QuerySetProtocol": ...
-    def with_executor(self, _executor: Any) -> "Jurnaltdz20271001QuerySetProtocol": ...
-    def filter(self, **_kwargs: Unpack[Jurnaltdz20271001FilterHint]) -> "Jurnaltdz20271001QuerySetProtocol": ...
-    def exclude(self, **_kwargs: Unpack[Jurnaltdz20271001FilterHint]) -> "Jurnaltdz20271001QuerySetProtocol": ...
-    def where(self, sql: str, params: Any = None) -> "Jurnaltdz20271001QuerySetProtocol": ...
-    def order_by(self, *fields: str) -> "Jurnaltdz20271001QuerySetProtocol": ...
-    def limit(self, value: int | None) -> "Jurnaltdz20271001QuerySetProtocol": ...
-    def all(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
-    def as_smartlist(self, *, by_aliases: bool = False, by_db_columns: bool = True, aliases: dict[str, str] | None = None, **_kwargs: Unpack[Jurnaltdz20271001FilterHint]) -> SmartList: ...
-    def values(self, *fields: str, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
-    def first(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **_kwargs: Unpack[Jurnaltdz20271001FilterHint]) -> "Jurnaltdz20271001 | SmartRow | None": ...
-    def get(self, pk: Any = ..., *, _db: str | None = None, _attach_dbs: Any = None, _executor: Any = None, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **_kwargs: Unpack[Jurnaltdz20271001FilterHint]) -> "Jurnaltdz20271001 | SmartRow": ...
-    def count(self, **_kwargs: Unpack[Jurnaltdz20271001FilterHint]) -> int: ...
-    def create(
-        self,
-        _db: str | None = None,
-        _attach_dbs: Any = None,
-        _executor: Any = None,
-        **_kwargs: Any,
-    ) -> "Jurnaltdz20271001": ...
-
-    def update(
-        self,
-        pk: Any,
-        _db: str | None = None,
-        _attach_dbs: Any = None,
-        _executor: Any = None,
-        **_kwargs: Any,
-    ) -> SaveResult: ...
-
-class Jurnaltdz20271001QueryCallable(Protocol): # noqa
-    def __call__(self, *, db: str | None = None, attach_dbs: Any = None, executor: Any = None) -> "Jurnaltdz20271001QuerySetProtocol": ...
-
-class Jurnaltdz20271001FilterCallable(Protocol): # noqa
-    def __call__(self, **kwargs: Unpack[Jurnaltdz20271001FilterHint]) -> "Jurnaltdz20271001QuerySetProtocol": ...
-
-class Jurnaltdz20271001ExcludeCallable(Protocol): # noqa
-    def __call__(self, **kwargs: Unpack[Jurnaltdz20271001FilterHint]) -> "Jurnaltdz20271001QuerySetProtocol": ...
-
-class Jurnaltdz20271001GetCallable(Protocol): # noqa
-    def __call__(self, pk: Any = ..., *, db: str | None = None, attach_dbs: Any = None, executor: Any = None, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **kwargs: Unpack[Jurnaltdz20271001FilterHint]) -> "Jurnaltdz20271001 | SmartRow": ...
-
-class Jurnaltdz20271001FirstCallable(Protocol): # noqa
-    def __call__(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **kwargs: Unpack[Jurnaltdz20271001FilterHint]) -> "Jurnaltdz20271001 | SmartRow | None": ...
-
-class Jurnaltdz20271001CountCallable(Protocol): # noqa
-    def __call__(self, **kwargs: Unpack[Jurnaltdz20271001FilterHint]) -> int: ...
-
-class Jurnaltdz20271001AllCallable(Protocol): # noqa
-    def __call__(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
-
-class Jurnaltdz20271001ValuesCallable(Protocol): # noqa
-    def __call__(self, *fields: str, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
-
-class Jurnaltdz20271001AsSmartListCallable(Protocol): # noqa
-    def __call__(self, *, by_aliases: bool = False, by_db_columns: bool = True, aliases: dict[str, str] | None = None, **kwargs: Unpack[Jurnaltdz20271001FilterHint]) -> SmartList: ...
-
-class Jurnaltdz20271001CreateCallable(Protocol): # noqa
-    def __call__(
-        self,
-        db: str | None = None,
-        attach_dbs: Any = None,
-        executor: Any = None,
-        **_kwargs: Any,
-    ) -> "Jurnaltdz20271001": ...
-
-class Jurnaltdz20271001UpdateCallable(Protocol): # noqa
-    def __call__(
-        self,
-        **_kwargs: Any,
-    ) -> bool: ...
-
-class Mtdz20271001Hint(TypedDict, total=False): # noqa
-    pass
-
-class Mtdz20271001CreateHint(Mtdz20271001Hint, total=False): # noqa
-    pass
-
-class Mtdz20271001UpdateHint(TypedDict, total=False): # noqa
-    pass
-
-class Mtdz20271001FilterHint(TypedDict, total=False): # noqa
-    pk: Any
-    pk__in: list[Any] | tuple[Any, ...] | set[Any]
-    pk__isnull: bool
-
-class Mtdz20271001QuerySetProtocol(Protocol): # noqa
-    def using(self, db: str | None = None, attach_dbs: Any = None) -> "Mtdz20271001QuerySetProtocol": ...
-    def with_executor(self, executor: Any) -> "Mtdz20271001QuerySetProtocol": ...
-    def filter(self, **kwargs: Unpack[Mtdz20271001FilterHint]) -> "Mtdz20271001QuerySetProtocol": ...
-    def exclude(self, **kwargs: Unpack[Mtdz20271001FilterHint]) -> "Mtdz20271001QuerySetProtocol": ...
-    def where(self, sql: str, params: Any = None) -> "Mtdz20271001QuerySetProtocol": ...
-    def order_by(self, *fields: str) -> "Mtdz20271001QuerySetProtocol": ...
-    def limit(self, value: int | None) -> "Mtdz20271001QuerySetProtocol": ...
-    def all(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
-    def as_smartlist(self, *, by_aliases: bool = False, by_db_columns: bool = True, aliases: dict[str, str] | None = None) -> SmartList: ...
-    def values(self, *fields: str, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
-    def first(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> "Mtdz20271001 | SmartRow | None": ...
-    def get(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **kwargs: Unpack[Mtdz20271001FilterHint]) -> "Mtdz20271001 | SmartRow": ...
-    def count(self) -> int: ...
-
-class Mtdz20271001ObjectManagerProtocol(Protocol): # noqa
-    def query(self, *, _db: str | None = None, _attach_dbs: Any = None, _executor: Any = None) -> "Mtdz20271001QuerySetProtocol": ...
-    def using(self, _db: str | None = None, _attach_dbs: Any = None) -> "Mtdz20271001QuerySetProtocol": ...
-    def with_executor(self, _executor: Any) -> "Mtdz20271001QuerySetProtocol": ...
-    def filter(self, **_kwargs: Unpack[Mtdz20271001FilterHint]) -> "Mtdz20271001QuerySetProtocol": ...
-    def exclude(self, **_kwargs: Unpack[Mtdz20271001FilterHint]) -> "Mtdz20271001QuerySetProtocol": ...
-    def where(self, sql: str, params: Any = None) -> "Mtdz20271001QuerySetProtocol": ...
-    def order_by(self, *fields: str) -> "Mtdz20271001QuerySetProtocol": ...
-    def limit(self, value: int | None) -> "Mtdz20271001QuerySetProtocol": ...
-    def all(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
-    def as_smartlist(self, *, by_aliases: bool = False, by_db_columns: bool = True, aliases: dict[str, str] | None = None, **_kwargs: Unpack[Mtdz20271001FilterHint]) -> SmartList: ...
-    def values(self, *fields: str, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
-    def first(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **_kwargs: Unpack[Mtdz20271001FilterHint]) -> "Mtdz20271001 | SmartRow | None": ...
-    def get(self, pk: Any = ..., *, _db: str | None = None, _attach_dbs: Any = None, _executor: Any = None, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **_kwargs: Unpack[Mtdz20271001FilterHint]) -> "Mtdz20271001 | SmartRow": ...
-    def count(self, **_kwargs: Unpack[Mtdz20271001FilterHint]) -> int: ...
-    def create(
-        self,
-        _db: str | None = None,
-        _attach_dbs: Any = None,
-        _executor: Any = None,
-        **_kwargs: Any,
-    ) -> "Mtdz20271001": ...
-
-    def update(
-        self,
-        pk: Any,
-        _db: str | None = None,
-        _attach_dbs: Any = None,
-        _executor: Any = None,
-        **_kwargs: Any,
-    ) -> SaveResult: ...
-
-class Mtdz20271001QueryCallable(Protocol): # noqa
-    def __call__(self, *, db: str | None = None, attach_dbs: Any = None, executor: Any = None) -> "Mtdz20271001QuerySetProtocol": ...
-
-class Mtdz20271001FilterCallable(Protocol): # noqa
-    def __call__(self, **kwargs: Unpack[Mtdz20271001FilterHint]) -> "Mtdz20271001QuerySetProtocol": ...
-
-class Mtdz20271001ExcludeCallable(Protocol): # noqa
-    def __call__(self, **kwargs: Unpack[Mtdz20271001FilterHint]) -> "Mtdz20271001QuerySetProtocol": ...
-
-class Mtdz20271001GetCallable(Protocol): # noqa
-    def __call__(self, pk: Any = ..., *, db: str | None = None, attach_dbs: Any = None, executor: Any = None, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **kwargs: Unpack[Mtdz20271001FilterHint]) -> "Mtdz20271001 | SmartRow": ...
-
-class Mtdz20271001FirstCallable(Protocol): # noqa
-    def __call__(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **kwargs: Unpack[Mtdz20271001FilterHint]) -> "Mtdz20271001 | SmartRow | None": ...
-
-class Mtdz20271001CountCallable(Protocol): # noqa
-    def __call__(self, **kwargs: Unpack[Mtdz20271001FilterHint]) -> int: ...
-
-class Mtdz20271001AllCallable(Protocol): # noqa
-    def __call__(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
-
-class Mtdz20271001ValuesCallable(Protocol): # noqa
-    def __call__(self, *fields: str, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
-
-class Mtdz20271001AsSmartListCallable(Protocol): # noqa
-    def __call__(self, *, by_aliases: bool = False, by_db_columns: bool = True, aliases: dict[str, str] | None = None, **kwargs: Unpack[Mtdz20271001FilterHint]) -> SmartList: ...
-
-class Mtdz20271001CreateCallable(Protocol): # noqa
-    def __call__(
-        self,
-        db: str | None = None,
-        attach_dbs: Any = None,
-        executor: Any = None,
-        **_kwargs: Any,
-    ) -> "Mtdz20271001": ...
-
-class Mtdz20271001UpdateCallable(Protocol): # noqa
-    def __call__(
-        self,
-        **_kwargs: Any,
-    ) -> bool: ...
-
-class Rm20271001Hint(TypedDict, total=False): # noqa
-    pass
-
-class Rm20271001CreateHint(Rm20271001Hint, total=False): # noqa
-    pass
-
-class Rm20271001UpdateHint(TypedDict, total=False): # noqa
-    pass
-
-class Rm20271001FilterHint(TypedDict, total=False): # noqa
-    pk: Any
-    pk__in: list[Any] | tuple[Any, ...] | set[Any]
-    pk__isnull: bool
-
-class Rm20271001QuerySetProtocol(Protocol): # noqa
-    def using(self, db: str | None = None, attach_dbs: Any = None) -> "Rm20271001QuerySetProtocol": ...
-    def with_executor(self, executor: Any) -> "Rm20271001QuerySetProtocol": ...
-    def filter(self, **kwargs: Unpack[Rm20271001FilterHint]) -> "Rm20271001QuerySetProtocol": ...
-    def exclude(self, **kwargs: Unpack[Rm20271001FilterHint]) -> "Rm20271001QuerySetProtocol": ...
-    def where(self, sql: str, params: Any = None) -> "Rm20271001QuerySetProtocol": ...
-    def order_by(self, *fields: str) -> "Rm20271001QuerySetProtocol": ...
-    def limit(self, value: int | None) -> "Rm20271001QuerySetProtocol": ...
-    def all(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
-    def as_smartlist(self, *, by_aliases: bool = False, by_db_columns: bool = True, aliases: dict[str, str] | None = None) -> SmartList: ...
-    def values(self, *fields: str, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
-    def first(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> "Rm20271001 | SmartRow | None": ...
-    def get(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **kwargs: Unpack[Rm20271001FilterHint]) -> "Rm20271001 | SmartRow": ...
-    def count(self) -> int: ...
-
-class Rm20271001ObjectManagerProtocol(Protocol): # noqa
-    def query(self, *, _db: str | None = None, _attach_dbs: Any = None, _executor: Any = None) -> "Rm20271001QuerySetProtocol": ...
-    def using(self, _db: str | None = None, _attach_dbs: Any = None) -> "Rm20271001QuerySetProtocol": ...
-    def with_executor(self, _executor: Any) -> "Rm20271001QuerySetProtocol": ...
-    def filter(self, **_kwargs: Unpack[Rm20271001FilterHint]) -> "Rm20271001QuerySetProtocol": ...
-    def exclude(self, **_kwargs: Unpack[Rm20271001FilterHint]) -> "Rm20271001QuerySetProtocol": ...
-    def where(self, sql: str, params: Any = None) -> "Rm20271001QuerySetProtocol": ...
-    def order_by(self, *fields: str) -> "Rm20271001QuerySetProtocol": ...
-    def limit(self, value: int | None) -> "Rm20271001QuerySetProtocol": ...
-    def all(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
-    def as_smartlist(self, *, by_aliases: bool = False, by_db_columns: bool = True, aliases: dict[str, str] | None = None, **_kwargs: Unpack[Rm20271001FilterHint]) -> SmartList: ...
-    def values(self, *fields: str, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
-    def first(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **_kwargs: Unpack[Rm20271001FilterHint]) -> "Rm20271001 | SmartRow | None": ...
-    def get(self, pk: Any = ..., *, _db: str | None = None, _attach_dbs: Any = None, _executor: Any = None, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **_kwargs: Unpack[Rm20271001FilterHint]) -> "Rm20271001 | SmartRow": ...
-    def count(self, **_kwargs: Unpack[Rm20271001FilterHint]) -> int: ...
-    def create(
-        self,
-        _db: str | None = None,
-        _attach_dbs: Any = None,
-        _executor: Any = None,
-        **_kwargs: Any,
-    ) -> "Rm20271001": ...
-
-    def update(
-        self,
-        pk: Any,
-        _db: str | None = None,
-        _attach_dbs: Any = None,
-        _executor: Any = None,
-        **_kwargs: Any,
-    ) -> SaveResult: ...
-
-class Rm20271001QueryCallable(Protocol): # noqa
-    def __call__(self, *, db: str | None = None, attach_dbs: Any = None, executor: Any = None) -> "Rm20271001QuerySetProtocol": ...
-
-class Rm20271001FilterCallable(Protocol): # noqa
-    def __call__(self, **kwargs: Unpack[Rm20271001FilterHint]) -> "Rm20271001QuerySetProtocol": ...
-
-class Rm20271001ExcludeCallable(Protocol): # noqa
-    def __call__(self, **kwargs: Unpack[Rm20271001FilterHint]) -> "Rm20271001QuerySetProtocol": ...
-
-class Rm20271001GetCallable(Protocol): # noqa
-    def __call__(self, pk: Any = ..., *, db: str | None = None, attach_dbs: Any = None, executor: Any = None, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **kwargs: Unpack[Rm20271001FilterHint]) -> "Rm20271001 | SmartRow": ...
-
-class Rm20271001FirstCallable(Protocol): # noqa
-    def __call__(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **kwargs: Unpack[Rm20271001FilterHint]) -> "Rm20271001 | SmartRow | None": ...
-
-class Rm20271001CountCallable(Protocol): # noqa
-    def __call__(self, **kwargs: Unpack[Rm20271001FilterHint]) -> int: ...
-
-class Rm20271001AllCallable(Protocol): # noqa
-    def __call__(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
-
-class Rm20271001ValuesCallable(Protocol): # noqa
-    def __call__(self, *fields: str, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
-
-class Rm20271001AsSmartListCallable(Protocol): # noqa
-    def __call__(self, *, by_aliases: bool = False, by_db_columns: bool = True, aliases: dict[str, str] | None = None, **kwargs: Unpack[Rm20271001FilterHint]) -> SmartList: ...
-
-class Rm20271001CreateCallable(Protocol): # noqa
-    def __call__(
-        self,
-        db: str | None = None,
-        attach_dbs: Any = None,
-        executor: Any = None,
-        **_kwargs: Any,
-    ) -> "Rm20271001": ...
-
-class Rm20271001UpdateCallable(Protocol): # noqa
-    def __call__(
-        self,
+        *,
+        id_comp: int | None = ...,
+        id_user: str | None = ...,
+        value: int = ...,
+        created_at: str | None = ...,
         **_kwargs: Any,
     ) -> bool: ...
 
@@ -1121,6 +773,7 @@ class КадроваяИсторияObjectManagerProtocol(Protocol): # noqa
     def count(self, **_kwargs: Unpack[КадроваяИсторияFilterHint]) -> int: ...
     def create(
         self,
+        *,
         _db: str | None = None,
         _attach_dbs: Any = None,
         _executor: Any = None,
@@ -1141,6 +794,7 @@ class КадроваяИсторияObjectManagerProtocol(Protocol): # noqa
     def update(
         self,
         pk: Any,
+        *,
         _db: str | None = None,
         _attach_dbs: Any = None,
         _executor: Any = None,
@@ -1187,6 +841,7 @@ class КадроваяИсторияAsSmartListCallable(Protocol): # noqa
 class КадроваяИсторияCreateCallable(Protocol): # noqa
     def __call__(
         self,
+        *,
         db: str | None = None,
         attach_dbs: Any = None,
         executor: Any = None,
@@ -1207,6 +862,7 @@ class КадроваяИсторияCreateCallable(Protocol): # noqa
 class КадроваяИсторияUpdateCallable(Protocol): # noqa
     def __call__(
         self,
+        *,
         ФизическоеЛицо_Key: str | None = ...,
         ФизическоеЛицо_id: int | None = ...,
         Должность_Key: str | None = ...,
@@ -1304,6 +960,7 @@ class ПодразделенияObjectManagerProtocol(Protocol): # noqa
     def count(self, **_kwargs: Unpack[ПодразделенияFilterHint]) -> int: ...
     def create(
         self,
+        *,
         _db: str | None = None,
         _attach_dbs: Any = None,
         _executor: Any = None,
@@ -1318,6 +975,7 @@ class ПодразделенияObjectManagerProtocol(Protocol): # noqa
     def update(
         self,
         pk: Any,
+        *,
         _db: str | None = None,
         _attach_dbs: Any = None,
         _executor: Any = None,
@@ -1358,6 +1016,7 @@ class ПодразделенияAsSmartListCallable(Protocol): # noqa
 class ПодразделенияCreateCallable(Protocol): # noqa
     def __call__(
         self,
+        *,
         db: str | None = None,
         attach_dbs: Any = None,
         executor: Any = None,
@@ -1372,6 +1031,7 @@ class ПодразделенияCreateCallable(Protocol): # noqa
 class ПодразделенияUpdateCallable(Protocol): # noqa
     def __call__(
         self,
+        *,
         Наименование: str | None = ...,
         Подразделение_Key: str | None = ...,
         Организация_poki: int | None = ...,
@@ -1521,6 +1181,7 @@ class ФизическиеЛицаObjectManagerProtocol(Protocol): # noqa
     def count(self, **_kwargs: Unpack[ФизическиеЛицаFilterHint]) -> int: ...
     def create(
         self,
+        *,
         _db: str | None = None,
         _attach_dbs: Any = None,
         _executor: Any = None,
@@ -1543,6 +1204,7 @@ class ФизическиеЛицаObjectManagerProtocol(Protocol): # noqa
     def update(
         self,
         pk: Any,
+        *,
         _db: str | None = None,
         _attach_dbs: Any = None,
         _executor: Any = None,
@@ -1591,6 +1253,7 @@ class ФизическиеЛицаAsSmartListCallable(Protocol): # noqa
 class ФизическиеЛицаCreateCallable(Protocol): # noqa
     def __call__(
         self,
+        *,
         db: str | None = None,
         attach_dbs: Any = None,
         executor: Any = None,
@@ -1613,6 +1276,7 @@ class ФизическиеЛицаCreateCallable(Protocol): # noqa
 class ФизическиеЛицаUpdateCallable(Protocol): # noqa
     def __call__(
         self,
+        *,
         ПометкаУдаления: int | None = ...,
         ФизическоеЛицо_Key: str | None = ...,
         Фамилия: str | None = ...,
@@ -1628,250 +1292,166 @@ class ФизическиеЛицаUpdateCallable(Protocol): # noqa
         **_kwargs: Any,
     ) -> bool: ...
 
-class MCld20271001Hint(TypedDict, total=False): # noqa
+class MesAuthSessionsHint(TypedDict, total=False): # noqa
+    sid: str | None
+    user_json: str
+    created_at: float
+    expires_at: float
+    updated_at: float
+
+class MesAuthSessionsCreateHint(MesAuthSessionsHint, total=False): # noqa
     pass
 
-class MCld20271001CreateHint(MCld20271001Hint, total=False): # noqa
-    pass
+class MesAuthSessionsUpdateHint(TypedDict, total=False): # noqa
+    user_json: str
+    created_at: float
+    expires_at: float
+    updated_at: float
 
-class MCld20271001UpdateHint(TypedDict, total=False): # noqa
-    pass
-
-class MCld20271001FilterHint(TypedDict, total=False): # noqa
+class MesAuthSessionsFilterHint(TypedDict, total=False): # noqa
     pk: Any
     pk__in: list[Any] | tuple[Any, ...] | set[Any]
     pk__isnull: bool
+    sid: str | None
+    sid__in: list[str | None] | tuple[str | None, ...] | set[str | None]
+    sid__isnull: bool
+    sid__contains: str
+    sid__icontains: str
+    user_json: str
+    user_json__in: list[str] | tuple[str, ...] | set[str]
+    user_json__isnull: bool
+    user_json__contains: str
+    user_json__icontains: str
+    created_at: float
+    created_at__in: list[float] | tuple[float, ...] | set[float]
+    created_at__isnull: bool
+    created_at__gt: float
+    created_at__gte: float
+    created_at__lt: float
+    created_at__lte: float
+    expires_at: float
+    expires_at__in: list[float] | tuple[float, ...] | set[float]
+    expires_at__isnull: bool
+    expires_at__gt: float
+    expires_at__gte: float
+    expires_at__lt: float
+    expires_at__lte: float
+    updated_at: float
+    updated_at__in: list[float] | tuple[float, ...] | set[float]
+    updated_at__isnull: bool
+    updated_at__gt: float
+    updated_at__gte: float
+    updated_at__lt: float
+    updated_at__lte: float
 
-class MCld20271001QuerySetProtocol(Protocol): # noqa
-    def using(self, db: str | None = None, attach_dbs: Any = None) -> "MCld20271001QuerySetProtocol": ...
-    def with_executor(self, executor: Any) -> "MCld20271001QuerySetProtocol": ...
-    def filter(self, **kwargs: Unpack[MCld20271001FilterHint]) -> "MCld20271001QuerySetProtocol": ...
-    def exclude(self, **kwargs: Unpack[MCld20271001FilterHint]) -> "MCld20271001QuerySetProtocol": ...
-    def where(self, sql: str, params: Any = None) -> "MCld20271001QuerySetProtocol": ...
-    def order_by(self, *fields: str) -> "MCld20271001QuerySetProtocol": ...
-    def limit(self, value: int | None) -> "MCld20271001QuerySetProtocol": ...
+class MesAuthSessionsQuerySetProtocol(Protocol): # noqa
+    def using(self, db: str | None = None, attach_dbs: Any = None) -> "MesAuthSessionsQuerySetProtocol": ...
+    def with_executor(self, executor: Any) -> "MesAuthSessionsQuerySetProtocol": ...
+    def filter(self, **kwargs: Unpack[MesAuthSessionsFilterHint]) -> "MesAuthSessionsQuerySetProtocol": ...
+    def exclude(self, **kwargs: Unpack[MesAuthSessionsFilterHint]) -> "MesAuthSessionsQuerySetProtocol": ...
+    def where(self, sql: str, params: Any = None) -> "MesAuthSessionsQuerySetProtocol": ...
+    def order_by(self, *fields: str) -> "MesAuthSessionsQuerySetProtocol": ...
+    def limit(self, value: int | None) -> "MesAuthSessionsQuerySetProtocol": ...
     def all(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
     def as_smartlist(self, *, by_aliases: bool = False, by_db_columns: bool = True, aliases: dict[str, str] | None = None) -> SmartList: ...
     def values(self, *fields: str, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
-    def first(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> "MCld20271001 | SmartRow | None": ...
-    def get(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **kwargs: Unpack[MCld20271001FilterHint]) -> "MCld20271001 | SmartRow": ...
+    def first(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> "MesAuthSessions | SmartRow | None": ...
+    def get(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **kwargs: Unpack[MesAuthSessionsFilterHint]) -> "MesAuthSessions | SmartRow": ...
     def count(self) -> int: ...
 
-class MCld20271001ObjectManagerProtocol(Protocol): # noqa
-    def query(self, *, _db: str | None = None, _attach_dbs: Any = None, _executor: Any = None) -> "MCld20271001QuerySetProtocol": ...
-    def using(self, _db: str | None = None, _attach_dbs: Any = None) -> "MCld20271001QuerySetProtocol": ...
-    def with_executor(self, _executor: Any) -> "MCld20271001QuerySetProtocol": ...
-    def filter(self, **_kwargs: Unpack[MCld20271001FilterHint]) -> "MCld20271001QuerySetProtocol": ...
-    def exclude(self, **_kwargs: Unpack[MCld20271001FilterHint]) -> "MCld20271001QuerySetProtocol": ...
-    def where(self, sql: str, params: Any = None) -> "MCld20271001QuerySetProtocol": ...
-    def order_by(self, *fields: str) -> "MCld20271001QuerySetProtocol": ...
-    def limit(self, value: int | None) -> "MCld20271001QuerySetProtocol": ...
+class MesAuthSessionsObjectManagerProtocol(Protocol): # noqa
+    def query(self, *, _db: str | None = None, _attach_dbs: Any = None, _executor: Any = None) -> "MesAuthSessionsQuerySetProtocol": ...
+    def using(self, _db: str | None = None, _attach_dbs: Any = None) -> "MesAuthSessionsQuerySetProtocol": ...
+    def with_executor(self, _executor: Any) -> "MesAuthSessionsQuerySetProtocol": ...
+    def filter(self, **_kwargs: Unpack[MesAuthSessionsFilterHint]) -> "MesAuthSessionsQuerySetProtocol": ...
+    def exclude(self, **_kwargs: Unpack[MesAuthSessionsFilterHint]) -> "MesAuthSessionsQuerySetProtocol": ...
+    def where(self, sql: str, params: Any = None) -> "MesAuthSessionsQuerySetProtocol": ...
+    def order_by(self, *fields: str) -> "MesAuthSessionsQuerySetProtocol": ...
+    def limit(self, value: int | None) -> "MesAuthSessionsQuerySetProtocol": ...
     def all(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
-    def as_smartlist(self, *, by_aliases: bool = False, by_db_columns: bool = True, aliases: dict[str, str] | None = None, **_kwargs: Unpack[MCld20271001FilterHint]) -> SmartList: ...
+    def as_smartlist(self, *, by_aliases: bool = False, by_db_columns: bool = True, aliases: dict[str, str] | None = None, **_kwargs: Unpack[MesAuthSessionsFilterHint]) -> SmartList: ...
     def values(self, *fields: str, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
-    def first(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **_kwargs: Unpack[MCld20271001FilterHint]) -> "MCld20271001 | SmartRow | None": ...
-    def get(self, pk: Any = ..., *, _db: str | None = None, _attach_dbs: Any = None, _executor: Any = None, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **_kwargs: Unpack[MCld20271001FilterHint]) -> "MCld20271001 | SmartRow": ...
-    def count(self, **_kwargs: Unpack[MCld20271001FilterHint]) -> int: ...
+    def first(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **_kwargs: Unpack[MesAuthSessionsFilterHint]) -> "MesAuthSessions | SmartRow | None": ...
+    def get(self, pk: Any = ..., *, _db: str | None = None, _attach_dbs: Any = None, _executor: Any = None, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **_kwargs: Unpack[MesAuthSessionsFilterHint]) -> "MesAuthSessions | SmartRow": ...
+    def count(self, **_kwargs: Unpack[MesAuthSessionsFilterHint]) -> int: ...
     def create(
         self,
+        *,
         _db: str | None = None,
         _attach_dbs: Any = None,
         _executor: Any = None,
+        sid: str | None = ...,
+        user_json: str = ...,
+        created_at: float = ...,
+        expires_at: float = ...,
+        updated_at: float = ...,
         **_kwargs: Any,
-    ) -> "MCld20271001": ...
+    ) -> "MesAuthSessions": ...
 
     def update(
         self,
         pk: Any,
+        *,
         _db: str | None = None,
         _attach_dbs: Any = None,
         _executor: Any = None,
+        user_json: str = ...,
+        created_at: float = ...,
+        expires_at: float = ...,
+        updated_at: float = ...,
         **_kwargs: Any,
     ) -> SaveResult: ...
 
-class MCld20271001QueryCallable(Protocol): # noqa
-    def __call__(self, *, db: str | None = None, attach_dbs: Any = None, executor: Any = None) -> "MCld20271001QuerySetProtocol": ...
+class MesAuthSessionsQueryCallable(Protocol): # noqa
+    def __call__(self, *, db: str | None = None, attach_dbs: Any = None, executor: Any = None) -> "MesAuthSessionsQuerySetProtocol": ...
 
-class MCld20271001FilterCallable(Protocol): # noqa
-    def __call__(self, **kwargs: Unpack[MCld20271001FilterHint]) -> "MCld20271001QuerySetProtocol": ...
+class MesAuthSessionsFilterCallable(Protocol): # noqa
+    def __call__(self, **kwargs: Unpack[MesAuthSessionsFilterHint]) -> "MesAuthSessionsQuerySetProtocol": ...
 
-class MCld20271001ExcludeCallable(Protocol): # noqa
-    def __call__(self, **kwargs: Unpack[MCld20271001FilterHint]) -> "MCld20271001QuerySetProtocol": ...
+class MesAuthSessionsExcludeCallable(Protocol): # noqa
+    def __call__(self, **kwargs: Unpack[MesAuthSessionsFilterHint]) -> "MesAuthSessionsQuerySetProtocol": ...
 
-class MCld20271001GetCallable(Protocol): # noqa
-    def __call__(self, pk: Any = ..., *, db: str | None = None, attach_dbs: Any = None, executor: Any = None, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **kwargs: Unpack[MCld20271001FilterHint]) -> "MCld20271001 | SmartRow": ...
+class MesAuthSessionsGetCallable(Protocol): # noqa
+    def __call__(self, pk: Any = ..., *, db: str | None = None, attach_dbs: Any = None, executor: Any = None, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **kwargs: Unpack[MesAuthSessionsFilterHint]) -> "MesAuthSessions | SmartRow": ...
 
-class MCld20271001FirstCallable(Protocol): # noqa
-    def __call__(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **kwargs: Unpack[MCld20271001FilterHint]) -> "MCld20271001 | SmartRow | None": ...
+class MesAuthSessionsFirstCallable(Protocol): # noqa
+    def __call__(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **kwargs: Unpack[MesAuthSessionsFilterHint]) -> "MesAuthSessions | SmartRow | None": ...
 
-class MCld20271001CountCallable(Protocol): # noqa
-    def __call__(self, **kwargs: Unpack[MCld20271001FilterHint]) -> int: ...
+class MesAuthSessionsCountCallable(Protocol): # noqa
+    def __call__(self, **kwargs: Unpack[MesAuthSessionsFilterHint]) -> int: ...
 
-class MCld20271001AllCallable(Protocol): # noqa
+class MesAuthSessionsAllCallable(Protocol): # noqa
     def __call__(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
 
-class MCld20271001ValuesCallable(Protocol): # noqa
+class MesAuthSessionsValuesCallable(Protocol): # noqa
     def __call__(self, *fields: str, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
 
-class MCld20271001AsSmartListCallable(Protocol): # noqa
-    def __call__(self, *, by_aliases: bool = False, by_db_columns: bool = True, aliases: dict[str, str] | None = None, **kwargs: Unpack[MCld20271001FilterHint]) -> SmartList: ...
+class MesAuthSessionsAsSmartListCallable(Protocol): # noqa
+    def __call__(self, *, by_aliases: bool = False, by_db_columns: bool = True, aliases: dict[str, str] | None = None, **kwargs: Unpack[MesAuthSessionsFilterHint]) -> SmartList: ...
 
-class MCld20271001CreateCallable(Protocol): # noqa
+class MesAuthSessionsCreateCallable(Protocol): # noqa
     def __call__(
         self,
+        *,
         db: str | None = None,
         attach_dbs: Any = None,
         executor: Any = None,
+        sid: str | None = ...,
+        user_json: str = ...,
+        created_at: float = ...,
+        expires_at: float = ...,
+        updated_at: float = ...,
         **_kwargs: Any,
-    ) -> "MCld20271001": ...
+    ) -> "MesAuthSessions": ...
 
-class MCld20271001UpdateCallable(Protocol): # noqa
+class MesAuthSessionsUpdateCallable(Protocol): # noqa
     def __call__(
         self,
-        **_kwargs: Any,
-    ) -> bool: ...
-
-class KroCausesHint(TypedDict, total=False): # noqa
-    id: int
-    name: str | None
-    text: str | None
-    descr: str | None
-
-class KroCausesCreateHint(KroCausesHint, total=False): # noqa
-    pass
-
-class KroCausesUpdateHint(TypedDict, total=False): # noqa
-    name: str | None
-    text: str | None
-    descr: str | None
-
-class KroCausesFilterHint(TypedDict, total=False): # noqa
-    pk: Any
-    pk__in: list[Any] | tuple[Any, ...] | set[Any]
-    pk__isnull: bool
-    id: int
-    id__in: list[int] | tuple[int, ...] | set[int]
-    id__isnull: bool
-    id__gt: int
-    id__gte: int
-    id__lt: int
-    id__lte: int
-    name: str | None
-    name__in: list[str | None] | tuple[str | None, ...] | set[str | None]
-    name__isnull: bool
-    name__contains: str
-    name__icontains: str
-    text: str | None
-    text__in: list[str | None] | tuple[str | None, ...] | set[str | None]
-    text__isnull: bool
-    text__contains: str
-    text__icontains: str
-    descr: str | None
-    descr__in: list[str | None] | tuple[str | None, ...] | set[str | None]
-    descr__isnull: bool
-    descr__contains: str
-    descr__icontains: str
-
-class KroCausesQuerySetProtocol(Protocol): # noqa
-    def using(self, db: str | None = None, attach_dbs: Any = None) -> "KroCausesQuerySetProtocol": ...
-    def with_executor(self, executor: Any) -> "KroCausesQuerySetProtocol": ...
-    def filter(self, **kwargs: Unpack[KroCausesFilterHint]) -> "KroCausesQuerySetProtocol": ...
-    def exclude(self, **kwargs: Unpack[KroCausesFilterHint]) -> "KroCausesQuerySetProtocol": ...
-    def where(self, sql: str, params: Any = None) -> "KroCausesQuerySetProtocol": ...
-    def order_by(self, *fields: str) -> "KroCausesQuerySetProtocol": ...
-    def limit(self, value: int | None) -> "KroCausesQuerySetProtocol": ...
-    def all(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
-    def as_smartlist(self, *, by_aliases: bool = False, by_db_columns: bool = True, aliases: dict[str, str] | None = None) -> SmartList: ...
-    def values(self, *fields: str, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
-    def first(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> "KroCauses | SmartRow | None": ...
-    def get(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **kwargs: Unpack[KroCausesFilterHint]) -> "KroCauses | SmartRow": ...
-    def count(self) -> int: ...
-
-class KroCausesObjectManagerProtocol(Protocol): # noqa
-    def query(self, *, _db: str | None = None, _attach_dbs: Any = None, _executor: Any = None) -> "KroCausesQuerySetProtocol": ...
-    def using(self, _db: str | None = None, _attach_dbs: Any = None) -> "KroCausesQuerySetProtocol": ...
-    def with_executor(self, _executor: Any) -> "KroCausesQuerySetProtocol": ...
-    def filter(self, **_kwargs: Unpack[KroCausesFilterHint]) -> "KroCausesQuerySetProtocol": ...
-    def exclude(self, **_kwargs: Unpack[KroCausesFilterHint]) -> "KroCausesQuerySetProtocol": ...
-    def where(self, sql: str, params: Any = None) -> "KroCausesQuerySetProtocol": ...
-    def order_by(self, *fields: str) -> "KroCausesQuerySetProtocol": ...
-    def limit(self, value: int | None) -> "KroCausesQuerySetProtocol": ...
-    def all(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
-    def as_smartlist(self, *, by_aliases: bool = False, by_db_columns: bool = True, aliases: dict[str, str] | None = None, **_kwargs: Unpack[KroCausesFilterHint]) -> SmartList: ...
-    def values(self, *fields: str, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
-    def first(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **_kwargs: Unpack[KroCausesFilterHint]) -> "KroCauses | SmartRow | None": ...
-    def get(self, pk: Any = ..., *, _db: str | None = None, _attach_dbs: Any = None, _executor: Any = None, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **_kwargs: Unpack[KroCausesFilterHint]) -> "KroCauses | SmartRow": ...
-    def count(self, **_kwargs: Unpack[KroCausesFilterHint]) -> int: ...
-    def create(
-        self,
-        _db: str | None = None,
-        _attach_dbs: Any = None,
-        _executor: Any = None,
-        id: int = ...,
-        name: str | None = ...,
-        text: str | None = ...,
-        descr: str | None = ...,
-        **_kwargs: Any,
-    ) -> "KroCauses": ...
-
-    def update(
-        self,
-        pk: Any,
-        _db: str | None = None,
-        _attach_dbs: Any = None,
-        _executor: Any = None,
-        name: str | None = ...,
-        text: str | None = ...,
-        descr: str | None = ...,
-        **_kwargs: Any,
-    ) -> SaveResult: ...
-
-class KroCausesQueryCallable(Protocol): # noqa
-    def __call__(self, *, db: str | None = None, attach_dbs: Any = None, executor: Any = None) -> "KroCausesQuerySetProtocol": ...
-
-class KroCausesFilterCallable(Protocol): # noqa
-    def __call__(self, **kwargs: Unpack[KroCausesFilterHint]) -> "KroCausesQuerySetProtocol": ...
-
-class KroCausesExcludeCallable(Protocol): # noqa
-    def __call__(self, **kwargs: Unpack[KroCausesFilterHint]) -> "KroCausesQuerySetProtocol": ...
-
-class KroCausesGetCallable(Protocol): # noqa
-    def __call__(self, pk: Any = ..., *, db: str | None = None, attach_dbs: Any = None, executor: Any = None, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **kwargs: Unpack[KroCausesFilterHint]) -> "KroCauses | SmartRow": ...
-
-class KroCausesFirstCallable(Protocol): # noqa
-    def __call__(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **kwargs: Unpack[KroCausesFilterHint]) -> "KroCauses | SmartRow | None": ...
-
-class KroCausesCountCallable(Protocol): # noqa
-    def __call__(self, **kwargs: Unpack[KroCausesFilterHint]) -> int: ...
-
-class KroCausesAllCallable(Protocol): # noqa
-    def __call__(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
-
-class KroCausesValuesCallable(Protocol): # noqa
-    def __call__(self, *fields: str, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
-
-class KroCausesAsSmartListCallable(Protocol): # noqa
-    def __call__(self, *, by_aliases: bool = False, by_db_columns: bool = True, aliases: dict[str, str] | None = None, **kwargs: Unpack[KroCausesFilterHint]) -> SmartList: ...
-
-class KroCausesCreateCallable(Protocol): # noqa
-    def __call__(
-        self,
-        db: str | None = None,
-        attach_dbs: Any = None,
-        executor: Any = None,
-        id: int = ...,
-        name: str | None = ...,
-        text: str | None = ...,
-        descr: str | None = ...,
-        **_kwargs: Any,
-    ) -> "KroCauses": ...
-
-class KroCausesUpdateCallable(Protocol): # noqa
-    def __call__(
-        self,
-        name: str | None = ...,
-        text: str | None = ...,
-        descr: str | None = ...,
+        *,
+        user_json: str = ...,
+        created_at: float = ...,
+        expires_at: float = ...,
+        updated_at: float = ...,
         **_kwargs: Any,
     ) -> bool: ...
 
@@ -2080,6 +1660,7 @@ class NomenObjectManagerProtocol(Protocol): # noqa
     def count(self, **_kwargs: Unpack[NomenFilterHint]) -> int: ...
     def create(
         self,
+        *,
         _db: str | None = None,
         _attach_dbs: Any = None,
         _executor: Any = None,
@@ -2111,6 +1692,7 @@ class NomenObjectManagerProtocol(Protocol): # noqa
     def update(
         self,
         pk: Any,
+        *,
         _db: str | None = None,
         _attach_dbs: Any = None,
         _executor: Any = None,
@@ -2168,6 +1750,7 @@ class NomenAsSmartListCallable(Protocol): # noqa
 class NomenCreateCallable(Protocol): # noqa
     def __call__(
         self,
+        *,
         db: str | None = None,
         attach_dbs: Any = None,
         executor: Any = None,
@@ -2199,6 +1782,7 @@ class NomenCreateCallable(Protocol): # noqa
 class NomenUpdateCallable(Protocol): # noqa
     def __call__(
         self,
+        *,
         Вид: str | None = ...,
         Код: str | None = ...,
         Артикул: str | None = ...,
@@ -2385,6 +1969,7 @@ class JurnalObjectManagerProtocol(Protocol): # noqa
     def count(self, **_kwargs: Unpack[JurnalFilterHint]) -> int: ...
     def create(
         self,
+        *,
         _db: str | None = None,
         _attach_dbs: Any = None,
         _executor: Any = None,
@@ -2409,6 +1994,7 @@ class JurnalObjectManagerProtocol(Protocol): # noqa
     def update(
         self,
         pk: Any,
+        *,
         _db: str | None = None,
         _attach_dbs: Any = None,
         _executor: Any = None,
@@ -2459,6 +2045,7 @@ class JurnalAsSmartListCallable(Protocol): # noqa
 class JurnalCreateCallable(Protocol): # noqa
     def __call__(
         self,
+        *,
         db: str | None = None,
         attach_dbs: Any = None,
         executor: Any = None,
@@ -2483,6 +2070,7 @@ class JurnalCreateCallable(Protocol): # noqa
 class JurnalUpdateCallable(Protocol): # noqa
     def __call__(
         self,
+        *,
         Дата: str | None = ...,
         Штамп: float | None = ...,
         Номер_наряда: int | None = ...,
@@ -2607,6 +2195,7 @@ class KroAgreementStatesObjectManagerProtocol(Protocol): # noqa
     def count(self, **_kwargs: Unpack[KroAgreementStatesFilterHint]) -> int: ...
     def create(
         self,
+        *,
         _db: str | None = None,
         _attach_dbs: Any = None,
         _executor: Any = None,
@@ -2624,6 +2213,7 @@ class KroAgreementStatesObjectManagerProtocol(Protocol): # noqa
     def update(
         self,
         pk: Any,
+        *,
         _db: str | None = None,
         _attach_dbs: Any = None,
         _executor: Any = None,
@@ -2667,6 +2257,7 @@ class KroAgreementStatesAsSmartListCallable(Protocol): # noqa
 class KroAgreementStatesCreateCallable(Protocol): # noqa
     def __call__(
         self,
+        *,
         db: str | None = None,
         attach_dbs: Any = None,
         executor: Any = None,
@@ -2684,6 +2275,7 @@ class KroAgreementStatesCreateCallable(Protocol): # noqa
 class KroAgreementStatesUpdateCallable(Protocol): # noqa
     def __call__(
         self,
+        *,
         kro_id: int | None = ...,
         agreement_id: int | None = ...,
         comment: str | None = ...,
@@ -2694,188 +2286,151 @@ class KroAgreementStatesUpdateCallable(Protocol): # noqa
         **_kwargs: Any,
     ) -> bool: ...
 
-class KroDeviationsHint(TypedDict, total=False): # noqa
-    id: int | None
-    kro_id: int | None
-    order_it: int | None
-    before_text: str | None
-    after_text: str | None
-    before_file_id: int | None
-    after_file_id: int | None
+class KroCausesHint(TypedDict, total=False): # noqa
+    id: int
+    name: str | None
+    text: str | None
+    descr: str | None
 
-class KroDeviationsCreateHint(KroDeviationsHint, total=False): # noqa
+class KroCausesCreateHint(KroCausesHint, total=False): # noqa
     pass
 
-class KroDeviationsUpdateHint(TypedDict, total=False): # noqa
-    kro_id: int | None
-    order_it: int | None
-    before_text: str | None
-    after_text: str | None
-    before_file_id: int | None
-    after_file_id: int | None
+class KroCausesUpdateHint(TypedDict, total=False): # noqa
+    name: str | None
+    text: str | None
+    descr: str | None
 
-class KroDeviationsFilterHint(TypedDict, total=False): # noqa
+class KroCausesFilterHint(TypedDict, total=False): # noqa
     pk: Any
     pk__in: list[Any] | tuple[Any, ...] | set[Any]
     pk__isnull: bool
-    id: int | None
-    id__in: list[int | None] | tuple[int | None, ...] | set[int | None]
+    id: int
+    id__in: list[int] | tuple[int, ...] | set[int]
     id__isnull: bool
-    id__gt: int | None
-    id__gte: int | None
-    id__lt: int | None
-    id__lte: int | None
-    kro_id: int | None
-    kro_id__in: list[int | None] | tuple[int | None, ...] | set[int | None]
-    kro_id__isnull: bool
-    kro_id__gt: int | None
-    kro_id__gte: int | None
-    kro_id__lt: int | None
-    kro_id__lte: int | None
-    order_it: int | None
-    order_it__in: list[int | None] | tuple[int | None, ...] | set[int | None]
-    order_it__isnull: bool
-    order_it__gt: int | None
-    order_it__gte: int | None
-    order_it__lt: int | None
-    order_it__lte: int | None
-    before_text: str | None
-    before_text__in: list[str | None] | tuple[str | None, ...] | set[str | None]
-    before_text__isnull: bool
-    before_text__contains: str
-    before_text__icontains: str
-    after_text: str | None
-    after_text__in: list[str | None] | tuple[str | None, ...] | set[str | None]
-    after_text__isnull: bool
-    after_text__contains: str
-    after_text__icontains: str
-    before_file_id: int | None
-    before_file_id__in: list[int | None] | tuple[int | None, ...] | set[int | None]
-    before_file_id__isnull: bool
-    before_file_id__gt: int | None
-    before_file_id__gte: int | None
-    before_file_id__lt: int | None
-    before_file_id__lte: int | None
-    after_file_id: int | None
-    after_file_id__in: list[int | None] | tuple[int | None, ...] | set[int | None]
-    after_file_id__isnull: bool
-    after_file_id__gt: int | None
-    after_file_id__gte: int | None
-    after_file_id__lt: int | None
-    after_file_id__lte: int | None
+    id__gt: int
+    id__gte: int
+    id__lt: int
+    id__lte: int
+    name: str | None
+    name__in: list[str | None] | tuple[str | None, ...] | set[str | None]
+    name__isnull: bool
+    name__contains: str
+    name__icontains: str
+    text: str | None
+    text__in: list[str | None] | tuple[str | None, ...] | set[str | None]
+    text__isnull: bool
+    text__contains: str
+    text__icontains: str
+    descr: str | None
+    descr__in: list[str | None] | tuple[str | None, ...] | set[str | None]
+    descr__isnull: bool
+    descr__contains: str
+    descr__icontains: str
 
-class KroDeviationsQuerySetProtocol(Protocol): # noqa
-    def using(self, db: str | None = None, attach_dbs: Any = None) -> "KroDeviationsQuerySetProtocol": ...
-    def with_executor(self, executor: Any) -> "KroDeviationsQuerySetProtocol": ...
-    def filter(self, **kwargs: Unpack[KroDeviationsFilterHint]) -> "KroDeviationsQuerySetProtocol": ...
-    def exclude(self, **kwargs: Unpack[KroDeviationsFilterHint]) -> "KroDeviationsQuerySetProtocol": ...
-    def where(self, sql: str, params: Any = None) -> "KroDeviationsQuerySetProtocol": ...
-    def order_by(self, *fields: str) -> "KroDeviationsQuerySetProtocol": ...
-    def limit(self, value: int | None) -> "KroDeviationsQuerySetProtocol": ...
+class KroCausesQuerySetProtocol(Protocol): # noqa
+    def using(self, db: str | None = None, attach_dbs: Any = None) -> "KroCausesQuerySetProtocol": ...
+    def with_executor(self, executor: Any) -> "KroCausesQuerySetProtocol": ...
+    def filter(self, **kwargs: Unpack[KroCausesFilterHint]) -> "KroCausesQuerySetProtocol": ...
+    def exclude(self, **kwargs: Unpack[KroCausesFilterHint]) -> "KroCausesQuerySetProtocol": ...
+    def where(self, sql: str, params: Any = None) -> "KroCausesQuerySetProtocol": ...
+    def order_by(self, *fields: str) -> "KroCausesQuerySetProtocol": ...
+    def limit(self, value: int | None) -> "KroCausesQuerySetProtocol": ...
     def all(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
     def as_smartlist(self, *, by_aliases: bool = False, by_db_columns: bool = True, aliases: dict[str, str] | None = None) -> SmartList: ...
     def values(self, *fields: str, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
-    def first(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> "KroDeviations | SmartRow | None": ...
-    def get(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **kwargs: Unpack[KroDeviationsFilterHint]) -> "KroDeviations | SmartRow": ...
+    def first(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> "KroCauses | SmartRow | None": ...
+    def get(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **kwargs: Unpack[KroCausesFilterHint]) -> "KroCauses | SmartRow": ...
     def count(self) -> int: ...
 
-class KroDeviationsObjectManagerProtocol(Protocol): # noqa
-    def query(self, *, _db: str | None = None, _attach_dbs: Any = None, _executor: Any = None) -> "KroDeviationsQuerySetProtocol": ...
-    def using(self, _db: str | None = None, _attach_dbs: Any = None) -> "KroDeviationsQuerySetProtocol": ...
-    def with_executor(self, _executor: Any) -> "KroDeviationsQuerySetProtocol": ...
-    def filter(self, **_kwargs: Unpack[KroDeviationsFilterHint]) -> "KroDeviationsQuerySetProtocol": ...
-    def exclude(self, **_kwargs: Unpack[KroDeviationsFilterHint]) -> "KroDeviationsQuerySetProtocol": ...
-    def where(self, sql: str, params: Any = None) -> "KroDeviationsQuerySetProtocol": ...
-    def order_by(self, *fields: str) -> "KroDeviationsQuerySetProtocol": ...
-    def limit(self, value: int | None) -> "KroDeviationsQuerySetProtocol": ...
+class KroCausesObjectManagerProtocol(Protocol): # noqa
+    def query(self, *, _db: str | None = None, _attach_dbs: Any = None, _executor: Any = None) -> "KroCausesQuerySetProtocol": ...
+    def using(self, _db: str | None = None, _attach_dbs: Any = None) -> "KroCausesQuerySetProtocol": ...
+    def with_executor(self, _executor: Any) -> "KroCausesQuerySetProtocol": ...
+    def filter(self, **_kwargs: Unpack[KroCausesFilterHint]) -> "KroCausesQuerySetProtocol": ...
+    def exclude(self, **_kwargs: Unpack[KroCausesFilterHint]) -> "KroCausesQuerySetProtocol": ...
+    def where(self, sql: str, params: Any = None) -> "KroCausesQuerySetProtocol": ...
+    def order_by(self, *fields: str) -> "KroCausesQuerySetProtocol": ...
+    def limit(self, value: int | None) -> "KroCausesQuerySetProtocol": ...
     def all(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
-    def as_smartlist(self, *, by_aliases: bool = False, by_db_columns: bool = True, aliases: dict[str, str] | None = None, **_kwargs: Unpack[KroDeviationsFilterHint]) -> SmartList: ...
+    def as_smartlist(self, *, by_aliases: bool = False, by_db_columns: bool = True, aliases: dict[str, str] | None = None, **_kwargs: Unpack[KroCausesFilterHint]) -> SmartList: ...
     def values(self, *fields: str, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
-    def first(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **_kwargs: Unpack[KroDeviationsFilterHint]) -> "KroDeviations | SmartRow | None": ...
-    def get(self, pk: Any = ..., *, _db: str | None = None, _attach_dbs: Any = None, _executor: Any = None, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **_kwargs: Unpack[KroDeviationsFilterHint]) -> "KroDeviations | SmartRow": ...
-    def count(self, **_kwargs: Unpack[KroDeviationsFilterHint]) -> int: ...
+    def first(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **_kwargs: Unpack[KroCausesFilterHint]) -> "KroCauses | SmartRow | None": ...
+    def get(self, pk: Any = ..., *, _db: str | None = None, _attach_dbs: Any = None, _executor: Any = None, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **_kwargs: Unpack[KroCausesFilterHint]) -> "KroCauses | SmartRow": ...
+    def count(self, **_kwargs: Unpack[KroCausesFilterHint]) -> int: ...
     def create(
         self,
+        *,
         _db: str | None = None,
         _attach_dbs: Any = None,
         _executor: Any = None,
-        id: int | None = ...,
-        kro_id: int | None = ...,
-        order_it: int | None = ...,
-        before_text: str | None = ...,
-        after_text: str | None = ...,
-        before_file_id: int | None = ...,
-        after_file_id: int | None = ...,
+        id: int = ...,
+        name: str | None = ...,
+        text: str | None = ...,
+        descr: str | None = ...,
         **_kwargs: Any,
-    ) -> "KroDeviations": ...
+    ) -> "KroCauses": ...
 
     def update(
         self,
         pk: Any,
+        *,
         _db: str | None = None,
         _attach_dbs: Any = None,
         _executor: Any = None,
-        kro_id: int | None = ...,
-        order_it: int | None = ...,
-        before_text: str | None = ...,
-        after_text: str | None = ...,
-        before_file_id: int | None = ...,
-        after_file_id: int | None = ...,
+        name: str | None = ...,
+        text: str | None = ...,
+        descr: str | None = ...,
         **_kwargs: Any,
     ) -> SaveResult: ...
 
-class KroDeviationsQueryCallable(Protocol): # noqa
-    def __call__(self, *, db: str | None = None, attach_dbs: Any = None, executor: Any = None) -> "KroDeviationsQuerySetProtocol": ...
+class KroCausesQueryCallable(Protocol): # noqa
+    def __call__(self, *, db: str | None = None, attach_dbs: Any = None, executor: Any = None) -> "KroCausesQuerySetProtocol": ...
 
-class KroDeviationsFilterCallable(Protocol): # noqa
-    def __call__(self, **kwargs: Unpack[KroDeviationsFilterHint]) -> "KroDeviationsQuerySetProtocol": ...
+class KroCausesFilterCallable(Protocol): # noqa
+    def __call__(self, **kwargs: Unpack[KroCausesFilterHint]) -> "KroCausesQuerySetProtocol": ...
 
-class KroDeviationsExcludeCallable(Protocol): # noqa
-    def __call__(self, **kwargs: Unpack[KroDeviationsFilterHint]) -> "KroDeviationsQuerySetProtocol": ...
+class KroCausesExcludeCallable(Protocol): # noqa
+    def __call__(self, **kwargs: Unpack[KroCausesFilterHint]) -> "KroCausesQuerySetProtocol": ...
 
-class KroDeviationsGetCallable(Protocol): # noqa
-    def __call__(self, pk: Any = ..., *, db: str | None = None, attach_dbs: Any = None, executor: Any = None, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **kwargs: Unpack[KroDeviationsFilterHint]) -> "KroDeviations | SmartRow": ...
+class KroCausesGetCallable(Protocol): # noqa
+    def __call__(self, pk: Any = ..., *, db: str | None = None, attach_dbs: Any = None, executor: Any = None, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **kwargs: Unpack[KroCausesFilterHint]) -> "KroCauses | SmartRow": ...
 
-class KroDeviationsFirstCallable(Protocol): # noqa
-    def __call__(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **kwargs: Unpack[KroDeviationsFilterHint]) -> "KroDeviations | SmartRow | None": ...
+class KroCausesFirstCallable(Protocol): # noqa
+    def __call__(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None, **kwargs: Unpack[KroCausesFilterHint]) -> "KroCauses | SmartRow | None": ...
 
-class KroDeviationsCountCallable(Protocol): # noqa
-    def __call__(self, **kwargs: Unpack[KroDeviationsFilterHint]) -> int: ...
+class KroCausesCountCallable(Protocol): # noqa
+    def __call__(self, **kwargs: Unpack[KroCausesFilterHint]) -> int: ...
 
-class KroDeviationsAllCallable(Protocol): # noqa
+class KroCausesAllCallable(Protocol): # noqa
     def __call__(self, *, as_dict: bool = False, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
 
-class KroDeviationsValuesCallable(Protocol): # noqa
+class KroCausesValuesCallable(Protocol): # noqa
     def __call__(self, *fields: str, by_aliases: bool = False, by_db_columns: bool = False, aliases: dict[str, str] | None = None) -> SmartList: ...
 
-class KroDeviationsAsSmartListCallable(Protocol): # noqa
-    def __call__(self, *, by_aliases: bool = False, by_db_columns: bool = True, aliases: dict[str, str] | None = None, **kwargs: Unpack[KroDeviationsFilterHint]) -> SmartList: ...
+class KroCausesAsSmartListCallable(Protocol): # noqa
+    def __call__(self, *, by_aliases: bool = False, by_db_columns: bool = True, aliases: dict[str, str] | None = None, **kwargs: Unpack[KroCausesFilterHint]) -> SmartList: ...
 
-class KroDeviationsCreateCallable(Protocol): # noqa
+class KroCausesCreateCallable(Protocol): # noqa
     def __call__(
         self,
+        *,
         db: str | None = None,
         attach_dbs: Any = None,
         executor: Any = None,
-        id: int | None = ...,
-        kro_id: int | None = ...,
-        order_it: int | None = ...,
-        before_text: str | None = ...,
-        after_text: str | None = ...,
-        before_file_id: int | None = ...,
-        after_file_id: int | None = ...,
+        id: int = ...,
+        name: str | None = ...,
+        text: str | None = ...,
+        descr: str | None = ...,
         **_kwargs: Any,
-    ) -> "KroDeviations": ...
+    ) -> "KroCauses": ...
 
-class KroDeviationsUpdateCallable(Protocol): # noqa
+class KroCausesUpdateCallable(Protocol): # noqa
     def __call__(
         self,
-        kro_id: int | None = ...,
-        order_it: int | None = ...,
-        before_text: str | None = ...,
-        after_text: str | None = ...,
-        before_file_id: int | None = ...,
-        after_file_id: int | None = ...,
+        *,
+        name: str | None = ...,
+        text: str | None = ...,
+        descr: str | None = ...,
         **_kwargs: Any,
     ) -> bool: ...
 
@@ -3163,6 +2718,7 @@ class MkObjectManagerProtocol(Protocol): # noqa
     def count(self, **_kwargs: Unpack[MkFilterHint]) -> int: ...
     def create(
         self,
+        *,
         _db: str | None = None,
         _attach_dbs: Any = None,
         _executor: Any = None,
@@ -3203,6 +2759,7 @@ class MkObjectManagerProtocol(Protocol): # noqa
     def update(
         self,
         pk: Any,
+        *,
         _db: str | None = None,
         _attach_dbs: Any = None,
         _executor: Any = None,
@@ -3269,6 +2826,7 @@ class MkAsSmartListCallable(Protocol): # noqa
 class MkCreateCallable(Protocol): # noqa
     def __call__(
         self,
+        *,
         db: str | None = None,
         attach_dbs: Any = None,
         executor: Any = None,
@@ -3309,6 +2867,7 @@ class MkCreateCallable(Protocol): # noqa
 class MkUpdateCallable(Protocol): # noqa
     def __call__(
         self,
+        *,
         Дата: str | None = ...,
         Статус: str | None = ...,
         Номенклатура: str | None = ...,
@@ -3360,74 +2919,23 @@ __all__ = [
     "KroFilesAsSmartListCallable",
     "KroFilesCreateCallable",
     "KroFilesUpdateCallable",
-    "Eq20271001Hint",
-    "Eq20271001CreateHint",
-    "Eq20271001UpdateHint",
-    "Eq20271001FilterHint",
-    "Eq20271001QuerySetProtocol",
-    "Eq20271001ObjectManagerProtocol",
-    "Eq20271001QueryCallable",
-    "Eq20271001FilterCallable",
-    "Eq20271001ExcludeCallable",
-    "Eq20271001GetCallable",
-    "Eq20271001FirstCallable",
-    "Eq20271001CountCallable",
-    "Eq20271001AllCallable",
-    "Eq20271001ValuesCallable",
-    "Eq20271001AsSmartListCallable",
-    "Eq20271001CreateCallable",
-    "Eq20271001UpdateCallable",
-    "Jurnaltdz20271001Hint",
-    "Jurnaltdz20271001CreateHint",
-    "Jurnaltdz20271001UpdateHint",
-    "Jurnaltdz20271001FilterHint",
-    "Jurnaltdz20271001QuerySetProtocol",
-    "Jurnaltdz20271001ObjectManagerProtocol",
-    "Jurnaltdz20271001QueryCallable",
-    "Jurnaltdz20271001FilterCallable",
-    "Jurnaltdz20271001ExcludeCallable",
-    "Jurnaltdz20271001GetCallable",
-    "Jurnaltdz20271001FirstCallable",
-    "Jurnaltdz20271001CountCallable",
-    "Jurnaltdz20271001AllCallable",
-    "Jurnaltdz20271001ValuesCallable",
-    "Jurnaltdz20271001AsSmartListCallable",
-    "Jurnaltdz20271001CreateCallable",
-    "Jurnaltdz20271001UpdateCallable",
-    "Mtdz20271001Hint",
-    "Mtdz20271001CreateHint",
-    "Mtdz20271001UpdateHint",
-    "Mtdz20271001FilterHint",
-    "Mtdz20271001QuerySetProtocol",
-    "Mtdz20271001ObjectManagerProtocol",
-    "Mtdz20271001QueryCallable",
-    "Mtdz20271001FilterCallable",
-    "Mtdz20271001ExcludeCallable",
-    "Mtdz20271001GetCallable",
-    "Mtdz20271001FirstCallable",
-    "Mtdz20271001CountCallable",
-    "Mtdz20271001AllCallable",
-    "Mtdz20271001ValuesCallable",
-    "Mtdz20271001AsSmartListCallable",
-    "Mtdz20271001CreateCallable",
-    "Mtdz20271001UpdateCallable",
-    "Rm20271001Hint",
-    "Rm20271001CreateHint",
-    "Rm20271001UpdateHint",
-    "Rm20271001FilterHint",
-    "Rm20271001QuerySetProtocol",
-    "Rm20271001ObjectManagerProtocol",
-    "Rm20271001QueryCallable",
-    "Rm20271001FilterCallable",
-    "Rm20271001ExcludeCallable",
-    "Rm20271001GetCallable",
-    "Rm20271001FirstCallable",
-    "Rm20271001CountCallable",
-    "Rm20271001AllCallable",
-    "Rm20271001ValuesCallable",
-    "Rm20271001AsSmartListCallable",
-    "Rm20271001CreateCallable",
-    "Rm20271001UpdateCallable",
+    "CompetenceValsHint",
+    "CompetenceValsCreateHint",
+    "CompetenceValsUpdateHint",
+    "CompetenceValsFilterHint",
+    "CompetenceValsQuerySetProtocol",
+    "CompetenceValsObjectManagerProtocol",
+    "CompetenceValsQueryCallable",
+    "CompetenceValsFilterCallable",
+    "CompetenceValsExcludeCallable",
+    "CompetenceValsGetCallable",
+    "CompetenceValsFirstCallable",
+    "CompetenceValsCountCallable",
+    "CompetenceValsAllCallable",
+    "CompetenceValsValuesCallable",
+    "CompetenceValsAsSmartListCallable",
+    "CompetenceValsCreateCallable",
+    "CompetenceValsUpdateCallable",
     "КадроваяИсторияHint",
     "КадроваяИсторияCreateHint",
     "КадроваяИсторияUpdateHint",
@@ -3479,40 +2987,23 @@ __all__ = [
     "ФизическиеЛицаAsSmartListCallable",
     "ФизическиеЛицаCreateCallable",
     "ФизическиеЛицаUpdateCallable",
-    "MCld20271001Hint",
-    "MCld20271001CreateHint",
-    "MCld20271001UpdateHint",
-    "MCld20271001FilterHint",
-    "MCld20271001QuerySetProtocol",
-    "MCld20271001ObjectManagerProtocol",
-    "MCld20271001QueryCallable",
-    "MCld20271001FilterCallable",
-    "MCld20271001ExcludeCallable",
-    "MCld20271001GetCallable",
-    "MCld20271001FirstCallable",
-    "MCld20271001CountCallable",
-    "MCld20271001AllCallable",
-    "MCld20271001ValuesCallable",
-    "MCld20271001AsSmartListCallable",
-    "MCld20271001CreateCallable",
-    "MCld20271001UpdateCallable",
-    "KroCausesHint",
-    "KroCausesCreateHint",
-    "KroCausesUpdateHint",
-    "KroCausesFilterHint",
-    "KroCausesQuerySetProtocol",
-    "KroCausesObjectManagerProtocol",
-    "KroCausesQueryCallable",
-    "KroCausesFilterCallable",
-    "KroCausesExcludeCallable",
-    "KroCausesGetCallable",
-    "KroCausesFirstCallable",
-    "KroCausesCountCallable",
-    "KroCausesAllCallable",
-    "KroCausesValuesCallable",
-    "KroCausesAsSmartListCallable",
-    "KroCausesCreateCallable",
-    "KroCausesUpdateCallable",
+    "MesAuthSessionsHint",
+    "MesAuthSessionsCreateHint",
+    "MesAuthSessionsUpdateHint",
+    "MesAuthSessionsFilterHint",
+    "MesAuthSessionsQuerySetProtocol",
+    "MesAuthSessionsObjectManagerProtocol",
+    "MesAuthSessionsQueryCallable",
+    "MesAuthSessionsFilterCallable",
+    "MesAuthSessionsExcludeCallable",
+    "MesAuthSessionsGetCallable",
+    "MesAuthSessionsFirstCallable",
+    "MesAuthSessionsCountCallable",
+    "MesAuthSessionsAllCallable",
+    "MesAuthSessionsValuesCallable",
+    "MesAuthSessionsAsSmartListCallable",
+    "MesAuthSessionsCreateCallable",
+    "MesAuthSessionsUpdateCallable",
     "NomenHint",
     "NomenCreateHint",
     "NomenUpdateHint",
@@ -3564,23 +3055,23 @@ __all__ = [
     "KroAgreementStatesAsSmartListCallable",
     "KroAgreementStatesCreateCallable",
     "KroAgreementStatesUpdateCallable",
-    "KroDeviationsHint",
-    "KroDeviationsCreateHint",
-    "KroDeviationsUpdateHint",
-    "KroDeviationsFilterHint",
-    "KroDeviationsQuerySetProtocol",
-    "KroDeviationsObjectManagerProtocol",
-    "KroDeviationsQueryCallable",
-    "KroDeviationsFilterCallable",
-    "KroDeviationsExcludeCallable",
-    "KroDeviationsGetCallable",
-    "KroDeviationsFirstCallable",
-    "KroDeviationsCountCallable",
-    "KroDeviationsAllCallable",
-    "KroDeviationsValuesCallable",
-    "KroDeviationsAsSmartListCallable",
-    "KroDeviationsCreateCallable",
-    "KroDeviationsUpdateCallable",
+    "KroCausesHint",
+    "KroCausesCreateHint",
+    "KroCausesUpdateHint",
+    "KroCausesFilterHint",
+    "KroCausesQuerySetProtocol",
+    "KroCausesObjectManagerProtocol",
+    "KroCausesQueryCallable",
+    "KroCausesFilterCallable",
+    "KroCausesExcludeCallable",
+    "KroCausesGetCallable",
+    "KroCausesFirstCallable",
+    "KroCausesCountCallable",
+    "KroCausesAllCallable",
+    "KroCausesValuesCallable",
+    "KroCausesAsSmartListCallable",
+    "KroCausesCreateCallable",
+    "KroCausesUpdateCallable",
     "MkHint",
     "MkCreateHint",
     "MkUpdateHint",

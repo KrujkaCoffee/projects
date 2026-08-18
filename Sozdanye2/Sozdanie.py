@@ -5452,7 +5452,7 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
          LEFT JOIN пл_топ ON пл_топ.НомПл = plan.Пномер 
         INNER JOIN zagot ON mk.Пномер = zagot.Ном_МК 
         INNER JOIN Тип_мк ON mk.Тип = Тип_мк.Пномер 
-        WHERE mk.Статус {var} AND plan.poki == {self.place.poki}  ORDER BY mk.Приоритет ASC;'''
+        WHERE mk.Статус {var} AND plan.poki = {self.place.poki}  ORDER BY mk.Приоритет ASC;'''
 
         list_mk = CSQ.custom_request_c(self.db_naryd, custom_request_c, attach_dbs=(self.db_kplan))
         if list_mk is None:

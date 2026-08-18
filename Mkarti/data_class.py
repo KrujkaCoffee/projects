@@ -54,7 +54,7 @@ class Data_plan(SingletonMeta):
     def calc_composite_plan_group(db_kplan,db_users,PLACE,DICT_GROUP_VID_RAB_FOR_PLAN):
 
         list_composites_podr = CSQ.custom_request_c(db_kplan,
-                             f"""SELECT * FROM podrazdel WHERE Имя_поля LIKE '%;%' and poki == {PLACE.poki};""",
+                             f"""SELECT * FROM podrazdel WHERE Имя_поля LIKE '%%;%%' and poki == {PLACE.poki};""",
                              rez_dict=True)
         list_composites_group = CSQ.custom_request_c(db_users,
                              f"""SELECT * FROM group_vid_rab_for_plan WHERE composite = 1;""",

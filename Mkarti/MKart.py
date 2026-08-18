@@ -3118,11 +3118,10 @@ class mywindow(QtWidgets.QMainWindow):
         plan.Позиция, 
         plan.Пномер as "Пномер", пл_оуп.Номенклатура_ЕРП as "Номен. ЕРП" 
         FROM пл_оуп  
-        INNER JOIN plan ON пл_оуп.НомПл = plan.Пномер,
-        napravl_deyat ON napravl_deyat.Пномер = plan.Направление_деятельности,
-        napravlenie ON napravlenie.Пномер = napravl_deyat.Направление 
-        WHERE 
-        plan.Статус in (2,3,1,7) and plan.poki = {self.place.poki}""")
+        INNER JOIN plan ON пл_оуп.НомПл = plan.Пномер
+        INNER JOIN napravl_deyat ON napravl_deyat.Пномер = plan.Направление_деятельности
+        INNER JOIN napravlenie ON napravlenie.Пномер = napravl_deyat.Направление 
+        WHERE plan.Статус in (2,3,1,7) and plan.poki = {self.place.poki}""")
         if self.list_projects is None:
             CQT.msgbox("Не удалось загрузить список проектов из БД")
             return

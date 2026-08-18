@@ -1,7 +1,7 @@
 {
-  "admin_schema_hash": "293ca72e18218bec35a0940d9bacc52376fd244c78bb2ea67777cb3271f0c610",
-  "artifact_version": "6e3d21be5749",
-  "generated_at_utc": "2026-08-10T09:42:39+00:00",
+  "admin_schema_hash": "8280867c736be9b0bc78c3b18328e7a501fc9f10eaf60c85f642ed6f023d3235",
+  "artifact_version": "ccf81e091e30",
+  "generated_at_utc": "2026-08-17T11:38:13+00:00",
   "generator_version": "1.2.0",
   "hint_names": [
     "KroFilesHint",
@@ -21,6 +21,23 @@
     "KroFilesAsSmartListCallable",
     "KroFilesCreateCallable",
     "KroFilesUpdateCallable",
+    "CompetenceValsHint",
+    "CompetenceValsCreateHint",
+    "CompetenceValsUpdateHint",
+    "CompetenceValsFilterHint",
+    "CompetenceValsQuerySetProtocol",
+    "CompetenceValsObjectManagerProtocol",
+    "CompetenceValsQueryCallable",
+    "CompetenceValsFilterCallable",
+    "CompetenceValsExcludeCallable",
+    "CompetenceValsGetCallable",
+    "CompetenceValsFirstCallable",
+    "CompetenceValsCountCallable",
+    "CompetenceValsAllCallable",
+    "CompetenceValsValuesCallable",
+    "CompetenceValsAsSmartListCallable",
+    "CompetenceValsCreateCallable",
+    "CompetenceValsUpdateCallable",
     "КадроваяИсторияHint",
     "КадроваяИсторияCreateHint",
     "КадроваяИсторияUpdateHint",
@@ -72,6 +89,23 @@
     "ФизическиеЛицаAsSmartListCallable",
     "ФизическиеЛицаCreateCallable",
     "ФизическиеЛицаUpdateCallable",
+    "MesAuthSessionsHint",
+    "MesAuthSessionsCreateHint",
+    "MesAuthSessionsUpdateHint",
+    "MesAuthSessionsFilterHint",
+    "MesAuthSessionsQuerySetProtocol",
+    "MesAuthSessionsObjectManagerProtocol",
+    "MesAuthSessionsQueryCallable",
+    "MesAuthSessionsFilterCallable",
+    "MesAuthSessionsExcludeCallable",
+    "MesAuthSessionsGetCallable",
+    "MesAuthSessionsFirstCallable",
+    "MesAuthSessionsCountCallable",
+    "MesAuthSessionsAllCallable",
+    "MesAuthSessionsValuesCallable",
+    "MesAuthSessionsAsSmartListCallable",
+    "MesAuthSessionsCreateCallable",
+    "MesAuthSessionsUpdateCallable",
     "NomenHint",
     "NomenCreateHint",
     "NomenUpdateHint",
@@ -160,18 +194,20 @@
   ],
   "model_names": [
     "KroFiles",
+    "CompetenceVals",
     "КадроваяИстория",
     "Подразделения",
     "ФизическиеЛица",
+    "MesAuthSessions",
     "Nomen",
     "Jurnal",
     "KroAgreementStates",
     "KroCauses",
     "Mk"
   ],
-  "notes": "generated into C:\\Users\\A.A.Fedorov\\MES\\ideal_context\\project_cust_38\\dynamic_db_models",
-  "relation_specs_hash": "2756d03d0f1d9530d5ca8cc6ae9c0516353b0308e759a44ce232279e5de1dc32",
-  "table_fields_hash": "d93200cb5e5018d04d823648f225865b6189874ca456c47c2484e53816eafb16",
+  "notes": "generated into C:\\srv_mes\\srv_mes\\project_cust_38\\dynamic_db_models",
+  "relation_specs_hash": "f747d7b8ca87f98ef3d8c6deaf22913dfaf03e5bcc07528cc949503e7ff2ee6e",
+  "table_fields_hash": "ea673fd99758080eec3aec577b7549401670c26e029719ee37ed7f6feb8ca405",
   "table_signatures": {
     "BD_files.kro_files": {
       "api_hash": "6c0bd03375468e4dec031a1eb6a7db09d2998269cfd2849411dcfb8d24c62ada",
@@ -180,9 +216,16 @@
       "table_name": "kro_files",
       "ui_hash": "19958342d1f7661512df767b74ff30e81338ec5108088cc122b66e470aeb5c73"
     },
+    "BD_users.competence_vals": {
+      "api_hash": "f4b335bd42b56c2d152e5964a55558b8a637eb30002e8e5bc30a62fb51d2457c",
+      "cache_hash": "f27fda2ecf8f09b0a374a877fc362853c5aca3ac444365d2aacf9a72e5afb9c8",
+      "db_key": "BD_users",
+      "table_name": "competence_vals",
+      "ui_hash": "7dd410d7dfc59673671c27c56fd938048fb50c7d1334f9a5c82d77232bd9f507"
+    },
     "BD_users.КадроваяИстория": {
       "api_hash": "484572070da01eb03b129adcf7482ccbcb1fbc42b1b461eb9a661d53d7dde1ac",
-      "cache_hash": "0dc218c527f0f949aca23063d6246af69b0b55b4404ce0bc92f8fa73c2181fe2",
+      "cache_hash": "b9ed5525de9623232ab7860b9667be1c4882f15d3fad891c4b8dac1d8776438a",
       "db_key": "BD_users",
       "table_name": "КадроваяИстория",
       "ui_hash": "eeb77c0a4178cc26290f8e456a0fd240eba3494f7edddf840952f376b0507cc8"
@@ -196,28 +239,28 @@
     },
     "BD_users.ФизическиеЛица": {
       "api_hash": "3c403dee26c66dbc4b7bacfd2c46e9244da3eb1000c21a2bbf53453c4029219f",
-      "cache_hash": "93fb4dd2f965cdd7ef526d5ae05de484393d00c9d44b2ed0e0b95140b17eb597",
+      "cache_hash": "84a97cf8dedb2bbc6dd61988c9a918aac23613b08452f3742c5e3c42fcae3df1",
       "db_key": "BD_users",
       "table_name": "ФизическиеЛица",
       "ui_hash": "0554ad6e4072df2e01d309fd71bc17c01834cf594487e95360cd47a315ecad1e"
     },
     "DB_nomenklatura_erp.nomen": {
       "api_hash": "029fa35bbdf5fabe3d1a77d1ed9e281b22ea3016861e4afb661290d3b50555c5",
-      "cache_hash": "46bff74e27d88d3d0a440fdabbd66f281ae1ef142f7bb114d433acd98c1957e1",
+      "cache_hash": "e4ec104dead76375487e66fce021a2f1fd67dbdc91700508ae2cac686a1b7fd2",
       "db_key": "DB_nomenklatura_erp",
       "table_name": "nomen",
       "ui_hash": "43ef1cce4ba26f5925e47d92a86e285bcd6a90e62c30ac416a742f21fd166f3a"
     },
     "Naryad.jurnal": {
       "api_hash": "b56dabcd06cda3e60304a7971bb3c77a79306c2a20adb77bf5fa2fc15221ccf6",
-      "cache_hash": "1d86b770fc6135c59b67fbe51b88eeef8748046b2a1455e27799b771a9d69fcb",
+      "cache_hash": "3baf04b4b49692f5f084d747fcd758095d2700cdf23a0899a42810e12478e77b",
       "db_key": "Naryad",
       "table_name": "jurnal",
       "ui_hash": "7e13f7d42cc0fce0bd6578f2502b6edf7b81c01d893f81fd446ce7a9a54e58ee"
     },
     "Naryad.kro_agreement_states": {
       "api_hash": "189f769186ad3ebda35dca5dc2837d7c07f70999ce8799880a8a8551defe6d2b",
-      "cache_hash": "15b4c0798eb3ccb323db62e0dbcfee7ad6cd2488818e6d14d84d98966a624f75",
+      "cache_hash": "936eee906daedcfff42aacb219b78cb2337a441ea1cb768b6d3313b4a609a253",
       "db_key": "Naryad",
       "table_name": "kro_agreement_states",
       "ui_hash": "2b8ce33e3e43125b92956c4bf4fdabac6f25ae62ac4938ee96123005a5d2f62e"
@@ -231,10 +274,17 @@
     },
     "Naryad.mk": {
       "api_hash": "3113c1a8e2086f6fca45e9fb7a5e1100729d080f4a5e51c5510b71502917060d",
-      "cache_hash": "5bf5f4d8aba61e4fe0108f511fd18e603ec2ebffd06c8104da57b5b39d1866c5",
+      "cache_hash": "96d8f8756310cdfd1e5ec29a76a36b5cb452310031697cd12f6bbe5be7fd969e",
       "db_key": "Naryad",
       "table_name": "mk",
       "ui_hash": "1be4251f87f8a395bf182d3e3e78923b70920613d08265048ae3df98c410404a"
+    },
+    "db_flet.mes_auth_sessions": {
+      "api_hash": "1b72e3d5926a1663cb765e58c0e7b3779a836e15a7d25275eb5c35be5e2c741b",
+      "cache_hash": "3df70eda86df58336d349e5bfeca1f56988e5a40bdfe752d5b4a26e52ee8acd4",
+      "db_key": "db_flet",
+      "table_name": "mes_auth_sessions",
+      "ui_hash": "4476c86ae3b92171aedd9d961d0599a2026269a4a864a45d2423ad3b11e0ddf1"
     }
   }
 }

@@ -844,7 +844,12 @@ def get_workers(default_val = None): #27.01.2026
         WHERE employee.Статус = 'Работа'
             AND employee.Компания = {company!r}
             AND employee.Должность IN (SELECT DISTINCT имя FROM professions)
-        GROUP BY employee.ID_ФизЛица""",
+        GROUP BY employee.ID_ФизЛица,
+            employee.gender,
+            employee."ФИО",
+            employee."Должность",
+            employee."Подразделение"
+""",
         rez_dict=True,
         attach_dbs=CFG.Config.project.db_naryad
     ) or default_val

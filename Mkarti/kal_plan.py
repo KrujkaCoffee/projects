@@ -1778,7 +1778,7 @@ def load_db(self: mywindow, pnom: bool | int = False, only_hat=False) -> None | 
 
 
     list_join = [_[1] for _ in list_join]
-    str_join = ', \n'.join(list_join)
+    str_join = '\nLEFT JOIN '.join(list_join)
     str_field = ', \n'.join(rez_list_tabels)
 
 
@@ -4244,9 +4244,9 @@ def btn_pl_kopy_norm_etap_buff(self: mywindow):
 def check_set_fininsh_py(self: mywindow):
     query = f"""SELECT plan.Пномер, пл_оуп.№ERP || "$" || пл_оуп.№проекта as ERP, plan.Статус, plan.Статус_норм,
       plan.Готовность_ПУ, пл_топ.Дата_МК  
-      FROM plan INNER JOIN 
-    пл_оуп ON пл_оуп.НомПл = plan.Пномер,
-     пл_топ ON пл_топ.НомПл = plan.Пномер 
+      FROM plan
+    INNER JOIN пл_оуп ON пл_оуп.НомПл = plan.Пномер
+     INNER JOIN пл_топ ON пл_топ.НомПл = plan.Пномер 
      WHERE plan.Статус IN (2,7) and plan.poki = {self.place.poki};"""
     res = F.deploy_dict_c(CSQ.custom_request_c(self.db_kplan, query, rez_dict=True), 'Пномер')
     dict_proj = dict()
@@ -4275,10 +4275,12 @@ def check_set_fininsh_py(self: mywindow):
                 if res[num]['Готовность_ПУ'] != 0:
                     list_not_ready_py.append(str(num))
 
-    query = f"""UPDATE plan SET Готовность_ПУ = 1 WHERE Пномер IN ({','.join(list_ready_py)})"""
-    CSQ.custom_request_c(self.db_kplan, query)
-    query = f"""UPDATE plan SET Готовность_ПУ = 0 WHERE Пномер IN ({','.join(list_not_ready_py)})"""
-    CSQ.custom_request_c(self.db_kplan, query)
+    if list_ready_py:
+        query = f"""UPDATE plan SET Готовность_ПУ = 1 WHERE Пномер IN ({','.join(list_ready_py)})"""
+        CSQ.custom_request_c(self.db_kplan, query)
+    if list_not_ready_py:
+        query = f"""UPDATE plan SET Готовность_ПУ = 0 WHERE Пномер IN ({','.join(list_not_ready_py)})"""
+        CSQ.custom_request_c(self.db_kplan, query)
 
 
 @CQT.onerror
