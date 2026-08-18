@@ -6,6 +6,7 @@ import pickle
 import shutil
 import socket
 import subprocess
+import sys
 import tarfile
 import tempfile
 import zipfile
@@ -123,12 +124,26 @@ def download_and_archive_packages(packages: list[str]) -> str | None:
         if not check_dns():
             return
         folder.mkdir(exist_ok=True, parents=True)
-        for package in packages:
-            subprocess.run(['pip', 'download', package, '--no-cache-dir', '--only-binary=:all:'], cwd=str(folder), check=True)
+        subprocess.run(
+            [
+                sys.executable,
+                '-m',
+                'pip',
+                'download',
+                '--no-cache-dir',
+                '--only-binary=:all:',
+                '--dest',
+                str(folder),
+                *packages,
+            ],
+            check=True,
+        )
         with tarfile.open(str(path), 'w:gz') as tar:
             for filename in os.listdir(str(folder)):
                 tar.add(str(folder / filename), arcname=filename)
-        return str(path)
+        if path.exists() and have_members(str(path)):
+            return str(path)
+        return None
 
 
 @router.get('/py/packages/list/')
@@ -146,10 +161,11 @@ def upload_dependencies(data: list[str]):
         if len(data) > 0:
             temp_download = download_and_archive_packages(data)
             if temp_download is None:
-                return
+                return ''
             return FileResponse(temp_download, filename=temp_download)
     except Exception as e:
         logging.warning('Ошибка выдачи pip зависимостей', exc_info=e)
+        return ''
 
 
 @router.get('/py/')
