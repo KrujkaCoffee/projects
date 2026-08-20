@@ -7,7 +7,12 @@ import typing
 
 import project_cust_38.Cust_Functions as F
 import project_cust_38.Cust_client_socket as CSQS
+try:
+    from project_cust_38 import Cust_postgresql_executor as CPG
+except Exception:
+    CPG = None
 
+_PG_STAGE2_READY = bool(CPG and CPG.configure_default_from_env(strict=False))
 def add_db(bd,text):
     conn = sqlite3.connect(bd)
     cur = conn.cursor()
@@ -27,6 +32,11 @@ RE_COUNT_SRV = 4
 DB_NAMES = CSQS.Servers # Содержит алиасы всех серверов БД
 
 # Пример result = CSQ.custom_request_c(CSQ.DB_NAMES.db_users,'DELETE from app_config')
+
+class SqlQuery(typing.NamedTuple):
+
+    sqlite: str
+    postgres: str
 
 
 def resolve_srv_target(bd: str):
@@ -622,6 +632,13 @@ def custom_request_c(
             date = excluded.date;
 
     """
+    postgres_query = None
+    sqlite_query = None
+    if isinstance(custom_request_c, SqlQuery):
+        postgres_query = custom_request_c.postgres
+        sqlite_query = custom_request_c.sqlite
+        custom_request_c = sqlite_query
+
     if list_of_lists_c is None:
         list_of_lists_c = [[]]
 
@@ -651,6 +668,11 @@ def custom_request_c(
             return obj.isoformat()
         return obj
 
+    try:
+        if _PG_STAGE2_READY:
+            CPG.stage2_observe_request(bd, custom_request_c)
+    except Exception as e:
+        print(e)
     if isinstance(list_of_lists_c[0],dict):
         list_of_lists_c = F.list_of_dicts_to_list_of_lists(list_of_lists_c)[1:]
 
