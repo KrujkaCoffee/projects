@@ -2311,10 +2311,8 @@ class mywindow(QtWidgets.QMainWindow):
         # ======================================
         self.zapoln_tabl_naryadov()
 
-        self.clear_naryad_bar()
-
         CQT.msgbox(f'Наряд успешно {vid_stop}')
-        if self.ui.chk_come_back.isChecked():  # если стоит галочка вернуться обратно то...
+        if self.ui.chk_come_back.isChecked(): # если стоит галочка вернуться обратно то...
             self.clear_naryad_bar()
             self.select_default_tab()
             self.load_naruad()

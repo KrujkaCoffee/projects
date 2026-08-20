@@ -35,6 +35,7 @@ from project_cust_38 import dynamic_db_models as DDM
 from project_cust_38 import Cust_orm as CORM
 import project_cust_38.sub_mes.resource_planning.clses as CLSS
 from project_cust_38.sub_mes.resource_planning import planner_mes_types
+from project_cust_38.sub_mes.resource_planning import planner_mes_entities
 
 
 from typing import  TYPE_CHECKING
@@ -102,9 +103,6 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
         self.fill_cmb_reports()
         DTCLS.module_manage_sub_app.user_config_sub_plan = CLSS.UserConfigSubPlan()
         DTCLS.module_manage_sub_app.user_config_sub_plan.load_config()
-        DTSUB.planner_mes_types = planner_mes_types.PlannerMesTypeCatalog()
-
-        DTCLS.module_manage_sub_app.custom_types = CLSS.CustomTypes(DTSUB.planner_mes_types)
 
     def _load_free_css(self):
         theme_path = F.sep().join([F.path_to_execut_file_c(), 'css'])
@@ -302,6 +300,55 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
                                 fnc_select_time,
                                 cell_val=row_end, img_path=F.sep().join([F.path_to_caller_file_c(),
                                                                          'icons', 'btn_select_time']))
+            get_cust_attrs = getattr(dimention_o,'get_dict_cust_attrs',None)
+            cust_attrs = get_cust_attrs() if callable(get_cust_attrs) else {}
+            for attr_name,attr in cust_attrs.items():
+                type_attr = attr.info.type
+                if not isinstance(type_attr,type) or not issubclass(type_attr,CLSS.Mes_type):
+                    continue
+                row_mes = t.find_row({'_name':attr_name},first=True)
+                if not row_mes :# or attr.info.protected:
+                    continue
+
+                def fnc_select_mes_entity(lbl:CQT.InteractiveLabelInstance,sub_self,i,j,row:CQT.TableRow,
+                                          type_attr=type_attr,presentation_key=attr.info.attr_view):
+                    try:
+                        DTSUB.custom_types.refresh_mes_types()
+                        choice = DTSUB.planner_mes_types.choice_for_type(type_attr)
+                        if presentation_key and not any(
+                                item.presentation_key == presentation_key
+                                for item in choice.presentations):
+                            presentation_key = choice.default_presentation.presentation_key
+                        service = planner_mes_entities.MesEntityService.from_type_catalog(
+                            DTSUB.planner_mes_types
+                        )
+                        current_value = row.value('Значение',get_cust_content=True)
+                        current_ref = getattr(current_value,'reference',None)
+                        result = planner_mes_entities.select_mes_entity(
+                            DTSUB.sub_self,service,choice,
+                            presentation_key=presentation_key or None,
+                            current=current_ref,
+                        )
+                    except Exception as exc:
+                        CQT.msgbox(f'Не удалось выбрать сущность МЕС: {exc}')
+                        return
+                    if not result.accepted:
+                        return
+                    new_value = None if result.reference is None else type_attr(result.reference)
+                    text_value = '' if new_value is None else str(new_value)
+                    row.set_value('Значение',text_value)
+                    row.set_value('Значение',new_value,set_cust_content=True)
+                    lbl.set_text(text_value)
+
+                widg = CQT.add_interactive_label(
+                    t.tbl,row_mes.i,t.nf['Значение'],row_mes.value('Значение'),
+                    parent_self=DTSUB.sub_self,grab_style_from_cell=True,
+                    autoupdate_column_size=False
+                )
+                widg.add_button(
+                    '...','Выбрать сущность МЕС',fnc_select_mes_entity,cell_val=row_mes,
+                    img_path=F.sep().join([F.path_to_caller_file_c(),'icons','btn_select'])
+                )
             # ====================================================================
             # =======================cross_res==============================
             row_res = t.find_row({'_name': 'res'}, first=True)
@@ -404,7 +451,11 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
             # ==========================clr==========================================
             def fnd_click_btn_add_attr(path,i,j, addit_data, *args):
                 if info_o.add_new_attr():
-                    shablon_o.upadte_child_attrs(DTSUB.resources)
+                    if DTSUB.current_settings_mode is CLSS.Type_entitys.Res:
+                        dimensions = DTSUB.resources
+                    else:
+                        dimensions = DTSUB.events
+                    shablon_o.upadte_child_attrs(dimensions)
                     self.info_shablon(shablon_o,read_only=read_only)
             def fnd_click_btn_del_attr(sub_self:Plwindow,i,j, *args):
                 pass

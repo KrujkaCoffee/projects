@@ -13,6 +13,7 @@ import copy
 import project_cust_38.api_erp_commands as APIERP
 
 T = TypeVar("T")
+SQLITE_TYPES = (type(None),str,int,float,bool,bytes,dict,list,tuple)
 
 DTSUB = DTCLS.module_manage_sub_app
 class Mes_type:
@@ -195,18 +196,16 @@ class _AttributeInfo:
         для всех атрибутов, которые являются _AttributeInfoMeta.
         """
         result = {}
-        # Перебираем все атрибуты экземпляра (не включая служебные)
-        for name in dir(self):
-            if name.startswith('_'):
+        for name, attr in object.__getattribute__(self, '__dict__').items():
+            if not isinstance(attr, _AttributeInfoMeta):
                 continue
-            try:
-                attr = getattr(self, name)
-            except AttributeError:
-                continue
-            # Проверяем, является ли атрибут нашим мета‑объектом
-            if isinstance(attr, _AttributeInfoMeta):
-                # Берём его текущее значение (поле .val)
-                result[name] = attr.val
+            value = attr.val
+            if name == 'type':
+                custom_types = getattr(DTSUB, 'custom_types', None)
+                if custom_types is None:
+                    raise TypeError('Не инициализирован каталог типов пользовательских атрибутов.')
+                value = custom_types.serialize_type(value)
+            result[name] = value
         return result
 
     @classmethod
@@ -218,6 +217,11 @@ class _AttributeInfo:
         obj = cls()  # создаём экземпляр с дефолтными мета‑объектами
         for name, value in data.items():
             if hasattr(obj, name):
+                if name == 'type' and not isinstance(value, type):
+                    custom_types = getattr(DTSUB, 'custom_types', None)
+                    if custom_types is None:
+                        raise TypeError('Не инициализирован каталог типов пользовательских атрибутов.')
+                    value = custom_types.deserialize_type(value)
                 # Устанавливаем значение через setattr – он сам найдёт мета‑объект и обновит его .val
                 setattr(obj, name, value)
         return obj
@@ -232,6 +236,9 @@ class _Attribute(Generic[T]):
         if not forced and self.info.protected:
             return False
         type_attr = self.info.type
+        if value is None and isinstance(type_attr, type) and issubclass(type_attr, Mes_type):
+            self.value = None
+            return True
         if type_attr != type(value):
             raise TypeError(f"Expected {self.info.type}, got {type(value)}")
         if type_attr in (int, float):
@@ -262,31 +269,41 @@ class _Attribute(Generic[T]):
         return f"_Attribute({self.info.alias}={self.value})"
 
     def serialize(self)-> dict:
-        val = None
-        if isinstance(self.value, (CSQ.SQLITE_TYPES)):
-            val =  self.value
-        else:
-            try:
-                val = self.value.serialize()
-            except:
-                pass
-            raise Exception("Not supported")
-
+        val = self.serialize_value(self.value)
         return {'value': val, 'info': self.info.to_flat_dict()}
+
+    @staticmethod
+    def serialize_value(value):
+        if value is None or isinstance(value, (str, int, float, bool, bytes)):
+            return value
+        if isinstance(value, Cdt):
+            return value.to_db()
+        serializer = getattr(value, 'serialize', None)
+        if callable(serializer):
+            return serializer()
+        raise TypeError(f'Тип {type(value)} не поддерживает сериализацию атрибута.')
+
+    @staticmethod
+    def deserialize_value(type_attr, value):
+        if value is None:
+            return None
+        if type_attr in (str, int, float, bool, bytes):
+            if type(value) is type_attr:
+                return value
+            return type_attr(value)
+        if type_attr is Cdt:
+            return Cdt(value) if value else Cdt()
+        if isinstance(type_attr,type) and isinstance(value, type_attr):
+            return value
+        deserializer = getattr(type_attr, 'deserialize', None)
+        if callable(deserializer):
+            return deserializer(value)
+        raise TypeError(f'Тип {type_attr} не поддерживает восстановление атрибута.')
 
     @classmethod
     def deserialize(cls, data: dict) -> '_Attribute':
         info = _AttributeInfo.from_flat_dict(data['info'])
-        if isinstance(data['value'], (CSQ.SQLITE_TYPES)):
-            val = data['value']
-        else:
-            type_attr = info.type
-            #TODO:
-            try:
-                val = type_attr.serialize(data['value'])
-            except:
-                pass
-            raise Exception("Not supported")
+        val = cls.deserialize_value(info.type, data['value'])
         return  cls(info=info,
             value=val,
         )
@@ -524,6 +541,36 @@ class CustomTypes:
         self.mes_warnings = self.planner_mes_types.warnings
         if not root.inner_data:
             root.text = "Данные МЕС (нет регистраций)"
+
+    def serialize_type(self,type_value:type)->dict:
+        source_key = str(getattr(type_value,'_planner_source_key','') or '')
+        if source_key:
+            return {'version':1,'kind':'mes','source_key':source_key}
+        full_name = self.get_full_type_name(type_value)
+        if not full_name or full_name.startswith('Неизвестный_тип.'):
+            raise TypeError(f'Тип {type_value} отсутствует в каталоге пользовательских типов.')
+        return {'version':1,'kind':'catalog','path':full_name}
+
+    def deserialize_type(self,data)->type:
+        if isinstance(data,type):
+            return data
+        if isinstance(data,str):
+            data = {'version':1,'kind':'catalog','path':data}
+        if not isinstance(data,dict) or int(data.get('version') or 0) != 1:
+            raise TypeError('Повреждён формат типа пользовательского атрибута.')
+        kind = data.get('kind')
+        if kind == 'mes':
+            if self.planner_mes_types is None:
+                raise TypeError('Каталог справочников МЕС не инициализирован.')
+            return self.planner_mes_types.type_for_source(
+                str(data.get('source_key') or ''),Mes_type,allow_placeholder=True
+            )
+        if kind == 'catalog':
+            type_o = self.get_type(str(data.get('path') or ''))
+            if not isinstance(type_o,MainTypes):
+                raise TypeError(f"Тип {data.get('path')!r} отсутствует в каталоге.")
+            return type_o.value
+        raise TypeError(f'Неизвестный вид пользовательского типа {kind!r}.')
 
     def _find_type_by_path(self, data: dict, path_parts: list) -> MainTypes:
 
@@ -974,7 +1021,7 @@ class Info():
 
         if self._raw_data is None:
             return
-        if DTSUB.current_settings_mode == Type_entitys.Res:
+        if DTSUB.current_settings_mode in (Type_entitys.Res,Type_entitys.Eve):
 
             def fnc_validate(t:CQT.TableContext):
                 rez = dict()
@@ -991,6 +1038,9 @@ class Info():
                                         )
             if not  rez:
                 return
+            if not isinstance(rez.get('type'),type):
+                CQT.msgbox('Выберите конкретный тип пользовательского атрибута.')
+                return
             new_attr:_Attribute = _Attribute.attr(None,type_val= rez['type'],  alias=rez['alias'], attr_view=rez['attr_view'],
                                    description=rez['description'], protected=rez['protected'],
                                  user_hidden=rez['user_hidden'], for_list=rez['for_list'], for_details=rez['for_details'],
@@ -998,8 +1048,11 @@ class Info():
                                                   report_user_hidden=rez['report_user_hidden'])
 
             id = self._dict_data['id']
-            res_o:ShablonRes = DTSUB.shablons_res.get(id)
-            res_o.add_new_custom_attr(new_attr)
+            if DTSUB.current_settings_mode is Type_entitys.Res:
+                shablon_o = DTSUB.shablons_res.get(id)
+            else:
+                shablon_o = DTSUB.shablons_eve.get(id)
+            shablon_o.add_new_custom_attr(new_attr)
             return True
 
 
@@ -1088,7 +1141,10 @@ class CustAttrs():
     @classmethod
     def deserialize(cls, data:dict[_Attribute])->'CustAttrs':
         obj = cls()
-        {setattr(obj,k,v) for k,v in data.items()}
+        for key,value in data.items():
+            if not isinstance(value,_Attribute):
+                value = _Attribute.deserialize(value)
+            setattr(obj,key,value)
         return obj
 
     def _gen_new_cust_attr_name(self):
@@ -1148,7 +1204,7 @@ class _BaseEntity():
             val = val.serialize()
         if attr_name == 'cust_attrs':
             val = val.serialize()
-        if isinstance(val, (CSQ.SQLITE_TYPES)):
+        if isinstance(val, SQLITE_TYPES):
             return val
         else:
             try:
@@ -1400,6 +1456,8 @@ class _BaseShablonsDB():
             new_shabl.description.set_value(cls._parse('description',row['description']))
             new_shabl.for_delete.set_value(cls._parse('for_delete',row['for_delete']))
             new_shabl.color.set_value(cls._parse('color',row['color']))
+            if 'cust_attrs' in row:
+                new_shabl.cust_attrs.set_value(CustAttrs.deserialize(row['cust_attrs']))
         return shablons
 
 
@@ -1457,7 +1515,7 @@ class _BaseDimension:
             value:Cdt =val
             return value.to_db()
 
-        if isinstance(val, (CSQ.SQLITE_TYPES)):
+        if isinstance(val, SQLITE_TYPES):
             return val
         else:
             try:
@@ -1610,14 +1668,27 @@ class _BaseDimensions:
 
     def add(self, id:int, name, descr,id_shablon)->_TYPE_CLS:
         new_dim = self._TYPE_CLS(id_shablon,id,name,descr)
+        self._copy_template_attrs(new_dim,id_shablon)
         self.dict_elems[id] = new_dim
         return new_dim
 
     def new(self,id_shablon:int, name='', descr='')->_TYPE_CLS:
         id = self._gen_new_id()
         new_dim = self._TYPE_CLS(id_shablon,id,name,descr)
+        self._copy_template_attrs(new_dim,id_shablon)
         self.dict_elems[id] = new_dim
         return new_dim
+
+    @staticmethod
+    def _copy_template_attrs(new_dim:_TYPE_CLS,id_shablon:int):
+        manager = new_dim._manager_shablons
+        if manager is None:
+            return
+        shablon = manager.dict_shablons.get(id_shablon)
+        if shablon is None:
+            return
+        for name,attr in shablon.cust_attrs.value.get_dict_attrs().items():
+            setattr(new_dim,name,copy.deepcopy(attr))
 
     def _gen_new_id(self)->int:
         last_id = -1
@@ -1640,6 +1711,11 @@ class _BaseDimensions:
             new_dim.color.set_value(Color(row['color']))
             new_dim.emoj.set_value(row['emoj'])
             new_dim.for_delete.set_value(row['for_delete'])
+            for name,attr in new_dim.get_dict_cust_attrs().items():
+                if name not in row:
+                    continue
+                value = _Attribute.deserialize_value(attr.info.type,row[name])
+                attr.set_value(value,forced=True)
         return mnger
 
     def template_list(self,include_deleted:bool=True)->tuple[list[dict],list[dict],dict] :
@@ -1762,7 +1838,7 @@ class Cross():
             value:Cdt =val
             return value.to_db()
 
-        if isinstance(val, (CSQ.SQLITE_TYPES)):
+        if isinstance(val, SQLITE_TYPES):
             return val
         else:
             try:
@@ -2190,5 +2266,3 @@ class UserConfigSubPlan:
             if F.existence_file_c(pathf):
                 data = F.load_file_pickle(pathf)
             self._apply_data(report,data)
-
-
