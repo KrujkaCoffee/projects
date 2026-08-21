@@ -133,11 +133,12 @@ class BaseConfig(metaclass=SingletonMeta):
 
     def _get_horizontal(self, name=None):
         select = name if name else '*'
-        where = f' WHERE {self._key_col} = ("{self._val_col}")'
+        where = f" WHERE {self._key_col} = ?"
         count_articles = CSQ.custom_request_c(
             self._CONFIG_DB,
             f'SELECT COUNT(*) as cnt FROM {self.__table__} {where}',
-            rez_dict=True, one=True
+            rez_dict=True, one=True,
+            list_of_lists_c=[self._val_col]
         )
         if not isinstance(count_articles, dict) or count_articles['cnt'] == 0:
             print(f'Приложение "{self._val_col}" не найдено в таблице "{self.__table__}"')
@@ -147,7 +148,8 @@ class BaseConfig(metaclass=SingletonMeta):
             self._CONFIG_DB,
             f'SELECT {select} FROM {self.__table__} {where}',
             rez_dict=True,
-            one=True
+            one=True,
+            list_of_lists_c=[self._val_col]
         )
         if result == False or not isinstance(result, dict):
             postfix = f'.{name}' if name else ''
@@ -158,12 +160,16 @@ class BaseConfig(metaclass=SingletonMeta):
             setattr(self, key, value)
 
     def _get_vertical(self, name=None):
-        where = f'WHERE {self._key_col} = ("{name}")' if name else ''
+        where, params = '', [[]]
+        if name:
+            where = f'WHERE {self._key_col} = ?'
+            params = [name]
         query = f'SELECT * FROM {self.__table__} {where}'
         result = CSQ.custom_request_c(
             self._CONFIG_DB,
             query,
-            rez_dict=True
+            rez_dict=True,
+            list_of_lists_c=params
         )
         if result == False or not isinstance(result, list):
             logging.error(f'Не удалось инициализировать конфигурации в {self.__class__.__name__}')
@@ -197,7 +203,7 @@ class VerticalConfig(BaseConfig, typing.Generic[T]):
     _description_col = 'comment'
 
     def set(self, key, new_value):
-        query = f"""UPDATE {self.__table__} SET {self._val_col} = ("{new_value}") WHERE {self._key_col} = '{key}'"""
+        query = f"""UPDATE {self.__table__} SET {self._val_col} = '{new_value}' WHERE {self._key_col} = '{key}'"""
         return self._set(query, **{key: new_value})
 
     @property
@@ -299,30 +305,33 @@ class TableRuntimePolicy:
 
 class User_emploee():
     def __init__(self, fio: str, user_db: str):
+        params = [fio, fio]
+
         if F.is_unique_identifier(fio):
-            where = f"""WHERE employee.ID_ФизЛица == "{fio}" """
-            where_slice = f"""WHERE КадроваяИстория.ФизическоеЛицо_Key == "{fio}" """
+            where = f"""WHERE "employee"."ID_ФизЛица" = ? """
+            where_slice = f"""WHERE "КадроваяИстория"."ФизическоеЛицо_Key" = ? """
 
         else:
-            where = f"""WHERE employee.ФИО == "{fio}" """
-            where_slice = f"""WHERE ФизическиеЛица.Наименование = "{fio}" """
+            where = f"""WHERE "employee"."ФИО" = ? """
+            where_slice = f"""WHERE "ФизическиеЛица"."Наименование" = ? """
+
 
         slice = f"""
         WITH slice AS (
             SELECT *
               FROM (
-                       SELECT КадроваяИстория.ФизическоеЛицо_Key,
-                                КадроваяИстория.Должность_Key,
-                                Должности.Наименование as Должность_Наименование,
-                                КадроваяИстория.Подразделение_Key,
-                                КадроваяИстория.Организация_Key,
-                                КадроваяИстория.Сотрудник_Key,
-                                КадроваяИстория.Период,
-                                КадроваяИстория.id,
-                              ROW_NUMBER() OVER (PARTITION BY КадроваяИстория.ФизическоеЛицо_Key ORDER BY КадроваяИстория.Период DESC) AS rn
-                         FROM КадроваяИстория
-                         inner join ФизическиеЛица ON ФизическиеЛица.ФизическоеЛицо_Key = КадроваяИстория.ФизическоеЛицо_Key
-                         inner join Должности ON Должности.Ref_Key = КадроваяИстория.Должность_Key
+                       SELECT "КадроваяИстория"."ФизическоеЛицо_Key",
+                                "КадроваяИстория"."Должность_Key",
+                                "Должности"."Наименование" as "Должность_Наименование",
+                                "КадроваяИстория"."Подразделение_Key",
+                                "КадроваяИстория"."Организация_Key",
+                                "КадроваяИстория"."Сотрудник_Key",
+                                "КадроваяИстория"."Период",
+                                "КадроваяИстория".id,
+                              ROW_NUMBER() OVER (PARTITION BY "КадроваяИстория"."ФизическоеЛицо_Key" ORDER BY "КадроваяИстория"."Период" DESC) AS rn
+                         FROM "КадроваяИстория"
+                         inner join "ФизическиеЛица" ON "ФизическиеЛица"."ФизическоеЛицо_Key" = "КадроваяИстория"."ФизическоеЛицо_Key"
+                         inner join "Должности" ON "Должности"."Ref_Key" = "КадроваяИстория"."Должность_Key"
                         {where_slice} 
                    )
                    AS ranked
@@ -332,33 +341,33 @@ class User_emploee():
 """
 
         fields = f"""
-        employee.ФИО as ФИО,
-        employee.Пномер as Пномер,
-        employee.Должность as Должность,
-        employee.Статус as Статус,
-        employee.Подразделение as Подразделение,
-        employee.Режим as Режим,
-        employee.Компания as Компания,
-        employee.ID_ФизЛица as ID_ФизЛица,
-        employee.ВидЗанятости as ВидЗанятости,
-        employee.ДатаИзмененияДолжности as ДатаИзмененияДолжности,
-        ФизическиеЛица.Фамилия as Фамилия,
-        ФизическиеЛица.Имя as Имя,
-        ФизическиеЛица.Отчество as Отчество,
-        ФизическиеЛица.Пол as Пол,
-        ФизическиеЛица.login as login,
-        ФизическиеЛица.id_bitrix as id_bitrix,
-        slice.Должность_Key as current_Должность_Key,
-        slice.Должность_Наименование as current_Должность,
-        slice.Подразделение_Key as current_Подразделение_Key,
-        slice.Организация_Key as current_Организация_Key,
-        slice.Сотрудник_Key as current_Сотрудник_Key
+        "employee"."ФИО" as "ФИО",
+        "employee"."Пномер" as "Пномер",
+        "employee"."Должность" as "Должность",
+        "employee"."Статус" as "Статус",
+        "employee"."Подразделение" as "Подразделение",
+        "employee"."Режим" as "Режим",
+        "employee"."Компания" as "Компания",
+        "employee"."ID_ФизЛица" as "ID_ФизЛица",
+        "employee"."ВидЗанятости" as "ВидЗанятости",
+        "employee"."ДатаИзмененияДолжности" as "ДатаИзмененияДолжности",
+        "ФизическиеЛица"."Фамилия" as "Фамилия",
+        "ФизическиеЛица"."Имя" as "Имя",
+        "ФизическиеЛица"."Отчество" as "Отчество",
+        "ФизическиеЛица"."Пол" as "Пол",
+        "ФизическиеЛица".login as login,
+        "ФизическиеЛица".id_bitrix as id_bitrix,
+        slice."Должность_Key" as "current_Должность_Key",
+        slice."Должность_Наименование" as "current_Должность",
+        slice."Подразделение_Key" as "current_Подразделение_Key",
+        slice."Организация_Key" as "current_Организация_Key",
+        slice."Сотрудник_Key" as "current_Сотрудник_Key"
         """
 
         data = CSQ.custom_request_c(user_db, f""" {slice} SELECT {fields} FROM employee 
-         LEFT JOIN ФизическиеЛица ON ФизическиеЛица.ФизическоеЛицо_Key = employee.ID_ФизЛица
-         LEFT JOIN slice on slice.ФизическоеЛицо_Key = ФизическиеЛица.ФизическоеЛицо_Key
-        {where};""", rez_dict=True)
+         LEFT JOIN "ФизическиеЛица" ON "ФизическиеЛица"."ФизическоеЛицо_Key" = employee."ID_ФизЛица"
+         LEFT JOIN slice on slice."ФизическоеЛицо_Key" = "ФизическиеЛица"."ФизическоеЛицо_Key"
+        {where};""", rez_dict=True, list_of_lists_c=params)
 
         if len(data) == 0:
             raise Exception('не найден ФИО в БД')
@@ -416,7 +425,7 @@ class User_emploee():
 
         if item['Статус'] == 'Увольнение':
             list_states = CSQ.custom_request_c(self.user_db, f"""SELECT s_num, user_id, state, date FROM 
-             employee_registr WHERE user_id == "{item['ID_ФизЛица']}" AND state == 10;""", rez_dict=True)
+             employee_registr WHERE user_id = "{item['ID_ФизЛица']}" AND state = 10;""", rez_dict=True)
             if date != None:
                 if F.strtodate(date) >= list_states[-1]['date']:
                     list_states[-1]['date']
@@ -449,9 +458,9 @@ class Erp_base():
         data = CSQ.custom_request_c(db_users, f"""
     SELECT s_num,
        name,
-       КластерСерверов
-  FROM bases_ERP WHERE name = "{name}";
-""", rez_dict=True, one=True)
+       "КластерСерверов"
+  FROM "bases_ERP" WHERE name = ?;
+""", rez_dict=True, one=True, list_of_lists_c=[name])
         if data:
             for key in data.keys():
                 exec(f'self.{key.replace(".", "_")} = data[key]')
@@ -582,17 +591,30 @@ class System_changes():
         return self.news
 
     def get_news(self) -> list[dict]:
-        news = CSQ.custom_request_c(self.db_users, f"""SELECT system_change.id as №,
-                                system_change.date_time as Дата,
-                                ФизическоеЛица.Фамилия as Инициатор,
-                                system_change.description as Описание,
-                                system_change.result as Результат
+        query = CSQ.SqlQuery(
+            sqlite=f"""SELECT system_change.id as "№",
+                                system_change.date_time as "Дата",
+                                "ФизическоеЛица"."Фамилия" as "Инициатор",
+                                system_change.description as "Описание",
+                                system_change.result as "Результат"
                                  FROM system_change 
-                                 INNER JOIN ФизическоеЛица ON
-                                 ФизическоеЛица.id == system_change.customer 
-                                 WHERE system_change.app == "{self.app}" and 
-                                datetime(system_change.date_time) >= datetime("{F.datetostr(self.data_setup)}")""",
-                                    rez_dict=True)
+                                 INNER JOIN "ФизическоеЛица" ON
+                                 "ФизическоеЛица".id = system_change.customer 
+                                 WHERE system_change.app = ? and 
+                                datetime(system_change.date_time) >= datetime(?)""",
+            postgres=f"""SELECT system_change.id as "№",
+                                system_change.date_time as "Дата",
+                                "ФизическоеЛица"."Фамилия" as "Инициатор",
+                                system_change.description as "Описание",
+                                system_change.result as "Результат"
+                                 FROM system_change 
+                                 INNER JOIN "ФизическоеЛица" ON
+                                 "ФизическоеЛица".id = system_change.customer 
+                                 WHERE system_change.app = %s and 
+                                CAST(system_change.date_time AS TIMESTAMP) >= CAST(%s AS TIMESTAMP)"""
+        )
+        news = CSQ.custom_request_c(self.db_users, query,
+                                    rez_dict=True, list_of_lists_c=[self.app, F.datetostr(self.data_setup)])
         for row in news:
             row['Дата'] = F.dateStrToStr(row['Дата'], format_out="%d.%m.%y")
         self.news = news
@@ -649,17 +671,17 @@ class User_config(metaclass=SingletonMeta):  # noqa
         self.cust_windowTitle: str | None = None
         self.user_mode: bool | None = None
         orgnizations = CSQ.custom_request_c(ProjectConfig().db_naryad,
-                                            f"""SELECT Имя FROM places""",
+                                            f"""SELECT "Имя" FROM places""",
                                             hat_c=False, one_column=True)
         orgnizations.insert(0, '')
         path_files = F.sep().join([F.path_to_execut_file_c(), 'css'])
 
         erp_bases = CSQ.custom_request_c(ProjectConfig().db_users,
-                                         f"""SELECT name FROM bases_ERP where type_base = 'erp'; """,
-                                         hat_c=False, one_column=True)
+                                         f"""SELECT name FROM "bases_ERP" where type_base = ?; """,
+                                         hat_c=False, one_column=True, list_of_lists_c=['erp'])
         do_bases = CSQ.custom_request_c(ProjectConfig().db_users,
-                                         f"""SELECT name FROM bases_ERP where type_base = 'do'; """,
-                                         hat_c=False, one_column=True)
+                                         f"""SELECT name FROM "bases_ERP" where type_base = ?; """,
+                                         hat_c=False, one_column=True, list_of_lists_c=['do'])
 
         list_thems = []
         if os.path.exists(path_files):
@@ -973,7 +995,7 @@ class Evaluation_department_podrazdel_for_reports:
         lazy_load_time = LAZY_LOAD_TIME if self._dev else 0
         data = CSQ.custom_request_c(
             bd_kplan,
-            f'SELECT Имя FROM podrazdel WHERE Пномер = {eval_podr}', one_column=True, one=True,
+            f'SELECT "Имя" FROM podrazdel WHERE Пномер = {eval_podr}', one_column=True, one=True,
             hat_c=False, lazy_method_hours=lazy_load_time
         )
         if data != False:
@@ -1033,9 +1055,11 @@ class Place(metaclass=SingletonMeta):
         # db_naryad = F.scfg('Naryad')
         db_naryad = ProjectConfig().db_naryad
         row = CSQ.custom_request_c(db_naryad,
-                                   f"""SELECT * FROM places WHERE Имя = "{organization_name}";""",
+                                   f"""SELECT * FROM places WHERE "Имя" = ?;""",
                                    one=True,
-                                   rez_dict=True, lazy_method_hours=lazy_load_time)
+                                   rez_dict=True,
+                                   lazy_method_hours=lazy_load_time,
+                                   list_of_lists_c=[organization_name])
         if not row:
             F.win_msgbox(f'Ошибка', f'Организация "{organization_name}" не обнаружена')
             raise ValueError('')

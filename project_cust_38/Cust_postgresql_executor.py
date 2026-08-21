@@ -513,7 +513,9 @@ class SchemaRegistry:
 
     def resolve(self, db_alias: Any) -> str:
         normalized = _normalize_db_alias(db_alias).casefold()
-        schema = self._mapping.get(normalized)
+        # schema = self._mapping.get(normalized)
+        # todo тестовый режим одной схемы
+        schema = "files_stage"
         if not schema:
             raise SchemaResolutionError(
                 f"Для alias '{_normalize_db_alias(db_alias)}' не задана PostgreSQL-схема"

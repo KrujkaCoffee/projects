@@ -30,6 +30,7 @@ WAIT_TIME = 2
 RE_COUNT_SRV = 4
 
 DB_NAMES = CSQS.Servers # Содержит алиасы всех серверов БД
+_PG_CONN = os.environ.get('PG_CONN') == '1'
 
 # Пример result = CSQ.custom_request_c(CSQ.DB_NAMES.db_users,'DELETE from app_config')
 
@@ -37,6 +38,8 @@ class SqlQuery(typing.NamedTuple):
 
     sqlite: str
     postgres: str
+
+    canBranch: bool = False
 
 
 def resolve_srv_target(bd: str):
@@ -632,12 +635,34 @@ def custom_request_c(
             date = excluded.date;
 
     """
-    postgres_query = None
-    sqlite_query = None
+    is_ready_for_pg = False
+
     if isinstance(custom_request_c, SqlQuery):
         postgres_query = custom_request_c.postgres
-        sqlite_query = custom_request_c.sqlite
-        custom_request_c = sqlite_query
+        is_ready_for_pg = custom_request_c.canBranch
+        custom_request_c = custom_request_c.sqlite # noqa
+    else:
+        postgres_query = custom_request_c
+
+    if _PG_CONN or is_ready_for_pg:
+        postgres_query = postgres_query.replace('?', '%s').replace('==', '=')
+        f = CPG.custom_request_c(
+            bd=bd,
+            custom_request_c=postgres_query,
+            conn=conn,
+            hat_c=hat_c,
+            list_of_lists_c=list_of_lists_c,
+            rez_dict=rez_dict,
+            one=one,
+            cur=cur,
+            one_column=one_column ,
+            attach_dbs=attach_dbs,
+            lazy_method_hours=lazy_method_hours,
+            debug=debug
+        )
+        if f is None or f is False:
+            raise
+        return f
 
     if list_of_lists_c is None:
         list_of_lists_c = [[]]

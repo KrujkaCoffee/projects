@@ -1766,8 +1766,8 @@ def vremya_tsht(ima_operacii, arr_tmp):
                 return
             if ima_operacii == 'Упаковывание':
                 vrema = upacovivanie(ima_operacii, arr_tmp)
-            if ima_operacii == 'Электроэрозионная':
-                vrema = el_erozion(ima_operacii, arr_tmp)
+            # if ima_operacii == 'Электроэрозионная':       # 20.08.26 Переход на excel
+            #     vrema = el_erozion(ima_operacii, arr_tmp)
             # if ima_operacii == 'Вальцовка':               # 24.07.25 Переход на excel
             #     vrema = valcovka(ima_operacii, arr_tmp)
             if ima_operacii == 'Гибка':

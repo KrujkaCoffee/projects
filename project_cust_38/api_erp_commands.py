@@ -339,8 +339,8 @@ def _get_wet_request_base(text: str, refs: Refs_wet | None = None, lazy_method_h
         if fl_upd:
             if new_file_hash == file_hash: #те же данные (не изменились)
                 CSQ.custom_request_c(db_files,
-                                     f"""UPDATE odata_lazy_resps set (resp_date ) = (?) 
-                                     WHERE resp == ?;""",
+                                     f"""UPDATE odata_lazy_resps set resp_date = ?
+                                     WHERE resp = ?;""",
                                      list_of_lists_c=[[time,sum_hash]])
             else:
                 CSQ.custom_request_c(db_files,
@@ -385,13 +385,27 @@ def _get_wet_request_base(text: str, refs: Refs_wet | None = None, lazy_method_h
                 return 200, data_cach['data']
 
         date_limit = F.date_add_time(now_date, hours=-lazy_method_huours)
-        data = CSQ.custom_request_c(CFG.Config.project.db_files, f"""SELECT s_num, resp_date,
+        query = CSQ.SqlQuery(
+            sqlite=f"""SELECT s_num, resp_date,
             CASE WHEN datetime(resp_date) >= datetime(?)  
                 THEN file 
             ELSE null  
                 END AS file, 
               hash_file FROM odata_lazy_resps 
         where resp = ? limit 1""",
+            postgres=f"""
+            SELECT 
+                s_num, 
+                resp_date,
+                CASE WHEN CAST(resp_date AS TIMESTAMP) >= CAST(%s AS TIMESTAMP)  
+                    THEN file 
+                    ELSE null  
+                END AS file, 
+              hash_file FROM odata_lazy_resps 
+            WHERE resp = %s 
+            LIMIT 1"""
+        )
+        data = CSQ.custom_request_c(CFG.Config.project.db_files, query,
             list_of_lists_c=[[date_limit, sum_hash]], rez_dict=True)
         if data and len(data):
             fl_naid_lazy = True

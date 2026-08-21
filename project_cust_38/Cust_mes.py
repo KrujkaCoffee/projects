@@ -103,7 +103,7 @@ def recalc_naryad(pk_naryad: int, fio: str = None): # 30.04.2026
         num_nar = pair['Номер_наряда']
         name = CSQ.custom_request_c(
             CFG.Config.project.db_naryad,
-            f'SELECT коды_веплана_для_наряда.name FROM naryad INNER JOIN коды_веплана_для_наряда ON коды_веплана_для_наряда.code = naryad.Внеплан WHERE naryad.Пномер = {num_nar}',
+            f'SELECT коды_веплана_для_наряда.name FROM naryad INNER JOIN коды_веплана_для_наряда ON коды_веплана_для_наряда.code = naryad."Внеплан" WHERE naryad.Пномер = {num_nar}',
             one_column=True,
             one=True,
             hat_c=False
@@ -140,12 +140,20 @@ class ReportNarChanges:  # 30.04.2026
 
     def get_info(self):
         db_naryad = CFG.Config.project.db_naryad
-        query = f"""
+
+        query = CSQ.SqlQuery(
+            sqlite=f"""
             SELECT Пномер, Статус, Дата, Подытог || "/" || Подытог_нормы as "Подытог/п.н" FROM jurnal 
-            WHERE Номер_наряда = {self.nom_nar} and ФИО = {self.fio!r}
+            WHERE Номер_наряда = {self.nom_nar} and ФИО = ?
             ORDER BY datetime(Дата)
-        """
-        return CSQ.custom_request_c(db_naryad, query, rez_dict=True)
+        """,
+            postgres=f"""
+                SELECT "Пномер", "Статус", "Дата", "Подытог" || '/' || "Подытог_нормы" as "Подытог/п.н" FROM jurnal 
+                WHERE "Номер_наряда" = {self.nom_nar} and ФИО = %s
+                ORDER BY CAST("Дата" AS TIMESTAMP)
+            """
+        )
+        return CSQ.custom_request_c(db_naryad, query, rez_dict=True, list_of_lists_c=[self.fio])
 
     def __enter__(self):
         before = self.get_info()
@@ -351,7 +359,7 @@ class Production_shifts():
     def _calc_sm_time(self): #13.02.2026
         rez = CSQ.custom_request_c(
             self.db_users,
-            f"""SELECT "sm_" || shift_no AS shift, * FROM schedule_work_places WHERE employee_id = {self.user_mes_id}""",
+            f"""SELECT 'sm_' || shift_no AS shift, * FROM schedule_work_places WHERE employee_id = {self.user_mes_id}""",
             rez_dict=True,
         ) or []
         for schedule in rez:
@@ -514,7 +522,7 @@ class Logs():
         if obj_name == None:
             obj_name = self._generate_obj_name()
         res = CSQ.custom_request_c(self.db,f"""SELECT user,datetime_change,new_val FROM journal_log 
-         INNER JOIN objects_jur ON objects_jur.s_num == journal_log.obj WHERE objects_jur.name =="{obj_name}" AND 
+         INNER JOIN objects_jur ON objects_jur.s_num = journal_log.obj WHERE objects_jur.name = "{obj_name}" AND 
           journal_log.row = {row} AND (journal_log.column_name = {column_name!r} OR journal_log.column_name = {name_field!r});""",rez_dict=True)
         return  res
 
@@ -10253,10 +10261,10 @@ class Gant_agregator():
             пл_оуп."№проекта" as "np", 
             пл_оуп."№ERP" as "zp" 
         FROM gant_poz_val_by_day
-        LEFT JOIN plan on plan.Пномер = gant_poz_val_by_day.id_poz
-        LEFT JOIN status_poz on status_poz.Пномер = plan.Статус
-        LEFT JOIN napravl_deyat on napravl_deyat.Пномер = plan.Направление_деятельности
-        LEFT JOIN пл_оуп on пл_оуп.НомПл = plan.Пномер 
+        INNER JOIN plan on plan.Пномер = gant_poz_val_by_day.id_poz
+        INNER JOIN status_poz on status_poz.Пномер = plan.Статус
+        INNER JOIN napravl_deyat on napravl_deyat.Пномер = plan.Направление_деятельности
+        INNER JOIN пл_оуп on пл_оуп.НомПл = plan.Пномер 
         WHERE Date(day_dt) BETWEEN "{date_start.date()}" 
             AND "{date_end.date()}" {where_id_poz} {where_id_etap}; -- {F.now()}""",
             rez_dict=True)
@@ -15031,7 +15039,9 @@ def accounting_work_rates_by_MK_c(self, spis_mk,nom_mk):#где использу
                                                            'Наименование': spis_mk[i][nom_kol_naim].strip()},
                                 ['Номер_техкарты'],all=False, conn=conn1, cur=cur1 )"""
         nom_tk = CSQ.custom_request_c(F.bdcfg('db_dse'),f"""SELECT Номер_техкарты FROM dse WHERE 
-        Номенклатурный_номер = '{spis_mk[i][nom_kol_nn].strip()}', Наименование == '{spis_mk[i][nom_kol_naim].strip()}'""",conn=conn1, cur=cur1,one=True,hat_c=True)
+        Номенклатурный_номер = ? AND Наименование = ?""",
+                                      conn=conn1, cur=cur1,one=True,hat_c=True,
+                                      list_of_lists_c=[spis_mk[i][nom_kol_nn].strip(), spis_mk[i][nom_kol_naim].strip()])
         if nom_tk == None or nom_tk == False or len(nom_tk) == 1:
             CQT.msgbox(f'по МК{nom_mk}, {spis_mk[i][nom_kol_nn].strip()} '
                      f'{spis_mk[i][nom_kol_naim].strip()} отсутсвует в БД, необходимо обратиться к технологам')
