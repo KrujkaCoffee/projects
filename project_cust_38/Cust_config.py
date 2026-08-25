@@ -614,7 +614,7 @@ class System_changes():
                                 CAST(system_change.date_time AS TIMESTAMP) >= CAST(%s AS TIMESTAMP)"""
         )
         news = CSQ.custom_request_c(self.db_users, query,
-                                    rez_dict=True, list_of_lists_c=[self.app, F.datetostr(self.data_setup)])
+                                    rez_dict=True, list_of_lists_c=[[self.app, F.datetostr(self.data_setup)]])
         for row in news:
             row['Дата'] = F.dateStrToStr(row['Дата'], format_out="%d.%m.%y")
         self.news = news

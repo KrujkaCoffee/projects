@@ -14054,7 +14054,13 @@ def load_peresilniy(self, tbl_nar, tbl_viev):
     poz = query[-1][0]
     py = query[-1][1]
     count_izd = query[-1][2]
-    last_num = CSQ.custom_request_c(self.db_naryd,f"""SELECT s_num FROM log_peresiln order by ROWID s_num limit 1""",hat_c=False, one_column=True)
+    last_num = CSQ.custom_request_c(self.db_naryd,CSQ.SqlQuery(
+        sqlite=f"""SELECT s_num FROM log_peresiln order by ROWID DESC limit 1""",
+        postgres=f"""SELECT s_num
+FROM log_peresiln
+ORDER BY s_num DESC
+LIMIT 1"""
+    ),hat_c=False, one_column=True)
     if last_num == False or last_num == None:
         CQT.msgbox(f'Ошибка загрузки из БД')
         return
