@@ -2419,8 +2419,8 @@ class Kros():
 
     @staticmethod
     def get_dict_kro()->dict[int,dict]:
-        list_kro = CSQ.custom_request_c(DTCLS.CONFIG.project.db_naryad,
-                             f"""WITH  vt as (SELECT 
+        query = CSQ.SqlQuery(
+            sqlite=f"""WITH  vt as (SELECT 
                                 kro_id,
                                 GROUP_CONCAT(DISTINCT id_dse) AS id_dse_list
                             FROM kro_nomens
@@ -2428,7 +2428,19 @@ class Kros():
                             
                             SELECT kro.id, kro.mk, kro.result_state_date,  kro.result_state, vt.id_dse_list FROM kro 
                             inner join vt ON vt.kro_id = kro.id 
-                             WHERE kro.result_state in ({Result_states.approved.id}, {Result_states.none_state.id})""",rez_dict=True)
+                             WHERE kro.result_state in ({Result_states.approved.id}, {Result_states.none_state.id})""",
+            postgres=f"""WITH  vt as (SELECT 
+                                kro_id,
+                                STRING_AGG(DISTINCT id_dse::text, ',') AS id_dse_list
+                            FROM kro_nomens
+                            GROUP BY kro_id) 
+                            
+                            SELECT kro.id, kro.mk, kro.result_state_date,  kro.result_state, vt.id_dse_list FROM kro 
+                            inner join vt ON vt.kro_id = kro.id 
+                             WHERE kro.result_state in ({Result_states.approved.id}, {Result_states.none_state.id})"""
+        )
+        list_kro = CSQ.custom_request_c(DTCLS.CONFIG.project.db_naryad,
+                             query,rez_dict=True)
         for _ in list_kro:
 
             if _['result_state'] == Result_states.approved.id:

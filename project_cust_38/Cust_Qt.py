@@ -12726,7 +12726,7 @@ class InteractiveLabelInstance(QtCore.QObject):
         self.btn_width = btn_width
         self.grab_style_from_cell = grab_style_from_cell
 
-        self.container = QtWidgets.QWidget()
+        self.container = QtWidgets.QWidget(self.table)
         self.container.instance = self
         self.container.setObjectName(self.__unique_label_key(self.table, row, column))
         self.container.setAutoFillBackground(True)

@@ -96,7 +96,7 @@ def list_of_completed_task_per_month_c(db,nach,konec,conn):
     custom_request_c = f'''SELECT jurnal.Пномер, jurnal.ФИО, jurnal.Подытог, jurnal.Номер_наряда, jurnal.Статус, naryad.Твремя, naryad.Коэфф_сложности FROM jurnal 
 INNER JOIN naryad ON naryad.Пномер = jurnal.Номер_наряда 
 WHERE jurnal.Статус == "Завершен" AND jurnal.Дата <= strftime("%Y-%m-%d %H:%M:00", datetime("{konec}")) AND 
-jurnal.Дата >= strftime("%Y-%m-%d %H:%M:00", datetime("{nach}")) AND naryad.Внеплан != 1 AND naryad.Подтвержд_вып == 1'''
+jurnal.Дата >= strftime("%Y-%m-%d %H:%M:00", datetime("{nach}")) AND naryad.Внеплан != 1 AND naryad.Подтвержд_вып = 1'''
     list_per_month_c = CSQ.custom_request_c(db,custom_request_c,conn=conn)
     return list_per_month_c
 
@@ -136,8 +136,8 @@ def list_per_month_new_c(db,nach,konec,db_kplan,db_users,podrazdelenie,organizat
         if key == 200 and result_req['data']:
             return [item['Должность'] for item in result_req['data']]
         else:
-            filtr_dolgn = CSQ.custom_request_c(db, f"""SELECT Должность FROM dolgn_etap WHERE 
-                 Подразделение == "{podrazdelenie}" AND Производство == "{organization}" ;""", hat_c=False,
+            filtr_dolgn = CSQ.custom_request_c(db, f"""SELECT "Должность" FROM dolgn_etap WHERE 
+                 "Подразделение" = "{podrazdelenie}" AND "Производство" = "{organization}" ;""", hat_c=False,
                                            one_column=True)
             return filtr_dolgn
 
@@ -148,7 +148,7 @@ def list_per_month_new_c(db,nach,konec,db_kplan,db_users,podrazdelenie,organizat
         filtr_fio = []
         if tabel_m == None:
             name_table = F.datetostr(F.strtodate(nach),"mtdz_%Y_%m_%d")
-            users = CSQ.custom_request_c(db_users,f"""SELECT ФИО FROM {name_table}""",hat_c=False,one_column=True)
+            users = CSQ.custom_request_c(db_users,f"""SELECT "ФИО" FROM "{name_table}";""",hat_c=False,one_column=True)
         else:
             users = [_[1] for _ in tabel_m[3:]]
         for user in users:
@@ -442,7 +442,7 @@ def apply_defects_on_list_emploee_new_c(nom_acta, nom_nar, kat_braka, itog, conn
     nk_vichet = F.num_col_by_name_in_hat_c(itog, 'Режим')
     spis_vinovnih = []
     if nom_nar != "" and F.is_numeric(nom_nar):
-        custom_request_c = f'''SELECT ФИО, ФИО2 FROM naryad WHERE Пномер == {int(nom_nar)}
+        custom_request_c = f'''SELECT "ФИО", "ФИО2" FROM naryad WHERE "Пномер" = {int(nom_nar)}
                     '''
         spis_vinovnih = CSQ.custom_request_c('',custom_request_c,conn)
 

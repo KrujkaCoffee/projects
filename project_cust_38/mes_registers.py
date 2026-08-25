@@ -1,12 +1,3 @@
-"""Виртуальные регистры состояния MES в одном production-модуле.
-
-Модуль import-safe: обычный import не загружает CFG, Cust_SQLite,
-context_admin, generated ORM models и не обращается к БД. Инфраструктура
-поднимается лениво только при build/get и первом фактическом запросе.
-
-Архитектурное объединение выполнено намеренно: production-развёртывание MES
-требует одного файла вместо package registers/*.py.
-"""
 from __future__ import annotations
 
 import dataclasses
@@ -35,11 +26,6 @@ from typing import (
 )
 
 
-
-# ==============================================================================
-# ОШИБКИ
-# ==============================================================================
-
 class RegisterError(Exception):
     """Базовая ошибка подсистемы регистров."""
 
@@ -64,23 +50,15 @@ class RegisterSourceUnavailable(RegisterError):
     """Источник регистра или SQL executor недоступен."""
 
 
-# ==============================================================================
-# МЕТАДАННЫЕ ДЕКЛАРАЦИЙ
-# ==============================================================================
-
 _HIDDEN_PREFIX = "__register_"
 
 
 def quote_ident(value: str) -> str:
-    """Кавычки SQLite identifier. Значения этим методом не экранируются."""
     return '"' + str(value).replace('"', '""') + '"'
-
-
 
 
 @dataclasses.dataclass(frozen=True)
 class ModelIdentity:
-    """Точная identity generated ORM без исправления и нормализации ключей."""
 
     model: Any
     table_name: str
@@ -169,17 +147,6 @@ def _clean_public_name(value: Any) -> str:
 
 
 def resolve_model_identity(model: Any) -> ModelIdentity:
-    """Прочитать точную identity ORM-модели.
-
-    Stage 2.1 сознательно не исправляет и не нормализует ключи. Generated ORM
-    обязана содержать однородную пару::
-
-        __db_key__ = "Naryad"
-        __table_key__ = "Naryad.naryad"
-
-    Путь/``SRV:`` здесь не вычисляется: production executor получает
-    физическую БД из ``CSQ.Servers`` только при фактическом запросе.
-    """
     if not isinstance(model, type):
         raise RegisterDeclarationError(
             f"source должен быть ORM-классом, получено {model!r}"
@@ -297,9 +264,6 @@ def resolve_outputs(fields: Iterable[Any], *, source_model: Any) -> tuple[Any, .
             output_name = _clean_output_name(item.output_name)
             normalized: Any = DirectOutput(field=ref, output_name=output_name)
         elif _is_relation_projection(item):
-            # Полная проверка relation откладывается до SQL compiler: там уже
-            # разрешается target model и field_pairs. Здесь достаточно убедиться,
-            # что projection не является строковой заглушкой.
             normalized = item
             projection_names = _projection_output_names(item)
             for name in projection_names:
@@ -583,10 +547,6 @@ def parse_key_arguments(
     return result
 
 
-# ==============================================================================
-# ИСПОЛНИТЕЛИ SQL
-# ==============================================================================
-
 class RegisterExecutor(Protocol):
     def fetch_all(
         self,
@@ -600,12 +560,6 @@ class RegisterExecutor(Protocol):
 
 
 def _strip_sql_literals_and_comments(sql: str) -> str:
-    """Оставить только исполняемые токены SQL.
-
-    Значения/quoted identifiers заменяются пробелами, чтобы слово DELETE внутри
-    строки или имени поля не считалось оператором. Функция не является общим SQL
-    parser; она намеренно консервативна для SQL, который генерирует register core.
-    """
     text = str(sql or "")
     out: list[str] = []
     index = 0
@@ -708,13 +662,6 @@ def _normalize_rows(result: Any, *, source: str) -> list[dict[str, Any]]:
 
 
 class MesSqlExecutor:
-    """Production adapter поверх ``Cust_SQLite.custom_request_c``.
-
-    На вход принимает только точные ``db_key`` generated ORM. Физический
-    ``_ServerItem`` берётся по точному имени ``<db_key>.db`` из единого реестра
-    ``CSQ.Servers``. В старых сборках имя реестра ``CSQ.DB_NAMES`` поддержано
-    лишь как API-совместимый alias; перебора вариантов и нормализации ключей нет.
-    """
 
     def __init__(
         self,
@@ -847,11 +794,6 @@ class CallableExecutor:
 
 
 class SqliteExecutor:
-    """Прямой read-only SQLite executor для тестов и shadow-сравнения.
-
-    ``db_paths`` — явная карта точных ``db_key -> файл``. Никакого поиска по
-    ``SRV:``, basename, legacy alias или каталогу не выполняется.
-    """
 
     def __init__(
         self,
@@ -945,9 +887,6 @@ def default_executor() -> RegisterExecutor:
     return MesSqlExecutor()
 
 
-# ==============================================================================
-# SQL-КОМПИЛЯТОР
-# ==============================================================================
 
 @dataclasses.dataclass(frozen=True)
 class RequiredMarker:
@@ -978,7 +917,6 @@ class _SelectPlan:
 
 
 class RegisterSqlCompiler:
-    """Компилирует только виртуальные регистры состояния для SQLite/MES SRV."""
 
     def compile_date_guard(
         self,
@@ -1267,8 +1205,6 @@ class RegisterSqlCompiler:
                 f'Регистр {definition.code!r}: join_type={declared_join_type!r} не поддержан'
             )
         required = bool(getattr(projection, 'required', False)) or missing_policy == 'raise'
-        # Для raise нужен LEFT JOIN + post-check marker. INNER JOIN скрыл бы
-        # отсутствие relation как будто исходного состояния не существует.
         if required:
             join_type = 'LEFT JOIN'
         elif missing_policy == 'drop':
@@ -1389,15 +1325,11 @@ class RegisterSqlCompiler:
         return ', '.join(parts)
 
 
-# ==============================================================================
-# RUNTIME
-# ==============================================================================
-
 RowT = TypeVar("RowT", bound=Mapping[str, Any])
 
 
 class RegisterRow(dict):
-    """Строка регистра: обычный dict с безопасным attribute-access для удобства."""
+    """Строка регистра"""
 
     def __getattr__(self, item: str) -> Any:
         try:
@@ -1410,7 +1342,6 @@ class RegisterRow(dict):
 
 
 class RegisterRows(list[RegisterRow]):
-    """Fallback, если SmartList недоступен в изолированном контуре."""
 
     def as_dicts(self) -> list[dict[str, Any]]:
         return [dict(row) for row in self]
@@ -1526,7 +1457,6 @@ class BoundStateRegister(Generic[RowT]):
         return cast(list[RowT], _smart_rows(self._execute(plan)))
 
     def preview_at(self, *args: Any, date: Any = None, **keys: Any) -> QueryPlan:
-        """Read-only preview SQL для тестов и будущей admin-panel."""
         args = list(args)
         expected = len(self.definition.keys)
         if date is None and len(args) == expected + 1:
@@ -1618,19 +1548,8 @@ class BoundStateRegister(Generic[RowT]):
         return result
 
 
-# ==============================================================================
-# КАТАЛОГ И ДЕКЛАРАЦИИ
-# ==============================================================================
 
 class StateRegister:
-    """Кодовая декларация виртуального регистра состояния.
-
-    Обязательные понятия public API:
-        source — ORM-модель истории;
-        key    — ключ сущности;
-        period — момент начала действия записи;
-        fields — возвращаемые поля.
-    """
 
     def __init__(
         self,
@@ -1680,9 +1599,6 @@ class StateRegister:
                 "StateRegister не получил имя. Объявите его атрибутом RegisterCatalog "
                 "или передайте через declarations={code: register}."
             )
-        # Definition is deliberately rebuilt for each catalog binding. Generated
-        # models may be reloaded by a maintenance process, and caching a previous
-        # db_key/table_key here would silently bind a new catalog to stale metadata. The catalog itself caches the already-bound runtime object.
         return build_definition(
             code=self._code,
             title=self.title or self._code,
@@ -1739,9 +1655,6 @@ class RegisterCatalog:
             if self._declarations[code] is not declaration:
                 raise RegisterDeclarationError(f"Регистр {code!r} объявлен повторно")
             return
-        # Каталог фиксирует нормализованный контракт один раз. Глобальная
-        # декларация не кэширует db_key/table_key identity между разными каталогами,
-        # но уже созданный runtime не меняется при случайной перезагрузке модели.
         definition = declaration.definition()
         self._declarations[code] = declaration
         self._definitions[code] = definition
@@ -1790,10 +1703,6 @@ class RegisterCatalog:
         return tuple(self._definitions.values())
 
 
-# ==============================================================================
-# СТАРТОВЫЕ РЕГИСТРЫ MES
-# ==============================================================================
-
 _DEFAULT_MODELS_MODULE = "project_cust_38.dynamic_db_models.orm_models"
 
 
@@ -1840,7 +1749,6 @@ class WorkOrderStateRow(TypedDict):
 
 
 class MesRegisterCatalog(RegisterCatalog):
-    """Типизированный публичный каталог стартовых регистров MES."""
 
     @property
     def employee(self) -> BoundStateRegister[EmployeeStateRow]:
@@ -1869,9 +1777,6 @@ def _load_models_module(value: str | ModuleType | None) -> ModuleType:
 
 
 def _iter_models(module: ModuleType):
-    # Generated модуль иногда может экспортировать тот же класс дополнительным
-    # alias-именем. Это не identity-конфликт: конфликтом считаются только два
-    # разных класса для одного точного table_key.
     seen: set[int] = set()
     for value in vars(module).values():
         if not isinstance(value, type) or not getattr(value, "__table__", None):
@@ -1918,7 +1823,6 @@ def build_mes_registers(
     executor=None,
     clock=None,
 ) -> MesRegisterCatalog:
-    """Построить независимый каталог из generated ORM Stage 1."""
     models_module_obj = _load_models_module(models_module)
     models = _models_by_table_key(models_module_obj)
 
@@ -1926,9 +1830,6 @@ def build_mes_registers(
     competence_values = _require_model(models, "BD_users.competence_vals")
     work_log = _require_model(models, "Naryad.jurnal")
 
-    # После явного lazy-import декларации используют сами ORM descriptors,
-    # а не строковые имена полей. Строки остаются только в bootstrap-поиске
-    # физической модели по точному table_key.
     EmployeeHistory = employee_state
     CompetenceValues = competence_values
     WorkLog = work_log
@@ -2020,10 +1921,8 @@ def get_mes_registers(
     executor=None,
     clock=None,
 ) -> MesRegisterCatalog:
-    """Получить каталог.
+    """Получить каталог регистров
 
-    При передаче custom models/executor/clock возвращается отдельный экземпляр.
-    Default-каталог лениво создаётся один раз и не вызывает SQL до первого запроса.
     """
     global _DEFAULT_CATALOG
     custom = models_module is not None or executor is not None or clock is not None

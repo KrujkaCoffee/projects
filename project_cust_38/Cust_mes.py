@@ -6867,25 +6867,25 @@ class DocumentedVariables():
     def __init__(self,сontext:str):
         self.сontext = сontext
         data = CSQ.custom_request_c(CFG.Config.project.db_dse, f"""SELECT 
-               ПараметрыФормул.Наименование, 
-               ПараметрыФормул.Подгруппа, 
-               ПараметрыФормул.БуквенноеОбозначение , 
-               ЕдиницыИзмерения.Наименование as ЕдиницаИзмерения, 
-               ПараметрыФормул.Мин, 
-               ПараметрыФормул.Макс, 
-               ПараметрыФормул.Default_val, 
-               ПараметрыФормул.ТипДанных, 
-               ПараметрыФормул.КоличествоРазрядов, 
-               ПараметрыФормул.Описание, 
-               ПараметрыФормул.Видимый,
-               ПараметрыФормул.Этап,
-               molding_order_stages.emoji as emoji,
-               ПараметрыФормул.editable,
-               ПараметрыФормул.allowedNullAndEmpty as РазрешенНульИПусто
-               FROM ПараметрыФормул 
-               LEFT JOIN ЕдиницыИзмерения ON ЕдиницыИзмерения.refKey =  ПараметрыФормул.ЕдиницаИзмерения 
-               LEFT JOIN molding_order_stages ON molding_order_stages.s_num =  ПараметрыФормул.Этап  
-               WHERE ПараметрыФормул.Контекст = '{сontext}' and ПараметрыФормул.disabled = 0 order by orderf;""", rez_dict=True)
+               "ПараметрыФормул"."Наименование", 
+               "ПараметрыФормул"."Подгруппа", 
+               "ПараметрыФормул"."БуквенноеОбозначение" , 
+               "ЕдиницыИзмерения"."Наименование" as "ЕдиницаИзмерения", 
+               "ПараметрыФормул"."Мин", 
+               "ПараметрыФормул"."Макс", 
+               "ПараметрыФормул"."Default_val", 
+               "ПараметрыФормул"."ТипДанных", 
+               "ПараметрыФормул"."КоличествоРазрядов", 
+               "ПараметрыФормул"."Описание", 
+               "ПараметрыФормул"."Видимый",
+               "ПараметрыФормул"."Этап",
+               "molding_order_stages"."emoji" as emoji,
+               "ПараметрыФормул"."editable",
+               "ПараметрыФормул"."allowedNullAndEmpty" as "РазрешенНульИПусто"
+               FROM "ПараметрыФормул" 
+               LEFT JOIN "ЕдиницыИзмерения" ON "ЕдиницыИзмерения"."refKey" =  "ПараметрыФормул"."ЕдиницаИзмерения" 
+               LEFT JOIN molding_order_stages ON molding_order_stages.s_num =  "ПараметрыФормул"."Этап"  
+               WHERE "ПараметрыФормул"."Контекст" = '{сontext}' and "ПараметрыФормул".disabled = 0 order by orderf;""", rez_dict=True)
         self.dict_vars = {_['Наименование']:DocumentedVariable(_) for _ in data}
     def __repr__(self):
         return f'cls DocumentedVariables, сontext: "{self.сontext}": {len(self.dict_vars)} items'
@@ -12293,9 +12293,12 @@ def load_tkp_list(self, db_dse, dict_alias,  tbl_list_tkp, tbl_list_tkp_filtr,se
         form = "{postfix}"
         start_str_date = F.datetostr(datetime.datetime(year=date_res, month=1, day=1))
         stop_str_date = F.datetostr(datetime.datetime(year=date_res + 1, month=1, day=1))
-    postfix = f"""(datetime(date_res) >= datetime('{start_str_date}') and datetime(date_res) <= datetime('{stop_str_date}'))"""
-    where = form.format(postfix=postfix)
-    list_tkp = CSQ.custom_request_c(db_dse, f"""SELECT s_nom, 
+    postfix_sqlite = f"""(datetime(date_res) >= datetime('{start_str_date}') and datetime(date_res) <= datetime('{stop_str_date}'))"""
+    postfix_pg = f"""
+        (CAST(date_res AS TIMESTAMP) >= CAST('{start_str_date}' AS TIMESTAMP) 
+        AND CAST(date_res AS TIMESTAMP) <= CAST('{stop_str_date}' AS TIMESTAMP))"""
+    query = CSQ.SqlQuery(
+        sqlite=f"""SELECT s_nom, 
         date_create, 
         vid_tkp.name as type_tkp, 
         user_create, 
@@ -12303,7 +12306,7 @@ def load_tkp_list(self, db_dse, dict_alias,  tbl_list_tkp, tbl_list_tkp_filtr,se
         nnom_izd,  
         nnom_tkp, 
         dir_rkd, 
-        "" as "ВО",
+        '' as "ВО",
         status, 
         name_prices.name AS "Проверка цены",
         resp_technolog, 
@@ -12311,13 +12314,38 @@ def load_tkp_list(self, db_dse, dict_alias,  tbl_list_tkp, tbl_list_tkp_filtr,se
         name_res,
         вид_по_напр,
          weight_wh_pki,
-         predv_res.Имя as "Выгружено в 1С"
+         predv_res."Имя" as "Выгружено в 1С"
          FROM tkp 
             INNER JOIN vid_tkp ON vid_tkp.Pnom = tkp.type_tkp
            INNER JOIN name_prices ON name_prices.s_num = tkp.check_prices
            LEFT JOIN predv_res ON predv_res.Имя = tkp.name_res
-        WHERE {where};
-        """,rez_dict=True,attach_dbs=(CFG.Config.project.db_resxml))
+        WHERE {form.format(postfix=postfix_sqlite)};
+        """,
+        postgres=f"""SELECT s_nom, 
+            date_create, 
+            vid_tkp.name as type_tkp, 
+            user_create, 
+            name_tkp,
+            nnom_izd,  
+            nnom_tkp, 
+            dir_rkd, 
+            '' as "ВО",
+            status, 
+            name_prices.name AS "Проверка цены",
+            resp_technolog, 
+            date_res,
+            name_res,
+            вид_по_напр,
+             weight_wh_pki,
+             predv_res."Имя" as "Выгружено в 1С"
+             FROM tkp 
+                INNER JOIN vid_tkp ON "vid_tkp"."Pnom" = "tkp"."type_tkp"
+               INNER JOIN name_prices ON "name_prices"."s_num" = "tkp"."check_prices"
+               LEFT JOIN predv_res ON "predv_res"."Имя" = "tkp"."name_res"
+            WHERE {form.format(postfix=postfix_pg)};
+        """
+    )
+    list_tkp = CSQ.custom_request_c(db_dse, query,rez_dict=True,attach_dbs=CFG.Config.project.db_resxml)
     dict_loaded_res_erp = dict()
     #dict_loaded_res_erp = F.deploy_dict_c(CSQ.custom_request_c(CFG.Config.project.db_resxml, f"""SELECT Пномер,
     #   Имя
@@ -12466,14 +12494,14 @@ def save_user_credentials():
     os.environ[KEY_USER_SAVED] = '1'
     db_users = CFG.Config.project.db_users
     fio = F.user_full_namre()
-    data = CSQ.custom_request_c(db_users, f'SELECT login, computer_name, have_pg FROM employee WHERE ФИО = {fio!r}',
+    data = CSQ.custom_request_c(db_users, f'SELECT login, computer_name, have_pg FROM employee WHERE "ФИО" = {fio!r}',
                                 rez_dict=True, one=True)
     if isinstance(data, dict) and 'login' in data and 'computer_name' in data:
         computer_name = F.computer_name()
         login = F.user_name()
         if data['login'] != login or data['computer_name'] != computer_name or not data['have_pg'] or data['have_pg'] is None:
             result = CSQ.custom_request_c(db_users,
-                                          f'UPDATE employee SET login = {login!r}, computer_name = {computer_name!r}, have_pg = {user_have_pg()} WHERE ФИО = {fio!r}')
+                                          f'UPDATE employee SET login = {login!r}, computer_name = {computer_name!r}, have_pg = {user_have_pg()} WHERE "ФИО" = {fio!r}')
             result and print('Пользователь успешно сохранен')
 
 def check_ver(ver,ima):
@@ -12534,7 +12562,7 @@ def resource_from_xml_c(self, spis_xml, kol_vo_izdeliy,nom_mk=None,conn='',cur='
     nach = 0
     npp = 0
     poki = CFG.Config.place.poki
-    custom_request_c = f'''SELECT Номенклатурный_номер,Наименование, Номер_техкарты FROM dse WHERE poki = {poki}'''
+    custom_request_c = f'''SELECT "Номенклатурный_номер","Наименование", "Номер_техкарты" FROM dse WHERE poki = {poki}'''
 
     rez = CSQ.custom_request_c(self.db_dse, custom_request_c, hat_c=True, rez_dict=True)
 
@@ -12702,7 +12730,7 @@ def resursnaya_from_cust_struktura(self, spis_dse, kol_vo_izdeliy=None, ruchnoi=
     dict_dse = dict()
     if not STATISTIC_CALC:
         conn1, cur1 = CSQ.connect_bd(self.db_dse)
-        dict_dse = CSQ.custom_request_c(self.db_dse, f"""SELECT Номенклатурный_номер, Номер_техкарты 
+        dict_dse = CSQ.custom_request_c(self.db_dse, f"""SELECT "Номенклатурный_номер", "Номер_техкарты" 
             FROM dse WHERE poki = {self.place.poki};""",
                                         rez_dict=True, conn=conn1, cur=cur1)
         CSQ.close_bd(conn1, cur1)
@@ -12805,7 +12833,8 @@ def resursnaya_from_cust_struktura(self, spis_dse, kol_vo_izdeliy=None, ruchnoi=
         else:
             if not dict_dse:
                 data_nom_tk = CSQ.custom_request_c(self.db_dse, f"""SELECT  
-                Номер_техкарты FROM dse WHERE Номенклатурный_номер = "{nn}" AND poki = {self.place.poki};""", one=True,
+                "Номер_техкарты" FROM dse WHERE "Номенклатурный_номер" = ? AND poki = {self.place.poki};""", one=True,
+                                                   list_of_lists_c=[nn],
                                                 rez_dict=True )
                 if data_nom_tk == False:
                     CQT.msgbox(f'Номер техкарты для {nn} {naim} не найден')
@@ -12856,7 +12885,7 @@ def resursnaya_from_cust_struktura(self, spis_dse, kol_vo_izdeliy=None, ruchnoi=
 
 @CQT.onerror
 def check_possibility_statistic_calc_tkp(vid_izd:str|int):
-    VID_PO_NAPR = CSQ.custom_request_c(CFG.Config.project.db_kplan, f"""SELECT Имя,Пномер,Выборка,Утверждены_нормы  FROM виды_по_направлению""", rez_dict=True) #18.07.25
+    VID_PO_NAPR = CSQ.custom_request_c(CFG.Config.project.db_kplan, f"""SELECT "Имя","Пномер","Выборка","Утверждены_нормы"  FROM виды_по_направлению""", rez_dict=True) #18.07.25
     if isinstance(vid_izd,str):
         DICT_VID_PO_NAPR = F.deploy_dict_c(VID_PO_NAPR, 'Имя')
     if isinstance(vid_izd,int):
@@ -13303,9 +13332,8 @@ def save_xml(self):
         return
     if nom_mk == None:
         CQT.msgbox(f'Номер мк не указан')
-    query = f'''SELECT data, Head FROM xml 
-        WHERE Номер_мк == {int(nom_mk)}
-                    '''
+    query = f'''SELECT "data", "Head" FROM xml 
+        WHERE "Номер_мк" = {int(nom_mk)};'''
     rez_xml = CSQ.custom_request_c(self.db_resxml, query)
     xml = rez_xml[-1][0]
     F.save_file(path,F.convert_binary_to_data(xml))
@@ -13449,9 +13477,9 @@ def fix_mastered_count(res:list,s_num_mk:int,list_nars:list[dict]=None):
             count+=1
         return count
     if list_nars is None:
-        list_nars = CSQ.custom_request_c(db_nar,f"""SELECT ФИО, ФИО2, Фвремя, Фвремя2, 
-       ДСЕ_ID, Операции, Опер_колво
-            FROM naryad WHERE Номер_мк = {s_num_mk} and Внеплан = {CFG.Config.place.КодыНарядов.Плановая};""",
+        list_nars = CSQ.custom_request_c(db_nar,f"""SELECT "ФИО", "ФИО2", "Фвремя", "Фвремя2", 
+       "ДСЕ_ID", "Операции", "Опер_колво"
+            FROM naryad WHERE "Номер_мк" = {s_num_mk} and "Внеплан" = {CFG.Config.place.КодыНарядов.Плановая};""",
                                          rez_dict=True) #05.09.25
     dict_cr =dict()
     dict_zav = dict()
@@ -13521,7 +13549,7 @@ def load_res(nom_mk:int, conn = '',cur= '',db_resxml='',self=None,
     def update_name_rc_and_etaps(res, dict_etaps:dict=None):
         if dict_etaps is None:
             etaps = CSQ.custom_request_c(db_users,
-                    f"""SELECT etaps.name as etaps_name, rab_c.Код , rab_c.Имя FROM rab_c 
+                    f"""SELECT etaps.name as etaps_name, rab_c."Код" , rab_c."Имя" FROM rab_c 
                     INNER JOIN etaps ON 
                     etaps.s_num = rab_c.etaps_num 
                     WHERE rab_c.poki = {poki}""",
@@ -13562,7 +13590,7 @@ def load_res(nom_mk:int, conn = '',cur= '',db_resxml='',self=None,
         if self == '':
             raise Exception('Val err self')
         rez_xml = CSQ.custom_request_c(db_resxml,
-                                    f"""SELECT data FROM predv_res WHERE Пномер = {int(nom_mk)};"""
+                                    f"""SELECT data FROM predv_res WHERE "Пномер" = {int(nom_mk)};"""
                                     )
         rez_spis = F.from_binary_pickle(rez_xml[1][0])
 
@@ -13570,8 +13598,8 @@ def load_res(nom_mk:int, conn = '',cur= '',db_resxml='',self=None,
 
     else:
         if from_xml:
-            query = f'''SELECT data, Head FROM xml 
-                WHERE Номер_мк = {int(nom_mk)}
+            query = f'''SELECT data, "Head" FROM xml 
+                WHERE "Номер_мк" = {int(nom_mk)}
                             '''
             rez_xml = CSQ.custom_request_c(db_resxml, query)
             xml = rez_xml[-1][0]
@@ -13583,7 +13611,7 @@ def load_res(nom_mk:int, conn = '',cur= '',db_resxml='',self=None,
             if isinstance(nom_mk, list):
                 rez_spis = F.from_binary_pickle(nom_mk[1][0])
             else:
-                bin_data = CSQ.custom_request_c(db_resxml, f"""SELECT data FROM res WHERE Номер_мк = {int(nom_mk)}""",
+                bin_data = CSQ.custom_request_c(db_resxml, f"""SELECT data FROM res WHERE "Номер_мк" = {int(nom_mk)}""",
                                          rez_dict=True,
                                          one=True)
                 if isinstance(bin_data, dict) and len(bin_data) == 0:
@@ -13594,8 +13622,8 @@ def load_res(nom_mk:int, conn = '',cur= '',db_resxml='',self=None,
             if self:
                 rez_spis = fix_old_custom_res(rez_spis)
         else:
-            query = f'''SELECT Количество FROM mk
-                    WHERE Пномер = {int(nom_mk)}
+            query = f'''SELECT "Количество" FROM mk
+                    WHERE "Пномер" = {int(nom_mk)}
                                 '''
             kol_vo_izdeliy = CSQ.custom_request_c(db_naryad, query)[-1][0]
             spis_xml = podgotovka_xml(self,XML.spisok_iz_xml(str_f=xml), xml_head, correct_code_erp_tbl=True)
@@ -13619,7 +13647,7 @@ def save_res(db,nom_mk,res,conn = '',cur = ''):
     blob1 = F.to_binary_pickle(res)
     blob = CSQ.for_blob(blob1)
     print(blob == blob1)
-    CSQ.custom_request_c(db, f'''UPDATE res SET data = ? WHERE Номер_мк = ?;''',list_of_lists_c=[blob1,int(nom_mk)])
+    CSQ.custom_request_c(db, f'''UPDATE res SET data = ? WHERE "Номер_мк" = ?;''',list_of_lists_c=[blob1,int(nom_mk)])
 
 def load_order_outsourcing_c(self, tbl_nar, tbl_viev):
     tbl = tbl_nar
@@ -13634,7 +13662,7 @@ def load_order_outsourcing_c(self, tbl_nar, tbl_viev):
     nk_primech = CQT.num_col_by_name_c(tbl, 'Примечание')
     primech = tbl.item(tbl.currentRow(), nk_primech).text()
     data = F.now("%d.%m.%Y %H:%M")
-    custom_request_c = f'''SELECT Номенклатура,Номер_заказа FROM mk WHERE Пномер = {int(nom_nom_mk)}'''
+    custom_request_c = f'''SELECT "Номенклатура","Номер_заказа" FROM mk WHERE "Пномер" = {int(nom_nom_mk)}'''
     query = CSQ.custom_request_c(CFG.Config.project.db_naryad, custom_request_c)
     poz = query[-1][0]
     py = query[-1][1]
@@ -13682,21 +13710,21 @@ def load_order_outsourcing_c(self, tbl_nar, tbl_viev):
 def list_emploee_full_with_del(bd_users, org_name:str = None):
     org_fix  = ''
     if org_name:
-        org_fix = f' WHERE Компания = "{org_name}" OR Компания = ""'
-    query = f"""SELECT * FROM employee WHERE Пномер IN( SELECT Пномер FROM (SELECT
-    	MAX(Пномер) as Пномер,
-    	ФИО
+        org_fix = f''' WHERE "Компания" = '{org_name}' OR "Компания" = '' '''
+    query = f"""SELECT * FROM employee WHERE "Пномер" IN( SELECT "Пномер" FROM (SELECT
+    	MAX("Пномер") as "Пномер",
+    	"ФИО"
     FROM
     	employee
     {org_fix}	
     GROUP BY
-    	ФИО
-    HAVING COUNT(*) >= 1 )) order by ФИО;"""
+    	"ФИО"
+    HAVING COUNT(*) >= 1 )) order by "ФИО";"""
     list_emploee_with_del = CSQ.custom_request_c(bd_users, query, rez_dict=True,lazy_method_hours=0.01)
     return list_emploee_with_del
 
 def dict_emploee(bd_users,conn=''):
-    query = f"""SELECT * FROM employee WHERE Статус != 'Увольнение' AND Должность not in ('-','+','') """
+    query = f"""SELECT * FROM employee WHERE "Статус" != 'Увольнение' AND "Должность" not in ('-','+','') """
     DICT_EMPLOEE = dict()
     list_emploee = CSQ.custom_request_c(bd_users, query, rez_dict=True,conn =conn)
     if list_emploee == False:
@@ -13808,16 +13836,18 @@ def dict_emploee_rc(self,conn_inp = ''):
         conn, cur = CSQ.connect_bd(F.bdcfg("BD_users"))
     else:
         conn = conn_inp
-    custom_request_c = """SELECT rab_mesta.Код_РЦ, 
-    s1.ФИО  || " " || s1.Должность as ФИО_1см,
-      s2.ФИО || " " || s2.Должность as ФИО_2см, 
-      s3.ФИО || " " || s3.Должность as ФИО_3см, 
-      rab_mesta.Пномер, 
-      rab_mesta.Прозвище 
+    custom_request_c = '''
+    SELECT rab_mesta."Код_РЦ", 
+    s1."ФИО"  || ' ' || s1."Должность" as "ФИО_1см",
+      s2."ФИО" || ' ' || s2."Должность" as "ФИО_2см", 
+      s3."ФИО" || ' ' || s3."Должность" as "ФИО_3см", 
+      rab_mesta."Пномер", 
+      rab_mesta."Прозвище" 
        FROM rab_mesta
-       INNER JOIN employee s1 ON s1.Пномер = rab_mesta.ФИО_1
-       INNER JOIN employee s2 ON s2.Пномер = rab_mesta.ФИО_2
-     INNER JOIN employee s3 ON s3.Пномер == rab_mesta.ФИО_3"""
+       INNER JOIN employee s1 ON s1."Пномер" = "rab_mesta"."ФИО_1"
+       INNER JOIN employee s2 ON s2."Пномер" = "rab_mesta"."ФИО_2"
+     INNER JOIN employee s3 ON s3."Пномер" = "rab_mesta"."ФИО_3"
+    '''
 
     #custom_request_c2 = '''SELECT * FROM user_rc'''
     #rez2 = CSQ.custom_request_c(F.bdcfg("BD_users"), custom_request_c2,conn=conn)
@@ -13867,7 +13897,7 @@ def load_ved_komplekt(self, tbl_nar, tbl_viev):
     nk_nom_mk = CQT.num_col_by_name_c(tbl, 'Номер_мк')
     nom_nom_mk = tbl.item(tbl.currentRow(), nk_nom_mk).text()
     data = F.now("%d.%m.%Y %H:%M")
-    custom_request_c = f'''SELECT Номенклатура,Номер_заказа FROM mk WHERE Пномер = {int(nom_nom_mk)}'''
+    custom_request_c = f'''SELECT "Номенклатура","Номер_заказа" FROM mk WHERE "Пномер" = {int(nom_nom_mk)}'''
     query = CSQ.custom_request_c(CFG.Config.project.db_naryad, custom_request_c)
     poz = query[-1][0]
     py = query[-1][1]
@@ -13978,12 +14008,12 @@ def load_peresilniy(self, tbl_nar, tbl_viev):
          ({CSQ.questions_for_mask(list_vals)})'''
         CSQ.custom_request_c(self.db_naryd,query,list_of_lists_c=[list_vals])
         try:
-            query = f"""SELECT mk.Номер_проекта, mk.Номер_заказа, mk.Номенклатура, mk.Пномер as Номер_МК,
-                naryad.Пномер as Номер_нар, 
+            query = f"""SELECT mk."Номер_проекта", mk."Номер_заказа", mk."Номенклатура", mk."Пномер" as "Номер_МК",
+                naryad."Пномер" as "Номер_нар", 
                 log_peresiln.s_num, log_peresiln.user_name FROM naryad
-                INNER JOIN mk on mk.Пномер == naryad.Номер_мк,
-                log_peresiln on log_peresiln.num_nar == naryad.Пномер
-                WHERE naryad.Пномер == {num_nar};"""
+                INNER JOIN mk on mk."Пномер" = naryad."Номер_мк",
+                log_peresiln on log_peresiln.num_nar = naryad."Пномер"
+                WHERE naryad."Пномер" = {num_nar};"""
             rez = CSQ.custom_request_c(self.db_naryd,query,rez_dict=True)
             if rez == None or rez == False:
                 CQT.msgbox(f'Ошибка доступа к БД')
@@ -14019,12 +14049,12 @@ def load_peresilniy(self, tbl_nar, tbl_viev):
     nk_nom_mk = CQT.num_col_by_name_c(tbl, 'Номер_мк')
     nom_nom_mk = tbl.item(tbl.currentRow(), nk_nom_mk).text()
     data = F.now("%d.%m.%Y %H:%M")
-    custom_request_c = f'''SELECT Номенклатура,Номер_заказа,Количество FROM mk WHERE Пномер = {int(nom_nom_mk)}'''
+    custom_request_c = f'''SELECT "Номенклатура","Номер_заказа","Количество" FROM mk WHERE "Пномер" = {int(nom_nom_mk)}'''
     query = CSQ.custom_request_c(self.db_naryd,custom_request_c)
     poz = query[-1][0]
     py = query[-1][1]
     count_izd = query[-1][2]
-    last_num = CSQ.custom_request_c(self.db_naryd,f"""SELECT s_num FROM log_peresiln order by ROWID DESC limit 1""",hat_c=False, one_column=True)
+    last_num = CSQ.custom_request_c(self.db_naryd,f"""SELECT s_num FROM log_peresiln order by ROWID s_num limit 1""",hat_c=False, one_column=True)
     if last_num == False or last_num == None:
         CQT.msgbox(f'Ошибка загрузки из БД')
         return
@@ -14140,27 +14170,27 @@ def load_peresilniy(self, tbl_nar, tbl_viev):
 def dict_rc(self, db_users,conn = ''):
     self.DICT_RC = dict() # 20.05.2026
     custom_request_c = f'''SELECT 
-        rab_c.Код,
-        rab_c.Имя,
-        rab_c.Примечание,
-        rab_c.Подмена_рц_для_плана,
-        rab_c.Цвет,
-        Подразделения.Наименование AS empl_Подразделение,
-        Подразделения.Подразделение_Key,
-        rab_c.Отв_мастер_тдз,
-        rab_c.Наим_СТО,
-        rab_c.Сокр_наим_СТО,
-        rab_c.ref_СтруктураПредприятия, 
-        СтруктураПредприятия.Наименование as Наим_ЕРП, 
-        rab_c.СКУД_id,
-        rab_c.Вспомогательный,
-        rab_c.poki, 
-        etaps.name as etaps_name,
-        use_in_estimate_plan as use_in_estimate_plan 
+        "rab_c"."Код",
+        "rab_c"."Имя",
+        "rab_c"."Примечание",
+        "rab_c"."Подмена_рц_для_плана",
+        "rab_c"."Цвет",
+        "Подразделения"."Наименование" AS "empl_Подразделение",
+        "Подразделения"."Подразделение_Key",
+        "rab_c"."Отв_мастер_тдз",
+        "rab_c"."Наим_СТО",
+        "rab_c"."Сокр_наим_СТО",
+        "rab_c"."ref_СтруктураПредприятия", 
+        "СтруктураПредприятия"."Наименование" as "Наим_ЕРП", 
+        "rab_c"."СКУД_id",
+        "rab_c"."Вспомогательный",
+        "rab_c"."poki", 
+        "etaps"."name" as "etaps_name",
+        "use_in_estimate_plan" as "use_in_estimate_plan" 
      FROM rab_c 
      INNER JOIN etaps ON etaps.s_num = rab_c.etaps_num 
-     INNER JOIN Подразделения ON Подразделения.Подразделение_Key =  rab_c.ref_Подразделения 
-     INNER JOIN СтруктураПредприятия ON СтруктураПредприятия.Ref =  rab_c.ref_СтруктураПредприятия 
+     INNER JOIN "Подразделения" ON "Подразделения"."Подразделение_Key" =  "rab_c"."ref_Подразделения" 
+     INNER JOIN "СтруктураПредприятия" ON "СтруктураПредприятия"."Ref" =  "rab_c"."ref_СтруктураПредприятия" 
      WHERE rab_c.poki = {CFG.Config.place.poki};'''
     self.SPIS_RC = CSQ.custom_request_c(CFG.Config.project.db_users, """SELECT * FROM rab_c""")
     SPIS_RC = CSQ.custom_request_c(db_users, custom_request_c, hat_c=False,rez_dict=True, attach_dbs=CFG.Config.project.db_naryad)
@@ -14169,17 +14199,17 @@ def dict_rc(self, db_users,conn = ''):
 
 
 def dict_rab_mesta(self = None, db_users: str = None, conn_users=None): #26.01.2026
-    q = """SELECT rm.Пномер,
-                    rm.Прозвище,
-                    rm.coord,
-                    rm.Расположение,
-                    COALESCE(sw1.employee_id, 1) AS ФИО_1,
-                    COALESCE(sw2.employee_id, 1) AS ФИО_2,
-                    COALESCE(sw3.employee_id, 1) AS ФИО_3
+    q = """SELECT rm."Пномер",
+                    rm."Прозвище",
+                    rm."coord",
+                    rm."Расположение",
+                    COALESCE(sw1.employee_id, 1) AS "ФИО_1",
+                    COALESCE(sw2.employee_id, 1) AS "ФИО_2",
+                    COALESCE(sw3.employee_id, 1) AS "ФИО_3"
              FROM rab_mesta rm
-             LEFT JOIN schedule_work_places sw1 ON sw1.workplace_id = rm.Пномер AND sw1.shift_no = 1
-             LEFT JOIN schedule_work_places sw2 ON sw2.workplace_id = rm.Пномер AND sw2.shift_no = 2
-             LEFT JOIN schedule_work_places sw3 ON sw3.workplace_id = rm.Пномер AND sw3.shift_no = 3
+             LEFT JOIN "schedule_work_places" sw1 ON "sw1"."workplace_id" = "rm"."Пномер" AND "sw1"."shift_no" = 1
+             LEFT JOIN "schedule_work_places" sw2 ON "sw2"."workplace_id" = "rm"."Пномер" AND "sw2"."shift_no" = 2
+             LEFT JOIN "schedule_work_places" sw3 ON "sw3"."workplace_id" = "rm"."Пномер" AND "sw3"."shift_no" = 3
           """
     rows = CSQ.custom_request_c(db_users, q, rez_dict=True, hat_c=False)
     DICT_RM = {} #27.01.2026
@@ -14208,7 +14238,7 @@ def dict_napravl(self, db_kplan):
 def dict_professions(self, db_users, conn = ''):
     self.DICT_PROFESSIONS = dict()
     custom_request_c = f'''SELECT * FROM professions 
-    LEFT JOIN vid_rab_po_dolg ON vid_rab_po_dolg.Вид_работ = professions.вид_работ
+    LEFT JOIN vid_rab_po_dolg ON vid_rab_po_dolg."Вид_работ" = professions.вид_работ
     LEFT JOIN group_vid_rab_for_plan ON group_vid_rab_for_plan.name=vid_rab_po_dolg.group_for_plan
     WHERE professions.poki = {CFG.Config.place.poki} AND professions.Вкл = 1 and group_vid_rab_for_plan.composite = 0'''
     SPIS_prof = CSQ.custom_request_c(db_users, custom_request_c, hat_c=False,rez_dict=True,conn=conn)
@@ -14296,7 +14326,7 @@ def specification_task_c(self, tblk, tblv,conn='',cur = ''):
     vnepl = int(tblk.item(r, nk_vnepl).text())
     if vnepl == 1:
         return
-    custom_request_c = f'''SELECT ДСЕ, Операции, Опер_колво, Номер_мк, Опер_время,ДСЕ_ID FROM naryad WHERE Пномер = {nom_nar}'''
+    custom_request_c = f'''SELECT "ДСЕ", "Операции", "Опер_колво", "Номер_мк", "Опер_время","ДСЕ_ID" FROM naryad WHERE "Пномер" = {nom_nar}'''
 
     query = CSQ.custom_request_c(self.db_naryd,custom_request_c,rez_dict=True)
     if query == False:
@@ -14441,10 +14471,10 @@ def list_of_mats_erp_c(self, nom_mk, spis_filtr_mat, po_tk = False, spis_dse='')
         if po_tk == False:
             spis_dse = load_res(int(nom_mk))
         else:
-            query = f'''SELECT xml.data as xml, mk.Количество, res.data as Ресурсная, xml.Head as xml_head FROM mk 
-                        INNER JOIN xml ON mk.Пномер = xml.Номер_мк
-                        INNER JOIN res ON mk.Пномер = res.Номер_мк
-                        WHERE Пномер == {int(nom_mk)}
+            query = f'''SELECT xml.data as xml, mk."Количество", res.data as "Ресурсная", xml."Head" as xml_head FROM mk 
+                        INNER JOIN xml ON mk."Пномер" = xml."Номер_мк"
+                        INNER JOIN res ON mk."Пномер" = res."Номер_мк"
+                        WHERE "Пномер" = {int(nom_mk)}
                                     '''
             rez_xml = CSQ.custom_request_c(self.bd_naryad, query)
             xml = rez_xml[-1][0]
@@ -14538,7 +14568,7 @@ def load_tmp_path(ima)->str:
 def load_tmp_val(ima,default_val = None,autotype=False,db_kplan=None):
     fl = False
     if db_kplan:
-        val = CSQ.custom_request_c(db_kplan,f"""SELECT val FROM general_settings WHERE name = "{ima}";""",one_column=True,hat_c=False)# 11.11.25
+        val = CSQ.custom_request_c(db_kplan,f"""SELECT val FROM general_settings WHERE name = '{ima}';""",one_column=True,hat_c=False)# 11.11.25
         if val == None or val == "":
             return default_val
         fl = True
@@ -14591,7 +14621,8 @@ def save_tmp_path(ima,put,ubrat_filename=False):
 
 def save_tmp_val(name, val, db_kplan = None):
     if db_kplan:
-        CSQ.custom_request_c(db_kplan,f"""UPDATE general_settings SET val = "{str(val)}" WHERE name = "{name}";""")
+        CSQ.custom_request_c(db_kplan,f"""UPDATE general_settings SET val = ? WHERE name = ?;""",
+                             list_of_lists_c=[str(val), name])
         return
     F.write_file_c(tmp_dir() + os.sep + name + '.txt', [str(val)], '')
 
@@ -14607,11 +14638,20 @@ def save_tmp_stukt_db(data,name):
         compressed = MAGIC_ZLIB + F.pack_byte_file(data_blob)
     else:
         compressed = data
-    CSQ.custom_request_c(db, f"""INSERT INTO notes_blob (name, data, date)
+
+    query = CSQ.SqlQuery(
+        sqlite=f"""INSERT INTO notes_blob (name, data, date)
                         VALUES (?, ?, datetime('now', 'localtime'))
                         ON CONFLICT(name) DO UPDATE SET
                             data = excluded.data,
-                            date = excluded.date;""",list_of_lists_c=[[name,compressed]])
+                            date = excluded.date;""",
+        postgres=f"""INSERT INTO notes_blob (name, data, date)
+                        VALUES (%s, %s, CURRENT_TIMESTAMP)
+                        ON CONFLICT(name) DO UPDATE SET
+                            data = excluded.data,
+                            date = excluded.date;"""
+    )
+    CSQ.custom_request_c(db, query,list_of_lists_c=[[name,compressed]])
     
 def load_tmp_stukt_db(name,default_value=None):
     db = CFG.Config.project.db_files
@@ -14685,18 +14725,18 @@ def load_csv(self,db_nomen,db_kplan,list_mk:list|None=None):
 
     try:
         test_dse = F.from_binary_pickle(CSQ.custom_request_c(CFG.Config.project.db_resxml,
-                                                             f"""SELECT data FROM res WHERE Номер_мк = 902""",
+                                                             f"""SELECT data FROM res WHERE "Номер_мк" = 902""",
                                                              rez_dict=True, one=True)['data'])
         test_dse = test_dse[0]
     except:
         CQT.msgbox(f'Не удалось загрузить тестовую деталь по МК902')
         return False
 
-    nomenklatura = CSQ.custom_request_c(db_nomen, """SELECT Код, П5, П6, П1 FROM nomen WHERE На_удаление = 0""", rez_dict=True)
+    nomenklatura = CSQ.custom_request_c(db_nomen, """SELECT "Код", "П5", "П6", "П1" FROM nomen WHERE "На_удаление" = 0""", rez_dict=True)
     nomenklatura = F.deploy_dict_c(nomenklatura, 'Код')
 
     poki = CFG.Config.place.poki
-    custom_request_c = f'''SELECT Номенклатурный_номер, Номер_техкарты, Примечание FROM dse WHERE poki = {poki}'''  # 18.04.25
+    custom_request_c = f'''SELECT "Номенклатурный_номер", "Номер_техкарты", "Примечание" FROM dse WHERE poki = {poki}'''  # 18.04.25
     rez = CSQ.custom_request_c(self.db_dse, custom_request_c, hat_c=True, rez_dict=True)
     DICT_NN_NTK = F.deploy_dict_c(rez, 'Номенклатурный_номер')
 
@@ -14710,9 +14750,9 @@ def load_csv(self,db_nomen,db_kplan,list_mk:list|None=None):
 
 
     for nom_mk in list_mk:
-        otv_technolog_query = CSQ.custom_request_c(self.db_naryd,f'''SELECT  пл_топ.Отв_технолог FROM mk
-        INNER JOIN  пл_топ ON пл_топ.НомПл = mk.НомКплан
-         WHERE Пномер = {int(nom_mk)}''',
+        otv_technolog_query = CSQ.custom_request_c(self.db_naryd,f'''SELECT  пл_топ."Отв_технолог" FROM mk
+        INNER JOIN  пл_топ ON пл_топ."НомПл" = mk."НомКплан"
+         WHERE "Пномер" = {int(nom_mk)}''',
                                        one_column=True,one=True,hat_c=False,attach_dbs=(self.db_kplan))
         if otv_technolog_query == None or otv_technolog_query == False:
             otv_technolog = ''
@@ -14723,24 +14763,24 @@ def load_csv(self,db_nomen,db_kplan,list_mk:list|None=None):
             continue
         squery = f"""SELECT CASE WHEN знпр."№проекта" IS NOT NULL 
            THEN знпр."№проекта" 
-           ELSE mk.Номер_проекта 
-           END AS Номер_проекта, 
+           ELSE mk."Номер_проекта" 
+           END AS "Номер_проекта", 
             
             
             CASE WHEN знпр."№ERP" IS NOT NULL 
-           THEN знпр."№ERP" 
-           ELSE mk.Номер_заказа 
-           END AS Номер_заказа, 
+           THEN "знпр"."№ERP" 
+           ELSE "mk"."Номер_заказа" 
+           END AS "Номер_заказа", 
             
-            CASE WHEN plan.Приоритет IS NOT NULL 
-           THEN plan.Приоритет 
-           ELSE mk.Приоритет 
-           END AS Приоритет 
+            CASE WHEN plan."Приоритет" IS NOT NULL 
+           THEN plan."Приоритет" 
+           ELSE mk."Приоритет" 
+           END AS "Приоритет" 
             
              FROM mk 
-             LEFT JOIN plan ON plan.Пномер = mk.НомКплан  
-           LEFT JOIN пл_оуп ON пл_оуп.НомПл = mk.НомКплан 
-            LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП 
+             LEFT JOIN plan ON "plan"."Пномер" = "mk"."НомКплан"  
+           LEFT JOIN пл_оуп ON "пл_оуп"."НомПл" = "mk"."НомКплан" 
+            LEFT JOIN знпр ON "знпр"."s_num" = "пл_оуп"."Пномер_ЗП" 
         
                    WHERE mk.Пномер = {int(nom_mk)}"""
         query = CSQ.custom_request_c(self.db_naryd,squery,rez_dict=True,one=True,attach_dbs=(self.db_kplan))
@@ -14758,7 +14798,7 @@ def load_csv(self,db_nomen,db_kplan,list_mk:list|None=None):
         if F.existence_file_c(put_nppy_mk)== False:
             F.create_dir_c(put_nppy_mk)
         spis_dse = F.from_binary_pickle(CSQ.custom_request_c(CFG.Config.project.db_resxml,
-                                            f"""SELECT data FROM res WHERE Номер_мк = {int(nom_mk)}""",
+                                            f"""SELECT data FROM res WHERE "Номер_мк" = {int(nom_mk)}""",
                                                              rez_dict=True,one=True)['data'])
 
         spis_dse.insert(0, test_dse)
@@ -14911,7 +14951,7 @@ def load_csv(self,db_nomen,db_kplan,list_mk:list|None=None):
                 continue
 
             otmetka = "_".join([F.user_name(),F.now() , put_nppy_mk])
-            custom_request_c = f'''UPDATE mk SET Статус_ЧПУ = ? WHERE Пномер == ?'''
+            custom_request_c = f'''UPDATE mk SET "Статус_ЧПУ" = ? WHERE "Пномер" = ?'''
              # spis = CSQ.list_from_db_sql_c(F.bdcfg('Naryad'), 'mk', False, True)
             perem = [otmetka,nom_mk]
             CSQ.custom_request_c(self.db_naryd, custom_request_c, hat_c= True, list_of_lists_c = perem)
@@ -14951,7 +14991,7 @@ def add_menu(self,*args):
 
 def load_dict_dse(db_dse,conn=''):
     poki = CFG.Config.place.poki
-    custom_request_c = f'''SELECT Номенклатурный_номер,Наименование, Номер_техкарты, Код_ЕРП FROM dse WHERE poki = {poki}'''
+    custom_request_c = f'''SELECT "Номенклатурный_номер", "Наименование", "Номер_техкарты", "Код_ЕРП" FROM dse WHERE poki = {poki}'''
     if conn == '':
         conn_dse, cur_dse = CSQ.connect_bd(db_dse)
     rez = CSQ.custom_request_c(db_dse, custom_request_c, conn=conn_dse, hat_c=True, rez_dict=True, cur = cur_dse)
@@ -15038,8 +15078,8 @@ def accounting_work_rates_by_MK_c(self, spis_mk,nom_mk):#где использу
         """nom_tk = CSQ.find_in_db_c(F.bdcfg('db_dse'), 'dse', {'Номенклатурный_номер': spis_mk[i][nom_kol_nn].strip(),
                                                            'Наименование': spis_mk[i][nom_kol_naim].strip()},
                                 ['Номер_техкарты'],all=False, conn=conn1, cur=cur1 )"""
-        nom_tk = CSQ.custom_request_c(F.bdcfg('db_dse'),f"""SELECT Номер_техкарты FROM dse WHERE 
-        Номенклатурный_номер = ? AND Наименование = ?""",
+        nom_tk = CSQ.custom_request_c(F.bdcfg('db_dse'),f"""SELECT "Номер_техкарты" FROM dse WHERE 
+        "Номенклатурный_номер" = ? AND "Наименование" = ?;""",
                                       conn=conn1, cur=cur1,one=True,hat_c=True,
                                       list_of_lists_c=[spis_mk[i][nom_kol_nn].strip(), spis_mk[i][nom_kol_naim].strip()])
         if nom_tk == None or nom_tk == False or len(nom_tk) == 1:
@@ -15359,8 +15399,8 @@ def run_link_DOCs_c(nn_det,naim,db_dse, link=''):
     CSQ.find_in_db_c(F.bdcfg('db_dse'), 'dse', {'Номенклатурный_номер': nn_det, 'Наименование': naim}, ['Путь_docs'])[0][
         0]"""
     if link == '':
-        adres = CSQ.custom_request_c(db_dse, f"""SELECT Путь_docs FROM dse WHERE 
-                Номенклатурный_номер = '{nn_det}' and Наименование = '{naim}'""",
+        adres = CSQ.custom_request_c(db_dse, f"""SELECT "Путь_docs" FROM dse WHERE 
+                "Номенклатурный_номер" = '{nn_det}' and "Наименование" = '{naim}';""",
                              one=True, hat_c=True)
         if adres == None or adres == False or len(adres) ==1:
             CQT.msgbox('Нет ссылки на ДСЕ в docs')
@@ -15426,7 +15466,7 @@ def name_RC_by_code_c(sp,kod):
 
 def set_state_of_MK_c(nom_mk, status):#DELETE??????
     #rez = CSQ.update_bd_sql(F.bdcfg('Naryad'), 'mk',{'Прогресс':status},{'Пномер':int(nom_mk)})
-    rez = CSQ.custom_request_c(F.bdcfg('Naryad'),f"""UPDATE mk SET Прогресс = {status} WHERE Пномер = {int(nom_mk)}""")
+    rez = CSQ.custom_request_c(F.bdcfg('Naryad'),f"""UPDATE mk SET "Прогресс" = {status} WHERE "Пномер" = {int(nom_mk)}""")
     if rez == False:
         CQT.msgbox('Запрос на изменение Прогресса не выполнен')
 
@@ -15684,7 +15724,7 @@ def calc_productivity_cabotki(data, db_users, db_naryad, db_act, spis_empolee):
         konec = VIR.end_of_period_c(data)
         metka = 'загрузка табеля'
         table_name = nach.split()[0].replace('-', '_')
-        custom_request_c = F'''SELECT * FROM mtdz_{table_name}'''
+        custom_request_c = F'''SELECT * FROM "mtdz_{table_name}";'''
         tabel = CSQ.custom_request_c(db_users, custom_request_c)
         if tabel == '':
             print('Не найден табель')
@@ -15750,9 +15790,9 @@ def move_del_journals(del_pks: tuple[int], action: str): # 28.04.2026
         'Пномер'
     )
     str_attrs = ','.join(attrs)
-    CSQ.custom_request_c(CFG.Config.project.db_naryad, f'INSERT INTO journal_del({str_attrs}) SELECT {str_attrs} FROM jurnal WHERE Пномер IN ({tuple_del})')
-    CSQ.custom_request_c(CFG.Config.project.db_naryad, f'UPDATE journal_del SET СобытиеУдаления = {action!r} WHERE Пномер in ({tuple_del})')
-    CSQ.custom_request_c(CFG.Config.project.db_naryad, f"""DELETE FROM jurnal WHERE Пномер in ({tuple_del})""")
+    CSQ.custom_request_c(CFG.Config.project.db_naryad, f'INSERT INTO journal_del({str_attrs}) SELECT {str_attrs} FROM jurnal WHERE "Пномер" IN ({tuple_del})')
+    CSQ.custom_request_c(CFG.Config.project.db_naryad, f'UPDATE journal_del SET "СобытиеУдаления" = {action!r} WHERE "Пномер" in ({tuple_del})')
+    CSQ.custom_request_c(CFG.Config.project.db_naryad, f"""DELETE FROM jurnal WHERE "Пномер" in ({tuple_del})""")
 
 def check_and_fix_double_narayds(db_naryad,conn,cur):
 
@@ -15807,7 +15847,7 @@ SELECT naryad.Пномер FROM naryad WHERE naryad.Подтвержд_вып = 
             if item['Номер_наряда'] == nnar:
                 if F.strtodate(item['Дата']) > F.strtodate(max_date):
                     max_date = item['Дата']
-        CSQ.custom_request_c(db_naryad,f"""UPDATE naryad SET Подтвержд_вып_дата = "{max_date}" WHERE Пномер = {nnar}""")
+        CSQ.custom_request_c(db_naryad,f"""UPDATE naryad SET "Подтвержд_вып_дата" = '{max_date}' WHERE Пномер = {nnar}""")
 
 
 
@@ -15847,7 +15887,7 @@ def check_and_fix_broken_narayds(db_naryad,conn,cur):
                         date_diff = F.fromdateshtamp(list_for_check[j]['Штамп'],'') - tsht1
                         poditog = round(date_diff.total_seconds() / 60)
                         poditog = 1 if poditog < 1 else poditog
-                        CSQ.custom_request_c(db_naryad,f'''UPDATE jurnal SET Подытог = {poditog} WHERE Пномер == {item['Пномер']}''',conn=conn,cur=cur)
+                        CSQ.custom_request_c(db_naryad,f'''UPDATE jurnal SET "Подытог" = {poditog} WHERE "Пномер" = {item['Пномер']}''',conn=conn,cur=cur)
                         print(f'Обновлен подытог {poditog} для {fio} Наряд№ {nnar}')
                         list_for_check[i]['Подытог'] = poditog
                         if list_for_check[j]['Статус'] == 'Завершен':
@@ -15855,9 +15895,9 @@ def check_and_fix_broken_narayds(db_naryad,conn,cur):
                             for item_3 in list_for_check:
                                 if item_3['Номер_наряда'] == nnar and item_3['ФИО'] == fio:
                                     summ += item_3['Подытог']
-                            CSQ.custom_request_c(db_naryad, f'''UPDATE naryad SET Фвремя = {summ} WHERE Пномер == {nnar} AND ФИО == "{fio}"''',
+                            CSQ.custom_request_c(db_naryad, f'''UPDATE naryad SET "Фвремя" = {summ} WHERE "Пномер" = {nnar} AND "ФИО" = '{fio}' ''',
                                        conn=conn, cur=cur)
-                            CSQ.custom_request_c(db_naryad, f'''UPDATE naryad SET Фвремя2 = {summ} WHERE Пномер == {nnar} AND ФИО2 == "{fio}"''',
+                            CSQ.custom_request_c(db_naryad, f'''UPDATE naryad SET "Фвремя2" = {summ} WHERE "Пномер" = {nnar} AND "ФИО2" = '{fio}' ''',
                                        conn=conn, cur=cur)
                             print(f'    Обновлен наряд {nnar} для {fio} под завершение суммой {summ}')
                         break
@@ -15868,7 +15908,7 @@ def check_and_fix_broken_narayds(db_naryad,conn,cur):
         Номер_наряда not in (
             SELECT DISTINCT Номер_наряда 
             FROM jurnal 
-            WHERE Статус = "Завершен" and datetime(jurnal.Дата) >= datetime("{data_nach}")) and datetime(Дата) >= datetime("{data_nach}") ORDER BY DATETIME(Дата)"""
+            WHERE Статус = 'Завершен' and datetime(jurnal.Дата) >= datetime("{data_nach}")) and datetime(Дата) >= datetime("{data_nach}") ORDER BY DATETIME(Дата)"""
         list_for_check = CSQ.custom_request_c(db_naryad, query, conn=conn, cur=cur, rez_dict=True)
         for i, item in enumerate(list_for_check):
             if item['Подытог'] != 0 and item['Статус'] == 'Начат':
@@ -15879,21 +15919,21 @@ def check_and_fix_broken_narayds(db_naryad,conn,cur):
                         fl = True
                 if fl == False:
                     fact = ''
-                    query = f"""SELECT ФИО, Фвремя, ФИО2, Фвремя2 FROM naryad WHERE Пномер = {item['Номер_наряда']}"""
+                    query = f"""SELECT "ФИО", "Фвремя", "ФИО2", "Фвремя2" FROM naryad WHERE "Пномер" = {item['Номер_наряда']}"""
                     fact_query = CSQ.custom_request_c(db_naryad, query, rez_dict=True,one=True)
                     if fact_query['ФИО'] == item['ФИО']:
                         fact = fact_query['Фвремя']
                     if fact_query['ФИО2'] == item['ФИО']:
                         fact = fact_query['Фвремя2']
                     if fact != '':
-                        query = f"""SELECT SUM(Подытог) FROM jurnal WHERE Номер_наряда = {item['Номер_наряда']} and ФИО = '{item['ФИО']}';"""
+                        query = f"""SELECT SUM("Подытог") FROM jurnal WHERE "Номер_наряда" = {item['Номер_наряда']} and "ФИО" = '{item['ФИО']}';"""
                         rez = CSQ.custom_request_c(db_naryad, query, rez_dict=True,one=True)
                         summa = rez['SUM(Подытог)']
                         if summa != fact:
                             CSQ.custom_request_c(db_naryad,
-                                       f'''UPDATE naryad SET Фвремя = {summa} WHERE Пномер = {item['Номер_наряда']} AND ФИО = "{item['ФИО']}"''')
+                                       f'''UPDATE naryad SET "Фвремя" = {summa} WHERE "Пномер" = {item['Номер_наряда']} AND "ФИО" = '{item['ФИО']}'; ''')
                             CSQ.custom_request_c(db_naryad,
-                                       f'''UPDATE naryad SET Фвремя2 = {summa} WHERE Пномер = {item['Номер_наряда']} AND ФИО2 = "{item['ФИО']}"''')
+                                       f'''UPDATE naryad SET "Фвремя2" = {summa} WHERE "Пномер" = {item['Номер_наряда']} AND "ФИО2" = '{item['ФИО']}'; ''')
                             print(
                                 f"      Обновлена сумма {summa} для {item['ФИО']} Наряд№ {item['Номер_наряда']}")
                         status = 'Завершен'
@@ -15906,7 +15946,7 @@ def check_and_fix_broken_narayds(db_naryad,conn,cur):
                                   'Завершен', 'Исправлено автоматически', '']
                             # CSQ.add_line_into_db_sql_c(self.db_naryd, 'jurnal', [stroka],conn=conn)
                     CSQ.custom_request_c(db_naryad, f"INSERT INTO jurnal "
-                                                      f"(Дата, Штамп, Номер_наряда,ФИО,Подытог,Статус,Примечание,Ном_заверш)"
+                                                      '("Дата", "Штамп", "Номер_наряда","ФИО","Подытог","Статус","Примечание","Ном_заверш")'
                                                       f" VALUES  (?,?,?,?,?,?,?,?)", list_of_lists_c=[stroka],
                                        conn=conn, cur=cur)
                     print(f"   для {item['ФИО']} Наряд№ {item['Номер_наряда']} проставлено {status}")
@@ -15937,7 +15977,7 @@ def check_and_fix_broken_narayds(db_naryad,conn,cur):
                             summ_pditog += list_jurnal[k]['Подытог']
             if summ_pditog > 0:
                 CSQ.custom_request_c(db_naryad,
-                           f"""UPDATE naryad SET {time_} = {summ_pditog} WHERE Пномер = {nnar} AND  {fio_} = '{fio}'""",
+                           f"""UPDATE naryad SET {time_} = {summ_pditog} WHERE "Пномер" = {nnar} AND  "{fio_}" = '{fio}'""",
                            conn=conn, cur=cur)
         print(f'====================')
     add_rec_task_c(db_naryad, conn, cur)
@@ -15955,7 +15995,7 @@ def calc_and_fill_weight_by_xml_and_res(self,db_resxml,bd_naryad,bd_mat, nom_mk,
     def calc_and_fill_weight_by_xml(self,db_resxml,nom_mk,kol_vo_izd,bd_naryad):
         ves_xml = 0
         query = f'''SELECT data, Head FROM xml
-                                           WHERE Номер_мк == {int(nom_mk)}
+                                           WHERE "Номер_мк" = {int(nom_mk)}
                                                        '''
         rez_xml = CSQ.custom_request_c(db_resxml, query)
         xml = rez_xml[-1][0]
@@ -15963,8 +16003,8 @@ def calc_and_fill_weight_by_xml_and_res(self,db_resxml,bd_naryad,bd_mat, nom_mk,
         if xml == '':
             if not CQT.msgboxgYN(f'{nom_mk} нет ХМЛ, Была ли создана вручную?'):
                 return False
-            ves_list = CSQ.custom_request_c(self.bd_naryad,f"""SELECT Пномер,Вес FROM mk WHERE Пномер = {nom_mk}""",rez_dict=True)
-            CSQ.custom_request_c(bd_naryad, f"""UPDATE mk SET xml = {round(ves_list[0]['Вес'], 2)} WHERE Пномер = {nom_mk}""")
+            ves_list = CSQ.custom_request_c(self.bd_naryad,f"""SELECT "Пномер","Вес" FROM mk WHERE "Пномер" = {nom_mk}""",rez_dict=True)
+            CSQ.custom_request_c(bd_naryad, f"""UPDATE mk SET xml = {round(ves_list[0]['Вес'], 2)} WHERE "Пномер" = {nom_mk}""")
             return True
         else:
             res_new = podgotovka_xml(self, XML.spisok_iz_xml(str_f=xml))
@@ -15978,7 +16018,7 @@ def calc_and_fill_weight_by_xml_and_res(self,db_resxml,bd_naryad,bd_mat, nom_mk,
                     if mat[1] != '' and item_xml['data']['Покупное изделие'] != '1':
                         ves_xml += F.valm(mat[0]) * F.valm(
                             item_xml['data']['Количество на изделие']) * kol_vo_izd
-            CSQ.custom_request_c(bd_naryad, f"""UPDATE mk SET xml = {round(ves_xml, 2)} WHERE Пномер = {nom_mk}""")
+            CSQ.custom_request_c(bd_naryad, f"""UPDATE mk SET xml = {round(ves_xml, 2)} WHERE "Пномер" = {nom_mk}""")
             return True
             #list_tmp = [[_['ID'],_['data']['Тип'],_['data']['Наименование'], "         Вес: " + str(F.valm(_['data']['Масса'])*F.valm(_['data']['Количество на изделие'])*kol_vo_izd)] for _ in res_new if _['data']['Тип'] not in  ('Сборочная единица','Деталь')]
             #sum([_[3] for _ in list_tmp])
@@ -15989,7 +16029,7 @@ def calc_and_fill_weight_by_xml_and_res(self,db_resxml,bd_naryad,bd_mat, nom_mk,
         LIST_ED_IZM_MAT = ['Килограмм', 'кг']
         # month = F.datetostr(F.strtodate(item['Дата_завершения']),"%Y-%m")
 
-        res = CSQ.custom_request_c(db_resxml, f'''SELECT data FROM res WHERE Номер_мк = {nom_mk};''', hat_c=False,
+        res = CSQ.custom_request_c(db_resxml, f'''SELECT data FROM res WHERE "Номер_мк" = {nom_mk};''', hat_c=False,
                                    one=True)
         if res == False:
             CQT.msgbox(f'ОШибка')
@@ -16013,9 +16053,9 @@ def calc_and_fill_weight_by_xml_and_res(self,db_resxml,bd_naryad,bd_mat, nom_mk,
                                 if DICT_MAT[mat['Мат_код']]['П6'] != '':
                                     ves_res_list += F.valm(mat['Мат_норма'])
             CSQ.custom_request_c(self.bd_naryad,
-                                 f"""UPDATE zagot SET Вес_по_рес = {round(ves_res_list, 2)} WHERE Ном_МК = {nom_mk}""")
+                                 f"""UPDATE zagot SET "Вес_по_рес" = {round(ves_res_list, 2)} WHERE "Ном_МК" = {nom_mk}""")
             # CSQ.custom_request_c(self.bd_naryad, f"""UPDATE mk SET Ресурсная = "" WHERE Пномер = {nom_mk}""")
-            CSQ.custom_request_c(self.bd_naryad, f"""UPDATE mk SET Вес = {round(ves_res, 2)} WHERE Пномер = {nom_mk}""")
+            CSQ.custom_request_c(self.bd_naryad, f"""UPDATE mk SET "Вес" = {round(ves_res, 2)} WHERE "Пномер" = {nom_mk}""")
         except:
             print(f'Некорректные данные рес {nom_mk}')
         return list_hz_mat
@@ -16210,7 +16250,7 @@ def user_access(db:str=None,rule:str=None,fio:str=None, msg:bool = True, rez = '
     if fio is None:
         fio = F.user_full_namre()
     if rez == '':
-        rez = CSQ.custom_request_c(db,f'''SELECT * FROM permissions WHERE action == "{rule}" 
+        rez = CSQ.custom_request_c(db,f'''SELECT * FROM permissions WHERE action = '{rule}' 
                     ;''',rez_dict=True,one=True)
     if rez == [] or rez == False or rez == {}:
         CQT.msgbox(f'Не найдено правило {rule}')
@@ -16270,31 +16310,34 @@ def extra_time_unworked_between_task_c(self,fio,data_nach,data_kon):
     if F.strtodate('2023-02-01 00:00:00') < F.strtodate(data_kon):
         return 0
     conn, cur = CSQ.connect_bd(self.bd_users)
-    fiod = CSQ.custom_request_c(self.bd_users,f"""SELECT ФИО || " " || Должность FROM employee WHERE ФИО = "{fio}" """,conn=conn,cur=cur, hat_c=False,one=True)[0][0]
+    fiod = CSQ.custom_request_c(self.bd_users,f"""SELECT ФИО || ' ' || Должность FROM employee WHERE ФИО = '{fio}' """,conn=conn,cur=cur, hat_c=False,one=True)[0][0]
     dney = time_by_repo_card_c(fiod,data_nach)/60/8
-    custom_request_c = f"""SELECT employee.ФИО, rab_mesta.Нераб_мин1, rab_mesta.Между_нар_мин1 FROM rab_mesta INNER JOIN 
-        employee ON employee.Пномер = rab_mesta.ФИО_1 WHERE employee.ФИО = "{fio}" """
+    custom_request_c = f"""SELECT "employee"."ФИО", rab_mesta."Нераб_мин1", rab_mesta."Между_нар_мин1" FROM rab_mesta INNER JOIN 
+        employee ON "employee"."Пномер" = "rab_mesta"."ФИО_1" WHERE employee."ФИО" = '{fio}'; """
     rez = CSQ.custom_request_c(self.bd_users,custom_request_c,conn=conn,cur=cur,hat_c=False,one=True)
     if rez == []:
-        custom_request_c = f"""SELECT employee.ФИО, rab_mesta.Нераб_мин1, rab_mesta.Между_нар_мин1 FROM rab_mesta INNER JOIN 
-        employee ON employee.Пномер = rab_mesta.ФИО_1 WHERE employee.ФИО = "{fio}" """
+        custom_request_c = f"""SELECT "employee"."ФИО", rab_mesta."Нераб_мин1", rab_mesta."Между_нар_мин1" FROM rab_mesta INNER JOIN 
+        employee ON "employee"."Пномер" = "rab_mesta"."ФИО_1" WHERE employee."ФИО" = '{fio}'; """
         rez = CSQ.custom_request_c(self.bd_users, custom_request_c, conn=conn,cur=cur, hat_c=False, one=True)
         if rez == []:
-            custom_request_c = f"""SELECT employee.ФИО, rab_mesta.Нераб_мин1, rab_mesta.Между_нар_мин1 FROM rab_mesta INNER JOIN 
-               employee ON employee.Пномер = rab_mesta.ФИО_1 WHERE employee.ФИО = "{fio}" """
+            custom_request_c = f"""SELECT "employee"."ФИО", rab_mesta."Нераб_мин1", rab_mesta."Между_нар_мин1" FROM rab_mesta INNER JOIN 
+               employee ON "employee"."Пномер" = "rab_mesta"."ФИО_1" WHERE employee."ФИО" = '{fio}'; """
             rez = CSQ.custom_request_c(self.bd_users, custom_request_c, conn=conn,cur=cur, hat_c=False, one=True)
     CSQ.close_bd(conn, cur)
     if rez == []:
         return 0
     else:
-        conn, cur = CSQ.connect_bd(self.bd_naryad)
-        custom_request_c = f"""SELECT DISTINCT Номер_наряда
-         FROM jurnal WHERE Статус = "Завершен" and ФИО = "{fio}"
-    and datetime(Дата) > datetime("{data_nach}") and datetime(Дата) < datetime("{data_kon}") """
-        rez2 = CSQ.custom_request_c(self.bd_naryad,custom_request_c,conn=conn,cur=cur,hat_c=False)
+        query = CSQ.SqlQuery(
+            sqlite=f"""SELECT DISTINCT "Номер_наряда"
+                 FROM jurnal WHERE "Статус" = 'Завершен' and "ФИО" = '{fio}'
+            and datetime(Дата) > datetime("{data_nach}") and datetime(Дата) < datetime("{data_kon}") """,
+            postgres=f"""SELECT DISTINCT "Номер_наряда"
+                 FROM jurnal WHERE "Статус" = 'Завершен' and "ФИО" = '{fio}'
+            and CAST("Дата" AS TIMESTAMP) > CAST('{data_nach}' AS TIMESTAMP) and CAST("Дата" AS TIMESTAMP) < CAST('{data_kon}' AS TIMESTAMP) """
+        )
+        rez2 = CSQ.custom_request_c(self.bd_naryad,query,hat_c=False)
         chislo_naryadov = len(rez2)
 
-        CSQ.close_bd(conn, cur)
         if rez[0][1]-60 <= 0:
             min_per_day = 0
         else:
@@ -16303,8 +16346,8 @@ def extra_time_unworked_between_task_c(self,fio,data_nach,data_kon):
 
 def time_by_repo_card_c(fiod,data):
     name_table = F.datetostr(F.strtodate(data),'mtdz_%Y_%m_01')
-    custom_request_c = f'''SELECT * FROM {name_table} WHERE ФИО = "{fiod}" '''
-    rez = CSQ.custom_request_c(F.bdcfg("BD_users"),custom_request_c)
+    custom_request_c = f'''SELECT * FROM {name_table} WHERE "ФИО" = ? '''
+    rez = CSQ.custom_request_c(F.bdcfg("BD_users"),custom_request_c, list_of_lists_c=[fiod])
     if len(rez) == 1:
         CQT.msgbox(f'{fiod} не найден в {name_table} нужно проверить рабочие центра в Мкарт')
         return None
@@ -16336,12 +16379,20 @@ def time_by_repo_card(fio:str,data_tabel:list):
 
 
 def VID_RABOT_PO_EMPL(bd_users):
-    first_tbl = CSQ.custom_request_c(bd_users, f"""SELECT employee.ФИО, employee.Должность, 
-    employee.Подразделение,employee.Статус, 
-    vid_rab_po_dolg.Вид_работ, vid_rab_po_dolg.Руб_мин, professions.этап , professions.этап as Этап FROM employee INNER JOIN 
-    professions ON professions.имя = employee.Должность,
-    vid_rab_po_dolg on vid_rab_po_dolg.Вид_работ == professions.вид_работ 
-    order by employee.Статус DESC;""", hat_c=False, rez_dict=True)
+    first_tbl = CSQ.custom_request_c(bd_users, f"""
+    SELECT 
+        employee."ФИО", 
+        employee."Должность", 
+        employee."Подразделение",employee."Статус", 
+        vid_rab_po_dolg."Вид_работ", 
+        vid_rab_po_dolg."Руб_мин", 
+        professions.этап, 
+        professions.этап as "Этап" 
+    FROM employee
+    INNER JOIN professions ON professions."имя" = employee."Должность"
+    INNER JOIN vid_rab_po_dolg on vid_rab_po_dolg."Вид_работ" = professions."вид_работ" 
+        order by employee."Статус" DESC;""",
+                                     hat_c=False, rez_dict=True)
 
     VID_RABOT_PO_EMPL = F.deploy_dict_c(first_tbl, 'ФИО')
 
@@ -16349,15 +16400,14 @@ def VID_RABOT_PO_EMPL(bd_users):
 
 
 def ETAP_BY_FIO(bd_users, bd_naryad):
-    first_tbl = CSQ.custom_request_c(bd_users, f"""SELECT employee.ФИО, employee.Должность, employee.Компания, 
-        employee.Подразделение, employee.Статус, 
-        etaps.name as этап, etaps.ДляЕРП 
-         
+    first_tbl = CSQ.custom_request_c(bd_users, f"""SELECT employee."ФИО", employee."Должность", employee."Компания", 
+        employee."Подразделение", employee."Статус", 
+        etaps.name as этап, etaps."ДляЕРП" 
          FROM employee 
-        LEFT JOIN  dolgn_etap ON dolgn_etap.Должность = employee.Должность AND dolgn_etap.Подразделение = employee.Подразделение 
+        LEFT JOIN  dolgn_etap ON dolgn_etap."Должность" = employee."Должность" AND dolgn_etap."Подразделение" = employee."Подразделение" 
         LEFT JOIN etaps ON etaps.name = dolgn_etap.этап 
-        WHERE employee.Подразделение != '' and employee.Подразделение not in ("+","-") 
-        ;""",  rez_dict=True, attach_dbs=(bd_naryad))
+        WHERE employee."Подразделение" != '' and employee."Подразделение" not in ('+', '-') 
+        ;""",  rez_dict=True, attach_dbs=bd_naryad)
     #second_tbl = CSQ.custom_request_c(bd_naryad,f"""SELECT dolgn_etap.Должность, dolgn_etap.Подразделение,
     #etaps.name as этап, etaps.ДляЕРП FROM dolgn_etap INNER JOIN etaps ON etaps.name == dolgn_etap.этап""",  rez_dict=True)
     #list_rez = []
@@ -16377,34 +16427,70 @@ def ETAP_BY_FIO(bd_users, bd_naryad):
 def list_dolgn_etap(date_str: str, date_maska: str = '%y-%m-%d'):
     replace_null_date = """
     CASE 
-        WHEN ДействуетДо IS NULL OR ДействуетДо = ''
+        WHEN ДействуетДо IS NULL OR ДействуетДо = ""
         THEN datetime(CURRENT_TIMESTAMP) 
         ELSE datetime(ДействуетДо) 
     END
     """
     date_obj = F.strtodate(date_str, date_maska)
-    query = f"""
-    SELECT employee.ФИО, employee.Пномер, employee.Должность, employee.Подразделение, dolgn_etap.этап, dolgn_etap.ДействуетДо
-    from employee
-    LEFT JOIN (
-        SELECT *,
-            ROW_NUMBER() OVER (
-                PARTITION BY Должность, Подразделение, Производство 
-                ORDER BY ({replace_null_date}) 
-                ) as rowNumber
-        FROM dolgn_etap
-        where ({replace_null_date}) > datetime({date_obj.isoformat()!r}) 
-    ) as dolgn_etap ON employee.Должность = dolgn_etap.Должность AND employee.Подразделение = dolgn_etap.Подразделение AND 
-               employee.Компания = dolgn_etap.Производство AND rowNumber = 1
-    WHERE employee.Пномер IN (SELECT Пномер FROM (SELECT
-    	MAX(Пномер) as Пномер,
-    	ФИО
-    FROM
-    	employee
-    GROUP BY
-    	ФИО
-    HAVING COUNT(*) >= 1 ))
-    """
+    query = CSQ.SqlQuery(
+        sqlite=f"""
+        SELECT "employee"."ФИО", "employee"."Пномер", "employee"."Должность", "employee"."Подразделение", "dolgn_etap"."этап", "dolgn_etap"."ДействуетДо"
+        from employee
+        LEFT JOIN (
+            SELECT *,
+                ROW_NUMBER() OVER (
+                    PARTITION BY "Должность", "Подразделение", "Производство" 
+                    ORDER BY ({replace_null_date}) 
+                    ) as rowNumber
+            FROM dolgn_etap
+            where ({replace_null_date}) > datetime({date_obj.isoformat()!r}) 
+        ) as dolgn_etap ON employee.Должность = dolgn_etap.Должность AND employee.Подразделение = dolgn_etap.Подразделение AND 
+                   employee.Компания = dolgn_etap.Производство AND rowNumber = 1
+        WHERE employee.Пномер IN (SELECT Пномер FROM (SELECT
+            MAX(Пномер) as Пномер,
+            ФИО
+        FROM
+            employee
+        GROUP BY
+            ФИО
+        HAVING COUNT(*) >= 1 ))
+    """,
+    postgres=f"""
+        SELECT "employee"."ФИО", "employee"."Пномер", "employee"."Должность", "employee"."Подразделение", "dolgn_etap"."этап", "dolgn_etap"."ДействуетДо"
+        from employee
+        LEFT JOIN (
+            SELECT *,
+                ROW_NUMBER() OVER (
+                    PARTITION BY "Должность", "Подразделение", "Производство" 
+                    ORDER BY (
+                        CASE 
+                            WHEN "ДействуетДо" IS NULL OR "ДействуетДо" = ''
+                            THEN CAST(CURRENT_TIMESTAMP AS TIMESTAMP)  
+                            ELSE CAST("ДействуетДо" AS TIMESTAMP) 
+                        END
+                    ) 
+                    ) as rowNumber
+            FROM dolgn_etap
+            where (
+                CASE 
+                    WHEN "ДействуетДо" IS NULL OR ДействуетДо = ''
+                    THEN CAST(CURRENT_TIMESTAMP AS TIMESTAMP) 
+                    ELSE CAST("ДействуетДо" AS TIMESTAMP) 
+                END
+            ) > CAST({date_obj.isoformat()!r} AS TIMESTAMP) 
+        ) as "dolgn_etap" ON "employee"."Должность" = "dolgn_etap"."Должность" AND "employee"."Подразделение" = "dolgn_etap"."Подразделение" AND 
+                   employee."Компания" = dolgn_etap."Производство" AND rowNumber = 1
+        WHERE employee."Пномер" IN (SELECT "Пномер" FROM (SELECT
+            MAX("Пномер") as "Пномер",
+            "ФИО"
+        FROM
+            employee 
+        GROUP BY
+            "ФИО"
+        HAVING COUNT(*) >= 1 ))
+        """
+    )
     etaps = CSQ.custom_request_c(
         CFG.Config.project.db_naryad,
         query,
@@ -16514,7 +16600,7 @@ def upload_work_productivity_3(self, data_nach, data_kon, list_users, podr_filtr
              f' ON naryad.Номер_мк = mk.Пномер' \
             f'   LEFT JOIN пл_оуп ON пл_оуп.НомПл = mk.НомКплан ' \
             f'  LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП ' \
-             f' WHERE jurnal.Статус == "Начат" AND jurnal.Подытог > 0' \
+             f' WHERE jurnal.Статус = "Начат" AND jurnal.Подытог > 0' \
              f' and datetime(jurnal.Дата) > datetime("{data_nach}")' \
              f' and datetime(jurnal.Дата) <= datetime("{data_kon}")'
     # f' and mk.ТипВыгрузкиТрЗт == 3 {mk_condition}' \
@@ -16783,26 +16869,28 @@ def save_tdz_txt(tmp,data_nach,etap,rab_centr,path):
 def upload_work_productivity_old(self,conn = ''): #off
     spis_rez = []
     data_nach = F.datetostr(F.strtodate(F.now()) - timedelta(days =70))
-    custom_request_c = f'SELECT jurnal.Дата, ' \
-             f'jurnal.Штамп, ' \
-             f'jurnal.Номер_наряда, ' \
-             f'jurnal.ФИО, ' \
-             f'mk.Номер_проекта, ' \
-             f'mk.Номер_заказа, ' \
-             f'naryad.Операции, ' \
-             f'naryad.Номер_мк, ' \
-             f'jurnal.Статус, ' \
-             f'naryad.Твремя, ' \
-             f'jurnal.Подытог, ' \
-             f'jurnal.Примечание, ' \
-             f'naryad.Опер_время' \
-            f' FROM jurnal INNER JOIN naryad'\
-    f' ON jurnal.Номер_наряда = naryad.Пномер'\
-    f' INNER JOIN mk'\
-    f' ON naryad.Номер_мк = mk.Пномер'\
-    f' WHERE jurnal.Статус == "Начат" AND naryad.Операции NOT LIKE "%Резка(ЧПУ)%" AND jurnal.Подытог > 0 and date(jurnal.Дата) > date("{data_nach}")'
 
-    rez = CSQ.custom_request_c(self.db_naryd,custom_request_c,conn = conn)
+    query = f"""
+    SELECT "jurnal"."Дата", 
+             "jurnal"."Штамп", 
+             "jurnal"."Номер_наряда", 
+             "jurnal"."ФИО", 
+             "mk"."Номер_проекта", 
+             "mk"."Номер_заказа", 
+             "naryad"."Операции", 
+             "naryad"."Номер_мк", 
+             "jurnal"."Статус", 
+             "naryad"."Твремя", 
+             "jurnal"."Подытог", 
+             "jurnal"."Примечание", 
+             "naryad"."Опер_время"
+    FROM jurnal 
+    INNER JOIN naryad ON jurnal."Номер_наряда" = naryad."Пномер"
+    INNER JOIN mk ON naryad."Номер_мк" = mk."Пномер"
+    WHERE jurnal."Статус" = 'Начат' AND naryad."Операции" NOT LIKE '%Резка(ЧПУ)%' AND jurnal."Подытог" > 0 and date(jurnal."Дата") > date('{data_nach}')
+    """
+
+    rez = CSQ.custom_request_c(self.db_naryd,query)
     rez[0][4] = "НП$ПУ"
     rez[0][6] = "Этап"
     rez[0][7] = "Ном_мк"
@@ -17002,8 +17090,8 @@ def processing_fix_of_brak(jur_obj, zadanie, nom_nar):
             tmp = zadanie.split('Акт №')
             act = tmp[-1].split()[0]
             if F.is_numeric(act):
-                custom_request_c = f'''UPDATE act SET Наряд_исправления = {nom_nar}, 
-                Время_исправления == {fact_vr} WHERE Пномер = {int(act)}'''
+                custom_request_c = f'''UPDATE act SET "Наряд_исправления" = {nom_nar}, 
+                "Время_исправления" = {fact_vr} WHERE "Пномер" = {int(act)}'''
                 CSQ.custom_request_c(CFG.Config.project.db_act, custom_request_c)
     except:
         CQT.msgbox('Ошибка занесения отметки в акты о браке')
@@ -17013,18 +17101,18 @@ def auto_podtv(glob_fio, nar_obj: Naryads):
     nar_obj.refresh() # 14.04.2026 Проверка по актуальному объекту
     if nar_obj.count_users() == 2:
         if nar_obj.Фвремя != '' and nar_obj.Фвремя2 != '':
-            custom_request_c = (f'UPDATE naryad SET Подтвержд_вып = 1, Подтвержд_вып_дата = {F.now()!r},'
-                                f' Подтвержд_вып_фио = {glob_fio!r} WHERE Пномер = {nar_obj.Пномер}')
+            custom_request_c = (f'UPDATE naryad SET "Подтвержд_вып" = 1, "Подтвержд_вып_дата" = {F.now()!r},'
+                                f' "Подтвержд_вып_фио" = {glob_fio!r} WHERE "Пномер" = {nar_obj.Пномер}')
             CSQ.custom_request_c(CFG.Config.project.db_naryad, custom_request_c)
     else:
-        custom_request_c = (f'UPDATE naryad SET Подтвержд_вып = 1, Подтвержд_вып_дата = {F.now()!r},'
-                            f' Подтвержд_вып_фио = {glob_fio!r} WHERE Пномер = {nar_obj.Пномер}')
+        custom_request_c = (f'UPDATE naryad SET "Подтвержд_вып" = 1, "Подтвержд_вып_дата" = {F.now()!r},'
+                            f' "Подтвержд_вып_фио" = {glob_fio!r} WHERE "Пномер" = {nar_obj.Пномер}')
         CSQ.custom_request_c(CFG.Config.project.db_naryad, custom_request_c)
 
 def get_plan_otk_alias_by_poki(poki):
     return CSQ.custom_request_c(
         CFG.Config.project.db_kplan,
-        f"SELECT Имя FROM podrazdel WHERE is_control = 1 AND poki = {poki} LIMIT 1",
+        f'SELECT "Имя" FROM podrazdel WHERE is_control = 1 AND poki = {poki} LIMIT 1',
         hat_c=False,
         one=True,
         one_column=True
@@ -17032,7 +17120,7 @@ def get_plan_otk_alias_by_poki(poki):
 
 def check_otk_after_proizv(nom_mk:int,rc_proizv:str ='',kod_oper:set =''):
     list_nar = CSQ.custom_request_c(CFG.Config.project.db_naryad,f"""SELECT * FROM naryad 
-                    WHERE naryad.Номер_мк == {nom_mk};""",rez_dict=True)
+                    WHERE naryad."Номер_мк" = {nom_mk};""",rez_dict=True)
 
     res = load_res(nom_mk)
     oper_by_code, oper_by_name = calc_dicts_opers(CFG.Config.place.poki)
@@ -17087,26 +17175,26 @@ def processing_finish_sign_otk(glob_fio, nom_mk, nom_kpl, nom_nar, nar_obj,poki)
         messages = []
         is_done = CSQ.custom_request_c(
             CFG.Config.project.db_naryad,
-            'UPDATE jur_vnepl SET Утверждено = ? WHERE Номер_внепланового_наряда = ?',
+            'UPDATE jur_vnepl SET "Утверждено" = ? WHERE "Номер_внепланового_наряда" = ?',
             list_of_lists_c=[[F.now(), nom_nar]]
         )
         if not is_done:
             messages.append('Не удалось утвердить журнал внеплана')
         query = f"""
-            SELECT mk.Пномер, mk.НомКплан,
-               CASE WHEN знпр."№ERP" IS NOT NULL 
-                    THEN знпр."№ERP" 
-                    ELSE пл_оуп."№ERP"
-                END AS Номер_заказа,  
-                CASE WHEN знпр."№проекта" IS NOT NULL 
-                   THEN знпр."№проекта" 
-                   ELSE пл_оуп."№проекта" 
-                END AS Номер_проекта
+            SELECT "mk"."Пномер", mk."НомКплан",
+                CASE WHEN "знпр"."№ERP" IS NOT NULL 
+                THEN "знпр"."№ERP" 
+                ELSE "пл_оуп"."№ERP"
+            END AS "Номер_заказа",  
+            CASE WHEN "знпр"."№проекта" IS NOT NULL 
+                THEN "знпр"."№проекта" 
+                ELSE "пл_оуп"."№проекта" 
+            END AS "Номер_проекта"
             FROM jur_vnepl 
-            INNER JOIN mk ON mk.Пномер = jur_vnepl.МК 
-            INNER JOIN пл_оуп ON mk.НомКплан = пл_оуп.НомПл
-            INNER JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП
-            WHERE jur_vnepl.Номер_внепланового_наряда = {nom_nar}
+            INNER JOIN "mk" ON "mk"."Пномер" = "jur_vnepl"."МК" 
+            INNER JOIN "пл_оуп" ON "mk"."НомКплан" = "пл_оуп"."НомПл"
+            INNER JOIN "знпр" ON "знпр"."s_num" = "пл_оуп"."Пномер_ЗП"
+            WHERE "jur_vnepl"."Номер_внепланового_наряда" = {nom_nar}
             LIMIT 1
         """
         kpl_info = CSQ.custom_request_c(
@@ -17132,8 +17220,8 @@ def processing_finish_sign_otk(glob_fio, nom_mk, nom_kpl, nom_nar, nar_obj,poki)
 
 
     if not msg:
-        custom_request_c = f'''UPDATE {alias}  SET (Контр_покрытие_ФИО, Контр_покрытие_дата) = (?,?) 
-                    WHERE НомПл = ?;'''
+        custom_request_c = f'''UPDATE "{alias}"  SET ("Контр_покрытие_ФИО", "Контр_покрытие_дата") = (?,?) 
+                    WHERE "НомПл" = ?;'''
         param = [glob_fio, F.now(), nom_kpl]  # 15.07.25
         CSQ.custom_request_c(CFG.Config.project.db_kplan, custom_request_c, list_of_lists_c=param)
 
@@ -17267,7 +17355,7 @@ class DATATypesNomenclature:
         poki = CFG.Config.place.poki
         resp = CSQ.custom_request_c(
             CFG.Config.project.db_nomen,
-            "INSERT INTO ВидыНоменклатуры(Ref_Key, name, Родитель, poki) VALUES (?, ?, ?, ?) RETURNING s_num",
+            '''INSERT INTO "ВидыНоменклатуры"("Ref_Key", "name", "Родитель", "poki") VALUES (?, ?, ?, ?) RETURNING s_num''',
             list_of_lists_c=[ref_key, name, parent_ref_key, poki],
             rez_dict=True
         )
@@ -17283,7 +17371,7 @@ class DATATypesNomenclature:
         sql_select = ','.join(attrs)
         nomen_types_MES = CSQ.custom_request_c(
             CFG.Config.project.db_nomen,
-            f'''SELECT {sql_select} FROM ВидыНоменклатуры WHERE comment != "Не найден в 1С"''',
+            f"""SELECT {sql_select} FROM "ВидыНоменклатуры" WHERE comment != 'Не найден в 1С'""",
             rez_dict=True
         )
         if not nomen_types_MES:
@@ -17295,12 +17383,12 @@ class DATATypesNomenclature:
         attrs = ','.join(attrs)
         return CSQ.custom_request_c(
             CFG.Config.project.db_nomen,
-            f'SELECT {attrs} FROM ВидыНоменклатуры WHERE Ref_Key = {ref_key!r}',
+            f'SELECT {attrs} FROM "ВидыНоменклатуры" WHERE "Ref_Key" = {ref_key!r}',
             rez_dict=True
         )
 
     def mark_delete_nomens_by_ref(self, ref_key: str):
-        query = f'UPDATE nomen SET На_удаление = 1 WHERE Вид_Ref_Key = {ref_key!r}'
+        query = f'UPDATE nomen SET "На_удаление" = 1 WHERE "Вид_Ref_Key" = {ref_key!r}'
         return CSQ.custom_request_c(CFG.Config.project.db_nomen, query)
 
     def get_types_nomen_from_1c(self, alert_error_msg: bool = False):
@@ -17488,7 +17576,7 @@ class GUITypesNomenclature(DATATypesNomenclature):
 
         all_nomens = CSQ.custom_request_c(
             CFG.Config.project.db_nomen,
-            'SELECT Ref_Key, Вид_Ref_Key FROM nomen WHERE На_удаление != 1',
+            'SELECT "Ref_Key", "Вид_Ref_Key" FROM nomen WHERE "На_удаление" != 1',
             rez_dict=True
         )
         if not all_nomens:
@@ -17503,10 +17591,10 @@ class GUITypesNomenclature(DATATypesNomenclature):
         for nomen_1c in nomens_from_1c:
             ref = nomen_1c[unique_key]
             if ref in nomen_by_ref:
-                update_template = ','.join(f'{key} = ?' for key in nomen_1c if key != unique_key)
+                update_template = ','.join(f'"{key}" = ?' for key in nomen_1c if key != unique_key)
                 body = [val for key, val in nomen_1c.items() if key != unique_key]
                 query_update = f"""
-                    UPDATE nomen SET {update_template} WHERE {unique_key} = {ref!r}
+                    UPDATE nomen SET {update_template} WHERE "{unique_key}" = {ref!r}
                 """
                 response = CSQ.custom_request_c(
                     CFG.Config.project.db_nomen,
@@ -17598,7 +17686,7 @@ class TypesWorkingByDirections:
 
     def __init__(self):
         self.NAPR_DEYAT = CSQ.custom_request_c(CFG.Config.project.db_kplan,
-                                          f"""SELECT Псевдоним, Пномер FROM napravl_deyat WHERE state_on_off = 1 and poki == {CFG.Config.place.poki} OR poki is NULL""",
+                                          f"""SELECT "Псевдоним", "Пномер" FROM napravl_deyat WHERE state_on_off = 1 and poki = {CFG.Config.place.poki} OR poki is NULL""",
                                           rez_dict=True)
         self.DICT_NAPR_DEYAT_PSDNAME = F.deploy_dict_c(self.NAPR_DEYAT, 'Псевдоним')
         self.list_vid_po_napr = self.get_old_view_response()
@@ -17784,7 +17872,7 @@ class TypesWorkingByDirections:
     def insert_technological_type(self, type_name: str, napr_pk = '', nomen_types: str = ''):
         result = CSQ.custom_request_c(
             CFG.Config.project.db_kplan,
-            'INSERT INTO виды_по_направлению(Направл, Имя, Выборка) VALUES(?, ?, ?) RETURNING Пномер',
+            'INSERT INTO "виды_по_направлению"("Направл", "Имя", "Выборка") VALUES(?, ?, ?) RETURNING "Пномер"',
             list_of_lists_c=[napr_pk, type_name, 0],
             rez_dict=True,
         )
@@ -17796,13 +17884,13 @@ class TypesWorkingByDirections:
             return CQT.msgbox(f'Не удалось сохранить вид: {nomen_types!r}')
         result_nomen = CSQ.custom_request_c(
             CFG.Config.project.db_nomen,
-            'INSERT INTO ТехнологическиеВиды(Пномер, ВидыНоменклатуры) VALUES(?, ?)',
+            'INSERT INTO "ТехнологическиеВиды"("Пномер", "ВидыНоменклатуры") VALUES(?, ?)',
             list_of_lists_c=[[new_pk, nomen_types]])
         if not result_nomen:
             CSQ.custom_request_c(CFG.Config.project.db_kplan,
-                                 f'DELETE FROM виды_по_направлению WHERE Пномер = {new_pk}')
+                                 f'DELETE FROM "виды_по_направлению" WHERE "Пномер" = {new_pk}')
             CSQ.custom_request_c(CFG.Config.project.db_nomen,
-                                 f'DELETE FROM ТехнологическиеВиды WHERE Пномер = {new_pk}')
+                                 f'DELETE FROM "ТехнологическиеВиды" WHERE "Пномер" = {new_pk}')
             return False
         return True
 
@@ -17837,7 +17925,7 @@ class TypesWorkingByDirections:
         if val not in window.Data_plan.DICT_VID_PO_NAPR_NAME:
             result = CSQ.custom_request_c(
                 CFG.Config.project.db_kplan,
-'INSERT INTO виды_по_направлению(Направл, Имя, Выборка) VALUES(?, ?, ?) RETURNING Пномер',
+'INSERT INTO "виды_по_направлению"("Направл", "Имя", "Выборка") VALUES(?, ?, ?) RETURNING "Пномер"',
                 list_of_lists_c=[napr_pk, val, 0],
                 rez_dict=True,
             )
@@ -17849,13 +17937,13 @@ class TypesWorkingByDirections:
                 return CQT.msgbox(f'Не удалось сохранить вид: {val!r} По направлению: {napr}')
             result_nomen = CSQ.custom_request_c(
                 CFG.Config.project.db_nomen,
-                'INSERT INTO ТехнологическиеВиды(Пномер, ВидыНоменклатуры) VALUES(?, ?)',
+                'INSERT INTO "ТехнологическиеВиды"("Пномер", "ВидыНоменклатуры") VALUES(?, ?)',
                 list_of_lists_c=[[new_pk, nomen_types]])
             if not result_nomen:
                 CSQ.custom_request_c(CFG.Config.project.db_kplan,
-                f'DELETE FROM виды_по_направлению WHERE Пномер = {new_pk}')
+                f'DELETE FROM "виды_по_направлению" WHERE "Пномер" = {new_pk}')
                 CSQ.custom_request_c(CFG.Config.project.db_nomen,
-                f'DELETE FROM ТехнологическиеВиды WHERE Пномер = {new_pk}')
+                f'DELETE FROM "ТехнологическиеВиды" WHERE "Пномер" = {new_pk}')
                 result = None
             if not result:
                 return CQT.msgbox(f'Не удалось сохранить вид: {val!r} По направлению: {napr}')
@@ -17868,7 +17956,7 @@ class TypesWorkingByDirections:
     def check_ratio_exists(self, type_id: int, etaps_id: int):
         return CSQ.custom_request_c(
             CFG.Config.project.db_kplan,
-            'SELECT ratio, Пномер FROM коэфф_норм_этапов_по_видам_направлений WHERE виды_по_напр_id = ? AND etaps_id = ?',
+            'SELECT ratio, Пномер FROM "коэфф_норм_этапов_по_видам_направлений" WHERE виды_по_напр_id = ? AND etaps_id = ?',
             rez_dict=True,
             one=True,
             list_of_lists_c=[[type_id, etaps_id]]
@@ -17883,9 +17971,9 @@ class TypesWorkingByDirections:
             if str(previous_ratio) == str(ratio):
                 return 'Данные не изменились'
             query = f"""
-                UPDATE коэфф_норм_этапов_по_видам_направлений 
+                UPDATE "коэфф_норм_этапов_по_видам_направлений" 
                 SET ratio = {ratio}
-                WHERE Пномер = {pk}
+                WHERE "Пномер" = {pk}
             """
             if CSQ.custom_request_c(CFG.Config.project.db_kplan, query):
                 log = f"Значение обновлено было: {previous_ratio} Стало: {ratio}"
@@ -17991,7 +18079,7 @@ class TypesWorkingByDirections:
         if isinstance(nomen_types, str) and nomen_types.strip() != '':
             resp = CSQ.custom_request_c(
                 CFG.Config.project.db_nomen,
-                'UPDATE ТехнологическиеВиды SET ВидыНоменклатуры = ? WHERE Пномер = ?',
+                'UPDATE "ТехнологическиеВиды" SET "ВидыНоменклатуры" = ? WHERE "Пномер" = ?',
                 list_of_lists_c=[[nomen_types, pk_types]]
             )
             if resp:
@@ -18086,25 +18174,25 @@ class TypesWorkingByDirections:
         poki = CFG.Config.place.poki
         query = f"""
                     SELECT
-                        виды_по_направлению.Пномер as "{self.PK_KEY_FOR_GROUP}",
-                        виды_по_направлению.Имя as "Имя",
-                        виды_по_направлению.Выборка as "Выборка",
-                        виды_по_направлению.кг_на_пост_см as "кг_на_пост_см",
-                        виды_по_направлению.vneplan_percent as "vneplan_percent",
-                        виды_по_направлению.Утверждены_нормы as "Утверждены_нормы",
-                        виды_по_направлению.Направл as "Направл",
-                        виды_по_направлению.ВозможностьСозданияНоменМеталоармДляСозданияРесЕРП as "ВозможностьСозданияНоменМеталоармДляСозданияРесЕРП",
-                        ТехнологическиеВиды.Примечание as "Примечание",
-                        ТехнологическиеВиды.ВидыНоменклатуры as "НомерВидаНоменДляСозданияРесЕРП",
+                        "виды_по_направлению"."Пномер" as "{self.PK_KEY_FOR_GROUP}",
+                        "виды_по_направлению"."Имя" as "Имя",
+                        "виды_по_направлению"."Выборка" as "Выборка",
+                        "виды_по_направлению"."кг_на_пост_см" as "кг_на_пост_см",
+                        "виды_по_направлению"."vneplan_percent" as "vneplan_percent",
+                        "виды_по_направлению"."Утверждены_нормы" as "Утверждены_нормы",
+                        "виды_по_направлению"."Направл" as "Направл",
+                        "виды_по_направлению"."ВозможностьСозданияНоменМеталоармДляСозданияРесЕРП" as "ВозможностьСозданияНоменМеталоармДляСозданияРесЕРП",
+                        "ТехнологическиеВиды"."Примечание" as "Примечание",
+                        "ТехнологическиеВиды"."ВидыНоменклатуры" as "НомерВидаНоменДляСозданияРесЕРП",
                         коэфф.ratio as "коэфф.ratio",
                         etaps.имя_в_виды_по_напр as "etaps.имя_в_виды_по_напр",
-                        napravl_deyat.Имя as 'napravl_deyat.Имя',
-                        napravl_deyat.Псевдоним as 'napravl_deyat.Псевдоним'
+                        napravl_deyat."Имя" as "napravl_deyat.Имя",
+                        napravl_deyat."Псевдоним" as "napravl_deyat.Псевдоним"
                     FROM виды_по_направлению
-                     LEFT JOIN коэфф_норм_этапов_по_видам_направлений коэфф ON коэфф.виды_по_напр_id = виды_по_направлению.Пномер
+                     LEFT JOIN коэфф_норм_этапов_по_видам_направлений коэфф ON коэфф.виды_по_напр_id = виды_по_направлению."Пномер"
                      LEFT JOIN etaps ON etaps.s_num = коэфф.etaps_id
-                    INNER JOIN napravl_deyat ON виды_по_направлению.Направл = napravl_deyat.Пномер
-                    LEFT JOIN ТехнологическиеВиды ON ТехнологическиеВиды.Пномер = виды_по_направлению.Пномер
+                    INNER JOIN napravl_deyat ON виды_по_направлению."Направл" = napravl_deyat."Пномер"
+                    LEFT JOIN "ТехнологическиеВиды" ON "ТехнологическиеВиды"."Пномер" = виды_по_направлению."Пномер"
                     WHERE napravl_deyat.poki = {poki} OR napravl_deyat.poki IS NULL
             """
         db_result = CSQ.custom_request_c(
@@ -18162,26 +18250,47 @@ def find_not_close_groups() -> list[DtoNotClosedGroups] | None:
     """
     Возвращает объекты журналов, принадлежащие группам нарядов, которые ещё не завершены.
     """
-    query = """
-WITH RankedJournal AS (
+    query = CSQ.SqlQuery(
+        sqlite="""
+WITH "RankedJournal" AS (
     SELECT
         sub_j.*,
         ROW_NUMBER() OVER (
-            PARTITION BY sub_j.ФИО, sub_j.Номер_наряда
-            ORDER BY DATETIME(sub_j.Дата) DESC
+            PARTITION BY "sub_j"."ФИО", "sub_j"."Номер_наряда"
+            ORDER BY DATETIME(sub_j."Дата") DESC
         ) as rn
     FROM jurnal sub_j
     WHERE sub_j.Номер_наряда NOT IN (SELECT Номер_наряда FROM jurnal WHERE Статус = 'Завершен')
 )
-SELECT mx_j.Номер_наряда AS Номер_наряда, mx_j.Пномер AS Номер_журнала, mx_j.ФИО AS ФИО
+SELECT "mx_j"."Номер_наряда" AS "Номер_наряда", "mx_j"."Пномер" AS "Номер_журнала", "mx_j"."ФИО" AS "ФИО"
 FROM naryad_groups ng
 INNER JOIN (
-    SELECT rj.Статус, rj.ФИО, rj.Номер_наряда, rj.Пномер
-    FROM RankedJournal rj
+    SELECT "rj"."Статус", "rj"."ФИО", "rj"."Номер_наряда", "rj"."Пномер"
+    FROM "RankedJournal" rj
     WHERE rj.rn = 1
-) mx_j ON mx_j.ФИО = ng.fio AND ng.id_nar = mx_j.Номер_наряда
-WHERE mx_j.Статус NOT IN ('Завершен', 'Приостановлен')
-    """
+) mx_j ON "mx_j"."ФИО" = ng.fio AND ng.id_nar = "mx_j"."Номер_наряда"
+WHERE mx_j."Статус" NOT IN ('Завершен', 'Приостановлен')
+    """,
+        postgres="""
+WITH "RankedJournal" AS (
+    SELECT
+        sub_j.*,
+        ROW_NUMBER() OVER (
+            PARTITION BY "sub_j"."ФИО", "sub_j"."Номер_наряда"
+            ORDER BY CAST(sub_j."Дата" AS TIMESTAMP) DESC
+        ) as rn
+    FROM jurnal sub_j
+    WHERE sub_j."Номер_наряда" NOT IN (SELECT "Номер_наряда" FROM jurnal WHERE "Статус" = 'Завершен')
+)
+SELECT "mx_j"."Номер_наряда" AS "Номер_наряда", "mx_j"."Пномер" AS "Номер_журнала", "mx_j"."ФИО" AS "ФИО"
+FROM naryad_groups ng
+INNER JOIN (
+    SELECT "rj"."Статус", "rj"."ФИО", "rj"."Номер_наряда", "rj"."Пномер"
+    FROM "RankedJournal" rj
+    WHERE rj.rn = 1
+) mx_j ON "mx_j"."ФИО" = ng.fio AND ng.id_nar = "mx_j"."Номер_наряда"
+WHERE mx_j."Статус" NOT IN ('Завершен', 'Приостановлен')
+    """)
     result = CSQ.custom_request_c(
         CSQ.DB_NAMES.db_naryad,
         query,
@@ -18216,28 +18325,31 @@ def get_start_stop_journal_pairs(
 
     get_start_stop_journal_pairs(between_start_datetime='2025-12-05', between_stop_datetime='2025-12-06')
     """
-    where = ""
+    where_pg, where_sqlite = "", ""
     journal_where = ""
     if between_start_datetime is not None:
-        where += f" AND (datetime(f.start_dt) >= datetime({between_start_datetime!r}) OR datetime(f.end_dt) >= datetime({between_start_datetime!r}))"
+        where_pg += f" AND (CAST(f.start_dt AS TIMESTAMP) >= CAST({between_start_datetime!r} AS TIMESTAMP) OR CAST(f.end_dt AS TIMESTAMP) >= CAST({between_start_datetime!r} AS TIMESTAMP))"
+        where_sqlite += f" AND (datetime(f.start_dt) >= datetime({between_start_datetime!r}) OR datetime(f.end_dt) >= datetime({between_start_datetime!r}))"
     if between_stop_datetime is not None:
-        where += f" AND (datetime(f.start_dt) <= datetime({between_stop_datetime!r}) OR datetime(f.end_dt) <= datetime({between_stop_datetime!r}))"
+        where_pg += f" AND (CAST(f.start_dt AS TIMESTAMP) <= CAST({between_stop_datetime!r} AS TIMESTAMP) OR CAST(f.end_dt AS TIMESTAMP) <= CAST({between_stop_datetime!r} AS TIMESTAMP))"
+        where_sqlite += f" AND (datetime(f.start_dt) <= datetime({between_stop_datetime!r}) OR datetime(f.end_dt) <= datetime({between_stop_datetime!r}))"
     if ex_fio or num_naryad:
         lst = []
         if num_naryad is not None:
             if isinstance(num_naryad, (int, str)):
-                lst.append(f" j.Номер_наряда = {num_naryad}")
+                lst.append(f' j."Номер_наряда" = {num_naryad}')
             else:
                 pk_joined = ','.join(str(num) for num in num_naryad)
-                lst.append(f" j.Номер_наряда IN ({pk_joined})")
+                lst.append(f' j."Номер_наряда" IN ({pk_joined})')
         if ex_fio is not None:
             if isinstance(ex_fio, str):
-                lst.append(f" j.ФИО = {ex_fio!r}")
+                lst.append(f' j."ФИО" = {ex_fio!r}')
             else:
                 fio_joined = ','.join(repr(fio) for fio in ex_fio)
-                lst.append(f" j.ФИО IN ({fio_joined})")
+                lst.append(f' j."ФИО" IN ({fio_joined})')
         journal_where = 'WHERE ' + ' AND '.join(lst)
-    query = f"""
+    query = CSQ.SqlQuery(
+        sqlite=f"""
     WITH ordered AS (
               SELECT
                 j.*,
@@ -18267,15 +18379,66 @@ def get_start_stop_journal_pairs(
               f.end_dt,
               e.Статус AS end_status,
                 e.ФИО as ФИО,
-                f.Номер_наряда AS "Номер_наряда",
+                f."Номер_наряда" AS "Номер_наряда",
               ROUND((JULIANDAY(f.end_dt) - JULIANDAY(f.start_dt)) * 24 * 60, 2) AS duration_min,
               f.Минут_выгружено_ЕРП as Минут_выгружено_ЕРП
             FROM frag f
                 JOIN jurnal e ON e.Пномер = f.end_pnomer
             WHERE f.start_pnomer IS NOT NULL
               AND f.end_pnomer IS NOT NULL
-        {where}
+        {where_sqlite}
             ORDER BY f.start_dt;
+    """,
+    postgres=f"""
+    WITH ordered AS (
+              SELECT
+                j.*,
+                SUM(CASE WHEN j."Статус" = 'Начат' THEN 1 ELSE 0 END)
+                  OVER (PARTITION BY j."ФИО", j."Номер_наряда" ORDER BY j."Дата", j."Пномер") AS frag_id
+              FROM jurnal j
+              {journal_where}
+            ),
+            frag AS (
+              SELECT
+                "ФИО",
+                "Номер_наряда",
+                frag_id,
+                MIN(CASE WHEN "Статус" = 'Начат' THEN "Пномер" END) AS start_pnomer,
+                MIN(CASE WHEN "Статус" = 'Начат' THEN "Дата" END)   AS start_dt,
+                MIN(CASE WHEN "Статус" IN ('Приостановлен', 'Завершен') THEN "Пномер" END) AS end_pnomer,
+                MIN(CASE WHEN "Статус" IN ('Приостановлен', 'Завершен') THEN "Дата" END) AS end_dt,
+                MIN(CASE WHEN "Статус" = 'Начат' THEN "Минут_выгружено_ЕРП" END) AS "Минут_выгружено_ЕРП"
+              FROM ordered
+              WHERE frag_id > 0
+              GROUP BY "ФИО", "Номер_наряда", frag_id
+            )
+            SELECT
+              f.start_pnomer,
+              f.end_pnomer,
+              f.start_dt,
+              f.end_dt,
+              e."Статус" AS end_status,
+                e."ФИО" as "ФИО",
+                f."Номер_наряда" AS "Номер_наряда",
+              ROUND(
+                    (
+                        EXTRACT(
+                            EPOCH FROM (
+                                CAST(f.end_dt AS timestamp) -
+                                CAST(f.start_dt AS timestamp)
+                            )
+                        ) / 60
+                    )::numeric,
+                    2
+                ) AS duration_min,
+              f.Минут_выгружено_ЕРП as Минут_выгружено_ЕРП
+            FROM frag f
+                JOIN jurnal e ON e.Пномер = f.end_pnomer
+            WHERE f.start_pnomer IS NOT NULL
+              AND f.end_pnomer IS NOT NULL
+        {where_pg}
+            ORDER BY f.start_dt
     """
+    )
     return CSQ.custom_request_c(CFG.Config.project.db_naryad,
-                         query, rez_dict=True, attach_dbs=(CFG.Config.project.db_users))
+                         query, rez_dict=True, attach_dbs=CFG.Config.project.db_users)

@@ -305,7 +305,7 @@ class TableRuntimePolicy:
 
 class User_emploee():
     def __init__(self, fio: str, user_db: str):
-        params = [fio, fio]
+        params = [[fio, fio]]
 
         if F.is_unique_identifier(fio):
             where = f"""WHERE "employee"."ID_ФизЛица" = ? """
@@ -357,16 +357,16 @@ class User_emploee():
         "ФизическиеЛица"."Пол" as "Пол",
         "ФизическиеЛица".login as login,
         "ФизическиеЛица".id_bitrix as id_bitrix,
-        slice."Должность_Key" as "current_Должность_Key",
-        slice."Должность_Наименование" as "current_Должность",
-        slice."Подразделение_Key" as "current_Подразделение_Key",
-        slice."Организация_Key" as "current_Организация_Key",
-        slice."Сотрудник_Key" as "current_Сотрудник_Key"
+        "slice"."Должность_Key" as "current_Должность_Key",
+        "slice"."Должность_Наименование" as "current_Должность",
+        "slice"."Подразделение_Key" as "current_Подразделение_Key",
+        "slice"."Организация_Key" as "current_Организация_Key",
+        "slice"."Сотрудник_Key" as "current_Сотрудник_Key"
         """
 
         data = CSQ.custom_request_c(user_db, f""" {slice} SELECT {fields} FROM employee 
-         LEFT JOIN "ФизическиеЛица" ON "ФизическиеЛица"."ФизическоеЛицо_Key" = employee."ID_ФизЛица"
-         LEFT JOIN slice on slice."ФизическоеЛицо_Key" = "ФизическиеЛица"."ФизическоеЛицо_Key"
+         LEFT JOIN "ФизическиеЛица" ON "ФизическиеЛица"."ФизическоеЛицо_Key" = "employee"."ID_ФизЛица"
+         LEFT JOIN "slice" on "slice"."ФизическоеЛицо_Key" = "ФизическиеЛица"."ФизическоеЛицо_Key"
         {where};""", rez_dict=True, list_of_lists_c=params)
 
         if len(data) == 0:
@@ -456,8 +456,8 @@ class Erp_base():
         self.КластерСерверов: str | None = None
 
         data = CSQ.custom_request_c(db_users, f"""
-    SELECT s_num,
-       name,
+    SELECT "s_num",
+       "name",
        "КластерСерверов"
   FROM "bases_ERP" WHERE name = ?;
 """, rez_dict=True, one=True, list_of_lists_c=[name])
@@ -602,12 +602,12 @@ class System_changes():
                                  "ФизическоеЛица".id = system_change.customer 
                                  WHERE system_change.app = ? and 
                                 datetime(system_change.date_time) >= datetime(?)""",
-            postgres=f"""SELECT system_change.id as "№",
-                                system_change.date_time as "Дата",
+            postgres=f"""SELECT "system_change"."id" as "№",
+                                "system_change"."date_time" as "Дата",
                                 "ФизическоеЛица"."Фамилия" as "Инициатор",
-                                system_change.description as "Описание",
-                                system_change.result as "Результат"
-                                 FROM system_change 
+                                "system_change"."description" as "Описание",
+                                "system_change"."result" as "Результат"
+                                 FROM "system_change" 
                                  INNER JOIN "ФизическоеЛица" ON
                                  "ФизическоеЛица".id = system_change.customer 
                                  WHERE system_change.app = %s and 

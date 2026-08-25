@@ -356,12 +356,18 @@ pass
 
 @CQT.onerror
 def get_list_month_fact(self: mywindow):
-    self.list_month_fact = CSQ.custom_request_c(self.bd_naryad, f"""SELECT mk.Направление, 
-    mk.Вес,mk.Дата_завершения,mk.xml, zagot.Вес_по_рес FROM mk 
+    self.list_month_fact = CSQ.custom_request_c(self.bd_naryad, f"""
+    SELECT 
+        mk."Направление", 
+        mk."Вес",
+        mk."Дата_завершения",
+        mk.xml, 
+        zagot."Вес_по_рес" 
+    FROM mk 
     LEFT JOIN plan 
-             ON plan.Пномер = mk.НомКплан 
-    LEFT JOIN zagot ON zagot.Ном_МК == mk.Пномер          
-             WHERE Дата_завершения != '' and plan.poki == {self.place.poki} """,
+             ON plan."Пномер" = mk."НомКплан" 
+    LEFT JOIN zagot ON zagot."Ном_МК" = mk."Пномер"          
+             WHERE "Дата_завершения" != '' and plan.poki = {self.place.poki} """,
                                                 rez_dict=True, attach_dbs=self.db_kplan)
 
 def _______SELECT_SUB_TYPE_REPORT_____________():
@@ -382,13 +388,23 @@ def vibor_additional_sort_report(self: mywindow, *args):
         data_nach = self.ui.le_start_of_period.text()
         data_kon = self.ui.le_end_of_period.text()
         poki = USRCNF.Config.place.poki
-        custom_request_c = f"""SELECT distinct jurnal.ФИО AS "ФИО_журнал" FROM jurnal 
+
+        query = CSQ.SqlQuery(
+            sqlite=f"""SELECT distinct jurnal.ФИО AS "ФИО_журнал" FROM jurnal 
                             INNER JOIN naryad ON naryad.Пномер = jurnal.Номер_наряда
                             INNER JOIN коды_веплана_для_наряда ON коды_веплана_для_наряда.code = naryad.Внеплан
                             WHERE datetime(jurnal.Дата) >= datetime("{data_nach}") 
                             and datetime(jurnal.Дата) <= datetime("{data_kon}") 
-                            AND коды_веплана_для_наряда.poki = {poki} """ #28.01.2026 по задаче 100065789
-        rez_jur = CSQ.custom_request_c(self.bd_naryad, custom_request_c, hat_c=False, one_column=True)
+                            AND коды_веплана_для_наряда.poki = {poki} """,
+            postgres=f"""SELECT distinct jurnal."ФИО" AS "ФИО_журнал" 
+            FROM jurnal 
+                            INNER JOIN naryad ON naryad."Пномер" = jurnal."Номер_наряда"
+                            INNER JOIN коды_веплана_для_наряда ON коды_веплана_для_наряда.code = naryad."Внеплан"
+                            WHERE (jurnal."Дата")::timestamp >= ('{data_nach}')::timestamp
+                            and (jurnal."Дата")::timestamp <= ('{data_kon}')::timestamp
+                            AND коды_веплана_для_наряда.poki = {poki} """
+        )
+        rez_jur = CSQ.custom_request_c(self.bd_naryad, query, hat_c=False, one_column=True)
         set_users = {_ for _ in rez_jur if _ in set_users_empl_all}
         list_users = list(set_users.union(set_users_empl))
         
@@ -564,7 +580,7 @@ def vibor_sort_c_report_c(self: mywindow, *args):
         self.ui.cmb_podrazdelenie.clear()
         self.ui.cmb_podrazdelenie.addItem('-')
         list_month = CSQ.custom_request_c(self.db_kplan,
-                                          f"""SELECT Дата, Пномер FROM mnts_plan WHERE  file_poz_plan NOT NULL;""",
+                                          f"""SELECT "Дата", "Пномер" FROM mnts_plan WHERE file_poz_plan NOT NULL;""",
                                           rez_dict=True)
         list_month_str = [_['Дата'] for _ in list_month]
         self.ui.cmb_podrazdelenie.addItems(list_month_str)
@@ -809,15 +825,15 @@ def vibor_sort_c_report_c(self: mywindow, *args):
 @CQT.onerror
 def get_list_py_by_year(self:mywindow,years:list):
     
-    list_py = CSQ.custom_request_c(self.db_kplan,f"""SELECT 
-     знпр.№ERP || " | " || знпр.№проекта || " | " || napravl_deyat.Псевдоним || " | " || plan.Позиция || " | " || пл_оуп.НомПл || " | " || пл_оуп.Вес_кг
-     FROM 
-     знпр 
-      INNER JOIN пл_оуп ON пл_оуп.Пномер_ЗП == знпр.s_num 
-      INNER JOIN plan ON plan.Пномер == пл_оуп.НомПл 
-      INNER JOIN napravl_deyat ON plan.Направление_деятельности = napravl_deyat.Пномер 
+    list_py = CSQ.custom_request_c(self.db_kplan,f"""
+    SELECT 
+        знпр."№ERP" || ' | ' || знпр."№проекта" || ' | ' || napravl_deyat."Псевдоним" || ' | ' || plan."Позиция" || ' | ' || пл_оуп."НомПл" || ' | ' || пл_оуп."Вес_кг"
+    FROM знпр 
+      INNER JOIN пл_оуп ON пл_оуп."Пномер_ЗП" = знпр."s_num" 
+      INNER JOIN plan ON plan."Пномер" = пл_оуп."НомПл" 
+      INNER JOIN napravl_deyat ON plan."Направление_деятельности" = napravl_deyat."Пномер" 
       
-      WHERE знпр.Год IN({CSQ.prepare_list_to_tuple(list(years))}) and plan.poki = {USRCNF.Config.place.poki}""", hat_c=False,one_column=True)
+      WHERE знпр."Год" IN({CSQ.prepare_list_to_tuple(list(years))}) and plan.poki = {USRCNF.Config.place.poki}""", hat_c=False,one_column=True)
     DICT_COLOR = {k:F.align_colors(v['Цвет'])  for k,v in F.deploy_dict_c(self.Data.NAPRAVL_D,'Псевдоним').items()}
     tbl =[row.split(' | ') for row in list_py]
     tbl = [ {'№ERP':_[0],
@@ -1295,53 +1311,53 @@ def report_by_proj(self, nach, konec, podrazd=None, *args):
         return
     py,proj,napravl_deyat,poz, kpl, ves = podrazd.split(' | ')
     list = CSQ.custom_request_c(self.bd_naryad,fr"""
-    SELECT mk.Пномер, mk.Номенклатура, mk.Вес, mk.Количество, mk.Статус, 
-    дорезки_мк.Причина AS дорезки_мк_Причина, 
+    SELECT 
+        "mk"."Пномер", "mk"."Номенклатура", "mk"."Вес", "mk"."Количество", "mk"."Статус", 
+    "дорезки_мк"."Причина" AS "дорезки_мк_Причина", 
 
-            тип_дорезок.Имя AS тип_дорезок_Имя, 
-            тип_дорезок.Коэффициент_наряда AS тип_дорезок_Коэффициент_наряда, 
+            "тип_дорезок"."Имя" AS "тип_дорезок_Имя", 
+            "тип_дорезок"."Коэффициент_наряда" AS "тип_дорезок_Коэффициент_наряда", 
 
-            тип_доработок.Имя AS тип_доработок_Имя, 
-            тип_доработок.Коэффициент_наряда AS тип_доработок_Коэффициент_наряда, 
+            "тип_доработок"."Имя" AS "тип_доработок_Имя", 
+            "тип_доработок"."Коэффициент_наряда" AS "тип_доработок_Коэффициент_наряда", 
 
-            Тип_мк.Имя AS Тип_мк_Имя, 
+            "Тип_мк"."Имя" AS "Тип_мк_Имя", 
     
-    naryad.Пномер as "Наряд Пномер", 
-    naryad.Дата as "Наряд Дата", 
-    naryad.Внеплан as "Наряд Внеплан", 
-    naryad.Распред_дата as "Наряд Распред_дата",
-    "" as  "Наряд Этап", 
-    naryad.ФИО as "Наряд ФИО", 
-    naryad.Фвремя as "Наряд Фвремя", 
-    naryad.ФИО2 as "Наряд ФИО2", 
-    naryad.Фвремя2 as "Наряд Фвремя2", 
-    naryad.Твремя as "Наряд Твремя", 
-    naryad.Норма_времени as "Наряд Норма_времени", 
-    naryad.Подтвержд_вып_дата as "Наряд Подтвержд_вып_дата", 
-    naryad.Подтвержд_вып_фио as "Наряд Подтвержд_вып_фио", 
-    naryad.Кол_повт_приемок as "Наряд Кол_повт_приемок",
-    naryad.Виды_работ as "Наряд Виды_работ",  
+    "naryad"."Пномер" as "Наряд Пномер", 
+    "naryad"."Дата" as "Наряд Дата", 
+    "naryad"."Внеплан" as "Наряд Внеплан", 
+    "naryad"."Распред_дата" as "Наряд Распред_дата",
+    '' as  "Наряд Этап", 
+    "naryad"."ФИО" as "Наряд ФИО", 
+    "naryad"."Фвремя" as "Наряд Фвремя", 
+    "naryad"."ФИО2" as "Наряд ФИО2", 
+    "naryad"."Фвремя2" as "Наряд Фвремя2", 
+    "naryad"."Твремя" as "Наряд Твремя", 
+    "naryad"."Норма_времени" as "Наряд Норма_времени", 
+    "naryad"."Подтвержд_вып_дата" as "Наряд Подтвержд_вып_дата", 
+    "naryad"."Подтвержд_вып_фио" as "Наряд Подтвержд_вып_фио", 
+    "naryad"."Кол_повт_приемок" as "Наряд Кол_повт_приемок",
+    "naryad"."Виды_работ" as "Наряд Виды_работ",  
 
     
-    jurnal.Пномер as "Журнал работ Пномер",
-    jurnal.Дата as "Журнал работ Дата",
-    jurnal.ФИО as "Журнал работ ФИО",
-    jurnal.Подытог as "Журнал работ Подытог",
-    jurnal.Подытог_нормы as "Журнал работ Подытог_нормы",
-    jurnal.Дата_выгрузки_ЕРП as "Журнал работ Дата_выгрузки_ЕРП",
-    jurnal.ФИО_выгрузки_ЕРП as "Журнал работ ФИО_выгрузки_ЕРП",
-    jurnal.Минут_выгружено_ЕРП as "Журнал работ Минут_выгружено_ЕРП",
-    jurnal.Статус as "Журнал работ Статус", 
-    jurnal.Примечание as "Журнал работ Примечание" 
+    "jurnal"."Пномер" as "Журнал работ Пномер",
+    "jurnal"."Дата" as "Журнал работ Дата",
+    "jurnal"."ФИО" as "Журнал работ ФИО",
+    "jurnal"."Подытог" as "Журнал работ Подытог",
+    "jurnal"."Подытог_нормы" as "Журнал работ Подытог_нормы",
+    "jurnal"."Дата_выгрузки_ЕРП" as "Журнал работ Дата_выгрузки_ЕРП",
+    "jurnal"."ФИО_выгрузки_ЕРП" as "Журнал работ ФИО_выгрузки_ЕРП",
+    "jurnal"."Минут_выгружено_ЕРП" as "Журнал работ Минут_выгружено_ЕРП",
+    "jurnal"."Статус" as "Журнал работ Статус", 
+    "jurnal"."Примечание" as "Журнал работ Примечание" 
     FROM mk 
-    INNER JOIN naryad on naryad.Номер_мк = mk.Пномер 
-    INNER JOIN jurnal on jurnal.Номер_наряда = naryad.Пномер 
-    LEFT JOIN дорезки_мк ON дорезки_мк.Номер_мк = mk.Пномер  
-    LEFT JOIN тип_дорезок ON тип_дорезок.Пномер = дорезки_мк.Причина  
-    LEFT JOIN тип_доработок ON тип_доработок.Пномер = mk.Тип_доработки 
-    LEFT JOIN Тип_мк ON Тип_мк.Пномер = mk.Тип 
-
-WHERE mk.НомКплан = {kpl}; 
+    INNER JOIN "naryad" on naryad."Номер_мк" = mk."Пномер" 
+    INNER JOIN "jurnal" on jurnal."Номер_наряда" = naryad."Пномер" 
+    LEFT JOIN "дорезки_мк" ON дорезки_мк."Номер_мк" = mk."Пномер"  
+    LEFT JOIN "тип_дорезок" ON тип_дорезок."Пномер" = дорезки_мк."Причина"  
+    LEFT JOIN "тип_доработок" ON тип_доработок."Пномер" = mk."Тип_доработки" 
+    LEFT JOIN "Тип_мк" ON Тип_мк."Пномер" = mk."Тип" 
+WHERE mk."НомКплан" = {kpl}; 
 """, rez_dict=True)
     for item in list:
 
@@ -1356,69 +1372,78 @@ def report_of_load_machine(self, nach, konec, podrazd=None, *args):
     tbl = [['Станок', 'Твремя', 'Фвремя', 'Должности']]
     db_naryad = 'SRV:Naryad.db'
     db_resxml = 'SRV:BD_resxml.db'
-
-    list_naryad = CSQ.custom_request_c(
-        db_naryad,
-        f"""
+    query = CSQ.SqlQuery(
+        sqlite=f"""
             SELECT * FROM jurnal j 
             INNER JOIN naryad n ON n.Пномер = j.Номер_наряда 
             WHERE datetime(j.Дата) > datetime("{nach}") and datetime(j.Дата) < datetime("{konec}")
-                AND j.Статус = "Завершен"
-                AND n.Номер_мк != 0
+                AND j."Статус" = 'Завершен'
+                AND n."Номер_мк" != 0
         """,
+        postgres=f"""
+            SELECT * FROM jurnal j 
+            INNER JOIN naryad n ON n."Пномер" = j."Номер_наряда" 
+            WHERE (j."Дата")::timestamp > ('{nach}')::timestamp and (j."Дата")::timestamp < ('{konec}')::timestamp
+                AND j."Статус" = 'Завершен'
+                AND n."Номер_мк" != 0
+        """,
+    )
+    list_naryad = CSQ.custom_request_c(
+        db_naryad,
+        query,
         rez_dict=True,
         hat_c=False
     )
     request = """
             SELECT 
-            mk.Пномер,
-            mk.Дата,
-            mk.Статус,
-            mk.Номенклатура,
-            mk.Номер_заказа,
-            mk.Номер_проекта,
-            mk.Вид,
-            mk.Примечание,
-            mk.Основание,
-            mk.Прогресс,
-            mk.Приоритет,
-            mk.Направление,
-            mk.Вес,
-            mk.xml,
-            mk.Количество,
-            mk.Статус_ЧПУ,
-            mk.Ресурсная,
-            mk.Дата_завершения,
-            mk.Коэф_парал,
-            mk.Обеспечение,
-            mk.Место,
-            mk.Искл_план_рм,
-            mk.Тип,
-            mk.Ресурсная_дата,
-            mk.ФИО,
-            mk.НомКплан,
-            mk.check_execute_opers,
-            mk.Тип_доработки,
-            mk.На_удал,
+            "mk"."Пномер",
+            "mk"."Дата",
+            "mk"."Статус",
+            "mk"."Номенклатура",
+            "mk"."Номер_заказа",
+            "mk"."Номер_проекта",
+            "mk"."Вид",
+            "mk"."Примечание",
+            "mk"."Основание",
+            "mk"."Прогресс",
+            "mk"."Приоритет",
+            "mk"."Направление",
+            "mk"."Вес",
+            "mk"."xml",
+            "mk"."Количество",
+            "mk"."Статус_ЧПУ",
+            "mk"."Ресурсная",
+            "mk"."Дата_завершения",
+            "mk"."Коэф_парал",
+            "mk"."Обеспечение",
+            "mk"."Место",
+            "mk"."Искл_план_рм",
+            "mk"."Тип",
+            "mk"."Ресурсная_дата",
+            "mk"."ФИО",
+            "mk"."НомКплан",
+            "mk"."check_execute_opers",
+            "mk"."Тип_доработки",
+            "mk"."На_удал",
 
-            дорезки_мк.Причина AS дорезки_мк_Причина,
+            "дорезки_мк"."Причина" AS "дорезки_мк_Причина",
 
-            тип_дорезок.Имя AS тип_дорезок_Имя,
-            тип_дорезок.Коэффициент_наряда AS тип_дорезок_Коэффициент_наряда,
+            "тип_дорезок"."Имя" AS "тип_дорезок_Имя",
+            "тип_дорезок"."Коэффициент_наряда" AS "тип_дорезок_Коэффициент_наряда",
 
-            тип_доработок.Имя AS тип_доработок_Имя,
-            тип_доработок.Коэффициент_наряда AS тип_доработок_Коэффициент_наряда,
+            "тип_доработок"."Имя" AS "тип_доработок_Имя",
+            "тип_доработок"."Коэффициент_наряда" AS "тип_доработок_Коэффициент_наряда",
 
-            Тип_мк.Имя AS Тип_мк_Имя,
-            Тип_мк.rgb AS Тип_мк_rgb
+            "Тип_мк"."Имя" AS "Тип_мк_Имя",
+            "Тип_мк"."rgb" AS "Тип_мк_rgb"
 
-             FROM mk LEFT JOIN дорезки_мк ON дорезки_мк.Номер_мк = mk.Пномер  
-            LEFT JOIN тип_дорезок ON тип_дорезок.Пномер = дорезки_мк.Причина  
-            LEFT JOIN тип_доработок ON тип_доработок.Пномер = mk.Тип_доработки 
-                            LEFT JOIN Тип_мк ON Тип_мк.Пномер = mk.Тип
-            WHERE mk.Пномер IN ({nums}) AND mk.Пномер != 0;"""
+             FROM mk LEFT JOIN дорезки_мк ON "дорезки_мк"."Номер_мк" = "mk"."Пномер"  
+            LEFT JOIN "тип_дорезок" ON "тип_дорезок"."Пномер" = "дорезки_мк"."Причина"  
+            LEFT JOIN "тип_доработок" ON "тип_доработок"."Пномер" = "mk"."Тип_доработки" 
+            LEFT JOIN "Тип_мк" ON "Тип_мк"."Пномер" = "mk"."Тип"
+            WHERE "mk"."Пномер" IN ({nums}) AND "mk"."Пномер" != 0;"""
 
-    res_xml_query = '''SELECT Номер_мк, data FROM res WHERE Номер_мк IN ({nums})'''
+    res_xml_query = '''SELECT "Номер_мк", "data" FROM res WHERE "Номер_мк" IN ({nums})'''
 
     nums_mk = {
         str(naryad['Номер_мк']): {'naryad': naryad}
@@ -1438,7 +1463,6 @@ def report_of_load_machine(self, nach, konec, podrazd=None, *args):
         fact_time_1 = nums_mk[str(mk_pk)]['naryad']['Фвремя'] if nums_mk[str(mk_pk)]['naryad']['Фвремя'] else float()
         fact_time_2 = nums_mk[str(mk_pk)]['naryad']['Фвремя2'] if nums_mk[str(mk_pk)]['naryad']['Фвремя2'] else float()
         fact_time = float(fact_time_1) + float(fact_time_2)
-        teo_time = nums_mk[str(mk_pk)]['naryad']['Твремя']
         instance = CMS.Marshrut_cards(mk_pk, db_naryad, db_resxml, row_from_db=mk,
                                       byte_data_res_from_db=dict_res.get(mk_pk))
         if instance.res:
@@ -1454,11 +1478,36 @@ def report_of_load_machine(self, nach, konec, podrazd=None, *args):
                     machines[oper_name].setdefault('Должности', set()).add(
                         operation_res.get('Опер_профессия_наименование', ''))
 
-        remains_time = (fact_time - teo_time) / len(operations_nar)
-        for op_nar, op_time in zip(operations_nar, operations_times):
-            _, name = op_nar.split('$')
-            machines[name]['Твремя'] += float(op_time)
-            machines[name]['Фвремя'] += (float(op_time) + float(remains_time))
+            operation_times = [
+                float(op_time)
+                for op_time in operations_times
+            ]
+
+            if (
+                    not operations_nar
+                    or len(operations_nar) != len(operation_times)
+            ):
+                print(
+                    f'МК {mk_pk}: не совпадает количество '
+                    f'операций и времён '
+                    f'({len(operations_nar)}/{len(operation_times)})'
+                )
+                continue
+
+            remains_time = (
+                                   fact_time - sum(operation_times)
+                           ) / len(operation_times)
+
+            for op_nar, op_time in zip(
+                    operations_nar,
+                    operation_times
+            ):
+                _, name = op_nar.split('$', 1)
+
+                machines[name]['Твремя'] += op_time
+                machines[name]['Фвремя'] += (
+                        op_time + remains_time
+                )
 
     for k, v in mach.items():
         machine = {'Станок': k, 'Твремя': 0, 'Фвремя': 0}
@@ -1583,9 +1632,20 @@ def gr_ud_proizv_cexa(self: mywindow, nach, konec, *args):
         DICT_MAT = F.deploy_dict_c(CSQ.custom_request_c(self.bd_mat, f"""SELECT * FROM nomen""", rez_dict=True), 'Код')
         DICT_FILTR = F.deploy_dict_c(
             CSQ.custom_request_c(self.bd_mat, f"""SELECT * FROM complex_filtr""", rez_dict=True), 'kod')
-        custom_request_c = f"""SELECT mk.Пномер, mk.Дата_завершения, mk.Количество, mk.xml  FROM mk WHERE Дата_завершения != ""
-                    and datetime(Дата_завершения) >= datetime("{nach}") and datetime(Дата_завершения) < datetime("{konec}")"""
-        rez_mk = CSQ.custom_request_c(self.bd_naryad, custom_request_c, rez_dict=True)
+        query = CSQ.SqlQuery(
+            sqlite=f"""SELECT mk."Пномер", mk."Дата_завершения", mk."Количество", mk.xml  FROM mk WHERE "Дата_завершения" != ""
+                    and datetime(Дата_завершения) >= datetime("{nach}") and datetime(Дата_завершения) < datetime("{konec}")""",
+            postgres=f"""
+            SELECT 
+                mk."Пномер", 
+                mk."Дата_завершения", 
+                mk."Количество", 
+                mk."xml"  
+            FROM mk WHERE "Дата_завершения" != ''
+                    and CAST(NULLIF(TRIM("Дата_завершения"), '') AS TIMESTAMP) >= CAST('{nach}' AS TIMESTAMP) 
+                    and CAST(NULLIF(TRIM("Дата_завершения"), '') AS TIMESTAMP) < CAST('{konec}' AS TIMESTAMP)"""
+        )
+        rez_mk = CSQ.custom_request_c(self.bd_naryad, query, rez_dict=True)
 
         list_hz_mat = []
 
@@ -1653,13 +1713,20 @@ def gr_ud_proizv_cexa(self: mywindow, nach, konec, *args):
         return
 
         # ====================Подсчет выработки =================
-
-    custom_request_c = f"""SELECT mk.Вес, naryad.Твремя, naryad.ДСЕ_ID, naryad.Операции, naryad.Опер_время, naryad.Номер_мк, naryad.Внеплан, naryad.ФИО, naryad.ФИО2,  
+    query = CSQ.SqlQuery(
+        sqlite=f"""SELECT mk.Вес, naryad.Твремя, naryad.ДСЕ_ID, naryad.Операции, naryad.Опер_время, naryad.Номер_мк, naryad.Внеплан, naryad.ФИО, naryad.ФИО2,  
             naryad.Фвремя, naryad.Фвремя2, naryad.Подтвержд_вып_дата, naryad.Виды_работ, naryad.Пномер FROM naryad INNER JOIN
              mk ON mk.Пномер = naryad.Номер_мк WHERE
         datetime(naryad.Подтвержд_вып_дата) > datetime("{nach}") and 
-        datetime(naryad.Подтвержд_вып_дата) <= datetime("{konec}") AND naryad.Внеплан = 0 AND naryad.Подтвержд_вып == 1"""
-    query = CSQ.custom_request_c(self.bd_naryad, custom_request_c, hat_c=True, rez_dict=True)
+        datetime(naryad.Подтвержд_вып_дата) <= datetime("{konec}") AND naryad.Внеплан = 0 AND naryad.Подтвержд_вып = 1""",
+        postgres=f"""SELECT mk."Вес", naryad."Твремя", naryad."ДСЕ_ID", naryad."Операции", naryad."Опер_время", naryad."Номер_мк", naryad."Внеплан", naryad."ФИО", naryad."ФИО2",  
+            naryad."Фвремя", naryad."Фвремя2", naryad."Подтвержд_вып_дата", naryad."Виды_работ", naryad."Пномер" 
+        FROM naryad 
+        INNER JOIN mk ON mk.Пномер = naryad.Номер_мк WHERE
+        NULLIF(naryad."Подтвержд_вып_дата", '')::timestamp > ('{nach}')::timestamp and 
+        NULLIF(naryad."Подтвержд_вып_дата", '')::timestamp <= ('{konec}')::timestamp AND naryad."Внеплан" = 0 AND NULLIF(naryad."Подтвержд_вып", 0) = 1"""
+    )
+    query = CSQ.custom_request_c(self.bd_naryad, query, hat_c=True, rez_dict=True)
 
     rez = dict()
     self.dict_tmp_emp_min = dict()
@@ -1692,7 +1759,13 @@ def gr_ud_proizv_cexa(self: mywindow, nach, konec, *args):
     # ===================подсчет постов   days ========================================
     custom_request_c = f"""SELECT jurnal.Дата, jurnal.ФИО FROM jurnal WHERE datetime(jurnal.Дата) > datetime("{nach}") 
             and datetime(jurnal.Дата) < datetime("{konec}")"""
-    rez_jur = CSQ.custom_request_c(self.bd_naryad, custom_request_c, hat_c=True, rez_dict=True)
+    query = CSQ.SqlQuery(
+        sqlite=f"""SELECT jurnal.Дата, jurnal.ФИО FROM jurnal WHERE datetime(jurnal.Дата) > datetime("{nach}") 
+            and datetime(jurnal.Дата) < datetime("{konec}")""",
+        postgres=f"""SELECT "jurnal"."Дата", "jurnal"."ФИО" FROM jurnal WHERE ("jurnal"."Дата")::timestamp > ('{nach}')::timestamp 
+            and ("jurnal"."Дата")::timestamp < ('{konec}')::timestamp;"""
+    )
+    rez_jur = CSQ.custom_request_c(self.bd_naryad, query, hat_c=True, rez_dict=True)
     for item in rez_jur:
         data = F.datetostr(F.strtodate(item['Дата']), '%Y-%m-%d')
         month = F.datetostr(F.strtodate(item['Дата']), "%Y-%m")
@@ -1709,13 +1782,33 @@ def gr_ud_proizv_cexa(self: mywindow, nach, konec, *args):
     # =====================================================================================
 
     # ===================подсчет веса по МК,КД,РЕС   ========================================
-    custom_request_c = f"""SELECT plan.МК, пл_топ.Уд_вес_ВО as Вес_ВО, "" as used FROM plan INNER JOIN пл_топ ON пл_топ.НомПл = plan.Пномер WHERE plan.МК != 0"""
+    custom_request_c = f"""
+        SELECT 
+            "plan"."МК", 
+            "пл_топ"."Уд_вес_ВО" as "Вес_ВО", 
+            '' as "used" 
+        FROM plan 
+        INNER JOIN "пл_топ" ON "пл_топ"."НомПл" = plan."Пномер" WHERE "plan"."МК" != 0;"""
     rez_kplan_ves_kd = F.deploy_dict_c(CSQ.custom_request_c(self.db_kplan, custom_request_c, rez_dict=True), 'МК')
 
-    custom_request_c = f"""SELECT mk.Пномер, mk.Номер_заказа, mk.Номер_проекта, mk.Вес, mk.Дата_завершения, mk.Ресурсная, mk.xml, mk.Количество, mk.Тип,
-     zagot.Вес_по_рес FROM mk INNER JOIN zagot ON zagot.Ном_МК = mk.Пномер WHERE mk.Дата_завершения != ""
-            and datetime(mk.Дата_завершения) >= datetime("{nach}") and datetime(mk.Дата_завершения) < datetime("{konec}")"""
-    rez_mk = CSQ.custom_request_c(self.bd_naryad, custom_request_c, rez_dict=True)
+    query = CSQ.SqlQuery(
+        sqlite=f"""
+        SELECT mk."Пномер", mk."Номер_заказа", mk."Номер_проекта", mk."Вес", mk."Дата_завершения", mk."Ресурсная", mk."xml", mk."Количество", mk."Тип",
+     zagot."Вес_по_рес" 
+     FROM mk 
+     INNER JOIN zagot ON zagot."Ном_МК" = mk."Пномер" 
+     WHERE mk."Дата_завершения" != ''
+            and datetime(mk.Дата_завершения) >= datetime("{nach}") and datetime(mk.Дата_завершения) < datetime("{konec}")""",
+        postgres=f"""
+        SELECT mk."Пномер", mk."Номер_заказа", mk."Номер_проекта", mk."Вес", mk."Дата_завершения", mk."Ресурсная", mk."xml", mk."Количество", mk."Тип",
+     zagot."Вес_по_рес" 
+     FROM mk 
+     INNER JOIN zagot ON zagot."Ном_МК" = mk."Пномер" 
+     WHERE mk."Дата_завершения" != ''
+            and NULLIF(mk."Дата_завершения", '')::timestamp >= ('{nach}')::timestamp 
+            and NULLIF(mk."Дата_завершения", '')::timestamp < ('{konec}')::timestamp
+""")
+    rez_mk = CSQ.custom_request_c(self.bd_naryad, query, rez_dict=True)
 
     viv = []
     minus = 0
@@ -1764,7 +1857,7 @@ def gr_ud_proizv_cexa(self: mywindow, nach, konec, *args):
     for month in list_month:
         name_table = F.datetostr(F.strtodate(month, "%Y-%m"), 'mtdz_%Y_%m_01')
         rab_dn_count = 0
-        q_days = CSQ.custom_request_c(self.bd_users, f"""SELECT * FROM {name_table} WHERE Пномер = 1""")
+        q_days = CSQ.custom_request_c(self.bd_users, f"""SELECT * FROM "{name_table}" WHERE "Пномер" = 1""")
         for j in range(3, len(q_days[0])):
             if q_days[1][j] == 0:
                 rab_dn_count += 1
@@ -1833,33 +1926,88 @@ def jurnal_zamech_dinamic(self, nach, konec, generate_chart=True):
 
 
 def jurnal_zamech(self, nach, konec, generate_chart=True):
-    custom_request_c = f"""SELECT zamech.Пномер,
-zamech.Дата_создания,
-mk.Номенклатура,
-mk.Номер_заказа,
-mk.Номер_проекта,
-mk.Вид,
-zamech.Инициатор,
-zamech.Виновное_подразделение,
-zamech.Виновное_подразделение as Рц_вп,
-zamech.Фсмещение_дней,
-zamech.Фпотери_времени_час,
-zamech.Фпотери_материала_марка,
-zamech.Фпотери_материала_вес,
-zamech.Содержание,
-kod_zamech.Имя as Код_замечания,
-zamech.Примечание,
-zamech.Пояснение_вп,
-kod_zamech_vp.Имя as Код_вп,
-zamech.Ответственный,
-zamech.ФИО_виновный
-FROM zamech 
-INNER JOIN mk ON mk.Пномер = zamech.МК
-INNER JOIN kod_zamech ON kod_zamech.Пномер = zamech.Код
-INNER JOIN kod_zamech_vp ON kod_zamech_vp.Пномер = zamech.Код_вп
+    custom_request_c = f"""SELECT "zamech"."Пномер",
+"zamech"."Дата_создания",
+"mk"."Номенклатура",
+"mk"."Номер_заказа",
+"mk"."Номер_проекта",
+"mk"."Вид",
+"zamech"."Инициатор",
+"zamech"."Виновное_подразделение",
+"zamech"."Виновное_подразделение" as Рц_вп,
+"zamech"."Фсмещение_дней",
+"zamech"."Фпотери_времени_час",
+"zamech"."Фпотери_материала_марка",
+"zamech"."Фпотери_материала_вес",
+"zamech"."Содержание",
+"kod_zamech"."Имя" as Код_замечания,
+"zamech"."Примечание",
+"zamech"."Пояснение_вп",
+"kod_zamech_vp"."Имя" as Код_вп,
+"zamech"."Ответственный",
+"zamech"."ФИО_виновный"
+FROM "zamech" 
+INNER JOIN mk ON "mk"."Пномер" = "zamech"."МК"
+INNER JOIN kod_zamech ON "kod_zamech"."Пномер" = "zamech"."Код"
+INNER JOIN kod_zamech_vp ON "kod_zamech_vp"."Пномер" = "zamech"."Код_вп"
     WHERE 
-                           datetime(zamech.Дата_создания) > datetime("{nach}") 
-                           and datetime(zamech.Дата_создания) < datetime("{konec}")"""
+                           datetime(zamech."Дата_создания") > datetime("{nach}") 
+                           and datetime(zamech."Дата_создания") < datetime("{konec}")"""
+    query = CSQ.SqlQuery(
+        sqlite=f"""SELECT "zamech"."Пномер",
+"zamech"."Дата_создания",
+"mk"."Номенклатура",
+"mk"."Номер_заказа",
+"mk"."Номер_проекта",
+"mk"."Вид",
+"zamech"."Инициатор",
+"zamech"."Виновное_подразделение",
+"zamech"."Виновное_подразделение" as Рц_вп,
+"zamech"."Фсмещение_дней",
+"zamech"."Фпотери_времени_час",
+"zamech"."Фпотери_материала_марка",
+"zamech"."Фпотери_материала_вес",
+"zamech"."Содержание",
+"kod_zamech"."Имя" as Код_замечания,
+"zamech"."Примечание",
+"zamech"."Пояснение_вп",
+"kod_zamech_vp"."Имя" as Код_вп,
+"zamech"."Ответственный",
+"zamech"."ФИО_виновный"
+FROM "zamech" 
+INNER JOIN mk ON "mk"."Пномер" = "zamech"."МК"
+INNER JOIN kod_zamech ON "kod_zamech"."Пномер" = "zamech"."Код"
+INNER JOIN kod_zamech_vp ON "kod_zamech_vp"."Пномер" = "zamech"."Код_вп"
+    WHERE 
+                           datetime(zamech."Дата_создания") > datetime("{nach}") 
+                           and datetime(zamech."Дата_создания") < datetime("{konec}")""",
+        postgres=f"""SELECT "zamech"."Пномер",
+"zamech"."Дата_создания",
+"mk"."Номенклатура",
+"mk"."Номер_заказа",
+"mk"."Номер_проекта",
+"mk"."Вид",
+"zamech"."Инициатор",
+"zamech"."Виновное_подразделение",
+"zamech"."Виновное_подразделение" as Рц_вп,
+"zamech"."Фсмещение_дней",
+"zamech"."Фпотери_времени_час",
+"zamech"."Фпотери_материала_марка",
+"zamech"."Фпотери_материала_вес",
+"zamech"."Содержание",
+"kod_zamech"."Имя" as Код_замечания,
+"zamech"."Примечание",
+"zamech"."Пояснение_вп",
+"kod_zamech_vp"."Имя" as Код_вп,
+"zamech"."Ответственный",
+"zamech"."ФИО_виновный"
+FROM "zamech" 
+INNER JOIN mk ON "mk"."Пномер" = "zamech"."МК"
+INNER JOIN kod_zamech ON "kod_zamech"."Пномер" = "zamech"."Код"
+INNER JOIN kod_zamech_vp ON "kod_zamech_vp"."Пномер" = "zamech"."Код_вп"
+    WHERE (zamech."Дата_создания")::timestamp > ('{nach}')::timestamp 
+                           and (zamech."Дата_создания")::timestamp < ('{konec}')::timestamp"""
+    )
     rez = CSQ.custom_request_c(self.bd_naryad, custom_request_c, hat_c=True)
     nk_podr = F.num_col_by_name_in_hat_c(rez, 'Виновное_подразделение')
     for i in range(len(rez)):
@@ -2089,7 +2237,7 @@ def  report_matrix_competence(self:mywindow, day:str):
                   FROM competence_vals
                        
                  WHERE 
-                       competence_vals.id_user == "{user.ID_ФизЛица}"
+                       competence_vals.id_user = '{user.ID_ФизЛица}'
                  ORDER BY competence_vals.created_at;
                 """,rez_dict=True)
 
@@ -2441,9 +2589,9 @@ def  report_matrix_competence(self:mywindow, day:str):
         def fnc_set_state(self: mywindow, s_num_state: int, list_s_num: tuple[int]):
             r, g, b = self.Data_plan.DICT_STATUS_POZ[s_num_state]['color'].split(';')
             state_name = self.Data_plan.DICT_STATUS_POZ[s_num_state]['Имя']
-            CSQ.custom_request_c(cfg.db_kplan,
-                                 f"""UPDATE plan SET (Статус) = ({s_num_state}) 
-                                     WHERE Пномер in ({CSQ.prepare_list_to_tuple(list_s_num)})""")
+            CSQ.custom_request_c(USRCNF.Config.project.db_kplan,
+                                 f"""UPDATE "plan" SET "Статус" = {s_num_state}
+                                     WHERE "Пномер" in ({CSQ.prepare_list_to_tuple(list_s_num)})""")
             with CQT.table_updating(tbl):
                 for row_tbl in range(tbl.rowCount()):
                     if int(tbl.item(row_tbl, nf['plan.Пномер']).text()) in list_s_num:
@@ -2507,30 +2655,31 @@ def report_by_open_naryads(self:mywindow, nach_data, kon_data):
     lbl_report = CQT.CustLabel(self.ui.lbl_sort_c_report)
     clear_text = lbl_report.get_user_data('clear_text', 'clear_text')
     dict_de = F.grouping_list_dicts(
-            CSQ.custom_request_c(self.bd_users, f"""SELECT rab_c.Код, rab_c.ref_Подразделения   FROM rab_c
+            CSQ.custom_request_c(self.bd_users, f"""SELECT rab_c."Код", rab_c."ref_Подразделения"   FROM rab_c
     
     WHERE rab_c.poki = {CFG.Config.place.poki}
 """, rez_dict=True),
                                                                             'ref_Подразделения')
 
     dict_dolgn_by_name = F.grouping_list_dicts(
-            CSQ.custom_request_c(self.bd_users, f"""SELECT Должности.Наименование, Должности.Подразделение_Key,
-            Подразделения.Наименование as Подразделениe  FROM Должности 
-    INNER JOIN Подразделения ON Подразделения.Подразделение_Key = Должности.Подразделение_Key 
-    WHERE Должности.Организация_Key = "{CFG.Config.place.Организация_Key}"
+            CSQ.custom_request_c(self.bd_users, f"""SELECT "Должности"."Наименование", "Должности"."Подразделение_Key",
+            "Подразделения"."Наименование" as "Подразделениe"  FROM "Должности" 
+    INNER JOIN "Подразделения" ON "Подразделения"."Подразделение_Key" = "Должности"."Подразделение_Key" 
+    WHERE "Должности"."Организация_Key" = '{CFG.Config.place.Организация_Key}'
 """, rez_dict=True),
                                                                             'Наименование')
 
     dict_rc = F.deploy_dict_c(
-        CSQ.custom_request_c(self.bd_users, f"""SELECT rab_c.Код, rab_c.empl_Подразделение as Имя, rab_c.Цвет, etaps.name    FROM rab_c
+        CSQ.custom_request_c(self.bd_users, f"""SELECT rab_c."Код", rab_c."empl_Подразделение" as "Имя", rab_c."Цвет", etaps.name    FROM rab_c
 
         INNER JOIN etaps ON etaps.s_num = rab_c.etaps_num AND rab_c.poki = {CFG.Config.place.poki}
-    """, rez_dict=True,attach_dbs=(self.bd_naryad)),
+    """, rez_dict=True,attach_dbs=self.bd_naryad),
         'Код')
     cuted_dict_rc = {k[:-1]:v for k,v in dict_rc.items()}
     dt_nach = F.strtodate(nach_data)
     dt_kon = F.strtodate(kon_data)
-    text = f"""
+    text = CSQ.SqlQuery(
+        sqlite=f"""
 SELECT 
          знпр.№проекта,
          знпр.№ERP,
@@ -2574,7 +2723,52 @@ SELECT
   AND plan.poki =  {CFG.Config.place.poki}
   ;
     
+    """,
+        postgres=f"""
+SELECT 
+         знпр."№проекта",
+         знпр."№ERP",
+       naryad."Пномер",
+       naryad."Номер_мк",
+       '' as "podrazdel",
+       '' as "_podrazdel_clr",
+       '' as "etap_name",
+       '' as "list_rc",
+       mk."Статус",
+       
+       naryad."Дата",
+       
+       naryad."Распред_ФИО",
+       naryad."Распред_дата",
+       naryad."Примечание",
+       naryad."Твремя",
+       naryad."Норма_времени",
+       
+       naryad."ФИО",
+       naryad."Фвремя",
+       '' as "Дельта",
+       naryad."ФИО2",
+       naryad."Фвремя2",
+       '' as "Дельта2",
+       
+       naryad."Подтвержд_вып_дата",
+       naryad."Подтвержд_вып_фио",
+       naryad."Профессии" as "_Профессии",
+       naryad."ДСЕ_ID" as "_ДСЕ_ID",
+       naryad."Операции" as "_Операции",
+       naryad."РЦ_наряд" as "_РЦ_наряд"
+       
+  FROM "naryad"
+   INNER JOIN "mk" ON mk."Пномер" = naryad."Номер_мк" 
+    INNER JOIN "пл_оуп" ON пл_оуп."НомПл" = mk."НомКплан" 
+    INNER JOIN "знпр" ON знпр."s_num" = пл_оуп."Пномер_ЗП" 
+    INNER JOIN "plan" ON plan."Пномер" = mk."НомКплан" 
+   where 
+  Date(naryad."Дата") BETWEEN '{F.datetostr(dt_nach,"%Y-%m-%d")}' AND '{F.datetostr(dt_kon,"%Y-%m-%d")}'
+  AND plan.poki =  {CFG.Config.place.poki}
+  ;
     """
+    )
     rez = CSQ.custom_request_c(self.bd_naryad, text, rez_dict=True, attach_dbs=(self.db_kplan))
 
     if rez is None:
@@ -2681,7 +2875,8 @@ SELECT
 @CQT.onerror
 def not_upload_erp_nar(self:mywindow, nach_data, kon_data):
     mark_sudden_tasks = USRCNF.Config.place.КодыНарядов.Плановая #24.12.2025
-    custom_request_c = f"""
+    custom_request_c = CSQ.SqlQuery(
+        sqlite=f"""
         SELECT 
             strftime('%d.%m.%Y',jurnal.Дата) as Дата, 
             CASE WHEN знпр.№ERP IS NOT NULL 
@@ -2708,7 +2903,36 @@ def not_upload_erp_nar(self:mywindow, nach_data, kon_data):
             and jurnal.Статус == 'Начат' 
             and datetime(jurnal.Дата) > datetime("{nach_data}") 
             and datetime(jurnal.Дата) < datetime("{kon_data}")
+               """,
+        postgres=f"""
+        SELECT 
+            TO_CHAR(TO_DATE('YYYY-MM-DD', jurnal."Дата")) as "Дата", 
+            CASE WHEN знпр."№ERP" IS NOT NULL 
+                THEN знпр."№ERP" 
+                ELSE mk."Номер_заказа" 
+            END AS "ПУ", 
+            CASE WHEN знпр."№проекта" IS NOT NULL 
+                THEN знпр."№проекта" 
+                ELSE mk."Номер_проекта" 
+            END AS "Номер проекта", 
+            jurnal."ФИО",
+            '' as "Должность", 
+            '' as "Подразделение",  
+            naryad."Пномер" as "Номер наряда",
+            naryad."Подтвержд_вып_дата" as "Подтвержден",
+            jurnal."Подытог_нормы" as "Труды в ЕРП",
+            jurnal."Дата_выгрузки_ЕРП" as "Выгружено в ЕРП"
+        FROM jurnal
+            INNER JOIN "naryad" ON "naryad"."Пномер" = "jurnal"."Номер_наряда" 
+            INNER JOIN "mk" ON "mk"."Пномер" = "naryad"."Номер_мк" 
+            LEFT JOIN "пл_оуп" ON "пл_оуп"."НомПл" = "mk"."НомКплан" 
+            LEFT JOIN "знпр" ON "знпр"."s_num" = "пл_оуп"."Пномер_ЗП" 
+        WHERE naryad."Внеплан" = {mark_sudden_tasks} 
+            and jurnal."Статус" = 'Начат' 
+            and ("jurnal"."Дата")::timestamp > ('{nach_data}')::timestamp 
+            and ("jurnal"."Дата")::timestamp < ('{kon_data}')::timestamp
                """
+    )
     rez = CSQ.custom_request_c(self.bd_naryad, custom_request_c, hat_c=True, rez_dict=True,attach_dbs=(self.db_kplan))
     for item in rez:
         if item['ФИО'] in self.DICT_EMPLOEE_FULL_WITH_DEL:
@@ -2728,7 +2952,8 @@ def not_upload_erp_nar(self:mywindow, nach_data, kon_data):
 def dinam_proizv_sotr(self:mywindow, nach_data, kon_data, fio):
     nach_data_obj =  F.strtodate(nach_data)
     kon_data_obj = F.strtodate(kon_data)
-    custom_request_c = f"""SELECT 
+    custom_request_c = CSQ.SqlQuery(
+        sqlite=f"""SELECT 
                             naryad.ФИО, 
                             naryad.Фвремя, 
                             naryad.ФИО2, 
@@ -2740,7 +2965,21 @@ def dinam_proizv_sotr(self:mywindow, nach_data, kon_data, fio):
                            WHERE (naryad.ФИО == "{fio}" OR naryad.ФИО2 == "{fio}") AND   naryad.Внеплан == 0 and naryad.Подтвержд_вып == 1 
                            and datetime(naryad.Подтвержд_вып_дата) > datetime("{nach_data}") 
                            and datetime(naryad.Подтвержд_вып_дата) < datetime("{kon_data}")
+               """,
+        postgres=f"""SELECT 
+                            naryad."ФИО", 
+                            naryad."Фвремя", 
+                            naryad."ФИО2", 
+                            naryad."Фвремя2", 
+                            naryad."Твремя", 
+                            naryad."Норма_времени",
+                            naryad."Подтвержд_вып_дата"
+                          FROM naryad
+                           WHERE (naryad."ФИО" = '{fio}' OR naryad."ФИО2" = '{fio}') AND   naryad."Внеплан" = 0 and naryad."Подтвержд_вып" = 1 
+                            AND NULLIF(naryad."Подтвержд_вып_дата", '')::TIMESTAMP > ('{nach_data}')::TIMESTAMP 
+                            AND NULLIF(naryad."Подтвержд_вып_дата", '')::TIMESTAMP < ('{kon_data}')::TIMESTAMP
                """
+    )
     rez = CSQ.custom_request_c(self.bd_naryad, custom_request_c, hat_c=True, rez_dict=True)
 
     dict_week = dict()
@@ -2913,9 +3152,14 @@ def otkl_tabel_trdz(self:mywindow, nach_data, kon_data, podrazd):
     return rez
 
 def jurnal_tk(self, nach, konec):
-    custom_request_c = f"""SELECT * FROM jurnal_td WHERE 
+    custom_request_c = CSQ.SqlQuery(
+        sqlite=f"""SELECT * FROM jurnal_td WHERE 
                            datetime(Дата) > datetime("{nach}") 
-                           and datetime(Дата) < datetime("{konec}")"""
+                           and datetime(Дата) < datetime("{konec}")""",
+        postgres=f"""SELECT * FROM jurnal_td WHERE 
+                           ("Дата")::timestamp > ('{nach}')::timestamp 
+                           and ("Дата")::timestamp < ('{konec}')::timestamp"""
+    )
     rez = CSQ.custom_request_c(self.db_dse, custom_request_c, hat_c=True)
     rez.append(['' for _ in rez[0]])
     rez.append(['' for _ in rez[0]])
@@ -2923,7 +3167,8 @@ def jurnal_tk(self, nach, konec):
 
 
 def norm_mat_po_zav_nar(self, nach_data, kon_data):
-    custom_request_c = f"""SELECT DISTINCT
+    custom_request_c = CSQ.SqlQuery(
+        sqlite=f"""SELECT DISTINCT
                            naryad.Пномер, naryad.Номер_мк, mk.Номенклатура, mk.Номер_заказа, naryad.Твремя, naryad.Внеплан, 
                            naryad.ФИО as ФИО , naryad.ФИО2 as ФИО2, 
                            naryad.Фвремя, naryad.Фвремя2 ,  jurnal.ФИО as ФИОЖ, naryad.Примечание, naryad.ДСЕ, 
@@ -2931,14 +3176,42 @@ def norm_mat_po_zav_nar(self, nach_data, kon_data):
                           FROM jurnal
                            INNER JOIN naryad ON jurnal.Номер_наряда = naryad.Пномер
                            INNER JOIN mk ON mk.Пномер = naryad.Номер_мк
-                           WHERE  naryad.Внеплан == 0 and naryad.Подтвержд_вып == 1 and
+                           WHERE  naryad.Внеплан = 0 and naryad.Подтвержд_вып = 1 and
                            jurnal.Статус == "Завершен" and datetime(jurnal.Дата) > datetime("{nach_data}") 
                            and datetime(jurnal.Дата) < datetime("{kon_data}")
-               """
+               """,
+        postgres=f"""SELECT DISTINCT
+        "naryad"."Пномер", 
+        "naryad"."Номер_мк", 
+        "mk"."Номенклатура", 
+        "mk"."Номер_заказа", 
+        "naryad"."Твремя", 
+        "naryad"."Внеплан", 
+        "naryad"."ФИО" as ФИО , 
+        "naryad"."ФИО2" as ФИО2, 
+        "naryad"."Фвремя", 
+        "naryad"."Фвремя2",  
+        "jurnal"."ФИО" as "ФИОЖ", 
+        "naryad"."Примечание", 
+        "naryad"."ДСЕ", 
+        "naryad"."Операции", 
+        "naryad"."Опер_время", 
+        "naryad"."ДСЕ_ID", 
+        "naryad"."Опер_колво", 
+        "naryad"."Виды_работ"
+    FROM jurnal
+    INNER JOIN "naryad" ON "jurnal"."Номер_наряда" = "naryad"."Пномер"
+    INNER JOIN "mk" ON "mk"."Пномер" = "naryad"."Номер_мк"
+    WHERE "naryad"."Внеплан" = 0 
+        AND "naryad"."Подтвержд_вып" = 1 
+        AND "jurnal"."Статус" = "Завершен" 
+        AND ("jurnal"."Дата")::timestamp > ('{nach_data}')::timestamp 
+        AND ("jurnal"."Дата")::timestamp < ('{kon_data}')::timestamp;"""
+    )
     rez = CSQ.custom_request_c(self.bd_naryad, custom_request_c, hat_c=True, rez_dict=True)
 
     tuple_mk = tuple(set(_['Номер_мк'] for _ in rez))
-    custom_request_c = f"""SELECT * FROM res WHERE Номер_мк in {tuple_mk};"""
+    custom_request_c = f"""SELECT * FROM "res" WHERE "Номер_мк" in {tuple_mk};"""
     rez_res = CSQ.custom_request_c(self.db_resxml, custom_request_c, hat_c=True, rez_dict=True)
     rez_res = F.deploy_dict_c(rez_res, 'Номер_мк')
     rez_list = [
@@ -2992,11 +3265,32 @@ def norm_mat_po_zav_nar(self, nach_data, kon_data):
 def neosv_ves_po_sozd_nar(self, podrazd):
     podrazd = podrazd.split('|')[0]
 
-    custom_request_c = """SELECT mk.Пномер, mk.Номер_заказа, mk.Номер_проекта, naryad.Пномер,naryad.Дата, naryad.ФИО, naryad.Фвремя, naryad.ФИО2, naryad.Фвремя2, naryad.Задание,
-     naryad.Внеплан, naryad.Автор, naryad.Компл_ФИО, naryad.Компл_Дата, naryad.Операции, naryad.Опер_время, naryad.Твремя, 0 as Освоено, 0 as Освоено2, 0 as Неосв_кг_сумм FROM naryad 
-INNER JOIN mk ON mk.Пномер = naryad.Номер_мк
- WHERE ((naryad.ФИО != '' and naryad.Фвремя == "") or (naryad.ФИО2 != '' and naryad.Фвремя2 == "") or (naryad.ФИО2 == '' and naryad.ФИО == "")) 
- and mk.Дата_завершения == ''"""
+    custom_request_c = """SELECT 
+        mk."Пномер", mk."Номер_заказа", 
+        mk."Номер_проекта", 
+        naryad."Пномер",
+        naryad."Дата", 
+        naryad."ФИО", 
+        naryad."Фвремя", 
+        naryad."ФИО2", 
+        naryad.Фвремя2, 
+        naryad.Задание,
+         naryad."Внеплан", 
+         naryad."Автор", 
+         naryad."Компл_ФИО", 
+         naryad."Компл_Дата", 
+         naryad."Операции", 
+         naryad."Опер_время", 
+         naryad."Твремя", 
+         0 as "Освоено", 
+         0 as "Освоено2", 
+         0 as "Неосв_кг_сумм" 
+    FROM naryad 
+    INNER JOIN mk ON mk.Пномер = naryad.Номер_мк
+     WHERE (("naryad"."ФИО" != '' and "naryad"."Фвремя" = '') 
+        OR ("naryad"."ФИО2" != '' and "naryad"."Фвремя2" = '') 
+        OR ("naryad"."ФИО2" = '' and "naryad"."ФИО" = '')) 
+        AND "mk"."Дата_завершения" = '';"""
     rez = CSQ.custom_request_c(self.bd_naryad, custom_request_c, hat_c=True, rez_dict=True)
     list_res = []
     for i in range(len(rez)):
@@ -3011,7 +3305,7 @@ INNER JOIN mk ON mk.Пномер = naryad.Номер_мк
 
                 nom_nar = rez[i]['Пномер']
                 summ = CSQ.custom_request_c(self.bd_naryad,
-                                            f"""SELECT sum(Подытог) FROM jurnal WHERE ФИО == "{fio}" and Номер_наряда == {nom_nar}""")
+                                            f"""SELECT SUM("Подытог") FROM "jurnal" WHERE "ФИО" = '{fio}' and "Номер_наряда" = {nom_nar}""")
                 rez[i]['Освоено'] == summ[-1][0]
                 try:
                     if rez[i]['Освоено'] < rez[i]['Твремя']:
@@ -3027,7 +3321,7 @@ INNER JOIN mk ON mk.Пномер = naryad.Номер_мк
             if fio2_rc == podrazd:
                 nom_nar = rez[i]['Пномер']
                 summ = CSQ.custom_request_c(self.bd_naryad,
-                                            f"""SELECT sum(Подытог) FROM jurnal WHERE ФИО == "{fio2}" and Номер_наряда == {nom_nar}""")
+                                            f"""SELECT SUM("Подытог") FROM jurnal WHERE "ФИО" = '{fio2}' and "Номер_наряда" = {nom_nar}; """)
                 rez[i]['Освоено2'] == summ[-1][0]
                 try:
                     if rez[i]['Освоено2'] < rez[i]['Твремя']:
@@ -3071,7 +3365,8 @@ def virabotka_sotr_za_mes(self: mywindow, nach_data, kon_data, *args):
             "Отклонение фактических показателей от предельных норм  мощностей, в мин.", "Причина отклонения",
             "Соблюдение норм/достижение результата, в %"]]
     pp = 1
-    custom_request_c = f"""SELECT DISTINCT
+    custom_request_c = CSQ.SqlQuery(
+        sqlite=f"""SELECT DISTINCT
                         naryad.Пномер, naryad.Твремя, naryad.Внеплан, 
                         naryad.ФИО as ФИО , naryad.ФИО2 as ФИО2, 
                         naryad.Фвремя, naryad.Фвремя2 ,  jurnal.ФИО as ФИОЖ, naryad.Примечание, naryad.ДСЕ, naryad.Операции, naryad.Опер_время,
@@ -3080,13 +3375,38 @@ def virabotka_sotr_za_mes(self: mywindow, nach_data, kon_data, *args):
                         WHERE naryad.Внеплан != 1 AND naryad.Подтвержд_вып == 1 and 
                         jurnal.Статус == "Завершен" and datetime(jurnal.Дата) > datetime("{nach_data}") 
                         and datetime(jurnal.Дата) < datetime("{kon_data}")
+            """,
+        postgres=f"""
+                SELECT DISTINCT
+                    "naryad"."Пномер", 
+                    "naryad"."Твремя", 
+                    "naryad"."Внеплан", 
+                    "naryad"."ФИО" as "ФИО", 
+                    naryad."ФИО2" as "ФИО2", 
+                    "naryad"."Фвремя", 
+                    "naryad"."Фвремя2" ,  
+                    "jurnal"."ФИО" as "ФИОЖ", 
+                    "naryad"."Примечание", 
+                    "naryad"."ДСЕ", 
+                    "naryad"."Операции", 
+                    "naryad"."Опер_время",
+                    "naryad"."Категория_внепл", 
+                    "naryad"."Виды_работ" 
+                FROM jurnal
+                INNER JOIN naryad ON "jurnal"."Номер_наряда" = "naryad"."Пномер"
+                WHERE "naryad"."Внеплан" != 1 
+                    AND "naryad"."Подтвержд_вып" = 1 
+                    AND jurnal."Статус" = 'Завершен' 
+                    AND (jurnal."Дата")::timestamp > ('{nach_data}')::timestamp 
+                    AND (jurnal."Дата")::timestamp < ('{kon_data}')::timestamp
             """
+    )
     list_naryadov = CSQ.custom_request_c(self.bd_naryad, custom_request_c, hat_c=False, rez_dict=True)
     for i, item in enumerate(list_naryadov):
         nom_nar = item['Пномер']
         fio = item['ФИОЖ']
         if fio not in self.DICT_EMPLOEE_FULL:
-            query = f"""SELECT Должность, Подразделение FROM employee WHERE ФИО = '{fio}'"""
+            query = f"""SELECT "Должность", "Подразделение" FROM employee WHERE "ФИО" = '{fio}'"""
             empl = CSQ.custom_request_c(self.bd_users, query, rez_dict=True)
             if empl != False and len(empl) >= 1:
                 dolgn = empl[0]['Должность']
@@ -3107,7 +3427,7 @@ def virabotka_sotr_za_mes(self: mywindow, nach_data, kon_data, *args):
         list_time_rabot = [F.valm(_) for _ in str_time_rabot.split("|")]
         list_dse = item['ДСЕ'].split("|")
         list_prim = CSQ.custom_request_c(self.bd_naryad,
-                                         f"""SELECT Примечание FROM jurnal WHERE Номер_наряда == {nom_nar} AND ФИО == '{fio}';""",
+                                         f"""SELECT "Примечание" FROM "jurnal" WHERE "Номер_наряда" = {nom_nar} AND "ФИО" = '{fio}';""",
                                          hat_c=False)
 
         try:
@@ -3534,7 +3854,7 @@ def create_gant(self, *args):
             return
         data_list = args[0]
         dict_color = CSQ.custom_request_c(self.db_kplan,
-                                          f"""SELECT napravlenie.Цвет , napravlenie.name FROM napravlenie """,
+                                          f"""SELECT "napravlenie"."Цвет" , "napravlenie"."name" FROM "napravlenie"; """,
                                           rez_dict=True)
         dict_color = F.deploy_dict_c(dict_color, 'name')
         fig = fig_sravn_norm_vr_po_napr(self, data_list, dict_color)
@@ -3904,7 +4224,7 @@ def podrazdel_kod(self, *args):
     self.ui.cmb_podrazdelenie.setDisabled(False)
     self.ui.cmb_podrazdelenie.clear()
     self.ui.cmb_podrazdelenie.addItem('')
-    custom_request_c = f'''SELECT * FROM rab_c'''
+    custom_request_c = f'''SELECT * FROM "rab_c";'''
     spis_cexov = CSQ.custom_request_c(self.bd_users, custom_request_c, hat_c=False)
     for cex in spis_cexov:
         if cex[0][-2:] == '00':
@@ -3915,7 +4235,12 @@ def podrazdel_from_dolgn_etap(self, *args):
     self.ui.cmb_podrazdelenie.setDisabled(False)
     self.ui.cmb_podrazdelenie.clear()
     self.ui.cmb_podrazdelenie.addItem('')
-    custom_request_c = f'''SELECT Distinct Подразделение FROM dolgn_etap WHERE Производство == "{self.USER_CONFIG.Organization['Значение']}" ORDER BY Подразделение;'''
+    custom_request_c = f'''
+        SELECT 
+            DISTINCT "Подразделение" 
+        FROM "dolgn_etap" 
+        WHERE "Производство" = '{self.USER_CONFIG.Organization['Значение']}' 
+        ORDER BY "Подразделение";'''
     spis_cexov = CSQ.custom_request_c(self.bd_naryad, custom_request_c,one_column=True,hat_c=False)
     self.ui.cmb_podrazdelenie.addItems(spis_cexov)
 
@@ -3973,13 +4298,13 @@ def ready_procent(self):
     def get_order_project_time(pu, get_current_month=False):
         # получение времени работы по нарядам
         if get_current_month:
-            query = f"""SELECT jurnal.Номер_наряда, jurnal.Подытог FROM jurnal 
-                        INNER JOIN naryad ON jurnal.Номер_наряда == naryad.Пномер 
-                        INNER JOIN mk ON naryad.Номер_мк == mk.Пномер WHERE mk.Номер_заказа = '{pu}' AND naryad.РЦ_наряд IN ('0101') """  # AND (MONTH(naryad.Дата) = MONTH(CURRENT_DATE()) AND YEAR(naryad.Дата) = YEAR(CURRENT_DATE()))
+            query = f"""SELECT "jurnal"."Номер_наряда", "jurnal"."Подытог" FROM jurnal 
+                        INNER JOIN naryad ON "jurnal"."Номер_наряда" = "naryad"."Пномер" 
+                        INNER JOIN mk ON naryad."Номер_мк" = mk."Пномер" WHERE mk."Номер_заказа" = '{pu}' AND naryad."РЦ_наряд" IN ('0101') """  # AND (MONTH(naryad.Дата) = MONTH(CURRENT_DATE()) AND YEAR(naryad.Дата) = YEAR(CURRENT_DATE()))
         else:
-            query = f"""SELECT jurnal.Номер_наряда, jurnal.Подытог FROM jurnal 
-                        INNER JOIN naryad ON jurnal.Номер_наряда == naryad.Пномер 
-                        INNER JOIN mk ON naryad.Номер_мк == mk.Пномер WHERE mk.Номер_заказа = '{pu}' """
+            query = f"""SELECT "jurnal"."Номер_наряда", "jurnal"."Подытог" FROM jurnal 
+                        INNER JOIN naryad ON "jurnal"."Номер_наряда" = "naryad"."Пномер" 
+                        INNER JOIN mk ON naryad."Номер_мк" = mk."Пномер" WHERE mk."Номер_заказа" = '{pu}' """
 
         summ_time = CSQ.custom_request_c(self.bd_naryad, query, hat_c=False, rez_dict=False)
         orders = get_max_time_order(summ_time)
@@ -4069,10 +4394,13 @@ def analysis_vneplan_by_vid_rab(self: mywindow, nach, konec, podrazd=None, *args
     DICT_KAT_VNEPL = F.deploy_dict_c(
         CSQ.custom_request_c(self.bd_naryad, f"""SELECT * FROM category_vnepl WHERE kod > 0 and poki = {poki}""",
                              rez_dict=True), 'value')
-    RESP_PROF = CSQ.custom_request_c(self.bd_users,
-                                     f'''SELECT * FROM professions INNER JOIN vid_rab_po_dolg 
-                ON vid_rab_po_dolg.Вид_работ = professions.вид_работ,
-                 group_vid_rab_for_plan ON group_vid_rab_for_plan.name=vid_rab_po_dolg.group_for_plan  WHERE group_vid_rab_for_plan.composite = 0'''
+    RESP_PROF = CSQ.custom_request_c(
+        self.bd_users,
+        f'''
+            SELECT * FROM "professions" 
+            INNER JOIN "vid_rab_po_dolg" ON "vid_rab_po_dolg"."Вид_работ" = "professions"."вид_работ"
+            INNER JOIN "group_vid_rab_for_plan" ON "group_vid_rab_for_plan"."name" = "vid_rab_po_dolg"."group_for_plan" 
+            WHERE "group_vid_rab_for_plan"."composite" = 0'''
                                      , hat_c=False, rez_dict=True)
     DICT_PROF_ALL = F.deploy_dict_c(RESP_PROF, 'Вид_работ')
     DICT_PROF_ALL_BY_PROF_COD = F.deploy_dict_c(RESP_PROF, 'код')
@@ -4084,32 +4412,32 @@ def analysis_vneplan_by_vid_rab(self: mywindow, nach, konec, podrazd=None, *args
     set_mk = set()
     nar_pnoms = ', '.join(str(item['Пномер']) for _, _, _, _, item in list_vid_rab)
     response = CSQ.custom_request_c(self.bd_naryad, f'''SELECT 
-       jurnal.Пномер,
-       jurnal.Дата,
-       jurnal.Штамп,
-       jurnal.Номер_наряда,
-       jurnal.ФИО,
-       jurnal.Подытог,
-       jurnal.Подытог_нормы,
-       jurnal.Статус,
-       jurnal.Примечание,
-       jurnal.Ном_заверш,
-       jurnal.Дата_выгрузки_ЕРП,
-       jurnal.ФИО_выгрузки_ЕРП,
-       jurnal.Файл_выгрузки_ЕРП,
-       jurnal.Минут_выгружено_ЕРП,
-       jurnal.base_ERP
+       "jurnal"."Пномер",
+       "jurnal"."Дата",
+       "jurnal"."Штамп",
+       "jurnal"."Номер_наряда",
+       "jurnal"."ФИО",
+       "jurnal"."Подытог",
+       "jurnal"."Подытог_нормы",
+       "jurnal"."Статус",
+       "jurnal"."Примечание",
+       "jurnal"."Ном_заверш",
+       "jurnal"."Дата_выгрузки_ЕРП",
+       "jurnal"."ФИО_выгрузки_ЕРП",
+       "jurnal"."Файл_выгрузки_ЕРП",
+       "jurnal"."Минут_выгружено_ЕРП",
+       "jurnal"."base_ERP"
      
-     FROM jurnal 
-                                                    INNER JOIN naryad ON naryad.Пномер = jurnal.Номер_наряда
-                                                    INNER JOIN mk ON mk.Пномер = naryad.Номер_мк
-                                                    INNER JOIN plan ON plan.Пномер = mk.НомКплан 
-                                                    WHERE jurnal.Номер_наряда IN ({nar_pnoms}) 
-                                                    and plan.poki == {self.place.poki}''' , rez_dict=True, attach_dbs=(self.db_kplan))
+    FROM jurnal 
+    INNER JOIN "naryad" ON naryad."Пномер" = "jurnal"."Номер_наряда"
+    INNER JOIN "mk" ON mk."Пномер" = "naryad"."Номер_мк"
+    INNER JOIN "plan" ON plan."Пномер" = "mk"."НомКплан" 
+    WHERE "jurnal"."Номер_наряда" IN ({nar_pnoms}) 
+    and plan.poki = {self.place.poki}''' , rez_dict=True, attach_dbs=self.db_kplan)
     journal_list = defaultdict(list)
     for item in response:
         journal_list[item['Номер_наряда']].append(item)
-    
+
     dict_date_first_rabot = dict()
     
     for type_nar, etap, kat, time, item in list_vid_rab:
@@ -4294,7 +4622,8 @@ def analysis_effectiv_work_per_minute(self: mywindow, nach, konec, podrazd=None,
     if F.existence_file_c(name_file):
         list_mk = F.load_file_pickle(name_file)
     else:
-        list_mk = CSQ.custom_request_c(self.bd_naryad, f"""
+        query = CSQ.SqlQuery(
+            sqlite=f"""
                 SELECT 
                 mk.Пномер,
                 mk.Дата,
@@ -4343,13 +4672,69 @@ def analysis_effectiv_work_per_minute(self: mywindow, nach, konec, podrazd=None,
                                 LEFT JOIN Тип_мк ON Тип_мк.Пномер = mk.Тип            
                                 WHERE mk.Дата_завершения != ""
             and datetime(mk.Дата_завершения) >= datetime("{nach}") and datetime(mk.Дата_завершения) < datetime("{konec}")
-                   ;""", rez_dict=True)
+                   ;""",
+            postgres=f"""
+            SELECT 
+                "mk"."Пномер",
+                "mk"."Дата",
+                "mk"."Статус",
+                "mk"."Номенклатура",
+                "mk"."Номер_заказа",
+                "mk"."Номер_проекта",
+                "mk"."Вид",
+                "mk"."Примечание",
+                "mk"."Основание",
+                "mk"."Прогресс",
+                "mk"."Приоритет",
+                "mk"."Направление",
+                "mk"."Вес",
+                "mk"."xml",
+                "mk"."Количество",
+                "mk"."Статус_ЧПУ",
+                "mk"."Ресурсная",
+                "mk"."Дата_завершения",
+                "mk"."Коэф_парал",
+                "mk"."Обеспечение",
+                "mk"."Место",
+                "mk"."Искл_план_рм",
+                "mk"."Тип",
+                "mk"."Ресурсная_дата",
+                "mk"."ФИО",
+                "mk"."НомКплан",
+                "mk"."check_execute_opers",
+                "mk"."Тип_доработки",
+                "mk"."На_удал",
+                
+                "дорезки_мк"."Причина" AS "дорезки_мк_Причина",
+                
+                "тип_дорезок"."Имя" AS "тип_дорезок_Имя",
+                "тип_дорезок"."Коэффициент_наряда" AS "тип_дорезок_Коэффициент_наряда",
+                
+                "тип_доработок"."Имя" AS "тип_доработок_Имя",
+                "тип_доработок"."Коэффициент_наряда" AS "тип_доработок_Коэффициент_наряда",
+                
+                "Тип_мк"."Имя" AS "Тип_мк_Имя",
+                "Тип_мк"."rgb" AS "Тип_мк_rgb"
+
+            FROM mk 
+            LEFT JOIN "дорезки_мк" ON "дорезки_мк"."Номер_мк" = "mk"."Пномер"  
+            LEFT JOIN "тип_дорезок" ON "тип_дорезок"."Пномер" = "дорезки_мк"."Причина"  
+            LEFT JOIN "тип_доработок" ON "тип_доработок"."Пномер" = "mk"."Тип_доработки" 
+            LEFT JOIN "Тип_мк" ON "Тип_мк"."Пномер" = "mk"."Тип"            
+            WHERE mk.Дата_завершения != ''
+                AND NULLIF(mk."Дата_завершения", '')::timedelta >= ('{nach}')::timestamp 
+                AND NULLIF(mk."Дата_завершения", '')::timedelta < ('{konec}')::timestamp;""")
+        list_mk = CSQ.custom_request_c(self.bd_naryad, query, rez_dict=True)
         F.save_file_pickle(name_file, list_mk)
 
-    DICT_PROF_ALL = F.deploy_dict_c(CSQ.custom_request_c(self.bd_users,
-                                                         f'''SELECT * FROM professions INNER JOIN vid_rab_po_dolg 
-            ON vid_rab_po_dolg.Вид_работ = professions.вид_работ,
-             group_vid_rab_for_plan ON group_vid_rab_for_plan.name=vid_rab_po_dolg.group_for_plan WHERE group_vid_rab_for_plan.composite = 0'''
+    DICT_PROF_ALL = F.deploy_dict_c(CSQ.custom_request_c(
+        self.bd_users,
+        f'''
+        SELECT * 
+        FROM professions 
+        INNER JOIN "vid_rab_po_dolg" ON "vid_rab_po_dolg"."Вид_работ" = "professions"."вид_работ"
+        INNER JOIN "group_vid_rab_for_plan" ON "group_vid_rab_for_plan"."name" = "vid_rab_po_dolg"."group_for_plan" 
+        WHERE "group_vid_rab_for_plan"."composite" = 0;'''
                                                          , hat_c=False, rez_dict=True), 'код')
 
     name_file = F.put_po_umolch() + F.sep() + F.now("analysis_effectiv_work_per_minute_dict_res_%Y%m%d.pickle")
@@ -4358,7 +4743,7 @@ def analysis_effectiv_work_per_minute(self: mywindow, nach, konec, podrazd=None,
     else:
         list_nom_mk = [_['Пномер'] for _ in list_mk]
         list_res = CSQ.custom_request_c(self.db_resxml, f'''SELECT 
-        Номер_мк, data FROM res WHERE Номер_мк in ({CSQ.prepare_list_to_tuple(list_nom_mk)});''', rez_dict=True)
+        "Номер_мк", data FROM res WHERE "Номер_мк" in ({CSQ.prepare_list_to_tuple(list_nom_mk)});''', rez_dict=True)
         dict_res = F.deploy_dict_c(list_res, 'Номер_мк')
         F.save_file_pickle(name_file, dict_res)
 
@@ -4439,22 +4824,24 @@ def analysis_effectiv_work_per_minute(self: mywindow, nach, konec, podrazd=None,
 def ready_procent_ver2(self, nach, konec, podrazd='010301', *args):
     ''' строки формируются списками, нулевая строка- заголовки
     '''
-    query = f'''SELECT naryad.Номер_мк, naryad.Подтвержд_вып_дата 
-, mk.Номер_заказа 
-, mk.Номер_проекта 
-, mk.Вид 
-, mk.Вес 
-, mk.Номенклатура  
-, Тип_мк.Имя  as Тип
-, naryad.ФИО 
-, naryad.Фвремя 
-, naryad.ФИО2 
-, naryad.Фвремя2 
-, naryad.Твремя 
-, naryad.Операции 
-, naryad.Опер_время 
- FROM naryad INNER JOIN mk ON mk.Пномер = naryad.Номер_мк,
-  Тип_мк ON Тип_мк.Пномер = mk.Тип WHERE mk.Статус == "Открыта" '''
+    query = f'''SELECT "naryad"."Номер_мк", "naryad"."Подтвержд_вып_дата" 
+, "mk"."Номер_заказа" 
+, "mk"."Номер_проекта" 
+, "mk"."Вид" 
+, "mk"."Вес" 
+, "mk"."Номенклатура"  
+, "Тип_мк"."Имя"  as Тип
+, "naryad"."ФИО" 
+, "naryad"."Фвремя" 
+, "naryad"."ФИО2" 
+, "naryad"."Фвремя2" 
+, "naryad"."Твремя" 
+, "naryad"."Операции" 
+, "naryad"."Опер_время" 
+ FROM naryad 
+INNER JOIN mk ON "mk"."Пномер" = "naryad"."Номер_мк"
+INNER JOIN "Тип_мк" ON "Тип_мк"."Пномер" = "mk"."Тип" 
+WHERE "mk"."Статус" = 'Открыта';'''
     resp = CSQ.custom_request_c(self.bd_naryad, query, rez_dict=True)
 
     dict_mk = dict()
@@ -4526,12 +4913,22 @@ def ready_procent_ver2(self, nach, konec, podrazd='010301', *args):
 
 
 def sravn_nv_napr(self, data_nach, data_kon):
-    query = f"""SELECT DISTINCT naryad.Пномер, naryad.Дата, naryad.Твремя, naryad.Фвремя, naryad.Фвремя2, 
+    query = CSQ.SqlQuery(
+        sqlite=f"""SELECT DISTINCT naryad.Пномер, naryad.Дата, naryad.Твремя, naryad.Фвремя, naryad.Фвремя2, 
     naryad.ФИО, naryad.ФИО2, mk.Направление, naryad.Опер_время, naryad.Операции FROM naryad 
 INNER JOIN mk ON mk.Пномер == naryad.Номер_мк
 INNER JOIN jurnal ON jurnal.Номер_наряда = naryad.Пномер
 WHERE naryad.Подтвержд_вып == 1 AND datetime(naryad.Дата) > datetime("{data_nach}") 
-                and datetime(naryad.Дата) < datetime("{data_kon}") and mk.Направление != 'ПТ' and naryad.Внеплан = 0"""
+                and datetime(naryad.Дата) < datetime("{data_kon}") and mk.Направление != 'ПТ' and naryad.Внеплан = 0""",
+        postgres=f"""SELECT DISTINCT "naryad"."Пномер", "naryad"."Дата", "naryad"."Твремя", "naryad"."Фвремя", "naryad"."Фвремя2", 
+    "naryad"."ФИО", "naryad"."ФИО2", "mk"."Направление", "naryad"."Опер_время", "naryad"."Операции" FROM naryad 
+INNER JOIN mk ON "mk"."Пномер" = "naryad"."Номер_мк"
+INNER JOIN jurnal ON "jurnal"."Номер_наряда" = "naryad"."Пномер"
+WHERE naryad."Подтвержд_вып" = 1 
+    AND (naryad."Дата")::timestamp > ('{data_nach}')::timestamp 
+    AND (naryad."Дата")::timestamp < ('{data_kon}')::timestamp 
+    AND mk."Направление" != 'ПТ' 
+    AND "naryad"."Внеплан" = 0;""")
     dict_rez = dict()
     responce = CSQ.custom_request_c(self.bd_naryad, query, rez_dict=True)
     set_napr = set()
@@ -4594,42 +4991,40 @@ WHERE naryad.Подтвержд_вып == 1 AND datetime(naryad.Дата) > date
 
 @CQT.onerror
 def report_c_selector_2(self, nach, konec, vid, *args):
-    text = f""" SELECT napravlenie.name as Направление, napravl_deyat.Псевдоним as Псевдоним, пл_оуп.№проекта  as "№ проекта", 
-     знпр.№проекта  as "Заказ на производство.№проекта", знпр.№ERP  as "Номер заказа на производство", 
-    
-    plan.Пномер as "Номер КПЛ",
-    plan.Дата_внесения as "Дата внесения в МЕС",
-    пл_заг.ПДата_нач_заг as "Плановая дата начала заготовительного участка",
-    пл_компл.ПДата_зав_комплект_упаковки as "Плановая Дата завершения комплектации упаковки",
-    пл_оуп.Дата_отгрузки_ПУ as "Плановая Дата отгрузки ПУ",
-    plan.Фдата_получения_КД as "Фактическая дата получения КД",
-    пл_сб.Прогноз_дата_зав_сб as "Прогнозируемая дата завершения производства",
-    plan.Позиция as "Позиция",
-    пл_оуп.Количество as "Количество",
-    пл_оуп.Номенклатура_ЕРП as "Номенклатура ЕРП",
-    пл_сб.Примечание_сб as "Примечание сборочный участок",
-    plan.Примечание as "ПДО Примечание",
-    пл_осил.Примечание as "ПДО Заявки на закуп",
-    plan.Статус as "Статус",
-    plan.Статус_норм as "Статус норм",
-    plan.МК as "Плановая МК №"
-
-
-    
-    
+    text =f""" SELECT 
+        napravlenie."name" as "Направление", 
+        napravl_deyat."Псевдоним" as "Псевдоним", 
+        пл_оуп."№проекта"  as "№ проекта", 
+        знпр."№проекта"  as "Заказ на производство.№проекта", 
+        знпр."№ERP"  as "Номер заказа на производство", 
+        plan."Пномер" as "Номер КПЛ",
+        plan."Дата_внесения" as "Дата внесения в МЕС",
+        пл_заг."ПДата_нач_заг" as "Плановая дата начала заготовительного участка",
+        пл_компл."ПДата_зав_комплект_упаковки" as "Плановая Дата завершения комплектации упаковки",
+        пл_оуп."Дата_отгрузки_ПУ" as "Плановая Дата отгрузки ПУ",
+        plan."Фдата_получения_КД" as "Фактическая дата получения КД",
+        пл_сб."Прогноз_дата_зав_сб" as "Прогнозируемая дата завершения производства",
+        plan."Позиция" as "Позиция",
+        пл_оуп."Количество" as "Количество",
+        пл_оуп."Номенклатура_ЕРП" as "Номенклатура ЕРП",
+        пл_сб."Примечание_сб" as "Примечание сборочный участок",
+        plan."Примечание" as "ПДО Примечание",
+        пл_осил."Примечание" as "ПДО Заявки на закуп",
+        plan."Статус" as "Статус",
+        plan."Статус_норм" as "Статус норм",
+        plan."МК" as "Плановая МК №"
     FROM plan 
-
-    LEFT JOIN пл_оуп ON пл_оуп.НомПл = plan.Пномер 
-    LEFT JOIN пл_заг ON пл_заг.НомПл = plan.Пномер 
-    LEFT JOIN пл_компл ON пл_компл.НомПл = plan.Пномер 
-    LEFT JOIN пл_сб ON пл_сб.НомПл = plan.Пномер 
-    LEFT JOIN пл_осил ON пл_осил.НомПл = plan.Пномер 
-    LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП 
-    LEFT JOIN napravl_deyat ON napravl_deyat.Пномер = plan.Направление_деятельности 
-    LEFT JOIN napravlenie ON napravlenie.Пномер = napravl_deyat.Направление   
-    LEFT JOIN status_poz ON status_poz.Пномер = plan.Статус   
+    LEFT JOIN пл_оуп ON "пл_оуп"."НомПл" = "plan"."Пномер" 
+    LEFT JOIN пл_заг ON "пл_заг"."НомПл" = "plan"."Пномер" 
+    LEFT JOIN пл_компл ON "пл_компл"."НомПл" = "plan"."Пномер" 
+    LEFT JOIN пл_сб ON "пл_сб"."НомПл" = "plan"."Пномер" 
+    LEFT JOIN пл_осил ON "пл_осил"."НомПл" = "plan"."Пномер" 
+    LEFT JOIN знпр ON "знпр"."s_num" = "пл_оуп"."Пномер_ЗП" 
+    LEFT JOIN napravl_deyat ON "napravl_deyat"."Пномер" = "plan"."Направление_деятельности" 
+    LEFT JOIN napravlenie ON "napravlenie"."Пномер" = "napravl_deyat"."Направление"   
+    LEFT JOIN status_poz ON "status_poz"."Пномер" = "plan"."Статус"   
     
-     WHERE status_poz.Имя IN ('Резерв','Подготовка','Изготовление','Приостановлена','К производству')"""
+     WHERE "status_poz"."Имя" IN ('Резерв','Подготовка','Изготовление','Приостановлена','К производству'); """
     
     rez = CSQ.custom_request_c(self.db_kplan,text,rez_dict=True)
     return rez
@@ -4637,7 +5032,7 @@ def report_c_selector_2(self, nach, konec, vid, *args):
 @CQT.onerror
 def report_c_selector(self, nach, konec, type_action, *args):
 
-    list_zamech = CSQ.custom_request_c(self.bd_selector, '''SELECT * FROM zamech''', hat_c=True, rez_dict=True)
+    list_zamech = CSQ.custom_request_c(self.bd_selector, '''SELECT * FROM "zamech";''', hat_c=True, rez_dict=True)
     hat_c = list(list_zamech[0].keys())
     block_add = []
     block_zakr = []
@@ -4704,11 +5099,22 @@ def tekush_raboty(self, podrazd, *args):
     for user in self.DICT_EMPLOEE_RC.keys():
         fio = ' '.join(user.split()[:3])
         if self.DICT_EMPLOEE_RC[user][:4] == podrazd[:4]:
-            custom_request_c = f'''SELECT "" as "ФИО","" as "РМ", "" as "Смена", mk.Номер_проекта, mk.Номер_заказа, mk.Направление, jurnal.Номер_наряда,
-                    jurnal.Дата, naryad.Примечание, naryad.Задание FROM jurnal 
-                    INNER JOIN naryad ON jurnal.Номер_наряда == naryad.Пномер 
-                    INNER JOIN mk ON naryad.Номер_мк == mk.Пномер WHERE jurnal.ФИО == "{fio}" AND
-            jurnal.Статус == "Начат" and jurnal.Подытог == 0'''
+            custom_request_c = f'''
+                SELECT 
+                    '' as "ФИО",
+                    '' as "РМ", 
+                    '' as "Смена", 
+                    mk."Номер_проекта", 
+                    mk."Номер_заказа", 
+                    mk."Направление", 
+                    jurnal."Номер_наряда",
+                    jurnal."Дата", 
+                    naryad."Примечание", 
+                    naryad."Задание" 
+                FROM jurnal 
+                INNER JOIN "naryad" ON "jurnal"."Номер_наряда" = "naryad"."Пномер" 
+                INNER JOIN mk ON naryad."Номер_мк" = mk."Пномер" WHERE jurnal."ФИО" = '{fio}' AND
+                    jurnal."Статус" = 'Начат' and jurnal."Подытог" = 0'''
             rez = CSQ.custom_request_c(self.bd_naryad, custom_request_c, hat_c=False, conn=con)
             if len(rez) != 0:
                 rez[0][0] = fio
@@ -4726,7 +5132,8 @@ def tekush_raboty(self, podrazd, *args):
 @CQT.onerror
 def vneplan_rabot(self, data_nach, data_kon, *args):
     poki = USRCNF.Config.place.poki
-    custom_request_c = f"""SELECT mk.Номер_проекта, mk.Номер_заказа, mk.Направление,
+    custom_request_c = CSQ.SqlQuery(
+        sqlite=f"""SELECT mk.Номер_проекта, mk.Номер_заказа, mk.Направление,
                 naryad.Твремя, jurnal.ФИО AS "ФИО_журнал", jurnal.Примечание AS "Примеч_журнал",  
                 naryad.ФИО, naryad.Фвремя, naryad.ФИО2, 
                 naryad.Фвремя2, naryad.Задание,naryad.Пномер as "Наряд_пномер",  naryad.Примечание AS "Примеч_наряд", 
@@ -4735,7 +5142,18 @@ def vneplan_rabot(self, data_nach, data_kon, *args):
                 INNER JOIN mk ON naryad.Номер_мк == mk.Пномер 
                 INNER JOIN category_vnepl ON category_vnepl.kod == naryad.Категория_внепл AND category_vnepl.poki = {poki}
                 WHERE jurnal.Статус == "Завершен" AND naryad.Внеплан != 0 AND datetime(jurnal.Дата) > datetime("{data_nach}") 
-                and datetime(jurnal.Дата) < datetime("{data_kon}") """
+                and datetime(jurnal.Дата) < datetime("{data_kon}") """,
+        postgres=f"""SELECT mk."Номер_проекта", mk."Номер_заказа", mk."Направление",
+                naryad."Твремя", jurnal."ФИО" AS "ФИО_журнал", jurnal."Примечание" AS "Примеч_журнал",  
+                naryad."ФИО", naryad."Фвремя", naryad."ФИО2", 
+                naryad."Фвремя2", naryad."Задание",naryad."Пномер" as "Наряд_пномер",  naryad."Примечание" AS "Примеч_наряд", 
+                naryad."Номер_мк", naryad."Внеплан" , category_vnepl.value FROM jurnal 
+                INNER JOIN naryad ON jurnal."Номер_наряда" = naryad."Пномер" 
+                INNER JOIN mk ON naryad."Номер_мк" = mk."Пномер" 
+                INNER JOIN category_vnepl ON category_vnepl."kod" = naryad."Категория_внепл" AND category_vnepl.poki = {poki}
+                WHERE jurnal."Статус" = 'Завершен' AND naryad."Внеплан" != 0 AND (jurnal."Дата")::timestamp > ('{data_nach}')::timestamp 
+                and (jurnal."Дата")::timestamp < ('{data_kon}')::timestamp; """
+    )
     rez_jur = CSQ.custom_request_c(self.bd_naryad, custom_request_c, hat_c=True)
     if rez_jur == []:
         CQT.msgbox('Пусто')
@@ -4745,31 +5163,37 @@ def vneplan_rabot(self, data_nach, data_kon, *args):
 
 @CQT.onerror
 def jurnal_rabot(self, data_nach, data_kon, *args): #28.01.2026
-    custom_request_c = f"""
+    custom_request_c = CSQ.SqlQuery(
+        sqlite=f"""
         SELECT                                  
-            CASE WHEN знпр.№проекта 
+            CASE WHEN знпр."№проекта" 
                 IS NOT NULL 
-                THEN знпр.№проекта 
-                ELSE mk.Номер_проекта 
+                THEN знпр."№проекта" 
+                ELSE mk."Номер_проекта" 
             END AS "Номер_проекта", 
-            CASE WHEN знпр.№ERP IS NOT NULL 
-                THEN знпр.№ERP 
-                ELSE mk.Номер_заказа 
-            END AS Номер_заказа, 
-            jurnal.Дата as "Дата_журнал", 
-            jurnal.ФИО AS "ФИО_журнал", 
-            jurnal.ФИО AS "Должность", 
-            jurnal.Статус, 
-            jurnal.Подытог, 
-            jurnal.Подытог_нормы as "Для трудозатрат",
-            jurnal.Дата_выгрузки_ЕРП,
-            jurnal.ФИО_выгрузки_ЕРП,
-            jurnal.Минут_выгружено_ЕРП, 
-            jurnal.Примечание AS "Примеч_журнал", 
-            naryad.Твремя, naryad.Пномер as "Наряд_пномер", 
-            naryad.ФИО, naryad.Фвремя, naryad.ФИО2, 
-            naryad.Фвремя2, naryad.Задание, naryad.Примечание AS "Примеч_наряд", 
-            naryad.Номер_мк, 
+            CASE WHEN знпр."№ERP" IS NOT NULL 
+                THEN знпр."№ERP" 
+                ELSE mk."Номер_заказа" 
+            END AS "Номер_заказа", 
+            jurnal."Дата" as "Дата_журнал", 
+            jurnal."ФИО" AS "ФИО_журнал", 
+            jurnal."ФИО" AS "Должность", 
+            jurnal."Статус", 
+            jurnal."Подытог", 
+            jurnal."Подытог_нормы" as "Для трудозатрат",
+            jurnal."Дата_выгрузки_ЕРП",
+            jurnal."ФИО_выгрузки_ЕРП",
+            jurnal."Минут_выгружено_ЕРП", 
+            jurnal."Примечание" AS "Примеч_журнал", 
+            naryad."Твремя", 
+            naryad."Пномер" as "Наряд_пномер", 
+            naryad."ФИО", 
+            naryad."Фвремя", 
+            naryad."ФИО2", 
+            naryad."Фвремя2", 
+            naryad."Задание", 
+            naryad."Примечание" AS "Примеч_наряд", 
+            naryad."Номер_мк", 
             коды_веплана_для_наряда.name AS "Внеплан"
         FROM jurnal 
         INNER JOIN naryad ON jurnal.Номер_наряда == naryad.Пномер 
@@ -4779,7 +5203,48 @@ def jurnal_rabot(self, data_nach, data_kon, *args): #28.01.2026
         LEFT JOIN пл_оуп ON пл_оуп.НомПл = mk.НомКплан
         LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП 
         WHERE коды_веплана_для_наряда.poki == {self.place.poki} and datetime(jurnal.Дата) > datetime("{data_nach}") 
-            and datetime(jurnal.Дата) < datetime("{data_kon}") """
+            and datetime(jurnal.Дата) < datetime("{data_kon}") """,
+        postgres=f"""
+        SELECT                                  
+            CASE WHEN знпр."№проекта" 
+                IS NOT NULL 
+                THEN знпр."№проекта" 
+                ELSE mk."Номер_проекта" 
+            END AS "Номер_проекта", 
+            CASE WHEN знпр."№ERP" IS NOT NULL 
+                THEN знпр."№ERP" 
+                ELSE mk."Номер_заказа" 
+            END AS "Номер_заказа", 
+            jurnal."Дата" as "Дата_журнал", 
+            jurnal."ФИО" AS "ФИО_журнал", 
+            jurnal."ФИО" AS "Должность", 
+            jurnal."Статус", 
+            jurnal."Подытог", 
+            jurnal."Подытог_нормы" as "Для трудозатрат",
+            jurnal."Дата_выгрузки_ЕРП",
+            jurnal."ФИО_выгрузки_ЕРП",
+            jurnal."Минут_выгружено_ЕРП", 
+            jurnal."Примечание" AS "Примеч_журнал", 
+            naryad."Твремя", 
+            naryad."Пномер" as "Наряд_пномер", 
+            naryad."ФИО", 
+            naryad."Фвремя", 
+            naryad."ФИО2", 
+            naryad."Фвремя2", 
+            naryad."Задание", 
+            naryad."Примечание" AS "Примеч_наряд", 
+            naryad."Номер_мк", 
+            коды_веплана_для_наряда.name AS "Внеплан"
+        FROM jurnal 
+        INNER JOIN naryad ON jurnal."Номер_наряда" = "naryad"."Пномер" 
+        LEFT JOIN коды_веплана_для_наряда ON коды_веплана_для_наряда."code" = "naryad"."Внеплан" 
+        INNER JOIN mk ON naryad."Номер_мк" = "mk"."Пномер"
+        LEFT JOIN plan ON plan."Пномер" = "mk"."НомКплан" 
+        LEFT JOIN пл_оуп ON пл_оуп."НомПл" = "mk"."НомКплан"
+        LEFT JOIN знпр ON знпр."s_num" = "пл_оуп"."Пномер_ЗП" 
+        WHERE коды_веплана_для_наряда.poki = {self.place.poki} and ("jurnal"."Дата")::timestamp > ('{data_nach}')::timestamp 
+            and ("jurnal"."Дата")::timestamp < ('{data_kon}')::timestamp """
+    )
 
     rez_jur = CSQ.custom_request_c(self.bd_naryad, custom_request_c, hat_c=True,attach_dbs=(self.db_kplan))
     if rez_jur == False:
@@ -4883,9 +5348,17 @@ def ponedelniy_grafik_vir_otgr(self, data_nach, data_kon, etap, *args):
 
 @CQT.onerror
 def rasch_posesh(self, data_nach, data_kon, etap, conn, *args):
-    custom_request_c = f"""SELECT jurnal.Дата, jurnal.ФИО  FROM jurnal INNER JOIN naryad
+    custom_request_c = CSQ.SqlQuery(
+        sqlite=f"""SELECT jurnal.Дата, jurnal.ФИО  FROM jurnal INNER JOIN naryad
             ON jurnal.Номер_наряда = naryad.Пномер WHERE datetime(jurnal.Дата) > datetime("{data_nach}") 
-        and datetime(jurnal.Дата) < datetime("{data_kon}")"""
+        and datetime(jurnal.Дата) < datetime("{data_kon}")""",
+        postgres=f"""
+        SELECT "jurnal"."Дата", "jurnal"."ФИО"  
+        FROM jurnal 
+        INNER JOIN naryad ON jurnal."Номер_наряда" = naryad."Пномер" 
+        WHERE ("jurnal"."Дата")::timestamp > ('{data_nach}')::timestamp;
+            and ("jurnal"."Дата")::timestamp < ('{data_kon}')::timestamp; """
+    )
     rez_jur = CSQ.custom_request_c(self.bd_naryad, custom_request_c, hat_c=True, rez_dict=True, conn=conn)
     dict_poseshenie = dict()
     list_full_empl = [key for key in self.DICT_EMPLOEE_RC.keys() if self.DICT_EMPLOEE_RC[key][:4] == '0103']
@@ -4930,11 +5403,31 @@ def vir_otgr(self, data_nach, data_kon, etap, conn, conn_mat, *args):
 
     # PROIZVODITELNOST_POST_SM = 34
     # в ДБ с рейтин юсерз вписать рц чей работник, провести цикл на сравнение фамилий завершено с цехомю.
-    custom_request_c = f"""SELECT jurnal.Дата, jurnal.ФИО, jurnal.Статус, jurnal.Номер_наряда, 
+    custom_request_c = CSQ.SqlQuery(
+        sqlite=f"""SELECT jurnal.Дата, jurnal.ФИО, jurnal.Статус, jurnal.Номер_наряда, 
         naryad.Твремя, naryad.ДСЕ_ID, naryad.Операции,naryad.Опер_время, naryad.Номер_мк, naryad.Внеплан, naryad.ФИО, naryad.ФИО2,  
         naryad.Фвремя, naryad.Фвремя2 FROM jurnal INNER JOIN naryad
         ON jurnal.Номер_наряда = naryad.Пномер WHERE jurnal.Статус == "Завершен"
-    and datetime(jurnal.Дата) > datetime("{data_nach}") and datetime(jurnal.Дата) < datetime("{data_kon}") AND naryad.Внеплан != 1 AND naryad.Подтвержд_вып == 1"""
+    and datetime(jurnal.Дата) > datetime("{data_nach}") and datetime(jurnal.Дата) < datetime("{data_kon}") AND naryad.Внеплан != 1 AND naryad.Подтвержд_вып == 1""",
+        postgres=f"""
+            SELECT jurnal."Дата", jurnal."ФИО", jurnal."Статус", jurnal."Номер_наряда", 
+                naryad."Твремя", 
+                naryad."ДСЕ_ID", 
+                naryad."Операции",
+                naryad."Опер_время", 
+                naryad."Номер_мк", 
+                naryad."Внеплан", 
+                naryad."ФИО", 
+                naryad."ФИО2",  
+                "naryad"."Фвремя", "naryad"."Фвремя2" 
+            FROM jurnal 
+            INNER JOIN naryad ON "jurnal"."Номер_наряда" = "naryad"."Пномер" 
+            WHERE "jurnal"."Статус" = 'Завершен'
+                and ("jurnal"."Дата")::timestamp > ('{data_nach}')::timestamp 
+                and ("jurnal"."Дата")::timestamp < ('{data_kon}')::timestamp 
+                AND "naryad"."Внеплан" != 1 AND "naryad"."Подтвержд_вып" = 1
+        """
+    )
     rez_jur = CSQ.custom_request_c(self.bd_naryad, custom_request_c, hat_c=True, rez_dict=True, conn=conn)
     summ = 0
     list_full_empl = [key for key in self.DICT_EMPLOEE_RC.keys() if self.DICT_EMPLOEE_RC[key][:4] == '0103']
@@ -4953,8 +5446,17 @@ def vir_otgr(self, data_nach, data_kon, etap, conn, conn_mat, *args):
 
     vir = round(summ / minut_smen)
     self.debug.append(f'Выработка за {data_nach} {data_kon} - {vir} кг.')
-    custom_request_c = f"""SELECT SUM(Вес) as ВЕС FROM mk WHERE Дата_завершения != ""
-        and datetime(Дата_завершения) > datetime("{data_nach}") and datetime(Дата_завершения) < datetime("{data_kon}")"""
+
+    custom_request_c = CSQ.SqlQuery(
+        sqlite=f"""SELECT SUM(Вес) as ВЕС FROM mk WHERE Дата_завершения != ""
+        and datetime(Дата_завершения) > datetime("{data_nach}") and datetime(Дата_завершения) < datetime("{data_kon}")""",
+        postgres=f"""
+    SELECT 
+        SUM("Вес") as "ВЕС" 
+    FROM mk WHERE "Дата_завершения" != ''
+        and NULLIF("Дата_завершения", '')::TIMESTAMP > ('{data_nach}')::timestamp 
+        and NULLIF("Дата_завершения", '')::TIMESTAMP < ('{data_kon}')::timestamp;"""
+    )
     rez_mk = CSQ.custom_request_c(self.bd_naryad, custom_request_c, conn=conn, rez_dict=True)
     ves = 0
     if rez_mk[0]['ВЕС'] != None:
@@ -4962,8 +5464,19 @@ def vir_otgr(self, data_nach, data_kon, etap, conn, conn_mat, *args):
     self.debug.append(f'Вес {ves}')
     summ_ves_tehn = 0
 
-    custom_request_c = f"""SELECT Пномер, Количество, Вес FROM mk WHERE Дата_завершения != ""
+    custom_request_c = CSQ.SqlQuery(
+        postgres=f"""
+        SELECT 
+            "Пномер", 
+            "Количество", 
+            "Вес" 
+        FROM mk 
+        WHERE "Дата_завершения" != ''
+            and NULLIF("Дата_завершения", '')::TIMESTAMP > ('{data_nach}')::timestamp 
+            and NULLIF("Дата_завершения", '')::TIMESTAMP < ('{data_kon}')::timestamp;""",
+        sqlite=f"""SELECT Пномер, Количество, Вес FROM mk WHERE Дата_завершения != ""
         and datetime(Дата_завершения) > datetime("{data_nach}") and datetime(Дата_завершения) < datetime("{data_kon}")"""
+    )
     spis_nom_mk = CSQ.custom_request_c(self.bd_naryad, custom_request_c, conn=conn, hat_c=False)
     for mk in spis_nom_mk:
         # ves_tehn = ves_tehnolohicheskiy(self, mk[0], mk[1], mk[2], conn=conn, conn_mat=conn_mat)
@@ -5307,10 +5820,24 @@ def get_summ_brak_fio(DICT_PRICE_BRAK, fio, rez_jur_brak):
 
 @CQT.onerror
 def get_jur_brak(bd_naryad, data_nach, data_kon):
-    request_brak = f"""SELECT  brak.s_num , list_brak.group_1 || "$" || list_brak.group_2 || "$" || list_brak.group_3 as name, 
+    request_brak = CSQ.SqlQuery(
+        sqlite=f"""SELECT  brak.s_num , list_brak.group_1 || "$" || list_brak.group_2 || "$" || list_brak.group_3 as name, 
         list_brak.neisprav, list_brak.count_dse, brak.usr_1  || "$" ||  brak.usr_2 as usrs, brak.date FROM brak INNER JOIN 
         list_brak ON list_brak.num_list_brak = brak.s_num WHERE datetime(brak.date) > datetime("{data_nach}") 
-                    AND datetime(brak.date) < datetime("{data_kon}") """
+                    AND datetime(brak.date) < datetime("{data_kon}") """,
+        postgres=f"""
+            SELECT  
+                brak.s_num , 
+                list_brak.group_1 || '$' || list_brak.group_2 || '$' || list_brak.group_3 as name, 
+                list_brak.neisprav, 
+                list_brak.count_dse, 
+                brak.usr_1  || '$' ||  brak.usr_2 as usrs, 
+                brak.date 
+            FROM brak 
+            INNER JOIN list_brak ON list_brak.num_list_brak = brak.s_num 
+            WHERE NULLIF(brak.date, '')::timestamp > ('{data_nach}')::timestamp 
+                    AND NULLIF(brak.date, '')::timestamp < ('{data_kon}')::timestamp;"""
+    )
     rez_jur_brak = CSQ.custom_request_c(bd_naryad, request_brak, hat_c=True, rez_dict=True)
 
     # =========
@@ -5325,7 +5852,8 @@ def virabotka_sotr(self, data_nach, data_kon, empl, *args, CALC_BASE_ONLY_PREM=T
         CALC_BASE_ONLY_PREM = True
     else:
         CALC_BASE_ONLY_PREM = False
-    custom_request_c = f"""SELECT mk.Номер_проекта, mk.Номер_заказа, jurnal.Дата, jurnal.ФИО AS "ФИО_журнал", jurnal.Статус, 
+    custom_request_c = CSQ.SqlQuery(
+        sqlite=f"""SELECT mk.Номер_проекта, mk.Номер_заказа, jurnal.Дата, jurnal.ФИО AS "ФИО_журнал", jurnal.Статус, 
                 jurnal.Подытог, jurnal.Номер_наряда, jurnal.Примечание AS "Примеч_журнал", 
                 naryad.Твремя, 
                 naryad.ФИО, naryad.Фвремя, naryad.ФИО2, 
@@ -5336,10 +5864,48 @@ def virabotka_sotr(self, data_nach, data_kon, empl, *args, CALC_BASE_ONLY_PREM=T
                 WHERE jurnal.ФИО == "{empl}" AND datetime(jurnal.Дата) >= datetime("{data_nach}") 
                 and datetime(jurnal.Дата) <= datetime("{data_kon}") AND 
                 jurnal.Номер_наряда in (SELECT jurnal.Номер_наряда FROM jurnal WHERE jurnal.ФИО == "{empl}" AND datetime(jurnal.Дата) >= datetime("{data_nach}") 
-                and datetime(jurnal.Дата) <= datetime("{data_kon}") AND jurnal.Статус == "Завершен")"""
+                and datetime(jurnal.Дата) <= datetime("{data_kon}") AND jurnal.Статус == "Завершен")""",
+        postgres=f"""
+        SELECT 
+            "mk"."Номер_проекта", 
+            "mk"."Номер_заказа", 
+            "jurnal"."Дата", 
+            "jurnal"."ФИО" AS "ФИО_журнал", 
+            "jurnal"."Статус", 
+            "jurnal"."Подытог", 
+            "jurnal"."Номер_наряда", 
+            "jurnal"."Примечание" AS "Примеч_журнал", 
+            "naryad"."Твремя", 
+            "naryad"."ФИО", 
+            "naryad"."Фвремя", 
+            "naryad"."ФИО2", 
+            "naryad"."Фвремя2", 
+            "Учтен" AS Учет, 
+            "naryad"."Примечание" AS "Примеч_наряд", 
+            '' AS "Подытог Норм", 
+            "naryad"."Внеплан", 
+            "naryad"."Коэфф_сложности", 
+            '' AS "Коэфф_вых", 
+            '' AS "Коэфф_вых_ставка", 
+            "naryad"."Подтвержд_вып" 
+        FROM jurnal 
+        INNER JOIN "naryad" ON "jurnal"."Номер_наряда" = "naryad"."Пномер" 
+        INNER JOIN "mk" ON "naryad"."Номер_мк" = "mk"."Пномер" 
+        WHERE "jurnal"."ФИО" = '{empl}' 
+            AND ("jurnal"."Дата")::timestamp >= ('{data_nach}')::timestamp 
+            AND ("jurnal"."Дата")::timestamp <= datetime('{data_kon}')::timestamp 
+            AND "jurnal"."Номер_наряда" in (
+                        SELECT "jurnal"."Номер_наряда" 
+                        FROM jurnal 
+                        WHERE jurnal.ФИО = '{empl}' 
+                            AND ("jurnal"."Дата")::timestamp >= ('{data_nach}')::timestamp 
+                            AND ("jurnal"."Дата")::TIMESTAMP <= ('{data_kon}')::timestamp 
+                            AND jurnal."Статус" = 'Завершен');"""
+    )
     rez_jur = CSQ.custom_request_c(self.bd_naryad, custom_request_c, hat_c=True, rez_dict=True)
 
-    custom_request_c = f"""
+    custom_request_c = CSQ.SqlQuery(
+        sqlite=f"""
 SELECT mk.Номер_проекта, mk.Номер_заказа, jurnal.Дата, jurnal.ФИО AS "ФИО_журнал", jurnal.Статус, 
                 jurnal.Подытог, jurnal.Номер_наряда, jurnal.Примечание AS "Примеч_журнал", 
                 naryad.Твремя, 
@@ -5353,7 +5919,45 @@ WHERE jurnal.Номер_наряда not in (SELECT jurnal.Номер_наряд
 jurnal.Статус = "Завершен" AND jurnal.ФИО = "{empl}") AND 
  datetime(jurnal.Дата) <= datetime("{data_kon}") AND 
 datetime(jurnal.Дата) >= datetime("{data_nach}") AND jurnal.ФИО == "{empl}"
+""",
+        postgres=f"""
+SELECT 
+    "mk"."Номер_проекта", 
+    "mk"."Номер_заказа", 
+    "jurnal"."Дата", 
+    "jurnal"."ФИО" AS "ФИО_журнал", 
+    "jurnal"."Статус", 
+    "jurnal"."Подытог", 
+    "jurnal"."Номер_наряда", 
+    "jurnal"."Примечание" AS "Примеч_журнал", 
+    "naryad"."Твремя", 
+    "naryad"."ФИО", 
+    "naryad"."Фвремя", 
+    "naryad"."ФИО2", 
+    "naryad"."Фвремя2", "Не учтен" AS Учет, 
+    "naryad"."Примечание" AS "Примеч_наряд", 
+    "jurnal"."Подытог_нормы" AS "Подытог Норм", 
+    "naryad"."Внеплан", 
+    "naryad"."Коэфф_сложности", 
+    '' AS "Коэфф_вых", 
+    '' AS "Коэфф_вых_ставка",
+    "naryad"."Подтвержд_вып" 
+FROM jurnal 
+INNER JOIN "naryad" ON "naryad"."Пномер" = "jurnal"."Номер_наряда" 
+INNER JOIN "mk" ON "naryad"."Номер_мк" = "mk"."Пномер"  
+WHERE 
+    jurnal.Номер_наряда not in (
+        SELECT jurnal.Номер_наряда  
+        FROM jurnal 
+        WHERE 
+            jurnal."Статус" = 'Завершен' 
+            AND "jurnal"."ФИО" = {empl}
+    ) 
+    AND (jurnal."Дата")::timestamp <= ('{data_kon}')::timestamp 
+    AND (jurnal."Дата")::timestamp >= ('{data_nach}')::timestamp 
+    AND jurnal."ФИО" = '{empl}'
 """
+    )
     rez_jur_nezav = CSQ.custom_request_c(self.bd_naryad, custom_request_c, hat_c=True, rez_dict=True)
     if rez_jur == [] or rez_jur == False:
         return CQT.msgbox('Внимание! завершенных нарядов у него нет, одни недоделки', icon_str='Warning') if CFG.Config.app.is_ui else print('report_ci.virabotka_sotr пустая выборка rez_jur')
@@ -5368,7 +5972,7 @@ datetime(jurnal.Дата) >= datetime("{data_nach}") AND jurnal.ФИО == "{empl
                                        get_jur_brak(self.bd_naryad, data_nach, data_kon))
 
     table_name = F.start_end_dates_c(data_nach, vid='m')[0].split()[0].replace('-', '_')
-    custom_request_c = F'''SELECT * FROM mtdz_{table_name}'''
+    custom_request_c = F'''SELECT * FROM "mtdz_{table_name}";'''
     if custom_request_c == False:
         CQT.msgbox(f'Не найдена таблица {table_name}')
         return
@@ -5420,7 +6024,7 @@ datetime(jurnal.Дата) >= datetime("{data_nach}") AND jurnal.ФИО == "{empl
     rez_jur.append({_: '' for _ in rez_jur[0].keys()})
 
     name_table = F.datetostr(F.strtodate(data_kon), 'mtdz_%Y_%m_01')
-    custom_request_c = f'''SELECT * FROM {name_table} '''
+    custom_request_c = f'''SELECT * FROM "{name_table}"; '''
     data_tabel = CSQ.custom_request_c(self.bd_users, custom_request_c,rez_dict=True)
 
     miutes = CMS.time_by_repo_card(empl, data_tabel)
@@ -5460,16 +6064,29 @@ datetime(jurnal.Дата) >= datetime("{data_nach}") AND jurnal.ФИО == "{empl
 @CQT.onerror
 def virabotka_ceha_ponaryadno(self, data_nach, data_kon, etap, *args):
     # в ДБ с рейтин юсерз вписать рц чей работник, провести цикл на сравнение фамилий завершено с цехомю.
-    custom_request_c = f"""SELECT jurnal.Дата, jurnal.ФИО, jurnal.Статус, jurnal.Номер_наряда, 
+
+    query = CSQ.SqlQuery(
+        sqlite= f"""SELECT jurnal.Дата, jurnal.ФИО, jurnal.Статус, jurnal.Номер_наряда, 
             naryad.Твремя, naryad.ДСЕ_ID, naryad.Операции, naryad.Номер_мк, naryad.Внеплан, naryad.ФИО, naryad.ФИО2,  
             naryad.Фвремя, naryad.Фвремя2, naryad.Примечание, naryad.Категория_внепл,
             naryad.Опер_время, mk.Вид, mk.Вес, mk.Направление, mk.Номер_проекта, mk.Номер_заказа FROM jurnal 
             INNER JOIN naryad ON jurnal.Номер_наряда = naryad.Пномер
             INNER JOIN mk ON mk.Пномер = naryad.Номер_мк
-            WHERE jurnal.Статус == "Завершен"
+            WHERE jurnal.Статус = "Завершен"
         and datetime(jurnal.Дата) > datetime("{data_nach}") and datetime(jurnal.Дата) < datetime("{data_kon}") 
-    AND naryad.Внеплан != 1 AND naryad.Подтвержд_вып == 1"""
-    rez_jur = CSQ.custom_request_c(self.bd_naryad, custom_request_c, hat_c=True, rez_dict=True)
+    AND naryad.Внеплан != 1 AND naryad.Подтвержд_вып = 1""",
+        postgres= f"""
+        SELECT "jurnal"."Дата", "jurnal"."ФИО", "jurnal"."Статус", "jurnal"."Номер_наряда", 
+            naryad."Твремя", naryad."ДСЕ_ID", naryad."Операции", naryad."Номер_мк", naryad."Внеплан", naryad."ФИО", naryad."ФИО2",  
+            naryad."Фвремя", naryad."Фвремя2", naryad."Примечание", naryad."Категория_внепл",
+            "naryad"."Опер_время", "mk"."Вид", "mk"."Вес", "mk"."Направление", "mk"."Номер_проекта", "mk"."Номер_заказа" FROM jurnal 
+        INNER JOIN "naryad" ON "jurnal"."Номер_наряда" = "naryad"."Пномер"
+        INNER JOIN "mk" ON "mk"."Пномер" = "naryad"."Номер_мк"
+            WHERE "jurnal"."Статус" = 'Завершен'
+        and ("jurnal"."Дата")::timestamp > ('{data_nach}')::timestamp and ("jurnal"."Дата")::timestamp < ('{data_kon}')::timestamp 
+    AND naryad."Внеплан" != 1 AND naryad."Подтвержд_вып" = 1"""
+    )
+    rez_jur = CSQ.custom_request_c(self.bd_naryad, query, hat_c=True, rez_dict=True)
     if rez_jur == []:
         CQT.msgbox('Пусто')
         return
@@ -5538,22 +6155,28 @@ def plan_fact_grafic_mes(self, data_nach, data_kon, *args):
         return
 
     self.DICT_NN_NTK = CMS.load_dict_dse(self.db_dse)
-    self.list_month_plan = list_month_plan = CSQ.custom_request_c(self.db_kplan, f"""SELECT * FROM mnts_plan WHERE 
+    query = CSQ.SqlQuery(
+        sqlite=f"""SELECT * FROM mnts_plan WHERE 
             datetime(Дата) >= datetime("{data_nach}") 
-            and datetime(Дата) < datetime("{data_kon}") and poki = {USRCNF.Config.place.poki}""", rez_dict=True)
+            and datetime(Дата) < datetime("{data_kon}") and poki = {USRCNF.Config.place.poki}""",
+        postgres=f"""SELECT * FROM mnts_plan WHERE 
+            ("Дата"):timestamp >= CAST('{data_nach}'AS TIMESTAMP ) 
+            and ("Дата"):timestamp < CAST('{data_kon}'AS TIMESTAMP)  and poki = {USRCNF.Config.place.poki}"""
+    )
+    self.list_month_plan = list_month_plan = CSQ.custom_request_c(self.db_kplan, query, rez_dict=True)
     get_list_month_fact(self)
 
 
-    self.dict_dorezok = F.deploy_dict_c(CSQ.custom_request_c(self.bd_naryad, f"""SELECT дорезки_мк.Номер_мк,  тип_дорезок.Имя 
-         FROM дорезки_мк INNER JOIN тип_дорезок ON тип_дорезок.Пномер == дорезки_мк.Причина""", rez_dict=True),
+    self.dict_dorezok = F.deploy_dict_c(CSQ.custom_request_c(self.bd_naryad, f"""SELECT "дорезки_мк"."Номер_мк",  "тип_дорезок"."Имя" 
+         FROM дорезки_мк INNER JOIN тип_дорезок ON "тип_дорезок"."Пномер" = "дорезки_мк"."Причина";""", rez_dict=True),
                                    "Номер_мк")
 
     table_vnepan = F.list_of_lists_to_dict_of_dicts(
         vneplan_po_napravl(self, data_nach, data_kon, 'Все', generate_graf=False,), 'Месяц')
 
     
-    plan_tab_time_req = F.deploy_dict_c(CSQ.custom_request_c(self.db_kplan,f"""SELECT month, sum(normo_smen)  FROM plan_tabel_workforce 
-     WHERE depatment == "сборочный цех производства" and poki == {USRCNF.Config.place.poki} GROUP BY month ;""",rez_dict=True),'month')
+    plan_tab_time_req = F.deploy_dict_c(CSQ.custom_request_c(self.db_kplan,f"""SELECT month, SUM(normo_smen)  FROM plan_tabel_workforce 
+     WHERE depatment = 'сборочный цех производства' and poki = {USRCNF.Config.place.poki} GROUP BY month ;""",rez_dict=True),'month')
         
 
     rez = [['Месяц', 'Факт, уд.т.','По xml,т.', 'План(ПДО), н-см.', 'Освоено (МК Тип = Плановая), н-см.', 'Внеплан, %',
@@ -5633,11 +6256,19 @@ def plan_fact_grafic_mes(self, data_nach, data_kon, *args):
 
 
 def calc_tehpodgotovka_per_month(bd_naryad, bd_users, db_resxml, db_dse, data_nach, data_kon, tip, *args):
-    query = f"""SELECT * FROM jurnal_td WHERE Статус == 'Создание'"""
+    query = f"""SELECT * FROM "jurnal_td" WHERE "Статус" = 'Создание';"""
     DICT_DSE = F.deploy_dict_c(CSQ.custom_request_c(db_dse, query, rez_dict=True), 'ДСЕ')
-    query = f"""SELECT mk.Пномер, mk.Дата, mk.Направление, mk.Вес, mk.Количество FROM mk 
+    query = CSQ.SqlQuery(
+        sqlite=f"""SELECT mk.Пномер, mk.Дата, mk.Направление, mk.Вес, mk.Количество FROM mk 
         WHERE  date(strftime('%Y-%m-%d','20'||Дата)) > date("{data_nach}") 
-                        and date(strftime('%Y-%m-%d','20'||Дата)) < date("{data_kon}")"""
+                        and date(strftime('%Y-%m-%d','20'||Дата)) < date("{data_kon}")""",
+        postgres=f"""
+        SELECT 
+            mk."Пномер", mk."Дата", mk."Направление", "mk"."Вес", "mk"."Количество" 
+        FROM mk 
+        WHERE  TO_DATE('20' || "Дата", 'YYYY-MM-DD') > TO_DATE('{data_nach}') 
+                        and TO_DATE('20' || "Дата", 'YYYY-MM-DD') < TO_DATE('{data_kon}');"""
+    )
     dict_rez_napr = dict()
     dict_rez_users = dict()
     responce = CSQ.custom_request_c(bd_naryad, query, rez_dict=True)
@@ -5646,7 +6277,7 @@ def calc_tehpodgotovka_per_month(bd_naryad, bd_users, db_resxml, db_dse, data_na
                           'оснастки': 0, 'дсе': 0} for _ in responce}
 
     dict_zamech = CSQ.custom_request_c(bd_naryad,
-                                       f"""SELECT МК, Код from zamech WHERE Код in (4,5,6,8) AND Виновное_подразделение = '030000' and Код_вп in (1,3,4)""",
+                                       f"""SELECT "МК", "Код" from "zamech" WHERE "Код" in (4,5,6,8) AND "Виновное_подразделение" = '030000' and "Код_вп" in (1,3,4)""",
                                        rez_dict=True)
     DICT_VES_ZAMECH = {4: 20, 5: 20, 6: 20, 8: 20}  # 100 проц
 
@@ -5692,7 +6323,7 @@ def calc_tehpodgotovka_per_month(bd_naryad, bd_users, db_resxml, db_dse, data_na
         dict_count_dse_per_napr[napr]['мк'] += 1
         # ves_ed = item['Вес']/item['Количество']
         dict_count_dse_per_napr[napr]['вес_ед'] += item['Вес']
-        custom_request_c = f"""SELECT data FROM res WHERE Номер_мк == {nom_mk}"""
+        custom_request_c = f"""SELECT data FROM res WHERE "Номер_мк" = {nom_mk}"""
         rez = CSQ.custom_request_c(db_resxml, custom_request_c)
         if rez == None or rez == False:
             # print(f'ресурсная для {nom_mk} не найдена')
@@ -5904,34 +6535,39 @@ def divergence_of_date_proj(self: mywindow, data_nach, data_kon, *args):
             return False
         return True
 
-    query = f"""SELECT plan.Пномер, пл_оуп.№проекта , пл_оуп.№ERP, napravl_deyat.Имя, 
-    пл_заг.Нчас_заг  , 
-пл_мех.Нчас_мехобр , 
-пл_покр.Нчас_покр, 
-пл_сб.Нчас_сб , 
-пл_отк.Нчас_контр , 
-пл_компл.Нчас_упаковки, 
-plan.Нчас_вспом, 
-    plan.Фдата_получения_КД as Дата_КД, пл_ко.Фдата_зав_КДрев2 as Дата_КД_2, 
-    
-     пл_топ.Фдата_зав_спецЕРП as Дата_ТД ,пл_топ.Дата_МК as Дата_ТД_2 ,пл_топ.Фдата_зав_ТД  as Дата_ТД_3,
-      
-      пл_оуп.Дата_заявки_на_произв as Дата_ЗП, plan.Дата_внесения as Дата_ЗП_2,
-      
-       пл_оуп.Дата_отгрузки_ПУ  as Дата_отгрузки 
+    query = f"""SELECT 
+        "plan"."Пномер", 
+        "пл_оуп"."№проекта", 
+        "пл_оуп"."№ERP", 
+        "napravl_deyat"."Имя", 
+        "пл_заг"."Нчас_заг", 
+        "пл_мех"."Нчас_мехобр", 
+        "пл_покр"."Нчас_покр", 
+        "пл_сб"."Нчас_сб", 
+        "пл_отк"."Нчас_контр" , 
+        "пл_компл"."Нчас_упаковки", 
+        "plan"."Нчас_вспом", 
+        "plan"."Фдата_получения_КД" as "Дата_КД", 
+        "пл_ко"."Фдата_зав_КДрев2" as "Дата_КД_2", 
+        "пл_топ"."Фдата_зав_спецЕРП" as "Дата_ТД",
+        "пл_топ"."Дата_МК" as "Дата_ТД_2" ,
+        "пл_топ"."Фдата_зав_ТД" as "Дата_ТД_3",
+        "пл_оуп"."Дата_заявки_на_произв" as "Дата_ЗП", 
+        "plan"."Дата_внесения" as "Дата_ЗП_2",
+        "пл_оуп"."Дата_отгрузки_ПУ" as "Дата_отгрузки" 
        
-       FROM plan INNER JOIN 
-       пл_ко ON пл_ко.НомПл = plan.Пномер,
-        пл_топ ON пл_топ.НомПл = plan.Пномер,
-        пл_оуп ON пл_оуп.НомПл = plan.Пномер,
-        napravl_deyat ON napravl_deyat.Пномер = plan.Направление_деятельности,
-        пл_заг  ON пл_заг.НомПл = plan.Пномер,  
-        пл_мех  ON пл_мех.НомПл = plan.Пномер,  
-        пл_покр ON пл_покр.НомПл = plan.Пномер,  
-        пл_сб   ON пл_сб.НомПл = plan.Пномер,  
-        пл_отк  ON пл_отк.НомПл = plan.Пномер, 
-        пл_компл ON пл_компл.НомПл = plan.Пномер
-        WHERE plan.Статус IN (2,3,4,7)
+        FROM plan 
+        INNER JOIN "пл_ко" ON "пл_ко"."НомПл" = "plan"."Пномер"
+        INNER JOIN "пл_топ" ON "пл_топ"."НомПл" = "plan"."Пномер"
+        INNER JOIN "пл_оуп" ON "пл_оуп"."НомПл" = plan.Пномер
+        INNER JOIN "napravl_deyat" ON "napravl_deyat"."Пномер" = "plan"."Направление_деятельности"
+        INNER JOIN "пл_заг"  ON "пл_заг"."НомПл" = "plan"."Пномер"  
+        INNER JOIN "пл_мех"  ON "пл_мех"."НомПл" = "plan"."Пномер"  
+        INNER JOIN "пл_покр" ON "пл_покр"."НомПл" = "plan"."Пномер"  
+        INNER JOIN "пл_сб"   ON "пл_сб"."НомПл" = "plan"."Пномер"  
+        INNER JOIN "пл_отк"  ON "пл_отк"."НомПл" = "plan"."Пномер" 
+        INNER JOIN "пл_компл" ON "пл_компл"."НомПл" = "plan"."Пномер"
+        WHERE "plan"."Статус" IN (2,3,4,7)
 """
     responce = CSQ.custom_request_c(self.db_kplan, query, rez_dict=True)
     all_poz_dict = dict()
@@ -6010,35 +6646,37 @@ def udel_trud_sort_c(self: mywindow, data_nach, data_kon, *args):
 
     
     podrs = CSQ.custom_request_c(self.db_kplan,f"""
-SELECT Пномер,
-       Имя,
-       Имя_поля,
-       Это_группа_сборки,
+SELECT "Пномер",
+       "Имя",
+       "Имя_поля",
+       "Это_группа_сборки",
        poki
   FROM podrazdel WHERE poki = {CFG.Config.place.poki};
 """,rez_dict= True)
 
-    inner = "\n".join([f'{_["Имя"]} ON {_["Имя"]}.НомПл    = пл_оуп.НомПл,' for _ in podrs ])[:-1]
+    inner = "\n".join(
+        [f''' INNER JOIN "{_["Имя"]}" ON "{_["Имя"]}"."НомПл" = "пл_оуп"."НомПл" ''' for _ in podrs
+    ])[:-1]
     select = []
     dinamic_names_fields = []
     group_names_fields = []
     for item in podrs:
         list_names = item["Имя_поля"].split(';')
         for i, name in enumerate(list_names):
-            if len(list_names) == 1 or i>0:
-                select.append(f'{item["Имя"]}.{name}')
+            if len(list_names) == 1 or i > 0:
+                select.append(f'"{item["Имя"]}"."{name}"')
                 dinamic_names_fields.append(name)
             if i>0:
                 group_names_fields.append(name)
     select = ", ".join(select)
     
-    query = f"""SELECT пл_оуп.№проекта || '$' || пл_оуп.№ERP as Проект, пл_оуп.Количество, plan.Пномер, пл_топ.Вид, пл_ко.Вес_ВО,
-     plan.Нчас_вспом, {select}
+    query = f"""SELECT пл_оуп."№проекта" || '$' || пл_оуп."№ERP" as "Проект", пл_оуп."Количество", plan."Пномер", 
+        пл_топ."Вид", пл_ко."Вес_ВО",
+     plan."Нчас_вспом", {select}
      FROM пл_оуп
-    INNER JOIN
-    plan ON plan.Пномер    = пл_оуп.НомПл,
-    пл_топ ON пл_топ.НомПл = пл_оуп.НомПл,
-    пл_ко  ON пл_ко.НомПл = пл_оуп.НомПл,
+    INNER JOIN "plan" ON "plan"."Пномер"    = "пл_оуп"."НомПл"
+    INNER JOIN "пл_топ" ON "пл_топ"."НомПл" = "пл_оуп"."НомПл"
+    INNER JOIN "пл_ко"  ON "пл_ко"."НомПл" = "пл_оуп"."НомПл"
     {inner}
     """
     responce = CSQ.custom_request_c(self.db_kplan, query, rez_dict=True)
@@ -6092,7 +6730,8 @@ SELECT Пномер,
                 dict_kpl[item][name] = 0
 
 
-    query = f"""SELECT DISTINCT naryad.Номер_мк, naryad.Пномер, naryad.Дата, naryad.Твремя, naryad.Фвремя, naryad.Фвремя2, 
+    query = CSQ.SqlQuery(
+        sqlite=f"""SELECT DISTINCT naryad.Номер_мк, naryad.Пномер, naryad.Дата, naryad.Твремя, naryad.Фвремя, naryad.Фвремя2, 
         naryad.ФИО, naryad.ФИО2, napravlenie.name as Направление, naryad.Опер_время, naryad.Операции, mk.Вес, 
          пл_топ.Вид FROM naryad 
     INNER JOIN mk ON mk.Пномер == naryad.Номер_мк 
@@ -6103,7 +6742,22 @@ SELECT Пномер,
     INNER JOIN napravlenie ON napravlenie.Пномер = napravl_deyat.Направление  
     WHERE naryad.Подтвержд_вып == 1 AND datetime(naryad.Дата) > datetime("{data_nach}") 
                     and datetime(naryad.Дата) < datetime("{data_kon}") and mk.Направление != 'ПТ' 
-                     and naryad.Внеплан in(10, 0) AND пл_топ.Вид != 1 and plan.poki == {self.place.poki} """
+                     and naryad.Внеплан in(10, 0) AND пл_топ.Вид != 1 and plan.poki == {self.place.poki} """,
+        postgres=f"""SELECT DISTINCT 
+            naryad."Номер_мк", naryad."Пномер", naryad."Дата", naryad."Твремя", naryad."Фвремя", naryad."Фвремя2", 
+            naryad."ФИО", naryad."ФИО2", napravlenie."name" as "Направление", naryad."Опер_время", naryad."Операции", mk."Вес", 
+         пл_топ."Вид" 
+    FROM naryad 
+    INNER JOIN mk ON "mk"."Пномер" = "naryad"."Номер_мк" 
+    INNER JOIN "jurnal" ON "jurnal"."Номер_наряда" = "naryad"."Пномер" 
+    INNER JOIN "plan" ON plan.Пномер = mk.НомКплан 
+    INNER JOIN "пл_топ" ON "пл_топ"."НомПл" = "plan"."Пномер" 
+    INNER JOIN "napravl_deyat" ON "napravl_deyat"."Пномер" = "plan"."Направление_деятельности" 
+    INNER JOIN "napravlenie" ON "napravlenie"."Пномер" = "napravl_deyat"."Направление"  
+    WHERE "naryad"."Подтвержд_вып" = 1 AND (naryad."Дата")::timestamp > ('{data_nach}')::timestamp 
+                    and datetime(naryad.Дата) < ('{data_kon}')::timestamp and "mk"."Направление" != 'ПТ' 
+                     and naryad."Внеплан" IN (10, 0) AND пл_топ."Вид" != 1 and plan.poki = {self.place.poki} """
+    )
     dict_rez = dict()
     responce = CSQ.custom_request_c(self.bd_naryad, query, rez_dict=True,attach_dbs=(self.db_kplan))
 
@@ -6294,10 +6948,16 @@ def get_plan_vneplan_data(self, data_nach, data_kon, vid='Все', etap='Сбо�
 
 
 
-    
-    self.list_month_plan  = CSQ.custom_request_c(self.db_kplan, f"""SELECT * FROM mnts_plan WHERE 
+    query = CSQ.SqlQuery(
+        sqlite=f"""SELECT * FROM mnts_plan WHERE 
                     datetime(Дата) >= datetime("{data_nach}") 
-                    and datetime(Дата) < datetime("{data_kon}") and poki == {self.place.poki}""", rez_dict=True)
+                    and datetime(Дата) < datetime("{data_kon}") and poki == {self.place.poki}""",
+        postgres=f"""SELECT * FROM mnts_plan 
+            WHERE 
+                    ("Дата")::timestamp >= ('{data_nach}')::timestamp 
+                    and ("Дата")::timestamp < ('{data_kon}')::timestamp and poki = {self.place.poki}"""
+    )
+    self.list_month_plan  = CSQ.custom_request_c(self.db_kplan, query, rez_dict=True)
     list_month_plan = self.list_month_plan
 
     if 'list_month_fact' not in self.__dict__ or self.list_month_fact == None:
@@ -6324,8 +6984,10 @@ def get_plan_vneplan_data(self, data_nach, data_kon, vid='Все', etap='Сбо�
     dict_type_dorab_nums = F.deploy_dict_c(dict_type_dorab_
                                            , 'Пномер')
     if 'dict_dorezok' not in self.__dict__ or self.dict_dorezok == None:
-        self.dict_dorezok = F.deploy_dict_c(CSQ.custom_request_c(self.bd_naryad, f"""SELECT дорезки_мк.Номер_мк,  тип_дорезок.Имя 
-         FROM дорезки_мк INNER JOIN тип_дорезок ON тип_дорезок.Пномер == дорезки_мк.Причина""", rez_dict=True),
+        self.dict_dorezok = F.deploy_dict_c(CSQ.custom_request_c(self.bd_naryad,
+                                                                 f"""SELECT "дорезки_мк"."Номер_мк", "тип_дорезок"."Имя" 
+         FROM "дорезки_мк" 
+         INNER JOIN "тип_дорезок" ON "тип_дорезок"."Пномер" = "дорезки_мк"."Причина";""", rez_dict=True),
                                    "Номер_мк")
     dict_dorezok = self.dict_dorezok
     # TODO ПРИВЯЗАТЬ КАТЕГОРИИ ДОРЕЗОК И ДОРАБОТОК В ОТЧЕТ ЧЕРЕЗ ОБЩИЙ ВИД
@@ -6375,11 +7037,12 @@ def get_plan_vneplan_data(self, data_nach, data_kon, vid='Все', etap='Сбо�
             postfix = f'mk.Вид = "{vid}" AND '
 
         DICT_VID_NAPR = F.deploy_dict_c(
-            CSQ.custom_request_c(self.db_kplan, f"""SELECT НомПл, Вид  FROM пл_топ;""", rez_dict=True), 'НомПл')
+            CSQ.custom_request_c(self.db_kplan, f"""SELECT "НомПл", "Вид" FROM пл_топ;""", rez_dict=True), 'НомПл')
         place = USRCNF.Config.place #17.04.2026
         unconfirm_work_code = place.КодыНарядов.НеподтвержденныйВнеплан
         poki = place.poki
-        custom_request_c = f"""SELECT DISTINCT
+        query = CSQ.SqlQuery(
+            sqlite=f"""SELECT DISTINCT
                                     naryad.Пномер, naryad.Твремя, naryad.Норма_времени,  naryad.Номер_мк, naryad.Внеплан, 
                         naryad.ФИО  as ФИО , naryad.ФИО2  as ФИО2, 
                                     naryad.Фвремя, naryad.Фвремя2, naryad.Примечание,naryad.ДСЕ,naryad.ДСЕ_ID,naryad.Опер_колво,
@@ -6414,15 +7077,63 @@ def get_plan_vneplan_data(self, data_nach, data_kon, vid='Все', etap='Сбо�
                         WHERE {postfix} naryad.Внеплан != {unconfirm_work_code} AND naryad.Подтвержд_вып == 1 AND naryad.Аутсорсинг == 0 and 
                         jurnal.Статус == "Завершен" and plan.poki == {poki} and datetime(jurnal.Дата) >= datetime("{nach_data}") 
                         and datetime(jurnal.Дата) <= datetime("{kon_data}")
+            """,
+            postgres=f"""SELECT DISTINCT
+                                    naryad.Пномер, naryad.Твремя, naryad.Норма_времени,  naryad.Номер_мк, naryad.Внеплан, 
+                        naryad.ФИО  as ФИО , naryad.ФИО2  as ФИО2, 
+                                    naryad.Фвремя, naryad.Фвремя2, naryad.Примечание,naryad.ДСЕ,naryad.ДСЕ_ID,naryad.Опер_колво,
+                                    naryad.Профессии, naryad.Операции, naryad.Опер_время, naryad.Виды_работ, mk.Вид, mk.Направление, 
+                                     Тип_мк.Имя as Тип, тип_доработок.Имя as Доработка, naryad.Коэфф_сложности,
+                        mk.Вес, 
+                                CASE WHEN знпр."№ERP" IS NOT NULL 
+                       THEN знпр."№ERP" 
+                       ELSE mk."Номер_заказа" 
+                       END AS "Номер_заказа",  
+                       
+                         CASE WHEN знпр."№проекта" IS NOT NULL 
+                           THEN знпр."№проекта" 
+                           ELSE mk."Номер_проекта" 
+                       END AS "Номер_проекта",  
+                       
+                        mk."Дата_завершения", mk."Количество", 
+                        mk."Номенклатура", mk."НомКплан", jurnal.Пномер as ПномерЖ, jurnal.Дата as Дата_журнал , jurnal.ФИО as fio_jur_zav, 
+                        "" as Дата_выгрузки_ЕРП, "" as ФИО_выгрузки_ЕРП, 0 as Минут_выгружено_ЕРП, "" as base_ERP, 
+                        category_vnepl.value as Категория_внепл , 
+                        naryad.Подтвержд_вып_дата as Подтвержд_вып_дата ,
+                        mk.Дата as Дата_мк
+                        FROM jurnal 
+                                    INNER JOIN naryad ON jurnal.Номер_наряда = naryad.Пномер  
+                                    INNER JOIN mk ON mk.Пномер = naryad.Номер_мк  
+                                    LEFT JOIN category_vnepl ON category_vnepl.kod = naryad.Категория_внепл AND (category_vnepl.poki = {poki} OR category_vnepl.poki IS NULL) 
+                                    INNER JOIN Тип_мк ON Тип_мк.Пномер = mk.Тип 
+                                    INNER JOIN тип_доработок ON тип_доработок.Пномер = mk.Тип_доработки  
+                                    LEFT JOIN plan ON plan.Пномер = mk.НомКплан  
+                                    LEFT JOIN пл_оуп ON пл_оуп.НомПл = mk.НомКплан 
+                                    LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП 
+                        WHERE {postfix} naryad."Внеплан" != {unconfirm_work_code} AND "naryad"."Подтвержд_вып" = 1 AND naryad."Аутсорсинг" = 0 and 
+                            "jurnal"."Статус" = 'Завершен' 
+                            and plan.poki = {poki} 
+                            and (jurnal."Дата")::timestamp >= ('{nach_data}')::timestamp 
+                            and ("jurnal"."Дата")::timestamp <= ('{kon_data}')::timestamp
             """
-        list_zav_nar_po = CSQ.custom_request_c(self.bd_naryad, custom_request_c, rez_dict=True, attach_dbs=self.db_kplan) # 06.07.2026
+        )
+        list_zav_nar_po = CSQ.custom_request_c(self.bd_naryad, query, rez_dict=True, attach_dbs=self.db_kplan) # 06.07.2026
         s_num_nars = list({_['Пномер'] for _ in list_zav_nar_po})
-        starts_with_params_erp_upload = CSQ.custom_request_c(self.bd_naryad,f"""SELECT 
-        jurnal.Пномер as ПномерЖ, jurnal.Дата, jurnal.Номер_наряда, jurnal.ФИО as fio_jur_zav, 
-        jurnal.Дата_выгрузки_ЕРП, jurnal.ФИО_выгрузки_ЕРП, jurnal.Минут_выгружено_ЕРП, jurnal.base_ERP
-        FROM jurnal 
-         WHERE jurnal.Номер_наряда IN ({CSQ.prepare_list_to_tuple(s_num_nars)})
-         AND jurnal.Статус == "Начат" ORDER BY jurnal.Пномер DESC""",rez_dict=True)
+        starts_with_params_erp_upload = CSQ.custom_request_c(
+            self.bd_naryad,
+            f"""SELECT 
+                jurnal."Пномер" as "ПномерЖ", 
+                jurnal."Дата", 
+                jurnal."Номер_наряда", 
+                jurnal."ФИО" as "fio_jur_zav", 
+                jurnal."Дата_выгрузки_ЕРП", 
+                jurnal."ФИО_выгрузки_ЕРП", 
+                "jurnal"."Минут_выгружено_ЕРП", 
+                "jurnal"."base_ERP"
+            FROM "jurnal" 
+             WHERE "jurnal"."Номер_наряда" IN ({CSQ.prepare_list_to_tuple(s_num_nars)})
+             AND "jurnal"."Статус" = 'Начат' 
+             ORDER BY jurnal."Пномер" DESC""",rez_dict=True)
 
         summ_ves_plan = 0
         summ_ves_vir_vneplan = 0
@@ -6574,7 +7285,8 @@ def clear_graf(self):
 @CQT.onerror
 def diver_trdz_1c_mes(self, data_nach, data_kon, podrazd='-', *args):
     PRJ = CFG.Config.project
-    custom_request_c = f"""SELECT знпр.Ref_Key_py as "_ref_zp", jurnal.Пномер as "_id_jur",
+    query = CSQ.SqlQuery(
+        sqlite=f"""SELECT знпр.Ref_Key_py as "_ref_zp", jurnal.Пномер as "_id_jur",
      знпр.№ERP as ПУ, знпр.№проекта as "Проект", plan.Пномер as "КПЛ",
      mk.Пномер as "МК",   jurnal.ФИО, "" as Должность, 
      "" as Подразделение, naryad.Пномер as "Наряд", 
@@ -6584,9 +7296,6 @@ def diver_trdz_1c_mes(self, data_nach, data_kon, podrazd='-', *args):
     jurnal.Минут_выгружено_ЕРП AS "Выгружено\n ЕРП(МЕС)",
     "" as "Расхождениe\nвыгрузка",
      "" as "Труды\nв ЕРП"
-    
-    
-    
      FROM jurnal INNER JOIN naryad ON jurnal.Номер_наряда = naryad.Пномер  
      INNER JOIN mk ON mk.Пномер = naryad.Номер_мк
      INNER JOIN Тип_мк ON Тип_мк.Пномер = mk.Тип
@@ -6595,11 +7304,39 @@ def diver_trdz_1c_mes(self, data_nach, data_kon, podrazd='-', *args):
      LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП
     WHERE jurnal.Подытог <> 0 AND jurnal.Статус = 'Начат'   and mk.Пномер != 0  AND plan.poki = {self.place.poki}
     and datetime(jurnal.Дата) > datetime("{data_nach}") 
-    and datetime(jurnal.Дата) <= datetime("{data_kon}") ;""" #Тип_мк.Имя as "Тип МК", naryad.Подтвержд_вып_дата as "Подтвержден", jurnal.Подытог_нормы AS "Минут\nнормы","" as "Расхождениe\nнаряд",
-    rez_jur = CSQ.custom_request_c(PRJ.db_naryad,custom_request_c,rez_dict=True,attach_dbs=PRJ.db_kplan)
-
-
-
+    and datetime(jurnal.Дата) <= datetime("{data_kon}") ;""",
+        postgres=f"""SELECT 
+            знпр."Ref_Key_py" as "_ref_zp", 
+            jurnal."Пномер" as "_id_jur",
+            знпр."№ERP" as "ПУ", 
+            знпр."№проекта" as "Проект", 
+            plan.Пномер as "КПЛ",
+            mk."Пномер" as "МК",   
+            jurnal."ФИО", 
+            '' as "Должность", 
+            '' as "Подразделение", 
+            naryad."Пномер" as "Наряд", 
+            jurnal."Дата" as "Дата",
+            jurnal."Подытог_нормы" AS "Минут\nнормы",
+            '' as "Расхождениe\nнаряд",
+            jurnal."Минут_выгружено_ЕРП" AS "Выгружено\n ЕРП(МЕС)",
+            '' as "Расхождениe\nвыгрузка",
+            '' as "Труды\nв ЕРП"
+     FROM "jurnal" 
+     INNER JOIN "naryad" ON jurnal."Номер_наряда" = "naryad"."Пномер"  
+     INNER JOIN "mk" ON mk."Пномер" = "naryad"."Номер_мк"
+     INNER JOIN "Тип_мк" ON Тип_мк."Пномер" = "mk"."Тип"
+     LEFT JOIN "plan" ON plan."Пномер" = "mk"."НомКплан" 
+     LEFT JOIN "пл_оуп" ON пл_оуп."НомПл" = "plan"."Пномер"
+     LEFT JOIN "знпр" ON знпр."s_num" = "пл_оуп"."Пномер_ЗП"
+    WHERE "jurnal"."Подытог" <> 0 
+        AND "jurnal"."Статус" = 'Начат' 
+        and "mk"."Пномер" != 0  
+        AND plan.poki = {self.place.poki}
+        and ("jurnal"."Дата")::timestamp > ('{data_nach}')::timestamp 
+        and ("jurnal"."Дата")::timestamp <= ('{data_kon}')::timestamp ;"""
+    )
+    rez_jur = CSQ.custom_request_c(PRJ.db_naryad, query, rez_dict=True, attach_dbs=PRJ.db_kplan)
     for i in range(len(rez_jur)):
         fio = rez_jur[i]['ФИО']
         if fio in self.DICT_EMPLOEE_FULL_WITH_DEL:
@@ -6696,7 +7433,7 @@ def trudozatraty(self, data_nach, data_kon, podrazd='-', *args):
     def min_za_den_tabel(self, fiod, data, *args):
         name_table = F.datetostr(F.strtodate(data), 'mtdz_%Y_%m_01')
         day = F.datetostr(F.strtodate(data), 'd_%Y_%m_%d')
-        custom_request_c = f'''SELECT {day} FROM {name_table} WHERE ФИО LIKE "{fiod}%"; '''
+        custom_request_c = f'''SELECT "{day}" FROM "{name_table}" WHERE ФИО LIKE "{fiod}%%"; '''
         rez = CSQ.custom_request_c(F.bdcfg("BD_users"), custom_request_c)
         if rez == False or len(rez) == 1:
             return "Не найден"
@@ -6708,7 +7445,7 @@ def trudozatraty(self, data_nach, data_kon, podrazd='-', *args):
     @CQT.onerror
     def den_tabel(self, data, *args)->dict[dict]:
         name_table = F.datetostr(F.strtodate(data), 'mtdz_%Y_%m_01')
-        custom_request_c = f'''SELECT Пномер, ФИО, Примечание FROM {name_table} WHERE Пномер > 2; '''
+        custom_request_c = f'''SELECT "Пномер", "ФИО", "Примечание" FROM {name_table} WHERE "Пномер" > 2; '''
         rez = CSQ.custom_request_c(F.bdcfg("BD_users"), custom_request_c, rez_dict=True)
         if rez == False or len(rez) == 1:
             return "Не найден"
@@ -6725,7 +7462,8 @@ def trudozatraty(self, data_nach, data_kon, podrazd='-', *args):
         return dict_users
 
     self.PROC_OTKL_TRUDOZATRAT = [85, 110]
-    custom_request_c = f"""SELECT ФИО, "" as Должность, "" as Подразделение, "" as Режим,  sum(Подытог) AS "Сумм_Минут",
+    query = CSQ.SqlQuery(
+        sqlite=f"""SELECT ФИО, "" as Должность, "" as Подразделение, "" as Режим,  sum(Подытог) AS "Сумм_Минут",
           sum(Подытог_нормы) AS "Сумм_Минут_нормы" ,  sum(Минут_выгружено_ЕРП) AS "Минут_выгружено_ЕРП", 
          Пномер, Номенклатура, Номер_заказа, Номер_проекта 
         FROM (SELECT jurnal.ФИО, jurnal.Подытог, jurnal.Подытог_нормы, jurnal.Минут_выгружено_ЕРП, mk.Пномер, 
@@ -6735,8 +7473,33 @@ def trudozatraty(self, data_nach, data_kon, podrazd='-', *args):
          LEFT JOIN plan ON plan.Пномер = mk.НомКплан AND plan.poki = {self.place.poki}
         WHERE jurnal.Подытог <> 0 AND jurnal.Статус = 'Начат' 
         and datetime(jurnal.Дата) > datetime("{data_nach}") 
-        and datetime(jurnal.Дата) <= datetime("{data_kon}")) GROUP BY ФИО;"""
-    rez_jur = CSQ.custom_request_c(self.bd_naryad, custom_request_c, hat_c=True, rez_dict=True, attach_dbs=(self.db_kplan))
+        and datetime(jurnal.Дата) <= datetime("{data_kon}")) GROUP BY ФИО;""",
+        postgres=f"""SELECT 
+            "ФИО", 
+            '' as "Должность", 
+            '' as "Подразделение", 
+            '' as "Режим",  
+            SUM("Подытог") AS "Сумм_Минут",
+            SUM("Подытог_нормы") AS "Сумм_Минут_нормы" ,  
+            SUM("Минут_выгружено_ЕРП") AS "Минут_выгружено_ЕРП", 
+            "Пномер", 
+            "Номенклатура", 
+            "Номер_заказа", 
+            "Номер_проекта" 
+        FROM (
+            SELECT "jurnal"."ФИО", "jurnal"."Подытог", "jurnal"."Подытог_нормы", "jurnal"."Минут_выгружено_ЕРП", "mk"."Пномер", 
+                "mk"."Номенклатура", "mk"."Номер_заказа", "mk"."Номер_проекта" 
+            FROM jurnal 
+            INNER JOIN naryad ON jurnal."Номер_наряда" = naryad."Пномер" 
+            INNER JOIN mk ON mk."Пномер" = naryad."Номер_мк"
+            LEFT JOIN plan ON plan."Пномер" = mk."НомКплан" AND plan.poki = {self.place.poki}
+            WHERE jurnal."Подытог" <> 0 AND jurnal."Статус" = 'Начат' 
+                and ("jurnal"."Дата")::timestamp > ('{data_nach}')::timestamp 
+                and ("jurnal"."Дата")::timestamp <= ('{data_kon}')::timestamp
+        ) 
+        GROUP BY "ФИО";""",
+    )
+    rez_jur = CSQ.custom_request_c(self.bd_naryad, query, hat_c=True, rez_dict=True, attach_dbs=self.db_kplan)
     set_mk = set()
 
     cmb = self.ui.cmb_gant_tochnost_dat
@@ -6836,8 +7599,8 @@ def trudozatraty(self, data_nach, data_kon, podrazd='-', *args):
 @CQT.onerror
 def statistic_normoweight_MK_c(self, data_nach, data_kon, etap, *args):
     minut_smen = 450
-
-    custom_request_c = f"""SELECT jurnal.Дата, jurnal.ФИО as ФИОЖ, jurnal.Статус, jurnal.Номер_наряда, 
+    query = CSQ.SqlQuery(
+        sqlite=f"""SELECT jurnal.Дата, jurnal.ФИО as ФИОЖ, jurnal.Статус, jurnal.Номер_наряда, 
             naryad.Твремя, naryad.ДСЕ_ID, naryad.Операции,naryad.Опер_время, naryad.Номер_мк, naryad.Внеплан, 
 naryad.ФИО  as ФИО , naryad.ФИО2  as ФИО2,  
             naryad.Фвремя, naryad.Фвремя2, naryad.Примечание, naryad.Категория_внепл, naryad.Автор, mk.Вид, 
@@ -6846,8 +7609,39 @@ mk.Вес, mk.Номер_заказа, mk.Номер_проекта, mk.Дата
             INNER JOIN mk ON mk.Пномер = naryad.Номер_мк
             WHERE jurnal.Статус == "Завершен"
         and datetime(mk.Дата_завершения) > datetime("{data_nach}") and datetime(mk.Дата_завершения) < datetime("{data_kon}") 
-    AND naryad.Внеплан != 1 AND naryad.Подтвержд_вып == 1"""
-    rez_jur = CSQ.custom_request_c(self.bd_naryad, custom_request_c, hat_c=True, rez_dict=True)
+    AND naryad.Внеплан != 1 AND naryad.Подтвержд_вып == 1""",
+        postgres=f"""SELECT 
+            jurnal."Дата", 
+            jurnal."ФИО" as "ФИОЖ", 
+            jurnal."Статус", 
+            jurnal."Номер_наряда", 
+            naryad."Твремя", 
+            naryad."ДСЕ_ID", 
+            naryad."Операции",
+            naryad."Опер_время", 
+            naryad."Номер_мк", 
+            naryad."Внеплан", 
+            naryad."ФИО"  as "ФИО" , 
+            naryad."ФИО2"  as "ФИО2",  
+            naryad."Фвремя", naryad."Фвремя2", 
+            naryad."Примечание", 
+            naryad."Категория_внепл", 
+            naryad."Автор", 
+            mk."Вид", 
+            mk."Вес", 
+            mk."Номер_заказа", 
+            mk."Номер_проекта", 
+            mk."Дата_завершения", 
+            mk."Количество" 
+        FROM jurnal 
+        INNER JOIN "naryad" ON "jurnal"."Номер_наряда" = "naryad"."Пномер"
+        INNER JOIN "mk" ON "mk"."Пномер" = "naryad"."Номер_мк"
+        WHERE "jurnal"."Статус" = 'Завершен'
+        and NULLIF(mk."Дата_завершения", '')::timestamp > ('{data_nach}')::timestamp 
+        and NULLIF(mk."Дата_завершения", '')::timestamp < ('{data_kon}')::timestamp 
+        AND "naryad"."Внеплан" != 1 AND "naryad"."Подтвержд_вып" = 1;"""
+    )
+    rez_jur = CSQ.custom_request_c(self.bd_naryad, query, hat_c=True, rez_dict=True)
     if rez_jur == []:
         CQT.msgbox('Пусто')
         return
@@ -6959,38 +7753,80 @@ def ispoln_pl_month_all(self, db_kplan, db_resxml, bd_naryad,db_users, DICT_PROF
             DICT_VIPUSK_ERP[key] = 0
         DICT_VIPUSK_ERP[key] += item['nomen_count']
 
-
-    req = f"""SELECT plan.Пномер, '' as "Статус в тек. периоде", napravl_deyat.Псевдоним as "Направление", пл_оуп.Дата_заявки_на_произв, пл_оуп.№ERP, пл_оуп.№проекта, plan.Позиция, 
-        пл_оуп.Номенклатура_ЕРП, 
-        пл_оуп.Количество as "Количество_заказ",  знпр.client_order_Key as "Дата по ЗК", 
-        status_poz.Имя as "Статус позиции", "" as "Примечание", 
-          
-          CASE WHEN пл_сб.Прогноз_дата_зав_сб != '' 
-       THEN strftime('%d.%m.%Y', пл_сб.Прогноз_дата_зав_сб) 
-       ELSE пл_сб.Прогноз_дата_зав_сб 
-       END AS "Прогноз. дата зав.сб.", 
-          
-          пл_сб.Примечание_сб, 
-        "" as "Всего н-смен на поз.",
-        "" as "Зав_мк из" 
-        FROM plan 
-        INNER JOIN пл_оуп ON пл_оуп.НомПл = plan.Пномер, пл_топ ON пл_топ.НомПл = plan.Пномер,  знпр ON знпр.s_num = пл_оуп.Пномер_ЗП ,
-        napravl_deyat ON napravl_deyat.Пномер = plan.Направление_деятельности,
-        status_poz ON status_poz.Пномер = plan.Статус, 
-        пл_сб on пл_сб.НомПл = plan.Пномер,
-        napravlenie ON napravlenie.Пномер = napravl_deyat.Направление WHERE plan.Статус IN (2,3,7)"""
-    rez = CSQ.custom_request_c(db_kplan, req, rez_dict=True)
+    query = CSQ.SqlQuery(
+        sqlite=f"""
+            SELECT 
+            "plan"."Пномер", 
+            '' as "Статус в тек. периоде", 
+            "napravl_deyat"."Псевдоним" as "Направление", 
+            "пл_оуп"."Дата_заявки_на_произв", 
+            "пл_оуп"."№ERP", 
+            "пл_оуп"."№проекта", 
+            plan."Позиция", 
+            пл_оуп."Номенклатура_ЕРП", 
+            пл_оуп."Количество" as "Количество_заказ",  
+            знпр."client_order_Key" as "Дата по ЗК", 
+            status_poz."Имя" as "Статус позиции", 
+            '' as "Примечание", 
+              
+            CASE WHEN "пл_сб"."Прогноз_дата_зав_сб" != '' 
+                THEN strftime('%d.%m.%Y', пл_сб.Прогноз_дата_зав_сб) 
+                ELSE пл_сб.Прогноз_дата_зав_сб 
+            END AS "Прогноз. дата зав.сб.", 
+              пл_сб."Примечание_сб", 
+            '' as "Всего н-смен на поз.",
+            '' as "Зав_мк из" 
+            FROM plan 
+            INNER JOIN пл_оуп ON пл_оуп.НомПл = plan.Пномер, пл_топ ON пл_топ.НомПл = plan.Пномер,  знпр ON знпр.s_num = пл_оуп.Пномер_ЗП 
+            INNER JOIN napravl_deyat ON napravl_deyat.Пномер = plan.Направление_деятельности
+            INNER JOIN status_poz ON status_poz.Пномер = plan.Статус 
+            INNER JOIN пл_сб on пл_сб.НомПл = plan.Пномер
+            INNER JOIN napravlenie ON napravlenie.Пномер = napravl_deyat.Направление WHERE plan.Статус IN (2,3,7)""",
+        postgres=f"""
+            SELECT 
+                "plan"."Пномер", 
+                '' as "Статус в тек. периоде", 
+                "napravl_deyat"."Псевдоним" as "Направление", 
+                "пл_оуп"."Дата_заявки_на_произв", 
+                "пл_оуп"."№ERP", 
+                "пл_оуп"."№проекта", 
+                plan."Позиция", 
+                пл_оуп."Номенклатура_ЕРП", 
+                пл_оуп."Количество" as "Количество_заказ",  
+                знпр."client_order_Key" as "Дата по ЗК", 
+                status_poz."Имя" as "Статус позиции", 
+                '' as "Примечание", 
+              
+                CASE WHEN "пл_сб"."Прогноз_дата_зав_сб" != '' 
+                    THEN TO_CHAR(TO_DATE(NULLIF(пл_сб."Прогноз_дата_зав_сб", '')), 'DD.MM.YYYY')
+                    ELSE пл_сб.Прогноз_дата_зав_сб 
+                END AS "Прогноз. дата зав.сб.", 
+                пл_сб."Примечание_сб", 
+                '' as "Всего н-смен на поз.",
+                '' as "Зав_мк из" 
+            FROM plan 
+            INNER JOIN пл_оуп ON пл_оуп."НомПл" = plan."Пномер"
+            INNER JOIN пл_топ ON пл_топ."НомПл" = plan."Пномер"
+            INNER JOIN знпр ON знпр."s_num" = пл_оуп."Пномер_ЗП" 
+            INNER JOIN napravl_deyat ON napravl_deyat."Пномер" = plan."Направление_деятельности"
+            INNER JOIN status_poz ON status_poz."Пномер" = plan."Статус" 
+            INNER JOIN пл_сб on пл_сб."НомПл" = plan."Пномер"
+            INNER JOIN napravlenie ON napravlenie."Пномер" = napravl_deyat."Направление" 
+            WHERE plan."Статус" IN (2,3,7)
+    """
+    )
+    rez = CSQ.custom_request_c(db_kplan, query, rez_dict=True)
 
 
     pozs_obj = CMS.Pozitions([_['Пномер'] for _ in rez],db_kplan,bd_naryad,db_resxml,db_users)
     dict_poz_obj = pozs_obj.dict_pozs
 
-    req_mk = f"""SELECT Пномер, Дата_завершения, НомКплан FROM mk WHERE НомКплан IN ({CSQ.prepare_list_to_tuple([_['Пномер'] for _ in rez])});"""
+    req_mk = f"""SELECT "Пномер", "Дата_завершения", "НомКплан" FROM mk WHERE "НомКплан" IN ({CSQ.prepare_list_to_tuple([_['Пномер'] for _ in rez])});"""
     list_mk_from_plan = CSQ.custom_request_c(bd_naryad, req_mk, rez_dict=True)
     list_vid_rab = CMS.get_shablon_vidov(DICT_PROFESSIONS)
 
     list_all_nar_by_month = CSQ.custom_request_c(bd_naryad, f"""SELECT * FROM naryad WHERE 
-        naryad.Номер_мк IN ({CSQ.prepare_list_to_tuple([_['Пномер'] for _ in list_mk_from_plan])}) """,
+        naryad."Номер_мк" IN ({CSQ.prepare_list_to_tuple([_['Пномер'] for _ in list_mk_from_plan])}) """,
                                                  rez_dict=True)
 
     if rez == []:
@@ -6998,10 +7834,10 @@ def ispoln_pl_month_all(self, db_kplan, db_resxml, bd_naryad,db_users, DICT_PROF
         return rez
 
     set_mk_for_zam = {_['Пномер'] for _ in list_mk_from_plan}
-    list_zam = CSQ.custom_request_c(bd_naryad, f"""SELECT zamech.Пномер, kod_zamech.Имя as Код, mk.НомКплан 
+    list_zam = CSQ.custom_request_c(bd_naryad, f"""SELECT zamech."Пномер", kod_zamech."Имя" as "Код", mk."НомКплан" 
      FROM zamech 
-     INNer join mk on mk.Пномер = zamech.МК,
-     kod_zamech ON kod_zamech.Пномер = zamech.Код 
+     INNER JOIN mk on mk."Пномер" = zamech."МК"
+     INNER JOIN kod_zamech ON kod_zamech."Пномер" = zamech."Код" 
      WHERE МК IN ({CSQ.prepare_list_to_tuple(set_mk_for_zam)}); """, rez_dict=True)
 
     dict_napravl = dict()
@@ -7291,14 +8127,14 @@ def ispoln_pl_month(db_kplan, db_resxml, bd_naryad, DICT_PROFESSIONS, DICT_VID_R
     for item in rez_vnepl:
         rez.append(item)
 
-    req_mk = f"""SELECT Пномер, Дата_завершения, НомКплан FROM mk WHERE НомКплан IN ({CSQ.prepare_list_to_tuple([_['Пномер'] for _ in rez])});"""
+    req_mk = f"""SELECT "Пномер", "Дата_завершения", "НомКплан" FROM mk WHERE "НомКплан" IN ({CSQ.prepare_list_to_tuple([_['Пномер'] for _ in rez])});"""
     list_mk_from_plan = CSQ.custom_request_c(bd_naryad, req_mk, rez_dict=True)
 
     set_mk_for_zam = {_['Пномер'] for _ in list_mk_from_plan}
-    list_zam = CSQ.custom_request_c(bd_naryad, f"""SELECT zamech.Пномер, kod_zamech.Имя as Код, mk.НомКплан 
+    list_zam = CSQ.custom_request_c(bd_naryad, f"""SELECT "zamech"."Пномер", "kod_zamech"."Имя" as "Код", "mk"."НомКплан" 
      FROM zamech 
-     INNer join mk on mk.Пномер = zamech.МК,
-     kod_zamech ON kod_zamech.Пномер = zamech.Код 
+     INNER JOIN "mk" on "mk"."Пномер" = "zamech"."МК"
+     INNER JOIN "kod_zamech" ON "kod_zamech"."Пномер" = "zamech"."Код" 
      WHERE МК IN ({CSQ.prepare_list_to_tuple(set_mk_for_zam)}); """, rez_dict=True)
 
     dict_napravl = dict()
@@ -7500,7 +8336,8 @@ def ispoln_pl_month(db_kplan, db_resxml, bd_naryad, DICT_PROFESSIONS, DICT_VID_R
 
 
 def raspredelenie_po_naprfvleniam_proc(self, data_nach, data_kon):
-    custom_request_c = f'''SELECT naryad.Пномер
+    query = CSQ.SqlQuery(
+        sqlite=f'''SELECT naryad.Пномер
 , naryad.Дата       
 , naryad.Автор      
 , naryad.Номер_мк   
@@ -7565,16 +8402,85 @@ def raspredelenie_po_naprfvleniam_proc(self, data_nach, data_kon):
    zagot ON mk.Пномер = zagot.Ном_МК
      WHERE datetime(Подтвержд_вып_дата) > datetime("{data_nach}") 
     and datetime(Подтвержд_вып_дата) < datetime("{data_kon}") 
-        AND Внеплан != 1 AND Подтвержд_вып == 1'''
+        AND Внеплан != 1 AND Подтвержд_вып = 1''',
+        postgres=f'''SELECT naryad.Пномер
+, "naryad"."Дата"       
+, "naryad"."Автор"      
+, "naryad"."Номер_мк"   
+, "naryad"."Внеплан"    
+, "naryad"."Задание"    
+, "naryad"."Компл_ФИО"  
+, "naryad"."Компл_Дата" 
+, "naryad"."Компл_номер_тара"
+, "naryad"."Компл_адрес"
+, "naryad"."ФИО"        
+, "naryad"."Фвремя"     
+, "naryad"."ФИО2"       
+, "naryad"."Фвремя2"    
+, "naryad"."Твремя"     
+, "naryad"."ДСЕ"        
+, "naryad"."ДСЕ_ID"     
+, "naryad"."Операции"   
+, "naryad"."Опер_время" 
+, "naryad"."Опер_колво" 
+, "naryad"."Примечание" 
+, "naryad"."Коэфф_сложности"
+, "naryad"."Подтвержд_вып"
+, "naryad"."Категория_внепл"
+, "naryad"."Виды_работ" 
+, "naryad"."Номер_замечания_журнал"
+, "naryad"."Подтвержд_вып_дата"
+, "naryad"."Подтвержд_вып_фио"
+, "naryad"."Профессии"  
+, "naryad"."РЦ_наряд"   
+
+, "mk"."Дата" as mk_data
+, "mk"."Статус"
+, "mk"."Номенклатура"
+, "mk"."Номер_заказа"
+, "mk"."Номер_проекта"
+, "mk"."Вид"
+, "mk"."Примечание" as mk_primech
+, "mk"."Основание"
+, "mk"."Прогресс"
+, "mk"."Приоритет"
+, "mk"."Направление"
+, "mk"."Вес"
+, "mk"."xml"
+, "mk"."Количество"
+, "mk"."Статус_ЧПУ"
+, "mk"."Ресурсная"
+, "mk"."Дата_завершения"
+, "mk"."Коэф_парал"
+, "mk"."Обеспечение"
+, "mk"."Место"
+, "mk"."Искл_план_рм"
+, "mk"."Тип"
+, "mk"."Ресурсная_дата"
+, "mk"."ФИО" as mk_fio
+, "mk"."НомКплан"
+, "mk"."check_execute_opers" 
+, '' as "Направление_деятельности" 
+, '' as "dolya"  
+, "zagot"."Вес_по_рес" 
+ FROM naryad 
+ INNER JOIN "mk" 
+    ON "mk"."Пномер" = naryad."Номер_мк", 
+ INNER JOIN "zagot" ON mk."Пномер" = zagot."Ном_МК"
+     WHERE ("Подтвержд_вып_дата")::timestamp > ('{data_nach}')::timestamp 
+    and ("Подтвержд_вып_дата")::timestamp < ('{data_kon}')::timestamp 
+        AND "Внеплан" != 1 AND "Подтвержд_вып" = 1; '''
+    )
     if F.existence_file_c('rez_jur_raspredelenie_po_naprfvleniam_proc'):
         rez_jur = F.load_file_pickle('rez_jur_raspredelenie_po_naprfvleniam_proc')
     else:
-        rez_jur = CSQ.custom_request_c(self.bd_naryad, custom_request_c, hat_c=True, rez_dict=True)
+        rez_jur = CSQ.custom_request_c(self.bd_naryad, query, hat_c=True, rez_dict=True)
         F.save_file_pickle('rez_jur_raspredelenie_po_naprfvleniam_proc', rez_jur)
 
-    query_kplan = f"""SELECT plan.МК, napravl_deyat.Имя, пл_ко.Вес_КД FROM plan INNER JOIN 
-napravl_deyat ON napravl_deyat.Пномер = plan.Направление_деятельности, 
-пл_ко ON пл_ко.НомПл = plan.Пномер
+    query_kplan = f"""SELECT plan."МК", napravl_deyat."Имя", пл_ко."Вес_КД" 
+FROM plan
+INNER JOIN napravl_deyat ON napravl_deyat."Пномер" = plan."Направление_деятельности"
+INNER JOIN пл_ко ON пл_ко."НомПл" = plan."Пномер"
 """
 
     if F.existence_file_c('rez_kplan_raspredelenie_po_naprfvleniam_proc'):
@@ -7712,9 +8618,13 @@ def virabotka_ceha(self, data_nach, data_kon, etap, f_napravl=False, *args):
             rez_dict[napr]["Внеплан,н. -см."] += item[3]
 
     # =======================================================================================================================
-    custom_request_c = f"""SELECT Дата_завершения,Вид,Направление,Вес,Номер_проекта,Номер_заказа,Пномер FROM mk WHERE Статус == "Закрыта"
-    and datetime(Дата_завершения) > datetime("{data_nach}") and datetime(Дата_завершения) < datetime("{data_kon}")"""
-    rez_mk = CSQ.custom_request_c(self.bd_naryad, custom_request_c, rez_dict=True)
+    query = CSQ.SqlQuery(
+        sqlite=f"""SELECT Дата_завершения,Вид,Направление,Вес,Номер_проекта,Номер_заказа,Пномер FROM mk WHERE Статус == "Закрыта"
+    and datetime(Дата_завершения) > datetime("{data_nach}") and datetime(Дата_завершения) < datetime("{data_kon}")""",
+        postgres=f"""SELECT "Дата_завершения","Вид","Направление","Вес","Номер_проекта","Номер_заказа","Пномер" FROM mk WHERE "Статус" = 'Закрыта'
+    and (NULLIF(TRIM("Дата_завершения"), ''))::timestamp > ('{data_nach}')::timestamp and (NULLIF(TRIM("Дата_завершения"), ''))::timestamp < ('{data_kon}')::timestamp;"""
+    )
+    rez_mk = CSQ.custom_request_c(self.bd_naryad, query, rez_dict=True)
     for mk in rez_mk:
         napr = mk['Направление']
         if napr not in rez_dict:
@@ -7783,8 +8693,13 @@ def clck_otch(self: mywindow, *args):
             self.ui.tbl_report_c.cellWidget(row, col).setCurrentText('')
             return False
         pnom = int(CQT.valt(self.ui.tbl_report_c, 'Пномер', row))
-        CSQ.custom_request_c(self.bd_naryad, f"""UPDATE zamech SET  (Пояснение_вп,Код_вп,Ответственный)
-        = ("{self.ui.tbl_report_c.item(row, nk_prim).text()}",{self.DICT_KOD_VP[text]},"{F.user_full_namre()}") WHERE Пномер = {pnom};""")
+        CSQ.custom_request_c(self.bd_naryad, f"""UPDATE zamech SET ("Пояснение_вп","Код_вп","Ответственный")
+        = (?,?,?) WHERE Пномер = {pnom};""",
+                             list_of_lists_c=[[
+                                 self.ui.tbl_report_c.item(row, nk_prim).text(),
+                                 self.DICT_KOD_VP[text],
+                                 F.user_full_namre()
+                             ]])
         self.ui.tbl_report_c.item(row, col).setText(text)
         self.ui.tbl_report_c.item(row, nk_otv).setText(F.user_full_namre())
         self.ui.tbl_report_c.removeCellWidget(row, col)
@@ -7796,8 +8711,8 @@ def clck_otch(self: mywindow, *args):
             return
 
         pnom = int(CQT.valt(self.ui.tbl_report_c, 'Пномер', row))
-        CSQ.custom_request_c(self.bd_naryad, f"""UPDATE zamech SET  (ФИО_виновный)
-        = ("{text}") WHERE Пномер = {pnom};""")
+        CSQ.custom_request_c(self.bd_naryad, f"""UPDATE zamech SET "ФИО_виновный"
+        = '{text}' WHERE "Пномер" = {pnom};""")
         self.ui.tbl_report_c.item(row, col).setText(text)
         self.ui.tbl_report_c.removeCellWidget(row, col)
         return True
@@ -7887,12 +8802,12 @@ def dbl_clck_otch(self, *args):
 @CQT.onerror
 def ves_tehnolohicheskiy(self, nom_mk: int, kolvo_izd, ves, conn, conn_mat, *args):
     LIST_ED_IZM_MAT = ['Килограмм', 'кг']
-    custom_request_c = f"""SELECT data FROM res WHERE Номер_мк == {nom_mk}"""
+    custom_request_c = f"""SELECT data FROM res WHERE "Номер_мк" = {nom_mk}"""
     rez = CSQ.custom_request_c(self.db_resxml, custom_request_c)
 
     if rez == None or rez == False:
         self.debug.append(f'{nom_mk} nom_mk')
-        custom_request_c = f"""SELECT Вес FROM mk WHERE Пномер == {nom_mk}"""
+        custom_request_c = f"""SELECT "Вес" FROM mk WHERE "Пномер" = {nom_mk}"""
         rez = CSQ.custom_request_c(self.bd_naryad, custom_request_c, conn=conn, one=True, rez_dict=True)
         return rez['Вес']
     else:
@@ -7911,7 +8826,7 @@ def ves_tehnolohicheskiy(self, nom_mk: int, kolvo_izd, ves, conn, conn_mat, *arg
                 for mat in oper['Материалы']:
                     if mat['Мат_ед_изм'] in LIST_ED_IZM_MAT:
                         resp_mat = CSQ.custom_request_c(self.bd_mat,
-                                                        f"""SELECT Вид FROM nomen WHERE Код == '{mat['Мат_код']}' """,
+                                                        f"""SELECT "Вид" FROM nomen WHERE "Код" = '{mat['Мат_код']}' """,
                                                         conn=conn_mat)
                         if len(resp_mat) == 1:
                             self.debug.append(f'!Не найден материал {mat}')

@@ -360,9 +360,24 @@ def dict_zero_val_row(db,tbl_name):
     return row
 
 def dict_types_tbl(db,tbl_name,as_str:bool=False)->dict[str,type]:
-    list_dicts = custom_request_c(db, custom_request_c=f"""SELECT  name, type FROM pragma_table_info('{tbl_name}') --s{F.now()}""",
+    query = SqlQuery(
+        sqlite=f"""SELECT  name, type FROM pragma_table_info('{tbl_name}') --s{F.now()}""",
+        postgres=f"""SELECT
+    column_name AS name,
+    data_type AS type
+FROM information_schema.columns
+WHERE table_name = '{tbl_name}'
+ORDER BY ordinal_position;"""
+    )
+    list_dicts = custom_request_c(db, custom_request_c=query,
                                   rez_dict=True)
     objs = {
+        # postgresql types
+        'bigint': int,
+        'bytea': bytes,
+        'text': str,
+        'double precision': float,
+        # sqlite types
         'INTEGER':int,
         'INT':int,
         'REAL':float,
@@ -579,9 +594,20 @@ def make_parameters_for_return_many(parameters: list): # 25.06.2026
 
 # @F.StatisticDecorator #18.08.25
 
+def test_request(fn):
+    def wrap(*args, **kwargs):
+        result = fn(*args, **kwargs)
+        if result is None:
+            print(args)
+            print(kwargs)
+            quit(-1)
+        return result
+    return wrap
+
+@test_request
 def custom_request_c(
         bd: CSQS.Servers | str,
-        custom_request_c: str,
+        custom_request_c: str | SqlQuery,
         conn='',
         hat_c=True,
         list_of_lists_c: list[list[typing.Any]] | list[typing.Any] = None,

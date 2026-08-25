@@ -52,7 +52,7 @@ def get_file_object_id_by_nomen_name_from_MES(nomen_name: str):
     poki = 0
     db_response = CSQ.custom_request_c(
         'SRV:BD_dse.db',
-        f'SELECT Путь_docs FROM dse WHERE Номенклатурный_номер = {nomen_name!r} and poki = {poki}',
+        f"""SELECT "Путь_docs" FROM dse WHERE "Номенклатурный_номер" = '{nomen_name}' and poki = {poki}""",
         rez_dict=True,
         one=True
     )

@@ -772,6 +772,7 @@ class PostgreSqlExecutor:
                         prepared.statement_type,
                         "Связь потеряна при записи; результат COMMIT неизвестен, автоповтор запрещён",
                     ) from exc
+                print('QQMARK_EXCEPTION', exc)
                 raise PostgresExecutionError(
                     prepared.statement_type,
                     f"PostgreSQL-запрос типа {prepared.statement_type} завершился ошибкой",

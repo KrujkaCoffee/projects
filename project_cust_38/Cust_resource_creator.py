@@ -273,7 +273,7 @@ class ResourceHeader:
 
     def get_claster(self):
         claster = CSQ.custom_request_c(CFG.Config.project.db_users,
-                                       f"""SELECT * FROM bases_ERP WHERE name = "{self.ИмяБазы}";""", rez_dict=True,
+                                       f"""SELECT * FROM "bases_ERP" WHERE name = '{self.ИмяБазы}';""", rez_dict=True,
                                        one=True)
         return claster['КластерСерверов']
 

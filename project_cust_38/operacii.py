@@ -1960,15 +1960,27 @@ def list_mat_for_complex(self, ima_operacii, tag=0, uslovie='', conn=''):
     kod_oper = self.DICT_KOD_OPER[ima_operacii]
 
     if uslovie != '':
-        query = f"""SELECT complex_filtr.kod, nomen.Наименование, nomen.ЕдиницаИзмерения,  complex_filtr.expenditure_per_smena FROM complex_filtr 
-            INNER JOIN nomen ON nomen.Код == complex_filtr.kod 
-                        WHERE complex_filtr.kod_oper == '{kod_oper}' AND complex_filtr.tag == {tag} AND 
-            complex_filtr.commentss LIKE '%{uslovie}%' AND complex_filtr.filtr == 0"""
+        query = f"""
+            SELECT 
+                "complex_filtr"."kod", 
+                "nomen"."Наименование", 
+                "nomen"."ЕдиницаИзмерения",  
+                "complex_filtr"."expenditure_per_smena" 
+            FROM "complex_filtr" 
+            INNER JOIN "nomen" ON "nomen"."Код" = "complex_filtr"."kod" 
+            WHERE "complex_filtr"."kod_oper" = '{kod_oper}' AND "complex_filtr"."tag" = {tag} AND 
+                "complex_filtr"."commentss" LIKE '%%{uslovie}%%' AND "complex_filtr"."filtr" = 0
+        """
     else:
-        query = f"""SELECT complex_filtr.kod, nomen.Наименование, nomen.ЕдиницаИзмерения,  complex_filtr.expenditure_per_smena FROM complex_filtr 
-                    INNER JOIN nomen ON nomen.Код == complex_filtr.kod 
-                                WHERE complex_filtr.kod_oper == '{kod_oper}' AND complex_filtr.tag == {tag}
-                        AND complex_filtr.filtr == 0"""
+        query = f"""SELECT 
+            "complex_filtr"."kod", 
+            "nomen"."Наименование", 
+            "nomen"."ЕдиницаИзмерения",  
+            "complex_filtr"."expenditure_per_smena" 
+        FROM complex_filtr 
+        INNER JOIN nomen ON "nomen"."Код" = "complex_filtr"."kod" 
+        WHERE "complex_filtr"."kod_oper" = '{kod_oper}' AND "complex_filtr"."tag" = {tag}
+                        AND complex_filtr."filtr" = 0"""
     list = CSQ.custom_request_c(CFG.Config.project.db_nomen, query, hat_c=False, conn=conn)
     return list
 
@@ -2164,7 +2176,7 @@ def komp_svarka(self, ima_operacii, arr_tmp):
             else:
                 kod_prov = kod_prov[-1][0]
 
-            query = f"""SELECT Наименование, ЕдиницаИзмерения FROM nomen WHERE Код == '{kod_prov}' """
+            query = f"""SELECT "Наименование", "ЕдиницаИзмерения" FROM nomen WHERE "Код" = '{kod_prov}'; """
             naim_prov, edizm_prov = CSQ.custom_request_c(CFG.Config.project.db_nomen, query)[-1]
 
             putf = put + F.sep() + 'table2.txt'

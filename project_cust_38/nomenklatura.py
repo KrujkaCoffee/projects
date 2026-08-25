@@ -155,7 +155,7 @@ def zagruz_mat_iz_nomenklatyri(self, *args):
     if nk_kod == None:
         CQT.msgbox(f'Ошибка инициализации таблицы')
         return
-    custom_request_c = f"""SELECT Код_ЕРП FROM dse WHERE Номенклатурный_номер == '{self.dse_nn}' AND Наименование == '{self.dse_naim}' """
+    custom_request_c = f"""SELECT "Код_ЕРП" FROM dse WHERE "Номенклатурный_номер" = '{self.dse_nn}' AND "Наименование" = '{self.dse_naim}';"""
     rez = CSQ.custom_request_c(self.db_dse, custom_request_c)
     if rez[1][0] == '':
         CQT.msgbox('Код не определен в БД')
@@ -164,8 +164,8 @@ def zagruz_mat_iz_nomenklatyri(self, *args):
         kod = rez[1][0].strip()
         if F.existence_file_c(self.db_mater):
             try:
-                query = f"""SELECT Код, Наименование, ЕдиницаИзмерения 
-                        FROM nomen WHERE Код == '{kod}'"""
+                query = f"""SELECT "Код", "Наименование", "ЕдиницаИзмерения" 
+                        FROM nomen WHERE "Код" = '{kod}';"""
                 spisok = CSQ.custom_request_c(self.db_mater, query, rez_dict=True, one=True)
                 if spisok == False:
                     CQT.msgbox(f'Не удалось загрузить данные из БДмат, попробуй позже')
@@ -268,7 +268,7 @@ def synchron_zapis(rez,vid,spis_izm,kod,table,i,conn,nk_art,nk_naim,nk_edizm):
     if vid_old != vid:
         spis_izm.append([kod, f"{kod}, Было: {vid_old}, Стало: {vid}"])
         custom_request_c = f'''
-                                                    UPDATE nomen SET Вид == '{vid}', Дата_изменения == '{F.now()}' WHERE Код == "{kod}"
+                                                    UPDATE nomen SET "Вид" = '{vid}', "Дата_изменения" = '{F.now()}' WHERE "Код" = '{kod}'
                                                     '''
         CSQ.custom_request_c('', custom_request_c=custom_request_c, conn=conn)
 
@@ -276,7 +276,7 @@ def synchron_zapis(rez,vid,spis_izm,kod,table,i,conn,nk_art,nk_naim,nk_edizm):
     if art_old != table[i][nk_art]:
         spis_izm.append([kod, f"{kod}, Было: {art_old}, Стало: {table[i][nk_art]}"])
         custom_request_c = f'''
-                                                    UPDATE nomen SET Артикул == '{table[i][nk_art]}', Дата_изменения == '{F.now()}' WHERE Код == "{kod}"
+                                                    UPDATE nomen SET "Артикул" = '{table[i][nk_art]}', "Дата_изменения" = '{F.now()}' WHERE "Код" = '{kod}'
                                                     '''
         CSQ.custom_request_c('', custom_request_c=custom_request_c, conn=conn)
 
@@ -284,7 +284,7 @@ def synchron_zapis(rez,vid,spis_izm,kod,table,i,conn,nk_art,nk_naim,nk_edizm):
     if naim_old != table[i][nk_naim]:
         spis_izm.append([kod, f"{kod}, Было: {naim_old}, Стало: {table[i][nk_naim]}"])
         custom_request_c = f'''
-                                                    UPDATE nomen SET Наименование == '{table[i][nk_naim]}', Дата_изменения == '{F.now()}' WHERE Код == "{kod}"
+                                                    UPDATE nomen SET "Наименование" = '{table[i][nk_naim]}', "Дата_изменения" = '{F.now()}' WHERE "Код" = '{kod}'
                                                     '''
         CSQ.custom_request_c('', custom_request_c=custom_request_c, conn=conn)
 
@@ -292,7 +292,7 @@ def synchron_zapis(rez,vid,spis_izm,kod,table,i,conn,nk_art,nk_naim,nk_edizm):
     if edizm_old != table[i][nk_edizm]:
         spis_izm.append([kod, f"{kod}, Было: {edizm_old}, Стало: {table[i][nk_edizm]}"])
         custom_request_c = f'''
-                                                    UPDATE nomen SET Наименование == '{table[i][nk_edizm]}', Дата_изменения == '{F.now()}' WHERE Код == "{kod}"
+                                                    UPDATE nomen SET "Наименование" = '{table[i][nk_edizm]}', "Дата_изменения" = '{F.now()}' WHERE "Код" = '{kod}'
                                                     '''
         CSQ.custom_request_c('', custom_request_c=custom_request_c, conn=conn)
 
@@ -319,7 +319,7 @@ def synchron_param(kod, vid, conn, cur, spis_izm, rez=''):
                 znach_old = rez[-1][F.num_col_by_name_in_hat_c(rez, key)]
             if rez == '' or znach != znach_old:
                 custom_request_c = f'''
-                            UPDATE nomen SET {key} == '{znach}', Дата_изменения == '{F.now()}' WHERE Код == "{kod}"
+                            UPDATE nomen SET "{key}" = '{znach}', "Дата_изменения" = '{F.now()}' WHERE "Код" = '{kod}'
                             '''
                 CSQ.custom_request_c('', custom_request_c=custom_request_c, conn=conn)
                 spis_izm.append([kod, f"{key}, Было: {znach_old}, Стало: {znach}"])
@@ -336,7 +336,7 @@ def general(self):
         return 'Unable connect, EXIT'
 
     conn_db, cur_db = CSQ.connect_bd(self.db_mater)
-    SPIS_VIDOV = CSQ.custom_request_c(self.db_mater, f"""SELECT DISTINCT Вид FROM nomen""", conn=conn_db,hat_c=False)
+    SPIS_VIDOV = CSQ.custom_request_c(self.db_mater, f"""SELECT DISTINCT "Вид" FROM nomen""", conn=conn_db,hat_c=False)
     for vid in SPIS_VIDOV:
         vid = vid[0]
         table = query_mat(vid, conn)
@@ -348,7 +348,7 @@ def general(self):
         for i in range(1, len(table)):
             kod = table[i][nk_kod]
             query = f"""
-            SELECT * FROM nomen WHERE Код == "{kod}"
+            SELECT * FROM nomen WHERE "Код" = '{kod}'
             """
             rez = CSQ.custom_request_c('', query, conn_db)
             if len(rez) > 1:
@@ -371,21 +371,21 @@ def general(self):
                                '',
                                '']
                 #CSQ.add_line_into_db_sql_c(self.db_mater, 'nomen', [strok_input], conn=conn_db, cur=cur_db)
-                CSQ.custom_request_c(self.db_mater,f"""INSERT INTO nomen (Вид
-,Код
-,Артикул
-,Наименование
-,ЕдиницаИзмерения
-,На_удаление
-,Дата_изменения
-,Примечание
-,П1
-,П2
-,П3
-,П4
-,П5
-,П6
-,П7) VALUES ({','.join('?'*len(strok_input))})""",conn=conn_db,cur=cur_db,list_of_lists_c=[strok_input])
+                CSQ.custom_request_c(self.db_mater,f"""INSERT INTO nomen ("Вид"
+,"Код"
+,"Артикул"
+,"Наименование"
+,"ЕдиницаИзмерения"
+,"На_удаление"
+,"Дата_изменения"
+,"Примечание"
+,"П1"
+,"П2"
+,"П3"
+,"П4"
+,"П5"
+,"П6"
+,"П7") VALUES ({','.join('?'*len(strok_input))})""",conn=conn_db,cur=cur_db,list_of_lists_c=[strok_input])
                 spis_izm.append([table[i][nk_kod], 'Добавлен'])
     if spis_izm != []:
         put_f = F.path_to_execut_file_c() + F.now('%d.%m.%Y') + '_Изменения ЕРП.txt'
@@ -399,9 +399,9 @@ def general(self):
 
 
 def sunc_schemas_from_erp(db_mater, schemas_rez):
-    CSQ.custom_request_c(db_mater,f"""DELETE FROM СхемыОбеспечения;""")
-    CSQ.custom_request_c(db_mater,f"""INSERT INTO СхемыОбеспечения
-                              (Key, Description, Склад, ГарантированныйСрокОбеспечения)
+    CSQ.custom_request_c(db_mater,f"""DELETE FROM "СхемыОбеспечения";""")
+    CSQ.custom_request_c(db_mater,f"""INSERT INTO "СхемыОбеспечения"
+                              ("Key", "Description", "Склад", "ГарантированныйСрокОбеспечения")
                               VALUES (?, ?, ?, ?); """,list_of_lists_c=schemas_rez)
 
 def sunc_nomen_from_erp(db_mater, file_erp,dict_nomen_mes, path_dir,dict_vids_nomen):
@@ -499,24 +499,24 @@ def sunc_nomen_from_erp(db_mater, file_erp,dict_nomen_mes, path_dir,dict_vids_no
                      line_erp['Вид_Ref_Key']]
         strok_input.append(input_row)
     if strok_input != []:
-        CSQ.custom_request_c(db_mater, f"""INSERT INTO nomen (Вид
-                ,Код
-                ,Артикул
-                ,Наименование
-                ,ЕдиницаИзмерения
-                ,На_удаление
-                ,Дата_изменения
-                ,Примечание
-                ,П1
-                ,П2
-                ,П3
-                ,П4
-                ,П5
-                ,П6
-                ,П7
-                ,СхемаОбеспечения
-                ,Ref_Key
-                ,Вид_Ref_Key) VALUES ({','.join('?' * len(strok_input[0]))})""", list_of_lists_c=strok_input) #08.09.25
+        CSQ.custom_request_c(db_mater, f"""INSERT INTO nomen ("Вид"
+                ,"Код"
+                ,"Артикул"
+                ,"Наименование"
+                ,"ЕдиницаИзмерения"
+                ,"На_удаление"
+                ,"Дата_изменения"
+                ,"Примечание"
+                ,"П1"
+                ,"П2"
+                ,"П3"
+                ,"П4"
+                ,"П5"
+                ,"П6"
+                ,"П7"
+                ,"СхемаОбеспечения"
+                ,"Ref_Key"
+                ,"Вид_Ref_Key") VALUES ({','.join('?' * len(strok_input[0]))})""", list_of_lists_c=strok_input) #08.09.25
 
     for field in dict_change['change'].keys():
         strok_input = []
@@ -527,14 +527,14 @@ def sunc_nomen_from_erp(db_mater, file_erp,dict_nomen_mes, path_dir,dict_vids_no
             strok_input.append(input_row)
             counter += 1
             if counter >= limit_counter:
-                CSQ.custom_request_c(db_mater, f"""UPDATE nomen SET ({field}, Дата_изменения) =
-                     (?, ?) WHERE Код = ?;""", list_of_lists_c=strok_input)
+                CSQ.custom_request_c(db_mater, f"""UPDATE nomen SET ("{field}", "Дата_изменения") =
+                     (?, ?) WHERE "Код" = ?;""", list_of_lists_c=strok_input)
                 strok_input = []
                 counter = 0
                 #F.sleep(1)
         if strok_input:
-            CSQ.custom_request_c(db_mater, f"""UPDATE nomen SET ({field}, Дата_изменения) =
-                                 (?, ?) WHERE Код = ?;""", list_of_lists_c=strok_input)
+            CSQ.custom_request_c(db_mater, f"""UPDATE nomen SET ("{field}", "Дата_изменения") =
+                                 (?, ?) WHERE "Код" = ?;""", list_of_lists_c=strok_input)
 
     len_del = len(dict_change['del'])
     i = 0
@@ -549,14 +549,14 @@ def sunc_nomen_from_erp(db_mater, file_erp,dict_nomen_mes, path_dir,dict_vids_no
         i += 1
         counter += 1
         if counter >= limit_counter:
-            CSQ.custom_request_c(db_mater, f"""UPDATE nomen SET (На_удаление, Дата_изменения) =
-                                     (?, ?) WHERE Код = ?;""", list_of_lists_c=strok_input)
+            CSQ.custom_request_c(db_mater, f"""UPDATE nomen SET ("На_удаление", "Дата_изменения") =
+                                     (?, ?) WHERE "Код" = ?;""", list_of_lists_c=strok_input)
             strok_input = []
             counter = 0
             #F.sleep(1)
     if strok_input != []:
-        CSQ.custom_request_c(db_mater, f"""UPDATE nomen SET (На_удаление, Дата_изменения) =
-                         (?, ?) WHERE Код = ?;""", list_of_lists_c=strok_input)
+        CSQ.custom_request_c(db_mater, f"""UPDATE nomen SET ("На_удаление", "Дата_изменения") =
+                         (?, ?) WHERE "Код" = ?;""", list_of_lists_c=strok_input)
 
     # for item in set_nomen_wh_params:
     #     log_change.append(f'Необходимо занести ПАРАМЕТРЫ на {item}')
@@ -701,7 +701,7 @@ def obn_mat_erp_file(db_mater, *args):
     #        F.run_file_c(put_f)
     #    return True ####OLD
     ##==========
-    dict_vids_nomen = F.deploy_dict_c(CSQ.custom_request_c(db_mater,'SELECT * FROM ВидыНоменклатуры;',rez_dict=True),'Ref_Key')
+    dict_vids_nomen = F.deploy_dict_c(CSQ.custom_request_c(db_mater,'SELECT * FROM "ВидыНоменклатуры";',rez_dict=True),'Ref_Key')
     m = ERP.OrdersComposit()
     refs_vids_nomen = [] # ++ 08.09.25
     for ref_nomen_type, vid in dict_vids_nomen.items():
@@ -714,11 +714,11 @@ def obn_mat_erp_file(db_mater, *args):
             if vid['name'] != name:
                 print('Было', name, 'Стало', vid['name'])
                 CSQ.custom_request_c(db_mater,
-                                     f"""UPDATE ВидыНоменклатуры SET (name) = ('{name}') WHERE Ref_Key = "{ref_nomen_type}"; """)
+                                     f"""UPDATE "ВидыНоменклатуры" SET "name" = '{name}' WHERE "Ref_Key" = '{ref_nomen_type}'; """)
         else:
             # Ref_Key = str(F.shtamp_from_date(F.now())).replace('.','-')
             CSQ.custom_request_c(db_mater,
-                                 f"""UPDATE ВидыНоменклатуры SET (comment) = ('Не найден в 1С') WHERE Ref_Key = "{ref_nomen_type}"; """)
+                                 f"""UPDATE "ВидыНоменклатуры" SET "comment" = 'Не найден в 1С' WHERE "Ref_Key" = '{ref_nomen_type}'; """)
 
         # -- 08.09.25
     list_vids_nomen = list(dict_vids_nomen.keys())
@@ -728,7 +728,7 @@ def obn_mat_erp_file(db_mater, *args):
     if res == None or schemas_rez == None:
         print('Err obn_mat_erp_file')
         return
-    list_nomen_db = CSQ.custom_request_c(db_mater, f"""SELECT * FROM nomen""", rez_dict=True)
+    list_nomen_db = CSQ.custom_request_c(db_mater, f"""SELECT * FROM nomen;""", rez_dict=True)
     dict_nomen_mes = F.deploy_dict_c(list_nomen_db, 'Код')
 
     path_dir = F.dir_workdesc_c()

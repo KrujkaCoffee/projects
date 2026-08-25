@@ -48,7 +48,7 @@ class BaseStorage:
         custom_request_c = f"""
             SELECT * 
             FROM reestr 
-            WHERE size = {size} and hesh = ? ;"""
+            WHERE "size" = {size} and "hesh" = ? ;"""
         query = CSQ.custom_request_c(
             self.db_files,
             custom_request_c,
@@ -59,15 +59,15 @@ class BaseStorage:
         return query
 
     def _get_file_info(self, by_value: str, by_attr: str = 'name', many: bool = False):
-        custom_request_c = f"""SELECT * FROM names WHERE {by_attr} = ?"""
+        custom_request_c = f"""SELECT * FROM names WHERE "{by_attr}" = ?"""
         return CSQ.custom_request_c(self.db_files, custom_request_c,
                                     rez_dict=True, one=not many,
                                     list_of_lists_c=[by_value])
 
     def _add_data(self, size, hash_, bin_file, date, usr, storage = 'filesystem'):
         if storage == 'database':
-            result = CSQ.custom_request_c(self.db_files, """INSERT INTO reestr(size, hesh, file, Date_edit, usr)
-                             VALUES (?,?,?,?,?) RETURNING Пномер;""",
+            result = CSQ.custom_request_c(self.db_files, """INSERT INTO reestr("size", hesh, file, "Date_edit", usr)
+                             VALUES (?,?,?,?,?) RETURNING "Пномер";""",
                 list_of_lists_c=[size, hash_, bin_file, date, usr],
                 hat_c=False,
                 one_column=True)
@@ -77,8 +77,8 @@ class BaseStorage:
         elif storage == 'filesystem':
             is_done = self.store_file(hash_, size, binary=bin_file) # 3
             if is_done:
-                result = CSQ.custom_request_c(self.db_files, """INSERT INTO reestr(size, hesh, Date_edit, usr, storage)
-                                 VALUES (?,?,?,?,?) RETURNING Пномер;""",
+                result = CSQ.custom_request_c(self.db_files, """INSERT INTO reestr("size", hesh, "Date_edit", usr, storage)
+                                 VALUES (?,?,?,?,?) RETURNING "Пномер";""",
                     list_of_lists_c=[size, hash_, date, usr, 3],
                     hat_c=False,
                     one_column=True)
@@ -89,7 +89,7 @@ class BaseStorage:
 
     def _add_name(self, nom_data, name, date_edit, usr):
         result = CSQ.custom_request_c(self.db_files, """INSERT INTO names(nom_data, name, date_edit, usr)
-                                 VALUES (?,?,?,?) RETURNING Пномер;""",
+                                 VALUES (?,?,?,?) RETURNING "Пномер";""",
             list_of_lists_c=[nom_data, name, date_edit, usr],
             hat_c=False,
             one_column=True
@@ -101,12 +101,12 @@ class BaseStorage:
     def _update_data(self, size, hash_, bin_file, date, usr, pnom, storage = 'filesystem'):
         if storage == 'filesystem':
             if self.store_file(hash_, size, binary=bin_file):
-                return CSQ.custom_request_c(self.db_files, f"""UPDATE reestr SET (size, hesh, file, Date_edit, usr, storage)
-                             = (?,?,?,?,?) WHERE Пномер = {pnom};""",
+                return CSQ.custom_request_c(self.db_files, f"""UPDATE reestr SET ("size", hesh, file, "Date_edit", usr, storage)
+                             = (?,?,?,?,?) WHERE "Пномер" = {pnom};""",
                        list_of_lists_c=[size, hash_, None, date, usr, 3])
         elif storage == 'database':
-            return CSQ.custom_request_c(self.db_files, f"""UPDATE reestr SET (size, hesh, file, Date_edit, usr)
-                         = (?,?,?,?,?) WHERE Пномер = {pnom};""",
+            return CSQ.custom_request_c(self.db_files, f"""UPDATE reestr SET ("size", hesh, file, "Date_edit", usr)
+                         = (?,?,?,?,?) WHERE "Пномер" = {pnom};""",
                    list_of_lists_c=[size, hash_, bin_file, date, usr])
 
     def _compute_signature(self, path: str) -> FileSignature:
@@ -244,13 +244,13 @@ class FileStorage(BaseStorage):
     def get_file_by_name(self, name, destination_path: str = None):
         custom_request_c = f"""
             SELECT 
-                reestr.file, 
-                storage_types.name as storage,
-                reestr.hesh
+                "reestr"."file", 
+                "storage_types"."name" as "storage",
+                "reestr"."hesh"
             FROM reestr 
-            INNER JOIN names on names.nom_data = reestr.Пномер 
-            LEFT JOIN storage_types ON storage_types.id = reestr.storage
-            WHERE names.name = ?"""
+            INNER JOIN "names" ON "names"."nom_data" = "reestr"."Пномер" 
+            LEFT JOIN "storage_types" ON "storage_types"."id" = "reestr"."storage"
+            WHERE "names"."name" = ?;"""
         query = CSQ.custom_request_c(
             CFG.Config.project.db_files,
             custom_request_c,

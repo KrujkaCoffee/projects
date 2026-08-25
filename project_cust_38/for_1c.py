@@ -957,8 +957,8 @@ def eval_1c_budgetzvp_v1(data):
                     else:
                         name_nomen = product['Номенклатура_Key']
                         data_nomen = CSQ.custom_request_c(F.scfg('nomenklatura_erp'),
-                                                          f"""SELECT Код, Наименование 
-                                                          FROM nomen WHERE Ref_Key == "{product['Номенклатура_Key']}" LIMIT 1""",
+                                                          f"""SELECT "Код", "Наименование" 
+                                                          FROM nomen WHERE "Ref_Key" = '{product['Номенклатура_Key']}' LIMIT 1""",
                                                           rez_dict=True)
                         if data_nomen == None or data_nomen == False or len(data_nomen) == 0:
                             data_nomen = m.get_response(doc_name='Catalog_Номенклатура',
@@ -1365,8 +1365,8 @@ def compare_res_1c_v1(refKey_zp:str):
     def upd_kpl_data(tbl_kpl_name, field_kpl_name, val_name,НомПл):
         if isinstance(val_name, str):
             val_name = f'"{val_name}"'
-        res_upd = CSQ.custom_request_c(db_kplan, f"""UPDATE {tbl_kpl_name} SET ({field_kpl_name})
-               = ({val_name}) WHERE НомПл == {НомПл}""")
+        res_upd = CSQ.custom_request_c(db_kplan, f"""UPDATE "{tbl_kpl_name}" SET "{field_kpl_name}"
+               = {val_name} WHERE "НомПл" = {НомПл}""")
         return res_upd
 
     answ = []
@@ -1415,18 +1415,18 @@ def compare_res_1c_v1(refKey_zp:str):
             num_mk = int(dict_СпецификацияОписание['Номер МК'])
 
             kpl = CSQ.custom_request_c(db_kplan, f"""SELECT 
-                            пл_топ.НомПл,  
+                            пл_топ."НомПл",  
                             знпр.s_num as знпр_s_num,
-                            пл_оуп.Номенклатура_ЕРП,   
-                            пл_топ.Спецификация_ЕРП as Спецификация_ЕРП_пл_топ, 
-                            пл_топ.Спецификация_код_ЕРП as Спецификация_код_ЕРП_пл_топ, 
-                            mk.Пномер  as  Пномер_mk,
-                            mk.Тип as Тип_mk
+                            пл_оуп."Номенклатура_ЕРП",   
+                            пл_топ."Спецификация_ЕРП" as "Спецификация_ЕРП_пл_топ", 
+                            пл_топ."Спецификация_код_ЕРП" as "Спецификация_код_ЕРП_пл_топ", 
+                            mk."Пномер" as "Пномер_mk",
+                            mk."Тип" as "Тип_mk"
                          FROM знпр  
-                         INNER JOIN пл_оуп ON пл_оуп.Пномер_ЗП == знпр.s_num 
-                         INNER JOIN пл_топ ON пл_топ.НомПл == пл_оуп.НомПл 
-                         INNER JOIN mk ON mk.НомКплан == пл_оуп.НомПл 
-                          WHERE mk.Пномер == {num_mk}  ;""",
+                         INNER JOIN "пл_оуп" ON пл_оуп."Пномер_ЗП" = "знпр"."s_num" 
+                         INNER JOIN "пл_топ" ON пл_топ."НомПл" = "пл_оуп"."НомПл" 
+                         INNER JOIN "mk" ON mk."НомКплан" = "пл_оуп"."НомПл" 
+                          WHERE mk."Пномер" = {num_mk}  ;""",
                                                 rez_dict=True, one=True, attach_dbs=db_naryad)
             НомПл = kpl['НомПл']
             if kpl['Номенклатура_ЕРП'] != НоменклатураНаименование:
@@ -1443,17 +1443,17 @@ def compare_res_1c_v1(refKey_zp:str):
         else:
             list_poz_mes = CSQ.custom_request_c(db_kplan, f"""
                 SELECT 
-                    пл_топ.НомПл,  
-                    пл_оуп.Номенклатура_ЕРП,   
-                    пл_топ.Спецификация_ЕРП as Спецификация_ЕРП_пл_топ, 
-                    пл_топ.Спецификация_код_ЕРП as Спецификация_код_ЕРП_пл_топ, 
-                    mk.Пномер  as  Пномер_mk 
+                    пл_топ."НомПл",  
+                    пл_оуп."Номенклатура_ЕРП",   
+                    пл_топ."Спецификация_ЕРП" as "Спецификация_ЕРП_пл_топ", 
+                    пл_топ."Спецификация_код_ЕРП" as "Спецификация_код_ЕРП_пл_топ", 
+                    mk."Пномер" as "Пномер_mk" 
                 FROM знпр  
-                INNER JOIN пл_оуп ON пл_оуп.Пномер_ЗП == знпр.s_num 
-                INNER JOIN пл_топ ON пл_топ.НомПл == пл_оуп.НомПл 
-                INNER JOIN mk ON mk.НомКплан == пл_оуп.НомПл 
-                WHERE знпр.Ref_Key_py == "{refKey_zp}" 
-                    and mk.Тип == 1;""", rez_dict=True, attach_dbs=db_naryad)
+                INNER JOIN пл_оуп ON пл_оуп."Пномер_ЗП" = знпр.s_num 
+                INNER JOIN пл_топ ON пл_топ."НомПл" = пл_оуп.НомПл 
+                INNER JOIN mk ON mk."НомКплан" = пл_оуп.НомПл 
+                WHERE знпр."Ref_Key_py" = '{refKey_zp}' 
+                    and mk."Тип" = 1;""", rez_dict=True, attach_dbs=db_naryad)
             mes_res_code = mes_res_name = ''
             for kpl in list_poz_mes:
                 НомПл = kpl['НомПл']
