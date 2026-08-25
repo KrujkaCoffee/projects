@@ -5,7 +5,7 @@ import os
 import re
 import threading
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, Sequence
 
 try:
     from . import planner_registry_runtime_stage2 as runtime_api
@@ -17,6 +17,8 @@ except ImportError:
 
 PLANNER_CONNINFO_ENV = "MES_PLANNER_PG_DSN"
 PLANNER_SUBJECT_CODE = "gant"
+PRESENTATION_SEPARATOR = ";"
+MAX_PRESENTATION_FIELDS = 2
 
 
 class PlannerMesTypeError(registry.PlannerRegistryError):
@@ -34,17 +36,18 @@ class MesPresentationChoice:
     is_default: bool = False
     is_filterable: bool = False
     sort_order: int = 0
+    db_type: str = ""
+    comment: str = ""
 
     def to_ui_row(self) -> dict[str, Any]:
         return {
             "_name": self.presentation_key,
             "_presentation_key": self.presentation_key,
-            "": "⭐" if self.is_default else "",
-            "Поле": self.source_field_name,
-            "Представление": self.caption,
-            "Результат": f"{self.result_table_key}.{self.result_field_name}",
-            "Связь": " → ".join(self.relation_steps) if self.relation_steps else "Прямое поле",
-            "Фильтр": "Да" if self.is_filterable else "",
+            "_is_filterable": self.is_filterable,
+            "Поле": self.caption,
+            "Тип": self.db_type,
+            "Стандартный": "⭐" if self.is_default else "",
+            "Комментарий": self.comment,
         }
 
 
@@ -79,6 +82,39 @@ class MesTypeChoice:
     def presentation_template(self) -> list[dict[str, Any]]:
         return [item.to_ui_row() for item in self.presentations]
 
+    def selected_presentations(
+        self,
+        value: str | Sequence[str] | None = None,
+    ) -> tuple[MesPresentationChoice, ...]:
+        if value is None or value == "":
+            keys = [self.default_presentation.presentation_key]
+        elif isinstance(value, str):
+            keys = [item.strip() for item in value.split(PRESENTATION_SEPARATOR) if item.strip()]
+        else:
+            keys = [str(item).strip() for item in value if str(item).strip()]
+        keys = list(dict.fromkeys(keys))
+        if not keys:
+            keys = [self.default_presentation.presentation_key]
+        if len(keys) > MAX_PRESENTATION_FIELDS:
+            raise PlannerMesTypeError(
+                f"Можно выбрать не более {MAX_PRESENTATION_FIELDS} полей представления."
+            )
+        by_key = {item.presentation_key: item for item in self.presentations}
+        missing = [key for key in keys if key not in by_key]
+        if missing:
+            raise PlannerMesTypeError(
+                "Выбранные поля больше не зарегистрированы: " + ", ".join(missing)
+            )
+        return tuple(by_key[key] for key in keys)
+
+    def selection_key(self, value: str | Sequence[str] | None = None) -> str:
+        return PRESENTATION_SEPARATOR.join(
+            item.presentation_key for item in self.selected_presentations(value)
+        )
+
+    def selection_caption(self, value: str | Sequence[str] | None = None) -> str:
+        return " + ".join(item.caption for item in self.selected_presentations(value))
+
 
 @dataclass(frozen=True)
 class MesTypeEntry:
@@ -96,12 +132,13 @@ class PlannerRuntimeSession:
         runtime: Any | None = None,
         *,
         runtime_factory: Callable[[str], Any] | None = None,
+        conninfo_provider: Callable[[], str] | None = None,
     ) -> None:
-        def conninfo_provider():
+        def default_conninfo_provider():
             return "postgresql://postgres:Adr1959967 @srv-mes:5432/postgres"
         self._runtime = runtime
         self._runtime_factory = runtime_factory or runtime_api.PlannerRegistryRuntime.connect
-        self._conninfo_provider = conninfo_provider
+        self._conninfo_provider = conninfo_provider or default_conninfo_provider
         self._lock = threading.RLock()
         self._closed = False
 
@@ -165,6 +202,7 @@ class PlannerMesTypeCatalog:
 
     def reload(self, mes_base_type: type) -> tuple[MesTypeEntry, ...]:
         runtime = self.session.get_runtime()
+        admin_catalog = getattr(runtime, "catalog", None)
         configs = runtime.list_sources(
             self.subject_code,
             role=registry.SourceRole.ATTRIBUTE,
@@ -172,7 +210,7 @@ class PlannerMesTypeCatalog:
         warnings: list[str] = []
         choices: list[MesTypeChoice] = []
         for config in configs:
-            choice = self._choice_from_config(config, warnings)
+            choice = self._choice_from_config(config, warnings, admin_catalog)
             if choice is not None:
                 choices.append(choice)
 
@@ -216,6 +254,34 @@ class PlannerMesTypeCatalog:
     def default_presentation(self, type_value: type) -> MesPresentationChoice:
         return self.choice_for_type(type_value).default_presentation
 
+    def type_for_source(
+        self,
+        source_key: str,
+        mes_base_type: type,
+        *,
+        allow_placeholder: bool = False,
+    ) -> type:
+        source_key = str(source_key or "")
+        type_value = self._types_by_source.get(source_key)
+        if type_value is not None:
+            return type_value
+        choice = self._choices_by_source.get(source_key)
+        if choice is None:
+            if not allow_placeholder:
+                raise PlannerMesTypeError(
+                    f"Справочник МЕС {source_key!r} не зарегистрирован."
+                )
+            choice = MesTypeChoice(
+                source_key=source_key,
+                table_key="",
+                caption=f"Недоступный справочник ({source_key})",
+                identity_field_name="",
+                presentations=(),
+            )
+        type_value = self._make_type(choice, mes_base_type)
+        self._types_by_source[source_key] = type_value
+        return type_value
+
     def close(self) -> None:
         self.session.close()
 
@@ -223,6 +289,7 @@ class PlannerMesTypeCatalog:
     def _choice_from_config(
         config: registry.PlannerSourceConfig,
         warnings: list[str],
+        admin_catalog: registry.AdminCatalog | None = None,
     ) -> MesTypeChoice | None:
         if not config.source.is_enabled:
             return None
@@ -233,23 +300,32 @@ class PlannerMesTypeCatalog:
             for item in config.requisites
             if item.is_selectable and item.is_filterable
         }
-        presentations = tuple(
-            MesPresentationChoice(
-                presentation_key=item.presentation_key,
-                caption=item.caption,
-                source_field_name=item.source_field_name,
-                result_table_key=item.result_table_key,
-                result_field_name=item.result_field_name,
-                relation_steps=tuple(item.relation_steps),
-                is_default=item.is_default,
-                is_filterable=item.source_field_name in filter_fields,
-                sort_order=item.sort_order,
+        presentations_list: list[MesPresentationChoice] = []
+        for item in sorted(
+            config.presentations,
+            key=lambda value: (value.sort_order, value.caption.casefold(), value.presentation_key),
+        ):
+            field_meta = None
+            if isinstance(admin_catalog, registry.AdminCatalog):
+                field_meta = admin_catalog.fields.get(
+                    (item.result_table_key, item.result_field_name)
+                )
+            presentations_list.append(
+                MesPresentationChoice(
+                    presentation_key=item.presentation_key,
+                    caption=item.caption,
+                    source_field_name=item.source_field_name,
+                    result_table_key=item.result_table_key,
+                    result_field_name=item.result_field_name,
+                    relation_steps=tuple(item.relation_steps),
+                    is_default=item.is_default,
+                    is_filterable=item.source_field_name in filter_fields,
+                    sort_order=item.sort_order,
+                    db_type="" if field_meta is None else field_meta.db_type,
+                    comment="",
+                )
             )
-            for item in sorted(
-                config.presentations,
-                key=lambda value: (value.sort_order, value.caption.casefold(), value.presentation_key),
-            )
-        )
+        presentations = tuple(presentations_list)
         if not presentations:
             warnings.append(
                 f"Справочник {config.source.caption!r} скрыт: не зарегистрировано ни одного представления."
@@ -295,6 +371,34 @@ class PlannerMesTypeCatalog:
         def default_presentation(cls) -> MesPresentationChoice:
             return cls._planner_choice.default_presentation
 
+        def init_value(self, reference: Any = None) -> None:
+            if reference is None:
+                self.reference = None
+                return
+            try:
+                from .planner_mes_entities import MesEntityRef
+            except ImportError:
+                from planner_mes_entities import MesEntityRef
+            parsed = MesEntityRef.deserialize(reference)
+            if parsed.source_key != choice.source_key:
+                raise PlannerMesTypeError(
+                    f"Ссылка {parsed.source_key!r} не принадлежит справочнику {choice.source_key!r}."
+                )
+            self.reference = parsed
+
+        def serialize_value(self) -> dict[str, Any] | None:
+            return None if self.reference is None else self.reference.serialize()
+
+        @classmethod
+        def deserialize_value(cls, data: Any):
+            return cls(data)
+
+        def value_text(self) -> str:
+            return "" if self.reference is None else str(self.reference)
+
+        def value_repr(self) -> str:
+            return f"{class_name}(reference={self.reference!r})"
+
         return type(
             class_name,
             (mes_base_type,),
@@ -303,6 +407,11 @@ class PlannerMesTypeCatalog:
                 "_planner_source_key": choice.source_key,
                 "_planner_table_key": choice.table_key,
                 "_planner_choice": choice,
+                "__init__": init_value,
+                "__str__": value_text,
+                "__repr__": value_repr,
+                "serialize": serialize_value,
+                "deserialize": deserialize_value,
                 "template": classmethod(template),
                 "default_presentation": classmethod(default_presentation),
             },
@@ -317,6 +426,8 @@ class PlannerMesTypeCatalog:
 __all__ = [
     "PLANNER_CONNINFO_ENV",
     "PLANNER_SUBJECT_CODE",
+    "PRESENTATION_SEPARATOR",
+    "MAX_PRESENTATION_FIELDS",
     "PlannerMesTypeError",
     "MesPresentationChoice",
     "MesFilterChoice",

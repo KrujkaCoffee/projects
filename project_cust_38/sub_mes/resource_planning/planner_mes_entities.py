@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
-from typing import Any, Mapping, Protocol, Sequence
+from typing import Any, Iterable, Mapping, Protocol, Sequence
 
 try:
     from . import planner_registry_stage2 as registry
+    from .planner_mes_types import MAX_PRESENTATION_FIELDS, PRESENTATION_SEPARATOR
 except ImportError:
     import planner_registry_stage2 as registry
+    from planner_mes_types import MAX_PRESENTATION_FIELDS, PRESENTATION_SEPARATOR
 
 
 MES_ENTITY_REF_VERSION = 1
@@ -175,7 +177,7 @@ class _QueryLayout:
     db_key: str
     source_table_name: str
     identity_field_name: str
-    display_expression: str
+    display_expressions: tuple[str, ...]
     join_sql: str
     filter_fields: tuple[tuple[str, str, str], ...]
 
@@ -215,12 +217,12 @@ class MesEntityService:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> MesSearchPage:
-        presentation = self._presentation(choice, presentation_key)
+        presentations = self._presentations(choice, presentation_key)
         page_size = max(1, min(int(limit), self.max_page_size))
         page_offset = max(0, int(offset))
         rows = self._select(
             choice,
-            presentation,
+            presentations,
             text=str(text or "").strip(),
             filters=filters or {},
             identity=None,
@@ -241,8 +243,8 @@ class MesEntityService:
             raise MesEntityError(
                 f"Ссылка {reference.source_key!r} не принадлежит справочнику {choice.source_key!r}."
             )
-        presentation = self._presentation_or_none(choice, reference.presentation_key)
-        if presentation is None:
+        presentations = self._presentations_or_none(choice, reference.presentation_key)
+        if presentations is None:
             return MesEntityResolution(
                 requested=reference,
                 current=None,
@@ -265,7 +267,7 @@ class MesEntityService:
             )
         rows = self._select(
             choice,
-            presentation,
+            presentations,
             text="",
             filters={},
             identity=identity,
@@ -292,7 +294,7 @@ class MesEntityService:
     def _select(
         self,
         choice: Any,
-        presentation: Any,
+        presentations: Sequence[Any],
         *,
         text: str,
         filters: Mapping[str, Any],
@@ -300,13 +302,16 @@ class MesEntityService:
         limit: int,
         offset: int,
     ) -> list[MesEntityRow]:
-        layout = self._layout(choice, presentation)
+        layout = self._layout(choice, presentations)
         source_alias = "mes_src"
         identity_expression = f"{source_alias}.{_quote(layout.identity_field_name)}"
         select_parts = [
             f"{identity_expression} AS {_quote(_IDENTITY_ALIAS)}",
-            f"{layout.display_expression} AS {_quote(_DISPLAY_ALIAS)}",
         ]
+        for index, expression in enumerate(layout.display_expressions):
+            select_parts.append(
+                f"{expression} AS {_quote(_display_alias(index))}"
+            )
         for index, (_, field_name, _) in enumerate(layout.filter_fields):
             select_parts.append(
                 f"{source_alias}.{_quote(field_name)} AS "
@@ -330,7 +335,7 @@ class MesEntityService:
             parameters.append(value)
 
         if text:
-            search_expressions = [identity_expression, layout.display_expression]
+            search_expressions = [identity_expression, *layout.display_expressions]
             search_expressions.extend(
                 f"{source_alias}.{_quote(field_name)}"
                 for _, field_name, _ in layout.filter_fields
@@ -352,12 +357,14 @@ class MesEntityService:
         )
         if where_parts:
             sql += " WHERE " + " AND ".join(where_parts)
-        sql += (
-            f" ORDER BY {_quote(_DISPLAY_ALIAS)} IS NULL, "
-            f"CAST({_quote(_DISPLAY_ALIAS)} AS TEXT) COLLATE NOCASE, "
-            f"CAST({_quote(_IDENTITY_ALIAS)} AS TEXT) COLLATE NOCASE"
-            " LIMIT ? OFFSET ?"
-        )
+        order_parts: list[str] = []
+        for index in range(len(layout.display_expressions)):
+            alias = _quote(_display_alias(index))
+            order_parts.extend(
+                (f"{alias} IS NULL", f"CAST({alias} AS TEXT) COLLATE NOCASE")
+            )
+        order_parts.append(f"CAST({_quote(_IDENTITY_ALIAS)} AS TEXT) COLLATE NOCASE")
+        sql += " ORDER BY " + ", ".join(order_parts) + " LIMIT ? OFFSET ?"
         parameters.extend((int(limit), int(offset)))
 
         try:
@@ -377,8 +384,13 @@ class MesEntityService:
             reference = MesEntityRef.create(
                 source_key=choice.source_key,
                 identity={layout.identity_field_name: identity_value},
-                presentation_key=presentation.presentation_key,
-                display_snapshot=raw_row.get(_DISPLAY_ALIAS),
+                presentation_key=PRESENTATION_SEPARATOR.join(
+                    item.presentation_key for item in presentations
+                ),
+                display_snapshot=_join_display_values(
+                    raw_row.get(_display_alias(index))
+                    for index in range(len(layout.display_expressions))
+                ),
             )
             filter_values = tuple(
                 (
@@ -390,7 +402,7 @@ class MesEntityService:
             result.append(MesEntityRow(reference=reference, filter_values=filter_values))
         return result
 
-    def _layout(self, choice: Any, presentation: Any) -> _QueryLayout:
+    def _layout(self, choice: Any, presentations: Sequence[Any]) -> _QueryLayout:
         source_table = self.catalog.tables.get(choice.table_key)
         if source_table is None: #todo or not source_table.is_enabled or not source_table.schema_enabled:
             raise MesEntityError(
@@ -398,14 +410,19 @@ class MesEntityService:
             )
         self._require_field(choice.table_key, choice.identity_field_name)
         source_alias = "mes_src"
-        join_sql = ""
-        self._require_field(choice.table_key, presentation.source_field_name)
-        if not presentation.relation_steps:
-            if presentation.result_table_key != choice.table_key:
-                raise MesEntityError("Прямое представление указывает на другую таблицу.")
-            self._require_field(choice.table_key, presentation.result_field_name)
-            display_expression = f"{source_alias}.{_quote(presentation.result_field_name)}"
-        else:
+        join_parts_sql: list[str] = []
+        display_expressions: list[str] = []
+        for index, presentation in enumerate(presentations):
+            self._require_field(choice.table_key, presentation.source_field_name)
+            if not presentation.relation_steps:
+                if presentation.result_table_key != choice.table_key:
+                    raise MesEntityError("Прямое представление указывает на другую таблицу.")
+                self._require_field(choice.table_key, presentation.result_field_name)
+                display_expressions.append(
+                    f"{source_alias}.{_quote(presentation.result_field_name)}"
+                )
+                continue
+
             if len(presentation.relation_steps) != 1:
                 raise MesEntityError("Поддерживается только один шаг скалярного представления.")
             relation_key = presentation.relation_steps[0]
@@ -438,8 +455,8 @@ class MesEntityService:
                 raise MesEntityError(
                     f"Связь {relation_key!r} использует неподдерживаемый тип JOIN."
                 )
-            target_alias = "mes_view"
-            join_parts: list[str] = []
+            target_alias = f"mes_view_{index}"
+            relation_join_parts: list[str] = []
             for pair in relation.field_pairs:
                 if pair.operator != "=":
                     raise MesEntityError(
@@ -447,16 +464,18 @@ class MesEntityService:
                     )
                 self._require_field(pair.left_table_key, pair.left_field_name)
                 self._require_field(pair.right_table_key, pair.right_field_name)
-                join_parts.append(
+                relation_join_parts.append(
                     f"{source_alias}.{_quote(pair.left_field_name)} = "
                     f"{target_alias}.{_quote(pair.right_field_name)}"
                 )
             self._require_field(target_table.table_key, presentation.result_field_name)
-            join_sql = (
+            join_parts_sql.append(
                 f" {join_type} {_quote(target_table.table_name)} AS {target_alias} ON "
-                + " AND ".join(join_parts)
+                + " AND ".join(relation_join_parts)
             )
-            display_expression = f"{target_alias}.{_quote(presentation.result_field_name)}"
+            display_expressions.append(
+                f"{target_alias}.{_quote(presentation.result_field_name)}"
+            )
 
         filter_fields: list[tuple[str, str, str]] = []
         for item in choice.filters:
@@ -466,8 +485,8 @@ class MesEntityService:
             db_key=source_table.db_key,
             source_table_name=source_table.table_name,
             identity_field_name=choice.identity_field_name,
-            display_expression=display_expression,
-            join_sql=join_sql,
+            display_expressions=tuple(display_expressions),
+            join_sql="".join(join_parts_sql),
             filter_fields=tuple(filter_fields),
         )
 
@@ -496,26 +515,46 @@ class MesEntityService:
             used.add(field_name)
         return result
 
-    def _presentation(self, choice: Any, presentation_key: str | None) -> Any:
-        if presentation_key:
-            item = self._presentation_or_none(choice, presentation_key)
-            if item is None:
-                raise MesEntityError(
-                    f"Представление {presentation_key!r} не зарегистрировано для {choice.caption!r}."
-                )
-            return item
-        return choice.default_presentation
-
     @staticmethod
-    def _presentation_or_none(choice: Any, presentation_key: str) -> Any | None:
-        return next(
-            (
-                item
-                for item in choice.presentations
-                if item.presentation_key == presentation_key
-            ),
-            None,
+    def _presentations(choice: Any, presentation_key: str | None) -> tuple[Any, ...]:
+        selector = getattr(choice, "selected_presentations", None)
+        if callable(selector):
+            try:
+                return tuple(selector(presentation_key))
+            except Exception as exc:
+                raise MesEntityError(str(exc)) from exc
+        raw_keys = (
+            [choice.default_presentation.presentation_key]
+            if not presentation_key
+            else [
+                item.strip()
+                for item in str(presentation_key).split(PRESENTATION_SEPARATOR)
+                if item.strip()
+            ]
         )
+        keys = list(dict.fromkeys(raw_keys))
+        if not keys or len(keys) > MAX_PRESENTATION_FIELDS:
+            raise MesEntityError(
+                f"Нужно выбрать от одного до {MAX_PRESENTATION_FIELDS} полей представления."
+            )
+        by_key = {item.presentation_key: item for item in choice.presentations}
+        missing = [key for key in keys if key not in by_key]
+        if missing:
+            raise MesEntityError(
+                "Выбранные поля больше не зарегистрированы: " + ", ".join(missing)
+            )
+        return tuple(by_key[key] for key in keys)
+
+    @classmethod
+    def _presentations_or_none(
+        cls,
+        choice: Any,
+        presentation_key: str,
+    ) -> tuple[Any, ...] | None:
+        try:
+            return cls._presentations(choice, presentation_key)
+        except MesEntityError:
+            return None
 
     def _require_field(self, table_key: str, field_name: str) -> None:
         if (table_key, field_name) not in self.catalog.fields:
@@ -598,25 +637,28 @@ def select_mes_entity(
     except Exception as exc:
         raise MesEntityError(f"Не удалось открыть окно выбора сущности МЕС: {exc}") from exc
 
+    selected_presentations = service._presentations(choice, presentation_key)
+    display_caption = " + ".join(item.caption for item in selected_presentations)
+
     class _MesEntityDialog(QtWidgets.QDialog):
         def __init__(self) -> None:
             super().__init__(parent)
             self.selected_reference: MesEntityRef | None = current
             self.page_offset = 0
             self.page: MesSearchPage | None = None
-            self.setWindowTitle(f"Выбор сущности: {choice.caption}")
+            self.setWindowTitle(f"Выбор: {choice.caption}")
             self.resize(920, 560)
             layout = QtWidgets.QVBoxLayout(self)
 
-            current_text = "Не выбрано" if current is None else str(current)
-            self.current_label = QtWidgets.QLabel(f"Текущее значение: {current_text}")
+            current_text = "пока не выбрано" if current is None else str(current)
+            self.current_label = QtWidgets.QLabel(f"Сейчас: {current_text}")
             self.current_label.setWordWrap(True)
             layout.addWidget(self.current_label)
 
             search_layout = QtWidgets.QHBoxLayout()
             self.search_edit = QtWidgets.QLineEdit()
             self.search_edit.setPlaceholderText(
-                "Поиск по идентификатору, представлению и зарегистрированным фильтрам"
+                "Введите код, название или часть текста"
             )
             self.search_button = QtWidgets.QPushButton("Найти")
             search_layout.addWidget(self.search_edit, 1)
@@ -625,17 +667,17 @@ def select_mes_entity(
 
             self.filter_edits: dict[str, Any] = {}
             if choice.filters:
-                filter_group = QtWidgets.QGroupBox("Точные фильтры")
+                filter_group = QtWidgets.QGroupBox("Дополнительные фильтры")
                 filter_layout = QtWidgets.QFormLayout(filter_group)
                 for item in choice.filters:
                     editor = QtWidgets.QLineEdit()
-                    editor.setPlaceholderText(item.field_name)
+                    editor.setPlaceholderText("Введите значение")
                     filter_layout.addRow(item.caption, editor)
                     self.filter_edits[item.requisite_key] = editor
                 layout.addWidget(filter_group)
 
             self.table = QtWidgets.QTableWidget()
-            headers = ["Идентичность", "Представление"] + [
+            headers = ["Код", display_caption] + [
                 item.caption for item in choice.filters
             ]
             self.table.setColumnCount(len(headers))
@@ -659,9 +701,9 @@ def select_mes_entity(
             layout.addLayout(page_layout)
 
             button_layout = QtWidgets.QHBoxLayout()
-            self.clear_button = QtWidgets.QPushButton("Очистить значение")
+            self.clear_button = QtWidgets.QPushButton("Снять выбор")
             self.cancel_button = QtWidgets.QPushButton("Отмена")
-            self.select_button = QtWidgets.QPushButton("Выбрать")
+            self.select_button = QtWidgets.QPushButton("Использовать")
             self.select_button.setDefault(True)
             button_layout.addWidget(self.clear_button)
             button_layout.addStretch(1)
@@ -713,7 +755,7 @@ def select_mes_entity(
                     offset=self.page_offset,
                 )
             except Exception as exc:
-                QtWidgets.QMessageBox.critical(self, "Ошибка выбора сущности МЕС", str(exc))
+                QtWidgets.QMessageBox.critical(self, "Не удалось загрузить данные", str(exc))
                 return
             finally:
                 QtWidgets.QApplication.restoreOverrideCursor()
@@ -783,6 +825,21 @@ def _quote(identifier: str) -> str:
     if "\x00" in identifier:
         raise MesEntityError("SQL-идентификатор содержит нулевой байт.")
     return '"' + identifier.replace('"', '""') + '"'
+
+
+def _display_alias(index: int) -> str:
+    return _DISPLAY_ALIAS if index == 0 else f"{_DISPLAY_ALIAS}_{index}"
+
+
+def _join_display_values(values: Iterable[Any]) -> str:
+    result: list[str] = []
+    for value in values:
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            result.append(text)
+    return " ".join(result)
 
 
 def _like_pattern(text: str) -> str:

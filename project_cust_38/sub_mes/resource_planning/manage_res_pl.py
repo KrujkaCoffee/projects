@@ -36,6 +36,7 @@ from project_cust_38 import Cust_orm as CORM
 import project_cust_38.sub_mes.resource_planning.clses as CLSS
 from project_cust_38.sub_mes.resource_planning import planner_mes_types
 from project_cust_38.sub_mes.resource_planning import planner_mes_entities
+from project_cust_38.sub_mes.resource_planning import draft_integration
 
 
 from typing import  TYPE_CHECKING
@@ -101,6 +102,14 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
         self.load_crosses(True)
 
         self.fill_cmb_reports()
+        if getattr(self,'_draft_tools_host',None) is None:
+            self._draft_tools_host = draft_integration.DraftToolsHost(
+                parent=self.ui.fr_gr_tbl,
+                catalog_provider=lambda: DTSUB.planner_mes_types.session.get_runtime().catalog,
+                schedule_provider=lambda: (DTSUB.resources,DTSUB.events,DTSUB.crosses),
+            )
+            self.ui.horizontalLayout_10.addWidget(self._draft_tools_host)
+            self._draft_tools_host.hide()
         DTCLS.module_manage_sub_app.user_config_sub_plan = CLSS.UserConfigSubPlan()
         DTCLS.module_manage_sub_app.user_config_sub_plan.load_config()
 
@@ -315,9 +324,9 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
                     try:
                         DTSUB.custom_types.refresh_mes_types()
                         choice = DTSUB.planner_mes_types.choice_for_type(type_attr)
-                        if presentation_key and not any(
-                                item.presentation_key == presentation_key
-                                for item in choice.presentations):
+                        try:
+                            presentation_key = choice.selection_key(presentation_key or None)
+                        except Exception:
                             presentation_key = choice.default_presentation.presentation_key
                         service = planner_mes_entities.MesEntityService.from_type_catalog(
                             DTSUB.planner_mes_types
@@ -1096,6 +1105,14 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
         t = CQT.TableContext(self.ui.tbl_gr)
         CQT.clear_tbl(t.tbl)
         name_gr = CQT.get_cmb_current_data(self.ui.cmb_type_gr)
+        draft_host = getattr(self,'_draft_tools_host',None)
+        if name_gr in ('gant','mes_relations') and draft_host is not None:
+            self.ui.splitter_3.hide()
+            draft_host.show_tool(name_gr)
+            return
+        if draft_host is not None:
+            draft_host.hide()
+        self.ui.splitter_3.show()
         if not name_gr:
             return
         list_crosses = CLSS.CrossManager.get_ordered_data(DTSUB.resources, DTSUB.events, DTSUB.crosses)
