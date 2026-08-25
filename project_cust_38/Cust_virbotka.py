@@ -93,10 +93,36 @@ def list_per_month_c(nach,konec):
 
 def list_of_completed_task_per_month_c(db,nach,konec,conn):
     #test po pologeniy 25.08.2022
-    custom_request_c = f'''SELECT jurnal.Пномер, jurnal.ФИО, jurnal.Подытог, jurnal.Номер_наряда, jurnal.Статус, naryad.Твремя, naryad.Коэфф_сложности FROM jurnal 
-INNER JOIN naryad ON naryad.Пномер = jurnal.Номер_наряда 
-WHERE jurnal.Статус == "Завершен" AND jurnal.Дата <= strftime("%Y-%m-%d %H:%M:00", datetime("{konec}")) AND 
-jurnal.Дата >= strftime("%Y-%m-%d %H:%M:00", datetime("{nach}")) AND naryad.Внеплан != 1 AND naryad.Подтвержд_вып = 1'''
+    custom_request_c = CSQ.SqlQuery(
+        sqlite=f'''
+        SELECT 
+            "jurnal"."Пномер", 
+            "jurnal"."ФИО", 
+            "jurnal"."Подытог", 
+            "jurnal"."Номер_наряда", 
+            "jurnal"."Статус", 
+            "naryad"."Твремя", 
+            "naryad"."Коэфф_сложности" 
+        FROM jurnal 
+INNER JOIN "naryad" ON "naryad"."Пномер" = "jurnal"."Номер_наряда" 
+WHERE jurnal.Статус = 'Завершен' AND jurnal.Дата <= strftime("%Y-%m-%d %H:%M:00", datetime("{konec}")) AND 
+jurnal.Дата >= strftime("%Y-%m-%d %H:%M:00", datetime("{nach}")) AND naryad.Внеплан != 1 AND naryad."Подтвержд_вып" = 1''',
+        postgres=f'''
+        SELECT 
+            "jurnal"."Пномер", 
+            "jurnal"."ФИО", 
+            "jurnal"."Подытог", 
+            "jurnal"."Номер_наряда", 
+            "jurnal"."Статус", 
+            "naryad"."Твремя", 
+            "naryad"."Коэфф_сложности" 
+        FROM jurnal 
+        INNER JOIN "naryad" ON "naryad"."Пномер" = "jurnal"."Номер_наряда" 
+        WHERE jurnal."Статус" = 'Завершен' 
+            AND "jurnal"."Дата" <= to_char('{konec}'::timestamp, 'YYYY-MM-DD HH24:MI:00')
+            AND "jurnal"."Дата" >= to_char('{nach}'::timestamp, 'YYYY-MM-DD HH24:MI:00')
+            AND "naryad"."Внеплан" != 1 AND "naryad"."Подтвержд_вып" = 1'''
+    )
     list_per_month_c = CSQ.custom_request_c(db,custom_request_c,conn=conn)
     return list_per_month_c
 
@@ -137,7 +163,7 @@ def list_per_month_new_c(db,nach,konec,db_kplan,db_users,podrazdelenie,organizat
             return [item['Должность'] for item in result_req['data']]
         else:
             filtr_dolgn = CSQ.custom_request_c(db, f"""SELECT "Должность" FROM dolgn_etap WHERE 
-                 "Подразделение" = "{podrazdelenie}" AND "Производство" = "{organization}" ;""", hat_c=False,
+                 "Подразделение" = '{podrazdelenie}' AND "Производство" = '{organization}' ;""", hat_c=False,
                                            one_column=True)
             return filtr_dolgn
 

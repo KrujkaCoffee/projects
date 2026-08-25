@@ -2906,7 +2906,7 @@ def not_upload_erp_nar(self:mywindow, nach_data, kon_data):
                """,
         postgres=f"""
         SELECT 
-            TO_CHAR(TO_DATE('YYYY-MM-DD', jurnal."Дата")) as "Дата", 
+            TO_CHAR(TO_DATE(jurnal."Дата", 'YYYY-MM-DD'), 'YYYY-MM-DD') AS "Дата",
             CASE WHEN знпр."№ERP" IS NOT NULL 
                 THEN знпр."№ERP" 
                 ELSE mk."Номер_заказа" 
@@ -5356,7 +5356,7 @@ def rasch_posesh(self, data_nach, data_kon, etap, conn, *args):
         SELECT "jurnal"."Дата", "jurnal"."ФИО"  
         FROM jurnal 
         INNER JOIN naryad ON jurnal."Номер_наряда" = naryad."Пномер" 
-        WHERE ("jurnal"."Дата")::timestamp > ('{data_nach}')::timestamp;
+        WHERE ("jurnal"."Дата")::timestamp > ('{data_nach}')::timestamp
             and ("jurnal"."Дата")::timestamp < ('{data_kon}')::timestamp; """
     )
     rez_jur = CSQ.custom_request_c(self.bd_naryad, custom_request_c, hat_c=True, rez_dict=True, conn=conn)
@@ -5880,7 +5880,7 @@ def virabotka_sotr(self, data_nach, data_kon, empl, *args, CALC_BASE_ONLY_PREM=T
             "naryad"."Фвремя", 
             "naryad"."ФИО2", 
             "naryad"."Фвремя2", 
-            "Учтен" AS Учет, 
+            "Учтен" AS "Учет", 
             "naryad"."Примечание" AS "Примеч_наряд", 
             '' AS "Подытог Норм", 
             "naryad"."Внеплан", 
@@ -5893,13 +5893,13 @@ def virabotka_sotr(self, data_nach, data_kon, empl, *args, CALC_BASE_ONLY_PREM=T
         INNER JOIN "mk" ON "naryad"."Номер_мк" = "mk"."Пномер" 
         WHERE "jurnal"."ФИО" = '{empl}' 
             AND ("jurnal"."Дата")::timestamp >= ('{data_nach}')::timestamp 
-            AND ("jurnal"."Дата")::timestamp <= datetime('{data_kon}')::timestamp 
+            AND ("jurnal"."Дата")::timestamp <= ('{data_kon}')::timestamp 
             AND "jurnal"."Номер_наряда" in (
                         SELECT "jurnal"."Номер_наряда" 
                         FROM jurnal 
                         WHERE jurnal.ФИО = '{empl}' 
-                            AND ("jurnal"."Дата")::timestamp >= ('{data_nach}')::timestamp 
-                            AND ("jurnal"."Дата")::TIMESTAMP <= ('{data_kon}')::timestamp 
+                            AND ("jurnal"."Дата")::TIMESTAMP >= ('{data_nach}')::TIMESTAMP 
+                            AND ("jurnal"."Дата")::TIMESTAMP <= ('{data_kon}')::TIMESTAMP 
                             AND jurnal."Статус" = 'Завершен');"""
     )
     rez_jur = CSQ.custom_request_c(self.bd_naryad, custom_request_c, hat_c=True, rez_dict=True)
@@ -5934,7 +5934,7 @@ SELECT
     "naryad"."ФИО", 
     "naryad"."Фвремя", 
     "naryad"."ФИО2", 
-    "naryad"."Фвремя2", "Не учтен" AS Учет, 
+    "naryad"."Фвремя2", 'Не учтен' AS "Учет", 
     "naryad"."Примечание" AS "Примеч_наряд", 
     "jurnal"."Подытог_нормы" AS "Подытог Норм", 
     "naryad"."Внеплан", 
@@ -5951,7 +5951,7 @@ WHERE
         FROM jurnal 
         WHERE 
             jurnal."Статус" = 'Завершен' 
-            AND "jurnal"."ФИО" = {empl}
+            AND "jurnal"."ФИО" = '{empl}'
     ) 
     AND (jurnal."Дата")::timestamp <= ('{data_kon}')::timestamp 
     AND (jurnal."Дата")::timestamp >= ('{data_nach}')::timestamp 
@@ -6160,8 +6160,8 @@ def plan_fact_grafic_mes(self, data_nach, data_kon, *args):
             datetime(Дата) >= datetime("{data_nach}") 
             and datetime(Дата) < datetime("{data_kon}") and poki = {USRCNF.Config.place.poki}""",
         postgres=f"""SELECT * FROM mnts_plan WHERE 
-            ("Дата"):timestamp >= CAST('{data_nach}'AS TIMESTAMP ) 
-            and ("Дата"):timestamp < CAST('{data_kon}'AS TIMESTAMP)  and poki = {USRCNF.Config.place.poki}"""
+            ("Дата")::timestamp >= CAST('{data_nach}'AS TIMESTAMP ) 
+            and ("Дата")::timestamp < CAST('{data_kon}'AS TIMESTAMP)  and poki = {USRCNF.Config.place.poki}"""
     )
     self.list_month_plan = list_month_plan = CSQ.custom_request_c(self.db_kplan, query, rez_dict=True)
     get_list_month_fact(self)
@@ -6266,8 +6266,8 @@ def calc_tehpodgotovka_per_month(bd_naryad, bd_users, db_resxml, db_dse, data_na
         SELECT 
             mk."Пномер", mk."Дата", mk."Направление", "mk"."Вес", "mk"."Количество" 
         FROM mk 
-        WHERE  TO_DATE('20' || "Дата", 'YYYY-MM-DD') > TO_DATE('{data_nach}') 
-                        and TO_DATE('20' || "Дата", 'YYYY-MM-DD') < TO_DATE('{data_kon}');"""
+        WHERE  TO_DATE('20' || "Дата", 'YYYY-MM-DD') > TO_DATE('{data_nach}', 'YYYY-MM-DD') 
+                        and TO_DATE('20' || "Дата", 'YYYY-MM-DD') < TO_DATE('{data_kon}', 'YYYY-MM-DD');"""
     )
     dict_rez_napr = dict()
     dict_rez_users = dict()
@@ -6755,7 +6755,7 @@ SELECT "Пномер",
     INNER JOIN "napravl_deyat" ON "napravl_deyat"."Пномер" = "plan"."Направление_деятельности" 
     INNER JOIN "napravlenie" ON "napravlenie"."Пномер" = "napravl_deyat"."Направление"  
     WHERE "naryad"."Подтвержд_вып" = 1 AND (naryad."Дата")::timestamp > ('{data_nach}')::timestamp 
-                    and datetime(naryad.Дата) < ('{data_kon}')::timestamp and "mk"."Направление" != 'ПТ' 
+                    and (naryad."Дата")::timestamp < ('{data_kon}')::timestamp and "mk"."Направление" != 'ПТ' 
                      and naryad."Внеплан" IN (10, 0) AND пл_топ."Вид" != 1 and plan.poki = {self.place.poki} """
     )
     dict_rez = dict()
@@ -7079,11 +7079,12 @@ def get_plan_vneplan_data(self, data_nach, data_kon, vid='Все', etap='Сбо�
                         and datetime(jurnal.Дата) <= datetime("{kon_data}")
             """,
             postgres=f"""SELECT DISTINCT
-                                    naryad.Пномер, naryad.Твремя, naryad.Норма_времени,  naryad.Номер_мк, naryad.Внеплан, 
-                        naryad.ФИО  as ФИО , naryad.ФИО2  as ФИО2, 
-                                    naryad.Фвремя, naryad.Фвремя2, naryad.Примечание,naryad.ДСЕ,naryad.ДСЕ_ID,naryad.Опер_колво,
-                                    naryad.Профессии, naryad.Операции, naryad.Опер_время, naryad.Виды_работ, mk.Вид, mk.Направление, 
-                                     Тип_мк.Имя as Тип, тип_доработок.Имя as Доработка, naryad.Коэфф_сложности,
+                                    naryad."Пномер", naryad."Твремя", naryad."Норма_времени",  naryad."Номер_мк", naryad."Внеплан", 
+                        naryad."ФИО"  as "ФИО", 
+                        naryad."ФИО2" as "ФИО2", 
+                                    naryad."Фвремя", naryad."Фвремя2", naryad."Примечание",naryad."ДСЕ",naryad."ДСЕ_ID",naryad."Опер_колво",
+                                    naryad."Профессии", naryad."Операции", naryad."Опер_время", naryad."Виды_работ", mk."Вид", mk."Направление", 
+                                     Тип_мк."Имя" as "Тип", тип_доработок."Имя" as "Доработка", naryad."Коэфф_сложности",
                         mk.Вес, 
                                 CASE WHEN знпр."№ERP" IS NOT NULL 
                        THEN знпр."№ERP" 
@@ -7096,20 +7097,28 @@ def get_plan_vneplan_data(self, data_nach, data_kon, vid='Все', etap='Сбо�
                        END AS "Номер_проекта",  
                        
                         mk."Дата_завершения", mk."Количество", 
-                        mk."Номенклатура", mk."НомКплан", jurnal.Пномер as ПномерЖ, jurnal.Дата as Дата_журнал , jurnal.ФИО as fio_jur_zav, 
-                        "" as Дата_выгрузки_ЕРП, "" as ФИО_выгрузки_ЕРП, 0 as Минут_выгружено_ЕРП, "" as base_ERP, 
-                        category_vnepl.value as Категория_внепл , 
-                        naryad.Подтвержд_вып_дата as Подтвержд_вып_дата ,
-                        mk.Дата as Дата_мк
+                        mk."Номенклатура", 
+                        mk."НомКплан", 
+                        jurnal."Пномер" as "ПномерЖ", 
+                        jurnal."Дата" as "Дата_журнал" , 
+                        jurnal."ФИО" as "fio_jur_zav", 
+                        '' as "Дата_выгрузки_ЕРП", 
+                        '' as "ФИО_выгрузки_ЕРП", 
+                        0 as "Минут_выгружено_ЕРП", 
+                        '' as "base_ERP", 
+                        category_vnepl.value as "Категория_внепл" , 
+                        naryad."Подтвержд_вып_дата" as "Подтвержд_вып_дата" ,
+                        mk."Дата" as "Дата_мк"
                         FROM jurnal 
-                                    INNER JOIN naryad ON jurnal.Номер_наряда = naryad.Пномер  
-                                    INNER JOIN mk ON mk.Пномер = naryad.Номер_мк  
-                                    LEFT JOIN category_vnepl ON category_vnepl.kod = naryad.Категория_внепл AND (category_vnepl.poki = {poki} OR category_vnepl.poki IS NULL) 
-                                    INNER JOIN Тип_мк ON Тип_мк.Пномер = mk.Тип 
-                                    INNER JOIN тип_доработок ON тип_доработок.Пномер = mk.Тип_доработки  
-                                    LEFT JOIN plan ON plan.Пномер = mk.НомКплан  
-                                    LEFT JOIN пл_оуп ON пл_оуп.НомПл = mk.НомКплан 
-                                    LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП 
+                        INNER JOIN "naryad" ON "jurnal"."Номер_наряда" = "naryad"."Пномер"  
+                        INNER JOIN "mk" ON "mk"."Пномер" = "naryad"."Номер_мк"  
+                        LEFT JOIN "category_vnepl" ON "category_vnepl"."kod" = "naryad"."Категория_внепл" 
+                            AND (category_vnepl."poki" = {poki} OR category_vnepl."poki" IS NULL) 
+                        INNER JOIN "Тип_мк" ON "Тип_мк"."Пномер" = "mk"."Тип" 
+                        INNER JOIN "тип_доработок" ON "тип_доработок"."Пномер" = "mk"."Тип_доработки"  
+                        LEFT JOIN "plan" ON "plan"."Пномер" = "mk"."НомКплан"  
+                        LEFT JOIN "пл_оуп" ON "пл_оуп"."НомПл" = "mk"."НомКплан" 
+                        LEFT JOIN "знпр" ON "знпр"."s_num" = "пл_оуп"."Пномер_ЗП" 
                         WHERE {postfix} naryad."Внеплан" != {unconfirm_work_code} AND "naryad"."Подтвержд_вып" = 1 AND naryad."Аутсорсинг" = 0 and 
                             "jurnal"."Статус" = 'Завершен' 
                             and plan.poki = {poki} 
@@ -7798,8 +7807,8 @@ def ispoln_pl_month_all(self, db_kplan, db_resxml, bd_naryad,db_users, DICT_PROF
                 '' as "Примечание", 
               
                 CASE WHEN "пл_сб"."Прогноз_дата_зав_сб" != '' 
-                    THEN TO_CHAR(TO_DATE(NULLIF(пл_сб."Прогноз_дата_зав_сб", '')), 'DD.MM.YYYY')
-                    ELSE пл_сб.Прогноз_дата_зав_сб 
+                    THEN TO_CHAR(TO_DATE(NULLIF(пл_сб."Прогноз_дата_зав_сб", ''), 'DD.MM.YYYY'))
+                    ELSE пл_сб."Прогноз_дата_зав_сб" 
                 END AS "Прогноз. дата зав.сб.", 
                 пл_сб."Примечание_сб", 
                 '' as "Всего н-смен на поз.",
@@ -8465,7 +8474,7 @@ def raspredelenie_po_naprfvleniam_proc(self, data_nach, data_kon):
 , "zagot"."Вес_по_рес" 
  FROM naryad 
  INNER JOIN "mk" 
-    ON "mk"."Пномер" = naryad."Номер_мк", 
+    ON "mk"."Пномер" = naryad."Номер_мк" 
  INNER JOIN "zagot" ON mk."Пномер" = zagot."Ном_МК"
      WHERE ("Подтвержд_вып_дата")::timestamp > ('{data_nach}')::timestamp 
     and ("Подтвержд_вып_дата")::timestamp < ('{data_kon}')::timestamp 
