@@ -137,7 +137,7 @@ class _AttributeInfo:
         self.order: _AttributeInfoMeta = _AttributeInfoMeta(int, 99999, 'order', 'порядок отображения','Порядок вывода','Порядок вывода в таблицах', 35,True, '🔢')
         self.for_report: _AttributeInfoMeta = _AttributeInfoMeta(bool, True, 'for_report', 'для отчета','Вывод в отчетах','Вывод в отчетах', 40,True, '📊')
         self.report_user_hidden: _AttributeInfoMeta = _AttributeInfoMeta(bool, False, 'report_user_hidden', 'для юзера аналог _','Скрытый в отчетах','Скрытый в отчетах', 45,True, '👁️‍🗨️')
-        self.attr_view: _AttributeInfoMeta = _AttributeInfoMeta(str, '', 'attr_view', 'имя поля представления типа составного','Представление типа','Как выглядит значение объекта в ячейках', 3,True, '🧩️')
+        self.attr_view: _AttributeInfoMeta = _AttributeInfoMeta(str, '', 'attr_view', 'одно или два поля представления составного типа','Представление типа','Какие поля формируют значение в ячейках', 3,True, '🧩️')
         self.base_attr: _AttributeInfoMeta = _AttributeInfoMeta(bool, True, 'base_attr', 'Базовый','Базовый','Базовый', 53,False, '')
 
     def __getattribute__(self, name):
@@ -974,29 +974,36 @@ class Info():
                                 def fnc_oform_tbl_mes_attr_view(tbl:CQT.QtWidgets.QTableWidget,*args):
                                     t = CQT.TableContext(tbl)
                                     for presentation_row in t.rows():
-                                        if presentation_row.value('') == '⭐':
-                                            presentation_row.set_font_format(bold=True,col_name='Представление')
-                                        if presentation_row.value('Фильтр'):
-                                            presentation_row.set_font_format(italic=True,col_name='Фильтр')
+                                        if presentation_row.value('Стандартный'):
+                                            presentation_row.set_font_format(bold=True,col_name='Поле')
+                                        if presentation_row.value('_is_filterable',get_cust_content=True):
+                                            presentation_row.set_font_format(italic=True,col_name='Поле')
                                     t.hide_if_not_dev(CFG)
 
-                                rez = CQT.msgboxg_get_table(DTSUB.sub_self, 'Выбор представления МЕС', template,
+                                rez = CQT.msgboxg_get_table(DTSUB.sub_self, 'Выберите одно или два поля', template,
                                                             styleSheet=CQT.MES_CSS,
                                                             func_oform_tbl=fnc_oform_tbl_mes_attr_view,
                                                             selectRows=True,
                                                             selection_from_tbl=True,
                                                             sortingEnabled=True,
-                                                            ExtendedSelection=False,
-                                                            SelectionMode='SingleSelection'
+                                                            ExtendedSelection=True,
+                                                            SelectionMode='ExtendedSelection'
                                                             )
                                 if not rez:
                                     return
-                                rez = selected_row(rez)
-                                if not rez or not rez.get('_name'):
-                                    CQT.msgbox('Выберите представление МЕС.')
+                                selected = rez if isinstance(rez,list) else [rez]
+                                selected = [item for item in selected if item and item.get('_name')]
+                                if not 1 <= len(selected) <= 2:
+                                    CQT.msgbox('Выберите одно или два поля представления.')
                                     return
-                                presentation_key = rez.get('_presentation_key') or rez.get('_name')
-                                presentation_text = rez.get('Представление') or presentation_key
+                                presentation_key = ';'.join(
+                                    item.get('_presentation_key') or item['_name']
+                                    for item in selected
+                                )
+                                presentation_text = ' + '.join(
+                                    item.get('Поле') or item.get('_name')
+                                    for item in selected
+                                )
                                 set_attr_view(row,presentation_key,presentation_text)
                                 lbl.set_text(presentation_text)
                             pass
@@ -2210,6 +2217,7 @@ class Reports():
     table = Report("table", "", "Таблица")
     pivottable = Report("pivot_table", "", "Сводная таблица")
     gant = Report("gant", "", "Гант")
+    mes_relations = Report("mes_relations", "", "Карта связей MES")
 
     @classmethod
     def template(cls):

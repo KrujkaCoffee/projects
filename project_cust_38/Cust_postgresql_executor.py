@@ -41,6 +41,7 @@ __all__ = [
     "SchemaResolutionError",
     "configure_default_runtime",
     "configure_default_from_env",
+    "get_default_executor",
     "custom_request_c",
     "transaction",
     "stage2_observe_request",
@@ -1487,6 +1488,12 @@ def _require_default_executor() -> PostgreSqlExecutor:
             "PostgreSQL runtime не настроен; вызовите configure_default_runtime()/configure_default_from_env()"
         )
     return executor
+
+
+def get_default_executor() -> PostgreSqlExecutor:
+    """Возвращает общий process-local executor без создания нового пула."""
+
+    return _require_default_executor()
 
 
 def custom_request_c(

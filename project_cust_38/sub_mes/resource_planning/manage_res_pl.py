@@ -34,9 +34,8 @@ import project_cust_38.sub_mes.resource_planning.connects as _con
 from project_cust_38 import dynamic_db_models as DDM
 from project_cust_38 import Cust_orm as CORM
 import project_cust_38.sub_mes.resource_planning.clses as CLSS
-from project_cust_38.sub_mes.resource_planning import planner_mes_types
-from project_cust_38.sub_mes.resource_planning import planner_mes_entities
-from project_cust_38.sub_mes.resource_planning import draft_integration
+from project_cust_38.sub_mes.resource_planning import planner_mes_integration
+from project_cust_38.sub_mes.resource_planning import planner_gantt_integration
 
 
 from typing import  TYPE_CHECKING
@@ -86,7 +85,7 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
         planner_mes_types_o = getattr(DTSUB,'planner_mes_types',None)
         if planner_mes_types_o is not None:
             planner_mes_types_o.close()
-        DTSUB.planner_mes_types = planner_mes_types.PlannerMesTypeCatalog()
+        DTSUB.planner_mes_types = planner_mes_integration.PlannerMesTypeCatalog()
         DTSUB.custom_types = CLSS.CustomTypes(DTSUB.planner_mes_types)
 
         DTCLS.module_manage_sub_app.shablons_res = CLSS.ShablonsRes()
@@ -103,7 +102,7 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
 
         self.fill_cmb_reports()
         if getattr(self,'_draft_tools_host',None) is None:
-            self._draft_tools_host = draft_integration.DraftToolsHost(
+            self._draft_tools_host = planner_gantt_integration.DraftToolsHost(
                 parent=self.ui.fr_gr_tbl,
                 catalog_provider=lambda: DTSUB.planner_mes_types.session.get_runtime().catalog,
                 schedule_provider=lambda: (DTSUB.resources,DTSUB.events,DTSUB.crosses),
@@ -328,12 +327,12 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
                             presentation_key = choice.selection_key(presentation_key or None)
                         except Exception:
                             presentation_key = choice.default_presentation.presentation_key
-                        service = planner_mes_entities.MesEntityService.from_type_catalog(
+                        service = planner_mes_integration.MesEntityService.from_type_catalog(
                             DTSUB.planner_mes_types
                         )
                         current_value = row.value('Значение',get_cust_content=True)
                         current_ref = getattr(current_value,'reference',None)
-                        result = planner_mes_entities.select_mes_entity(
+                        result = planner_mes_integration.select_mes_entity(
                             DTSUB.sub_self,service,choice,
                             presentation_key=presentation_key or None,
                             current=current_ref,
