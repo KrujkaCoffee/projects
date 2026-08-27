@@ -172,7 +172,7 @@ class mywindow(QtWidgets.QMainWindow):
         self.DICT_OPER_NAME = F.deploy_dict_c(DICT_OPER, 'name')
         self.DICT_NOMEN = F.deploy_dict_c(
             CSQ.custom_request_c(self.db_nomen, f"""SELECT * FROM nomen;""", rez_dict=True), 'Код')
-        list_nomens = CSQ.custom_request_c(self.db_nomen, f"""SELECT * FROM ВидыНоменклатуры""", rez_dict=True)
+        list_nomens = CSQ.custom_request_c(self.db_nomen, f"""SELECT * FROM "ВидыНоменклатуры";""", rez_dict=True)
         self.DICT_VIDS_NOMEN = F.deploy_dict_c(list_nomens, 'name')
         self.DICT_VIDS_NOMEN_BY_REF = F.deploy_dict_c(list_nomens, 'Ref_Key')
         self.DICT_PRICE_BRAK = CMS.DICT_PRICE_BRAK(self.db_naryd)
@@ -214,9 +214,9 @@ class mywindow(QtWidgets.QMainWindow):
         self.auth_manager.log_in()
         if USRCNF.Config.user_config.User:
             DTCLS.user_abstracts = CSQ.custom_request_c(USRCNF.Config.project.db_users,
-                                                        f"""SELECT ФИО FROM employee 
-                WHERE Режим == 'Абстракт' AND Подразделение 
-                == "{USRCNF.Config.user_config.User.Подразделение.strip()}";""",
+                                                        f"""SELECT "ФИО" FROM employee 
+                WHERE "Режим" = 'Абстракт' AND "Подразделение" 
+                = '{USRCNF.Config.user_config.User.Подразделение.strip()}';""",
                                                         rez_dict=True)
             return
         CQT.msgbox(f'Ошибка инициализации пользователя')
@@ -288,7 +288,7 @@ class mywindow(QtWidgets.QMainWindow):
         self.DICT_EMPLOEE = dict()
         self.SPIS_EMPLOEE = CSQ.custom_request_c(
             self.bd_users,
-            f"""SELECT ФИО, Должность FROM employee WHERE Пномер > 2 AND Статус != 'Увольнение' AND Компания = {org_name!r};""",
+            f"""SELECT "ФИО", "Должность" FROM employee WHERE "Пномер" > 2 AND "Статус" != 'Увольнение' AND "Компания" = {org_name!r};""",
             hat_c=False
         )
         if self.SPIS_EMPLOEE == False:
@@ -297,7 +297,7 @@ class mywindow(QtWidgets.QMainWindow):
         if spis_black_list == False:
             spis_black_list = ['']
             F.save_file(F.scfg('Riba') + F.sep() + 'black_list_itr.txt', spis_black_list)
-        spis_itr = CSQ.custom_request_c(self.bd_users, f'select имя from professions where poki = {poki} AND Вкл = 1',
+        spis_itr = CSQ.custom_request_c(self.bd_users, f'SELECT имя from professions where poki = {poki} AND "Вкл" = 1;',
                                         one_column=True, hat_c=True)
         self.ui.cmb_dolgn.addItem('')
         # self.ui.cmb_fio.addItem('')
@@ -370,17 +370,21 @@ class mywindow(QtWidgets.QMainWindow):
 
         end_str = ''
         if end:
-            end_str = f' AND datetime(Дата) < datetime("{end}")'
+            end_str = f''' AND ("Дата")::timestamp < ('{end}')::timestamp'''
         list_nar = []
         start_nar = None
         str_add = ''
         if list_nar:
-            str_add = f' AND Номер_наряда IN ({", ".join([str(_) for _ in list_nar])})'
+            str_add = f' AND "Номер_наряда" IN ({", ".join([str(_) for _ in list_nar])})'
 
         if not CQT.msgboxgYN(f'Обновить подытоги у нарядов WHERE datetime(Дата) > datetime("{start}") {end_str}'):
             return
-        list_users = CSQ.custom_request_c(self.db_naryd,f"""SELECT DISTINCT ФИО, Номер_наряда FROM jurnal
-         WHERE datetime(Дата) > datetime("{start}") {end_str}  {str_add} ORDER BY Номер_наряда;""",rez_dict=True)
+        list_users = CSQ.custom_request_c(self.db_naryd,
+            CSQ.SqlQuery(sqlite=f"""SELECT DISTINCT "ФИО", "Номер_наряда" FROM jurnal
+         WHERE datetime(Дата) > datetime("{start}") {end_str}  {str_add} ORDER BY Номер_наряда;""",
+                         postgres=f"""SELECT DISTINCT "ФИО", "Номер_наряда" FROM jurnal
+         WHERE "Дата"::timestamp > '{start}'::timestamp {end_str}  {str_add} ORDER BY "Номер_наряда";""")
+        ,rez_dict=True)
 
         list_emploee_with_del = CMS.list_emploee_full_with_del(self.bd_users)
         DICT_EMPLOEE_FULL_WITH_DEL = F.deploy_dict_c(list_emploee_with_del, 'ФИО')
@@ -619,8 +623,8 @@ class mywindow(QtWidgets.QMainWindow):
     @CQT.onerror
     def check_dostupnosti_nar(self,nom_nar:int):
         user = self.transform_current_user_for_sql()
-        custom_request_c = f'''SELECT Пномер FROM naryad WHERE Пномер == {nom_nar} AND (ФИО IN ({user}) AND Фвремя == "" 
-                                OR ФИО2 IN ({user}) AND Фвремя2 == "")'''
+        custom_request_c = f'''SELECT "Пномер" FROM naryad WHERE "Пномер" = {nom_nar} AND ("ФИО" IN ({user}) AND "Фвремя" = '' 
+                                OR "ФИО2" IN ({user}) AND "Фвремя2" = '') '''
         rez = CSQ.custom_request_c(self.db_naryd, custom_request_c)
         if rez == False:
             return False
@@ -637,27 +641,30 @@ class mywindow(QtWidgets.QMainWindow):
         data_nach = F.datetostr(F.strtodate(F.now()) - timedelta(days=40))
         #else:
         #    data_nach = '2022-11-01 00:00:01'
-        custom_request_c = f'SELECT jurnal.Дата, ' \
-                 f'jurnal.Штамп, ' \
-                 f'jurnal.Номер_наряда, ' \
-                 f'jurnal.ФИО, ' \
-                 f'mk.Номер_проекта || "$" || ' \
-                 f'mk.Номер_заказа AS "НП$ПУ", ' \
-                 f'naryad.Операции, ' \
-                 f'naryad.Номер_мк, ' \
-                 f'naryad.Виды_работ, ' \
-                 f'jurnal.Статус, ' \
-                 f'naryad.Твремя, ' \
-                 f'jurnal.Подытог, ' \
-                 f'jurnal.Примечание, ' \
-                 f'naryad.Опер_время,' \
-                 f'naryad.ДСЕ,' \
-                 f'naryad.Виды_работ' \
-                 f' FROM jurnal INNER JOIN naryad' \
-                 f' ON jurnal.Номер_наряда = naryad.Пномер' \
-                 f' INNER JOIN mk' \
-                 f' ON naryad.Номер_мк = mk.Пномер' \
-                 f' WHERE jurnal.Статус == "Начат" AND naryad.Операции NOT LIKE "%Резка(ЧПУ)%" AND jurnal.Подытог > 0 and date(jurnal.Дата) > date("{data_nach}")'
+        custom_request_c = f"""
+        SELECT jurnal."Дата", 
+             jurnal."Штамп", 
+             jurnal."Номер_наряда", 
+             jurnal."ФИО", 
+             mk."Номер_проекта" || '$' || 
+             mk."Номер_заказа" AS "НП$ПУ", 
+             naryad."Операции", 
+             naryad."Номер_мк", 
+             naryad."Виды_работ", 
+             jurnal."Статус", 
+             naryad."Твремя", 
+             jurnal."Подытог", 
+             jurnal."Примечание", 
+             naryad."Опер_время",
+             naryad."ДСЕ",
+             naryad."Виды_работ"
+              FROM jurnal INNER JOIN naryad
+              ON jurnal."Номер_наряда" = naryad."Пномер" 
+              INNER JOIN mk
+              ON naryad."Номер_мк" = mk."Пномер"
+              WHERE jurnal.Статус = 'Начат' 
+                AND naryad."Операции" NOT LIKE '%%Резка(ЧПУ)%%' AND jurnal."Подытог" > 0 and date(jurnal."Дата") > date('{data_nach}')
+        """
 
         rez = CSQ.custom_request_c(self.db_naryd, custom_request_c,rez_dict=True,conn=conn, cur = cur)
         if rez == False or rez == None:
@@ -824,8 +831,8 @@ class mywindow(QtWidgets.QMainWindow):
     def history_nar_load(self):
         if self.nar_info is None:
             return
-        custom_request_c = f'''SELECT  Дата, ФИО, Статус, Подытог, Примечание 
-                FROM jurnal WHERE Номер_наряда == {self.nar_info.nom_nar} Order by  ФИО, Дата'''
+        custom_request_c = f'''SELECT  "Дата", "ФИО", "Статус", "Подытог", "Примечание" 
+                FROM jurnal WHERE "Номер_наряда" = {self.nar_info.nom_nar} ORDER BY "ФИО", "Дата";'''
         rez = CSQ.custom_request_c(self.db_naryd, custom_request_c)
         CQT.fill_wtabl ( rez, self.ui.tbl_history,styleSheet=CQT.MES_CSS)
 
@@ -842,7 +849,7 @@ class mywindow(QtWidgets.QMainWindow):
         tblp = self.ui.tbl_td
         if self.nar_info is None:
             return
-        custom_request_c = f'''SELECT ДСЕ,Операции,Номер_мк FROM naryad WHERE Пномер == {self.nar_info.nom_nar}'''
+        custom_request_c = f'''SELECT "ДСЕ","Операции","Номер_мк" FROM naryad WHERE "Пномер" = {self.nar_info.nom_nar}'''
         rez = CSQ.custom_request_c(self.db_naryd, custom_request_c)
         spis_kd = rez[-1][0].split('|')
         spis_oper = rez[-1][1].split('|')
@@ -888,10 +895,10 @@ class mywindow(QtWidgets.QMainWindow):
         tblp = self.ui.tbl_chert
         if self.nar_info is None:
             return
-        custom_request_c = f'''SELECT ДСЕ FROM naryad WHERE Пномер == {self.nar_info.nom_nar}'''
+        custom_request_c = f'''SELECT "ДСЕ" FROM naryad WHERE "Пномер" = {self.nar_info.nom_nar}'''
         rez = CSQ.custom_request_c(self.db_naryd,custom_request_c)
 
-        list_dse = CSQ.custom_request_c(self.db_dse,"""SELECT Путь_docs,Номенклатурный_номер FROM dse""", rez_dict=True)
+        list_dse = CSQ.custom_request_c(self.db_dse,"""SELECT "Путь_docs","Номенклатурный_номер" FROM dse""", rez_dict=True)
 
         dict_dse = F.deploy_dict_c(list_dse, 'Номенклатурный_номер')
 
@@ -932,7 +939,7 @@ class mywindow(QtWidgets.QMainWindow):
                SELECT reestr.file
                FROM t_kards
                         LEFT JOIN names ON t_kards.file_name = names.name
-                        LEFT JOIN reestr ON names.nom_data = reestr.Пномер
+                        LEFT JOIN reestr ON names.nom_data = reestr."Пномер"
                WHERE t_kards.t_kard_name = {tk!r} and t_kards.file_name = {name!r}
             """, rez_dict=True, one=True)
             _, ext = os.path.splitext(name)
@@ -1007,9 +1014,20 @@ class mywindow(QtWidgets.QMainWindow):
             except:
                 pass
         # 03.02.2026
-        custom_request_c = f'''SELECT sum(Подытог) AS "Total Salary" FROM jurnal WHERE Номер_наряда == {nom_nar} AND ФИО == "{CMS.name_by_empl_c(self.glob_login)}"'''
+        custom_request_c = f'''SELECT sum("Подытог") AS "Total Salary" FROM jurnal WHERE "Номер_наряда" = {nom_nar} AND "ФИО" = '{CMS.name_by_empl_c(self.glob_login)}';'''
         rez = CSQ.custom_request_c(self.db_naryd,custom_request_c,conn=conn,cur=cur)
-        custom_request_c = f'''SELECT Штамп, Статус FROM jurnal WHERE Номер_наряда == {nom_nar} AND ФИО == "{CMS.name_by_empl_c(self.glob_login)}" ORDER BY datetime(Дата) DESC LIMIT 1'''
+        custom_request_c = CSQ.SqlQuery(
+            sqlite=f'''
+            SELECT "Штамп", "Статус" 
+            FROM jurnal WHERE "Номер_наряда" = {nom_nar} 
+                AND "ФИО" = '{CMS.name_by_empl_c(self.glob_login)}' 
+            ORDER BY datetime("Дата") DESC LIMIT 1''',
+            postgres=f'''
+            SELECT "Штамп", "Статус" 
+            FROM jurnal WHERE "Номер_наряда" = {nom_nar} 
+                AND "ФИО" = '{CMS.name_by_empl_c(self.glob_login)}' 
+            ORDER BY ("Дата")::TIMESTAMP DESC LIMIT 1'''
+        )
         rez_last = CSQ.custom_request_c(self.db_naryd, custom_request_c,conn=conn,cur = cur)
         CSQ.close_bd(conn,cur)
 
@@ -1297,7 +1315,7 @@ class mywindow(QtWidgets.QMainWindow):
             self.ui.cmb_brak_type3.clear()
             self.ui.chk_neisprav.setCheckState(1)
             id_data = CSQ.custom_request_c(USRCNF.Config.project.db_naryad,
-                                             f"""SELECT s_num FROM brak_categories WHERE name = "{USRCNF.Config.place.Имя}";""",rez_dict=True,one=True)
+                                             f"""SELECT s_num FROM brak_categories WHERE name = '{USRCNF.Config.place.Имя}';""",rez_dict=True,one=True)
             if not id_data:
                 CQT.msgbox(f'Для {USRCNF.Config.place.Имя} не определен перечень брака. Обратитесь к администратору')
                 return
@@ -1441,67 +1459,127 @@ class mywindow(QtWidgets.QMainWindow):
     def load_tabl_naryadov(self,all=False):
         user = self.transform_current_user_for_sql()
         ref_user = DTCLS.USER_CONFIG.User.ID_ФизЛица
-        postfix = '((mk.Статус != "Закрыта" AND mk.Дата_завершения == "") OR (mk.Пномер = 0)) AND'
+        postfix = '''((mk."Статус" != 'Закрыта' AND mk."Дата_завершения" = '') OR (mk."Пномер" = 0)) AND'''
         if all:
             postfix = ''
-        custom_request_c = f'''
+        custom_request_c = CSQ.SqlQuery(
+            sqlite=f'''
                     SELECT 
-                        COALESCE( groups.name, "") as Группа,
-                        naryad.Пномер, 
-                        naryad.Дата, 
-                        plan.Позиция as "Позиция",
-                        пл_оуп.Номенклатура_ЕРП as "Номенклатура_ЕРП",
+                        COALESCE( groups.name, '') as "Группа",
+                        naryad."Пномер", 
+                        naryad."Дата", 
+                        plan."Позиция" as "Позиция",
+                        пл_оуп."Номенклатура_ЕРП" as "Номенклатура_ЕРП",
                         CASE 
-                            WHEN знпр.№ERP IS NOT NULL 
-                            THEN знпр.№ERP 
-                            ELSE пл_оуп.№ERP  
+                            WHEN знпр."№ERP" IS NOT NULL 
+                            THEN знпр."№ERP" 
+                            ELSE пл_оуп."№ERP"  
                         END AS "Номер_заказа", 
-                        CASE WHEN знпр.№проекта IS NOT NULL 
-                           THEN знпр.№проекта 
-                           ELSE пл_оуп.№проекта 
-                        END AS Номер_проекта,
+                        CASE WHEN знпр."№проекта" IS NOT NULL 
+                           THEN знпр."№проекта" 
+                           ELSE пл_оуп."№проекта" 
+                        END AS "Номер_проекта",
                         
-                        naryad.Задание, 
-                        naryad.ФИО, 
-                        naryad.ФИО2, 
-                        "" as КРО,
-                        naryad.Твремя, 
-                        naryad.Норма_времени AS "Норматив время", 
-                        "" AS "Время", 
-                        naryad.Компл_номер_тара,
-                        naryad.Компл_адрес, 
-                        naryad.Примечание, 
-                        naryad.Внеплан,
-                        naryad.Номер_мк, 
-                        CASE WHEN mk.Приоритет IS NOT NULL and mk.Приоритет != ""
-                           THEN mk.Приоритет
-                           ELSE plan.Приоритет 
-                        END AS Приоритет,
-                        naryad.Коэфф_сложности, 
-                        naryad.Виды_работ, 
-                        naryad.Опер_время, 
-                        mk.Статус_ЧПУ, 
-                        zagot.Прим_резка, 
-                        naryad.ФИО_для_ОТК , 
-                        naryad.Операции  , 
-                        naryad.Распред_ФИО , 
-                        naryad.Кол_повт_приемок AS "Кол_во повт. приёмок",
-                        naryad.ДСЕ_ID,
-                        COALESCE( groups.id, "") as _id,
-                        COALESCE( groups.summ, "") as _gr_summ
+                        naryad."Задание", 
+                        naryad."ФИО", 
+                        naryad."ФИО2", 
+                        '' as "КРО",
+                        naryad."Твремя", 
+                        naryad."Норма_времени" AS "Норматив время", 
+                        '' AS "Время", 
+                        naryad."Компл_номер_тара",
+                        naryad."Компл_адрес", 
+                        naryad."Примечание", 
+                        naryad."Внеплан",
+                        naryad."Номер_мк", 
+                        CASE WHEN mk."Приоритет" IS NOT NULL and mk."Приоритет" != ''
+                           THEN mk."Приоритет"
+                           ELSE plan."Приоритет" 
+                        END AS "Приоритет",
+                        naryad."Коэфф_сложности", 
+                        naryad."Виды_работ", 
+                        naryad."Опер_время", 
+                        mk."Статус_ЧПУ", 
+                        zagot."Прим_резка", 
+                        naryad."ФИО_для_ОТК" , 
+                        naryad."Операции"  , 
+                        naryad."Распред_ФИО" , 
+                        naryad."Кол_повт_приемок" AS "Кол_во повт. приёмок",
+                        naryad."ДСЕ_ID",
+                        COALESCE( groups.id, '') as "_id",
+                        COALESCE( groups.summ, '') as "_gr_summ"
                     FROM naryad 
-                    INNER JOIN mk ON mk.Пномер = naryad.Номер_мк 
-                    LEFT JOIN plan ON mk.НомКплан = plan.Пномер
-                    LEFT JOIN пл_оуп ON mk.НомКплан = пл_оуп.НомПл
-                    LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП
-                    INNER JOIN коды_веплана_для_наряда ON коды_веплана_для_наряда.code = naryad.Внеплан
-                    INNER JOIN zagot ON zagot.Ном_МК = naryad.Номер_мк 
+                    INNER JOIN mk ON mk."Пномер" = naryad."Номер_мк" 
+                    LEFT JOIN plan ON mk."НомКплан" = plan."Пномер"
+                    LEFT JOIN пл_оуп ON mk."НомКплан" = пл_оуп."НомПл"
+                    LEFT JOIN знпр ON знпр.s_num = пл_оуп."Пномер_ЗП"
+                    INNER JOIN коды_веплана_для_наряда ON коды_веплана_для_наряда.code = naryad."Внеплан"
+                    INNER JOIN zagot ON zagot."Ном_МК" = naryad."Номер_мк" 
                     LEFT JOIN naryad_groups ON  (naryad_groups.id_nar = naryad.Пномер AND naryad_groups.fio IN ({user}))
-                    LEFT JOIN groups ON (groups.id == naryad_groups.id_group AND groups.user_ref == "{ref_user}")
-                    WHERE коды_веплана_для_наряда.poki = {self.place.poki} AND {postfix}  naryad.Подтвержд_вып_дата == "" AND
-                                 ((naryad.ФИО IN ({user}) AND naryad.Фвремя == "") 
-                                OR (naryad.ФИО2 IN ({user}) AND naryad.Фвремя2 == ""));'''
+                    LEFT JOIN groups ON (groups.id = naryad_groups.id_group AND groups.user_ref = ?)
+                    WHERE коды_веплана_для_наряда.poki = {self.place.poki} AND {postfix} naryad."Подтвержд_вып_дата" = '' AND
+                                 ((naryad."ФИО" IN ({user}) AND naryad."Фвремя" = '') 
+                                OR (naryad."ФИО2" IN ({user}) AND naryad."Фвремя2" = ''));''',
+            postgres=f'''
+                    SELECT 
+                        COALESCE(groups.name, '') as "Группа",
+                        naryad."Пномер", 
+                        naryad."Дата", 
+                        plan."Позиция" as "Позиция",
+                        пл_оуп."Номенклатура_ЕРП" as "Номенклатура_ЕРП",
+                        CASE 
+                            WHEN знпр."№ERP" IS NOT NULL 
+                            THEN знпр."№ERP" 
+                            ELSE пл_оуп."№ERP"  
+                        END AS "Номер_заказа", 
+                        CASE WHEN знпр."№проекта" IS NOT NULL 
+                           THEN знпр."№проекта" 
+                           ELSE пл_оуп."№проекта" 
+                        END AS "Номер_проекта",
+                        
+                        "naryad"."Задание", 
+                        "naryad"."ФИО", 
+                        "naryad"."ФИО2", 
+                        '' as "КРО",
+                        "naryad"."Твремя", 
+                        "naryad"."Норма_времени" AS "Норматив время", 
+                        '' AS "Время", 
+                        "naryad"."Компл_номер_тара",
+                        "naryad"."Компл_адрес", 
+                        "naryad"."Примечание", 
+                        "naryad"."Внеплан",
+                        "naryad"."Номер_мк", 
+                        CASE WHEN mk."Приоритет" IS NOT NULL and mk."Приоритет" != ''
+                           THEN mk."Приоритет"
+                           ELSE plan."Приоритет" 
+                        END AS "Приоритет",
+                        "naryad"."Коэфф_сложности", 
+                        "naryad"."Виды_работ", 
+                        "naryad"."Опер_время", 
+                        "mk"."Статус_ЧПУ", 
+                        "zagot"."Прим_резка", 
+                        "naryad"."ФИО_для_ОТК" , 
+                        "naryad"."Операции"  , 
+                        "naryad"."Распред_ФИО" , 
+                        "naryad"."Кол_повт_приемок" AS "Кол_во повт. приёмок",
+                        "naryad"."ДСЕ_ID",
+                        COALESCE( groups.id, '') as "_id",
+                        COALESCE( groups.summ, '') as "_gr_summ"
+                    FROM naryad 
+                    INNER JOIN "mk" ON mk."Пномер" = naryad."Номер_мк" 
+                    LEFT JOIN "plan" ON mk."НомКплан" = plan."Пномер"
+                    LEFT JOIN "пл_оуп" ON mk."НомКплан" = пл_оуп."НомПл"
+                    LEFT JOIN "знпр" ON знпр.s_num = пл_оуп."Пномер_ЗП"
+                    INNER JOIN коды_веплана_для_наряда ON коды_веплана_для_наряда.code = naryad."Внеплан"
+                    INNER JOIN zagot ON zagot."Ном_МК" = naryad."Номер_мк" 
+                    LEFT JOIN naryad_groups ON  (naryad_groups.id_nar = naryad.Пномер AND naryad_groups.fio IN ({user}))
+                    LEFT JOIN groups ON (groups.id = naryad_groups.id_group AND groups.user_ref = ?)
+                    WHERE коды_веплана_для_наряда.poki = {self.place.poki} AND {postfix} naryad."Подтвержд_вып_дата" = '' AND
+                                 ((naryad."ФИО" IN ({user}) AND naryad."Фвремя" = '') 
+                                OR (naryad."ФИО2" IN ({user}) AND naryad."Фвремя2" = ''));'''
+        )
         rez = CSQ.custom_request_c(self.db_naryd, custom_request_c, rez_dict=True,
+                                   list_of_lists_c=[ref_user],
                                    attach_dbs=USRCNF.Config.project.db_kplan)  # 04.09.25
         if rez == False or rez == None:
             CQT.msgbox(f'БД недоступна, пробуй еще')
@@ -1608,7 +1686,7 @@ class mywindow(QtWidgets.QMainWindow):
 
 
     def check_zav_nar(self,nom_nar,fio):
-        query = f'''SELECT Дата FROM jurnal WHERE Номер_наряда == {nom_nar} and Статус == "Завершен" and ФИО == "{fio}"'''
+        query = f'''SELECT "Дата" FROM jurnal WHERE "Номер_наряда" = {nom_nar} and "Статус" = 'Завершен' and "ФИО" = '{fio}';'''
         rez = CSQ.custom_request_c(self.db_naryd,query,one=True)
         if len(rez) == 1 or query == False:
             return False
@@ -1655,49 +1733,60 @@ class mywindow(QtWidgets.QMainWindow):
                 if int(value) == 18:
                     row_value_pk_mk.hide(False)
                     def fnc_select_mk(lbl:CQT.InteractiveLabelInstance,self:mywindow,i,j,row_o:CQT.TableRow,*args):
-                        custom_request_c = f'''SELECT mk.Пномер, Тип_мк.Имя as Тип,  mk.Дата, mk.Статус,  mk.Номенклатура,
-                                    CASE WHEN знпр.№ERP IS NOT NULL 
-                                   THEN знпр.№ERP 
-                                   ELSE mk.Номер_заказа 
-                                   END AS Номер_заказа, 
+                        custom_request_c = f'''
+                        
+                        SELECT 
+                            mk."Пномер", 
+                            Тип_мк."Имя" as "Тип",  
+                            mk."Дата", 
+                            mk."Статус",  
+                            mk."Номенклатура",
+                            CASE WHEN знпр."№ERP" IS NOT NULL 
+                                THEN знпр."№ERP" 
+                                ELSE mk."Номер_заказа" 
+                            END AS "Номер_заказа", 
 
-                                    CASE WHEN знпр.№проекта IS NOT NULL 
-                                   THEN знпр.№проекта 
-                                   ELSE mk.Номер_проекта 
-                                   END AS Номер_проекта, 
-                                   '' as КРО,
-                                   CASE WHEN napravl_deyat.Псевдоним IS NOT NULL 
-                                   THEN napravl_deyat.Псевдоним 
-                                   ELSE mk.Вид 
-                                   END AS Вид, 
-                                    mk.На_удал as "На удаление", 
-                                       mk.Ресурсная_дата, mk.Примечание, mk.Основание,
-                                     mk.Прогресс, 
+                            CASE WHEN знпр."№проекта" IS NOT NULL 
+                                   THEN знпр."№проекта" 
+                                   ELSE mk."Номер_проекта" 
+                            END AS "Номер_проекта", 
+                            
+                            '' as "КРО",
+                            CASE WHEN napravl_deyat."Псевдоним" IS NOT NULL 
+                                THEN napravl_deyat."Псевдоним" 
+                                ELSE mk."Вид" 
+                            END AS "Вид", 
+                            mk."На_удал" as "На удаление", 
+                            mk."Ресурсная_дата", 
+                            mk."Примечание", mk."Основание",
+                            mk."Прогресс", 
+                            mk."Приоритет" AS "Приоритет",
+                            plan."Приоритет"  AS "Приоритет КПЛ",
 
-                                    mk.Приоритет AS Приоритет,
-                                   plan.Приоритет  AS "Приоритет КПЛ",
+                            CASE WHEN napravlenie.name IS NOT NULL 
+                                THEN napravlenie.name 
+                                ELSE mk."Направление" 
+                            END AS "Направление", 
 
-
-                                    CASE WHEN napravlenie.name IS NOT NULL 
-                                   THEN napravlenie.name 
-                                   ELSE mk.Направление 
-                                   END AS Направление, 
-
-
-                                     mk.Вес, mk.Количество,  mk.Дата_завершения,  mk.Коэф_парал, 
-                                      mk.Искл_план_рм, тип_дорезок.Имя AS тип_дорезок, тип_доработок.Имя AS тип_доработок,
-                                       mk.НомКплан as "Номер КПЛ", mk.ФИО as "Создал"  FROM mk 
-                                      LEFT JOIN plan ON plan.Пномер = mk.НомКплан  
-                                      LEFT JOIN napravl_deyat ON napravl_deyat.Пномер = plan.Направление_деятельности 
-                                      LEFT JOIN napravlenie ON napravlenie.Пномер = napravl_deyat.Направление  
-                                     LEFT JOIN пл_оуп ON пл_оуп.НомПл = mk.НомКплан 
-                                     INNER JOIN пл_отк ON пл_отк.НомПл = пл_оуп.НомПл
-                                     LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП 
-                                     LEFT JOIN Тип_мк ON Тип_мк.Пномер = mk.Тип 
-                                     LEFT JOIN дорезки_мк ON дорезки_мк.Номер_мк = mk.Пномер
-                                     LEFT JOIN тип_дорезок ON тип_дорезок.Пномер = дорезки_мк.Причина
-                                     LEFT JOIN тип_доработок ON тип_доработок.Пномер = mk.Тип_доработки
-                                     WHERE mk.Статус == "Открыта" AND пл_отк.Контр_покрытие_ФИО = '' and plan.poki = {DTCLS.place.poki};'''
+                            mk."Вес", 
+                            mk."Количество",  
+                            mk."Дата_завершения",  
+                            mk."Коэф_парал", 
+                            mk."Искл_план_рм", 
+                            тип_дорезок."Имя" AS "тип_дорезок", 
+                            тип_доработок."Имя" AS "тип_доработок",
+                            mk."НомКплан" as "Номер КПЛ", mk."ФИО" as "Создал"  FROM mk 
+                                      LEFT JOIN plan ON plan."Пномер" = mk."НомКплан"  
+                                      LEFT JOIN napravl_deyat ON napravl_deyat."Пномер" = plan."Направление_деятельности" 
+                                      LEFT JOIN napravlenie ON napravlenie."Пномер" = napravl_deyat."Направление"  
+                                     LEFT JOIN пл_оуп ON пл_оуп."НомПл" = mk."НомКплан" 
+                                     INNER JOIN пл_отк ON пл_отк."НомПл" = пл_оуп."НомПл"
+                                     LEFT JOIN знпр ON знпр."s_num" = пл_оуп."Пномер_ЗП" 
+                                     LEFT JOIN Тип_мк ON Тип_мк."Пномер" = mk."Тип" 
+                                     LEFT JOIN дорезки_мк ON дорезки_мк."Номер_мк" = mk."Пномер"
+                                     LEFT JOIN тип_дорезок ON тип_дорезок."Пномер" = дорезки_мк."Причина"
+                                     LEFT JOIN тип_доработок ON тип_доработок."Пномер" = mk."Тип_доработки"
+                                     WHERE mk."Статус" = 'Открыта' AND пл_отк."Контр_покрытие_ФИО" = '' and plan.poki = {DTCLS.place.poki};'''
                         data_mk = CSQ.custom_request_c(self.bd_naryad, custom_request_c, '', True,
                                                        attach_dbs=(self.db_kplan),
                                                        rez_dict=True)
@@ -1859,7 +1948,7 @@ class mywindow(QtWidgets.QMainWindow):
         """
         current_department = self.DICT_EMPL_FULL[self.glob_fio]['Подразделение']
         abstract_prof_names = [fio for fio, cred in self.DICT_EMPL_FULL.items() if cred['Режим'] == 'Абстракт' and cred['Подразделение'].strip() == current_department.strip()]
-        query = f'SELECT ФИО, ФИО2 FROM naryad WHERE Пномер = {nom_nar}'
+        query = f'SELECT "ФИО", "ФИО2" FROM naryad WHERE "Пномер" = {nom_nar}'
         naryad_item = CSQ.custom_request_c(self.db_naryd, query, rez_dict=True, one=True)
         if not isinstance(naryad_item, dict):
             return
@@ -1877,7 +1966,7 @@ class mywindow(QtWidgets.QMainWindow):
         nick = self.get_free_abstract_fio_place(nom_nar, fio_executor)
         if nick is None:
             return False
-        query = f"UPDATE naryad SET {nick} = {fio_executor!r} WHERE Пномер = {nom_nar}"
+        query = f"""UPDATE naryad SET "{nick}" = {fio_executor!r} WHERE "Пномер" = {nom_nar};"""
         return CSQ.custom_request_c(self.db_naryd, query)
 
     @CQT.onerror
@@ -2009,7 +2098,7 @@ class mywindow(QtWidgets.QMainWindow):
         list_emploee_with_del = CMS.list_emploee_full_with_del(self.bd_users)
         DICT_EMPLOEE_FULL_WITH_DEL = F.deploy_dict_c(list_emploee_with_del, 'ФИО')
         #
-        #list_fix = CSQ.custom_request_c(USRCNF.Config.project.db_naryad,
+        #list_fix = 4(USRCNF.Config.project.db_naryad,
         #                     f"""SELECT *
         #                    FROM jurnal WHERE  Примечание  LIKE "Автовосстановление старта с 2026-06-17%" and Статус = "Начат"
         #                        """, rez_dict=True)
@@ -2032,10 +2121,16 @@ class mywindow(QtWidgets.QMainWindow):
             return
 
         list_starts = CSQ.custom_request_c(USRCNF.Config.project.db_naryad,
-                                           f"""SELECT DISTINCT ФИО 
-                    FROM jurnal WHERE Datetime(Дата)
-                    BETWEEN "{start_date}" AND "{end_date}" and Статус = "Начат"
-                        """, rez_dict=True)
+                                           CSQ.SqlQuery(
+                                               sqlite=f"""SELECT DISTINCT "ФИО" 
+                    FROM jurnal WHERE Datetime("Дата")
+                    BETWEEN '{start_date}' AND '{end_date}' and Статус = 'Начат'
+                        """,
+                                               postgres=f"""SELECT DISTINCT "ФИО" 
+                    FROM jurnal WHERE "Дата"::timestamp
+                    BETWEEN '{start_date}'::timestamp AND '{end_date}'::timestamp and Статус = 'Начат'
+                        """
+                                           ), rez_dict=True)
 
 
         cnt = len(list_starts)
@@ -2044,15 +2139,25 @@ class mywindow(QtWidgets.QMainWindow):
             cntr += 1
             print(f'check {cntr}/{cnt}')
             first_row = CSQ.custom_request_c(USRCNF.Config.project.db_naryad,
-                                           f"""SELECT  Пномер, Номер_наряда,  Дата
+                                           CSQ.SqlQuery(
+                                               sqlite=f"""SELECT  "Пномер", "Номер_наряда",  "Дата"
                     FROM jurnal WHERE Datetime(Дата)
-                    BETWEEN "{start_date}" AND "{end_date}" AND Статус = "Начат" AND ФИО="{it['ФИО']}" ORDER BY  Дата LIMIT 1
-                        """, rez_dict=True,one=True)
+                    BETWEEN "{start_date}" AND "{end_date}" AND Статус = 'Начат' AND ФИО="{it['ФИО']}" ORDER BY  Дата LIMIT 1
+                        """,
+                                               postgres=f"""SELECT "Пномер", "Номер_наряда", "Дата"
+                    FROM jurnal 
+                    WHERE "Дата"::timestamp
+                    BETWEEN '{start_date}'::timestamp AND '{end_date}'::timestamp AND "Статус" = 'Начат' 
+                        AND "ФИО"='{it['ФИО']}' 
+                    ORDER BY "Дата" 
+                    LIMIT 1
+                        """
+                                           ), rez_dict=True,one=True)
             CSQ.custom_request_c(USRCNF.Config.project.db_naryad,
                                  f"""UPDATE jurnal
-                SET  (Дата, Примечание)
+                SET  ("Дата", "Примечание")
                     = (?, ?)
-                            WHERE Пномер == {first_row['Пномер']} """, list_of_lists_c=[[new_time_start, f'Автовосстановление старта с {first_row['Дата']}']])
+                            WHERE "Пномер" = {first_row['Пномер']}; """, list_of_lists_c=[[new_time_start, f'Автовосстановление старта с {first_row['Дата']}']])
             nar = CMS.Naryads(first_row['Номер_наряда'], self.db_naryd, self.DICT_DOLGN_ETAP, self.bd_users,
                               DICT_EMPLOEE_FULL_WITH_DEL)
             nar.recalc_jur_n_time(it['ФИО'])
@@ -2070,10 +2175,16 @@ class mywindow(QtWidgets.QMainWindow):
             return
 
         list_starts = CSQ.custom_request_c(USRCNF.Config.project.db_naryad,
-                                           f"""SELECT DISTINCT Номер_наряда, ФИО 
+                                           CSQ.SqlQuery(
+                                               sqlite=f"""SELECT DISTINCT Номер_наряда, ФИО 
             FROM jurnal WHERE Datetime(Дата)
             BETWEEN "{start_date}" AND "{end_date}" and Статус = "Начат"
-                """,rez_dict=True)
+                """,
+                                               postgres=f"""SELECT DISTINCT "Номер_наряда", "ФИО" 
+            FROM jurnal WHERE "Дата"::timestamp
+            BETWEEN '{start_date}' AND '{end_date}' and "Статус" = 'Начат'
+                """
+                                           ),rez_dict=True)
         cnt = len(list_starts)
         cntr = 0
         for it in list_starts:
@@ -2087,48 +2198,45 @@ class mywindow(QtWidgets.QMainWindow):
                 empl_o = CMS.Emploee_usr(it["ФИО"], USRCNF.Config.project.db_users)
                 custom_request_c = f'''
                     SELECT 
-                        COALESCE( groups.name, "") as Группа,
-                        naryad.Пномер, 
-                        naryad.Дата, 
-                        naryad.Номер_мк, 
-                        naryad.Задание, 
-                        naryad.ФИО, 
-                        naryad.ФИО2, 
-                        naryad.Твремя, 
-                        naryad.Норма_времени AS "Норматив время", 
-                        "" AS "Время", 
-                        naryad.Компл_номер_тара,
-                        naryad.Компл_адрес, 
-                        naryad.Примечание, 
-                        naryad.Внеплан,
-                        naryad.Категория_внепл,
-                        
-                        "" AS Приоритет,
-
-            naryad.Коэфф_сложности, 
-                        naryad.Виды_работ, 
-                        naryad.Опер_время, 
-                        mk.Статус_ЧПУ, 
-                        zagot.Прим_резка, 
-                        naryad.ФИО_для_ОТК , 
-                        naryad.Операции  , 
-                        naryad.Распред_ФИО , 
-                        naryad.Кол_повт_приемок AS "Кол_во повт. приёмок",
-                        "" as "Позиция",
-                        "" as "Номенклатура_ЕРП",
-                        "" AS "Номер_заказа", 
-                        "" AS Номер_проекта,
-                        COALESCE( groups.id, "") as _id,
-                        COALESCE( groups.summ, "") as _gr_summ
+                        COALESCE( groups.name, '') as "Группа",
+                        naryad."Пномер", 
+                        naryad."Дата", 
+                        naryad."Номер_мк", 
+                        naryad."Задание", 
+                        naryad."ФИО", 
+                        naryad."ФИО2", 
+                        naryad."Твремя", 
+                        naryad."Норма_времени" AS "Норматив время", 
+                        '' AS "Время", 
+                        naryad."Компл_номер_тара",
+                        naryad."Компл_адрес", 
+                        naryad."Примечание", 
+                        naryad."Внеплан",
+                        naryad."Категория_внепл",
+                        '' AS "Приоритет",
+                        naryad."Коэфф_сложности", 
+                        naryad."Виды_работ", 
+                        naryad."Опер_время", 
+                        mk."Статус_ЧПУ", 
+                        zagot."Прим_резка", 
+                        naryad."ФИО_для_ОТК" , 
+                        naryad."Операции"  , 
+                        naryad."Распред_ФИО" , 
+                        naryad."Кол_повт_приемок" AS "Кол_во повт. приёмок",
+                        '' as "Позиция",
+                        '' as "Номенклатура_ЕРП",
+                        '' AS "Номер_заказа", 
+                        '' AS "Номер_проекта",
+                        COALESCE( groups.id, '') as _id,
+                        COALESCE( groups.summ, '') as _gr_summ
                     FROM naryad 
-                    INNER JOIN mk ON mk.Пномер = naryad.Номер_мк 
-                    
-                          INNER JOIN    коды_веплана_для_наряда  ON коды_веплана_для_наряда.code = naryad.Внеплан
-                    INNER JOIN zagot ON zagot.Ном_МК = naryad.Номер_мк 
-                    LEFT JOIN naryad_groups ON  (naryad_groups.id_nar = naryad.Пномер AND naryad_groups.fio IN ("{it["ФИО"]}"))
-                    LEFT JOIN groups ON (groups.id == naryad_groups.id_group AND groups.user_ref == "{empl_o.ID_ФизЛица}")
-                    WHERE  (naryad.ФИО = "{it["ФИО"]}"  
-                                OR naryad.ФИО2 = "{it["ФИО"]}") AND naryad.Пномер = {it['Номер_наряда']};'''
+                    INNER JOIN mk ON mk."Пномер" = naryad."Номер_мк" 
+                    INNER JOIN коды_веплана_для_наряда  ON коды_веплана_для_наряда.code = naryad."Внеплан"
+                    INNER JOIN zagot ON zagot."Ном_МК" = naryad."Номер_мк" 
+                    LEFT JOIN naryad_groups ON  (naryad_groups.id_nar = naryad."Пномер" AND naryad_groups.fio IN ('{it["ФИО"]}'))
+                    LEFT JOIN groups ON (groups.id = naryad_groups.id_group AND groups.user_ref = '{empl_o.ID_ФизЛица}')
+                    WHERE  (naryad."ФИО" = '{it["ФИО"]}'  
+                                OR naryad."ФИО2" = '{it["ФИО"]}') AND naryad."Пномер" = {it['Номер_наряда']};'''
                 data_inf = CSQ.custom_request_c(self.db_naryd, custom_request_c, rez_dict=True,
                                            attach_dbs=USRCNF.Config.project.db_kplan,one=True)
                 if not data_inf:
@@ -2319,7 +2427,7 @@ class mywindow(QtWidgets.QMainWindow):
 
     @CQT.onerror
     def add_opoveshenie(self, vid_stop, nom_nar, nom_mk, fio, primech):#OFF
-        custom_request_c = f'''SELECT Номер_заказа, Номер_проекта, Вид FROM mk WHERE Пномер == {nom_mk}'''
+        custom_request_c = f'''SELECT "Номер_заказа", "Номер_проекта", "Вид" FROM mk WHERE "Пномер" = {nom_mk}'''
         rez = CSQ.custom_request_c(self.db_naryd,custom_request_c)
         np = rez[-1][1]
         nz = rez[-1][0]
@@ -2354,8 +2462,8 @@ class mywindow(QtWidgets.QMainWindow):
 
     @CQT.onerror
     def tekush_naruad(self,fio):
-        custom_request_c = f'''SELECT Номер_наряда, Пномер, Дата FROM jurnal WHERE ФИО == "{fio}" AND
-                    Статус == "Начат" and  Подытог == 0'''
+        custom_request_c = f'''SELECT "Номер_наряда", "Пномер", "Дата" FROM jurnal WHERE "ФИО" = '{fio}' AND
+                    Статус = 'Начат' and  "Подытог" = 0'''
         rez = CSQ.custom_request_c(self.db_naryd, custom_request_c, hat_c=False)
         if rez == False:
             CQT.msgbox(f'Бд занята пробуй позже')

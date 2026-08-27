@@ -43,7 +43,7 @@ def ensure_workplace_shifts(self, workplace_id: int, conn=None):
         CSQ.custom_request_c(
             self.db_users,
             f"""INSERT INTO schedule_work_places
-                  (workplace_id, employee_id, shift_no, time_start, time_end, Нераб_мин, Между_нар_мин, Коэфф_производит)
+                  (workplace_id, employee_id, shift_no, time_start, time_end, "Нераб_мин", "Между_нар_мин", "Коэфф_производит")
                   VALUES ({int(workplace_id)}, 1, {int(shift_no)},
                           '{d['time_start']}', '{d['time_end']}', {int(d['Нераб_мин'])}, {int(d['Между_нар_мин'])}, {float(d['Коэфф_производит'])});""",
         )
@@ -66,7 +66,16 @@ def check_load_tabel_in_db(self):
 
 def add_list_of_months_to_cmb(self):
     cmb = self.ui.cmb_tabeli
-    list_of_month = CSQ.custom_request_c(self.db_users, """SELECT name from sqlite_master where type = 'table';""")
+    query = CSQ.SqlQuery(
+        sqlite="""SELECT name from sqlite_master where type = 'table';""",
+        postgres="""
+        SELECT table_name AS name
+FROM information_schema.tables
+WHERE table_type = 'BASE TABLE'
+  AND table_schema NOT IN ('pg_catalog', 'information_schema');
+        """
+    )
+    list_of_month = CSQ.custom_request_c(self.db_users, query)
     cmb.clear()
     cmb.addItem('')
     for item in list_of_month:
@@ -214,7 +223,7 @@ def cellChanged(self, row, col): #26.01.2026
         CMS.dict_rab_mesta(self, self.db_users)
         return
 
-    CSQ.custom_request_c(self.db_users, f"""UPDATE rab_mesta SET {ima_col} = "{znach}" WHERE Пномер = {pnom}""")
+    CSQ.custom_request_c(self.db_users, f"""UPDATE rab_mesta SET {ima_col} = '{znach}' WHERE "Пномер" = {pnom}""")
     CMS.dict_rab_mesta(self, self.db_users)
 
 def load_deficit_emploee(self):
@@ -222,16 +231,16 @@ def load_deficit_emploee(self):
     dict_rez_itog = dict()
     dict_rez_all = dict()
 
-    custom_request_c = """SELECT rm.Пномер,
-                                   pc.adress as Расположение,
-                                   rm.Прозвище,
-                                   pr.имя as Профессия,
-                                   swp.shift_no as Смена,
-                                   swp.employee_id as employee_id
+    custom_request_c = """SELECT "rm"."Пномер",
+                                   "pc"."adress" as "Расположение",
+                                   "rm"."Прозвище",
+                                   "pr"."имя" as "Профессия",
+                                   "swp"."shift_no" as "Смена",
+                                   "swp"."employee_id" as "employee_id"
                             FROM rab_mesta rm
-                            LEFT JOIN professions pr ON pr.код == rm.Код_профессии
-                            LEFT JOIN places_capacity pc ON pc.serial == rm.Расположение
-                            LEFT JOIN schedule_work_places swp ON swp.workplace_id == rm.Пномер
+                            LEFT JOIN professions pr ON "pr"."код" = rm."Код_профессии"
+                            LEFT JOIN places_capacity pc ON "pc"."serial" = rm."Расположение"
+                            LEFT JOIN schedule_work_places swp ON "swp"."workplace_id" = rm."Пномер"
                          """
     spis = CSQ.custom_request_c(self.db_users, custom_request_c, rez_dict=True, hat_c=False) or []
 
@@ -258,8 +267,8 @@ def load_deficit_emploee(self):
     CMS.fill_filtr_c(self, self.ui.tbl_vacant_filtr, self.ui.tbl_vacant)
 
 def load_emploee(self, *args):
-    custom_request_c = """SELECT Пномер, ФИО, Статус,Подразделение, Должность, Режим
-                            FROM employee WHERE Статус != 'Увольнение' ORDER BY ФИО"""
+    custom_request_c = '''SELECT "Пномер", "ФИО", "Статус","Подразделение", "Должность", "Режим"
+                            FROM employee WHERE Статус != 'Увольнение' ORDER BY "ФИО"'''
     spis_empl = CSQ.custom_request_c(self.db_users, custom_request_c, hat_c=True)
 
     req_rm = """SELECT workplace_id, employee_id
@@ -283,66 +292,66 @@ def load_emploee(self, *args):
     return
 
 def zagruzka_rc(self, *args):
-    sp_pnom = CSQ.custom_request_c(self.db_users, """SELECT Пномер FROM rab_mesta""") or []
+    sp_pnom = CSQ.custom_request_c(self.db_users, """SELECT "Пномер" FROM rab_mesta""") or []
     for (pnom,) in sp_pnom:
         try:
             ensure_workplace_shifts(self, int(pnom))
         except:
             pass
 
-    custom_request_c = """SELECT rm.Пномер,
-                                   pc.adress AS Расположение,
-                                   rc.Имя AS РЦ,
-                                   rm.Прозвище,
-                                   eq.Наименование || ' ' || eq.Инв_номер AS Оборудование,
-                                   pr.имя AS Профессия_рм,
-                                   rc.Отв_мастер_тдз AS Руководитель,
+    custom_request_c = """SELECT "rm"."Пномер",
+                                   "pc"."adress" AS "Расположение",
+                                   "rc"."Имя" AS "РЦ",
+                                   "rm"."Прозвище",
+                                   "eq"."Наименование" || ' ' || eq."Инв_номер" AS "Оборудование",
+                                   "pr"."имя" AS "Профессия_рм",
+                                   "rc"."Отв_мастер_тдз" AS "Руководитель",
 
-                                   COALESCE(e1.Должность, '') AS Должность_1см,
-                                   COALESCE(e1.ФИО, '') AS ФИО_1см,
-                                   COALESCE(sw1.employee_id, 1) AS Пномер_emp1,
-                                   COALESCE(sw1.time_start, '07:00') AS Время_начала_1,
-                                   COALESCE(sw1.time_end,   '15:30') AS Время_конца_1,
-                                   COALESCE(sw1.Нераб_мин, 75) AS Нераб_мин1,
-                                   COALESCE(sw1.Между_нар_мин, 40) AS Между_нар_мин1,
-                                   COALESCE(sw1.Коэфф_производит, 1) AS Коэфф_производит1,
+                                   COALESCE("e1"."Должность", '') AS "Должность_1см",
+                                   COALESCE("e1"."ФИО", '') AS "ФИО_1см",
+                                   COALESCE("sw1"."employee_id", 1) AS "Пномер_emp1",
+                                   COALESCE("sw1"."time_start", '07:00') AS "Время_начала_1",
+                                   COALESCE("sw1"."time_end",   '15:30') AS "Время_конца_1",
+                                   COALESCE("sw1"."Нераб_мин", 75) AS "Нераб_мин1",
+                                   COALESCE("sw1"."Между_нар_мин", 40) AS "Между_нар_мин1",
+                                   COALESCE("sw1"."Коэфф_производит", 1) AS "Коэфф_производит1",
 
-                                   COALESCE(e2.Должность, '') AS Должность_2см,
-                                   COALESCE(e2.ФИО, '') AS ФИО_2см,
-                                   COALESCE(sw2.employee_id, 1) AS Пномер_emp2,
-                                   COALESCE(sw2.time_start, '15:30') AS Время_начала_2,
-                                   COALESCE(sw2.time_end,   '23:59') AS Время_конца_2,
-                                   COALESCE(sw2.Нераб_мин, 75) AS Нераб_мин2,
-                                   COALESCE(sw2.Между_нар_мин, 40) AS Между_нар_мин2,
-                                   COALESCE(sw2.Коэфф_производит, 0.9) AS Коэфф_производит2,
+                                   COALESCE("e2"."Должность", '') AS "Должность_2см",
+                                   COALESCE("e2"."ФИО", '') AS "ФИО_2см",
+                                   COALESCE("sw2"."employee_id", 1) AS "Пномер_emp2",
+                                   COALESCE("sw2"."time_start", '15:30') AS "Время_начала_2",
+                                   COALESCE("sw2"."time_end",   '23:59') AS "Время_конца_2",
+                                   COALESCE("sw2"."Нераб_мин", 75) AS "Нераб_мин2",
+                                   COALESCE("sw2"."Между_нар_мин", 40) AS "Между_нар_мин2",
+                                   COALESCE("sw2"."Коэфф_производит", 0.9) AS "Коэфф_производит2",
 
-                                   COALESCE(e3.Должность, '') AS Должность_3см,
-                                   COALESCE(e3.ФИО, '') AS ФИО_3см,
-                                   COALESCE(sw3.employee_id, 1) AS Пномер_emp3,
-                                   COALESCE(sw3.time_start, '00:01') AS Время_начала_3,
-                                   COALESCE(sw3.time_end,   '07:00') AS Время_конца_3,
-                                   COALESCE(sw3.Нераб_мин, 75) AS Нераб_мин3,
-                                   COALESCE(sw3.Между_нар_мин, 40) AS Между_нар_мин3,
-                                   COALESCE(sw3.Коэфф_производит, 0.8) AS Коэфф_производит3,
+                                   COALESCE("e3"."Должность", '') AS "Должность_3см",
+                                   COALESCE("e3"."ФИО", '') AS "ФИО_3см",
+                                   COALESCE("sw3"."employee_id", 1) AS "Пномер_emp3",
+                                   COALESCE("sw3"."time_start", '00:01') AS "Время_начала_3",
+                                   COALESCE("sw3"."time_end",   '07:00') AS "Время_конца_3",
+                                   COALESCE("sw3"."Нераб_мин", 75) AS "Нераб_мин3",
+                                   COALESCE("sw3"."Между_нар_мин", 40) AS "Между_нар_мин3",
+                                   COALESCE("sw3"."Коэфф_производит", 0.8) AS "Коэфф_производит3",
 
-                                   rm.Примечание,
-                                   rm.coord
+                                   "rm"."Примечание",
+                                   "rm"."coord"
                             FROM rab_mesta rm
-                            LEFT JOIN places_capacity pc ON pc.serial == rm.Расположение
-                            LEFT JOIN rab_c rc ON rc.Код == rm.Код_РЦ
-                            LEFT JOIN equipment eq ON eq.Пномер == rm.Номер_осн_оборуд
-                            LEFT JOIN professions pr ON pr.код == rm.Код_профессии
+                            LEFT JOIN places_capacity pc ON "pc"."serial" = "rm"."Расположение"
+                            LEFT JOIN rab_c rc ON "rc"."Код" = "rm"."Код_РЦ"
+                            LEFT JOIN equipment eq ON "eq"."Пномер" = "rm"."Номер_осн_оборуд"
+                            LEFT JOIN professions pr ON "pr"."код" = "rm"."Код_профессии"
 
-                            LEFT JOIN schedule_work_places sw1 ON sw1.workplace_id == rm.Пномер AND sw1.shift_no == 1
-                            LEFT JOIN schedule_work_places sw2 ON sw2.workplace_id == rm.Пномер AND sw2.shift_no == 2
-                            LEFT JOIN schedule_work_places sw3 ON sw3.workplace_id == rm.Пномер AND sw3.shift_no == 3
-                            LEFT JOIN employee e1 ON e1.Пномер == sw1.employee_id
-                            LEFT JOIN employee e2 ON e2.Пномер == sw2.employee_id
-                            LEFT JOIN employee e3 ON e3.Пномер == sw3.employee_id
+                            LEFT JOIN schedule_work_places sw1 ON "sw1"."workplace_id" = "rm"."Пномер" AND sw1.shift_no == 1
+                            LEFT JOIN schedule_work_places sw2 ON "sw2"."workplace_id" = "rm"."Пномер" AND sw2.shift_no == 2
+                            LEFT JOIN schedule_work_places sw3 ON "sw3"."workplace_id" = "rm"."Пномер" AND sw3.shift_no == 3
+                            LEFT JOIN employee e1 ON "e1"."Пномер" = "sw1"."employee_id"
+                            LEFT JOIN employee e2 ON "e2"."Пномер" = "sw2"."employee_id"
+                            LEFT JOIN employee e3 ON "e3"."Пномер" = "sw3"."employee_id"
                             ORDER BY rm.Пномер"""
 
     spis = CSQ.custom_request_c(self.db_users, custom_request_c, hat_c=False, rez_dict=True) or []
-    spis_fio_uvol_emploee = CSQ.custom_request_c(self.db_users, """SELECT ФИО, Пномер FROM employee WHERE Статус == 'Увольнение' """)
+    spis_fio_uvol_emploee = CSQ.custom_request_c(self.db_users, """SELECT "ФИО", "Пномер" FROM employee WHERE "Статус" = 'Увольнение' """)
     for i in range(len(spis)):
         if [spis[i].get('ФИО_1см', ''), spis[i].get('Пномер_emp1', '')] in spis_fio_uvol_emploee:
             spis[i]['ФИО_1см'] = (spis[i].get('ФИО_1см', '') + ' УВОЛЕН').strip()
@@ -369,9 +378,9 @@ def zagruzka_rc(self, *args):
 
     spis_rasp = CSQ.custom_request_c(self.db_users, """SELECT adress FROM places_capacity""", hat_c=False, one_column=True)
     spis_rc = CSQ.custom_request_c(self.db_users, """SELECT Имя FROM rab_c""", hat_c=False, one_column=True)
-    spis_oborud = CSQ.custom_request_c(self.db_users, """SELECT Наименование || ' ' || Инв_номер FROM equipment""", hat_c=False, one_column=True)
+    spis_oborud = CSQ.custom_request_c(self.db_users, """SELECT "Наименование" || ' ' || "Инв_номер" FROM equipment""", hat_c=False, one_column=True)
     spis_prof = CSQ.custom_request_c(self.db_users, """SELECT имя FROM professions""", hat_c=False, one_column=True)
-    spis_dolgn = CSQ.custom_request_c(self.db_users, """SELECT DISTINCT Должность FROM employee WHERE Статус != 'Увольнение' """, hat_c=False, one_column=True)
+    spis_dolgn = CSQ.custom_request_c(self.db_users, """SELECT DISTINCT "Должность" FROM employee WHERE "Статус" != 'Увольнение' """, hat_c=False, one_column=True)
     spis_dolgn = sorted(spis_dolgn)
 
     self.ui.tbl_rc.blockSignals(True)
@@ -428,13 +437,13 @@ def add_rm(self):
 
         spis = CSQ.custom_request_c(
             self.db_users,
-            f"""SELECT Расположение,
-                        Код_РЦ as РЦ_код,
-                        Прозвище,
-                        Номер_осн_оборуд as Оборудование,
-                        Код_профессии as Профессия_рм,
-                        Примечание
-                 FROM rab_mesta WHERE Пномер = {int(nom_rm)}""",
+            f"""SELECT "Расположение",
+                        "Код_РЦ" as "РЦ_код",
+                        "Прозвище",
+                        "Номер_осн_оборуд" as "Оборудование",
+                        "Код_профессии" as "Профессия_рм",
+                        "Примечание"
+                 FROM rab_mesta WHERE "Пномер" = {int(nom_rm)}""",
             hat_c=True,
             rez_dict=True
         )[0]
@@ -449,7 +458,7 @@ def add_rm(self):
         for s in (1, 2, 3):
             row = CSQ.custom_request_c(
                 self.db_users,
-                f"""SELECT time_start, time_end, Нераб_мин, Между_нар_мин, Коэфф_производит
+                f"""SELECT time_start, time_end, "Нераб_мин", "Между_нар_мин", "Коэфф_производит"
                       FROM schedule_work_places
                       WHERE workplace_id = {int(nom_rm)} AND shift_no = {s}""",
             )
@@ -464,17 +473,17 @@ def add_rm(self):
 
         CSQ.custom_request_c(
             self.db_users,
-            f"""INSERT INTO rab_mesta (Расположение, Код_РЦ, Прозвище, Номер_осн_оборуд, Код_профессии, Примечание)
+            f"""INSERT INTO rab_mesta ("Расположение", "Код_РЦ", "Прозвище", "Номер_осн_оборуд", "Код_профессии", "Примечание")
                   VALUES ({int(raspol)}, '{kod_rc}', '{prozv}', {int(oborud)}, '{prof}', '{note}');""",
         )
-        new_rm = CSQ.custom_request_c(self.db_users, """SELECT MAX(Пномер) FROM rab_mesta""")[-1][0]
+        new_rm = CSQ.custom_request_c(self.db_users, """SELECT MAX("Пномер") FROM rab_mesta""")[-1][0]
 
         for s in (1, 2, 3):
             d = shifts[s]
             CSQ.custom_request_c(
                 self.db_users,
                 f"""INSERT INTO schedule_work_places
-                      (workplace_id, employee_id, shift_no, time_start, time_end, Нераб_мин, Между_нар_мин, Коэфф_производит)
+                      (workplace_id, employee_id, shift_no, time_start, time_end, "Нераб_мин", "Между_нар_мин", "Коэфф_производит")
                       VALUES ({int(new_rm)}, 1, {s}, '{d['time_start']}', '{d['time_end']}', {int(d['Нераб_мин'])},
                               {int(d['Между_нар_мин'])}, {float(d['Коэфф_производит'])});""",
             )
@@ -486,7 +495,7 @@ def add_rm(self):
 
     CSQ.custom_request_c(
         self.db_users,
-        f"""INSERT INTO rab_mesta (Расположение, Код_РЦ, Прозвище, Номер_осн_оборуд, Код_профессии, Примечание)
+        f"""INSERT INTO rab_mesta ("Расположение", "Код_РЦ", "Прозвище", "Номер_осн_оборуд", "Код_профессии", "Примечание")
               VALUES ({int(raspol)}, '{kod_rc}', '{prozv}', {int(oborud)}, '{prof}', '{note}');""",
     )
     new_rm = CSQ.custom_request_c(self.db_users, """SELECT MAX(Пномер) FROM rab_mesta""")[-1][0]
@@ -496,7 +505,7 @@ def add_rm(self):
         CSQ.custom_request_c(
             self.db_users,
             f"""INSERT INTO schedule_work_places
-                  (workplace_id, employee_id, shift_no, time_start, time_end, Нераб_мин, Между_нар_мин, Коэфф_производит)
+                  (workplace_id, employee_id, shift_no, time_start, time_end, "Нераб_мин", "Между_нар_мин", "Коэфф_производит")
                   VALUES ({int(new_rm)}, 1, {s}, '{d['time_start']}', '{d['time_end']}', {int(d['Нераб_мин'])},
                           {int(d['Между_нар_мин'])}, {float(d['Коэфф_производит'])});""",
         )
@@ -511,7 +520,7 @@ def select_prof(self, text,  row, col):
     pnom = int(self.ui.tbl_rc.item(row, nk_pnom).text())
     rez = CSQ.custom_request_c(self.db_users,f"""SELECT код FROM professions WHERE имя == '{text}'""")
     kod_prof = rez[-1][0]
-    response = CSQ.custom_request_c(self.db_users, f"""UPDATE rab_mesta SET Код_профессии = "{kod_prof}" WHERE Пномер = {pnom}""", hat_c=False)
+    response = CSQ.custom_request_c(self.db_users, f"""UPDATE rab_mesta SET "Код_профессии" = '{kod_prof}' WHERE "Пномер" = {pnom}""", hat_c=False)
     CQT.msgbox('Успешно') if response else CQT.msgbox('Не удалось обновить профессию на рм')
 
 def select_oborud(self, text,  row, col):
@@ -519,9 +528,9 @@ def select_oborud(self, text,  row, col):
         return
     nk_pnom = CQT.num_col_by_name_c(self.ui.tbl_rc, 'Пномер')
     pnom = int(self.ui.tbl_rc.item(row, nk_pnom).text())
-    rez = CSQ.custom_request_c(self.db_users,f"""SELECT Пномер FROM equipment WHERE Наименование || ' ' || Инв_номер == '{text}'""")
+    rez = CSQ.custom_request_c(self.db_users,f"""SELECT "Пномер" FROM equipment WHERE "Наименование" || ' ' || "Инв_номер" = '{text}'""")
     kod_oborud = rez[-1][0]
-    response = CSQ.custom_request_c(self.db_users, f"""UPDATE rab_mesta SET Номер_осн_оборуд = "{kod_oborud}" WHERE Пномер = {pnom}""", hat_c=False)
+    response = CSQ.custom_request_c(self.db_users, f"""UPDATE rab_mesta SET "Номер_осн_оборуд" = '{kod_oborud}' WHERE "Пномер" = {pnom}""", hat_c=False)
     CQT.msgbox('Успешно') if response else CQT.msgbox('Не удалось обновить оборудование на рм')
 
 
@@ -530,9 +539,9 @@ def select_rc(self, text,  row, col):
         return
     nk_pnom = CQT.num_col_by_name_c(self.ui.tbl_rc, 'Пномер')
     pnom = int(self.ui.tbl_rc.item(row, nk_pnom).text())
-    rez = CSQ.custom_request_c(self.db_users,f"""SELECT Код FROM rab_c WHERE Имя == '{text}'""")
+    rez = CSQ.custom_request_c(self.db_users,f"""SELECT "Код" FROM rab_c WHERE "Имя" = '{text}'""")
     kod_rc = rez[-1][0]
-    response = CSQ.custom_request_c(self.db_users, f"""UPDATE rab_mesta SET Код_РЦ = "{kod_rc}" WHERE Пномер = {pnom}""", hat_c=False)
+    response = CSQ.custom_request_c(self.db_users, f"""UPDATE rab_mesta SET "Код_РЦ" = '{kod_rc}' WHERE "Пномер" = {pnom}""", hat_c=False)
     CQT.msgbox('Успешно') if response else CQT.msgbox('Не удалось обновить РЦ на рм')
 
 def select_rasp(self, text,  row, col):
@@ -540,9 +549,9 @@ def select_rasp(self, text,  row, col):
         return
     nk_pnom = CQT.num_col_by_name_c(self.ui.tbl_rc, 'Пномер')
     pnom = int(self.ui.tbl_rc.item(row, nk_pnom).text())
-    rez = CSQ.custom_request_c(self.db_users, f"""SELECT serial FROM places_capacity WHERE adress == '{text}'""")
+    rez = CSQ.custom_request_c(self.db_users, f"""SELECT serial FROM places_capacity WHERE adress = '{text}'""")
     kod_place = rez[-1][0]
-    response = CSQ.custom_request_c(self.db_users, f"""UPDATE rab_mesta SET Расположение = {kod_place} WHERE Пномер = {pnom}""", hat_c=False)
+    response = CSQ.custom_request_c(self.db_users, f"""UPDATE rab_mesta SET "Расположение" = {kod_place} WHERE "Пномер" = {pnom}""", hat_c=False)
     CQT.msgbox('Успешно') if response else CQT.msgbox('Не удалось обновить Расположение на рм')
 
 
@@ -829,27 +838,49 @@ def load_schema_jpg(self:mywindow, path, x_sel = '', y_sel = '', add_prim:list=(
 
 def get_workers(default_val = None): #27.01.2026
     company = CFG.Config.place.Имя
-    return CSQ.custom_request_c(
-        CFG.Config.project.db_users,
-        f"""
+    query = CSQ.SqlQuery(
+        sqlite=f"""
         SELECT 
-            employee.gender AS Пол,
-            employee.ФИО,
-            employee.ID_ФизЛица AS sys_employee_phys_ref,
-            employee.Должность,
-            employee.Подразделение,
+            employee."gender" AS "Пол",
+            employee."ФИО",
+            employee."ID_ФизЛица" AS sys_employee_phys_ref,
+            employee."Должность",
+            employee."Подразделение",
             GROUP_CONCAT(sb.schedule, ', ') AS "Текущее расписание перерывов"
         FROM employee
-             LEFT JOIN schedule_break sb ON sb.employee_phys_ref = employee.ID_ФизЛица
-        WHERE employee.Статус = 'Работа'
-            AND employee.Компания = {company!r}
-            AND employee.Должность IN (SELECT DISTINCT имя FROM professions)
+             LEFT JOIN schedule_break sb ON sb.employee_phys_ref = employee."ID_ФизЛица"
+        WHERE employee."Статус" = 'Работа'
+            AND employee."Компания" = {company!r}
+            AND employee."Должность" IN (SELECT DISTINCT имя FROM professions)
         GROUP BY employee.ID_ФизЛица,
             employee.gender,
             employee."ФИО",
             employee."Должность",
             employee."Подразделение"
 """,
+        postgres=f"""
+        SELECT 
+            employee."gender" AS "Пол",
+            employee."ФИО",
+            employee."ID_ФизЛица" AS sys_employee_phys_ref,
+            employee."Должность",
+            employee."Подразделение",
+            STRING_AGG(sb.schedule::text, ', ') AS "Текущее расписание перерывов"
+        FROM employee
+             LEFT JOIN schedule_break sb ON sb.employee_phys_ref = employee."ID_ФизЛица"
+        WHERE employee."Статус" = 'Работа'
+            AND employee."Компания" = {company!r}
+            AND employee."Должность" IN (SELECT DISTINCT имя FROM professions)
+        GROUP BY employee.ID_ФизЛица,
+            employee.gender,
+            employee."ФИО",
+            employee."Должность",
+            employee."Подразделение"
+""",
+    )
+    return CSQ.custom_request_c(
+        CFG.Config.project.db_users,
+        query,
         rez_dict=True,
         attach_dbs=CFG.Config.project.db_naryad
     ) or default_val
@@ -857,9 +888,8 @@ def get_workers(default_val = None): #27.01.2026
 def gen_hour_breaks(start_hour: int, phys_refs):
     result = []
     str_refs = ','.join(repr(ref) for ref in phys_refs)
-    schedules = CSQ.custom_request_c(
-        CFG.Config.project.db_users,
-        f"""
+    query = CSQ.SqlQuery(
+        sqlite=f"""
         SELECT 
             period,
             GROUP_CONCAT(DISTINCT schedule ORDER BY schedule) AS schedule,
@@ -868,7 +898,20 @@ def gen_hour_breaks(start_hour: int, phys_refs):
         FROM schedule_break
         WHERE employee_phys_ref IN ({str_refs})
         GROUP BY period
+""",postgres=f"""
+        SELECT 
+            period,
+            STRING_AGG(DISTINCT schedule, ',' ORDER BY schedule) AS schedule,
+            STRING_AGG(DISTINCT error_margin, ',') AS error_margin,
+            STRING_AGG(DISTINCT comment, ',') AS comment
+        FROM schedule_break
+        WHERE employee_phys_ref IN ({str_refs})
+        GROUP BY period
 """,
+    )
+    schedules = CSQ.custom_request_c(
+        CFG.Config.project.db_users,
+        query,
         rez_dict=True,
         attach_dbs=CFG.Config.project.db_naryad
     ) or {}
@@ -1027,17 +1070,17 @@ def apply_break_changes(int_label, window, old_schedule, new_schedule, period, c
         CFG.Config.project.db_users,
         f"""
         SELECT 
-            employee.ID_ФизЛица,
-            employee.ФИО,
-            employee.Должность,
-            employee.Подразделение,
+            employee."ID_ФизЛица",
+            employee."ФИО",
+            employee."Должность",
+            employee."Подразделение",
             sb.period,
             sb.schedule
         FROM employee
-             LEFT JOIN schedule_break sb ON sb.employee_phys_ref = employee.ID_ФизЛица
-        WHERE employee.Статус = 'Работа'
+             LEFT JOIN schedule_break sb ON sb.employee_phys_ref = employee."ID_ФизЛица"
+        WHERE employee."Статус" = 'Работа'
           AND sb.period = {period!r}
-          AND employee.ID_ФизЛица IN ({refs})""",
+          AND employee."ID_ФизЛица" IN ({refs})""",
         rez_dict=True
     )
     if not isinstance(res, list):
