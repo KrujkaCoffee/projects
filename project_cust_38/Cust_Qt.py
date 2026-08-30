@@ -7794,7 +7794,8 @@ def get_answ_ai(promt,hook_prog_bar=None):#sk-or-v1-a2e1900e0550fbe3776a5a717d4e
         return response.status_code, response.json()['choices'][0]['message']['content']
     else:
         return response.status_code, f"Failed to fetch data from API. Status Code:{response.status_code}"
-
+class PageManager():
+    pass
 class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
     def __init__(self, parent, msg:str, dict_or_list, btn0_name:str="Ввод",
                  btn1_name:str="Отмена", func_validate=None,
@@ -7806,7 +7807,8 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
                  func_oform_filtr=None, load_links=False, conn_func_label_link=None, styleSheet=None, parent_self=None,
                  sortingEnabled=False, not_standart_close=False, save_column_sort_hh: bool = False,
                  aliases_header:dict=None,SelectionMode=None,show_mode=None,fnc_drag_drop=None,max_width_clms=200,
-                 fnc_dbl_clck=None,fnc_currentItemChanged=None,auto_type=False,dict_or_list_user_data=None
+                 fnc_dbl_clck=None,fnc_currentItemChanged=None,auto_type=False,dict_or_list_user_data=None,
+                 page_manager:PageManager=None
                  ):
         """        #SP_MessageBoxCritical
         #SP_MessageBoxInformation
@@ -7832,7 +7834,18 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
         self.fnc_drag_drop = fnc_drag_drop
         self._drag_start = None
         #--------------------
+        #=======fr_sheets=======
+        def set_page(curr=0,count_pages=0):
+            self.ui.lbl_page.setText(f'{CEMOJ.ДокументыДанные.document.symbol} {curr}/{count_pages} ')
+            self.ui.lbl_page.setToolTip(f'Страница {curr} из {count_pages}')
+        self.ui.fr_sheets.setVisible(F.boolm(page_manager))
+        if page_manager:
+            pass
+            load_icons(self, 26, dir=str(F.Cust_path(F.path_to_caller_file_c(False))) + F.sep() + 'icons' + F.sep())
+            set_page()
 
+
+        #======================
 
         self._out_formats: dict[str, str] = {}
         self._group_periods: dict[str, str] = {}
@@ -9441,7 +9454,8 @@ def msgboxg_get_table(self, msg, dict_or_list, btn0_name="✔ Ввод", btn1_na
                       styleSheet=None,parent_self=None,sortingEnabled=False,yesNoMode=False,not_standart_close=False,
                       save_column_sort_hh: bool = False,aliases_header=None,SelectionMode=None,showFullScreen=False,
                       showMaximized=False,fnc_drag_drop=None,property_in_rez=False,max_width_clms=200,fnc_dbl_clck=None,
-                      fnc_currentItemChanged=None,auto_type=False,dict_or_list_user_data=None,func_validate_t=None)->(
+                      fnc_currentItemChanged=None,auto_type=False,dict_or_list_user_data=None,func_validate_t=None,
+                      page_manager:PageManager=None)->(
         list[dict]|tuple[list[dict],dict[str,str]]|dict[str,str]):
     """
     :param selectionBehavior: SelectItems|SelectRows|SelectColumns
@@ -9484,7 +9498,7 @@ def msgboxg_get_table(self, msg, dict_or_list, btn0_name="✔ Ввод", btn1_na
                             save_column_sort_hh=save_column_sort_hh,aliases_header=aliases_header,
                             SelectionMode=SelectionMode,show_mode=show_mode,fnc_drag_drop=fnc_drag_drop,
                             max_width_clms=max_width_clms,fnc_dbl_clck=fnc_dbl_clck,fnc_currentItemChanged=fnc_currentItemChanged,
-                            auto_type= auto_type,dict_or_list_user_data=dict_or_list_user_data
+                            auto_type= auto_type,dict_or_list_user_data=dict_or_list_user_data,page_manager=page_manager,
                             )
 
     def ret(val):
@@ -9523,7 +9537,7 @@ def msgboxg_get_table_ok_inf(self, msg, dict_or_list, btn0_name="OK", btn1_name=
                              print_hat=True,func_btn0=None,selection_from_tbl=False,ExtendedSelection=True,
                              selectRows=False,func_oform_filtr=None,load_links=False, conn_func_label_link=None,
                              styleSheet=None,parent_self=None,sortingEnabled=False, save_column_sort_hh: bool = False,
-                             aliases_header:dict=None,showFullScreen=False,showMaximized=False):
+                             aliases_header:dict=None,showFullScreen=False,showMaximized=False,page_manager:PageManager=None):
     self.__ansver_Dialog_tbl = None
 
     show_mode = None
@@ -9540,7 +9554,7 @@ def msgboxg_get_table_ok_inf(self, msg, dict_or_list, btn0_name="OK", btn1_name=
                             ExtendedSelection=ExtendedSelection,selectRows=selectRows,func_oform_filtr=func_oform_filtr,
                             load_links=load_links, conn_func_label_link=conn_func_label_link,styleSheet=styleSheet,parent_self=parent_self,
                             sortingEnabled=sortingEnabled, save_column_sort_hh=save_column_sort_hh,
-                            aliases_header=aliases_header,show_mode=show_mode)
+                            aliases_header=aliases_header,show_mode=show_mode,page_manager=page_manager)
     returnValue = dialog_tbl.exec()
     return
 
@@ -11056,8 +11070,9 @@ def fill_filtr_c(self, tblf:QtWidgets.QTableWidget, tbl:QtWidgets.QTableWidget, 
         )
 
 
+
+        tblf.horizontalHeader().setVisible(show_header)
         if not show_header:
-            tblf.horizontalHeader().setVisible(False)
             tblf.setFixedHeight(tblf.rowHeight(0)+4)
 
         with QSignalBlocker(tblf.horizontalHeader()):
