@@ -8365,6 +8365,7 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
                     func_oform_filtr(tbl, tblf)
         else:
             tblf.setHidden(True)
+        self._setup_selection_status_bar()
         return
 
 
@@ -9300,6 +9301,126 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
                 self.showNormal()
             else:
                 self.showFullScreen()
+
+    def _setup_selection_status_bar(self):
+        self.selection_status_bar = QtWidgets.QStatusBar(self)
+        self.selection_status_bar.setObjectName('selection_status_bar')
+        self.selection_status_bar.setSizeGripEnabled(False)
+
+        self.selection_status_label = QtWidgets.QLabel(self.selection_status_bar)
+        self.selection_status_label.setObjectName('selection_status_label')
+        self.selection_status_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        self.selection_status_label.setContentsMargins(8, 0, 8, 0)
+        self.selection_status_label.setToolTip(
+            'Количество учитывает все выделенные ячейки. '
+            'Сумма и среднее рассчитываются только по числовым значениям.'
+        )
+        self.selection_status_bar.addPermanentWidget(self.selection_status_label, 1)
+
+        dialog_layout = self.layout()
+        if isinstance(dialog_layout, QtWidgets.QGridLayout):
+            dialog_layout.addWidget(
+                self.selection_status_bar,
+                dialog_layout.rowCount(),
+                0,
+                1,
+                max(1, dialog_layout.columnCount())
+            )
+        elif isinstance(dialog_layout, QtWidgets.QFormLayout):
+            dialog_layout.addRow(self.selection_status_bar)
+        elif dialog_layout is not None:
+            dialog_layout.addWidget(self.selection_status_bar)
+
+        tbl = self.ui.tbl
+        tbl.selectionModel().selectionChanged.connect(self._update_selection_status_bar)
+        tbl.model().dataChanged.connect(self._update_selection_status_bar)
+        tbl.model().modelReset.connect(self._update_selection_status_bar)
+        self._update_selection_status_bar()
+
+    @staticmethod
+    def _selection_numeric_value(value):
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, (int, float)):
+            numeric_value = value
+        else:
+            text = str(value).strip().replace('\xa0', '').replace(' ', '')
+            if not text:
+                return None
+            if ',' in text and '.' in text:
+                if text.rfind(',') > text.rfind('.'):
+                    text = text.replace('.', '').replace(',', '.')
+                else:
+                    text = text.replace(',', '')
+            else:
+                text = text.replace(',', '.')
+            try:
+                numeric_value = float(text)
+            except (TypeError, ValueError):
+                return None
+
+        if isinstance(numeric_value, float):
+            if numeric_value != numeric_value or numeric_value in (float('inf'), float('-inf')):
+                return None
+        return numeric_value
+
+    def _get_selection_statistics(self):
+        selection_model = self.ui.tbl.selectionModel()
+        indexes = selection_model.selectedIndexes() if selection_model is not None else []
+        values = []
+        numeric_values = []
+
+        for index in indexes:
+            value = index.data(QtCore.Qt.EditRole)
+            if value is None:
+                value = index.data(QtCore.Qt.DisplayRole)
+            values.append(value)
+            numeric_value = self._selection_numeric_value(value)
+            if numeric_value is not None:
+                numeric_values.append(numeric_value)
+
+        selection_sum = sum(numeric_values) if numeric_values else None
+        selection_average = selection_sum / len(numeric_values) if numeric_values else None
+        return {
+            'count': len(indexes),
+            'numeric_count': len(numeric_values),
+            'sum': selection_sum,
+            'average': selection_average,
+            'values': tuple(values),
+            'numeric_values': tuple(numeric_values),
+        }
+
+    @staticmethod
+    def _format_selection_number(value):
+        if value is None:
+            return '—'
+        if isinstance(value, float):
+            return f'{value:.12g}'.replace('.', ',')
+        return str(value)
+
+    def _update_selection_status_bar(self, *args):
+        statistics = self._get_selection_statistics()
+        self.selection_status_label.setText(
+            f"Количество: {statistics['count']}    "
+            f"Сумма: {self._format_selection_number(statistics['sum'])}    "
+            f"Среднее: {self._format_selection_number(statistics['average'])}"
+        )
+
+    @property
+    def selection_statistics(self):
+        return self._get_selection_statistics()
+
+    @property
+    def selected_cells_count(self):
+        return self.selection_statistics['count']
+
+    @property
+    def selected_cells_sum(self):
+        return self.selection_statistics['sum']
+
+    @property
+    def selected_cells_average(self):
+        return self.selection_statistics['average']
 
 
 def show_fullscreen(app, self, val:bool=1):

@@ -7423,7 +7423,7 @@ class Composition(_ImportDb):
         self.pozs: list[Composition_poz]|None = None
         self.poki: int =  None
         self._fl_edited:bool = False
-
+        self._dic_res_o: dict[int, ResSpec] = {}
         self.parce_row_dict(item)
 
     @property
@@ -7570,6 +7570,13 @@ class Composition(_ImportDb):
     def add_poz(self)->Composition_poz:
         return Composition_poz(self,{})
 
+    def load_dict_res_o(self):
+        self._dic_res_o
+        for poz in self.pozs:
+            if poz.mk not in self._dic_res_o:
+                res = ResSpec(poz.mk)
+                self._dic_res_o[poz.mk] = res
+
     def load_pozs(self):
         self.pozs:list[Composition_poz] = []
         result = CSQ.custom_request_c(CFG.Config.project.db_naryad, f"""SELECT id,
@@ -7578,7 +7585,8 @@ class Composition(_ImportDb):
                    count,
                    proj, 
                    py,
-                   mk
+                   mk,
+                   id_dse_mk_hand_compare 
               FROM naryad_composit_poz WHERE id_file = {self.id}; """,
                                                    rez_dict=True)
         for item in result:
@@ -7679,6 +7687,7 @@ class Composition_poz(_ImportDb):
         'py':'_py',
         'mk':'МК',
         'dse':'ДСЕ',
+        'nn_hand_compare':'Имя для\nсвязывания',
         'count':'Кол-во\nна лист',
         'count_aggregate':'Общee\nколичество',
         'count_left_couple': 'Не\nсвязано',
@@ -7693,6 +7702,8 @@ class Composition_poz(_ImportDb):
         self.dse:str|None = None
         self.name:str|None = None
         self.nn:str|None = None
+        self.nn_hand_compare:str|None = None#Для сопоставления с МК
+        self.id_dse_mk_hand_compare:int|None = None#Для сопоставления с МК
         self.count:int|None = None
         self.couples: list[Couple_nar_poz] | None = None
         self.proj:str|None = None
@@ -7704,8 +7715,21 @@ class Composition_poz(_ImportDb):
         self.parce_row_dict(item)
         self.aviable_to_composite:int|None = None
         self.aviable_to_create:int|None = None
+        self._load_nn_hand_compare()
         self._load_couples()
         self._calc_finished()
+        self.update_nn_hand_compare()
+
+    @property
+    def res(self)->ResSpec|None:
+        return self.parent._dic_res_o.get(self.mk,None)
+
+
+    @property
+    def nn_compare(self)->str:
+        if self.nn_hand_compare:
+            return self.nn_hand_compare
+        return self.nn
 
     @property
     def count_aggregate(self)->int:
@@ -7735,7 +7759,16 @@ class Composition_poz(_ImportDb):
             if key == "dse":
                 self._calc_nn_naim()
 
+    def update_nn_hand_compare(self):
+        if self.id_dse_mk_hand_compare:
+            res = self.res
+            if res:
+                dse = res.get_dse(self.id_dse_mk_hand_compare)
+                self.nn_hand_compare = dse.Номенклатурный_номер
+
+
     def template(self)->dict:
+        self.update_nn_hand_compare()
         data = F.get_all_attrs_with_properties(self)
         data = {k:v for k,v in data.items() if k in self.ALIASES}
 
@@ -7744,6 +7777,7 @@ class Composition_poz(_ImportDb):
         data['finished'] = CEMOJ.СтатусыПроизводства.success.symbol if data['finished'] else ''
         data['dse'] = f"{CEMOJ.ОперацииПроизводства.dse.symbol} {data['dse']}"
         data['deleted'] = CEMOJ.СтатусыПроизводства.alert.symbol if data['deleted'] else ''
+        data['nn_hand_compare'] = data['nn_hand_compare'] if data['nn_hand_compare'] else ''
         data = F.sort_dict_by_sample(data,self.ALIASES)
         return data
 
@@ -7847,6 +7881,10 @@ class Composition_poz(_ImportDb):
         self.parent.recalc_finished()
         self.parent.recalc_errors()
         return True
+
+
+    def _load_nn_hand_compare(self):
+        pass
 
 
     def _load_couples(self):
@@ -7959,6 +7997,10 @@ class Composition_poz(_ImportDb):
             for param in nar.params_o:
                 naim = param.Наименование
                 nn = param.НН
+                id = param.ДСЕ_ID
+                if self.id_dse_mk_hand_compare:
+                    if id != self.id_dse_mk_hand_compare:
+                        continue
                 tmp_count = copy.deepcopy(param.Опер_колво)
 
                 name_oper = param.Операции_имя
@@ -7966,7 +8008,7 @@ class Composition_poz(_ImportDb):
                     print(f'{name_oper} not found in db')
                     continue
                 oper_code = DICT_OPER_NAME[name_oper]['kod']
-                if nn == self.nn and oper_code == aim_code_oper:
+                if nn == self.nn_compare and oper_code == aim_code_oper:
                     for couple in self.couples:
                         if (couple.id_dse == param.ДСЕ_ID and couple.snum_nar == nar.Пномер and
                                 param.Операции_номер == couple.n_oper):
@@ -8009,7 +8051,11 @@ class Composition_poz(_ImportDb):
         template = []  # Naryads(165205,CFG.Config.project.db_naryad,None,CFG.Config.project.db_users)
         res = ResSpec(self.mk)
         for dse in res.data:
-            if not dse.Номенклатурный_номер == self.nn:
+            id = dse.Номерпп
+            if self.id_dse_mk_hand_compare:
+                if id != self.id_dse_mk_hand_compare:
+                    continue
+            if not dse.Номенклатурный_номер == self.nn_compare:
                 continue
             for oper in dse.Операции:
                 if not oper.Опер_код == self.parent.oper_code:
@@ -8035,8 +8081,8 @@ class Composition_poz(_ImportDb):
         return template
 
     def upload(self):
-        data = [self.id_file, self.dse, self.count, self.proj, self.py, self.mk]
-        fields = f'id_file, dse, count, proj, py, mk'
+        data = [self.id_file, self.dse, self.count, self.proj, self.py, self.mk, self.id_dse_mk_hand_compare]
+        fields = f'id_file, dse, count, proj, py, mk, id_dse_mk_hand_compare'
         if self.id is None:
             result = CSQ.custom_request_c(CFG.Config.project.db_naryad, f"""INSERT INTO naryad_composit_poz
                                       ({fields})
@@ -11618,9 +11664,10 @@ def create_nar_prosoy(fio:str, primech, koef, dop_prim_prost='', num_bad_bar='',
         comment = f"({dop_prim_prost.strip()})" if dop_prim_prost.strip() else ""
         line = [pk_kpl, pk_mk, F.now(), glob_login,
                 f'Финишный ОТК {comment} по мк {pk_mk}', int(0), dict_status_out[2],int(num_bad_bar),nom_new_nar, code_category, pk_mk, pk_remark]
-        dict_id_new_vnepl: dict[str] = CSQ.custom_request_c(CFG.Config.project.db_naryad, f"""INSERT INTO jur_vnepl (Кплан_номер, МК, Дата, ФИО,
-         Запрос, Кплан_номер, Статус, Номер_наряда_с_ошибкой, Номер_внепланового_наряда, code_category, Номер_нов_мк, Журнал_замеч_номер)
-                                      VALUES ({CSQ.questions_for_mask(line)}) RETURNING Пномер;""", list_of_lists_c=[line], rez_dict=True, one=True)
+        dict_id_new_vnepl: dict[str] = CSQ.custom_request_c(CFG.Config.project.db_naryad, f"""
+        INSERT INTO jur_vnepl ("Кплан_номер", "МК", "Дата", "ФИО",
+         "Запрос", "Кплан_номер", "Статус", "Номер_наряда_с_ошибкой", "Номер_внепланового_наряда", "code_category", "Номер_нов_мк", "Журнал_замеч_номер")
+                                      VALUES ({CSQ.questions_for_mask(line)}) RETURNING "Пномер";""", list_of_lists_c=[line], rez_dict=True, one=True)
     if dict_id_new_vnepl:
         if CFG.Config.place.poki == 1:
             tbl = gen_tbl_new_vnepl_for_b24(dict_id_new_vnepl['Пномер'])
@@ -11740,7 +11787,7 @@ def check_code_erp_for_pki_dse(self, lst_xml):
 
         response = CSQ.custom_request_c(
             F.scfg('nomenklatura_erp'),
-            'SELECT Наименование, Вид, Код FROM nomen WHERE На_удаление = 0',
+            'SELECT "Наименование", "Вид", "Код" FROM nomen WHERE "На_удаление" = 0;',
             rez_dict=True
         )
         for row in range(tbl.rowCount()):
@@ -11787,10 +11834,10 @@ def XML_get_unavailable_xml_types(xml_head: int):
     db_nomen = CFG.Config.project.db_nomen
     where = ''
     if xml_head == 1:
-        where = ' and resxml_head_state != 1'
+        where = ' and "resxml_head_state" != 1'
     return CSQ.custom_request_c(
         db_nomen,
-        f'SELECT Имя FROM ТипДсе WHERE poki = {poki} AND Вкл = 0{where}',
+        f'SELECT "Имя" FROM "ТипДсе" WHERE poki = {poki} AND "Вкл" = 0{where}',
         hat_c=False,
         one_column=True
     )
@@ -11892,8 +11939,8 @@ def check_id_peresil(self,nom_nar:int,parol_from_user,kod_oper=1):
             return False
         return True
 
-    nar_info = CSQ.custom_request_c(self.db_naryd, f'''SELECT naryad.Операции, mk.check_execute_opers FROM naryad 
-     INNER JOIN mk ON naryad.Номер_мк = mk.Пномер WHERE naryad.Пномер == {nom_nar}''',rez_dict=True)
+    nar_info = CSQ.custom_request_c(self.db_naryd, f'''SELECT naryad."Операции", mk."check_execute_opers" FROM naryad 
+     INNER JOIN mk ON naryad."Номер_мк" = mk."Пномер" WHERE naryad."Пномер" = {nom_nar};''',rez_dict=True)
     if nar_info == False or nar_info== None:
         CQT.msgbox(f'ОШибка загрузки наряда')
         return False
@@ -11930,7 +11977,7 @@ def get_list_fio_otk(db_naryd,row_fio_or_nars,):
         return row_fio_or_nars
     else:
         list_fio_otk = CSQ.custom_request_c(db_naryd,
-                                            f"""SELECT naryad.ФИО , naryad.ФИО2 FROM naryad WHERE naryad.Пномер in ({row_fio_or_nars})""",
+                                            f"""SELECT naryad."ФИО", naryad."ФИО2" FROM naryad WHERE naryad."Пномер" in ({row_fio_or_nars})""",
                                             rez_dict=True)
         if list_fio_otk == None or len(list_fio_otk) == 0:
             return ''
@@ -12067,9 +12114,9 @@ def check_execution_previous_operations(self,nom_nar,lvl_check=1,check_by_vip=Tr
                         postfix = f'не ЗАВЕРШЕНЫ работы! не выполнен наряд №: '
                     if oper['Опер_колво'] > comparable:
                         if check_by_vip:
-                            list_naryads = CSQ.custom_request_c(self.db_naryd,f"""SELECT naryad.Пномер FROM naryad 
-                            WHERE naryad.Номер_мк in (SELECT naryad.Номер_мк FROM naryad WHERE naryad.Пномер = {nom_nar}) 
-                            AND naryad.Задание LIKE '%{f"{pred_oper['prev_oper_nom']}${pred_oper['prev_oper_name']}"}%'""",hat_c=False,one_column=True)
+                            list_naryads = CSQ.custom_request_c(self.db_naryd,f"""SELECT naryad."Пномер" FROM naryad 
+                            WHERE naryad."Номер_мк" in (SELECT naryad."Номер_мк" FROM naryad WHERE naryad."Пномер" = {nom_nar}) 
+                            AND naryad."Задание" LIKE '%%{f"{pred_oper['prev_oper_nom']}${pred_oper['prev_oper_name']}"}%%';""",hat_c=False,one_column=True)
                             postfix += f" {','.join([str(_) for _ in list_naryads])}"
                         msg =  f"""Для ДСЕ "{oper['ДСЕ']}", операция "{oper['Операции_номер']}  {oper['Операции_имя']} " не выполнено условие: \n
                         на предыдущей операции в ДСЕ 
@@ -12097,9 +12144,9 @@ def check_execution_previous_operations(self,nom_nar,lvl_check=1,check_by_vip=Tr
             rez_list.append({'ДСЕ':dse,'ДСЕ_ID':dse_id,'Операции_номер':oper_nom,'Операции_имя':oper_name,'Опер_колво':kolvo})
         return rez_list
 
-    query = f"""SELECT naryad.ДСЕ_ID, naryad.Операции, naryad.Опер_колво, naryad.Номер_мк, 
-    naryad.ДСЕ, naryad.Внеплан, mk.check_execute_opers FROM naryad  INNER JOIN mk 
-    ON mk.Пномер = naryad.Номер_мк WHERE naryad.Пномер = {nom_nar}"""
+    query = f"""SELECT naryad."ДСЕ_ID", naryad."Операции", naryad."Опер_колво", naryad."Номер_мк", 
+    naryad."ДСЕ", naryad."Внеплан", mk."check_execute_opers" FROM naryad  INNER JOIN mk 
+    ON mk."Пномер" = naryad."Номер_мк" WHERE naryad."Пномер" = {nom_nar}"""
     nar = CSQ.custom_request_c(self.db_naryd,query,rez_dict=True,one=True)
 
     if nar['Внеплан'] != 0:
@@ -13549,10 +13596,9 @@ def load_res(nom_mk:int, conn = '',cur= '',db_resxml='',self=None,
     def update_name_rc_and_etaps(res, dict_etaps:dict=None):
         if dict_etaps is None:
             etaps = CSQ.custom_request_c(db_users,
-                    f"""SELECT etaps.name as etaps_name, rab_c."Код" , rab_c."Имя" FROM rab_c 
-                    INNER JOIN etaps ON 
-                    etaps.s_num = rab_c.etaps_num 
-                    WHERE rab_c.poki = {poki}""",
+                    f"""SELECT etaps."name" as "etaps_name", rab_c."Код" , rab_c."Имя" FROM rab_c 
+                    INNER JOIN etaps ON etaps.s_num = rab_c.etaps_num 
+                    WHERE rab_c.poki = {poki};""",
                             attach_dbs = db_naryad,rez_dict=True)
             dict_etaps = F.deploy_dict_c(etaps,'Код')
 
@@ -13769,7 +13815,7 @@ def agregate_m_cld():
 
         data = CSQ.custom_request_c(
             db_kplan,
-            f"SELECT * FROM {tbl}",
+            f"""SELECT * FROM "{tbl}";""",
             rez_dict=False
         )
 

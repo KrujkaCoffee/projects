@@ -51,7 +51,7 @@ class СтатусыПроизводства:
 
 class ОперацииПроизводства:
     """Категория производственных операций"""
-
+    action: ClassVar[EmojiItem] = EmojiItem('⚡', 'action', 'operations', 'Действие')
     production: ClassVar[EmojiItem] = EmojiItem('🏭', 'production', 'operations', 'Производство')
     assembly: ClassVar[EmojiItem] = EmojiItem('🔧', 'assembly', 'operations', 'Сборка')
     quality: ClassVar[EmojiItem] = EmojiItem('📐', 'quality', 'operations', 'Контроль качества')
@@ -112,6 +112,7 @@ class ДокументыДанные:
     """Категория документов и данных"""
     plan: ClassVar[EmojiItem] = EmojiItem('📅', 'plan', 'documents', 'План')
     fact: ClassVar[EmojiItem] = EmojiItem('🏁', 'fact', 'documents', 'Факт')
+    parts: ClassVar[EmojiItem] = EmojiItem('🧩', 'parts', 'documents', 'Составные части')
     select_from_list: ClassVar[EmojiItem] = EmojiItem('⏷', 'select_from_list', 'documents', 'Выбор из списка')
     receiving: ClassVar[EmojiItem] = EmojiItem('📥', 'receiving', 'documents', 'Получение')
     revers: ClassVar[EmojiItem] = EmojiItem('⇄', 'revers', 'documents', 'Реверес')

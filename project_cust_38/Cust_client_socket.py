@@ -342,14 +342,24 @@ class _ClassDict(type):
 
 
 class Servers(metaclass=_ClassDict):
-    db_naryad: _ServerItem = _ServerItem(alias='Naryad.db', absolute_path='C://DB_srv_test//Naryad.db', port=20002)
-    db_dse: _ServerItem = _ServerItem(alias='BD_dse.db', absolute_path='C://DB_srv_test//BD_dse.db', port=20003)
-    db_resxml: _ServerItem = _ServerItem(alias='BD_resxml.db', absolute_path='C://DB_srv_test//BD_resxml.db', port=20005)
-    db_files: _ServerItem = _ServerItem(alias='BD_files.db', absolute_path='C://DB_srv_test//BD_files.db', port=20006)
-    db_kplan: _ServerItem = _ServerItem(alias='DB_kplan.db', absolute_path='C://DB_srv_test//DB_kplan.db', port=20007)
-    db_users: _ServerItem = _ServerItem(alias='BD_users.db', absolute_path='C://DB_srv_test//BD_users.db', port=20009)
-    db_nomen: _ServerItem = _ServerItem(alias='DB_nomenklatura_erp.db', absolute_path='C://DB_srv_test//DB_nomenklatura_erp.db', port=20010)
-    db_flet: _ServerItem = _ServerItem(alias='db_flet.db', absolute_path='C://DB_srv_test//db_flet.db', port=20014)
+
+    db_naryad: _ServerItem = _ServerItem(alias='Naryad.db', absolute_path='C://DB_srv//Naryad.db', port=20002)
+    db_dse: _ServerItem = _ServerItem(alias='BD_dse.db', absolute_path='C://DB_srv//BD_dse.db', port=20003)
+    db_resxml: _ServerItem = _ServerItem(alias='BD_resxml.db', absolute_path='C://DB_srv//BD_resxml.db', port=20005)
+    db_files: _ServerItem = _ServerItem(alias='BD_files.db', absolute_path='C://DB_srv//BD_files.db', port=20006)
+    db_kplan: _ServerItem = _ServerItem(alias='DB_kplan.db', absolute_path='C://DB_srv//DB_kplan.db', port=20007)
+    db_users: _ServerItem = _ServerItem(alias='BD_users.db', absolute_path='C://DB_srv//BD_users.db', port=20009)
+    db_nomen: _ServerItem = _ServerItem(alias='DB_nomenklatura_erp.db', absolute_path='C://DB_srv//DB_nomenklatura_erp.db', port=20010)
+    db_flet: _ServerItem = _ServerItem(alias='db_flet.db', absolute_path='C://DB_srv//db_flet.db', port=20014)
+
+    # db_naryad: _ServerItem = _ServerItem(alias='Naryad.db', absolute_path='C://DB_srv_test//Naryad.db', port=20002)
+    # db_dse: _ServerItem = _ServerItem(alias='BD_dse.db', absolute_path='C://DB_srv_test//BD_dse.db', port=20003)
+    # db_resxml: _ServerItem = _ServerItem(alias='BD_resxml.db', absolute_path='C://DB_srv_test//BD_resxml.db', port=20005)
+    # db_files: _ServerItem = _ServerItem(alias='BD_files.db', absolute_path='C://DB_srv_test//BD_files.db', port=20006)
+    # db_kplan: _ServerItem = _ServerItem(alias='DB_kplan.db', absolute_path='C://DB_srv_test//DB_kplan.db', port=20007)
+    # db_users: _ServerItem = _ServerItem(alias='BD_users.db', absolute_path='C://DB_srv_test//BD_users.db', port=20009)
+    # db_nomen: _ServerItem = _ServerItem(alias='DB_nomenklatura_erp.db', absolute_path='C://DB_srv_test//DB_nomenklatura_erp.db', port=20010)
+    # db_flet: _ServerItem = _ServerItem(alias='db_flet.db', absolute_path='C://DB_srv_test//db_flet.db', port=20014)
 
     xl_formulas: _ServerItem = _ServerItem(alias='DB_xl_formulas.db', port=20012)
     mes_api: _ServerItem = _ServerItem(alias='MES_api', port=20011)

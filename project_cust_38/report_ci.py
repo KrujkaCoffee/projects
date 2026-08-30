@@ -2906,7 +2906,7 @@ def not_upload_erp_nar(self:mywindow, nach_data, kon_data):
                """,
         postgres=f"""
         SELECT 
-            TO_CHAR(TO_DATE(jurnal."Дата", 'YYYY-MM-DD'), 'YYYY-MM-DD') AS "Дата",
+            TO_CHAR(TO_DATE(jurnal."Дата", 'YYYY.MM.DD'), 'YYYY.MM.DD') AS "Дата",
             CASE WHEN знпр."№ERP" IS NOT NULL 
                 THEN знпр."№ERP" 
                 ELSE mk."Номер_заказа" 
@@ -4722,8 +4722,8 @@ def analysis_effectiv_work_per_minute(self: mywindow, nach, konec, podrazd=None,
             LEFT JOIN "тип_доработок" ON "тип_доработок"."Пномер" = "mk"."Тип_доработки" 
             LEFT JOIN "Тип_мк" ON "Тип_мк"."Пномер" = "mk"."Тип"            
             WHERE mk.Дата_завершения != ''
-                AND NULLIF(mk."Дата_завершения", '')::timedelta >= ('{nach}')::timestamp 
-                AND NULLIF(mk."Дата_завершения", '')::timedelta < ('{konec}')::timestamp;""")
+                AND NULLIF(mk."Дата_завершения", '')::timestamp >= ('{nach}')::timestamp 
+                AND NULLIF(mk."Дата_завершения", '')::timestamp < ('{konec}')::timestamp;""")
         list_mk = CSQ.custom_request_c(self.bd_naryad, query, rez_dict=True)
         F.save_file_pickle(name_file, list_mk)
 
@@ -5880,7 +5880,7 @@ def virabotka_sotr(self, data_nach, data_kon, empl, *args, CALC_BASE_ONLY_PREM=T
             "naryad"."Фвремя", 
             "naryad"."ФИО2", 
             "naryad"."Фвремя2", 
-            "Учтен" AS "Учет", 
+            'Учтен' AS "Учет", 
             "naryad"."Примечание" AS "Примеч_наряд", 
             '' AS "Подытог Норм", 
             "naryad"."Внеплан", 

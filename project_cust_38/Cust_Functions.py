@@ -2569,15 +2569,24 @@ def paste_bufer(text=''):
     return text + pyperclip.paste()
 
 
-def boolm(str_data:str)->bool:
+def boolm(str_data)->bool:
     if isinstance(str_data, bool):
         return str_data
     if str_data is None:
         return False
-    if str_data.lower() in {'false','0',''}:
-        return False
-    if str_data.lower() in {'true','1'}:
+    if isinstance(str_data, str):
+        if str_data.lower() in {'false','0',''}:
+            return False
+        if str_data.lower() in {'true','1'}:
+            return True
+    elif isinstance(str_data, int):
+        if str_data == 0:
+            return False
+        else:
+            return True
+    else:
         return True
+
     raise Exception(f"boolm Не могу распознать '{str_data}'")
 
 def valm(ch):
