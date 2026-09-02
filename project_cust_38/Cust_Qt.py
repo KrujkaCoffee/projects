@@ -4040,13 +4040,17 @@ def set_color_of_obj_c(obj, r=240, g=240, b=240):
 def set_color_text_of_object_c(obj, r=240, g=240, b=240):
     obj.setStyleSheet('color: rgb(' + str(r) + ', ' + str(g) + ', ' + str(b) + ');')
 
-def statusbar_text(self, text = '', font_size = 20, otstup = 8, text_color = 'black', bold = True, background_color = (255,255,255,255),text_align="right"):
+def statusbar_text(self, text = '', font_size = 20, otstup = 8, text_color = 'black', bold = True,text_align="right",timer:int|None=None):
+    bar:QtWidgets.QStatusBar = self.statusBar()
     font_tip = 'normal'
     if bold:
         font_tip = 'bold'
-    self.statusBar().setStyleSheet(
-        f"QStatusBar {{padding: {otstup}px;background: rgba{background_color};color: {text_color};font-weight: {font_tip};text-align: {text_align};}}")
-    self.statusBar().showMessage(text)
+    bar.setStyleSheet(
+        f"QStatusBar {{padding: {otstup}px;color: {text_color};font-weight: {font_tip};text-align: {text_align};}}")
+    if timer:
+        bar.showMessage(text,msecs=timer)
+    else:
+        bar.showMessage(text)
     
 def list_from_cmb_c(obj):
     rez = []
@@ -5744,6 +5748,8 @@ def get_img_size(path):
 
 def add_image(item, i, j, path='', self = '',w = None, h = None,conn_func_click = None,tooltip = '',addit_data=None,stylesheet=None):
     lbl = ClickedLabel()
+    if not os.path.exists(path):
+        path = r'C:\Users\A.A.Fedorov\MES\ideal_context\project_cust_38\icons\btn_back'
     lbl.setImage(QtGui.QPixmap(path))
 
     lbl.setCursor(QtGui.QCursor(Qt.PointingHandCursor))
@@ -7794,8 +7800,185 @@ def get_answ_ai(promt,hook_prog_bar=None):#sk-or-v1-a2e1900e0550fbe3776a5a717d4e
         return response.status_code, response.json()['choices'][0]['message']['content']
     else:
         return response.status_code, f"Failed to fetch data from API. Status Code:{response.status_code}"
-class PageManager():
-    pass
+
+
+class PageManager:
+    """Менеджер постраничного просмотра в таблице"""
+
+    """
+    Пример использования:
+    test_data = [
+        ['№', 'Наименование'],
+        [1, 'Первая строка'],
+        [2, 'Вторая строка'],
+    ]
+    
+    pm = CQT.PageManager(page_size=20)
+    
+    data = [
+        {
+            '№': i + 1,
+            'Наименование': f'Строка {i + 1}',
+        }
+        for i in range(235)
+    ]
+    
+    CQT.msgboxg_get_table(
+        window,
+        'длинное сообщение' * 666,
+        data,
+        page_manager=pm
+    )
+    """
+
+    def __init__(self, page_size: int = 100) -> None:
+        page_size = F.valm(page_size)
+        if page_size <= 0:
+            raise ValueError("некорректно значение page_Size")
+
+        self.page_size = page_size
+        self.current_page = 1
+        self.total_count = 0
+
+        self.__data = []
+        self.__user_data = None
+        self.__list_has_head = False
+
+    @property
+    def count_pages(self) -> int:
+        if self.total_count == 0: return 0
+        return (
+            self.total_count + self.page_size - 1
+        ) // self.page_size
+
+    @property
+    def shown_page(self):
+        if self.total_count == 0: return 0
+        return self.current_page
+
+    @property
+    def can_go_back(self):
+        return (
+            self.total_count > 0
+            and self.current_page > 1
+        )
+
+    @property
+    def can_go_forward(self):
+        return self.current_page < self.count_pages
+
+    @property
+    def logical_current_page(self):
+        return self.current_page - 1
+
+    def set_data(self, data, user_data: typing.Any = None):
+        if isinstance(data, QtWidgets.QTableWidget):
+            data = list_from_wtabl_c(data, rez_dict=True)
+        if data is None:
+            data = []
+        if not isinstance(data, (list, dict)):
+            raise TypeError("Некорректные входные данные")
+        self.__data = data
+        self.__user_data = user_data
+
+        self.__list_has_head = bool(
+            isinstance(data, list)
+            and data
+            and isinstance(data[0], list)
+        )
+
+        if self.__list_has_head:
+            self.total_count = len(data) - 1
+        else:
+            self.total_count = len(data)
+
+        self.total_count = max(0, self.total_count)
+        self.current_page = 1
+
+        self.__validate_user_data()
+
+    def __validate_user_data(self):
+        if not self.__user_data: return
+
+        is_data_list = isinstance(self.__data, list)
+        is_data_dict = isinstance(self.__data, dict)
+        is_user_data_list = isinstance(self.__user_data, list)
+        is_user_data_dict = isinstance(self.__user_data, dict)
+        if is_data_list:
+            if (
+                not is_user_data_list
+                or len(self.__user_data) != len(self.__data)
+            ):
+                logger.warning('len(__user_data) != len(self.__data)')
+                return
+        if is_data_dict:
+            if not is_user_data_dict:
+                logger.warning('type(__user_data) != type(self.__data)')
+                return
+
+            if any(
+                key not in self.__user_data
+                for key in self.__data
+            ):
+                logger.warning('__user_data.keys() != self.keys()')
+                return
+
+    def __bounds(self) -> tuple[int, int]:
+        start = self.logical_current_page * self.page_size
+        return start, start + self.page_size
+
+    def __slice_data(self, data: typing.Any):
+        start, end = self.__bounds()
+        if isinstance(data, dict): # todo
+            keys = list(self.__data.keys())[start:end]
+            return {
+            key: data[key]
+                for key in keys
+                if key in data
+            }
+        if self.__list_has_head:
+            return [
+                data[0],
+                *data[start + 1: end + 1]
+            ]
+        return data[start: end]
+
+    def page_data(self) -> tuple[typing.Any, typing.Any]:
+        data = self.__slice_data(self.__data)
+        user_data = None
+
+        if self.__user_data:
+            user_data = self.__slice_data(self.__user_data)
+        return data, user_data
+
+    def first(self):
+        """Назначить первую страницу"""
+        return self.__set_current_page(1)
+
+    def previous(self):
+        """Назначить предыдущую страницу"""
+        return self.__set_current_page(self.logical_current_page)
+
+    def next(self):
+        """Назначить следующую страницу"""
+        return self.__set_current_page(self.current_page + 1)
+
+    def last(self):
+        """Назначить последнюю страницу"""
+        return self.__set_current_page(self.count_pages)
+
+    def __set_current_page(self, page: int):
+        old_page = self.current_page
+
+        if self.count_pages == 0:
+            self.current_page = 1
+        else:
+            self.current_page = max(
+                1, min(F.valm(page), self.count_pages)
+            )
+        return old_page != self.current_page
+
+
 class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
     def __init__(self, parent, msg:str, dict_or_list, btn0_name:str="Ввод",
                  btn1_name:str="Отмена", func_validate=None,
@@ -7835,14 +8018,28 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
         self._drag_start = None
         #--------------------
         #=======fr_sheets=======
-        def set_page(curr=0,count_pages=0):
-            self.ui.lbl_page.setText(f'{CEMOJ.ДокументыДанные.document.symbol} {curr}/{count_pages} ')
-            self.ui.lbl_page.setToolTip(f'Страница {curr} из {count_pages}')
-        self.ui.fr_sheets.setVisible(F.boolm(page_manager))
-        if page_manager:
-            pass
-            load_icons(self, 26, dir=str(F.Cust_path(F.path_to_caller_file_c(False))) + F.sep() + 'icons' + F.sep())
-            set_page()
+        self.page_manager = page_manager
+        self.ui.fr_sheets.setVisible(self.page_manager is not None)
+
+        ## === Поля fill_wtabl
+        self.auto_type = auto_type
+        self.load_links = load_links
+        self.conn_func_label_link = conn_func_label_link
+        self.tbl_style_sheets = styleSheet
+        self.tbl_sorting_enabled = sortingEnabled if self.page_manager is None else False
+        self.ogr_maxshir_kol = max_width_clms
+        self.save_column_sort_hh = save_column_sort_hh
+        self.aliases_header = aliases_header
+        self.selection_mode = SelectionMode
+        self.select_rows = selectRows
+        self.extended_selection = ExtendedSelection
+
+        if page_manager is not None:
+            load_icons(
+                self,
+                26,
+                dir=str(F.Cust_path(F.path_to_caller_file_c(False))) + F.sep() + 'icons' + F.sep()
+            )
 
 
         #======================
@@ -7886,7 +8083,7 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
         self.ui.lbl_text.setFont(ft)
         self.ui.lbl_text.setWordWrap(True)
 
-        colorful_edit = True
+        self.colorful_edit = True
         if isinstance(dict_or_list, QtWidgets.QTableWidget):
             list_usefull_rows = [_ for _ in range(dict_or_list.rowCount()) if not dict_or_list.isRowHidden(_)]
             tbl.setSortingEnabled(sortingEnabled)
@@ -7930,18 +8127,54 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
             if FillHorizontalHeaderSort.is_mutable(dict_or_list): # 16.07.25
                 FillHorizontalHeaderSort(tbl)
         else:
-            if not use_first_row_as_header:
-                colorful_edit = False
+            if not use_first_row_as_header and dict_or_list:
+                self.colorful_edit = False
                 if isinstance(dict_or_list[0], dict):
                     #dict_or_list.insert(0, {k: str(i) for i, k in enumerate(dict_or_list[0].keys())})
                     pass
                 else:
                     dict_or_list.insert(0, [str(i) for i, v in enumerate(dict_or_list[0])])
-            fill_wtabl(dict_or_list, tbl, height_row=25, auto_type=auto_type, colorful_edit=colorful_edit,
-                       load_links=load_links, conn_func_label_link=conn_func_label_link,styleSheet=styleSheet,
-                       parent_self=parent_self,sortingEnabled=sortingEnabled, ogr_maxshir_kol=max_width_clms,
-                       save_column_sort_hh=save_column_sort_hh,aliases_header=aliases_header,
-                       dict_or_list_user_data=dict_or_list_user_data)
+
+            if self.page_manager is not None:
+                self.page_manager.set_data(
+                    dict_or_list,
+                    dict_or_list_user_data
+                )
+                # dict_or_list, dict_or_list_user_data = self.page_manager.page_data()
+                # set_page(
+                #     self.page_manager.shown_page,
+                #     self.page_manager.count_pages
+                # )
+
+                def change_page(change_func):
+                    if not change_func():
+                        return
+                    self.fill_current_page()
+
+                self.fill_current_page()
+
+                self.ui.btn_skip_back.clicked.connect(
+                    lambda: change_page(self.page_manager.first)
+                )
+                self.ui.btn_back.clicked.connect(
+                    lambda: change_page(self.page_manager.previous)
+                )
+                self.ui.btn_skip_forward.clicked.connect(
+                    lambda: change_page(self.page_manager.last)
+                )
+                self.ui.btn_forward.clicked.connect(
+                    lambda: change_page(self.page_manager.next)
+                )
+            else:
+                self.fill_dialog_tbl(
+                    dict_or_list,
+                    dict_or_list_user_data
+                )
+            # fill_wtabl(dict_or_list, tbl, height_row=25, auto_type=auto_type, colorful_edit=self.colorful_edit,
+            #            load_links=load_links, conn_func_label_link=conn_func_label_link,styleSheet=styleSheet,
+            #            parent_self=parent_self,sortingEnabled=sortingEnabled, ogr_maxshir_kol=max_width_clms,
+            #            save_column_sort_hh=save_column_sort_hh,aliases_header=aliases_header,
+            #            dict_or_list_user_data=dict_or_list_user_data)
 
         if selectRows:
             tbl.setSelectionBehavior(QtWidgets.QTableWidget.SelectionBehavior.SelectRows)
@@ -8359,6 +8592,7 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
         self.setStyleSheet(parent.styleSheet())
         load_icons(self, 24)
         self.oform_action()
+        self.decor_label()
         if func_oform_tbl:
             if parent_self:
                 func_oform_tbl(tbl, parent_self)
@@ -8380,6 +8614,102 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
             tblf.setHidden(True)
         self._setup_selection_status_bar()
         return
+
+    def decor_label(self):
+        label_metrics = self.ui.lbl_text.fontMetrics()
+        label_margincs = self.ui.lbl_text.contentsMargins()
+        available_height = self.ui.lbl_text.height() - label_margincs.top() - label_margincs.bottom()
+        max_width = 2000
+        width = self.ui.lbl_text.width()
+        while width < max_width:
+            text_width = width - label_margincs.left() - label_margincs.right()
+
+            rect = label_metrics.boundingRect(
+                0,
+                0,
+                max(1, text_width),
+                4000,
+                Qt.TextWordWrap,
+                self.ui.lbl_text.text()
+            )
+
+            if rect.height() <= available_height:
+                break
+
+            width += 10
+
+        self.ui.lbl_text.setFixedWidth(width)
+
+    def set_page(self):
+        current_page = self.page_manager.shown_page
+        count_pages = self.page_manager.count_pages
+
+        self.ui.lbl_page.setText(
+            f'{CEMOJ.ДокументыДанные.document.symbol} {current_page}/{count_pages} ')
+        self.ui.lbl_page.setToolTip(f'Страница {current_page} из {count_pages}')
+        self.ui.btn_skip_back.setEnabled(self.page_manager.can_go_back)
+        self.ui.btn_back.setEnabled(self.page_manager.can_go_back)
+        self.ui.btn_forward.setEnabled(self.page_manager.can_go_forward)
+        self.ui.btn_skip_forward.setEnabled(self.page_manager.can_go_forward)
+
+    def fill_dialog_tbl(self, data: typing.Any, user_data: typing.Any = None):
+        fill_wtabl(
+            data,
+            self.ui.tbl,
+            height_row=25,
+            auto_type=self.auto_type,
+            colorful_edit=self.colorful_edit,
+            load_links=self.load_links,
+            conn_func_label_link=self.conn_func_label_link,
+            styleSheet=self.tbl_style_sheets,
+            parent_self=self.parent_self,
+            sortingEnabled=self.tbl_sorting_enabled,
+            ogr_maxshir_kol=self.ogr_maxshir_kol,
+            save_column_sort_hh=self.save_column_sort_hh,
+            aliases_header=self.aliases_header,
+            dict_or_list_user_data=user_data
+        )
+
+    def fill_current_page(self):
+        table_widget = self.ui.tbl
+        column_count = table_widget.columnCount()
+        column_widths = [
+            table_widget.columnWidth(column)
+            for column in range(column_count)
+        ]
+        hidden_columns = [
+            table_widget.isColumnHidden(column)
+            for column in range(column_count)
+        ]
+
+        page_data, page_user_data = self.page_manager.page_data()
+        self.fill_dialog_tbl(
+            page_data,
+            page_user_data
+        )
+        for column, width in enumerate(column_widths):
+            if column < column_count:
+                table_widget.setColumnWidth(column, width)
+
+        for column, hidden in enumerate(hidden_columns):
+            if column < column_count:
+                table_widget.setColumnHidden(column, hidden)
+
+        if self.select_rows:
+            table_widget.setSelectionBehavior(QtWidgets.QTableWidget.SelectionBehavior.SelectRows)
+        else:
+            table_widget.setSelectionBehavior(QtWidgets.QTableWidget.SelectionBehavior.SelectItems)
+
+        if self.extended_selection:
+            table_widget.setSelectionMode(QtWidgets.QTableWidget.SelectionMode.ExtendedSelection)
+        else:
+            table_widget.setSelectionMode(QtWidgets.QTableWidget.SelectionMode.SingleSelection)
+
+        if self.selection_mode:
+            table_widget.setSelectionMode(getattr(QtWidgets.QTableWidget.SelectionMode, self.selection_mode))
+
+        self.set_page()
+
 
 
     def is_btn_yes_role(self,btn:QtWidgets.QPushButton)->bool:
@@ -9315,20 +9645,26 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
             else:
                 self.showFullScreen()
 
-    def _setup_selection_status_bar(self):
+    def _setup_selection_status_bar(
+            self,
+            mood = QtCore.Qt.AlignRight, # QtCore.Qt.AlignLeft
+            bold = True
+    ):
+        label_alignment = mood | QtCore.Qt.AlignVCenter if mood else QtCore.Qt.AlignVCenter
+
         self.selection_status_bar = QtWidgets.QStatusBar(self)
         self.selection_status_bar.setObjectName('selection_status_bar')
         self.selection_status_bar.setSizeGripEnabled(False)
 
         self.selection_status_label = QtWidgets.QLabel(self.selection_status_bar)
         self.selection_status_label.setObjectName('selection_status_label')
-        self.selection_status_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        self.selection_status_label.setAlignment(label_alignment)
         self.selection_status_label.setContentsMargins(8, 0, 8, 0)
-        self.selection_status_label.setToolTip(
-            'Количество учитывает все выделенные ячейки. '
-            'Сумма и среднее рассчитываются только по числовым значениям.'
-        )
         self.selection_status_bar.addPermanentWidget(self.selection_status_label, 1)
+        if bold:
+            label_font = self.selection_status_label.font()
+            label_font.setBold(bold)
+            self.selection_status_label.setFont(label_font)
 
         dialog_layout = self.layout()
         if isinstance(dialog_layout, QtWidgets.QGridLayout):
@@ -9354,27 +9690,20 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
     def _selection_numeric_value(value):
         if isinstance(value, bool):
             return None
+        try:
+            after_check = float(str(value).replace('.', ','))
+        except Exception as e:
+            after_check = None
+        numeric_value = None
         if isinstance(value, (int, float)):
             numeric_value = value
-        else:
-            text = str(value).strip().replace('\xa0', '').replace(' ', '')
-            if not text:
-                return None
-            if ',' in text and '.' in text:
-                if text.rfind(',') > text.rfind('.'):
-                    text = text.replace('.', '').replace(',', '.')
-                else:
-                    text = text.replace(',', '')
-            else:
-                text = text.replace(',', '.')
-            try:
-                numeric_value = float(text)
-            except (TypeError, ValueError):
-                return None
-
+        elif isinstance(after_check, (int, float)):
+            numeric_value = after_check
         if isinstance(numeric_value, float):
-            if numeric_value != numeric_value or numeric_value in (float('inf'), float('-inf')):
+            if numeric_value != numeric_value:
                 return None
+        if isinstance(numeric_value, float):
+            return round(numeric_value, 3)
         return numeric_value
 
     def _get_selection_statistics(self):
@@ -9382,8 +9711,14 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
         indexes = selection_model.selectedIndexes() if selection_model is not None else []
         values = []
         numeric_values = []
+        is_row_selection = (
+            self.ui.tbl.SelectionBehavior.SelectRows
+            == self.ui.tbl.selectionBehavior()
+        )
+        rows = set()
 
         for index in indexes:
+            rows.add(index.row())
             value = index.data(QtCore.Qt.EditRole)
             if value is None:
                 value = index.data(QtCore.Qt.DisplayRole)
@@ -9394,6 +9729,10 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
 
         selection_sum = sum(numeric_values) if numeric_values else None
         selection_average = selection_sum / len(numeric_values) if numeric_values else None
+        if is_row_selection:
+            indexes = rows
+            selection_average = selection_sum = None
+
         return {
             'count': len(indexes),
             'numeric_count': len(numeric_values),

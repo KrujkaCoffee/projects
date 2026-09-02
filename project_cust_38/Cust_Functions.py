@@ -2604,7 +2604,10 @@ def valm(ch):
             return int(boolmval)
         ch = ch.replace(',', '.')
         if 'e'  in ch.lower():
-            return float(ch)
+            try:
+                return float(ch)
+            except Exception as e:
+                return 0
         if ch == '':
             return 0
         try:
@@ -3279,6 +3282,22 @@ def is_unique_identifier(identifier: str) -> bool:
     )
 
     return bool(uuid_pattern.match(identifier))
+
+
+# === START утилиты для sql
+def sql_quote_ident(value: Any) -> str:
+    return '"' + str(value or '').replace('"', '""') + '"'
+
+def sql_safe_alias(value: Any, default: str = 'rel') -> str:
+    text = str(value).strip() or default
+    text = re.sub(r'\W+', '_', text, flags=re.UNICODE).strip('_')
+    if not text:
+        text = default
+    if text[0].isdigit():
+        text = '_' + text
+    return text
+
+# === END утилиты для sql
 
 
 def replace_forbidden_symbols_for_1c_sql(string: str) -> str: #27.08.25

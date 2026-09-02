@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>ConnectionDialog</class>
+ <widget class="QDialog" name="ConnectionDialog">
+  <property name="geometry"><rect><x>0</x><y>0</y><width>680</width><height>240</height></rect></property>
+  <property name="windowTitle"><string>Подключение к PostgreSQL</string></property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item><widget class="QLabel" name="hint_label"><property name="text"><string>DSN передаётся напрямую в psycopg.connect().&#xa;Пример: host=localhost port=5432 dbname=demo user=postgres password=postgres</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+   <item><widget class="QLineEdit" name="dsn_edit"><property name="placeholderText"><string>host=localhost port=5432 dbname=mydb user=postgres password=secret</string></property></widget></item>
+   <item><widget class="QDialogButtonBox" name="buttonBox"><property name="standardButtons"><set>QDialogButtonBox::Cancel|QDialogButtonBox::Ok</set></property></widget></item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

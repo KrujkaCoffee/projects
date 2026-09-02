@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 
+from PySide6 import QtWidgets
+
 if __name__ == "__main__":
     import sys
     import os
@@ -34,9 +36,9 @@ import project_cust_38.sub_mes.resource_planning.connects as _con
 from project_cust_38 import dynamic_db_models as DDM
 from project_cust_38 import Cust_orm as CORM
 import project_cust_38.sub_mes.resource_planning.clses as CLSS
-from project_cust_38.sub_mes.resource_planning import planner_mes_integration
-from project_cust_38.sub_mes.resource_planning import planner_gantt_integration
-
+from project_cust_38.sub_mes.resource_planning import planner_mes
+from project_cust_38.sub_mes.resource_planning import planner_gantt
+from project_cust_38.sub_mes.resource_planning import attribute_binding as AB
 
 from typing import  TYPE_CHECKING
 
@@ -85,7 +87,7 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
         planner_mes_types_o = getattr(DTSUB,'planner_mes_types',None)
         if planner_mes_types_o is not None:
             planner_mes_types_o.close()
-        DTSUB.planner_mes_types = planner_mes_integration.PlannerMesTypeCatalog()
+        DTSUB.planner_mes_types = planner_mes.PlannerMesTypeCatalog()
         DTSUB.custom_types = CLSS.CustomTypes(DTSUB.planner_mes_types)
 
         DTCLS.module_manage_sub_app.shablons_res = CLSS.ShablonsRes()
@@ -102,7 +104,7 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
 
         self.fill_cmb_reports()
         if getattr(self,'_draft_tools_host',None) is None:
-            self._draft_tools_host = planner_gantt_integration.DraftToolsHost(
+            self._draft_tools_host = planner_gantt.DraftToolsHost(
                 parent=self.ui.fr_gr_tbl,
                 catalog_provider=lambda: DTSUB.planner_mes_types.session.get_runtime().catalog,
                 schedule_provider=lambda: (DTSUB.resources,DTSUB.events,DTSUB.crosses),
@@ -212,170 +214,172 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
             return False
 
         def func_oform(t:CQT.TableContext,*args,**kwargs):
-            # ==========================emoj==========================================
-            row_emo = t.find_row({'_name':'emoj'},first=True)
-            if row_emo:
-                list_emoj = [ _.symbol for _ in F.get_all_attrs(CEMOJ.СтатусыПроизводства).values()]
-                list_emoj.extend([ _.symbol for _ in F.get_all_attrs(CEMOJ.ОперацииПроизводства).values()])
-                list_emoj.extend([ _.symbol for _ in F.get_all_attrs(CEMOJ.ПерсоналРоли).values()])
-                def fnc_select(sub_app,emo_str,row,col):
-                    t.tbl.item(row,col).setText(emo_str)
-                    CQT.setCustData(t.tbl.item(row,col),emo_str,modifier=101)
+            with CQT.table_updating(t):
+                # ==========================emoj==========================================
+                t.hide('Дств', True)
+                row_emo = t.find_row({'_name':'emoj'},first=True)
+                if row_emo:
+                    list_emoj = [ _.symbol for _ in F.get_all_attrs(CEMOJ.СтатусыПроизводства).values()]
+                    list_emoj.extend([ _.symbol for _ in F.get_all_attrs(CEMOJ.ОперацииПроизводства).values()])
+                    list_emoj.extend([ _.symbol for _ in F.get_all_attrs(CEMOJ.ПерсоналРоли).values()])
+                    def fnc_select(sub_app,emo_str,row,col):
+                        t.tbl.item(row,col).setText(emo_str)
+                        CQT.setCustData(t.tbl.item(row,col),emo_str,modifier=101)
 
-                CQT.add_combobox(DTSUB.sub_self,t.tbl,row_emo.i,t.nf['Значение'],list_emoj,first_void=True,conn_func=fnc_select)
+                    CQT.add_combobox(DTSUB.sub_self,t.tbl,row_emo.i,t.nf['Значение'],list_emoj,first_void=True,conn_func=fnc_select)
 
-            #==========================delete==========================================
-            def fnc_switch(sub_self, tbl, val, i,j, *args):
-                tbl.item(i,j).setText(str(val))
-                CQT.setCustData(tbl.item(i,j),val,modifier=101)
+                #==========================delete==========================================
+                def fnc_switch(sub_self, tbl, val, i,j, *args):
+                    tbl.item(i,j).setText(str(val))
+                    CQT.setCustData(tbl.item(i,j),val,modifier=101)
 
-            row_del =  t.find_row({'_name':'for_delete'},first=True)
-            if row_del:
-                CQT.add_check_box_switcher(t.tbl,row_del.i,t.nf['Значение'],
-                                           row_del.value('Значение',get_cust_content=True),
-                                           fnc_switch,DTSUB.sub_self)
-            #==========================clr==========================================
-            row_clr =  t.find_row({'_name':'color'},first=True)
-            if row_clr:
-                val_o:CMS.Color = row_clr.value('Значение',get_cust_content=True)
-                row_clr.set_color_background(*val_o.rgba, col_name='Значение')
+                row_del =  t.find_row({'_name':'for_delete'},first=True)
+                if row_del:
+                    CQT.add_check_box_switcher(t.tbl,row_del.i,t.nf['Значение'],
+                                               row_del.value('Значение',get_cust_content=True),
+                                               fnc_switch,DTSUB.sub_self)
+                #==========================clr==========================================
+                row_clr =  t.find_row({'_name':'color'},first=True)
+                if row_clr:
+                    val_o:CMS.Color = row_clr.value('Значение',get_cust_content=True)
+                    row_clr.set_color_background(*val_o.rgba, col_name='Значение')
 
-                def fnc_select_clr(lbl:CQT.InteractiveLabelInstance,sub_self,i,j,row:CQT.TableRow):
-                    val_o: CMS.Color = row_clr.value('Значение', get_cust_content=True)
-                    clr_tuple = CQT.color_dialog_c(DTSUB.sub_self,val_o.qcolor,return_color_type=CQT.ColorPickReturn.rgb)
-                    clr_o = CMS.Color(clr_tuple)
-                    row_clr.set_color_background(*clr_o.rgba, col_name='Значение')
-                    row_clr.set_value('Значение',clr_o,True)
-
-
-                widg = CQT.add_interactive_label(t.tbl, row_clr.i, t.nf['Значение'], row_clr.value('Значение'),
-                                                 parent_self=DTSUB.sub_self, grab_style_from_cell=True,
-                                                 autoupdate_column_size=False)
-                widg.add_button('...', 'Выбор',
-                                fnc_select_clr,
-                                cell_val=row_clr, img_path=F.sep().join([F.path_to_caller_file_c(),
-                                                                     'icons', 'btn_select']))
-            # ==============================cdt======================================
-            def fnc_select_date(lbl:CQT.InteractiveLabelInstance,sub_self,i,j,row:CQT.TableRow):
-                rez, dates = CQT.get_data_dialog_choose(DTSUB.sub_self,'Выбрать дату')
-                if not rez:
-                    return
-                date = dates['date_from']
-
-                row.set_value('Значение',CLSS.Cdt(date).to_string_ru_wo_s())
-                row.set_value('Значение',CLSS.Cdt(date),set_cust_content=True)
+                    def fnc_select_clr(lbl:CQT.InteractiveLabelInstance,sub_self,i,j,row:CQT.TableRow):
+                        val_o: CMS.Color = row_clr.value('Значение', get_cust_content=True)
+                        clr_tuple = CQT.color_dialog_c(DTSUB.sub_self,val_o.qcolor,return_color_type=CQT.ColorPickReturn.rgb)
+                        clr_o = CMS.Color(clr_tuple)
+                        row_clr.set_color_background(*clr_o.rgba, col_name='Значение')
+                        row_clr.set_value('Значение',clr_o,True)
 
 
-            def fnc_select_time(lbl:CQT.InteractiveLabelInstance,sub_self,i,j,row:CQT.TableRow):
-                date:CLSS.Cdt = row.value('Значение', get_cust_content=True)
-                if not date :
-                    CQT.msgbox(f'Не выбрана дата')
-                    return
-                rez, times = CQT.get_time_dialog_choose(DTSUB.sub_self,'Выберите время')
-                if not rez:
-                    return
-                time = times['time_from']
-                date = date.set_time(time,copy_obj=True)
-                row.set_value('Значение', date.to_string_ru_wo_s())
-                row.set_value('Значение', date, set_cust_content=True)
-                pass
+                    widg = CQT.add_interactive_label(t.tbl, row_clr.i, t.nf['Значение'], row_clr.value('Значение'),
+                                                     parent_self=DTSUB.sub_self, grab_style_from_cell=True,
+                                                     autoupdate_column_size=False)
+                    widg.add_button('...', 'Выбор',
+                                    fnc_select_clr,
+                                    cell_val=row_clr, img_path=F.sep().join([F.path_to_caller_file_c(),
+                                                                         'icons', 'btn_select']))
+                # ==============================cdt======================================
+                def fnc_select_date(lbl:CQT.InteractiveLabelInstance,sub_self,i,j,row:CQT.TableRow):
+                    rez, dates = CQT.get_data_dialog_choose(DTSUB.sub_self,'Выбрать дату')
+                    if not rez:
+                        return
+                    date = dates['date_from']
 
-            # ==============================start======================================
-            row_start = t.find_row({'_name': 'start'}, first=True)
-            if row_start:
-                widg = CQT.add_interactive_label(t.tbl, row_start.i, t.nf['Значение'], row_start.value('Значение'),
-                                                 parent_self=DTSUB.sub_self, grab_style_from_cell=True,
-                                                 autoupdate_column_size=False)
-                widg.add_button('...', 'Выбор дата',
-                                fnc_select_date,
-                                cell_val=row_start, img_path=F.sep().join([F.path_to_caller_file_c(),
-                                                                         'icons', 'btn_select_date']))
-                widg.add_button('...', 'Выбор время',
-                                fnc_select_time,
-                                cell_val=row_start, img_path=F.sep().join([F.path_to_caller_file_c(),
-                                                                         'icons', 'btn_select_time']))
-            # ==============================end======================================
-            row_end = t.find_row({'_name': 'end'}, first=True)
-            if row_start:
-                widg = CQT.add_interactive_label(t.tbl, row_end.i, t.nf['Значение'], row_end.value('Значение'),
-                                                 parent_self=DTSUB.sub_self, grab_style_from_cell=True,
-                                                 autoupdate_column_size=False)
-                widg.add_button('...', 'Выбор дата',
-                                fnc_select_date,
-                                cell_val=row_end, img_path=F.sep().join([F.path_to_caller_file_c(),
-                                                                         'icons', 'btn_select_date']))
-                widg.add_button('...', 'Выбор время',
-                                fnc_select_time,
-                                cell_val=row_end, img_path=F.sep().join([F.path_to_caller_file_c(),
-                                                                         'icons', 'btn_select_time']))
-            get_cust_attrs = getattr(dimention_o,'get_dict_cust_attrs',None)
-            cust_attrs = get_cust_attrs() if callable(get_cust_attrs) else {}
-            for attr_name,attr in cust_attrs.items():
-                type_attr = attr.info.type
-                if not isinstance(type_attr,type) or not issubclass(type_attr,CLSS.Mes_type):
-                    continue
-                row_mes = t.find_row({'_name':attr_name},first=True)
-                if not row_mes :# or attr.info.protected:
-                    continue
+                    row.set_value('Значение',CLSS.Cdt(date).to_string_ru_wo_s())
+                    row.set_value('Значение',CLSS.Cdt(date),set_cust_content=True)
 
-                def fnc_select_mes_entity(lbl:CQT.InteractiveLabelInstance,sub_self,i,j,row:CQT.TableRow,
-                                          type_attr=type_attr,presentation_key=attr.info.attr_view):
-                    try:
-                        DTSUB.custom_types.refresh_mes_types()
-                        choice = DTSUB.planner_mes_types.choice_for_type(type_attr)
+
+                def fnc_select_time(lbl:CQT.InteractiveLabelInstance,sub_self,i,j,row:CQT.TableRow):
+                    date:CLSS.Cdt = row.value('Значение', get_cust_content=True)
+                    if not date :
+                        CQT.msgbox(f'Не выбрана дата')
+                        return
+                    rez, times = CQT.get_time_dialog_choose(DTSUB.sub_self,'Выберите время')
+                    if not rez:
+                        return
+                    time = times['time_from']
+                    date = date.set_time(time,copy_obj=True)
+                    row.set_value('Значение', date.to_string_ru_wo_s())
+                    row.set_value('Значение', date, set_cust_content=True)
+                    pass
+
+                # ==============================start======================================
+                row_start = t.find_row({'_name': 'start'}, first=True)
+                if row_start:
+                    widg = CQT.add_interactive_label(t.tbl, row_start.i, t.nf['Значение'], row_start.value('Значение'),
+                                                     parent_self=DTSUB.sub_self, grab_style_from_cell=True,
+                                                     autoupdate_column_size=False)
+                    widg.add_button('...', 'Выбор дата',
+                                    fnc_select_date,
+                                    cell_val=row_start, img_path=F.sep().join([F.path_to_caller_file_c(),
+                                                                             'icons', 'btn_select_date']))
+                    widg.add_button('...', 'Выбор время',
+                                    fnc_select_time,
+                                    cell_val=row_start, img_path=F.sep().join([F.path_to_caller_file_c(),
+                                                                             'icons', 'btn_select_time']))
+                # ==============================end======================================
+                row_end = t.find_row({'_name': 'end'}, first=True)
+                if row_start:
+                    widg = CQT.add_interactive_label(t.tbl, row_end.i, t.nf['Значение'], row_end.value('Значение'),
+                                                     parent_self=DTSUB.sub_self, grab_style_from_cell=True,
+                                                     autoupdate_column_size=False)
+                    widg.add_button('...', 'Выбор дата',
+                                    fnc_select_date,
+                                    cell_val=row_end, img_path=F.sep().join([F.path_to_caller_file_c(),
+                                                                             'icons', 'btn_select_date']))
+                    widg.add_button('...', 'Выбор время',
+                                    fnc_select_time,
+                                    cell_val=row_end, img_path=F.sep().join([F.path_to_caller_file_c(),
+                                                                             'icons', 'btn_select_time']))
+                get_cust_attrs = getattr(dimention_o,'get_dict_cust_attrs',None)
+                cust_attrs = get_cust_attrs() if callable(get_cust_attrs) else {}
+                for attr_name,attr in cust_attrs.items():
+                    type_attr = attr.info.type
+                    if not isinstance(type_attr,type) or not issubclass(type_attr,CLSS.Mes_type):
+                        continue
+                    row_mes = t.find_row({'_name':attr_name},first=True)
+                    if not row_mes :# or attr.info.protected:
+                        continue
+
+                    def fnc_select_mes_entity(lbl:CQT.InteractiveLabelInstance,sub_self,i,j,row:CQT.TableRow,
+                                              type_attr=type_attr,presentation_key=attr.info.attr_view):
                         try:
-                            presentation_key = choice.selection_key(presentation_key or None)
-                        except Exception:
-                            presentation_key = choice.default_presentation.presentation_key
-                        service = planner_mes_integration.MesEntityService.from_type_catalog(
-                            DTSUB.planner_mes_types
-                        )
-                        current_value = row.value('Значение',get_cust_content=True)
-                        current_ref = getattr(current_value,'reference',None)
-                        result = planner_mes_integration.select_mes_entity(
-                            DTSUB.sub_self,service,choice,
-                            presentation_key=presentation_key or None,
-                            current=current_ref,
-                        )
-                    except Exception as exc:
-                        CQT.msgbox(f'Не удалось выбрать сущность МЕС: {exc}')
-                        return
-                    if not result.accepted:
-                        return
-                    new_value = None if result.reference is None else type_attr(result.reference)
-                    text_value = '' if new_value is None else str(new_value)
-                    row.set_value('Значение',text_value)
-                    row.set_value('Значение',new_value,set_cust_content=True)
-                    lbl.set_text(text_value)
+                            DTSUB.custom_types.refresh_mes_types()
+                            choice = DTSUB.planner_mes_types.choice_for_type(type_attr)
+                            try:
+                                presentation_key = choice.selection_key(presentation_key or None)
+                            except Exception:
+                                presentation_key = choice.default_presentation.presentation_key
+                            service = planner_mes.MesEntityService.from_type_catalog(
+                                DTSUB.planner_mes_types
+                            )
+                            current_value = row.value('Значение',get_cust_content=True)
+                            current_ref = getattr(current_value,'reference',None)
+                            result = planner_mes.select_mes_entity(
+                                DTSUB.sub_self,service,choice,
+                                presentation_key=presentation_key or None,
+                                current=current_ref,
+                            )
+                        except Exception as exc:
+                            CQT.msgbox(f'Не удалось выбрать сущность МЕС: {exc}')
+                            return
+                        if not result.accepted:
+                            return
+                        new_value = None if result.reference is None else type_attr(result.reference)
+                        text_value = '' if new_value is None else str(new_value)
+                        row.set_value('Значение',text_value)
+                        row.set_value('Значение',new_value,set_cust_content=True)
+                        lbl.set_text(text_value)
 
-                widg = CQT.add_interactive_label(
-                    t.tbl,row_mes.i,t.nf['Значение'],row_mes.value('Значение'),
-                    parent_self=DTSUB.sub_self,grab_style_from_cell=True,
-                    autoupdate_column_size=False
-                )
-                widg.add_button(
-                    '...','Выбрать сущность МЕС',fnc_select_mes_entity,cell_val=row_mes,
-                    img_path=F.sep().join([F.path_to_caller_file_c(),'icons','btn_select'])
-                )
-            # ====================================================================
-            # =======================cross_res==============================
-            row_res = t.find_row({'_name': 'res'}, first=True)
-            if row_res:
-                res_id = row_res.value('Значение',get_cust_content=True)
-                res_o:CLSS.Resource = DTSUB.resources.get(res_id)
-                row_res.set_value('Значение', res_o)
+                    widg = CQT.add_interactive_label(
+                        t.tbl,row_mes.i,t.nf['Значение'],row_mes.value('Значение'),
+                        parent_self=DTSUB.sub_self,grab_style_from_cell=True,
+                        autoupdate_column_size=False
+                    )
+                    widg.add_button(
+                        '...','Выбрать сущность МЕС',fnc_select_mes_entity,cell_val=row_mes,
+                        img_path=F.sep().join([F.path_to_caller_file_c(),'icons','btn_select'])
+                    )
+                # ====================================================================
+                # =======================cross_res==============================
+                row_res = t.find_row({'_name': 'res'}, first=True)
+                if row_res:
+                    res_id = row_res.value('Значение',get_cust_content=True)
+                    res_o:CLSS.Resource = DTSUB.resources.get(res_id)
+                    row_res.set_value('Значение', res_o)
 
-            # ====================================================================
-            # =======================cross_eve==============================
-            row_eve = t.find_row({'_name': 'evr'}, first=True)
-            if row_eve:
-                eve_id = row_eve.value('Значение',get_cust_content=True)
-                eve_o:CLSS.Resource = DTSUB.events.get(eve_id)
-                row_eve.set_value('Значение', eve_o)
+                # ====================================================================
+                # =======================cross_eve==============================
+                row_eve = t.find_row({'_name': 'evr'}, first=True)
+                if row_eve:
+                    eve_id = row_eve.value('Значение',get_cust_content=True)
+                    eve_o:CLSS.Resource = DTSUB.events.get(eve_id)
+                    row_eve.set_value('Значение', eve_o)
 
-            # ====================================================================
-            t.hide_if_not_dev(CFG,forced_text=True)
-            pass
+                # ====================================================================
+                t.hide_if_not_dev(CFG,forced_text=True)
+                pass
 
 
         data, dict_data, dict_aliases = dimention_o.template_info()
@@ -409,89 +413,193 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
             return False
 
         def func_oform(t:CQT.TableContext,info_o:CLSS.Info,*args,**kwargs):
-            # ==========================emoj==========================================
+            with CQT.table_updating(t):
+                # ==========================emoj==========================================
+                t.hide('Дств', True)
+                row_emo = t.find_row({'_name':'emoj'},first=True)
+                if not row_emo:
+                    return
+                list_emoj = [ _.symbol for _ in F.get_all_attrs(CEMOJ.СтатусыПроизводства).values()]
+                list_emoj.extend([ _.symbol for _ in F.get_all_attrs(CEMOJ.ОперацииПроизводства).values()])
+                list_emoj.extend([ _.symbol for _ in F.get_all_attrs(CEMOJ.ПерсоналРоли).values()])
+                def fnc_select(sub_app,emo_str,row,col):
+                    t.tbl.item(row,col).setText(emo_str)
+                    CQT.setCustData(t.tbl.item(row,col),emo_str,modifier=101)
 
-            row_emo = t.find_row({'_name':'emoj'},first=True)
-            if not row_emo:
-                return
-            list_emoj = [ _.symbol for _ in F.get_all_attrs(CEMOJ.СтатусыПроизводства).values()]
-            list_emoj.extend([ _.symbol for _ in F.get_all_attrs(CEMOJ.ОперацииПроизводства).values()])
-            list_emoj.extend([ _.symbol for _ in F.get_all_attrs(CEMOJ.ПерсоналРоли).values()])
-            def fnc_select(sub_app,emo_str,row,col):
-                t.tbl.item(row,col).setText(emo_str)
-                CQT.setCustData(t.tbl.item(row,col),emo_str,modifier=101)
+                CQT.add_combobox(DTSUB.sub_self,t.tbl,row_emo.i,t.nf['Значение'],list_emoj,first_void=True,conn_func=fnc_select,enabled= not read_only)
 
-            CQT.add_combobox(DTSUB.sub_self,t.tbl,row_emo.i,t.nf['Значение'],list_emoj,first_void=True,conn_func=fnc_select,enabled= not read_only)
+                #==========================delete==========================================
+                def fnc_switch(sub_self, tbl, val, i,j, *args):
+                    tbl.item(i,j).setText(str(val))
+                    CQT.setCustData(tbl.item(i,j),val,modifier=101)
 
-            #==========================delete==========================================
-            def fnc_switch(sub_self, tbl, val, i,j, *args):
-                tbl.item(i,j).setText(str(val))
-                CQT.setCustData(tbl.item(i,j),val,modifier=101)
+                row_del =  t.find_row({'_name':'for_delete'},first=True)
+                CQT.add_check_box_switcher(t.tbl,row_del.i,t.nf['Значение'],
+                                           row_del.value('Значение',get_cust_content=True),
+                                           fnc_switch,DTSUB.sub_self,enabled= not read_only)
+                #==========================clr==========================================
+                row_clr =  t.find_row({'_name':'color'},first=True)
+                val_o:CMS.Color = row_clr.value('Значение',get_cust_content=True)
+                row_clr.set_color_background(*val_o.rgba, col_name='Значение')
 
-            row_del =  t.find_row({'_name':'for_delete'},first=True)
-            CQT.add_check_box_switcher(t.tbl,row_del.i,t.nf['Значение'],
-                                       row_del.value('Значение',get_cust_content=True),
-                                       fnc_switch,DTSUB.sub_self,enabled= not read_only)
-            #==========================clr==========================================
-            row_clr =  t.find_row({'_name':'color'},first=True)
-            val_o:CMS.Color = row_clr.value('Значение',get_cust_content=True)
-            row_clr.set_color_background(*val_o.rgba, col_name='Значение')
+                def fnc_select_clr(lbl:CQT.InteractiveLabelInstance,sub_self,i,j,row:CQT.TableRow):
+                    val_o: CMS.Color = row_clr.value('Значение', get_cust_content=True)
+                    clr_tuple = CQT.color_dialog_c(DTSUB.sub_self,val_o.qcolor,return_color_type=CQT.ColorPickReturn.rgb)
+                    clr_o = CMS.Color(clr_tuple)
+                    row_clr.set_color_background(*clr_o.rgba, col_name='Значение')
+                    row_clr.set_value('Значение',clr_o,True)
 
-            def fnc_select_clr(lbl:CQT.InteractiveLabelInstance,sub_self,i,j,row:CQT.TableRow):
-                val_o: CMS.Color = row_clr.value('Значение', get_cust_content=True)
-                clr_tuple = CQT.color_dialog_c(DTSUB.sub_self,val_o.qcolor,return_color_type=CQT.ColorPickReturn.rgb)
-                clr_o = CMS.Color(clr_tuple)
-                row_clr.set_color_background(*clr_o.rgba, col_name='Значение')
-                row_clr.set_value('Значение',clr_o,True)
+                widg = CQT.add_interactive_label(t.tbl, row_clr.i, t.nf['Значение'], row_clr.value('Значение'),
+                                                 parent_self=DTSUB.sub_self, grab_style_from_cell=True,
+                                                 autoupdate_column_size=False)
+                if not read_only:
 
-            widg = CQT.add_interactive_label(t.tbl, row_clr.i, t.nf['Значение'], row_clr.value('Значение'),
-                                             parent_self=DTSUB.sub_self, grab_style_from_cell=True,
-                                             autoupdate_column_size=False)
-            if not read_only:
+                    widg.add_button('...', 'Выбор',
+                                    fnc_select_clr,
+                                    cell_val=row_clr, img_path=F.sep().join([F.path_to_caller_file_c(),
+                                                                         'icons', 'btn_select']))
 
-                widg.add_button('...', 'Выбор',
-                                fnc_select_clr,
-                                cell_val=row_clr, img_path=F.sep().join([F.path_to_caller_file_c(),
-                                                                     'icons', 'btn_select']))
-
-            t.hide_if_not_dev(CFG,forced_text=True)
-            pass
-            # ==========================clr==========================================
-            def fnd_click_btn_add_attr(path,i,j, addit_data, *args):
-                if info_o.add_new_attr():
-                    if DTSUB.current_settings_mode is CLSS.Type_entitys.Res:
-                        dimensions = DTSUB.resources
-                    else:
-                        dimensions = DTSUB.events
-                    shablon_o.upadte_child_attrs(dimensions)
-                    self.info_shablon(shablon_o,read_only=read_only)
-            def fnd_click_btn_del_attr(sub_self:Plwindow,i,j, *args):
+                t.hide_if_not_dev(CFG,forced_text=True)
                 pass
-            def fnd_click_btn_edit_attr(sub_self:Plwindow,i,j, *args):
-                pass
-            row_cust_attr = t.find_row({'_name': 'cust_attrs'}, first=True)
+                # ==========================CUSTOM ATTRS==========================================
 
-            CQT.add_image(row_cust_attr.tbl,row_cust_attr.i,row_cust_attr.nf['Дств'],tooltip= 'Добавить атрибут', conn_func_click=
-                        fnd_click_btn_add_attr, addit_data=  DTSUB.sub_self, path= F.sep().join([F.path_to_caller_file_c(),
-                                                                     'icons', 'btn_add']),stylesheet=DTSUB.sub_self.styleSheet())
+                def fnd_click_btn_add_attr(path,i,j, addit_data, *args):
+                    if info_o.add_new_attr():
+                        if DTSUB.current_settings_mode is CLSS.Type_entitys.Res:
+                            dimensions = DTSUB.resources
+                        else:
+                            dimensions = DTSUB.events
+                        shablon_o.upadte_child_attrs(dimensions)
+                        self.info_shablon(shablon_o,read_only=read_only)
 
-            t_sub = row_cust_attr.value('Значение',sub_table=True,as_table_context=True)
-            if t_sub:
+                def fnd_click_btn_del_attr(sub_self: Plwindow, i, j, addit_data, *args):
+                    pass
 
-                for sub_row in t_sub.rows():
+                def fnd_click_btn_edit_attr(addit_data, i, j, sub_self: Plwindow, *args):
+                    attr_row = t_sub.get_row(i)
+                    attr_name = attr_row.value('_name')
 
-                    CQT.add_image(t_sub.tbl, sub_row.i, sub_row.nf['ca_del'], tooltip='Удалить атрибут',
-                                  conn_func_click=
-                                  fnd_click_btn_del_attr, addit_data=DTSUB.sub_self,
-                                  path=F.sep().join([F.path_to_caller_file_c(),
-                                                     'icons', 'btn_del']), stylesheet=DTSUB.sub_self.styleSheet())
+                    custom_attrs = shablon_o.cust_attrs.value.get_dict_attrs()
+                    attr_o = custom_attrs.get(attr_name)
 
-                    CQT.add_image(t_sub.tbl, sub_row.i, sub_row.nf['ca_edit'], tooltip='Изменить атрибут',
-                                  conn_func_click=
-                                  fnd_click_btn_edit_attr, addit_data=DTSUB.sub_self,
-                                  path=F.sep().join([F.path_to_caller_file_c(),
-                                                     'icons', 'btn_edit']), stylesheet=DTSUB.sub_self.styleSheet())
-                t_sub.hide_if_not_dev(CFG,True)
+                    binding_manager = AB.AttributeBindingManager()
+                    try:
+                        binding = binding_manager.get_binding(attr_o.info)
+                    except Exception as e:
+                        return CQT.msgbox('Привязка некорректна или повреждена')
+                    if binding is None:
+                        if attr_o.info.attr_view:
+                            return CQT.msgbox('Неудалось корректно записать подвязку. Возвращено старое значение')
+                        else:
+                            return CQT.msgbox('К данному источнику не найдено привязок')
+                    try:
+                        provider = binding.fields[0].provider
+
+                        if provider == AB.SourceProvider.MES:
+                            validation_result = DTSUB.custom_types.validate_mes_binding(binding)
+                        elif provider == AB.SourceProvider.ERP:
+                            validation_result = DTSUB.custom_types.validate_erp_bindings(binding)
+                        else:
+                            validation_result = AB.BindingValidationResult(
+                                status=AB.BindingValidationStatus.UNAVAILABLE,
+                                warnings=('Для источника не зарегистрировано валидатора',)
+                            )
+                    except Exception as e:
+                        validation_result = AB.BindingValidationResult(
+                            status=AB.BindingValidationStatus.UNAVAILABLE,
+                            warnings=('Проверка завершилась внутренней ошибкой',)
+                        )
+
+                    print(validation_result) # todo перенести на cust emoji
+                    status_symbol = {
+                        AB.BindingValidationStatus.VALID: '✅',
+                        AB.BindingValidationStatus.INVALID: '⚠️',
+                        AB.BindingValidationStatus.UNAVAILABLE: '❔',
+                    }.get(validation_result.status, '❔')
+                    dialog_lines = [f'{status_symbol} {validation_result.status_text}']
+                    if validation_result.errors:
+                        dialog_lines.extend(['', 'Ошибки:'])
+                        dialog_lines.extend([f'- {error}' for error in validation_result.errors])
+                    if validation_result.warnings:
+                        dialog_lines.extend(['', 'Предупреждения:'])
+                        dialog_lines.extend([f'- {warning}' for warning in validation_result.warnings])
+                    message = '\n'.join(dialog_lines)
+                    type_info = DTSUB.custom_types.get_mainType_o_by_type(
+                        attr_o.info.type
+                    )
+                    source_caption = type_info.text or binding.fields[0].source_key
+                    # origin_text = {
+                    #     AB.BindingOrigin.EXPLICIT: 'Выбрано пользователем',
+                    #     AB.BindingOrigin.INFERRED: 'ВЫбрано автоматически'
+                    # }.get(binding.origin, binding.origin)
+                    # mode_text = {
+                    #     AB.CombineMode.DIRECT: 'Одно поле',
+                    #     AB.CombineMode.CONCAT: 'Несколько полей'
+                    # }.get(binding.mode, binding.mode)
+                    rows = []
+                    for field_no, field in enumerate(binding.fields, start=1):
+                        if field.relation_steps:
+                            receive_text = f'Через связи: {len(field.relation_steps)}'
+                        else:
+                            receive_text = 'Прямая связь'
+                        provider_text = {
+                            AB.SourceProvider.MES: 'МЕС',
+                            AB.SourceProvider.ERP: 'ERP'
+                        }.get(field.provider, field.provider.upper())
+                        rows.append({
+                            '№': field_no,
+                            'Источник': provider_text,
+                            'Справочник': source_caption,
+                            'Поле': field.display_name,
+                            'Получение': receive_text
+                        })
+                    # message = f'{origin_text} - {mode_text}'
+                    # if binding.mode is AB.CombineMode.CONCAT:
+                    #     separator_text = repr(binding.separator) if binding.separator else 'Без разделителя'
+                    #     message = f'{message} - разделитель {separator_text}'
+
+                    result = CQT.msgboxg_get_table(
+                        sub_self,
+                        message,
+                        rows,
+                        btn1_name='Закрыть',
+                        disable_btn0=True,
+                        show_filtr=False,
+                        WindowTitle=f'Подвязка: {attr_o.info.alias}',
+                        styleSheet=CQT.MES_CSS,
+                        selectRows=True,
+                        ExtendedSelection=False,
+                        sortingEnabled=False,
+                        style_icon=''
+                    )
+                    print(result)
+
+                row_cust_attr = t.find_row({'_name': 'cust_attrs'}, first=True)
+
+                if not read_only:
+                    CQT.add_image(row_cust_attr.tbl,row_cust_attr.i,row_cust_attr.nf['Дств'],tooltip= 'Добавить атрибут', conn_func_click=
+                            fnd_click_btn_add_attr, addit_data=  DTSUB.sub_self, path= F.sep().join([F.path_to_caller_file_c(),
+                                                                         'icons', 'btn_add']),stylesheet=DTSUB.sub_self.styleSheet())
+                    t.hide('Дств', False)
+
+
+                t_sub = row_cust_attr.value('Значение',sub_table=True,as_table_context=True)
+                if t_sub:
+                    if not read_only:
+                        for sub_row in t_sub.rows():
+
+                            CQT.add_image(t_sub.tbl, sub_row.i, sub_row.nf['ca_del'], tooltip='Удалить атрибут',
+                                          conn_func_click=
+                                          fnd_click_btn_del_attr, addit_data=DTSUB.sub_self,
+                                          path=F.sep().join([F.path_to_caller_file_c(),
+                                                             'icons', 'btn_del']), stylesheet=DTSUB.sub_self.styleSheet())
+
+                            CQT.add_image(t_sub.tbl, sub_row.i, sub_row.nf['ca_edit'], tooltip='Изменить атрибут',
+                                          conn_func_click=
+                                          fnd_click_btn_edit_attr, addit_data=DTSUB.sub_self,
+                                          path=F.sep().join([F.path_to_caller_file_c(),
+                                                             'icons', 'btn_edit']), stylesheet=DTSUB.sub_self.styleSheet())
+                    t_sub.hide_if_not_dev(CFG,True)
 
 
 
@@ -657,7 +765,7 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
 
         shabl = CQT.msgboxg_get_table(self,'Выбор шаблона',list_shabl,styleSheet=CQT.MES_EDIT_CSS,selectRows=True,
                                       ExtendedSelection=False,selection_from_tbl=True,aliases_header=list_alises,
-                                      func_oform_tbl=fnc_oform_tbl,dict_or_list_user_data=list_data
+                                      func_oform_tbl=fnc_oform_tbl,dict_or_list_user_data=list_data,page_manager=CQT.PageManager()
                                       )
         if not shabl:
             return

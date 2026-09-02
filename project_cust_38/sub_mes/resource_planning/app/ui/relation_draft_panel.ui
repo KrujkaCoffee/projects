@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>RelationDraftPanel</class>
+ <widget class="QWidget" name="RelationDraftPanel">
+  <layout class="QVBoxLayout" name="root_layout"><property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property>
+   <item><widget class="QGroupBox" name="draft_box"><property name="title"><string>Черновик связи</string></property><layout class="QVBoxLayout" name="draft_layout">
+    <item><layout class="QHBoxLayout" name="draft_selector_layout">
+     <item><widget class="QLabel" name="draft_selector_label"><property name="text"><string>Открытые черновики</string></property></widget></item>
+     <item><widget class="QComboBox" name="draft_selector_combo"><property name="toolTip"><string>Переключает редактируемую связь. Остальные черновые линии остаются на карте.</string></property></widget></item>
+    </layout></item>
+    <item><widget class="QLabel" name="draft_summary_label"><property name="text"><string>Черновиков нет.</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+    <item><layout class="QFormLayout" name="draft_form_layout"><property name="fieldGrowthPolicy"><enum>QFormLayout::AllNonFixedFieldsGrow</enum></property>
+     <item row="0" column="0"><widget class="QLabel" name="draft_key_label"><property name="text"><string>Ключ</string></property></widget></item><item row="0" column="1"><widget class="QLineEdit" name="draft_key_edit"/></item>
+     <item row="1" column="0"><widget class="QLabel" name="draft_name_label"><property name="text"><string>Название</string></property></widget></item><item row="1" column="1"><widget class="QLineEdit" name="draft_name_edit"/></item>
+     <item row="2" column="0"><widget class="QLabel" name="draft_source_caption"><property name="text"><string>Левая таблица</string></property></widget></item><item row="2" column="1"><widget class="QLabel" name="draft_source_label"><property name="text"><string>—</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+     <item row="3" column="0"><widget class="QLabel" name="draft_target_caption"><property name="text"><string>Правая таблица</string></property></widget></item><item row="3" column="1"><widget class="QLabel" name="draft_target_label"><property name="text"><string>—</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+     <item row="4" column="0"><widget class="QLabel" name="draft_cardinality_label"><property name="text"><string>Кардинальность</string></property></widget></item><item row="4" column="1"><widget class="QComboBox" name="draft_cardinality_combo"/></item>
+     <item row="5" column="0"><widget class="QLabel" name="draft_join_type_label"><property name="text"><string>Тип JOIN</string></property></widget></item><item row="5" column="1"><widget class="QComboBox" name="draft_join_type_combo"/></item>
+    </layout></item>
+    <item><widget class="QLabel" name="draft_pairs_label"><property name="text"><string>Пары полей черновика</string></property></widget></item>
+    <item><widget class="QTableWidget" name="draft_pairs_grid"><property name="alternatingRowColors"><bool>true</bool></property><property name="selectionMode"><enum>QAbstractItemView::SingleSelection</enum></property><property name="selectionBehavior"><enum>QAbstractItemView::SelectRows</enum></property></widget></item>
+    <item><layout class="QHBoxLayout" name="draft_pair_actions"><item><widget class="QPushButton" name="remove_pair_btn"><property name="text"><string>🗑 Удалить пару</string></property></widget></item><item><widget class="QPushButton" name="discard_draft_btn"><property name="text"><string>↶ Сбросить</string></property></widget></item></layout></item>
+    <item><widget class="QPushButton" name="apply_draft_btn"><property name="text"><string>✓ Применить пакет в основную панель</string></property><property name="toolTip"><string>Передать все корректные черновики в основную панель. Запись всего пакета в БД выполняется отдельной кнопкой сохранения и одной транзакцией.</string></property></widget></item>
+   </layout></widget></item>
+  </layout>
+ </widget>
+ <resources/><connections/>
+</ui>

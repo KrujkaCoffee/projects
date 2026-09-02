@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import dataclasses
+import types
 import unittest
+from unittest import mock
 
-from project_cust_38.sub_mes.resource_planning import planner_mes_seed as seed
-from project_cust_38.sub_mes.resource_planning import planner_mes_types as mes_types
-from project_cust_38.sub_mes.resource_planning import planner_registry_stage2 as registry
-from project_cust_38.sub_mes.resource_planning import planner_registry_runtime_stage2 as runtime_registry
+from planner.fff import planner_mes_seed as seed
+from planner.fff import planner_mes_types as mes_types
+from planner.fff import planner_registry_stage2 as registry
+from planner.fff import planner_registry_runtime_stage2 as runtime_registry
+from project_cust_38.sub_mes.resource_planning import planner_mes_integration as integration
 
 
 class _MesBase:
@@ -192,7 +195,7 @@ class PlannerMesTypeCatalogTests(unittest.TestCase):
         self.assertEqual(first.value._planner_source_key, "gant.event.mk")
         self.assertEqual(default.presentation_key, "gant.event.mk.view.default")
         self.assertEqual(rows[1]["_presentation_key"], "gant.event.mk.view.type")
-        self.assertEqual(rows[1]["Фильтр"], "Да")
+        self.assertTrue(rows[1]["_is_filterable"])
 
     def test_session_is_lazy_reused_and_closed_once(self):
         runtime = _Runtime()
@@ -225,6 +228,64 @@ class PlannerMesTypeCatalogTests(unittest.TestCase):
         ):
             session.get_runtime()
 
+
+class PlannerMesBackendSwitchTests(unittest.TestCase):
+    def test_runtime_routes_physical_rows_through_standard_switch(self):
+        runtime = integration.PlannerRegistryRuntime(
+            executor=object(),
+            catalog=integration.AdminCatalog(tables={}, fields={}, relations={}),
+            repository=object(),
+            service=object(),
+        )
+
+        self.assertIsInstance(
+            runtime.entity_executor,
+            integration.CustMesQueryExecutor,
+        )
+
+    def test_mes_adapter_builds_standard_sqlquery_pair(self):
+        class DbNames:
+            def __getitem__(self, key):
+                if key == "Naryad.db":
+                    return "SRV:Naryad.db"
+                return None
+
+            def __iter__(self):
+                return iter(())
+
+        class SqlQuery:
+            def __init__(self, sqlite, postgres, canBranch=False):
+                self.sqlite = sqlite
+                self.postgres = postgres
+                self.canBranch = canBranch
+
+        request = mock.Mock(return_value=[{"value": 6888}])
+        fake_csq = types.SimpleNamespace(
+            DB_NAMES=DbNames(),
+            SqlQuery=SqlQuery,
+            custom_request_c=request,
+        )
+        import project_cust_38
+
+        with mock.patch.object(project_cust_38, "Cust_SQLite", fake_csq, create=True):
+            rows = integration.CustMesQueryExecutor()(
+                "Naryad",
+                "SELECT ? AS value",
+                (6888,),
+            )
+
+        self.assertEqual(rows, [{"value": 6888}])
+        request.assert_called_once()
+        database, query = request.call_args.args
+        self.assertEqual(database, "SRV:Naryad.db")
+        self.assertEqual(query.sqlite, "SELECT ? AS value")
+        self.assertEqual(query.postgres, "SELECT %s AS value")
+        self.assertFalse(query.canBranch)
+        self.assertEqual(request.call_args.kwargs, {
+            "rez_dict": True,
+            "debug": False,
+            "list_of_lists_c": [[6888]],
+        })
 
 class PlannerMesSeedTests(unittest.TestCase):
     def test_seed_registers_ten_curated_sources_and_relation_views(self):

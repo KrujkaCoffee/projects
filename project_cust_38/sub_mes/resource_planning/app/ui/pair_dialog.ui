@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>PairDialog</class>
+ <widget class="QDialog" name="PairDialog">
+  <property name="geometry"><rect><x>0</x><y>0</y><width>600</width><height>300</height></rect></property>
+  <property name="windowTitle"><string>Пара полей связи</string></property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <layout class="QFormLayout" name="formLayout">
+     <item row="0" column="0"><widget class="QLabel" name="left_table_label"><property name="text"><string>Левая таблица</string></property></widget></item>
+     <item row="0" column="1"><widget class="QComboBox" name="left_table"/></item>
+     <item row="1" column="0"><widget class="QLabel" name="left_field_label"><property name="text"><string>Левое поле</string></property></widget></item>
+     <item row="1" column="1"><widget class="QComboBox" name="left_field"/></item>
+     <item row="2" column="0"><widget class="QLabel" name="operator_label"><property name="text"><string>Оператор</string></property></widget></item>
+     <item row="2" column="1"><widget class="QComboBox" name="operator"/></item>
+     <item row="3" column="0"><widget class="QLabel" name="right_table_label"><property name="text"><string>Правая таблица</string></property></widget></item>
+     <item row="3" column="1"><widget class="QComboBox" name="right_table"/></item>
+     <item row="4" column="0"><widget class="QLabel" name="right_field_label"><property name="text"><string>Правое поле</string></property></widget></item>
+     <item row="4" column="1"><widget class="QComboBox" name="right_field"/></item>
+     <item row="5" column="0"><widget class="QLabel" name="role_label"><property name="text"><string>Роль пары</string></property></widget></item>
+     <item row="5" column="1"><widget class="QComboBox" name="role"/></item>
+     <item row="6" column="0"><widget class="QLabel" name="pair_join_type_label"><property name="text"><string>JOIN для пары</string></property></widget></item>
+     <item row="6" column="1"><widget class="QComboBox" name="pair_join_type"/></item>
+    </layout>
+   </item>
+   <item><widget class="QDialogButtonBox" name="buttonBox"><property name="standardButtons"><set>QDialogButtonBox::Cancel|QDialogButtonBox::Ok</set></property></widget></item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

@@ -95,7 +95,7 @@ class ExecutorConfig:
     """Настройки process-local пула и защитных таймаутов.
     """
 
-    conninfo: str = "postgresql://postgres:Adr1959967 @srv-mes:5432/postgres"
+    conninfo: str = "postgresql://mes_admin:Adr1959967!@srv-mes:5432/postgres"
     application_name: str = "mes-client"
     min_size: int = 0
     max_size: int = 1
@@ -141,7 +141,7 @@ class ExecutorConfig:
         env = os.environ
         conninfo = env.get(prefix + "DSN", "")
         return cls(
-            conninfo=conninfo or "postgresql://postgres:Adr1959967 @srv-mes:5432/postgres",
+            conninfo=conninfo or "postgresql://mes_admin:Adr1959967!@srv-mes:5432/postgres",
             application_name=env.get(prefix + "APPLICATION_NAME", _default_application_name()),
             min_size=_env_int(prefix + "POOL_MIN_SIZE", 0),
             max_size=_env_int(prefix + "POOL_MAX_SIZE", 1),
@@ -233,7 +233,6 @@ class ProbeConfig:
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class PreparedQuery:
-    """PG-native SQL, нормализованные параметры и режим выполнения."""
 
     sql: str
     params: tuple[Any, ...] | Mapping[str, Any] | list[tuple[Any, ...]] | list[Mapping[str, Any]]
@@ -350,10 +349,6 @@ def _normalize_db_alias(value: Any) -> str:
 
 
 def _first_statement_keyword(sql: str) -> str:
-    """Возвращает первое слово вне BOM, пробелов и SQL-комментариев.
-
-    ``WITH`` намеренно остаётся ``WITH``
-    """
 
     if not isinstance(sql, str) or not sql.strip():
         raise PostgresConfigurationError("SQL-запрос пуст")
@@ -488,7 +483,6 @@ def _format_rows(
 
 
 class SchemaRegistry:
-    """Явное сопоставление старых имён файлов и PG-схем."""
 
     def __init__(self, mapping: Mapping[str, str] | None = None):
         self._mapping: dict[str, str] = {}
@@ -751,7 +745,6 @@ class PostgreSqlExecutor:
             return self._execute_on_cursor(cur, prepared, **options)
         if not _empty_handle(conn):
             with conn.cursor() as external_cursor:
-                # Внешним соединением и его COMMIT/ROLLBACK управляет вызывающий код.
                 return self._execute_on_cursor(external_cursor, prepared, **options)
 
         retries_left = self.config.read_disconnect_retries if _is_obviously_read_only(prepared.statement_type) else 0
@@ -773,7 +766,6 @@ class PostgreSqlExecutor:
                         prepared.statement_type,
                         "Связь потеряна при записи; результат COMMIT неизвестен, автоповтор запрещён",
                     ) from exc
-                print('QQMARK_EXCEPTION', exc)
                 raise PostgresExecutionError(
                     prepared.statement_type,
                     f"PostgreSQL-запрос типа {prepared.statement_type} завершился ошибкой",

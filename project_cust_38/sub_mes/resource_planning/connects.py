@@ -160,3 +160,14 @@ def load_btns(sub_self):
 def key_release_event(sub_self:Plwindow, key:int, mod:CQT.QtCore.Qt.KeyboardModifiers):
     if key == 16777268:#F5
         sub_self.update_table()
+    if key == 80 and mod == (CQT.QtCore.Qt.ControlModifier | CQT.QtCore.Qt.ShiftModifier):
+        if CQT.focus_is_QTableWidget():
+            CQT.refill_tbl_into_msgbox_get_table(sub_self, CQT.QtWidgets.QApplication.focusWidget())
+    if key == 67 and mod == (CQT.QtCore.Qt.ControlModifier | CQT.QtCore.Qt.ShiftModifier):
+        if CQT.focus_is_QTableWidget():
+            CQT.copy_bufer_table(CQT.QtWidgets.QApplication.focusWidget())
+    if key == CQT.QtCore.Qt.Key_F11:
+        if sub_self.isFullScreen():
+            sub_self.showNormal()
+        else:
+            sub_self.showFullScreen()

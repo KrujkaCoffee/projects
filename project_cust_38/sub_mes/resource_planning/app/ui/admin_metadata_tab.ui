@@ -1,0 +1,698 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>AdminMetadataTab</class>
+ <widget class="QWidget" name="AdminMetadataTab">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1598</width>
+    <height>958</height>
+   </rect>
+  </property>
+  <layout class="QVBoxLayout" name="root_layout">
+   <property name="leftMargin">
+    <number>6</number>
+   </property>
+   <property name="topMargin">
+    <number>6</number>
+   </property>
+   <property name="rightMargin">
+    <number>6</number>
+   </property>
+   <property name="bottomMargin">
+    <number>6</number>
+   </property>
+   <item>
+    <widget class="QSplitter" name="main_splitter">
+     <property name="frameShadow">
+      <enum>QFrame::Plain</enum>
+     </property>
+     <property name="lineWidth">
+      <number>4</number>
+     </property>
+     <property name="orientation">
+      <enum>Qt::Horizontal</enum>
+     </property>
+     <property name="handleWidth">
+      <number>5</number>
+     </property>
+     <property name="childrenCollapsible">
+      <bool>true</bool>
+     </property>
+     <widget class="QWidget" name="left_panel">
+      <layout class="QVBoxLayout" name="left_layout">
+       <property name="leftMargin">
+        <number>0</number>
+       </property>
+       <property name="topMargin">
+        <number>0</number>
+       </property>
+       <property name="rightMargin">
+        <number>0</number>
+       </property>
+       <property name="bottomMargin">
+        <number>0</number>
+       </property>
+       <item>
+        <layout class="QHBoxLayout" name="top_toolbar_layout">
+         <item>
+          <widget class="QPushButton" name="refresh_btn">
+           <property name="toolTip">
+            <string>Перезагрузить метаданные</string>
+           </property>
+           <property name="text">
+            <string>🔄</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="check_schema_btn">
+           <property name="toolTip">
+            <string>Проверить служебные таблицы</string>
+           </property>
+           <property name="text">
+            <string>✅</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="save_tables_btn">
+           <property name="toolTip">
+            <string>Сохранить таблицы</string>
+           </property>
+           <property name="text">
+            <string>💾</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="add_table_btn">
+           <property name="toolTip">
+            <string>Добавить таблицу</string>
+           </property>
+           <property name="text">
+            <string>➕</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="delete_table_btn">
+           <property name="toolTip">
+            <string>Удалить таблицу</string>
+           </property>
+           <property name="text">
+            <string>🗑</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="table_filter_label">
+           <property name="text">
+            <string>Фильтр:</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLineEdit" name="table_filter">
+           <property name="placeholderText">
+            <string>по ключу, БД или имени таблицы</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <widget class="QTableWidget" name="tables_grid">
+         <property name="toolTip">
+          <string>Перезагрузить метаданные</string>
+         </property>
+         <property name="alternatingRowColors">
+          <bool>true</bool>
+         </property>
+         <property name="selectionMode">
+          <enum>QAbstractItemView::SingleSelection</enum>
+         </property>
+         <property name="selectionBehavior">
+          <enum>QAbstractItemView::SelectRows</enum>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QTabWidget" name="right_tabs">
+      <property name="currentIndex">
+       <number>1</number>
+      </property>
+      <property name="documentMode">
+       <bool>true</bool>
+      </property>
+      <widget class="QWidget" name="fields_tab">
+       <attribute name="title">
+        <string>🧾 Поля и описание</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="fields_layout">
+        <item>
+         <layout class="QHBoxLayout" name="fields_toolbar_layout">
+          <item>
+           <widget class="QLabel" name="selected_table_label">
+            <property name="text">
+             <string>Таблица не выбрана</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="save_fields_btn">
+            <property name="text">
+             <string>💾 Сохранить поля</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="add_field_btn">
+            <property name="text">
+             <string>➕ Добавить поле</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="delete_field_btn">
+            <property name="text">
+             <string>🗑 Удалить поле</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <widget class="QTableWidget" name="fields_grid">
+          <property name="alternatingRowColors">
+           <bool>true</bool>
+          </property>
+          <property name="selectionBehavior">
+           <enum>QAbstractItemView::SelectRows</enum>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="relations_tab">
+       <attribute name="title">
+        <string>🔗 Связи</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="relations_layout">
+        <item>
+         <widget class="QSplitter" name="relation_top">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <widget class="QWidget" name="relation_list_box">
+           <layout class="QVBoxLayout" name="relation_list_layout">
+            <property name="leftMargin">
+             <number>0</number>
+            </property>
+            <property name="topMargin">
+             <number>0</number>
+            </property>
+            <property name="rightMargin">
+             <number>0</number>
+            </property>
+            <property name="bottomMargin">
+             <number>0</number>
+            </property>
+            <item>
+             <layout class="QHBoxLayout" name="relation_list_toolbar">
+              <item>
+               <widget class="QLabel" name="relation_list_label">
+                <property name="text">
+                 <string>🔗 Связи выбранной таблицы</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="add_relation_btn">
+                <property name="text">
+                 <string>➕ Добавить связь</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="delete_relation_btn">
+                <property name="text">
+                 <string>🗑 Удалить</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="refresh_relations_btn">
+                <property name="text">
+                 <string>🔄 Обновить</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item>
+             <widget class="QTableWidget" name="relations_grid">
+              <property name="alternatingRowColors">
+               <bool>true</bool>
+              </property>
+              <property name="selectionMode">
+               <enum>QAbstractItemView::SingleSelection</enum>
+              </property>
+              <property name="selectionBehavior">
+               <enum>QAbstractItemView::SelectRows</enum>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+          <widget class="QWidget" name="relation_editor">
+           <layout class="QVBoxLayout" name="relation_editor_layout">
+            <property name="leftMargin">
+             <number>0</number>
+            </property>
+            <property name="topMargin">
+             <number>0</number>
+            </property>
+            <property name="rightMargin">
+             <number>0</number>
+            </property>
+            <property name="bottomMargin">
+             <number>0</number>
+            </property>
+            <item>
+             <widget class="QGroupBox" name="relation_form_box">
+              <property name="title">
+               <string>Описание связи</string>
+              </property>
+              <layout class="QGridLayout" name="relation_form_layout">
+               <item row="0" column="0">
+                <widget class="QLabel" name="rel_key_label">
+                 <property name="text">
+                  <string>Ключ связи</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="0" column="1" colspan="3">
+                <widget class="QLineEdit" name="rel_key"/>
+               </item>
+               <item row="1" column="0">
+                <widget class="QLabel" name="rel_name_label">
+                 <property name="text">
+                  <string>Название</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="1" column="1" colspan="3">
+                <widget class="QLineEdit" name="rel_name"/>
+               </item>
+               <item row="2" column="0">
+                <widget class="QLabel" name="rel_source_label">
+                 <property name="text">
+                  <string>Левая таблица</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="2" column="1">
+                <widget class="QComboBox" name="rel_source"/>
+               </item>
+               <item row="2" column="2">
+                <widget class="QLabel" name="rel_target_label">
+                 <property name="text">
+                  <string>Правая таблица</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="2" column="3">
+                <widget class="QComboBox" name="rel_target"/>
+               </item>
+               <item row="3" column="0">
+                <widget class="QLabel" name="rel_cardinality_label">
+                 <property name="text">
+                  <string>Кардинальность</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="3" column="1">
+                <widget class="QComboBox" name="rel_cardinality"/>
+               </item>
+               <item row="3" column="2">
+                <widget class="QLabel" name="rel_join_type_label">
+                 <property name="text">
+                  <string>Тип JOIN</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="3" column="3">
+                <widget class="QComboBox" name="rel_join_type"/>
+               </item>
+               <item row="4" column="0">
+                <widget class="QLabel" name="rel_missing_policy_label">
+                 <property name="text">
+                  <string>Если нет строки</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="4" column="1">
+                <widget class="QComboBox" name="rel_missing_policy"/>
+               </item>
+               <item row="4" column="2">
+                <widget class="QLabel" name="rel_on_many_policy_label">
+                 <property name="text">
+                  <string>Если найдено много</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="4" column="3">
+                <widget class="QComboBox" name="rel_on_many_policy"/>
+               </item>
+               <item row="5" column="0">
+                <widget class="QLabel" name="rel_select_prefix_label">
+                 <property name="text">
+                  <string>Префикс полей</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="5" column="1" colspan="3">
+                <widget class="QLineEdit" name="rel_select_prefix"/>
+               </item>
+               <item row="6" column="1">
+                <widget class="QCheckBox" name="rel_enabled">
+                 <property name="text">
+                  <string>Связь включена</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="6" column="3">
+                <widget class="QCheckBox" name="rel_generated">
+                 <property name="text">
+                  <string>Создана генератором</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="7" column="0">
+                <widget class="QLabel" name="rel_notes_label">
+                 <property name="text">
+                  <string>Заметки</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="7" column="1" colspan="3">
+                <widget class="QTextEdit" name="rel_notes">
+                 <property name="maximumSize">
+                  <size>
+                   <width>16777215</width>
+                   <height>70</height>
+                  </size>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </widget>
+            </item>
+            <item>
+             <layout class="QHBoxLayout" name="pair_toolbar">
+              <item>
+               <widget class="QLabel" name="pairs_label">
+                <property name="text">
+                 <string>Пары полей / public.admin_relation_field_pairs</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="save_relation_btn">
+                <property name="text">
+                 <string>💾 Сохранить связь и пары</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="add_pair_btn">
+                <property name="text">
+                 <string>➕ Добавить пару</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="delete_pair_btn">
+                <property name="text">
+                 <string>🗑 Удалить пару</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item>
+             <widget class="QTableWidget" name="pairs_grid">
+              <property name="alternatingRowColors">
+               <bool>true</bool>
+              </property>
+              <property name="selectionBehavior">
+               <enum>QAbstractItemView::SelectRows</enum>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+         </widget>
+        </item>
+        <item>
+         <widget class="QFrame" name="relation_map_panel">
+          <property name="frameShape">
+           <enum>QFrame::StyledPanel</enum>
+          </property>
+          <layout class="QGridLayout" name="relation_map_layout">
+           <property name="leftMargin">
+            <number>8</number>
+           </property>
+           <property name="topMargin">
+            <number>6</number>
+           </property>
+           <property name="rightMargin">
+            <number>8</number>
+           </property>
+           <property name="bottomMargin">
+            <number>6</number>
+           </property>
+           <item row="0" column="0">
+            <widget class="QLabel" name="relation_peer_label">
+             <property name="text">
+              <string>Карта связей: выбранная таблица</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="1">
+            <widget class="QComboBox" name="relation_peer_combo">
+             <property name="minimumSize">
+              <size>
+               <width>360</width>
+               <height>0</height>
+              </size>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="2">
+            <widget class="QPushButton" name="prepare_relation_btn">
+             <property name="toolTip">
+              <string>Открыть существующую связь или подготовить явный черновик для выбранной таблицы</string>
+             </property>
+             <property name="text">
+              <string>🎯 Использовать выбранную</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="3">
+            <widget class="QPushButton" name="open_relation_map_btn">
+             <property name="text">
+              <string>🗺 Открыть карту</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="4">
+            <widget class="QPushButton" name="fit_relation_canvas_btn">
+             <property name="text">
+              <string>🔎 Вписать</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="5">
+            <widget class="QPushButton" name="reset_relation_canvas_btn">
+             <property name="text">
+              <string>100%</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="0" colspan="6">
+            <widget class="QLabel" name="relation_map_status_label">
+             <property name="text">
+              <string>Выберите таблицу для карты. До создания пары полей соединительная линия не рисуется.</string>
+             </property>
+             <property name="wordWrap">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="canvas_hint_label">
+          <property name="text">
+           <string>Потяните порт одного поля к полю второй таблицы. Черновая пара появится янтарной линией, сохранённая — зелёной.</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <layout class="QVBoxLayout" name="canvas_container_layout">
+          <property name="leftMargin">
+           <number>0</number>
+          </property>
+          <property name="topMargin">
+           <number>0</number>
+          </property>
+          <property name="rightMargin">
+           <number>0</number>
+          </property>
+          <property name="bottomMargin">
+           <number>0</number>
+          </property>
+         </layout>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="generator_tab">
+       <attribute name="title">
+        <string>🚀 Генерация схем</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="generator_layout">
+        <item>
+         <widget class="QGroupBox" name="generator_box">
+          <property name="title">
+           <string>context_schema_generator.py</string>
+          </property>
+          <layout class="QGridLayout" name="generator_form_layout">
+           <item row="0" column="0">
+            <widget class="QLabel" name="generator_path_label">
+             <property name="text">
+              <string>Файл генератора</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="1">
+            <widget class="QLineEdit" name="generator_path">
+             <property name="text">
+              <string>context_schema_generator.py</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="2">
+            <widget class="QPushButton" name="browse_generator_btn">
+             <property name="text">
+              <string>...</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="0">
+            <widget class="QLabel" name="output_dir_label">
+             <property name="text">
+              <string>Папка схем</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="1">
+            <widget class="QLineEdit" name="output_dir">
+             <property name="text">
+              <string>generated_schemas</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="2">
+            <widget class="QPushButton" name="browse_output_btn">
+             <property name="text">
+              <string>...</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="0">
+            <widget class="QLabel" name="bootstrap_template_label">
+             <property name="text">
+              <string>Команда bootstrap</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="1" colspan="2">
+            <widget class="QLineEdit" name="bootstrap_template">
+             <property name="text">
+              <string>{python} {generator} bootstrap --dsn {dsn}</string>
+             </property>
+            </widget>
+           </item>
+           <item row="3" column="0">
+            <widget class="QLabel" name="generate_template_label">
+             <property name="text">
+              <string>Команда generate</string>
+             </property>
+            </widget>
+           </item>
+           <item row="3" column="1" colspan="2">
+            <widget class="QLineEdit" name="generate_template">
+             <property name="text">
+              <string>{python} {generator} generate --dsn {dsn} --out-dir {out_dir}</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="gen_buttons_layout">
+          <item>
+           <widget class="QPushButton" name="bootstrap_btn">
+            <property name="text">
+             <string>🚀 Bootstrap / перезагрузить список</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="generate_btn">
+            <property name="text">
+             <string>⚙️ Сгенерировать схемы</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <spacer name="gen_buttons_spacer">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <widget class="QPlainTextEdit" name="generator_log">
+          <property name="readOnly">
+           <bool>true</bool>
+          </property>
+          <property name="placeholderText">
+           <string>Вывод cli..</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+     </widget>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

@@ -10,6 +10,7 @@ from project_cust_38 import Cust_SQLite as CSQ
 from typing import  TYPE_CHECKING
 from project_cust_38 import dynamic_db_models as DDM
 from project_cust_38 import Cust_orm as CORM
+from project_cust_38.sub_mes.resource_planning import planner_mes as PMES
 
 if TYPE_CHECKING:
     from project_cust_38.Cust_mes import Emploee_usr
@@ -56,6 +57,7 @@ class data_manage_sub_app(SingletonMeta):
     filtr_cross_by_eve: int|None = None
     user_config_sub_plan: UserConfigSubPlan = None
     custom_types: CustomTypes = None
+    planner_mes_types: PMES.PlannerMesTypeCatalog = None
 
 class data_app(SingletonMeta):
     if CFG.Config.place.poki == None:
