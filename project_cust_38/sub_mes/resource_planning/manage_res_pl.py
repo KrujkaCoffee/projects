@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 
 from PySide6 import QtWidgets
 
@@ -481,17 +482,86 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
 
                     custom_attrs = shablon_o.cust_attrs.value.get_dict_attrs()
                     attr_o = custom_attrs.get(attr_name)
-
+                    if attr_o is None:
+                        return CQT.msgbox(f'Атрибут {attr_name!r} не найден')
                     binding_manager = AB.AttributeBindingManager()
+
+                    def preview_value(name, value): # todo объединить в класс
+                        if name == 'binding_spec':
+                            if value is None:
+                                return 'Не настроена'
+                            try:
+                                binding = binding_manager.restore(value)
+                                return binding.display_text
+                            except Exception as e:
+                                logging.error('Ошибка при формировании binding из dict', exc_info=e)
+                                return 'Некорректная схема'
+                        if isinstance(value, bool):
+                            return 'Да' if value else 'Нет'
+                        if not value:
+                            return '-'
+                        return str(value)
+
+                    def open_attr_editor():
+                        edit_draft = info_o.edit_attr(attr_o)
+                        if edit_draft is None:
+                            return
+                        changes = edit_draft.changes()
+                        if not changes:
+                            return CQT.msgbox('Изменения отсутствуют')
+                        preview_rows = [
+                            {
+                                'Свойство': change.caption,
+                                'Было': preview_value(change.name, change.before),
+                                'Стало': preview_value(change.name, change.after)
+                            }
+                            for change in changes # type: CLSS.AttributeInfoChange
+                            if isinstance(change, CLSS.AttributeInfoChange)
+                        ]
+                        confirmed = CQT.msgboxg_get_table(
+                            sub_self,
+                            'Предпросмотр изменений',
+                            preview_rows,
+                            btn0_name='Применить',
+                            btn1_name='Закрыть',
+                            disable_btn0=False,
+                            show_filtr=False,
+                            WindowTitle=f'Изменения: {attr_o.info.alias}',
+                            styleSheet=CQT.MES_CSS,
+                            ExtendedSelection=False,
+                            sortingEnabled=False,
+                            style_icon='',
+                            yesNoMode=True
+                        )
+                        if not confirmed:
+                            return
+
+                        if DTSUB.current_settings_mode is CLSS.Type_entitys.Res:
+                            dimensions = DTSUB.resources
+                        else:
+                            dimensions = DTSUB.events
+
+                        try:
+                            applied_changes = shablon_o.apply_custom_attr_edit(
+                                attr_name,
+                                edit_draft,
+                                dimensions
+                            )
+                        except Exception as e:
+                            return CQT.msgbox(f'Не удалось применить изменения: \n {e}')
+                        self.info_shablon(shablon_o, read_only=read_only)
+                        return CQT.msgbox(f'Изменения применены. \nОбновлено свойств: {len(applied_changes)}')
+
                     try:
                         binding = binding_manager.get_binding(attr_o.info)
                     except Exception as e:
-                        return CQT.msgbox('Привязка некорректна или повреждена')
+                        CQT.msgbox('Привязка некорректна или повреждена')
+                        return open_attr_editor()
+
                     if binding is None:
                         if attr_o.info.attr_view:
-                            return CQT.msgbox('Неудалось корректно записать подвязку. Возвращено старое значение')
-                        else:
-                            return CQT.msgbox('К данному источнику не найдено привязок')
+                            CQT.msgbox('Не удалось восстановить подвзяку. Выберите представление заново')
+                        return open_attr_editor()
                     try:
                         provider = binding.fields[0].provider
 
@@ -509,7 +579,7 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
                             status=AB.BindingValidationStatus.UNAVAILABLE,
                             warnings=('Проверка завершилась внутренней ошибкой',)
                         )
-
+                    validation_result.warnings = tuple(f'test{r}' for r in range(23))
                     print(validation_result) # todo перенести на cust emoji
                     status_symbol = {
                         AB.BindingValidationStatus.VALID: '✅',
@@ -562,16 +632,20 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
                         sub_self,
                         message,
                         rows,
+                        btn0_name='Редактировать',
                         btn1_name='Закрыть',
-                        disable_btn0=True,
+                        disable_btn0=False,
                         show_filtr=False,
                         WindowTitle=f'Подвязка: {attr_o.info.alias}',
                         styleSheet=CQT.MES_CSS,
                         selectRows=True,
                         ExtendedSelection=False,
                         sortingEnabled=False,
-                        style_icon=''
+                        style_icon='',
+                        yesNoMode=True
                     )
+                    if result:
+                        return open_attr_editor()
                     print(result)
 
                 row_cust_attr = t.find_row({'_name': 'cust_attrs'}, first=True)

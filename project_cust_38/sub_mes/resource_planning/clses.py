@@ -26,7 +26,6 @@ DTSUB = DTCLS.module_manage_sub_app
 class Mes_type:
     pass
 
-
 class Erp_type:
     @classmethod
     def _get_fields(cls):
@@ -507,7 +506,7 @@ class AttributeEditDraft:
         self.__working_info = candidate
         return self.changes()
 
-    def changes(self, ):
+    def changes(self):
         result = []
         current = self.__snapshot(self.__working_info)
         before_dict = self.__before.to_flat_dict()
@@ -533,6 +532,20 @@ class AttributeEditDraft:
     def reset(self):
         self.__working_info = copy.deepcopy(self.__original_info)
 
+    def apply_to(self, attribute: _Attribute):
+        if not isinstance(attribute, _Attribute):
+            raise TypeError('некорректный аргумент attribute')
+        for name in self.__before.to_flat_dict().keys():
+            if not hasattr(attribute.info, name):
+                raise RuntimeError(f'В атрибуте отсутствует свойство {name}')
+            if getattr(attribute.info, name) != getattr(self.__before, name):
+                raise RuntimeError('Атрибут был изменен после открытия редактора')
+
+        changes = self.changes()
+        if not changes:
+            return ()
+        attribute.info = copy.deepcopy(self.__working_info)
+        return changes
 
 
 class _ImportDb():
@@ -902,7 +915,7 @@ class CustomTypes:
         else:
             type_path = f'ErpMetaClass.{source_key}'
         type_info = self.get_type(type_path)
-        if not isinstance(type_info, MainTypes) or isinstance(type_info.value, type) or issubclass(type_info.value, Erp_type):
+        if not isinstance(type_info, MainTypes) or not isinstance(type_info.value, type) or not issubclass(type_info.value, Erp_type):
             return manager.validate_againts(binding, ())
 
         erp_type = type_info.value
@@ -1106,6 +1119,9 @@ class Info():
 
     def add_new_attr(self) -> bool | None:
         return self._new_attr()
+
+    def edit_attr(self, attribute: _Attribute) -> AttributeEditDraft:
+        return self._new_attr(attribute)
     
     def __build_mes_binding(self, type_value, presentation_keys, origin, binding_manager: AB.AttributeBindingManager):
         choice = DTSUB.planner_mes_types.choice_for_type(type_value)
@@ -1149,10 +1165,19 @@ class Info():
         return binding_manager.from_fields(fields, origin=origin)
 
     @CQT.onerror
-    def _new_attr(self) -> bool | None:
+    def _new_attr(self, edit_attribute: _Attribute | None = None) -> bool | None:
         binding_manager = AB.AttributeBindingManager()
         binding_state = {'value': None}
-        
+        edit_draft = None
+
+        if edit_attribute is not None:
+            edit_draft = AttributeEditDraft(edit_attribute)
+        try:
+            binding_state['value'] = binding_manager.get_binding(edit_draft.info)
+        except Exception:
+            binding_state['value'] = None
+
+
         
         def fnc_oform(tbl: CQT.QtWidgets.QTableWidget, *args):
 
@@ -1191,6 +1216,12 @@ class Info():
                 attr_o: _AttributeInfoMeta = row.value('Значение', get_cust_content=True)
                 attr_o_type = attr_o.type
                 if attr_o_type is type:
+                    if edit_draft is not None:
+                        row.set_editable('Значение', False)
+                        row.set_font_format(italic=True, col_name='Значение')
+                        row.setToolTip('Значение', 'Тип существующего атрибута изменять нельзя')
+                        continue
+
                     @CQT.onerror
                     def fnc_select_type(lbl: CQT.InteractiveLabelInstance, sub_self, i, j, row: CQT.TableRow):
                         def fnc_oform_tbl_type(tbl: CQT.QtWidgets.QTableWidget, *args):
@@ -1264,6 +1295,19 @@ class Info():
 
                 elif attr_o_type in (str, int, float):
                     if attr_o.name == 'attr_view':
+                        if edit_draft is not None:
+                            type_value = edit_draft.info.type
+                            is_external_type = (
+                                isinstance(type_value, type)
+                                and issubclass(type_value, (Mes_type, Erp_type))
+                            )
+                            if not is_external_type:
+                                row.hide(True)
+                                continue
+                            if binding_state['value'] is not None:
+                                saved_binding: AB.AttributeBinding = binding_state['value']
+                                set_attr_view(row, saved_binding.attr_view, saved_binding.display_text)
+
                         def fnc_select_type_attr_view(lbl: CQT.InteractiveLabelInstance, sub_self, i, j,
                                                       row: CQT.TableRow):
                             t = row.ctx
@@ -1400,12 +1444,23 @@ class Info():
                     rez[row.value('_name')] = value
                 return rez
 
-            list_text, list_data = _Attribute.template_new()
-            rez = CQT.msgboxg_get_table(DTSUB.sub_self, 'Создание атрибута', list_text,
-                                        dict_or_list_user_data=list_data,
-                                        styleSheet=CQT.MES_EDIT_CSS, func_oform_tbl=fnc_oform,
-                                        func_validate_t=fnc_validate
-                                        )
+            if edit_draft is None:
+                list_text, list_data = _Attribute.template_new()
+                dialog_title = 'Создание атрибута'
+            else:
+                list_text, list_data = edit_draft.template()
+                dialog_title = f'Изменение атрибута: {edit_draft.info.alias}'
+
+            rez = CQT.msgboxg_get_table(
+                DTSUB.sub_self,
+                dialog_title,
+                list_text,
+                dict_or_list_user_data=list_data,
+                styleSheet=CQT.MES_EDIT_CSS,
+                func_oform_tbl=fnc_oform,
+                func_validate_t=fnc_validate,
+                WindowTitle=dialog_title
+            )
             if not rez:
                 return
             if not isinstance(rez.get('type'), type):
@@ -1417,6 +1472,11 @@ class Info():
             ):
                 CQT.msgbox('Для атрибута не выбрано представление')
                 return
+            if edit_draft is not None:
+                edit_draft.accept_values(rez)
+                if binding_state['value'] is not None:
+                    binding_manager.apply_binding(edit_draft.info, binding_state['value'])
+                    return edit_draft
             new_attr: _Attribute = _Attribute.attr(None, type_val=rez['type'], alias=rez['alias'],
                                                    attr_view=rez['attr_view'],
                                                    description=rez['description'], protected=rez['protected'],
@@ -1612,6 +1672,55 @@ class _BaseEntity():
             for name, cust_attr in it.get_dict_cust_attrs().items():
                 if name not in attrs_sh:
                     delattr(it, name)
+
+    def apply_custom_attr_edit(self, attr_name: str,
+                               edit_draft: AttributeEditDraft,
+                               dimensions: "_BaseDimensions"):
+        if not isinstance(edit_draft, AttributeEditDraft):
+            raise TypeError('Ожидался edit_draft=AttributeEditDraft')
+        attrs = self.cust_attrs.value.get_dict_attrs()
+        template_attr = attrs.get(attr_name)
+        if template_attr is None:
+            raise KeyError(f'Атрибут {attr_name} не найден в шаблоне')
+        changes = edit_draft.changes()
+        if not changes:
+            return ()
+
+        children = list(dimensions.get_by_shablon(self.id.value))
+        template_info_before = copy.deepcopy(template_attr.info)
+        child_states = []
+
+        try:
+            edit_draft.apply_to(template_attr)
+
+            for child in children:
+                if not hasattr(child, attr_name):
+                    setattr(child, attr_name, copy.deepcopy(template_attr))
+                    child_states.append((child, None))
+                    continue
+                child_attr = getattr(child, attr_name)
+                if not isinstance(child_attr, _Attribute):
+                    raise TypeError(f'{attr_name} у дочернего объекта Attribute имеет некорректный тип')
+                child_states.append((
+                    child,
+                    copy.deepcopy(child_attr.info)
+                ))
+                child_attr.info = copy.deepcopy(template_attr.info)
+        except Exception as e:
+            template_attr.info = template_info_before
+
+            for child, previous_info in reversed(child_states):
+                if previous_info is None:
+                    if hasattr(child, attr_name):
+                        delattr(child, attr_name)
+                    continue
+                getattr(child, attr_name).info = previous_info
+        return changes
+
+
+
+
+
 
     def add_new_custom_attr(self, data: _Attribute):
         cust_attr_o = self.cust_attrs.value

@@ -26,7 +26,7 @@ class BindingValidationStatus(str, Enum):
     UNAVAILABLE = "UNAVAILABLE" # Источник не удалось проверить
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass(frozen=False)
 class BindingValidationResult:
     status: BindingValidationStatus
 

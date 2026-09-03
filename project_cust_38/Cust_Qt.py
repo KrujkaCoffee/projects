@@ -8522,6 +8522,13 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
 
         self.setMinimumHeight(300 + summ_tbl_height)
         self.resize(width_dialog, 300 + summ_tbl_height)
+        
+        if self.layout():
+            self.layout().activate()
+        base_label_height = self.decor_label(
+            min_height=28,
+            max_height=180,
+        )
         btn_width = int(round((self.width() / 2 - space * 2) / 2))
         # Устанавливаем политику размера
         size_policy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred)
@@ -8592,7 +8599,6 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
         self.setStyleSheet(parent.styleSheet())
         load_icons(self, 24)
         self.oform_action()
-        self.decor_label()
         if func_oform_tbl:
             if parent_self:
                 func_oform_tbl(tbl, parent_self)
@@ -8615,30 +8621,42 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
         self._setup_selection_status_bar()
         return
 
-    def decor_label(self):
-        label_metrics = self.ui.lbl_text.fontMetrics()
-        label_margincs = self.ui.lbl_text.contentsMargins()
-        available_height = self.ui.lbl_text.height() - label_margincs.top() - label_margincs.bottom()
-        max_width = 2000
-        width = self.ui.lbl_text.width()
-        while width < max_width:
-            text_width = width - label_margincs.left() - label_margincs.right()
+    def decor_label(
+            self,
+            min_height: int = 28,
+            max_height: int = 180,
+    ) -> int:
+        lbl = self.ui.lbl_text
 
-            rect = label_metrics.boundingRect(
-                0,
-                0,
-                max(1, text_width),
-                4000,
-                Qt.TextWordWrap,
-                self.ui.lbl_text.text()
+        lbl.setWordWrap(True)
+        lbl.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+
+        if self.layout():
+            self.layout().activate()
+
+        width = max(1, lbl.width())
+
+        height = lbl.heightForWidth(width)
+
+        if height < 0:
+            margins = lbl.contentsMargins()
+            text_width = max(
+                1, width - margins.left() - margins.right()
             )
-
-            if rect.height() <= available_height:
-                break
-
-            width += 10
-
-        self.ui.lbl_text.setFixedWidth(width)
+            rect = lbl.fontMetrics().boundingRect(
+                QtCore.QRect(
+                    0,
+                    0,
+                    text_width,
+                    10_000
+                ),
+                QtCore.Qt.TextWordWrap,
+                lbl.text()
+            )
+            height = rect.height() + margins.top() + margins.bottom()
+        height = max(min_height, min(height, max_height))
+        lbl.setFixedHeight(height)
+        return height
 
     def set_page(self):
         current_page = self.page_manager.shown_page
