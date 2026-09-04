@@ -51,6 +51,7 @@ except:
     pass
 import project_cust_38.operacii as operacii
 #exclude import calculate_vo 11.11.25
+CFG_prj = CFG.Config.project
 FOLDER_CLOSED = f'{CEMOJ.EmojiMain.ДокументыДанные.folder_closed.symbol}{CEMOJ.EmojiMain.ДокументыДанные.plus_circled.symbol}'
 FOLDER_OPEN = f'{CEMOJ.EmojiMain.ДокументыДанные.folder.symbol}{CEMOJ.EmojiMain.ДокументыДанные.minus_circled.symbol}'
 DOC_EMOJI = f'    {CEMOJ.EmojiMain.ДокументыДанные.document.symbol}'
@@ -131,44 +132,6 @@ def recalc_naryad(pk_naryad: int, fio: str = None): # 30.04.2026
             dict_empl = nar_obj.dict_empl
             dict_opers = nar_obj.dict_opers
 
-class ReportNarChanges:  # 30.04.2026
-    def __init__(self, nom_nar: int, fio: str, title: str):
-        self.nom_nar = nom_nar
-        self.fio = fio
-        self.editor = F.user_full_namre()
-        self.message_builder = CB24.MessageBuilder(init_title=title)
-
-    def get_info(self):
-        db_naryad = CFG.Config.project.db_naryad
-
-        query = CSQ.SqlQuery(
-            sqlite=f"""
-            SELECT Пномер, Статус, Дата, Подытог || "/" || Подытог_нормы as "Подытог/п.н" FROM jurnal 
-            WHERE Номер_наряда = {self.nom_nar} and ФИО = ?
-            ORDER BY datetime(Дата)
-        """,
-            postgres=f"""
-                SELECT "Пномер", "Статус", "Дата", "Подытог" || '/' || "Подытог_нормы" as "Подытог/п.н" FROM jurnal 
-                WHERE "Номер_наряда" = {self.nom_nar} and ФИО = %s
-                ORDER BY CAST("Дата" AS TIMESTAMP)
-            """
-        )
-        return CSQ.custom_request_c(db_naryad, query, rez_dict=True, list_of_lists_c=[self.fio])
-
-    def __enter__(self):
-        before = self.get_info()
-        self.message_builder.add_message(f'Наряд: [B]{self.nom_nar}[/B]\n ФИО: [B]{self.fio}[/B]\n Редактор: {self.editor}')
-        self.message_builder.add_delimiter(color='#000000')
-        self.message_builder.add_message('Было:', bold=True)
-        self.message_builder.add_table(lst_of_lists=before)
-        self.message_builder.add_delimiter()
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        after = self.get_info()
-        self.message_builder.add_message('Стало:', bold=True)
-        self.message_builder.add_table(lst_of_lists=after)
-        self.message_builder.send_by_action(action='Корректировки данных')
-
 class _MiniManager():
     def __init__(self):
         pass
@@ -186,12 +149,13 @@ class _MiniManager():
         return self._dict_states
 
 class _ImportDb():
-    def parce_row_dict(self,item:dict):
+    def parce_row_dict(self,item:dict,silent:bool=False):
         attrs = F.get_all_attrs_with_properties(self,include_private=True)
         for key,val in item.items():
             fix_key = str(key).replace(".", "_")
             if fix_key not in attrs:
-                print(f'class {self.__class__.__name__} ImportDbRow attr not declared :{fix_key}' )
+                if not silent:
+                    print(f'class {self.__class__.__name__} ImportDbRow attr not declared :{fix_key}' )
             exec(f'self.{fix_key} = val')
 
     def __repr__(self):
@@ -326,6 +290,433 @@ class _DbTable:
                 self.rows.remove(row)
                 return True
         return False
+class RuleAccess(_ImportDb):
+    def __init__(self,
+                 raw_item
+                 ):
+        self.id = None
+        self.rule_name = None
+        self.poki = None
+        self.ref_dolgn = None
+        self.description = ''
+        self._fl_dirty = False
+        self.parce_row_dict(raw_item,silent=True)
+
+    def delete(self):
+        CSQ.custom_request_c(CFG_prj.db_naryad,f"""DELETE FROM permissions_ext WHERE id = {self.id}""")
+
+    @classmethod
+    def new(cls,rule_name:str,poki:int,ref_dolgn:str)->RuleAccess:
+        return cls({'rule_name':rule_name,
+                    'poki':poki,
+                    'ref_dolgn':ref_dolgn
+                    })
+
+    def update(self,attr,value):
+        if attr == 'description':
+            return
+        if not hasattr(self,attr):
+            return
+        setattr(self,attr,value)
+        self._fl_dirty = True
+
+    def save(self)->bool:
+
+        if self.id is None:
+            data_to_add = [self.rule_name,self.poki,self.ref_dolgn]
+
+            rez =  CSQ.custom_request_c(CFG_prj.db_naryad,
+                                        f""" INSERT INTO permissions_ext (
+                                       rule_name,
+                                       poki,
+                                       ref_dolgn ) VALUES ({CSQ.questions_for_mask(data_to_add)}) RETURNING id ;""",
+                                            list_of_lists_c=[data_to_add],rez_dict=True,one=True)
+            if not rez:
+                return False
+            self.id = rez['id']
+            self._fl_dirty =False
+            return True
+
+        if self._fl_dirty:
+            data_to_add = [self.rule_name, self.poki, self.ref_dolgn,self.id]
+            if not CSQ.custom_request_c(CFG_prj.db_naryad,
+                                                          f""" UPDATE permissions_ext SET (
+                                                   rule_name,
+                                                   poki,
+                                                   ref_dolgn
+                                                    ) = ({CSQ.questions_for_mask(data_to_add)}) WHERE id = ? ;""",
+                                                          list_of_lists_c=[data_to_add]):
+                return False
+
+            self._fl_dirty = False
+            return True
+
+
+class RuleAccessOld(_ImportDb):
+    def __init__(self,
+                 raw_item
+                 ):
+        self.action:str|None = None
+        self.value:str|None = None
+        self.poki:str|None = None
+        self.win_verif:str|None = None
+        self.parce_row_dict(raw_item,silent=True)
+
+
+class ManagerAccess:
+    def __init__(self):
+        self.dict_rules:dict[str,set[RuleAccess]] = dict()
+        self.dict_rules_by_dolgn:dict[tuple[int,str],set[RuleAccess]] = dict()
+        self.set_rules:set[RuleAccess] = set()
+        self.list_active_users:list[dict] = dict()
+        self.full_rules:list[dict] = dict()
+        self.full_dolgn:list[dict] = dict()
+        self._dict_dolgn_names = F.deploy_dict_c(CSQ.custom_request_c(CFG_prj.db_users,
+                           f"""SELECT Должности.Ref_Key, Должности.Наименование, 
+                           Подразделения.Наименование as "Подразделениe", Подразделения.Организация_poki FROM Должности
+                        inner join Подразделения ON Подразделения.Подразделение_Key = Должности.Подразделение_Key
+                        
+                        """,rez_dict=True),'Ref_Key')
+
+        self._load_list_active_users()
+
+    def make_new_rule(self,name:str)->bool:
+        if name in self.full_rules:
+            print(f'Правило {name} уже существует')
+            return False
+        rez = CSQ.custom_request_c(CFG_prj.db_naryad, f"""INSERT INTO permissions_rules
+                              (name, description)
+                              VALUES (?, ?);""", list_of_lists_c=[[name,F.now()]])
+        if rez:
+            self._load_full_rules()
+        return rez
+    def delete_access(self,rule_name:str,poki:int,ref_dolgn:str):
+        list_access_to_delete = [_ for _ in self.dict_rules[rule_name] if _.poki==poki and _.ref_dolgn==ref_dolgn]
+        for access_o in list_access_to_delete:
+            access_o.delete()
+            self._del_access_o_into_attrs(access_o)
+
+    def _is_exist_access(self,rule_name:str,poki:int,ref_dolgn:str)->bool:
+        if rule_name not in self.dict_rules:
+            return False
+        for it in self.dict_rules[rule_name]:
+            if it.poki==poki and it.ref_dolgn==ref_dolgn:
+                return True
+        return False
+
+    def new_access(self,rule_name:str,poki:int,ref_dolgn:str)->tuple[bool,str]:
+        if self._is_exist_access(rule_name,poki,ref_dolgn):
+            err_str = f'Доступ {rule_name}  не внесен. Уже существует для {ref_dolgn} {poki}'
+            print(err_str)
+            return False ,err_str
+        rule = RuleAccess.new(rule_name,poki,ref_dolgn)
+        rule.save()
+        print(f'Доступ {rule.rule_name} для {rule.ref_dolgn} {rule.poki} внесен в БД')
+        self._add_access_o_into_attrs(rule)
+        return True , ''
+
+    def get_name_dolgn(self,ref_dolgn)->str:
+        return self._dict_dolgn_names[ref_dolgn]['Наименование']
+
+
+    def _synch_rules(self):
+        rules = CSQ.custom_request_c(CFG_prj.db_naryad, f"""SELECT * FROM permissions_rules""", rez_dict=True)
+        set_rules = set([_['name'] for _ in rules])
+        set_rules_ext = set(self.dict_rules.keys())
+        delta_to_add = set_rules_ext - set_rules
+        if delta_to_add:
+            list_to_add = [[_] for _ in delta_to_add]
+            CSQ.custom_request_c(CFG_prj.db_naryad, f"""INSERT INTO permissions_rules 
+                        (name) VALUES (?)""", list_of_lists_c=sorted(list_to_add, key=lambda x: x[0]))
+    def save(self):
+        [[it.save() for it in _] for _ in self.dict_rules.values()]
+
+    def _load_full_rules(self):
+        data_rules = CSQ.custom_request_c(CFG_prj.db_naryad, f"""
+                        SELECT * FROM permissions_rules  
+
+                        """, rez_dict=True)
+        self.full_rules = data_rules
+
+    def _load_full_dolgn(self):
+        data_dolgn = CSQ.custom_request_c(CFG_prj.db_users, f"""
+                            SELECT Подразделения.Организация_poki AS poki,
+                               Должности.Наименование AS Должность,
+                               Подразделения.Наименование AS Подразделениe,
+                               Должности.Ref_Key AS Должность_ref
+                            FROM Должности
+                               INNER JOIN
+                               Подразделения ON Подразделения.Подразделение_Key = Должности.Подразделение_Key
+                            ORDER BY Должности.Наименование,
+                                  Подразделения.Наименование,
+                                  Подразделения.Организация_poki; 
+                        """, rez_dict=True)
+        self.full_dolgn = data_dolgn
+
+    def load(self):
+        self._load_full_rules()
+        self._load_full_dolgn()
+        data = CSQ.custom_request_c(CFG_prj.db_naryad,f"""
+                SELECT * FROM permissions_ext 
+                inner join permissions_rules ON permissions_rules.name = permissions_ext.rule_name
+                """,rez_dict=True)
+
+        self.dict_rules = {_['name']:set() for _ in self.full_rules}
+
+        self.set_rules = set()
+        self.dict_rules_by_dolgn = dict()
+
+        for it in data:
+            access_o = RuleAccess(it)
+            self._add_access_o_into_attrs(access_o)
+
+
+    def _add_access_o_into_attrs(self,access_o:RuleAccess):
+        if access_o.rule_name not in self.dict_rules:
+            self.dict_rules[access_o.rule_name] = set()
+        self.dict_rules[access_o.rule_name].add(access_o)
+        key_d = (access_o.poki, access_o.ref_dolgn)
+        if key_d not in self.dict_rules_by_dolgn:
+            self.dict_rules_by_dolgn[key_d] = set()
+        self.dict_rules_by_dolgn[key_d].add(access_o)
+        self.set_rules.add(access_o)
+
+    def _del_access_o_into_attrs(self,access_o:RuleAccess):
+        if access_o.rule_name in self.dict_rules:
+            if access_o in self.dict_rules[access_o.rule_name]:
+                self.dict_rules[access_o.rule_name].remove(access_o)
+            if not self.dict_rules[access_o.rule_name]:
+                self.dict_rules.pop(access_o.rule_name,None)
+
+        key_d = (access_o.poki, access_o.ref_dolgn)
+        if key_d in self.dict_rules_by_dolgn:
+            if access_o in self.dict_rules_by_dolgn[key_d]:
+                self.dict_rules_by_dolgn[key_d].remove(access_o)
+            if not self.dict_rules_by_dolgn[key_d]:
+                self.dict_rules_by_dolgn.pop(key_d,None)
+
+        if access_o in self.set_rules:
+            self.set_rules.remove(access_o)
+
+
+
+
+    def _filtred_by_dolgn(self,filter:tuple[int,str])->set[RuleAccess]|None:
+        poki, ref_d= filter
+        if (poki,ref_d) in self.dict_rules_by_dolgn:
+            return self.dict_rules_by_dolgn[(poki,ref_d)]
+        return set()
+
+    def template_active_users(self,key:tuple[int,str]|None)->list[dict]:
+        list_rows = []
+        poki =None
+        ref_dolgn = None
+        if key is not None:
+            poki, ref_dolgn = key
+
+        for _ in self.list_active_users:
+            if key:
+                if _['Должность_ref'] == ref_dolgn and _['poki'] == poki:
+                    pass
+                else:
+                    continue
+
+            list_rows.append({
+                '': CEMOJ.ПерсоналРоли.key.symbol if (_['poki'],_['Должность_ref']) in self.dict_rules_by_dolgn else '',
+                'ФИО': _['ФИО'],
+                'winlogin_fix': _['winlogin_fix'],
+                'poki': _['poki'],
+                'Подразделениe':_['Подразделениe'],
+                'Должность':_['Должность'],
+                'id_Должность':_['id_Должность'],
+                'id_Подразделениe': _['id_Подразделениe'],
+                'win_login':_['win_login'],
+                'Должность_ref': _['Должность_ref'],
+            })
+
+
+        return  sorted(list(list_rows),key = lambda x: x['ФИО'])
+        pass
+
+    def template_by_rules(self,filter:tuple[int,str]|None=None)->list[dict]:
+
+        list_rows = []
+        if filter is None:
+            for it in self.full_rules:
+                list_rows.append({'Правило':it['name'],
+                             'Описание':it['description']})
+            return list_rows
+
+        dataset = self._filtred_by_dolgn(filter)
+        accumulator = set()
+        for _ in dataset:
+            tmp_d = {'Правило':_.rule_name,
+                     'Описание':_.description}
+            key =  _.rule_name
+            if key in accumulator:
+                continue
+            list_rows.append(tmp_d)
+            accumulator.add(key)
+
+        return  sorted(list(list_rows),key = lambda x: x['Правило'])
+
+
+    def _filtred_by_rule(self,name:str|None)->set[RuleAccess]|None:
+        if name in self.dict_rules:
+            return self.dict_rules[name]
+        return set()
+
+    def template_by_dolgn(self,filter:str=None)->list[dict]:
+        list_rows = []
+        accumulator = set()
+        if filter is None:
+            for it in self.full_dolgn:
+                list_rows.append({'poki': it['poki'],
+                    '': CEMOJ.ПерсоналРоли.key.symbol if (it['poki'],
+                                                            it['Должность_ref']) in self._set_poki_dolgn_alive else "",
+                    'Должность': it['Должность'],
+                    'Подразделениe': it['Подразделениe'],
+                     '_ref_dolgn':it['Должность_ref']})
+            return list_rows
+
+        dataset = self._filtred_by_rule(filter)
+
+        for _ in dataset:
+            tmp_d = {'poki': _.poki,
+                     '': CEMOJ.ПерсоналРоли.key.symbol if (_.poki,
+                                                        _.ref_dolgn) in self._set_poki_dolgn_alive else "",
+                     'Должность': self.get_name_dolgn(_.ref_dolgn),
+                    'Подразделениe': self._dict_dolgn_names[_.ref_dolgn]['Подразделениe'],
+                     '_ref_dolgn':_.ref_dolgn}
+            key =  (_.poki,_.ref_dolgn)
+            if key in accumulator:
+                continue
+            list_rows.append(tmp_d)
+            accumulator.add(key)
+
+
+        return sorted(list_rows,key = lambda x: (x['Должность'],x['poki']))
+
+
+
+    
+    def _load_list_active_users(self):
+        select =Employee_spread_select()
+        select.Подразделения = {'Наименование': 'Подразделениe', 'id': 'id_Подразделениe','Организация_poki':'poki'}
+        select.Должности = {'Наименование': 'Должность', 'id': 'id_Должность','Ref_Key':'Должность_ref'}
+        select.ФизическиеЛица = {'Наименование': 'ФИО','login':'win_login'}
+        spread = Emploee_spread_db()
+        list_active_users = spread.get_list_active_users(select)
+        ss = '\\'
+        ss2 = r"'\'"
+
+        [list_active_users[i].update(
+            {'winlogin_fix': _['win_login'].split(ss)[-1].split(ss2)[-1] if _['win_login'] else ''}) for i, _ in
+         enumerate(list_active_users)]
+
+        self._set_poki_dolgn_alive = set()
+        [self._set_poki_dolgn_alive.add((_['poki'],_['Должность_ref'])) for _ in list_active_users]
+
+        self.list_active_users = list_active_users
+
+    def import_from_old_db(self):
+
+        dict_active_users_by_fio = F.deploy_dict_c(self.list_active_users,'ФИО')
+        dict_active_users_by_win_login = F.deploy_dict_c(self.list_active_users,'winlogin_fix')
+        raw_data_permission = CSQ.custom_request_c(CFG_prj.db_naryad,
+                                                   f"""SELECT * FROM permissions WHERE for_mnger = 1; """,
+                                                   rez_dict=True)
+        for row in raw_data_permission:
+            rule_o = RuleAccessOld(row)
+            users = row['users'].split(';')
+            users_raw  = row['users']
+
+            if users_raw:
+                dict_dolgn_refs = {
+                    'rule_name':'',
+                    'poki':'',
+                    'ref_dolgn':'',
+
+                }
+                for user in users:
+                    if not user:
+                        continue
+                    ref_dolgn = ''
+                    if rule_o.win_verif:
+                        if user in dict_active_users_by_win_login:
+                            ref_dolgn = dict_active_users_by_win_login[user]['Должность_ref']
+                            poki = dict_active_users_by_win_login[user]['poki']
+                        else:
+                            print(f'Не найден пользователь {user} в базе данных')
+                    else:
+                        name , second_name, surname = user.split(' ')
+                        user_1 = ' '.join([name , second_name, surname])
+                        user_2 = ' '.join([second_name , name, surname])
+
+                        if user_1 in dict_active_users_by_fio:
+                            ref_dolgn = dict_active_users_by_fio[user_1]['Должность_ref']
+                            poki = dict_active_users_by_fio[user_1]['poki']
+                        elif user_2 in dict_active_users_by_fio:
+                            ref_dolgn = dict_active_users_by_fio[user_2]['Должность_ref']
+                            poki = dict_active_users_by_fio[user_2]['poki']
+                        else:
+                            print(f'Не найден пользователь {user} в базе данных - уволен')
+
+                    if ref_dolgn:
+                        dict_dolgn_refs['rule_name']                = rule_o.action
+                        dict_dolgn_refs['poki']                = poki
+                        dict_dolgn_refs['ref_dolgn']                = ref_dolgn
+                        rule_new = RuleAccess(dict_dolgn_refs)
+                        if rule_o.action not in self.dict_rules:
+                            self.dict_rules[rule_o.action]=set()
+                        self.dict_rules[rule_o.action].add(rule_new)
+
+                    else:
+                        pass
+
+        pass
+
+
+
+
+class ReportNarChanges:  # 30.04.2026
+    def __init__(self, nom_nar: int, fio: str, title: str):
+        self.nom_nar = nom_nar
+        self.fio = fio
+        self.editor = F.user_full_namre()
+        self.message_builder = CB24.MessageBuilder(init_title=title)
+
+    def get_info(self):
+        db_naryad = CFG.Config.project.db_naryad
+
+        query = CSQ.SqlQuery(
+            sqlite=f"""
+            SELECT Пномер, Статус, Дата, Подытог || "/" || Подытог_нормы as "Подытог/п.н" FROM jurnal 
+            WHERE Номер_наряда = {self.nom_nar} and ФИО = ?
+            ORDER BY datetime(Дата)
+        """,
+            postgres=f"""
+                SELECT "Пномер", "Статус", "Дата", "Подытог" || '/' || "Подытог_нормы" as "Подытог/п.н" FROM jurnal 
+                WHERE "Номер_наряда" = {self.nom_nar} and ФИО = %s
+                ORDER BY CAST("Дата" AS TIMESTAMP)
+            """
+        )
+        return CSQ.custom_request_c(db_naryad, query, rez_dict=True, list_of_lists_c=[self.fio])
+
+    def __enter__(self):
+        before = self.get_info()
+        self.message_builder.add_message(f'Наряд: [B]{self.nom_nar}[/B]\n ФИО: [B]{self.fio}[/B]\n Редактор: {self.editor}')
+        self.message_builder.add_delimiter(color='#000000')
+        self.message_builder.add_message('Было:', bold=True)
+        self.message_builder.add_table(lst_of_lists=before)
+        self.message_builder.add_delimiter()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        after = self.get_info()
+        self.message_builder.add_message('Стало:', bold=True)
+        self.message_builder.add_table(lst_of_lists=after)
+        self.message_builder.send_by_action(action='Корректировки данных')
+
 
 class Shift():
     def __init__(self,num,start:str,end:str):
@@ -1158,7 +1549,7 @@ class Emploee_spread_db():
 
     def get_list_active_users(self,select:Employee_spread_select)->list[dict]:
         attrs = F.get_all_attrs_with_properties(select)
-        select_str =  ', '.join([ ', '.join([f'{tbl}.{field} AS {alias}' for field, alias in wh.items()])  for tbl,wh in attrs.items()])
+        select_str =  ', '.join([ ', '.join([f'{tbl}.{field} AS {alias}' for field, alias in wh.items()])  for tbl, wh in attrs.items()])
         text = f"""
             WITH slice AS (SELECT 
             *
@@ -1171,14 +1562,18 @@ class Emploee_spread_db():
                 FROM КадроваяИстория
             ) AS ranked
             WHERE rn = 1 
-              AND Событие != 'Увольнение'
+              AND Событие != 'Увольнение' or ФизическоеЛицо_Key = "b624edae-ee3c-11e8-80d3-4ccc6a67082d"
               ORDER BY id )  
         
         SELECT {select_str} FROM  slice
-        INNER JOIN Подразделения On Подразделения.Подразделение_Key = slice.Подразделение_Key   
+        INNER JOIN places On places.Организация_Key = slice.Организация_Key   
+        INNER JOIN Подразделения On Подразделения.Подразделение_Key = slice.Подразделение_Key and   Подразделения.Организация_poki = places.poki
         INNER JOIN ФизическиеЛица On ФизическиеЛица.ФизическоеЛицо_Key = slice.ФизическоеЛицо_Key
+        INNER JOIN Должности On Должности.Ref_Key = slice.Должность_Key 
+        and Должности.Подразделение_Key = slice.Подразделение_Key  and Должности.Организация_Key = slice.Организация_Key
+        
     """
-        return CSQ.custom_request_c(CFG.Config.project.db_users,text,rez_dict=True)
+        return CSQ.custom_request_c(CFG.Config.project.db_users,text,rez_dict=True, attach_dbs =CFG.Config.project.db_naryad)
 
 
 class Emploee_db():
@@ -7426,6 +7821,7 @@ class Composition(_ImportDb):
         self._dic_res_o: dict[int, ResSpec] = {}
         self.parce_row_dict(item)
 
+
     @property
     def emo_name(self)->str:
         return f"{CEMOJ.ДокументыДанные.folder_closed.symbol} {self.name}"
@@ -7470,6 +7866,8 @@ class Composition(_ImportDb):
                             inner join naryad_composit_files on naryad_composit_poz.id_file = naryad_composit_files.id
                             where naryad_composit_files.id = {self.id} """, hat_c=False, one_column=True)
         return set(list_nars).intersection(filter)
+        
+
 
     def set_not_edited(self):
         self._fl_edited = False
@@ -7540,7 +7938,7 @@ class Composition(_ImportDb):
 
     def find_poz(self,id:int)->Composition_poz|None:
         if self.pozs is None:
-            self.load_pozs()
+            raise Exception('self.pozs is None')
         for poz in self.pozs:
             if poz.id == id:
                 return poz
@@ -7577,7 +7975,9 @@ class Composition(_ImportDb):
                 res = ResSpec(poz.mk)
                 self._dic_res_o[poz.mk] = res
 
-    def load_pozs(self):
+
+
+    def load_pozs(self,mngr:ManagePartialDse):
         self.pozs:list[Composition_poz] = []
         result = CSQ.custom_request_c(CFG.Config.project.db_naryad, f"""SELECT id,
                    id_file,
@@ -7590,7 +7990,10 @@ class Composition(_ImportDb):
               FROM naryad_composit_poz WHERE id_file = {self.id}; """,
                                                    rez_dict=True)
         for item in result:
-            self.pozs.append(Composition_poz(self,item))
+            poz = Composition_poz(self,item)
+            poz.apply_mngr(mngr)
+            self.pozs.append(poz)
+
 
 class Compositions():
     def __init__(self,poki:int,filtr_nars:list[int]|None=None):
@@ -7677,6 +8080,115 @@ class Couple_nar_poz(_ImportDb):
             return Composition_poz(cmp_o, rez_comp_poz[0])
         return None
 
+class ManagePartialDse():
+    def __init__(self, name_dsp:str):
+        self._name_dsp = name_dsp
+        self.dse:dict[str,dict[int,PartialDseOld]] = {}
+        self._max_part = 0
+        self._load()
+        self._calc_total_parts()
+
+
+
+    def calc_min_part_count(self,nn:str)->int:
+        parts =  self.get_dict_parts(nn)
+        dict_parts = {}
+        for part_o in parts.values():
+            part_num = part_o.part
+            if part_num not in dict_parts:
+                dict_parts[part_num] = 0
+            dict_parts[part_num] += part_o.total_count_dse
+        min_part_count= min([_ for _ in dict_parts.values()])
+        return min_part_count
+
+    def check_proportions(self,nn:str)->bool:
+        parts = self.get_dict_parts(nn)
+        dict_parts = {}
+        for part_o in parts.values():
+            part_num = part_o.part
+            if part_num not in dict_parts:
+                dict_parts[part_num] = 0
+            dict_parts[part_num] += part_o.total_count_dse
+        min_part_count = min([_ for _ in dict_parts.values()])
+        for part_num, count_dse in dict_parts.items():
+            if count_dse % min_part_count != 0:
+                return False
+        return True
+            
+        
+    def _load(self):
+        data = CSQ.custom_request_c(CFG.Config.project.db_naryad, f"""SELECT 
+        naryad_composit_files.name, naryad_composit_files.local_num, naryad_composit_files.id as id_file,
+        naryad_composit_poz.id as id_dse, naryad_composit_poz.dse , naryad_composit_files.count * naryad_composit_poz.count as total 
+        FROM naryad_composit_poz 
+        INNER JOIN naryad_composit_files ON naryad_composit_files.id = naryad_composit_poz.id_file 
+            WHERE naryad_composit_files.name = "{self._name_dsp}" AND 
+            LENGTH(naryad_composit_poz.dse) - LENGTH(REPLACE(naryad_composit_poz.dse, "{PartialDseOld.SEP}", "")) 
+            >= {PartialDseOld.SEP_COUNT} ;""",rez_dict=True)
+        for row in data:
+            dse_o = PartialDseOld(row['dse'],row['id_file'],row['id_dse'],row['total'])
+            if dse_o.part is None:
+                continue
+            if dse_o.nn not in self.dse:
+                self.dse[dse_o.nn] = {}
+            ids = (dse_o.id_f,dse_o.id_dse)
+            self.dse[dse_o.nn][ids] = dse_o
+            if dse_o.part > self._max_part:
+                self._max_part = dse_o.part
+
+    def _calc_total_parts(self):
+        for name, dse_dict in self.dse.items():
+            for id, dse_o in dse_dict.items():
+                if dse_o.total_parts is None:
+                    self.dse[name][id].total_parts = self._max_part
+
+    def get_dict_parts(self,nn:str)->dict[int,PartialDseOld]|None:
+        try:
+            part_o = PartialDseOld(nn,'','','')
+        except ValueError:
+            return
+        if part_o.nn in self.dse:
+            return self.dse[part_o.nn]
+
+
+class PartialDse():
+    SEP = '|'
+    SEP_COUNT = 2
+    def __init__(self, nn_raw:str,id_f:int,id_dse:int,total_count_dse:int):
+        if self.SEP not in nn_raw:
+            raise ValueError(f'nn_raw={nn_raw} не содержит разделителя {self.SEP}')
+        self.nn:str = None
+        self.nn_raw:str = nn_raw
+        self.part:int|None = None
+        self.total_parts:int|None = None
+        self.id_f:int|None = id_f
+        self.id_dse:int|None = id_dse
+        self.total_count_dse:int|None = total_count_dse
+        nn, part, total_parts = nn_raw.split(self.SEP)
+        self.nn = nn
+        self.part = int(part)
+        self.total_parts = int(total_parts)
+
+class PartialDseOld(PartialDse):
+    SEP = '('
+    SEP_COUNT = 1
+    def __init__(self, nn_raw:str,id_f:int,id_dse:int,total_count_dse:int):
+        if self.SEP not in nn_raw:
+            raise ValueError(f'nn_raw={nn_raw} не содержит разделителя {self.SEP}')
+        self.nn:str = None
+        self.nn_raw: str = nn_raw
+        self.part:int|None = None
+        self.total_parts:int|None = None
+        self.id_f: int | None = id_f
+        self.id_dse: int | None = id_dse
+        self.total_count_dse: int | None = total_count_dse
+        self.nn, wet_row = nn_raw.split(self.SEP)
+        pref = wet_row.split(')')[0]
+        if not F.is_numeric(pref):
+            self.part = None
+        else:
+            self.part = int(pref)
+
 
 class Composition_poz(_ImportDb):
     ALIASES = {
@@ -7715,7 +8227,8 @@ class Composition_poz(_ImportDb):
         self.parce_row_dict(item)
         self.aviable_to_composite:int|None = None
         self.aviable_to_create:int|None = None
-        self._load_nn_hand_compare()
+        self.count_by_mk:int|None = None
+        self.parts:dict[tuple,PartialDseOld]|None =None
         self._load_couples()
         self._calc_finished()
         self.update_nn_hand_compare()
@@ -7724,11 +8237,16 @@ class Composition_poz(_ImportDb):
     def res(self)->ResSpec|None:
         return self.parent._dic_res_o.get(self.mk,None)
 
-
     @property
     def nn_compare(self)->str:
         if self.nn_hand_compare:
             return self.nn_hand_compare
+        if self.parts:
+            my_part = self.my_part()
+            if my_part is None:
+                CQT.show_message('Ошибка','Не найдена часть для сравнения')
+                return ''
+            return my_part.nn
         return self.nn
 
     @property
@@ -7759,6 +8277,14 @@ class Composition_poz(_ImportDb):
             if key == "dse":
                 self._calc_nn_naim()
 
+    def my_part(self)->PartialDseOld|None:
+        key = (self.id_file, self.id)
+        my_part = self.parts.get((self.id_file, self.id), None)
+        return my_part
+
+    def apply_mngr(self,mngr:ManagePartialDse):
+        self.parts = mngr.get_dict_parts(self.nn)
+
     def update_nn_hand_compare(self):
         if self.id_dse_mk_hand_compare:
             res = self.res
@@ -7771,11 +8297,13 @@ class Composition_poz(_ImportDb):
         self.update_nn_hand_compare()
         data = F.get_all_attrs_with_properties(self)
         data = {k:v for k,v in data.items() if k in self.ALIASES}
-
+        emoj_parts = ''
+        if self.parts:
+            emoj_parts = " " + CEMOJ.ДокументыДанные.parts.symbol
         data['pr_py'] = '-'.join([self.proj, self.py])
         data['is_coupled'] = CEMOJ.ОборудованиеИнструменты.link.symbol if data['is_coupled'] else ''
         data['finished'] = CEMOJ.СтатусыПроизводства.success.symbol if data['finished'] else ''
-        data['dse'] = f"{CEMOJ.ОперацииПроизводства.dse.symbol} {data['dse']}"
+        data['dse'] = f"{CEMOJ.ОперацииПроизводства.dse.symbol} {data['dse']}{emoj_parts}"
         data['deleted'] = CEMOJ.СтатусыПроизводства.alert.symbol if data['deleted'] else ''
         data['nn_hand_compare'] = data['nn_hand_compare'] if data['nn_hand_compare'] else ''
         data = F.sort_dict_by_sample(data,self.ALIASES)
@@ -7860,6 +8388,8 @@ class Composition_poz(_ImportDb):
     def add_associated_dse(self,snum_nar:int, id_dse:int, count_nar:int,n_oper:str,с_oper:str)->bool:
         id_poz = self.id
         data = [id_poz,snum_nar,count_nar,id_dse,n_oper,с_oper]
+
+
         rez = CSQ.custom_request_c(CFG.Config.project.db_naryad,f"""
         INSERT INTO naryad_composit_poz_snum_nars 
                               (
@@ -7882,9 +8412,6 @@ class Composition_poz(_ImportDb):
         self.parent.recalc_errors()
         return True
 
-
-    def _load_nn_hand_compare(self):
-        pass
 
 
     def _load_couples(self):
@@ -8047,6 +8574,14 @@ class Composition_poz(_ImportDb):
         self.aviable_to_create = count
         return count
 
+    @CQT.onerror
+    def calc_count(self, *args)->int:
+        template = self.calc_all_templ()
+        count = sum([_['Количество'] for _ in template])
+        self.count_by_mk = count
+        return count
+
+
     def calc_composite_create_templ(self: Composition_poz) -> list[dict]:
         template = []  # Naryads(165205,CFG.Config.project.db_naryad,None,CFG.Config.project.db_users)
         res = ResSpec(self.mk)
@@ -8078,6 +8613,38 @@ class Composition_poz(_ImportDb):
                         'Доступно': available,
                         'Выбрано шт.': ''
                     })
+        return template
+
+    def calc_all_templ(self: Composition_poz) -> list[dict]:
+        template = []  # Naryads(165205,CFG.Config.project.db_naryad,None,CFG.Config.project.db_users)
+        res = ResSpec(self.mk)
+        for dse in res.data:
+            id = dse.Номерпп
+            if self.id_dse_mk_hand_compare:
+                if id != self.id_dse_mk_hand_compare:
+                    continue
+            if not dse.Номенклатурный_номер == self.nn_compare:
+                continue
+            for oper in dse.Операции:
+                if not oper.Опер_код == self.parent.oper_code:
+                    continue
+
+                template.append({
+                    'МК': res.mk.Пномер,
+                    '_ДСЕ ID': dse.Номерпп,
+                    'ДСЕ Наим.': dse.Наименование,
+                    'ДСЕ НН': dse.Номенклатурный_номер,
+                    'Опер. Код': oper.Опер_код,
+                    'Опер. Наименование': oper.Опер_наименование,
+                    'Опер. Номер': oper.Опер_номер,
+                    'Опер. Tпз': oper.Опер_Тпз,
+                    'Опер. Tшт': oper.Опер_Тшт_ед,
+                    'КОИД': oper.Опер_КОИД,
+                    '_Опер. Проф.Код': oper.Опер_профессия_код,
+                    '_Опер. Проф.': oper.Опер_профессия_наименование,
+                    'Количество': dse.Количество,
+                    'Выбрано шт.': ''
+                })
         return template
 
     def upload(self):
@@ -11664,10 +12231,9 @@ def create_nar_prosoy(fio:str, primech, koef, dop_prim_prost='', num_bad_bar='',
         comment = f"({dop_prim_prost.strip()})" if dop_prim_prost.strip() else ""
         line = [pk_kpl, pk_mk, F.now(), glob_login,
                 f'Финишный ОТК {comment} по мк {pk_mk}', int(0), dict_status_out[2],int(num_bad_bar),nom_new_nar, code_category, pk_mk, pk_remark]
-        dict_id_new_vnepl: dict[str] = CSQ.custom_request_c(CFG.Config.project.db_naryad, f"""
-        INSERT INTO jur_vnepl ("Кплан_номер", "МК", "Дата", "ФИО",
-         "Запрос", "Кплан_номер", "Статус", "Номер_наряда_с_ошибкой", "Номер_внепланового_наряда", "code_category", "Номер_нов_мк", "Журнал_замеч_номер")
-                                      VALUES ({CSQ.questions_for_mask(line)}) RETURNING "Пномер";""", list_of_lists_c=[line], rez_dict=True, one=True)
+        dict_id_new_vnepl: dict[str] = CSQ.custom_request_c(CFG.Config.project.db_naryad, f"""INSERT INTO jur_vnepl (Кплан_номер, МК, Дата, ФИО,
+         Запрос, Кплан_номер, Статус, Номер_наряда_с_ошибкой, Номер_внепланового_наряда, code_category, Номер_нов_мк, Журнал_замеч_номер)
+                                      VALUES ({CSQ.questions_for_mask(line)}) RETURNING Пномер;""", list_of_lists_c=[line], rez_dict=True, one=True)
     if dict_id_new_vnepl:
         if CFG.Config.place.poki == 1:
             tbl = gen_tbl_new_vnepl_for_b24(dict_id_new_vnepl['Пномер'])
@@ -11787,7 +12353,7 @@ def check_code_erp_for_pki_dse(self, lst_xml):
 
         response = CSQ.custom_request_c(
             F.scfg('nomenklatura_erp'),
-            'SELECT "Наименование", "Вид", "Код" FROM nomen WHERE "На_удаление" = 0;',
+            'SELECT Наименование, Вид, Код FROM nomen WHERE На_удаление = 0',
             rez_dict=True
         )
         for row in range(tbl.rowCount()):
@@ -11834,10 +12400,10 @@ def XML_get_unavailable_xml_types(xml_head: int):
     db_nomen = CFG.Config.project.db_nomen
     where = ''
     if xml_head == 1:
-        where = ' and "resxml_head_state" != 1'
+        where = ' and resxml_head_state != 1'
     return CSQ.custom_request_c(
         db_nomen,
-        f'SELECT "Имя" FROM "ТипДсе" WHERE poki = {poki} AND "Вкл" = 0{where}',
+        f'SELECT Имя FROM ТипДсе WHERE poki = {poki} AND Вкл = 0{where}',
         hat_c=False,
         one_column=True
     )
@@ -11939,8 +12505,8 @@ def check_id_peresil(self,nom_nar:int,parol_from_user,kod_oper=1):
             return False
         return True
 
-    nar_info = CSQ.custom_request_c(self.db_naryd, f'''SELECT naryad."Операции", mk."check_execute_opers" FROM naryad 
-     INNER JOIN mk ON naryad."Номер_мк" = mk."Пномер" WHERE naryad."Пномер" = {nom_nar};''',rez_dict=True)
+    nar_info = CSQ.custom_request_c(self.db_naryd, f'''SELECT naryad.Операции, mk.check_execute_opers FROM naryad 
+     INNER JOIN mk ON naryad.Номер_мк = mk.Пномер WHERE naryad.Пномер == {nom_nar}''',rez_dict=True)
     if nar_info == False or nar_info== None:
         CQT.msgbox(f'ОШибка загрузки наряда')
         return False
@@ -11977,7 +12543,7 @@ def get_list_fio_otk(db_naryd,row_fio_or_nars,):
         return row_fio_or_nars
     else:
         list_fio_otk = CSQ.custom_request_c(db_naryd,
-                                            f"""SELECT naryad."ФИО", naryad."ФИО2" FROM naryad WHERE naryad."Пномер" in ({row_fio_or_nars})""",
+                                            f"""SELECT naryad.ФИО , naryad.ФИО2 FROM naryad WHERE naryad.Пномер in ({row_fio_or_nars})""",
                                             rez_dict=True)
         if list_fio_otk == None or len(list_fio_otk) == 0:
             return ''
@@ -12114,9 +12680,9 @@ def check_execution_previous_operations(self,nom_nar,lvl_check=1,check_by_vip=Tr
                         postfix = f'не ЗАВЕРШЕНЫ работы! не выполнен наряд №: '
                     if oper['Опер_колво'] > comparable:
                         if check_by_vip:
-                            list_naryads = CSQ.custom_request_c(self.db_naryd,f"""SELECT naryad."Пномер" FROM naryad 
-                            WHERE naryad."Номер_мк" in (SELECT naryad."Номер_мк" FROM naryad WHERE naryad."Пномер" = {nom_nar}) 
-                            AND naryad."Задание" LIKE '%%{f"{pred_oper['prev_oper_nom']}${pred_oper['prev_oper_name']}"}%%';""",hat_c=False,one_column=True)
+                            list_naryads = CSQ.custom_request_c(self.db_naryd,f"""SELECT naryad.Пномер FROM naryad 
+                            WHERE naryad.Номер_мк in (SELECT naryad.Номер_мк FROM naryad WHERE naryad.Пномер = {nom_nar}) 
+                            AND naryad.Задание LIKE '%{f"{pred_oper['prev_oper_nom']}${pred_oper['prev_oper_name']}"}%'""",hat_c=False,one_column=True)
                             postfix += f" {','.join([str(_) for _ in list_naryads])}"
                         msg =  f"""Для ДСЕ "{oper['ДСЕ']}", операция "{oper['Операции_номер']}  {oper['Операции_имя']} " не выполнено условие: \n
                         на предыдущей операции в ДСЕ 
@@ -12144,9 +12710,9 @@ def check_execution_previous_operations(self,nom_nar,lvl_check=1,check_by_vip=Tr
             rez_list.append({'ДСЕ':dse,'ДСЕ_ID':dse_id,'Операции_номер':oper_nom,'Операции_имя':oper_name,'Опер_колво':kolvo})
         return rez_list
 
-    query = f"""SELECT naryad."ДСЕ_ID", naryad."Операции", naryad."Опер_колво", naryad."Номер_мк", 
-    naryad."ДСЕ", naryad."Внеплан", mk."check_execute_opers" FROM naryad  INNER JOIN mk 
-    ON mk."Пномер" = naryad."Номер_мк" WHERE naryad."Пномер" = {nom_nar}"""
+    query = f"""SELECT naryad.ДСЕ_ID, naryad.Операции, naryad.Опер_колво, naryad.Номер_мк, 
+    naryad.ДСЕ, naryad.Внеплан, mk.check_execute_opers FROM naryad  INNER JOIN mk 
+    ON mk.Пномер = naryad.Номер_мк WHERE naryad.Пномер = {nom_nar}"""
     nar = CSQ.custom_request_c(self.db_naryd,query,rez_dict=True,one=True)
 
     if nar['Внеплан'] != 0:
@@ -12157,7 +12723,6 @@ def check_execution_previous_operations(self,nom_nar,lvl_check=1,check_by_vip=Tr
         return True
     res = load_res(nar['Номер_мк'])
     list_opers = nar_to_dict(nar)
-    #query_acces = CSQ.custom_request_c(self.db_naryd,f'''SELECT * FROM permissions WHERE action == "cms_list_necessarily_check_opers";''',rez_dict=True)
     for oper in list_opers:
         rez_check_oper = check_oper(self,oper,lvl_check)
     if len(list_notes) > 0 :
@@ -13596,9 +14161,10 @@ def load_res(nom_mk:int, conn = '',cur= '',db_resxml='',self=None,
     def update_name_rc_and_etaps(res, dict_etaps:dict=None):
         if dict_etaps is None:
             etaps = CSQ.custom_request_c(db_users,
-                    f"""SELECT etaps."name" as "etaps_name", rab_c."Код" , rab_c."Имя" FROM rab_c 
-                    INNER JOIN etaps ON etaps.s_num = rab_c.etaps_num 
-                    WHERE rab_c.poki = {poki};""",
+                    f"""SELECT etaps.name as etaps_name, rab_c."Код" , rab_c."Имя" FROM rab_c 
+                    INNER JOIN etaps ON 
+                    etaps.s_num = rab_c.etaps_num 
+                    WHERE rab_c.poki = {poki}""",
                             attach_dbs = db_naryad,rez_dict=True)
             dict_etaps = F.deploy_dict_c(etaps,'Код')
 
@@ -13815,7 +14381,7 @@ def agregate_m_cld():
 
         data = CSQ.custom_request_c(
             db_kplan,
-            f"""SELECT * FROM "{tbl}";""",
+            f"SELECT * FROM {tbl}",
             rez_dict=False
         )
 
@@ -15003,7 +15569,8 @@ def load_csv(self,db_nomen,db_kplan,list_mk:list|None=None):
                 continue
 
             otmetka = "_".join([F.user_name(),F.now() , put_nppy_mk])
-            custom_request_c = f'''UPDATE mk SET "Статус_ЧПУ" = ? WHERE "Пномер" = ?'''
+            if not CFG.Config.user_config.is_developer:
+                custom_request_c = f'''UPDATE mk SET "Статус_ЧПУ" = ? WHERE "Пномер" = ?'''
              # spis = CSQ.list_from_db_sql_c(F.bdcfg('Naryad'), 'mk', False, True)
             perem = [otmetka,nom_mk]
             CSQ.custom_request_c(self.db_naryd, custom_request_c, hat_c= True, list_of_lists_c = perem)
@@ -16294,9 +16861,27 @@ def prepare_empty_line_c(self,table):
             spis_ogk[i] = ''
     return [spis_ogk]
 
+def user_access_ext(rule:str=None, msg:bool = True)->bool:
+    dolgn_ref = CFG.Config.user_config.User.current_Должность_Key
+    dolgn_name = CFG.Config.user_config.User.Должность
+    poki = CFG.Config.place.poki
+
+    rez = CSQ.custom_request_c(CFG_prj.db_naryad, f'''SELECT * FROM permissions_ext 
+    WHERE poki = {poki} and ref_dolgn = '{dolgn_ref}' and rule_name == '{rule}'
+                ;''', rez_dict=True, one=True)
+    if not rez:
+        if msg:
+            CQT.msgbox(f'{CEMOJ.Эмоции.confused.symbol} Нет доступа для пользователя:\n{poki}-{dolgn_name}')
+        return False
+    return True
+
 def user_access(db:str=None,rule:str=None,fio:str=None, msg:bool = True, rez = '')->bool:
-    if CFG.Config.user_config.is_developer:
-        return True
+    #if CFG.Config.user_config.is_developer:
+    #    return True
+    return user_access_ext(rule,msg)#TECT новой таблицы по должностям
+
+
+
     if db is None:
         db = CFG.Config.project.db_naryad
     if fio is None:
@@ -18494,3 +19079,7 @@ def get_start_stop_journal_pairs(
     )
     return CSQ.custom_request_c(CFG.Config.project.db_naryad,
                          query, rez_dict=True, attach_dbs=CFG.Config.project.db_users)
+
+
+def permission_change(app_self,*args):
+    pass#TODO вызов sub_app_mngr_access
