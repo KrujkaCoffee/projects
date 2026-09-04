@@ -1476,7 +1476,7 @@ class Info():
                 edit_draft.accept_values(rez)
                 if binding_state['value'] is not None:
                     binding_manager.apply_binding(edit_draft.info, binding_state['value'])
-                    return edit_draft
+                return edit_draft
             new_attr: _Attribute = _Attribute.attr(None, type_val=rez['type'], alias=rez['alias'],
                                                    attr_view=rez['attr_view'],
                                                    description=rez['description'], protected=rez['protected'],
@@ -1715,6 +1715,7 @@ class _BaseEntity():
                         delattr(child, attr_name)
                     continue
                 getattr(child, attr_name).info = previous_info
+            raise
         return changes
 
 

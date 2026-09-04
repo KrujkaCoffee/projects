@@ -36,7 +36,7 @@ class CatalogEndpointEditor(QtWidgets.QGroupBox):
             choices: typing.Iterable[CatalogFieldChoice],
             parent=None
     ):
-        super().__init__(parent)
+        super().__init__(title, parent)
 
         self.__choices = tuple(choices) # todo валидацию
 
@@ -65,10 +65,10 @@ class CatalogEndpointEditor(QtWidgets.QGroupBox):
 
     def set_provider(self, provider: AB.SourceProvider) -> bool:
         try:
-            provder = AB.SourceProvider(provider)
+            provider = AB.SourceProvider(provider)
         except Exception:
             return False
-        index = self.cmb_provider.findData(provder)
+        index = self.cmb_provider.findData(provider)
         if index < 0:
             return False
         self.cmb_provider.setCurrentIndex(index)
@@ -87,8 +87,8 @@ class CatalogEndpointEditor(QtWidgets.QGroupBox):
                 provider,
                 provider
             ))
-            self.__set_items(self.cmb_provider, providers)
-            self.__reload_sources()
+        self.__set_items(self.cmb_provider, providers)
+        self.__reload_sources()
 
     def __reload_sources(self):
         provider = self.cmb_provider.currentData()
@@ -101,6 +101,7 @@ class CatalogEndpointEditor(QtWidgets.QGroupBox):
                 continue
             if endpoint.source_key in seen:
                 continue
+            seen.add(endpoint.source_key)
             sources.append((
                 choice.source_text,
                 choice.entity_text
@@ -122,6 +123,7 @@ class CatalogEndpointEditor(QtWidgets.QGroupBox):
                 continue
             if endpoint.entity_key in seen:
                 continue
+            seen.add(endpoint.entity_key)
             entities.append((
                 choice.entity_text,
                 endpoint.entity_key
@@ -239,6 +241,7 @@ class CatalogLinkEditor(QtWidgets.QDialog):
         self.__select_initial_providers()
         self.__refresh_state()
 
+    @property
     def link_spec(self) -> CL.CatalogLinkSpec | None:
         return self.__link_spec
 
@@ -250,6 +253,8 @@ class CatalogLinkEditor(QtWidgets.QDialog):
         return manager.create(
             self.left_editor.current_endpoint(),
             self.right_editor.current_endpoint(),
+            caption=self.edt_caption.text(),
+            cardinality=self.cmb_cardinality.currentData(),
         )
 
     def __select_initial_providers(self) -> None:
@@ -373,4 +378,4 @@ if __name__ == '__main__':
     dialog = CatalogLinkEditor(demo())
 
     if dialog.exec() == QtWidgets.QDialog.Accepted:
-        print(dialog.link_spec.to_doct())
+        print(dialog.link_spec.to_dict())

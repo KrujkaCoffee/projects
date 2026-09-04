@@ -37,7 +37,7 @@ class CatalogLinkEndpoint:
 
     @property
     def lookup_key(self) -> tuple[str, str, str, str]:
-        return (*self.calog_key, self.field_key)
+        return (*self.catalog_key, self.field_key)
 
     @property
     def display_name(self) -> str:

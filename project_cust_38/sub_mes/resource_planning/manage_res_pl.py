@@ -579,7 +579,6 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
                             status=AB.BindingValidationStatus.UNAVAILABLE,
                             warnings=('Проверка завершилась внутренней ошибкой',)
                         )
-                    validation_result.warnings = tuple(f'test{r}' for r in range(23))
                     print(validation_result) # todo перенести на cust emoji
                     status_symbol = {
                         AB.BindingValidationStatus.VALID: '✅',
