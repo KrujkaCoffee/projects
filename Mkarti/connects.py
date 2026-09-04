@@ -73,12 +73,16 @@ def combobox(self: mywindow):
 
 def check_box(self: mywindow):
     ui = self.ui
+    ui.chk_hide_filte_header.blockSignals(True)
+    ui.chk_hide_filte_header.setChecked(False)
+    ui.chk_hide_filte_header.blockSignals(False)
     ui.chk_kpl_zaversch.blockSignals(True)
     ui.chk_kpl_zaversch.setChecked(False)
     ui.chk_kpl_zaversch.blockSignals(False)
     ui.chk_kpl_groups.blockSignals(True)
     ui.chk_kpl_groups.setChecked(CMS.load_tmp_stukt('chk_kpl_groups', False))
     ui.chk_kpl_groups.blockSignals(False)
+    ui.chk_hide_filte_header.clicked.connect(lambda: KPL.set_params_file_header(self))
     ui.chk_kpl_zaversch.clicked.connect(lambda: KPL.set_params_kpl(self))
     ui.chk_kpl_groups.clicked.connect(lambda: KPL.set_groups_kpl(self))
     ui.chk_paint_dates.clicked.connect(lambda: KPL.set_chk_paint_dates(self))

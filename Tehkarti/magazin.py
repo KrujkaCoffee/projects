@@ -121,12 +121,12 @@ def update_magaz(self):
     if self.ui.tbl_magaz.currentColumn() == nk_teg:
         CQT.list_from_wtabl_c(self.ui.tbl_magaz,sep='',hat_c=True)
         CSQ.custom_request_c(self.putf_magaz,
-                   f"""UPDATE blocks SET Теги = '{self.ui.tbl_magaz.item(nom_row, nk_teg).text()}' 
-                                            WHERE Пномер = {pnom} AND poki = {self.place.poki};""")
+                   f"""UPDATE blocks SET "Теги" = '{self.ui.tbl_magaz.item(nom_row, nk_teg).text()}' 
+                                            WHERE "Пномер" = {pnom} AND poki = {self.place.poki};""")
     if self.ui.tbl_magaz.currentColumn() == nk_sort_c:
         CSQ.custom_request_c(self.putf_magaz,
-                   f"""UPDATE blocks SET Вид = '{self.ui.tbl_magaz.item(nom_row, nk_sort_c).text()}' 
-                                                                WHERE Пномер = {pnom} AND poki = {self.place.poki};""")
+                   f"""UPDATE blocks SET "Вид" = '{self.ui.tbl_magaz.item(nom_row, nk_sort_c).text()}' 
+                                                                WHERE "Пномер" = {pnom} AND poki = {self.place.poki};""")
 
 def magazin_na_del(self):
     tbl = self.ui.tbl_magaz
@@ -150,7 +150,7 @@ def magazin_na_del(self):
             for i in range(len(list_check)):
                 custom_request_c = f'''
                     DELETE FROM blocks
-                    WHERE Пномер='{list_check[i]}' AND poki = {self.place.poki}; '''
+                    WHERE "Пномер" = '{list_check[i]}' AND poki = {self.place.poki}; '''
                 CSQ.custom_request_c('', custom_request_c, conn)
             CSQ.close_bd(conn)
             load_magaz(self)
@@ -194,8 +194,8 @@ def magazin_primenit(self:mywindow,*args):
     conn, cur = CSQ.connect_bd(self.putf_magaz)
 
     custom_request_c = f'''
-                                SELECT Пномер, Запись FROM blocks
-                                WHERE Пномер IN ({CSQ.prepare_list_to_tuple(list_check)}) AND poki = {self.place.poki}; '''
+                                SELECT "Пномер", "Запись" FROM blocks
+                                WHERE "Пномер" IN ({CSQ.prepare_list_to_tuple(list_check)}) AND poki = {self.place.poki}; '''
     query = CSQ.custom_request_c('', custom_request_c, conn,rez_dict=True)
     CSQ.close_bd(conn)
     if query:

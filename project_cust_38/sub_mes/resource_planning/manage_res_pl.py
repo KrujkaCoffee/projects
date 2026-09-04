@@ -40,6 +40,8 @@ import project_cust_38.sub_mes.resource_planning.clses as CLSS
 from project_cust_38.sub_mes.resource_planning import planner_mes
 from project_cust_38.sub_mes.resource_planning import planner_gantt
 from project_cust_38.sub_mes.resource_planning import attribute_binding as AB
+from project_cust_38.sub_mes.resource_planning import catalog_choices as CCHO
+from project_cust_38.sub_mes.resource_planning import catalog_editor as CEDIT
 
 from typing import  TYPE_CHECKING
 
@@ -75,7 +77,33 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
 
 
         _con.load_connects(self)
+        self.__install_catalog_links_menu()
 
+    def __install_catalog_links_menu(self):
+        self.__last_catalog_link_draft = None
+
+        self.catalog_links_menu = self.ui.menubar.addMenu('Связи')
+        self.new_catalog_link_action = self.catalog_links_menu.addAction('Новая связь справочников...')
+        self.new_catalog_link_action.setObjectName('action_new_catalog_link')
+        self.new_catalog_link_action.triggered.connect(self.open_catalog_link_editor)
+
+    def __load_catalog_field_choices(self):
+        choices = []
+        errors = []
+        try:
+            ...
+        except Exception as error:
+            ...
+        try:
+            ...
+        except Exception as error:
+            ...
+        return tuple(choices), tuple(errors)
+
+    def open_catalog_link_editor(self, checked: bool = False):
+        choices, errors = self.__load_catalog_field_choices()
+        if not choices:
+            ...
 
     def _____________sub__________________(self):
         pass

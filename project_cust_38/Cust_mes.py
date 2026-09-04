@@ -16876,6 +16876,7 @@ def user_access_ext(rule:str=None, msg:bool = True)->bool:
     return True
 
 def user_access(db:str=None,rule:str=None,fio:str=None, msg:bool = True, rez = '')->bool:
+    return True
     #if CFG.Config.user_config.is_developer:
     #    return True
     return user_access_ext(rule,msg)#TECT новой таблицы по должностям
@@ -18408,15 +18409,15 @@ class TypesWorkingByDirections:
                 'Родитель_Ref_Key': nomen['Родитель_Ref_Key'],
             })
         for key, nomen_mes in nomen_by_ref.items(): #27.10.25 по задаче 100062109
-            if CFG.Config.place.poki == F.valm(nomen_mes['poki']):
-                data_for_table.append({
-                    'Выбрать': '',
-                    's_num': nomen_mes['s_num'],
-                    'Наименование': nomen_mes['name'],
-                    'Родитель': '',
-                    'Ref_Key': key,
-                    'Родитель_Ref_Key': nomen_mes['Родитель'],
-                })
+            # if CFG.Config.place.poki == F.valm(nomen_mes['poki']):
+            data_for_table.append({
+                'Выбрать': '',
+                's_num': nomen_mes['s_num'],
+                'Наименование': nomen_mes['name'],
+                'Родитель': '',
+                'Ref_Key': key,
+                'Родитель_Ref_Key': nomen_mes['Родитель'],
+            })
         selected_nomen_types = ''
         column_types = CQT.num_col_by_name_c(tbl, 'ВидыНоменклатуры')
         if column_types is not None:

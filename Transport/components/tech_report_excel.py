@@ -605,7 +605,9 @@ def sort_key_params(name: str, params: dict):
     f = _extract_freq(h, c)
     m = trail_int_re.search(str(name))
     idx = int(m.group(1)) if m else None
+    is_a_weighted = base_h == "полоса а"
     return (
+        1 if is_a_weighted else 0,
         base_h,
         0 if f is not None else 1,
         f if f is not None else 0.0,

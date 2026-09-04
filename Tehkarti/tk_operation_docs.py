@@ -342,15 +342,15 @@ class OperationDocs:
 @CQT.onerror
 def db_files_nalich(self, put_file,nom_tk):
     def update_data(size, hesh, bin_file, date, usr, pnom):
-        CSQ.custom_request_c(self.db_files, f"""UPDATE reestr SET (size, hesh, file, Date_edit, usr)
+        CSQ.custom_request_c(self.db_files, f"""UPDATE reestr SET (size, hesh, file, "Date_edit", usr)
                          = (?,?,?,?,?) WHERE Пномер == {pnom};""",
                    list_of_lists_c=[[size, hesh, bin_file, date, usr]])
         return
     def add_data(size, hesh, bin_file, date, usr):
-        CSQ.custom_request_c(self.db_files, """INSERT INTO reestr(size, hesh, file, Date_edit, usr)
+        CSQ.custom_request_c(self.db_files, """INSERT INTO reestr(size, hesh, file, "Date_edit", usr)
                          VALUES (?,?,?,?,?);""",
                    list_of_lists_c=[[size, hesh, bin_file, date, usr]])
-        query = CSQ.custom_request_c(self.db_files, f"""SELECT * FROM reestr WHERE size == '{size}' and hesh == '{hesh}'""",rez_dict=True)
+        query = CSQ.custom_request_c(self.db_files, f"""SELECT * FROM reestr WHERE size = '{size}' and hesh = '{hesh}'""",rez_dict=True)
         if query == []:
             return
         return query[0]['Пномер']
@@ -391,10 +391,10 @@ def db_files_nalich(self, put_file,nom_tk):
                     выход
                     """
 
-    custom_request_c = f"""SELECT * FROM reestr WHERE size == {size} and hesh == '{hesh}'"""
+    custom_request_c = f"""SELECT * FROM reestr WHERE size = {size} and hesh = '{hesh}'"""
     query = CSQ.custom_request_c(self.db_files, custom_request_c, rez_dict=True)
     if query == []: # если нет файла
-        custom_request_c2 = f"""SELECT * FROM names WHERE name == '{name}'"""
+        custom_request_c2 = f"""SELECT * FROM names WHERE name = '{name}'"""
         query2 = CSQ.custom_request_c(self.db_files, custom_request_c2, rez_dict=True)
         if query2 == []:#если имя не существует
             nom = add_data(size, hesh, bin_file, F.now("%Y-%m-%d %H-%M"), F.user_name())
@@ -406,7 +406,7 @@ def db_files_nalich(self, put_file,nom_tk):
 
         else:#если имя существует
             nom = query2[0]['Пномер']
-            custom_request_c3 = f"""SELECT t_kard_name, Пномер FROM t_kards WHERE file_name == '{name}'"""
+            custom_request_c3 = f"""SELECT t_kard_name, Пномер FROM t_kards WHERE file_name = '{name}'"""
             query3 = CSQ.custom_request_c(self.db_files, custom_request_c3, rez_dict=True)
             list_cards = [_['t_kard_name'] for _ in query3]
             if not CQT.msgboxgYN(f'файл с именем {name} уже существует, но с содержимое файла отличается от предложенного.\n'
@@ -420,7 +420,7 @@ def db_files_nalich(self, put_file,nom_tk):
 
     else:#если есть файл
         nom_data = query[0]['Пномер']
-        custom_request_c2 = f"""SELECT * FROM names WHERE nom_data == {nom_data}"""
+        custom_request_c2 = f"""SELECT * FROM names WHERE nom_data = {nom_data}"""
         query2 = CSQ.custom_request_c(self.db_files, custom_request_c2, rez_dict=True)
         if query2 == []:#если имя отсутсвует
             add_name(nom_data, name, F.now("%Y-%m-%d %H-%M"), F.user_name())
@@ -429,7 +429,7 @@ def db_files_nalich(self, put_file,nom_tk):
             names_from_db = [_['name'] for _ in query2]
             if not name in names_from_db:#если имя не совпадает
                 list_other_names = CSQ.custom_request_c(self.db_files,f"""SELECT names.name, t_kards.t_kard_name FROM names INNER JOIN 
-                t_kards ON  t_kards.file_name = names.name WHERE names.nom_data == {nom_data}""")
+                t_kards ON t_kards.file_name = names.name WHERE names.nom_data = {nom_data}""")
                 if not CQT.msgboxgYN(f'Файл уже существует с другим наименованием :\n{pprint.pformat(list_other_names)}.'
                                  f' \n\n Вероятно это ошибка!\n\n Следует ли '
                                  f'вносить этому файлу дополнительное имя в БД?',icon = QtWidgets.QMessageBox.Warning):
@@ -453,7 +453,7 @@ def db_files_load(self, name, available_ext = None):
         FROM reestr 
         INNER JOIN names on names.nom_data = reestr.Пномер 
         LEFT JOIN storage_types ON storage_types.id = reestr.storage
-        WHERE names.name == '{name}'"""
+        WHERE names.name = '{name}'"""
     query = CSQ.custom_request_c(CFG.Config.project.db_files, custom_request_c,rez_dict=True, one=True)
     if not isinstance(query, dict):
         return False
@@ -479,14 +479,14 @@ def db_files_load(self, name, available_ext = None):
 
 @CQT.onerror
 def db_files_del(self,name,nom_tk = None):
-    list_uses_tk = CSQ.custom_request_c(self.db_files,f"""SELECT * FROM t_kards WHERE file_name == '{name}'""",rez_dict=True)
+    list_uses_tk = CSQ.custom_request_c(self.db_files,f"""SELECT * FROM t_kards WHERE file_name = '{name}'""",rez_dict=True)
     if len(list_uses_tk) == 1 or len(list_uses_tk) == 0:
-        list_uses_names = CSQ.custom_request_c(self.db_files, f"""SELECT * FROM names WHERE name == '{name}'""", rez_dict=True)
+        list_uses_names = CSQ.custom_request_c(self.db_files, f"""SELECT * FROM names WHERE name = '{name}'""", rez_dict=True)
         if len(list_uses_names) == 1:
             nom_data = list_uses_names[0]['nom_data']
-            datas = CSQ.custom_request_c(self.db_files, f"""SELECT * FROM names WHERE nom_data == '{nom_data}'""", rez_dict=True)
+            datas = CSQ.custom_request_c(self.db_files, f"""SELECT * FROM names WHERE nom_data = '{nom_data}'""", rez_dict=True)
             if len(datas)==1:
-                CSQ.custom_request_c(self.db_files, f"""DELETE FROM reestr WHERE Пномер == {nom_data}""")
-        CSQ.custom_request_c(self.db_files, f"""DELETE FROM names WHERE name == '{name}'""")
-    CSQ.custom_request_c(self.db_files,f"""DELETE FROM t_kards WHERE file_name == '{name}'""")
+                CSQ.custom_request_c(self.db_files, f"""DELETE FROM reestr WHERE Пномер = {nom_data}""")
+        CSQ.custom_request_c(self.db_files, f"""DELETE FROM names WHERE name = '{name}'""")
+    CSQ.custom_request_c(self.db_files,f"""DELETE FROM t_kards WHERE file_name = '{name}'""")
     return

@@ -85,9 +85,9 @@ def outplan_ok(self:mywindow, *args, **kwargs):
 
     line = [int(nom_mk), F.now(), self.glob_login, msg_inic.lower(), int(nom_kpl), dict_status_out[1],
             str_list_selection_naruad]
-    dict_id_new_vnepl: dict[str] = CSQ.custom_request_c(self.db_naryd, f"""INSERT INTO jur_vnepl (МК, Дата, ФИО, Запрос,
-                                            Кплан_номер, Статус, Номер_наряда_с_ошибкой)
-                                              VALUES ({CSQ.questions_for_mask(line)}) RETURNING Пномер;""", list_of_lists_c=[line], rez_dict=True, one=True)
+    dict_id_new_vnepl: dict[str] = CSQ.custom_request_c(self.db_naryd, f"""INSERT INTO jur_vnepl ("МК", "Дата", "ФИО", "Запрос",
+                                            "Кплан_номер", "Статус", "Номер_наряда_с_ошибкой")
+                                              VALUES ({CSQ.questions_for_mask(line)}) RETURNING "Пномер";""", list_of_lists_c=[line], rez_dict=True, one=True)
 
     send_msg(self,dict_id_new_vnepl['Пномер'],'Открытие внеплана')
     load_form(self)
@@ -99,7 +99,7 @@ def outplan_ok(self:mywindow, *args, **kwargs):
 def start_form(self:mywindow,*args,**kwargs):
     current_mk = str(self.glob_nom_mk)
     self.ui.tabWidget.setCurrentIndex(CQT.number_table_by_name_c(self.ui.tabWidget,'Внеплан'))
-    query = f"""SELECT Пномер FROM plan WHERE МК = {current_mk}"""
+    query = f"""SELECT "Пномер" FROM plan WHERE "МК" = {current_mk}"""
     rez = CSQ.custom_request_c(self.db_kplan,query,one_column=True,one=True,hat_c=False) # 11.11.25
     if rez== None or rez==False:
         CQT.msgbox(f'Ошибка запроса')
@@ -129,8 +129,16 @@ def check_nar(self,checked,row,col):
 @CQT.onerror
 def fill_table_nar(self:mywindow,nom_mk:int):
     CQT.clear_tbl(self.ui.tbl_select_nar)
-    list_nar = CSQ.custom_request_c(self.db_naryd, f"""SELECT "" as Чек, Пномер,Примечание,ФИО,ФИО2 
-     FROM naryad WHERE Внеплан = 0 and Номер_мк = {nom_mk}""",rez_dict=True)
+    list_nar = CSQ.custom_request_c(self.db_naryd, f"""SELECT 
+        '' as "Чек", 
+        "Пномер",
+        "Примечание",
+        "ФИО",
+        "ФИО2" 
+     FROM naryad WHERE "Внеплан" = 0 
+        and "Номер_мк" = {nom_mk}""",
+        rez_dict=True
+    )
     tbl = self.ui.tbl_select_nar
     CQT.fill_wtabl(list_nar,tbl,{},auto_type=False)
     for i in range(tbl.rowCount()):
@@ -232,7 +240,7 @@ def tbl_outplan_change_cell(self:mywindow, *args):
     if tbl.horizontalHeaderItem(clmn).text() == 'Примечание_цех_техн':
         snum = int(tbl.item(row, CQT.num_col_by_name_c(tbl, 'Пномер')).text())
         val = tbl.item(row, clmn).text()
-        CSQ.custom_request_c(self.db_naryd, f"""UPDATE jur_vnepl SET Примечание_цех_техн = ? WHERE Пномер = ?;""",
+        CSQ.custom_request_c(self.db_naryd, f"""UPDATE jur_vnepl SET "Примечание_цех_техн" = ? WHERE "Пномер" = ?;""",
                              list_of_lists_c=[val, snum])
         send_msg(self,snum,'Добавление комментария цехового технолога')
 
@@ -250,8 +258,8 @@ def ansver_row(self:mywindow, *args):
     dict_row = CQT.list_from_wtabl_c(tbl, '', True, rez_dict=True)[row]
 
     tmp = [F.now(),dict_row['Ответ'].strip().lower()]
-    CSQ.custom_request_c(self.db_naryd, f"""UPDATE jur_vnepl SET  (Дата_ответ, Ответ)
-       = ({CSQ.questions_for_mask(tmp)}) WHERE Пномер == {int(dict_row['Пномер'])}""", list_of_lists_c=[tmp])
+    CSQ.custom_request_c(self.db_naryd, f"""UPDATE jur_vnepl SET  ("Дата_ответ", "Ответ")
+       = ({CSQ.questions_for_mask(tmp)}) WHERE "Пномер" = {int(dict_row['Пномер'])}""", list_of_lists_c=[tmp])
     load_form(self)
     CQT.msgbox('Успешно')
 
@@ -283,8 +291,8 @@ def confirm_row(self:mywindow, *args):
         return
     tmp = [F.now()]
     snum = int(dict_row['Пномер'])
-    new_row = CSQ.custom_request_c(self.db_naryd, f"""UPDATE jur_vnepl SET  (Утверждено)
-       = ({CSQ.questions_for_mask(tmp)}) WHERE Пномер == {snum} RETURNING *""", list_of_lists_c=tmp, rez_dict=True, one=True)
+    new_row = CSQ.custom_request_c(self.db_naryd, f"""UPDATE jur_vnepl SET Утверждено
+       = {CSQ.questions_for_mask(tmp)} WHERE "Пномер" = {snum} RETURNING *""", list_of_lists_c=tmp, rez_dict=True, one=True)
 
     apply_otk_after_confirm(new_row['Кплан_номер'], new_row['code_category'], new_row['Номер_внепланового_наряда'])
     send_msg(self, snum, 'Утверждение внеплана')
@@ -293,7 +301,7 @@ def confirm_row(self:mywindow, *args):
 
 def validate_finish_otk_row(pk_vnepl: int):
     row = CSQ.custom_request_c(CFG.project.db_naryad,
-                               f'SELECT * FROM jur_vnepl WHERE Пномер = {pk_vnepl}',
+                               f'SELECT * FROM jur_vnepl WHERE "Пномер" = {pk_vnepl}',
                                rez_dict=True, one=True)
     pk_nar = row['Номер_внепланового_наряда']
     if row['code_category'] == 18:
@@ -322,8 +330,8 @@ def apply_otk_after_confirm(pk_kpl: int, code_category: int, pk_nar: int):
         if row == False:
             return
         if row:
-            custom_request_c = f'''UPDATE пл_отк  SET (Контр_покрытие_ФИО, Контр_покрытие_дата) = (?,?) 
-                        WHERE НомПл == ?;'''
+            custom_request_c = f'''UPDATE пл_отк  SET ("Контр_покрытие_ФИО", "Контр_покрытие_дата") = (?, ?) 
+                        WHERE "НомПл" = ?;'''
             param = [row['ФИО'], F.now(), pk_kpl]
             CSQ.custom_request_c(CFG.project.db_kplan, custom_request_c, list_of_lists_c=param)
 
@@ -410,8 +418,8 @@ def tbl_out_select_row(self:mywindow):
         tmp = [text]
         dict_row = CQT.get_dict_line_form_tbl(self.ui.tbl_outplan,row)
         snum = int(dict_row['Пномер'])
-        CSQ.custom_request_c(self.db_naryd, f"""UPDATE jur_vnepl SET  (Статус)
-        = ({CSQ.questions_for_mask(tmp)}) WHERE Пномер == {snum}""", list_of_lists_c=[tmp])
+        CSQ.custom_request_c(self.db_naryd, f"""UPDATE jur_vnepl SET Статус
+        = {CSQ.questions_for_mask(tmp)} WHERE "Пномер" = {snum}""", list_of_lists_c=[tmp])
         send_msg(self, snum, 'Смена статуса внеплана')
         if key in (2,3):
             tbl.removeCellWidget(row, col)
@@ -470,7 +478,7 @@ def tbl_out_select_row(self:mywindow):
         nom_kpl = int(dict_row['Кплан_номер'])
         list_mk = CSQ.custom_request_c(self.db_naryd,f"""SELECT Пномер, Номенклатура FROM mk WHERE НомКплан = {nom_kpl} and Тип in (2,5)""",hat_c=True,rez_dict=True)
         list_mk = F.deploy_dict_c(list_mk,'Пномер')
-        list_used = CSQ.custom_request_c(self.db_naryd, f"""SELECT Номер_нов_мк FROM jur_vnepl""",
+        list_used = CSQ.custom_request_c(self.db_naryd, f"""SELECT "Номер_нов_мк" FROM jur_vnepl""",
 hat_c=False)
         result_dict_mk = dict()
         for k in list_mk.keys():

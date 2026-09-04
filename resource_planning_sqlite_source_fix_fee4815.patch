@@ -1,0 +1,147 @@
+diff --git a/project_cust_38/Cust_SQLite.py b/project_cust_38/Cust_SQLite.py
+index 4be79c4..bb78e86 100644
+--- a/project_cust_38/Cust_SQLite.py
++++ b/project_cust_38/Cust_SQLite.py
+@@ -617,7 +617,8 @@ def custom_request_c(
+         one_column=False,
+         attach_dbs: tuple | str=(),
+         lazy_method_hours: float = 0,
+-        debug: bool = True
++        debug: bool = True,
++        force_sqlite: bool = False,
+ ) -> bool | None | list[dict] | list[list] | list | object|dict[str]:
+     """
+         Пример RETURNING(many):
+@@ -670,7 +671,7 @@ def custom_request_c(
+     else:
+         postgres_query = custom_request_c
+ 
+-    if _PG_CONN or is_ready_for_pg:
++    if (_PG_CONN or is_ready_for_pg) and not force_sqlite:
+         postgres_query = postgres_query.replace('?', '%s').replace('==', '=')
+         f = CPG.custom_request_c(
+             bd=bd,
+@@ -1217,4 +1218,4 @@ ALTER TABLE пл_осил ADD COLUMN Дата_обесп_осил TEXT NOT NULL
+ COMMIT;
+ PRAGMA foreign_keys = on;"""
+     #add_db(r'C:/DB_srv/DB_kplan.db',text)
+-    exit()
+\ No newline at end of file
++    exit()
+diff --git a/project_cust_38/sub_mes/resource_planning/planner_mes_integration.py b/project_cust_38/sub_mes/resource_planning/planner_mes_integration.py
+index 6aa883a..f83e537 100644
+--- a/project_cust_38/sub_mes/resource_planning/planner_mes_integration.py
++++ b/project_cust_38/sub_mes/resource_planning/planner_mes_integration.py
+@@ -2223,6 +2223,9 @@ class CustSqliteMesExecutor:
+         kwargs: dict[str, Any] = {
+             "rez_dict": True,
+             "debug": False,
++            # Физические MES-таблицы пока остаются в SQLite. Глобальный
++            # тестовый PG_CONN не должен преждевременно переключать этот путь.
++            "force_sqlite": True,
+         }
+         if parameters:
+             kwargs["list_of_lists_c"] = [list(parameters)]
+@@ -2655,10 +2658,12 @@ class PlannerRegistryRuntime:
+     repository: CustOrmPlannerRegistryRepository
+     service: PlannerRegistryService
+     owns_executor: bool = False
+-    entity_executor: PostgresMesQueryExecutor = field(init=False)
++    entity_executor: MesQueryExecutor = field(init=False)
+ 
+     def __post_init__(self) -> None:
+-        self.entity_executor = PostgresMesQueryExecutor(self.executor)
++        # PostgreSQL хранит admin/planner registry, а строки физических
++        # MES-источников до их миграции читаются через текущий SQLite-контур.
++        self.entity_executor = CustSqliteMesExecutor()
+ 
+     @classmethod
+     def connect(
+diff --git a/project_cust_38/sub_mes/resource_planning/test_planner_mes_integration.py b/project_cust_38/sub_mes/resource_planning/test_planner_mes_integration.py
+index a67a161..1f7b992 100644
+--- a/project_cust_38/sub_mes/resource_planning/test_planner_mes_integration.py
++++ b/project_cust_38/sub_mes/resource_planning/test_planner_mes_integration.py
+@@ -1,12 +1,15 @@
+ from __future__ import annotations
+ 
+ import dataclasses
++import types
+ import unittest
++from unittest import mock
+ 
+-from project_cust_38.sub_mes.resource_planning import planner_mes_seed as seed
+-from project_cust_38.sub_mes.resource_planning import planner_mes_types as mes_types
+-from project_cust_38.sub_mes.resource_planning import planner_registry_stage2 as registry
+-from project_cust_38.sub_mes.resource_planning import planner_registry_runtime_stage2 as runtime_registry
++from planner.fff import planner_mes_seed as seed
++from planner.fff import planner_mes_types as mes_types
++from planner.fff import planner_registry_stage2 as registry
++from planner.fff import planner_registry_runtime_stage2 as runtime_registry
++from project_cust_38.sub_mes.resource_planning import planner_mes_integration as integration
+ 
+ 
+ class _MesBase:
+@@ -192,7 +195,7 @@ class PlannerMesTypeCatalogTests(unittest.TestCase):
+         self.assertEqual(first.value._planner_source_key, "gant.event.mk")
+         self.assertEqual(default.presentation_key, "gant.event.mk.view.default")
+         self.assertEqual(rows[1]["_presentation_key"], "gant.event.mk.view.type")
+-        self.assertEqual(rows[1]["Фильтр"], "Да")
++        self.assertTrue(rows[1]["_is_filterable"])
+ 
+     def test_session_is_lazy_reused_and_closed_once(self):
+         runtime = _Runtime()
+@@ -226,6 +229,54 @@ class PlannerMesTypeCatalogTests(unittest.TestCase):
+             session.get_runtime()
+ 
+ 
++class PlannerMesSqliteSourceTests(unittest.TestCase):
++    def test_runtime_keeps_physical_mes_rows_on_sqlite(self):
++        runtime = integration.PlannerRegistryRuntime(
++            executor=object(),
++            catalog=integration.AdminCatalog(tables={}, fields={}, relations={}),
++            repository=object(),
++            service=object(),
++        )
++
++        self.assertIsInstance(
++            runtime.entity_executor,
++            integration.CustSqliteMesExecutor,
++        )
++
++    def test_mes_adapter_forces_sqlite_even_during_pg_experiment(self):
++        class DbNames:
++            def __getitem__(self, key):
++                if key == "Naryad.db":
++                    return "SRV:Naryad.db"
++                return None
++
++            def __iter__(self):
++                return iter(())
++
++        request = mock.Mock(return_value=[{"value": 6888}])
++        fake_csq = types.SimpleNamespace(
++            DB_NAMES=DbNames(),
++            custom_request_c=request,
++        )
++        import project_cust_38
++
++        with mock.patch.object(project_cust_38, "Cust_SQLite", fake_csq, create=True):
++            rows = integration.CustSqliteMesExecutor()(
++                "Naryad",
++                "SELECT ? AS value",
++                (6888,),
++            )
++
++        self.assertEqual(rows, [{"value": 6888}])
++        request.assert_called_once_with(
++            "SRV:Naryad.db",
++            "SELECT ? AS value",
++            rez_dict=True,
++            debug=False,
++            force_sqlite=True,
++            list_of_lists_c=[[6888]],
++        )
++
+ class PlannerMesSeedTests(unittest.TestCase):
+     def test_seed_registers_ten_curated_sources_and_relation_views(self):
+         definition = seed.build_mes_seed(_full_admin_catalog())

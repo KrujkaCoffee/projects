@@ -1,6 +1,8 @@
 import math
 from collections import OrderedDict
 from typing import Optional
+
+from components.excel_compat import excel_round, excel_rounddown, excel_roundup
 def normalize_params(params: dict) -> dict:
     """Normalize keys with non-ASCII symbols to safe ASCII aliases (e.g., ρ→rho, ε→epsilon, λ→lambda_friction)."""
     aliases = {
@@ -45,16 +47,14 @@ def roundup(x: float, n: int = 0) -> float:
     Excel ROUNDUP(x, n)
     Округление вверх до n знаков после запятой.
     """
-    factor = 10 ** n
-    return math.ceil(x * factor) / factor
+    return excel_roundup(x, n)
 
 def rounddown(x: float, n: int = 0) -> float:
     """
     Excel ROUNDDOWN(x, n)
     Округление вниз до n знаков после запятой.
     """
-    factor = 10 ** n
-    return math.floor(x * factor) / factor
+    return excel_rounddown(x, n)
 
 
 
@@ -310,14 +310,29 @@ def calc_kriticheskaya_skorost_skr_m_s(params):
     Excel M28 / O28
     Формула (Excel): =(2*O29*(E12+273)*($O$31/($O$31+1)))^0.5
     """
-    return ((2*params['gazovaya_postoyannaya_m2_s2_k']*(params['temperatura_sredy_s']+params.get('zero_celsius_k', 273.15))*(params['koeffcient_adiabaty']/(params['koeffcient_adiabaty']+1)))**0.5)
+    # В исходной книге для этой конкретной формулы используется +273,
+    # а не +273,15. Это режим строгой совместимости с утверждённой методикой.
+    return ((2*params['gazovaya_postoyannaya_m2_s2_k']*(params['temperatura_sredy_s']+273)*(params['koeffcient_adiabaty']/(params['koeffcient_adiabaty']+1)))**0.5)
 
 def calc_gazovaya_postoyannaya_m2_s2_k(params):
     """
     Excel M29 / O29
     Формула (Excel): =IF(E9="Пар","461,5",IF(E9="Природный газ","508",IF(E9="Воздух","287",IF(E9="Углекислый газ (СО2)","188,9",IF(E9="Азот (N2)","296,8",IF(E9="Кислород (O2)","259,7",IF(E9="Аргон (Ar)",208)))))))
     """
-    return (((461) if (params['sreda']=="Пар") else (5)))
+    gas_constants = {
+        "Пар": 461.5,
+        "Природный газ": 508.0,
+        "Воздух": 287.0,
+        "Углекислый газ (СО2)": 188.9,
+        "Азот (N2)": 296.8,
+        "Кислород (O2)": 259.7,
+        "Аргон (Ar)": 208.0,
+    }
+    medium = params.get('sreda')
+    try:
+        return gas_constants[medium]
+    except KeyError as exc:
+        raise ValueError(f"Неизвестная среда: {medium!r}") from exc
 
 def calc_znachenie_p_drosselnogo_bloka(params):
     """
@@ -361,7 +376,7 @@ def calc_gradient_skorosti_w(params):
     Excel M38 / O38
     Формула (Excel): =IF($E$17=1,E19,ROUND(O40-0.01,2))
     """
-    return (((params['pokazatel_gradienta']) if (params['kolichestvo_stupenej_drosselirovaniya_sht']==1) else (round(params['rekomenduemoe_nachalnoe_znachenie_w']-0.01,2))))
+    return (((params['pokazatel_gradienta']) if (params['kolichestvo_stupenej_drosselirovaniya_sht']==1) else (excel_round(params['rekomenduemoe_nachalnoe_znachenie_w']-0.01,2))))
 
 def calc_maksimalnyj_gradient_skorosti_wmax(params):
     """
@@ -393,10 +408,21 @@ def calc_stupeni_n1(params):
 
 def calc_perepad_davlenij_n1(params):
     """
-    Excel M46 / O46
-    Формула (Excel): =IF($O$34=1,$O$42,IF($O$34=2,O50/$O$38^($O$34-O45),IF($O$34=3,O54/$O$38^($O$34-O45),IF($O$34=4,O58/$O$34^($O$34-O45),IF($O$34=5,O62/$O$34^($O$34-O45),IF($O$34=6,O66/$O$34^($O$34-O45),IF($O$34=7,O70/$O$34^($O$34-O45),IF($O$34=8,O74/$O$34^($O$34-O45),IF($O$34=9,O78/$O$34^($O$34-O45),IF($O$34=10,O82/$O$34^($O$34-O45)))))))))))
+    Авторитетная формула: ``Расчеты!M32`` приложенного XLSM. Для каждой ветви
+    2–10 ступеней используется ``$N$22`` (градиент W). В ранее
+    сконвертированной версии для 4–10 ступеней ошибочно использовалось само
+    количество ступеней.
     """
-    return (((params['otnositelnyj_perepad_davleniya_na_poslednej_reshetke']) if (params['kolichestvo_stupenej_drosselirovaniya_j']==1) else (((params['perepad_davlenij_n2']/params['gradient_skorosti_w']**(params['kolichestvo_stupenej_drosselirovaniya_j']-params['stupeni_n1'])) if (params['kolichestvo_stupenej_drosselirovaniya_j']==2) else (((params['perepad_davlenij_n3']/params['gradient_skorosti_w']**(params['kolichestvo_stupenej_drosselirovaniya_j']-params['stupeni_n1'])) if (params['kolichestvo_stupenej_drosselirovaniya_j']==3) else (((params['perepad_davlenij_n4']/params['kolichestvo_stupenej_drosselirovaniya_j']**(params['kolichestvo_stupenej_drosselirovaniya_j']-params['stupeni_n1'])) if (params['kolichestvo_stupenej_drosselirovaniya_j']==4) else (((params['perepad_davlenij_n5']/params['kolichestvo_stupenej_drosselirovaniya_j']**(params['kolichestvo_stupenej_drosselirovaniya_j']-params['stupeni_n1'])) if (params['kolichestvo_stupenej_drosselirovaniya_j']==5) else (((params['perepad_davlenij_n6']/params['kolichestvo_stupenej_drosselirovaniya_j']**(params['kolichestvo_stupenej_drosselirovaniya_j']-params['stupeni_n1'])) if (params['kolichestvo_stupenej_drosselirovaniya_j']==6) else (((params['perepad_davlenij_n7']/params['kolichestvo_stupenej_drosselirovaniya_j']**(params['kolichestvo_stupenej_drosselirovaniya_j']-params['stupeni_n1'])) if (params['kolichestvo_stupenej_drosselirovaniya_j']==7) else (((params['perepad_davlenij_n8']/params['kolichestvo_stupenej_drosselirovaniya_j']**(params['kolichestvo_stupenej_drosselirovaniya_j']-params['stupeni_n1'])) if (params['kolichestvo_stupenej_drosselirovaniya_j']==8) else (((params['perepad_davlenij_n9']/params['kolichestvo_stupenej_drosselirovaniya_j']**(params['kolichestvo_stupenej_drosselirovaniya_j']-params['stupeni_n1'])) if (params['kolichestvo_stupenej_drosselirovaniya_j']==9) else (((params['perepad_davlenij_n10']/params['kolichestvo_stupenej_drosselirovaniya_j']**(params['kolichestvo_stupenej_drosselirovaniya_j']-params['stupeni_n1'])) if (params['kolichestvo_stupenej_drosselirovaniya_j']==10) else (None)))))))))))))))))))))
+    stage_count = params['kolichestvo_stupenej_drosselirovaniya_j']
+    if stage_count == 1:
+        return params['otnositelnyj_perepad_davleniya_na_poslednej_reshetke']
+    if not 2 <= stage_count <= 10:
+        return None
+
+    last_stage_ratio = params[f'perepad_davlenij_n{stage_count}']
+    return last_stage_ratio / params['gradient_skorosti_w'] ** (
+        stage_count - params['stupeni_n1']
+    )
 
 def calc_gazodinamicheskaya_funkciya_rashoda_q_n1(params):
     """
@@ -3211,4 +3237,3 @@ CALC_FUNCTIONS = OrderedDict([("edinica_rashoda_imya", {"fnc": calc_edinica_rash
                                   ('atmosfernoe_davlenie_pa_out', {"fnc":calc_atmosfernoe_davlenie_pa_out, "cell":"input tbl"}),
 
                               ])
-

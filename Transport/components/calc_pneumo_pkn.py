@@ -63,8 +63,8 @@ async def apply_page_settings(page: ft.Page, MODULE: DTCLS.ModuleCfg):
     Data.Data_module.cust_data = calc_pneumo_pkn_back.Cust_module_params()
 
 
-def _set_status(message: str | None = None) -> None:
-    status_bar = DTCLS.Data_page.Data_module.status_bar
+def _set_status(page: ft.Page, message: str | None = None) -> None:
+    status_bar = page.data.Data_module.status_bar
     if status_bar:
         status_bar.set_text(message)
 
@@ -144,7 +144,7 @@ async def gen_page(page: ft.Page):
             if _header_input_panel_btn_save_ref.current is not None:
                 _header_input_panel_btn_save_ref.current.disabled = True
             _btn_calc_ref.current.disabled = True
-            _set_status("Открыт расчёт из истории")
+            _set_status(e.page, "Открыт расчёт из истории")
             # page.update()
 
         tbl_data = calc_pneumo_pkn_back.make_history_tbl_data(e.page.data)
@@ -190,7 +190,7 @@ async def gen_page(page: ft.Page):
                 cell.val = cell.description.cast_type(e.data)
             except Exception:
                 pass
-        _set_status()
+        _set_status(e.page)
 
     def fnc_cell_click(e):
         meta = getattr(e.control, "data", {}) or {}
@@ -314,7 +314,7 @@ async def gen_page(page: ft.Page):
     def toggle_hint(e: ft.ControlEvent | None = None):
         _ = e
         if not hint_image_exists():
-            _set_status("Файл подсказки не найден")
+            _set_status(page, "Файл подсказки не найден")
             page.update()
             return
 
@@ -436,7 +436,7 @@ async def gen_page(page: ft.Page):
             _header_input_panel_btn_save_ref.current.visible = False
         if _btn_calc_ref.current is not None:
             _btn_calc_ref.current.disabled = False
-        _set_status()
+        _set_status(page)
         if e is not None:
             page.update()
 
@@ -470,7 +470,7 @@ async def gen_page(page: ft.Page):
         if _header_input_panel_textfield_ref.current is not None:
             _header_input_panel_textfield_ref.current.visible = True
             _header_input_panel_textfield_ref.current.content = calc_pneumo_pkn_back.get_name_new_calc()
-        _set_status(_status_message_from_errors(errors, success=success))
+        _set_status(e.page, _status_message_from_errors(errors, success=success))
         e.page.update()
 
     async def select_destination(e: ft.ControlEvent):
@@ -485,7 +485,7 @@ async def gen_page(page: ft.Page):
 
     _ref_status_bar = ft.Ref[ft.Container]()
     _ref_status_text = ft.Ref[ft.Text]()
-    DTCLS.Data_page.Data_module.set_status_bar(_ref_status_bar, _ref_status_text)
+    Data.Data_module.set_status_bar(_ref_status_bar, _ref_status_text)
 
     initial_input_control, initial_table_data = build_controls()
 
@@ -583,4 +583,3 @@ async def gen_page(page: ft.Page):
         expand=True,
         ref=_general_module_row_ref,
     )
-

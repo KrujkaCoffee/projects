@@ -174,7 +174,7 @@ def gen_page(page: ft.Page | DummyEvent):
             Data.Data_module.cust_data.input_tbl_editbl,
             bool(getattr(Data.Data_module.cust_data, "manual_du_enabled", False)),
         )
-        DTCLS.Data_page.Data_module.status_bar.set_text()
+        Data.Data_module.status_bar.set_text()
         page.update()
 
     def generate_desktop_row(page: ft.Page, rail: ft.NavigationRail):
@@ -215,7 +215,7 @@ def gen_page(page: ft.Page | DummyEvent):
             btn_enabled = blower_back.generate_rez_tbl(
                 e, _input_tabe_ref.current, _output_tabe_ref, fnc_cell_click
             )
-            table_data: CMF.Table_data = DTCLS.Data_page.Data_module.cust_data.output_tbl
+            table_data: CMF.Table_data = Data.Data_module.cust_data.output_tbl
             tbl_rez = table_data.table_view if table_data else None
             if tbl_rez is None:
                 return
@@ -381,7 +381,7 @@ def gen_page(page: ft.Page | DummyEvent):
 
     _refStatusBar = ft.Ref[ft.Container]()
     _refStatusBarText = ft.Ref[ft.Text]()
-    DTCLS.Data_page.Data_module.set_status_bar(_refStatusBar, _refStatusBarText)
+    Data.Data_module.set_status_bar(_refStatusBar, _refStatusBarText)
 
     status_bar = ft.Column([ft.Divider(height=1), ft.Container(ft.Text("", ref=_refStatusBarText))])
 

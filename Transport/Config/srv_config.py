@@ -25,6 +25,13 @@ USE_DB_SESSION = True
 DEFAULT_DOMAIN = os.getenv("MES_AUTH_DEFAULT_DOMAIN", "POWERZ")
 SESSION_COOKIE_NAME = "mes_auth_sid"
 MONTH_SECONDS = 60 * 60 * 24 * 30
+# Включать только там, где внешний URL действительно HTTPS. Принудительное
+# значение True на текущем HTTP-развёртывании не позволит браузеру отправлять
+# cookie обратно приложению.
+COOKIE_SECURE = os.getenv(
+    "TRANSPORT_COOKIE_SECURE",
+    "0",
+).strip().lower() not in {"0", "false", "no", "off"}
 DB_SESSION_TABLE = os.getenv("MES_AUTH_SESSION_TABLE", "mes_auth_sessions")
 DB_SESSION_PATH = os.getenv("MES_AUTH_SESSION_DB", "SRV:db_flet.db")
 

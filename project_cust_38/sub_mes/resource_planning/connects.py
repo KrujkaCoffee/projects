@@ -17,8 +17,29 @@ if TYPE_CHECKING:
     from project_cust_38.sub_mes.resource_planning.manage_res_pl import (Plwindow,Type_entity)
     from project_cust_38.sub_mes.resource_planning.manage_res_pl import Plwindow
 
+def te():
+    from project_cust_38.sub_mes.resource_planning import catalog_choices as CC
+
+    choices = CC.load_mes_choices(
+        DTSUB.planner_mes_types
+    )
+
+    print('Всего полей:', len(choices))
+
+    for choice in choices:
+        print(
+            choice.source_text,
+            '→',
+            choice.entity_text,
+            '→',
+            choice.endpoint.field_key,
+            '→',
+            choice.endpoint.caption
+        )
+
 
 def toggle_focus(new_focus):
+    te()
     DTSUB.sub_self.ui.fr_cont_event.setVisible(False)
     DTSUB.sub_self.ui.fr_cont_res.setVisible(False)
     if DTSUB.info_o:

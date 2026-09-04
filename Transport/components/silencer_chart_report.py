@@ -108,14 +108,21 @@ def _series(calculated: dict[str, Any], keys: Iterable[str]) -> list[float | Non
     return [_as_float(calculated.get(key)) for key in keys]
 
 
-def build_card_component(title: str, rows: list[tuple[str, Any, str]], *, width: int | None = None) -> ft.Container:
+def build_card_component(
+    title: str,
+    rows: list[tuple[str, Any, str] | tuple[str, Any, str, int]],
+    *,
+    width: int | None = None,
+) -> ft.Container:
     body: list[ft.Control] = [ft.Text(title, weight=ft.FontWeight.W_600, size=15)]
-    for name, val, dim in rows:
+    for row in rows:
+        name, val, dim = row[:3]
+        accuracy = row[3] if len(row) == 4 else 1
         body.append(
             ft.Row(
                 controls=[
                     ft.Text(name, size=12, opacity=0.78, expand=True),
-                    ft.Text(_fmt_cell(val), size=12, weight=ft.FontWeight.W_600),
+                    ft.Text(_fmt_cell(val, accuracy=accuracy), size=12, weight=ft.FontWeight.W_600),
                     ft.Text(dim, size=12, opacity=0.7, width=48),
                 ],
                 spacing=6,
@@ -302,18 +309,21 @@ def build_silencer_report(
                 [
                     ("Среда", _value(input_values, "sreda", default="—"), ""),
                     (f"Расход, {_value(input_values, 'edinica_rashoda', default='')}", _value(input_values, "rashod"), ""),
-                    ("Давление до клапана", _value(input_values, "ak_produvka_davlenie_v_nachale_truby_mpa_davlenie_do_klapana_mpa", "davlenie_na_vhode_v_shg_ri_abs_mpa"), "МПа"),
-                    ("Температура", _value(input_values, "temperatura_sredy_s"), "°C"),
+                    ("Давление на входе в ШГ", _value(input_values, "davlenie_na_vhode_v_shg_ri_abs_mpa"), "МПа", 2),
+                    ("Температура", _value(input_values, "temperatura_sredy_s"), "°C", 1),
                 ],
                 width=360,
             ),
             build_card_component(
                 "Результаты аэродинамического расчёта",
                 [
-                    ("Давление на входе", _value(input_values, "davlenie_na_vhode_v_shg_ri_abs_mpa"), "МПа"),
-                    ("Давление на выходе", _value(calculated, "davlenie_na_vyhode_iz_shg_pe_mpa"), "МПа"),
-                    ("Реактивные силы", _value(calculated, "r_reaktivnye_sily_n"), "Н"),
-                    ("Скорость на выходе ШГ", _value(calculated, "skorost_na_vyhode_shg_m_s"), "м/с"),
+                    ("Давление на входе", _value(input_values, "davlenie_na_vhode_v_shg_ri_abs_mpa"), "МПа", 2),
+                    ("Давление на выходе", _value(calculated, "davlenie_na_vyhode_iz_shg_pe_mpa"), "МПа", 3),
+                    ("Реактивная сила", _value(calculated, "r_reaktivnye_sily_n"), "Н", 1),
+                    ("Скорость на выходе ШГ", _value(calculated, "skorost_na_vyhode_shg_m_s"), "м/с", 1),
+                    ("Удельный объём на выходе", _value(calculated, "udelnyj_obem_m3_kg_out"), "м³/кг", 3),
+                    ("Массовый расход", _value(calculated, "massovyj_rashod_kg_s_out"), "кг/с", 2),
+                    ("Диаметр в расчёте силы", _value(calculated, "diametr_shg_m_out"), "м", 3),
                 ],
                 width=400,
             ),
@@ -322,8 +332,7 @@ def build_silencer_report(
                 [
                     ("Тип дроссельного блока", "Ступенчатый", ""),
                     ("Ступеней дросселирования", _value(input_values, "kolichestvo_stupenej_drosselirovaniya_sht"), "шт"),
-                    ("Наличие кассет", _value(input_values, "nalichie_kasset", default="—"), ""),
-                    ("Внутренний диаметр корпуса", _value(input_values, "vnutrennij_diametr_shumoglushitelya_korpus_m"), "м"),
+                    ("Заданный внутренний диаметр корпуса", _value(input_values, "vnutrennij_diametr_shumoglushitelya_korpus_m"), "м", 3),
                 ],
                 width=390,
             ),
@@ -348,6 +357,16 @@ def build_silencer_report(
                 opacity=0.78,
             ),
             top_cards,
+            ft.Container(
+                content=ft.Text(
+                    "Расчёт скорости и силы: A = πD²/4; w = G·v/A; "
+                    "R = w²·A/v = G·w. G — массовый расход, v — удельный "
+                    "объём, D — показанный диаметр.",
+                    size=12,
+                    opacity=0.78,
+                ),
+                padding=ft.padding.symmetric(horizontal=4),
+            ),
             column_table(
                 "Уровни звуковой мощности, дБ",
                 "Труба без ШГ",

@@ -1408,7 +1408,21 @@ def btn_pl_ok_add_poz_click(self, *args):
         t = CQT.TableContext(tbl)
         str_val = get_val(t,name_field)
         if str_val is None:
-            CQT.msgbox(f'Для корректировки таблицы "{table_o.alias}" нужно включить в основной таблице поле "{name_field}"')
+            CQT.msgbox(f'Ошибка редактирования "{table_o.name}". обратитесь к разработчику.')
+
+            try:
+                t_tbl = str(t.tbl.objectName())
+            except Exception as e:
+                t_tbl = str(e)
+            try:
+                t_count = str(t.count)
+            except Exception as e:
+                t_count = str(e)
+            try:
+                t_find_row = t.find_row({'_Name': name_field}, True)
+            except Exception as e:
+                t_find_row = str(e)
+
             CMS.send_err_msg_dev_chat('Ошибка редактирования поля',
                                       [
                                           {'k':'user','v':DTCLS.USER_CONFIG.User.ФИОк},
@@ -1416,7 +1430,10 @@ def btn_pl_ok_add_poz_click(self, *args):
                                           {'k':'kpl','v':DTCLS.current_id_poz_kpl},
                                           {'k':'podr','v':podr},
                                           {'k':'name_field','v':name_field},
-                                          {'k':'err','v':f'Для корректировки таблицы "{table_o.alias}" нужно включить в основной таблице поле "{name_field}"'},
+                                          {'k':'t.tbl','v':t_tbl},
+                                          {'k':'t.count','v':t_count},
+                                          {'k':'t.find_row','v':t_find_row},
+                                          {'k':'err','v':f'Ошибка редактирования "{table_o.name}". обратитесь к разработчику.'},
                                       ])
             return False,None
         pnom = int(str_val)
@@ -1740,10 +1757,11 @@ def load_db(self: mywindow, pnom: bool | int = False, only_hat=False) -> None | 
                                          f"""INSERT INTO  {tbl} VALUES({','.join(["?" for _ in range(count_fields)])})""",
                                          list_of_lists_c=differ_list)
 
-    name_gr_field = 'plan."Группа"'
+    name_gr_field_query = 'plan."Группа"'
+    name_gr_field = 'plan.Группа'
     sort_by = ''
     if DTCLS.FIELDS_DB_INFO.use_groups:
-        sort_by = f' ORDER BY plan."Пномер", {name_gr_field}'
+        sort_by = f' ORDER BY plan."Пномер", {name_gr_field_query}'
 
     limit = ''
     if only_hat:
@@ -2610,7 +2628,7 @@ def fill_filtr_main_tbl_pl(dict_vals:dict|list=None):
                      hidden_scroll=True,
                      USER_CONFIG_reset_tbl_filtrs_forsed_off=self.ui.chk_kpl_groups.isChecked(),
                      check_box_dict=dict_chck_filter,  # таблица для нескольких значений
-                     combo_dict=dict_cmb_filter, show_header=True,save_data=True)
+                     combo_dict=dict_cmb_filter, show_header=not self.ui.chk_hide_filte_header.isChecked(),save_data=True)
 
 def _____________________gant_manage_________________________():pass
 class Plan_filter_cfg():
@@ -3457,7 +3475,7 @@ def update_graf_pad_moshn(self: mywindow, selected_napr=None, as_table=False,  *
     dict_estimated_podr_filtr = {k:v for k,v in self.Data_plan.DICT_PODR_POKI.items() if k in SET_estimated_podr}
     list_fields_and_tabels =  [[', '.join([f"{k}.{_['Имя_начала_этапа']} AS Пдата_нач" ,
                         f"{k}.{_['Имя_конца_этапа']} AS Пдата_зав", f"{k}.{_['Имя_поля'].split(';')[0]} AS Нчас"]),
-                            f'{k} ON {k}.НомПл == пл_оуп.НомПл,' ] for k, _ in dict_estimated_podr_filtr.items()]
+                            f'INNER JOIN {k} ON {k}.НомПл = пл_оуп.НомПл' ] for k, _ in dict_estimated_podr_filtr.items()]
 
     prefix = """
     SELECT "plan"."Пномер", "napravlenie"."name", 
@@ -5640,6 +5658,7 @@ def update_plan_main_tbl(self: mywindow):
             if month['Дата']:
                 cmb.addItem(month['Дата'])
 
+
     def get_params_kpl(self: mywindow):
         kpl_bool_load_zav = 0
         try:
@@ -5658,6 +5677,15 @@ def update_plan_main_tbl(self: mywindow):
         self.ui.chk_paint_dates.blockSignals(True)
         self.ui.chk_paint_dates.setChecked(kpl_bool_paint_dates)
         self.ui.chk_paint_dates.blockSignals(False)
+
+        hide_file_header = 0
+        try:
+            hide_file_header = F.valm(CMS.load_tmp_path('hide_file_header'))
+        except:
+            pass
+        self.ui.chk_hide_filte_header.blockSignals(True)
+        self.ui.chk_hide_filte_header.setChecked(hide_file_header)
+        self.ui.chk_hide_filte_header.blockSignals(False)
 
     get_params_kpl(self)
     # update_date_kplmk_from_narmk(self)# отключено
@@ -6026,15 +6054,15 @@ def btn_pl_edit_poz_click(self: mywindow):
 def check_permisions_on_fields(header: str, alias: str, self) -> bool:
     if DTCLS.ADD_POZ_MODE:
         return True
-    #if CFG.Config.user_config.is_developer:
-    #     return True
+    if CFG.Config.user_config.is_developer:
+         return True
     tbl_name ,field_name = header.split('.')
 
     access_users = CSQ.custom_request_c(
         CFG.Config.project.db_kplan,
         f'SELECT users_rule FROM info_fields_kpl '
         f'WHERE table_kpl = ? and name = ?;', rez_dict=True, one=True,
-        list_of_lists_c=[tbl_name, field_name]
+        list_of_lists_c=[[tbl_name, field_name]]
     )
     if isinstance(access_users, dict):
         users_rule = access_users.get('users_rule', '')
@@ -6850,6 +6878,13 @@ def set_groups_kpl(self: mywindow):
         CMS.save_tmp_stukt(kpl_bool_groups, 'chk_kpl_groups')
         update_plan_main_tbl(self)
 
+    except:
+        pass
+def set_params_file_header(self: mywindow):
+    hide_file_header = self.ui.chk_hide_filte_header.isChecked()
+    try:
+        CMS.save_tmp_path('hide_file_header', str(int(hide_file_header)))
+        update_plan_main_tbl(self)
     except:
         pass
 def set_params_kpl(self: mywindow):

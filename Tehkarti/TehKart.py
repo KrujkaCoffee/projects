@@ -165,7 +165,7 @@ import k_plan_top as KPT
 
 @CQT.onerror
 def db_files_load(self, name):
-    custom_request_c = f"""SELECT reestr.file FROM reestr INNER JOIN names on names.nom_data = reestr.Пномер WHERE names.name == '{name}'"""
+    custom_request_c = f"""SELECT reestr.file FROM reestr INNER JOIN names on names.nom_data = reestr."Пномер" WHERE names.name = '{name}'"""
     query = CSQ.custom_request_c(self.db_files, custom_request_c,rez_dict=True)
     if len(query) == 0:
         return False
@@ -184,16 +184,16 @@ def db_files_load(self, name):
 
 @CQT.onerror
 def db_files_del(self,name,nom_tk):
-    list_uses_tk = CSQ.custom_request_c(self.db_files,f"""SELECT * FROM t_kards WHERE file_name == '{name}'""",rez_dict=True)
+    list_uses_tk = CSQ.custom_request_c(self.db_files,f"""SELECT * FROM t_kards WHERE file_name = '{name}'""",rez_dict=True)
     if len(list_uses_tk) == 1 or len(list_uses_tk) == 0:
-        list_uses_names = CSQ.custom_request_c(self.db_files, f"""SELECT * FROM names WHERE name == '{name}'""", rez_dict=True)
+        list_uses_names = CSQ.custom_request_c(self.db_files, f"""SELECT * FROM names WHERE name = '{name}'""", rez_dict=True)
         if len(list_uses_names) == 1:
             nom_data = list_uses_names[0]['nom_data']
-            datas = CSQ.custom_request_c(self.db_files, f"""SELECT * FROM names WHERE nom_data == '{nom_data}'""", rez_dict=True)
+            datas = CSQ.custom_request_c(self.db_files, f"""SELECT * FROM names WHERE nom_data = '{nom_data}'""", rez_dict=True)
             if len(datas)==1:
-                CSQ.custom_request_c(self.db_files, f"""DELETE FROM reestr WHERE Пномер == {nom_data}""")
-        CSQ.custom_request_c(self.db_files, f"""DELETE FROM names WHERE name == '{name}'""")
-    CSQ.custom_request_c(self.db_files,f"""DELETE FROM t_kards WHERE file_name == '{name}'""")
+                CSQ.custom_request_c(self.db_files, f"""DELETE FROM reestr WHERE Пномер = {nom_data}""")
+        CSQ.custom_request_c(self.db_files, f"""DELETE FROM names WHERE name = '{name}'""")
+    CSQ.custom_request_c(self.db_files,f"""DELETE FROM t_kards WHERE file_name = '{name}'""")
     return
 
 
@@ -683,9 +683,9 @@ class mywindow(QtWidgets.QMainWindow):
             f'''
                 SELECT * 
                 FROM naryad 
-                WHERE Операции LIKE "%{full_oper_name}%" 
-                    AND ДСЕ LIKE "%{full_name_dse}%"
-                    AND Номер_мк = {num_mk}
+                WHERE "Операции" LIKE '%%{full_oper_name}%%' 
+                    AND "ДСЕ" LIKE '%%{full_name_dse}%%'
+                    AND "Номер_мк" = {num_mk}
             ''',
             rez_dict=True
         )
@@ -699,6 +699,30 @@ class mywindow(QtWidgets.QMainWindow):
                     return True
         return False
 
+    def fix_dse_credentials(self):
+        row = self.ui.tblw_dse.currentRow()
+        if row == -1:
+            return
+        current_data = CQT.get_dict_line_form_tbl(self.ui.tblw_dse, row=row)
+        name = current_data.get('Наименование')
+        normalized_name = name.strip().strip('_')
+        nn = current_data.get('Номенклатурный_номер')
+        normalized_nn = nn.strip().strip('_')
+        pk = current_data.get('Пномер')
+        if not pk:
+            return
+        if name != normalized_name:
+            result1 = CSQ.custom_request_c(
+                CFG.Config.project.db_dse,
+                f'UPDATE dse SET "Наименование" = ? WHERE "Пномер" = {pk}',
+                list_of_lists_c=[[normalized_name]]
+            )
+        if nn != normalized_nn:
+            result2 = CSQ.custom_request_c(
+                CFG.Config.project.db_dse,
+                f'UPDATE dse SET "Номенклатурный_номер" = ? WHERE "Пномер" = {pk}',
+                list_of_lists_c=[[normalized_nn]]
+            )
 
     @CQT.onerror
     def keyReleaseEvent(self, e):
@@ -717,8 +741,8 @@ class mywindow(QtWidgets.QMainWindow):
                 nk_name_dse = CQT.num_col_by_name_c(self.ui.tblw_dse, 'Наименование')
                 nk_tk = CQT.num_col_by_name_c(self.ui.tblw_dse, 'Номер_техкарты')
                 nk_pnom = CQT.num_col_by_name_c(self.ui.tblw_dse, 'Пномер')
-                dse = self.ui.tblw_dse.item(row,nk_dse).text()
-                dse_name = self.ui.tblw_dse.item(row, nk_name_dse).text()
+                dse = self.ui.tblw_dse.item(row,nk_dse).text().strip().strip('_')
+                dse_name = self.ui.tblw_dse.item(row, nk_name_dse).text().strip().strip('_')
                 tk = self.ui.tblw_dse.item(row, nk_tk).text()
                 new_name = self.ui.lineEdit_nntk.text().strip()
                 if tk == new_name:
@@ -733,7 +757,9 @@ class mywindow(QtWidgets.QMainWindow):
                         if not CQT.msgboxgYN(f'Файл с техкартой {ima_file} уже создан.\n'
                                       f'продолжаем?'):
                             return
-                    CSQ.custom_request_c(self.db_dse,f"""UPDATE dse SET Номер_техкарты = "{new_name}" WHERE Пномер = {int(pnom)}""")
+                    CSQ.custom_request_c(self.db_dse,
+                                         f"""UPDATE dse SET "Номер_техкарты" = ? WHERE "Пномер" = {int(pnom)}""",
+                                         list_of_lists_c=[[new_name]])
                     self.ui.tblw_dse.item(row, nk_tk).setText(new_name)
                     CQT.msgbox(f'Успешно')
         item = self.ui.tree.currentItem()
@@ -760,8 +786,8 @@ class mywindow(QtWidgets.QMainWindow):
                     nom_row = self.ui.tblw_dse.currentRow()
                     #CSQ.update_bd_sql(self.db_naryad, 'dse', {'Теги': self.ui.tblw_dse.item(nom_row, nk_teg).text()},
                     #                  {'Номер_техкарты': self.ui.tblw_dse.item(nom_row, nk_tk).text()})
-                    CSQ.custom_request_c(self.db_naryad,f"""UPDATE dse SET Теги = '{self.ui.tblw_dse.item(nom_row, nk_teg).text()}' 
-                    WHERE Номер_техкарты = '{self.ui.tblw_dse.item(nom_row, nk_tk).text()}';""")
+                    CSQ.custom_request_c(self.db_naryad,f"""UPDATE dse SET "Теги" = '{self.ui.tblw_dse.item(nom_row, nk_teg).text()}' 
+                    WHERE "Номер_техкарты" = '{self.ui.tblw_dse.item(nom_row, nk_tk).text()}';""")
         if self.ui.tbl_magaz.hasFocus():
             if e.modifiers() == QtCore.Qt.ControlModifier and e.key() == QtCore.Qt.Key_Return:
                 MAGAZ.update_magaz(self)
@@ -1229,7 +1255,8 @@ class mywindow(QtWidgets.QMainWindow):
     def add_zapis_jurnal(self,status:str = '',name_dse:str = '',add_ves:bool = True):
         def take_mat_from_db(self, name_dse):
             mat = False
-            rez  = CSQ.custom_request_c(self.db_dse,f"""SELECT Материалы FROM dse WHERE Номенклатурный_номер == '{name_dse}';""",hat_c=True)
+            rez  = CSQ.custom_request_c(self.db_dse,f"""SELECT "Материалы" FROM dse WHERE "Номенклатурный_номер" = ?;"""
+                                        ,hat_c=True, list_of_lists_c=[[name_dse]])
             if len(rez) == 2:
                 mat = rez[-1][0]
             return mat
@@ -1254,7 +1281,7 @@ class mywindow(QtWidgets.QMainWindow):
             ves = ''
         data_now = F.now()
         fio = F.user_full_namre()
-        CSQ.custom_request_c(self.db_dse,f"""INSERT INTO jurnal_td(Дата, ФИО, ДСЕ, Вес, Статус)
+        CSQ.custom_request_c(self.db_dse,f"""INSERT INTO jurnal_td("Дата", "ФИО", "ДСЕ", "Вес", "Статус")
                               VALUES (?, ?, ?, ?, ?)""",list_of_lists_c= [[data_now,fio,name_dse,ves,status]])
 
     def mark_attributes_on_table_data(self, tbl_instance: QtWidgets.QTableWidget,
@@ -1304,20 +1331,21 @@ class mywindow(QtWidgets.QMainWindow):
                 self.db_mater,
                 f"""
                     SELECT 
-                        {tbl_name}.Пномер as "{tbl_name}.Пномер",
-                         виды_по_направлению.Имя as "виды_по_направлению.Имя", 
-                        {tbl_name}.ВидыНоменклатуры as "{tbl_name}.ВидыНоменклатуры", 
-                        {tbl_name}.Примечание as "{tbl_name}.Примечание"
+                        "{tbl_name}"."Пномер" as "{tbl_name}.Пномер",
+                        "виды_по_направлению"."Имя" as "виды_по_направлению.Имя", 
+                        "{tbl_name}"."ВидыНоменклатуры" as "{tbl_name}.ВидыНоменклатуры", 
+                        "{tbl_name}"."Примечание" as "{tbl_name}.Примечание"
                     FROM {tbl_name} 
-                    INNER JOIN виды_по_направлению ON виды_по_направлению.Пномер = {tbl_name}.Пномер
-                    INNER JOIN napravl_deyat ON виды_по_направлению.Направл = napravl_deyat.Пномер
-                    WHERE napravl_deyat.poki = {USRCNF.Config.place.poki} ORDER BY {tbl_name}.Пномер
+                    INNER JOIN "виды_по_направлению" ON "виды_по_направлению"."Пномер" = "{tbl_name}"."Пномер"
+                    INNER JOIN napravl_deyat ON виды_по_направлению."Направл" = napravl_deyat."Пномер"
+                    WHERE napravl_deyat.poki = {USRCNF.Config.place.poki} 
+                    ORDER BY "{tbl_name}"."Пномер"
                 """,
                 attach_dbs=USRCNF.Config.project.db_kplan
             )
             editeble_col_nomera = {'Примечание', 'Имя'}
         else:
-            table_data = CSQ.custom_request_c(self.db_mater,f"""SELECT * FROM {tbl_name};""")
+            table_data = CSQ.custom_request_c(self.db_mater,f"""SELECT * FROM "{tbl_name}";""")
         table_data = self.mark_attributes_on_table_data(tbl, tbl_name, table_data, attach_dbs)
         if table_data == None or table_data == False:
             CQT.msgbox(f'Ошибка загрузки')
@@ -1356,7 +1384,7 @@ class mywindow(QtWidgets.QMainWindow):
                 return
             result = CSQ.custom_request_c(
                 USRCNF.Config.project.db_nomen,
-                f'SELECT name FROM ВидыНоменклатуры WHERE s_num IN ({nomen_types})',
+                f'SELECT name FROM "ВидыНоменклатуры" WHERE s_num IN ({nomen_types})',
                 one_column=True,
                 hat_c=False
             )
@@ -1384,7 +1412,7 @@ class mywindow(QtWidgets.QMainWindow):
                     nomen_types = ','.join(n_type for n_type in item.text().split(';') if n_type.strip())
                     result = CSQ.custom_request_c(
                         USRCNF.Config.project.db_nomen,
-                        f'SELECT name FROM ВидыНоменклатуры WHERE s_num IN ({nomen_types})',
+                        f'SELECT name FROM "ВидыНоменклатуры" WHERE s_num IN ({nomen_types})',
                         one_column=True,
                         hat_c=False
                     )
@@ -1478,7 +1506,7 @@ class mywindow(QtWidgets.QMainWindow):
 
 
     def load_nomen(self):
-        custom_request_c = f'''SELECT DISTINCT Вид FROM nomen;'''
+        custom_request_c = f'''SELECT DISTINCT "Вид" FROM nomen;'''
         self.nomenclature = CSQ.custom_request_c(self.db_mater, custom_request_c=custom_request_c, hat_c=False)
         if self.nomenclature == None or self.nomenclature == False:
             CQT.msgbox('Ошибка загрузки из БД')
@@ -1488,7 +1516,7 @@ class mywindow(QtWidgets.QMainWindow):
         except:
             CQT.msgbox(f'БД с номенлатурой имеет некорректное значение в поле "Вид"')
             quit()
-        custom_request_c = f'''SELECT * FROM nomen WHERE На_удаление == 0 ;'''
+        custom_request_c = f'''SELECT * FROM nomen WHERE "На_удаление" = 0 ;'''
         self.ne_del_nomen = CSQ.custom_request_c(self.db_mater, custom_request_c=custom_request_c, hat_c=True)
         if self.ne_del_nomen == None or self.ne_del_nomen == False:
             CQT.msgbox('Ошибка загрузки из БД')
@@ -1571,7 +1599,7 @@ class mywindow(QtWidgets.QMainWindow):
         if not exist_on_table:
             result = CSQ.custom_request_c(
                 CFG.Config.project.db_dse,
-                f'SELECT * FROM dse WHERE Номенклатурный_номер = ? AND poki = {poki} LIMIT 1',
+                f'SELECT * FROM dse WHERE "Номенклатурный_номер" = ? AND poki = {poki} LIMIT 1',
                 list_of_lists_c=[[nn]],
                 rez_dict=True,
                 one=True
@@ -1662,21 +1690,20 @@ class mywindow(QtWidgets.QMainWindow):
         spis_filtr = CQT.list_from_wtabl_c(self.ui.tblw_dse_filtr)
         #stroki = CSQ.list_from_db_sql_c(self.db_naryad, 'dse', True, True)
         print(f'==========LOAD DSE=========')
-        stroki = CSQ.custom_request_c(self.db_dse,f'''SELECT 
-            Пномер, 
-            Номенклатурный_номер, 
-            Наименование, 
-            Номер_техкарты, 
-            Примечание, 
-            Путь_docs, 
-            Доступ, 
-            
-            Мат_кд, 
-            Код_ЕРП, 
-
-            Нр_техн_дет, 
-            Нв_техн_раскрой 
-         FROM dse WHERE poki == {self.place.poki}''')
+        stroki = CSQ.custom_request_c(self.db_dse,f'''
+        SELECT 
+            "Пномер", 
+            "Номенклатурный_номер", 
+            "Наименование", 
+            "Номер_техкарты", 
+            "Примечание", 
+            "Путь_docs", 
+            "Доступ", 
+            "Мат_кд", 
+            "Код_ЕРП", 
+            "Нр_техн_дет", 
+            "Нв_техн_раскрой" 
+         FROM dse WHERE poki = {self.place.poki}''')
         #self.set_kol_bd_dse = {0, 1, 2, 3, 6, 7, 8, 9, 10,11,12,13}
         print(f'==========LOAD DSE OK========')
         """ tk = CMS.Techkards('КТ.2209018.03.04.002', self.db_dse)  # 'КЛ.2108001.29.20.001'
@@ -1730,8 +1757,11 @@ class mywindow(QtWidgets.QMainWindow):
         n_k_nn = CQT.num_col_by_name_c(tbl, 'Номенклатурный_номер')
         n_k_texzam = CQT.num_col_by_name_c(tbl, 'Тех_заметки')
         if tbl.currentColumn()== n_k_texzam:
-            CSQ.custom_request_c(self.db_naryad,
-                   f'''UPDATE dse SET Тех_заметки = "{tbl.item(row, n_k_texzam).text()}" WHERE Номенклатурный_номер = "{tbl.item(row, n_k_nn).text()}"''')
+            CSQ.custom_request_c(
+                self.db_naryad,
+                f'''UPDATE dse SET "Тех_заметки" = ? WHERE Номенклатурный_номер = ?;''',
+                list_of_lists_c=[[tbl.item(row, n_k_texzam).text(), tbl.item(row, n_k_nn).text()]]
+            )
 
 
     @CQT.onerror
@@ -1775,25 +1805,27 @@ class mywindow(QtWidgets.QMainWindow):
         naim = tbl_dse.item(tbl_dse.currentRow(), nk_naim).text()
         try:
             custom_request_c = f'''
-                SELECT mk.Пномер, mk.Дата, mk.Статус, 
+                SELECT mk."Пномер", mk."Дата", mk."Статус", 
                     CASE 
-                        WHEN знпр.№ERP IS NOT NULL 
-                        THEN знпр.№ERP 
-                        ELSE mk.Номер_заказа 
-                    END AS Номер_заказа, 
+                        WHEN знпр."№ERP" IS NOT NULL 
+                        THEN знпр."№ERP" 
+                        ELSE mk."Номер_заказа" 
+                    END AS "Номер_заказа", 
                                
                     CASE 
-                        WHEN знпр.№проекта IS NOT NULL 
-                        THEN знпр.№проекта 
-                        ELSE mk.Номер_проекта 
-                    END AS Номер_проекта, 
-                    mk.Вид, res.data
+                        WHEN знпр."№проекта" IS NOT NULL 
+                        THEN знпр."№проекта" 
+                        ELSE mk."Номер_проекта" 
+                    END AS "Номер_проекта", 
+                    mk."Вид", res.data
                 FROM mk 
-                INNER JOIN plan ON plan.Пномер = mk.НомКплан 
-                INNER JOIN пл_оуп ON plan.Пномер = пл_оуп.НомПл
-                INNER JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП
-                INNER JOIN res ON res.Номер_мк = mk.Пномер
-                WHERE plan.poki = {CFG.Config.place.poki} and mk.Прогресс != "Завершено" AND mk.Статус != "НаУдаление" 
+                INNER JOIN plan ON plan."Пномер" = mk."НомКплан" 
+                INNER JOIN пл_оуп ON plan."Пномер" = пл_оуп."НомПл"
+                INNER JOIN знпр ON знпр."s_num" = пл_оуп."Пномер_ЗП"
+                INNER JOIN res ON res."Номер_мк" = mk."Пномер"
+                WHERE plan.poki = {CFG.Config.place.poki} 
+                    AND mk."Прогресс" != 'Завершено' 
+                    AND mk."Статус" != 'НаУдаление' 
             '''
             spis_mk = CSQ.custom_request_c(
                 self.db_naryad,custom_request_c,
@@ -2083,15 +2115,16 @@ class mywindow(QtWidgets.QMainWindow):
             return
 
         if po_mk == False:
+            params = [[n_dse.text()]]
             spisok_tk = F.open_file_c(F.scfg("add_docs") + os.sep + ima, False, '|', pickl=True, propuski=True)
-            where = f'WHERE Номенклатурный_номер = {n_dse.text()!r} AND poki = {self.place.poki}'
+            where = f'WHERE "Номенклатурный_номер" = ? AND poki = {self.place.poki}'
             if spisok_tk == ['']:
                 rez = CQT.msgboxgYN('Не найдена ТК, Создать техкарту заново?')
                 if rez:
 
                     CSQ.custom_request_c(
                         self.db_dse,
-                        f"""UPDATE dse SET Номер_техкарты = '{n_tk.text()}' {where}""")
+                        f"""UPDATE dse SET "Номер_техкарты" = '{n_tk.text()}' {where}""")
                     self.obnov_dse()
 
                     self.save_tk()
@@ -2101,7 +2134,8 @@ class mywindow(QtWidgets.QMainWindow):
                 return
             if self.ui.tblw_dse.item(current_row, CQT.num_col_by_name_c(self.ui.tblw_dse,'Номер_техкарты')).text() == '':
                 CSQ.custom_request_c(self.db_dse,
-                           f"""UPDATE dse SET Номер_техкарты = '{n_tk.text()}' {where}""")
+                           f"""UPDATE dse SET "Номер_техкарты" = '{n_tk.text()}' {where}""",
+                                     list_of_lists_c=params)
                 self.obnov_dse()
             F.copy_file_c(F.scfg("add_docs") + os.sep + ima.replace('.txt', '.pickle'),
                           F.put_po_umolch() + os.sep + "tmp_tk")
@@ -3102,6 +3136,7 @@ class mywindow(QtWidgets.QMainWindow):
             if not KPT.check_plan_responce_sort_c_weight(self):
                 self.ui.tblw_dse.setEnabled(False)
                 #return False#16.06.2026 по 100070295
+        self.fix_dse_credentials()
         self.ui.tblw_dse.setEnabled(True)
         self.load_zagolovok_dse(po_mk)
         if F.user_full_namre() in self.DICT_EMPLOEE_FULL:
@@ -3812,8 +3847,8 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
 
         if self.item_o == "Оборудование":
             tab.setEnabled(True)
-            list_equipment = CSQ.custom_request_c(self.db_users, f"""SELECT Инв_номер, Наименование, 
-             Примечание FROM equipment WHERE poki = {pself.place.poki};""")
+            list_equipment = CSQ.custom_request_c(self.db_users, f"""SELECT "Инв_номер", "Наименование", 
+             "Примечание" FROM equipment WHERE poki = {pself.place.poki};""")
             CQT.fill_wtabl_old_c(self, list_equipment, tab, isp_hat_c=True, separ='', ogr_maxshir_kol=800)
             self.setGeometry(self.frameGeometry().getCoords()[0], 33, self.width(), 1000)
             tab.setFocus()
@@ -3821,8 +3856,11 @@ class mywindow2(QtWidgets.QDialog):  # диалоговое окно
 
         if self.item_o == "Раб_ц":
             tab.setEnabled(True)
-            list_rc = CSQ.custom_request_c(self.db_users, f"""SELECT Код, Имя, Примечание FROM 
-             rab_c WHERE Примечание != 'не использовать' and enabled = 1 and poki == {pself.place.poki} order by Код""") # 07.10.25
+            list_rc = CSQ.custom_request_c(self.db_users, f"""SELECT "Код", "Имя", "Примечание" FROM 
+             rab_c 
+            WHERE "Примечание" != 'не использовать' 
+                and enabled = 1 and poki = {pself.place.poki} 
+            order by "Код";""") # 07.10.25
             CQT.fill_wtabl_old_c(self, list_rc, tab, isp_hat_c=True, separ='', ogr_maxshir_kol=800)
             self.setGeometry(self.frameGeometry().getCoords()[0], 33, self.width(), 1000)
             tab.setFocus()

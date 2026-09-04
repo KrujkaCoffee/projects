@@ -1,31 +1,10 @@
-import dataclasses
 import typing
 
 from PyQt5 import QtWidgets, QtCore
 
 from project_cust_38.sub_mes.resource_planning import catalog_link as CL
 from project_cust_38.sub_mes.resource_planning import attribute_binding as AB
-
-@dataclasses.dataclass(frozen=True, slots=True)
-class CatalogFieldChoice:
-    endpoint: CL.CatalogLinkEndpoint
-    source_caption: str = ''
-    entity_caption: str = ''
-
-    def __post_init__(self):
-        if not isinstance(self.endpoint, CL.CatalogLinkEndpoint):
-            raise TypeError('некорректный аргумент endpoint')
-        if any(not isinstance(k, str) for k in (self.source_caption, self.entity_caption)):
-            raise TypeError('Некорректный аргумент source_caption/entity_caption')
-
-    @property
-    def source_text(self) -> str:
-        return self.source_caption or self.endpoint.source_key
-
-    @property
-    def entity_text(self) -> str:
-        return self.entity_caption or self.endpoint.entity_key
-
+from project_cust_38.sub_mes.resource_planning import catalog_choices as CC
 
 class CatalogEndpointEditor(QtWidgets.QGroupBox):
     selection_changed = QtCore.pyqtSignal()
@@ -33,7 +12,7 @@ class CatalogEndpointEditor(QtWidgets.QGroupBox):
     def __init__(
             self,
             title: str,
-            choices: typing.Iterable[CatalogFieldChoice],
+            choices: typing.Iterable[CC.CatalogFieldChoice],
             parent=None
     ):
         super().__init__(title, parent)

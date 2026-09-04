@@ -64,7 +64,7 @@ class Data:
                                                         rez_dict=True) #21.05.2026
 
     DICT_TYPE_MK_NAMES = F.deploy_dict_c(
-        CSQ.custom_request_c(bd_naryad, f"""SELECT * FROM Тип_мк""", rez_dict=True),
+        CSQ.custom_request_c(bd_naryad, f'''SELECT * FROM "Тип_мк";''', rez_dict=True),
         'Имя')
     DICT_TYPE_DOREZ = CSQ.custom_request_c(bd_naryad, f"""SELECT * FROM тип_дорезок""", rez_dict=True)
     DICT_TYPE_DORAB = CSQ.custom_request_c(bd_naryad, f"""SELECT * FROM тип_доработок""", rez_dict=True)
@@ -76,9 +76,12 @@ class Data:
     DICT_VID_PO_NAPR = F.deploy_dict_c(VID_PO_NAPR, 'Пномер')
     DICT_VID_PO_NAPR_NAME = F.deploy_dict_c(VID_PO_NAPR, 'Имя')
 
-    custom_request_c = f'''SELECT * FROM professions INNER JOIN vid_rab_po_dolg 
-    ON vid_rab_po_dolg.Вид_работ = professions.вид_работ,
-     group_vid_rab_for_plan ON group_vid_rab_for_plan.name=vid_rab_po_dolg.group_for_plan WHERE Вкл = 1 and group_vid_rab_for_plan.composite = 0'''
+    custom_request_c = f'''
+    SELECT * 
+    FROM professions 
+    INNER JOIN vid_rab_po_dolg ON vid_rab_po_dolg."Вид_работ" = professions.вид_работ
+    INNER JOIN group_vid_rab_for_plan ON group_vid_rab_for_plan.name = vid_rab_po_dolg.group_for_plan 
+    WHERE "Вкл" = 1 and "group_vid_rab_for_plan"."composite" = 0;'''
     SPIS_prof = CSQ.custom_request_c(bd_users, custom_request_c, hat_c=False,rez_dict=True)
     LIST_PROFESSIONS = SPIS_prof
     DICT_PROFESSIONS = F.deploy_dict_c(SPIS_prof,'код')
@@ -90,18 +93,18 @@ class Data:
     DICT_GROUP_VID_RAB_FOR_PLAN_NICKNAME = DICT_PROFESSIONS_NICKNAME = F.deploy_dict_c(group_vid_rab_for_plan,'nick_name')
     DICT_GROUP_VID_RAB_FOR_PLAN_NAME = F.deploy_dict_c(group_vid_rab_for_plan, 'name')
     DICT_GROUP_PODR_VID_RAB_FOR_PLAN = CMS.calc_dict_group_podr_vid_rab_for_plan()
-    DICT_EMPL_FULL = F.deploy_dict_c(CSQ.custom_request_c(bd_users, f"""SELECT * FROM employee WHERE Пномер IN( SELECT Пномер FROM (SELECT
-        	MAX(Пномер) as Пномер,
-        	ФИО
+    DICT_EMPL_FULL = F.deploy_dict_c(CSQ.custom_request_c(bd_users, f"""SELECT * FROM employee WHERE "Пномер" IN( SELECT "Пномер" FROM (SELECT
+        	MAX("Пномер") as "Пномер",
+        	"ФИО"
         FROM
         	employee
         GROUP BY
-        	ФИО
-        HAVING COUNT(*) >= 1 )) order by ФИО;""", rez_dict=True), 'ФИО')
+        	"ФИО"
+        HAVING COUNT(*) >= 1 )) order by "ФИО";""", rez_dict=True), 'ФИО')
 
     DICT_REF_USERS = { v['ID_ФизЛица']:k for k,v in DICT_EMPL_FULL.items()}
 
-    DICT_BASES_ERP = F.deploy_dict_c(CSQ.custom_request_c(bd_users, f"""SELECT * FROM bases_ERP""", rez_dict=True),
+    DICT_BASES_ERP = F.deploy_dict_c(CSQ.custom_request_c(bd_users, f'''SELECT * FROM "bases_ERP"''', rez_dict=True),
                                       'name')
 
     DICT_DOLGN_ETAP = F.deploy_dict_c(CSQ.custom_request_c(bd_naryad, f"""SELECT * FROM dolgn_etap""", rez_dict=True),
@@ -234,7 +237,7 @@ class mywindow(QtWidgets.QMainWindow):
         self.DICT_EMPLOEE_FULL_WITH_DEL_BY_REF = F.deploy_dict_c(list_emploee_full_with_del,'ID_ФизЛица')
 
         self.DICT_MK = CSQ.custom_request_c(self.bd_naryad,
-                                            f"""SELECT Пномер, Номер_заказа || "$" || Номер_проекта as NPPY FROM mk""",
+                                            f"""SELECT "Пномер", "Номер_заказа" || '$' || "Номер_проекта" as "NPPY" FROM mk""",
                                             rez_dict=True)
         self.DICT_MK = F.deploy_dict_c(self.DICT_MK, 'NPPY')
         self.DICT_KOD_VP = F.deploy_dict_c(
@@ -470,12 +473,32 @@ class mywindow(QtWidgets.QMainWindow):
                     else:
                         fio = item[0]
 
-        custom_request_c = f"""SELECT jurnal.ФИО, jurnal.Подытог,mk.Номер_заказа, jurnal.Дата  FROM jurnal INNER JOIN 
-        naryad ON naryad.Пномер = jurnal.Номер_наряда,
-        mk ON mk.Пномер = naryad.Номер_мк
-        WHERE jurnal.Подытог <> 0 AND jurnal.Статус = 'Начат'
+        custom_request_c = CSQ.SqlQuery(
+            sqlite=f"""
+        SELECT 
+            jurnal."ФИО", 
+            jurnal."Подытог", 
+            mk."Номер_заказа", 
+            jurnal."Дата"  
+        FROM jurnal 
+        INNER JOIN naryad ON naryad.Пномер = jurnal.Номер_наряда
+        INNER JOIN mk ON mk.Пномер = naryad.Номер_мк
+        WHERE jurnal."Подытог" <> 0 AND jurnal.Статус = 'Начат'
             and datetime(jurnal.Дата) > datetime("{min_date}") 
-            and datetime(jurnal.Дата) <= datetime("{max_date}");"""
+            and datetime(jurnal.Дата) <= datetime("{max_date}");""",
+            postgres=f"""
+        SELECT 
+            jurnal."ФИО", 
+            jurnal."Подытог", 
+            mk."Номер_заказа", 
+            jurnal."Дата"  
+        FROM jurnal 
+        INNER JOIN "naryad" ON "naryad"."Пномер" = "jurnal"."Номер_наряда"
+        INNER JOIN "mk" ON "mk"."Пномер" = "naryad"."Номер_мк"
+        WHERE "jurnal"."Подытог" <> 0 AND "jurnal"."Статус" = 'Начат'
+            and ("jurnal"."Дата")::timestamp > ('{min_date}')::timestamp 
+            and ("jurnal"."Дата")::timestamp <= ('{max_date}')::timestamp;"""
+        )
         rez_jur_pre = CSQ.custom_request_c(self.bd_naryad, custom_request_c, hat_c=True, rez_dict=True)
         rez_jur = []
         for item in rez_jur_pre:
@@ -603,7 +626,7 @@ class mywindow(QtWidgets.QMainWindow):
                                 delta = 5
                         if not self.Data.DICT_VID_PO_NAPR[vid]['Утверждены_нормы']:
                             CSQ.custom_request_c(self.db_kplan,
-                                                f"""UPDATE виды_по_направлению SET (vneplan_percent) = {delta} WHERE Пномер = {vid}""")  # 18.08.25
+                                                f"""UPDATE виды_по_направлению SET vneplan_percent = {delta} WHERE "Пномер" = {vid};""")  # 18.08.25
                             pass
                     CQT.msgbox(f'Успешно')
 
@@ -663,10 +686,10 @@ class mywindow(QtWidgets.QMainWindow):
                                   F.valm(item['Упаковка и комплектование ЗИП']),
                                   ]]
                 kod = int(item['Код из бд'])
-                rez = CSQ.custom_request_c(self.db_kplan, f'''UPDATE виды_по_напр SET (Выборка, 
-                кг_на_пост_см
+                rez = CSQ.custom_request_c(self.db_kplan, f'''UPDATE виды_по_напралению SET ("Выборка", 
+                "кг_на_пост_см"
                ) = ({'?,'.join(['' for _ in list_of_lists[0]]) + '?'}) 
-                WHERE  Пномер = {kod}''', list_of_lists_c=list_of_lists)
+                WHERE "Пномер" = {kod};''', list_of_lists_c=list_of_lists)
                 if rez == False:
                     CQT.msgbox(f'Ошибка')
                     return
@@ -955,14 +978,14 @@ class mywindow(QtWidgets.QMainWindow):
     def fill_jurnal(self):
         nk_nom_mk = CQT.num_col_by_name_c(self.ui.tbl_mk, 'Пномер')
         nom_mk = int(self.ui.tbl_mk.item(self.ui.tbl_mk.currentRow(), nk_nom_mk).text())
-        custom_request_c = f'''SELECT jurnal.Дата, jurnal.Статус, 
-                    jurnal.Номер_наряда, jurnal.Примечание AS "Примеч_журнал", 
-                    naryad.ФИО, naryad.Фвремя, naryad.ФИО2, 
-                    naryad.Фвремя2, naryad.Задание, 
-                    naryad.Внеплан, naryad.Примечание AS "Примеч_наряд" FROM jurnal 
-                    INNER JOIN naryad ON jurnal.Номер_наряда == naryad.Пномер 
-                    INNER JOIN mk ON naryad.Номер_мк == mk.Пномер 
-                    WHERE mk.Пномер == {nom_mk} AND jurnal.Статус == "Завершен"'''
+        custom_request_c = f'''SELECT jurnal."Дата", jurnal."Статус", 
+                    jurnal."Номер_наряда", jurnal."Примечание" AS "Примеч_журнал", 
+                    naryad."ФИО", naryad."Фвремя", naryad."ФИО2", 
+                    naryad."Фвремя2", naryad."Задание", 
+                    naryad."Внеплан", naryad."Примечание" AS "Примеч_наряд" FROM jurnal 
+                    INNER JOIN naryad ON jurnal."Номер_наряда" = naryad."Пномер" 
+                    INNER JOIN mk ON naryad."Номер_мк" = mk."Пномер" 
+                    WHERE mk.Пномер = {nom_mk} AND jurnal.Статус = 'Завершен'; '''
         rez = CSQ.custom_request_c(self.bd_naryad, custom_request_c)
         CQT.fill_wtabl_old_c(self, rez, self.ui.tbl_jur, separ='', isp_hat_c=True)
         CMS.fill_filtr_c(self, self.ui.tbl_jur_filtr, self.ui.tbl_jur)
@@ -1029,12 +1052,12 @@ class mywindow(QtWidgets.QMainWindow):
 
     def load_mk(self, napr):
         custom_request_c = f'''SELECT DISTINCT mk.Пномер, mk.Статус, mk.Вид, mk.Номенклатура, mk.Номер_заказа, mk.Номер_проекта, 
-                            mk.Примечание, mk.Основание, mk.Приоритет, mk.Направление, mk.Вес, mk.Количество, "" as Ресурсная,
+                            mk.Примечание, mk.Основание, mk.Приоритет, mk.Направление, mk.Вес, mk.Количество, '' as Ресурсная,
                             zagot.Прим_резка, '' as "Прогресс_01",  '' as "Резка",  '' as "Мех_обр", 
                             '' as "Сборка",  '' as "Покрытие" 
                             FROM mk 
                     INNER JOIN zagot ON mk.Пномер = zagot.Ном_МК 
-                    WHERE mk.Направление == "{napr}" ORDER BY mk.Приоритет DESC;'''
+                    WHERE mk."Направление" = '{napr}' ORDER BY mk."Приоритет" DESC;'''
         spis = CSQ.custom_request_c(self.bd_naryad, custom_request_c, hat_c=True)
         nk_nom_mk = F.num_col_by_name_in_hat_c(spis, 'Пномер')
         nk_res = F.num_col_by_name_in_hat_c(spis, 'Ресурсная')
@@ -1046,7 +1069,7 @@ class mywindow(QtWidgets.QMainWindow):
 
         list_nom_mk = tuple([_[nk_nom_mk] for _ in spis[1:]])
 
-        dict_res = CSQ.custom_request_c(self.db_resxml, f"""SELECT * FROM res WHERE Номер_мк in {list_nom_mk}""",
+        dict_res = CSQ.custom_request_c(self.db_resxml, f"""SELECT * FROM res WHERE "Номер_мк" in {list_nom_mk}""",
                                         rez_dict=True)
         self.dict_res = F.deploy_dict_c(dict_res, 'Номер_мк')
 
@@ -1183,19 +1206,21 @@ install_crash_guard(
     user_name=F.user_name()
 )
 
-args = sys.argv[1:]
-myappid = 'Powerz.BAG.SystCreateWork.1.0.4'  # !!!
-QtWin.setCurrentProcessExplicitAppUserModelID(myappid)
-app.setWindowIcon(QtGui.QIcon(os.path.join("icons", "icon.png")))
-# ========================================================
-application = mywindow()
-from project_cust_38.widget_spy import install_pyqt_event_hook
-install_pyqt_event_hook(app)
-if CMS.kontrol_ver(application.versia, "Просмотр") == False:
-    sys.exit()
-# =========================================================
+if __name__ == '__main__':
 
-S = cfg['Stile'].split(",")
-app.setStyle(S[0])
-application.showMaximized()
-sys.exit(app.exec())
+    args = sys.argv[1:]
+    myappid = 'Powerz.BAG.SystCreateWork.1.0.4'  # !!!
+    QtWin.setCurrentProcessExplicitAppUserModelID(myappid)
+    app.setWindowIcon(QtGui.QIcon(os.path.join("icons", "icon.png")))
+    # ========================================================
+    application = mywindow()
+    from project_cust_38.widget_spy import install_pyqt_event_hook
+    install_pyqt_event_hook(app)
+    if CMS.kontrol_ver(application.versia, "Просмотр") == False:
+        sys.exit()
+    # =========================================================
+
+    S = cfg['Stile'].split(",")
+    app.setStyle(S[0])
+    application.showMaximized()
+    sys.exit(app.exec())

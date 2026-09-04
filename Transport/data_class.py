@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 import project_cust_38.Cust_config as MESCNF
 import os
@@ -57,7 +57,7 @@ class SingletonMeta(type):
 
 
 @dataclass()
-class _Data_vars(metaclass=SingletonMeta):
+class _Data_vars:
     print(f'==== INIT _Data_vars =======')
     db_kplan: str = MESCNF.Config.project.db_kplan
     width:int = 1900
@@ -95,17 +95,18 @@ class Client_config():
             print('Поиск пользователя по WINDOWS AUTH LOGIN')
             data_bio_client = CSQ.custom_request_c(
                 self.db_users,
-                f"""
+                """
                     SELECT e.Пномер, e.ФИО, e.Должность, e.Подразделение 
                     FROM employee AS e
                         INNER JOIN ФизическиеЛица ON ФизическиеЛица.ФизическоеЛицо_Key = e.ID_ФизЛица
-                    WHERE SUBSTR(ФизическиеЛица.login, 3) = "{self.login}" ORDER BY Пномер DESC LIMIT 1
-                """, rez_dict=True, one=True)
+                    WHERE SUBSTR(ФизическиеЛица.login, 3) = ? ORDER BY Пномер DESC LIMIT 1
+                """, list_of_lists_c=[[self.login]], rez_dict=True, one=True)
         else:
             print('Поиск пользователя по HOSTNAME')
             data_bio_client = CSQ.custom_request_c(self.db_users,
-                           f"""SELECT Пномер, ФИО,Должность,Подразделение FROM employee 
-                            WHERE computer_name == '{self.hostname}';""",rez_dict=True, one=True)
+                           """SELECT Пномер, ФИО,Должность,Подразделение FROM employee
+                            WHERE computer_name = ?;""",
+                           list_of_lists_c=[[self.hostname]], rez_dict=True, one=True)
         print(f'data_bio_client = {data_bio_client} for self.hostname ={self.hostname}')
         if not data_bio_client:
             print(f'data_bio_client = None')
@@ -116,12 +117,16 @@ class Client_config():
                               data_bio_client['Подразделение'])
 
     def _update_user_param(self,name_param:str,val:int|float|str):
-        if isinstance(val, str):
-            val = "'" + val + "'"
-        where = f'ip = "{self.ip}"'
-        if self.login:
-            where = f'login = "{self.login}"'
-        CSQ.custom_request_c(self.db_flet,f"""UPDATE user_config SET {name_param} = {val} WHERE {where};""")
+        allowed_columns = {'theme_mode_dark', 'color_scheme_seed'}
+        if name_param not in allowed_columns:
+            raise ValueError(f'Недопустимый параметр конфигурации: {name_param}')
+        where_column = 'login' if self.login else 'ip'
+        where_value = self.login if self.login else self.ip
+        CSQ.custom_request_c(
+            self.db_flet,
+            f"UPDATE user_config SET {name_param} = ? WHERE {where_column} = ?;",
+            list_of_lists_c=[[val, where_value]],
+        )
 
     def update_user_theme_mode(self,dark=False):
         self._update_user_param('theme_mode_dark', int(dark))
@@ -154,17 +159,20 @@ class Client_data():
             self.user_config:Client_config|None = None
 
     def _load_user_config_data(self):
-        where = f'ip = "{self.ip}"'
-        if self.login:
-            where = f'login = "{self.login}"'
-        return CSQ.custom_request_c(self.db_flet, f"""SELECT * FROM user_config WHERE {where};""",
-                                    rez_dict=True)
+        where_column = 'login' if self.login else 'ip'
+        where_value = self.login if self.login else self.ip
+        return CSQ.custom_request_c(
+            self.db_flet,
+            f"SELECT * FROM user_config WHERE {where_column} = ?;",
+            list_of_lists_c=[[where_value]],
+            rez_dict=True,
+        )
 
     def get_user_config(self):
-        conf =  self._load_user_config_data()
         if not self.ip and not self.login:
             print('NOT FINED IP AND LOGIN')
             return
+        conf = self._load_user_config_data()
         if not conf:
             if not self.add_new_user():
                 print(f'Ошибка добавления нового юзера для {self.ip}')
@@ -236,7 +244,7 @@ class StatusBar:
 class ModuleCfg:
     _dict_routes = dict()
     def __init__(self, alias:str|None='genesis', route:str|None=None, name:str='', icon:ft.Icons|None=None, tooltip:str='', sub_module:Optional[
-        'ModuleCfg']=None):
+        'ModuleCfg']=None, *, _register: bool = True):
         self.alias:str = alias
         self.route:str = route
         self.sub_dir:str|None = None
@@ -252,7 +260,8 @@ class ModuleCfg:
         self.sub_modules:dict[str, ModuleCfg] = dict()
         if sub_module:
             self.sub_modules[sub_module.alias] = sub_module
-        ModuleCfg._dict_routes[route] = self
+        if _register and route is not None:
+            ModuleCfg._dict_routes[route] = self
         self.settingsRef:None|ft.Ref[ft.Column] = None
 
     def set_status_bar(self,refContainer,refStatusBarText):
@@ -265,6 +274,22 @@ class ModuleCfg:
     def get_module_by_route(self,route:str):
         if route in ModuleCfg._dict_routes:
             return ModuleCfg._dict_routes[route]
+
+    def clone_for_session(self) -> 'ModuleCfg':
+        """Создаёт изменяемое состояние модуля только для одной страницы."""
+
+        cloned = ModuleCfg(
+            self.alias,
+            self.route,
+            self.name,
+            self.icon,
+            self.tooltip,
+            _register=False,
+        )
+        cloned.sub_dir = self.sub_dir
+        # Дерево здесь используется только как неизменяемое описание меню.
+        cloned.sub_modules = self.sub_modules
+        return cloned
 class Srv_data(metaclass=SingletonMeta):
     def __init__(self):
         self.ip =  SRVCFG.HOST
@@ -274,23 +299,23 @@ class Srv_data(metaclass=SingletonMeta):
     def get_prefix_url(self):
         return f'http://{self.ip}:{self.port}'
 
-class Data_page(SingletonMeta):
-    #def __init__(self,page:ft.Page):
-    page:ft.Page = None
-    Data_vars:_Data_vars = _Data_vars()
-    client_data:Client_data = None
-    Data_user:Client_data = None
-    Data_srv:Srv_data = None
-    Data_module:ModuleCfg = None
-    @classmethod
-    def reload(cls):
-        print(f'==== INIT Data_page =======')
-        cls.Data_vars: _Data_vars = _Data_vars()
-        cls.client_data: Client_data = Client_data(cls.page)
-        cls.client_data.get_user_config()
-        cls.Data_user: Client_data = cls.client_data
-        cls.Data_srv: Srv_data = Srv_data()
-        cls.Data_module: ModuleCfg = ModuleCfg(None, None)
+class Data_page:
+    """Контекст одной Flet-сессии.
 
+    Ранее все поля были атрибутами класса, из-за чего две страницы разделяли
+    пользователя, активный модуль и UI-ссылки.
+    """
 
+    def __init__(self, page: ft.Page):
+        print('==== INIT Data_page =======')
+        self.page: ft.Page = page
+        self.Data_vars: _Data_vars = _Data_vars()
+        self.client_data: Client_data = Client_data(page)
+        self.client_data.get_user_config()
+        self.Data_user: Client_data = self.client_data
+        self.Data_srv: Srv_data = Srv_data()
+        self.Data_module: ModuleCfg = ModuleCfg(None, None, _register=False)
 
+    def activate_module(self, module_template: ModuleCfg) -> ModuleCfg:
+        self.Data_module = module_template.clone_for_session()
+        return self.Data_module

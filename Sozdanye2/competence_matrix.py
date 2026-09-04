@@ -209,26 +209,27 @@ class Depatment():
         self.matrix_id_landing_b24:int | None = None
         self.matrix_id_landing_table_block_b24:int | None = None
         self.name_matrix: str | None = None
-        data = CSQ.custom_request_c(CFG.Config.project.db_users, f"""SELECT 
-                        Подразделения.id,
-                        Подразделения.Наименование,
-                        Подразделения.Подразделение_Key,
-                        Подразделения.Организация_poki,
-                        Подразделения.for_deletion,
-                        places.Организация_Key,
-                        places.Имя as Организация_Имя,
-                        competence_matrix.s_num as matrix_s_num,
-                        competence_matrix.name_matrix as name_matrix,
-                        competence_matrix.id_landing_b24 AS matrix_id_landing_b24, 
-                        competence_matrix.id_landing_table_block_b24 AS matrix_id_landing_table_block_b24
-                        FROM Подразделения INNER JOIN places 
-                        ON places.poki == Подразделения.Организация_poki,
-                        competence_matrix 
-                        ON competence_matrix.id_depatment_mes == Подразделения.id
-                        
-                         WHERE Подразделения.Подразделение_Key == "{depatment_ref}" 
-                         and Подразделения.for_deletion = 0 """, rez_dict=True,one=True,
-                                    attach_dbs=CFG.Config.project.db_naryad)
+        data = CSQ.custom_request_c(CFG.Config.project.db_users, f"""
+        SELECT 
+            "Подразделения"."id",
+            "Подразделения"."Наименование",
+            "Подразделения"."Подразделение_Key",
+            "Подразделения"."Организация_poki",
+            "Подразделения"."for_deletion",
+            "places"."Организация_Key",
+            "places"."Имя" as "Организация_Имя",
+            "competence_matrix"."s_num" as "matrix_s_num",
+            "competence_matrix"."name_matrix" as "name_matrix",
+            "competence_matrix"."id_landing_b24" AS "matrix_id_landing_b24", 
+            "competence_matrix"."id_landing_table_block_b24" AS "matrix_id_landing_table_block_b24"
+        FROM "Подразделения" 
+        INNER JOIN places ON places.poki = "Подразделения"."Организация_poki"
+        INNER JOIN competence_matrix ON competence_matrix.id_depatment_mes = "Подразделения".id
+        WHERE "Подразделения"."Подразделение_Key" = "{depatment_ref}" 
+             and "Подразделения"."for_deletion" = 0 """,
+        rez_dict=True,
+        one=True,
+        attach_dbs=CFG.Config.project.db_naryad)
         for key in data.keys():
             exec(f'self.{key.replace(".", "_")} = data[key]')
             #print(f'self.{key.replace(".", "_")}:str|None = None')
@@ -252,38 +253,39 @@ class Competencies():
 
         self.depatment:Depatment = Depatment(depatment_ref)
 
-        self.COMPETENCE_SHABL = CSQ.custom_request_c(CFG.Config.project.db_users, f"""SELECT 
-        competence_params.s_num AS params_s_num, 
-        competence_params.snum_matrix AS params_snum_matrix, 
-        competence_params.name_competence AS params_name_competence, 
-        competence_params.enable AS params_nenable, 
-        competence_matrix.s_num AS matrix_s_num, 
-        competence_matrix.id_depatment_mes AS matrix_id_depatment_mes, 
-        competence_matrix.name_matrix AS name_matrix, 
-        Подразделения.id AS Подразделения_id, 
-        Подразделения.Наименование AS Подразделения_Наименование, 
-        Подразделения.Подразделение_Key AS Подразделения_Подразделение_Key, 
-        Подразделения.Организация_poki AS Подразделения_Организация_poki, 
-        Подразделения.for_deletion AS Подразделения_for_deletion 
-        FROM competence_params INNER JOIN 
-        competence_matrix ON competence_matrix.s_num = competence_params.snum_matrix, 
-        Подразделения ON  Подразделения.id = competence_matrix.id_depatment_mes 
-         WHERE Подразделения.Подразделение_Key == "{self.depatment.Подразделение_Key}" AND 
-        competence_params.enable = 1 """, rez_dict=True)
+        self.COMPETENCE_SHABL = CSQ.custom_request_c(CFG.Config.project.db_users, f"""
+        SELECT 
+            "competence_params"."s_num" AS "params_s_num", 
+            "competence_params"."snum_matrix" AS "params_snum_matrix", 
+            "competence_params"."name_competence" AS "params_name_competence", 
+            "competence_params"."enable" AS "params_nenable", 
+            "competence_matrix"."s_num" AS "matrix_s_num", 
+            "competence_matrix"."id_depatment_mes" AS "matrix_id_depatment_mes", 
+            "competence_matrix"."name_matrix" AS "name_matrix", 
+            "Подразделения"."id" AS "Подразделения_id", 
+            "Подразделения"."Наименование" AS "Подразделения_Наименование", 
+            "Подразделения"."Подразделение_Key" AS "Подразделения_Подразделение_Key", 
+            "Подразделения"."Организация_poki" AS "Подразделения_Организация_poki", 
+            "Подразделения"."for_deletion" AS "Подразделения_for_deletion" 
+        FROM competence_params 
+        INNER JOIN "competence_matrix" ON "competence_matrix".s_num = "competence_params"."snum_matrix" 
+        INNER JOIN "Подразделения" ON "Подразделения".id = "competence_matrix"."id_depatment_mes" 
+        WHERE "Подразделения"."Подразделение_Key" = '{self.depatment.Подразделение_Key}' 
+            AND competence_params.enable = 1 """, rez_dict=True)
 
         self.LIST_NAMES_COMP = [v['params_name_competence'] for v in self.COMPETENCE_SHABL]
 
         data_users = CSQ.custom_request_c(CFG.Config.project.db_users,f"""SELECT * 
         FROM employee 
-         WHERE Статус IN ('Работа',
+         WHERE "Статус" IN ('Работа',
             'Отсутствие по невыясненным причинам',
             'Болезнь',
             'Отпуск основной',
             'Командировка',
             'Отпуск по уходу за ребенком'
          )
-          and Компания == "{self.depatment.Организация_Имя}"
-            and Подразделение == "{self.depatment.Наименование}"
+          and "Компания" = "{self.depatment.Организация_Имя}"
+            and "Подразделение" = "{self.depatment.Наименование}"
             """,rez_dict=True)
         self.list_users:list[User] = []
         self._comp_vals:list[dict] = self.load_vals_from_db()
@@ -420,10 +422,9 @@ def load_tbl(self:mywindow):
 
     empl_obj = CMS.Emploee_usr(ref_user,CFG.Config.project.db_users)
     depatments = CSQ.custom_request_c(CFG.Config.project.db_users,f"""
-    SELECT * FROM Подразделения INNER JOIN competence_matrix 
-     ON competence_matrix.id_depatment_mes = Подразделения.id 
-     WHERE 
-     Организация_poki == {self.DICT_PLACES[empl_obj.Компания]['poki']}
+    SELECT * FROM "Подразделения" INNER JOIN competence_matrix 
+     ON competence_matrix.id_depatment_mes = "Подразделения".id 
+     WHERE "Организация_poki" = {self.DICT_PLACES[empl_obj.Компания]['poki']}
         """,rez_dict=True)
 
     fill_cmb_select_dep(depatments,empl_obj.Подразделение)
@@ -525,7 +526,7 @@ def create_comp(self:mywindow):
         return
     name_comp = F.split_text_optimal(name_comp,round(len(name_comp)/30))
     found = CSQ.custom_request_c(CFG.Config.project.db_users,f"""SELECT * FROM competence_params
-     WHERE snum_matrix == {matrix_id} and name_competence == "{name_comp}";""",rez_dict=True)
+     WHERE snum_matrix = {matrix_id} and name_competence = '{name_comp}';""",rez_dict=True)
     if found:
         CQT.msgbox(f'Компетенция\n"{name_comp}"\nуже существует')
         return
