@@ -227,7 +227,8 @@ class ResourceHeader:
                  ВыпускПроизвольнымиПорциями: bool = False,
                  ИмяБазы=CFG.Config.user_config.ERP_base_name['Значение'],
                  Описание: str = '',
-                 Код: str | None = None  # для обновления = Код
+                 Код: str | None = None,  # для обновления = Код
+                 ПроверятьОсновноеИзделие: bool = True,
                  ):
         '''
 
@@ -266,7 +267,8 @@ class ResourceHeader:
         self.Описание: Optional[str] = Описание
         self.Код: Optional[str] = Код  # для обновления = Код
 
-        self.check_ОсновноеИзделиеКод()
+        if ПроверятьОсновноеИзделие:
+            self.check_ОсновноеИзделиеКод()
         self.check_ТекущийПользователь()
         self.check_Даты()
         self.check_ОбновленияКод()
@@ -419,13 +421,14 @@ class TypeOfWork:
 
 class CurrentUser:
     def __init__(self, name: str):
+        safe_name = F.sql_quote_ident(name)
         req_text = f"""
                 ВЫБРАТЬ ПЕРВЫЕ 1
                     УНИКАЛЬНЫЙИДЕНТИФИКАТОР(Пользователи.Ссылка) КАК ref_key
                 ИЗ
                     Справочник.Пользователи КАК Пользователи
                 ГДЕ
-                    Пользователи.Наименование = "{name}"
+                    Пользователи.Наименование = {safe_name}
                 """
         key, data_rez = APIERP.get_wet_request(req_text)
         if key != 200:

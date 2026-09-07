@@ -7,6 +7,7 @@ import project_cust_38.Cust_Functions as F
 import project_cust_38.Cust_SQLite as CSQ
 from project_cust_38 import Cust_config as CFG
 import hashlib
+import os
 import sys
 import project_cust_38.Cust_config as USRCNF
 from collections import OrderedDict
@@ -24,8 +25,8 @@ class OrdersComposit():
     headers = dict(Accept='application/json')
     params = dict()
     def __init__(self, srv_name = 'ERP') -> None:
-        self.user = 'OdataZNP'
-        self.pswd = 'znp'
+        self.user = os.environ.get('ERP_ODATA_USER', 'OdataZNP')
+        self.pswd = os.environ.get('ERP_ODATA_PASSWORD', 'znp')
         self.temp_json = 'temp.json'
         self.all_avaliable_urls = 'urls.txt'
         self.all_ordres = {}
