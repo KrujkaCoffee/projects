@@ -142,7 +142,7 @@ class CatalogEndpointEditor(QtWidgets.QGroupBox):
 class CatalogLinkEditor(QtWidgets.QDialog):
     def __init__(
             self,
-            choices: typing.Iterable[CC.CatalogFieldChoice],
+            choices: typing.Iterable[CatalogFieldChoice],
             parent=None
     ):
         super().__init__(parent)
