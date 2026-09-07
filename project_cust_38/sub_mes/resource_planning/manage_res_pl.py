@@ -87,23 +87,52 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
         self.new_catalog_link_action.setObjectName('action_new_catalog_link')
         self.new_catalog_link_action.triggered.connect(self.open_catalog_link_editor)
 
+
     def __load_catalog_field_choices(self):
         choices = []
         errors = []
         try:
-            ...
+            choices.extend(
+                CCHO.load_mes_choices(DTSUB.planner_mes_types)
+            )
         except Exception as error:
-            ...
+            errors.append(f'MES: {error}')
         try:
-            ...
+            erp_base_name = CFG.Config.user_config.ERP_base.name
+            choices.extend(CCHO.load_erp_choices(DTSUB.custom_types,
+                                                 erp_source_key=f'api_erp:{erp_base_name}',
+                                                 erp_source_caption=f'ERP ({erp_base_name})'))
         except Exception as error:
-            ...
+            errors.append(f'ERP: {error}')
+
         return tuple(choices), tuple(errors)
 
     def open_catalog_link_editor(self, checked: bool = False):
         choices, errors = self.__load_catalog_field_choices()
         if not choices:
-            ...
+            return CQT.msgbox('Не удалось загрузить ни один источник' + '\n'.join(errors))
+        if errors:
+            CQT.msgbox('Часть источников недоступна: \n' + '\n'.join(errors))
+
+        dialog = CEDIT.CatalogLinkEditor(choices, parent=self)
+        if dialog.exec() != CQT.QtWidgets.QDialog.Accepted:
+            return None
+        self.__last_catalog_link_draft = dialog.link_spec
+        left = self.__last_catalog_link_draft.left
+        right = self.__last_catalog_link_draft.right
+        print(
+            f'{left.provider}:'
+            f'{left.entity_key}.'
+            f'{left.field_key}\n'
+            f'->\n'
+            f'{right.provider}:'
+            f'{right.entity_key}.'
+            f'{right.field_key}'
+        )
+        CQT.msgbox(
+            'Связь сформирована и заполнена в черновик'
+        )
+        return self.__last_catalog_link_draft
 
     def _____________sub__________________(self):
         pass
