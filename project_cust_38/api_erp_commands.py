@@ -7,6 +7,7 @@ from subprocess import call as subprocess_call
 import json as JS
 import base64
 import hashlib
+import os
 import sys
 import json
 
@@ -18,11 +19,14 @@ import project_cust_38.Cust_SQLite as CSQ
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-USER_ERP = 'mes_user'
-PASS_ERP = '89Luham'
+ERP_READ_TIMEOUT = (5, 25)
+ERP_WRITE_TIMEOUT = (5, 35)
 
-USER_DO = 'mes_user'
-PASS_DO= '89Luham'
+USER_ERP = os.environ.get('ERP_HTTP_USER', 'mes_user')
+PASS_ERP = os.environ.get('ERP_HTTP_PASSWORD', '89Luham')
+
+USER_DO = os.environ.get('DO_HTTP_USER', USER_ERP)
+PASS_DO = os.environ.get('DO_HTTP_PASSWORD', PASS_ERP)
 
 
 HOSTNAME_LOCAL_MES = False
@@ -191,7 +195,14 @@ def post_res_json(json:dict, erp_base_name:str = 'ERP'):
     headers = dict(Accept='application/json')
     params = dict()
     url = f'{CFG.Config.project.ERB_BASE_URL}/{erp_base_name}/ru_RU/hs/mes/resspec/v1/make_res/'
-    response = requests.post(url, json=json, headers=headers, params=params, auth=(USER_ERP, PASS_ERP))
+    response = requests.post(
+        url,
+        json=json,
+        headers=headers,
+        params=params,
+        auth=(USER_ERP, PASS_ERP),
+        timeout=ERP_WRITE_TIMEOUT,
+    )
     #print(F.convert_binary_to_data(response.content))
     try:
         answ = JS.loads(F.convert_binary_to_data(response.content))
@@ -417,7 +428,14 @@ def _get_wet_request_base(text: str, refs: Refs_wet | None = None, lazy_method_h
                     print(f'wet_req end DB {(F.now('') - start).total_seconds()}')
                     return 200, old_data_db
     try:
-        response = requests.get(url, json=dict_data, headers=headers, params=params, auth=(aut.login, aut.password))
+        response = requests.get(
+            url,
+            json=dict_data,
+            headers=headers,
+            params=params,
+            auth=(aut.login, aut.password),
+            timeout=ERP_READ_TIMEOUT,
+        )
     except:
         print(f'wet_req end err (Code: None) resp {(F.now('')  - start).total_seconds()}')
         if old_data_db:
@@ -461,7 +479,14 @@ def make_nomen(dict_data:dict):
     params = dict()
 
     url = f'{CFG.Config.project.ERB_BASE_URL}/{CFG.Config.user_config.ERP_base_name["Значение"]}/ru_RU/hs/mes/sysexchange/v1/make_nomen/none'
-    response = requests.post(url, json=dict_data, headers=headers, params=params, auth=(USER_ERP, PASS_ERP))
+    response = requests.post(
+        url,
+        json=dict_data,
+        headers=headers,
+        params=params,
+        auth=(USER_ERP, PASS_ERP),
+        timeout=ERP_WRITE_TIMEOUT,
+    )
     data = F.convert_binary_to_data(response.content)
     try:
         data = JS.loads(data)
@@ -846,5 +871,3 @@ class Etaps_erp():
                 {'Номер': et.Номер, 'НаименованиеЭтапа': et.НаименованиеЭтапа,
                  'Чек': et.ref})
         return dict_etap
-
-
