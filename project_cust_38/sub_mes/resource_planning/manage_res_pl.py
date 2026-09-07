@@ -77,6 +77,7 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
 
 
         _con.load_connects(self)
+        self.__last_catalog_link_draft = None
         self.__install_catalog_links_menu()
 
     def __install_catalog_links_menu(self):
@@ -91,19 +92,55 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
         choices = []
         errors = []
         try:
-            ...
+            choices.extend(CCHO.load_mes_choices(DTSUB.planner_mes_types))
         except Exception as error:
-            ...
+            errors.append(f'MES: {error}')
         try:
-            ...
+            erp_base_name = CFG.Config.user_config.ERP_base.name
+            choices.extend(CCHO.load_erp_choices(
+                DTSUB.custom_types,
+                erp_source_key=f'api_erp:{erp_base_name}',
+                erp_source_caption=f'ERP ({erp_base_name})'
+            ))
         except Exception as error:
-            ...
+            errors.append(f'ERP: {error}')
         return tuple(choices), tuple(errors)
 
-    def open_catalog_link_editor(self, checked: bool = False):
+    def open_catalog_link_editor(
+            self,
+            _checked=False
+    ):
         choices, errors = self.__load_catalog_field_choices()
+
         if not choices:
-            ...
+            return CQT.msgbox(
+                'Не удалось загрузить источники \n'
+                + '\n'.join(errors))
+
+        if errors:
+            CQT.msgbox('Часть источников недоступна:\n'
+                + '\n'.join(errors))
+
+        dialog = CEDIT.CatalogLinkEditor(
+            choices,
+            parent=self
+        )
+        if dialog.exec() != CQT.QtWidgets.QDialog.Accepted:
+            return None
+        self.__last_catalog_link_draft = dialog.link_spec
+        link = self.__last_catalog_link_draft
+        left = link.left
+        right = link.right
+        print(
+            f'{left.provider}: '
+            f'{left.entity_key}.'
+            f'{left.field_key}\n'
+            '→\n'
+            f'{right.provider}: '
+            f'{right.entity_key}.'
+            f'{right.field_key}')
+        CQT.msgbox('Связь сформирована и добавлена в черновик')
+        return link
 
     def _____________sub__________________(self):
         pass
