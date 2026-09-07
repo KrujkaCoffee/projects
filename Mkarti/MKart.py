@@ -872,8 +872,7 @@ class mywindow(QtWidgets.QMainWindow):
                 date = F.strtodate(v, "%d.%m.%Y")
                 format_date = F.datetostr(date, "%Y-%m-%d 08:30:00")
                 CSQ.custom_request_c(self.bd_naryad,
-                                     f"""UPDATE mk SET Дата_завершения = ? WHERE Пномер = {k}""",
-                                     list_of_lists_c=[[format_date]])
+                                     f"""UPDATE mk SET Дата_завершения = "{format_date}" WHERE Пномер = {k}""")
 
     @CQT.onerror
     def edit_strukt_move_row(self, direction, *args):
@@ -1202,12 +1201,12 @@ class mywindow(QtWidgets.QMainWindow):
            jur_vnepl.Номер_наряда_с_ошибкой,
            jur_vnepl.Номер_внепланового_наряда
              FROM jur_vnepl 
-                               INNER JOIN mk ON mk.Пномер = jur_vnepl.МК  
-                               INNER JOIN plan ON plan.Пномер = mk.НомКплан  
-                               WHERE jur_vnepl.Номер_нов_мк = 0 
-                               and mk.Статус = 'Открыта' 
-                               and jur_vnepl.Статус != 'Отклонено' 
-                               and plan.poki = {self.place.poki};"""
+                               INNER JOIN mk ON mk.Пномер == jur_vnepl.МК  
+                               INNER JOIN plan ON plan.Пномер == mk.НомКплан  
+                               WHERE jur_vnepl.Номер_нов_мк == 0 
+                               and  mk.Статус == 'Открыта' 
+                               and  jur_vnepl.Статус != 'Отклонено' 
+                               and plan.poki == {self.place.poki};"""
         list_vneplan = CSQ.custom_request_c(self.bd_naryad, query, one_column=False, hat_c=False, rez_dict=True,
                                             attach_dbs=self.db_kplan)
 
@@ -1567,7 +1566,7 @@ class mywindow(QtWidgets.QMainWindow):
             blob = F.to_binary_pickle(res)
             if not CQT.msgboxgYN(f'ТОчно внести правку?'):
                 return
-            CSQ.custom_request_c(self.db_resxml, f'''UPDATE res SET data = ? WHERE Номер_мк = ?;''',
+            CSQ.custom_request_c(self.db_resxml, f'''UPDATE res SET data = ? WHERE Номер_мк == ?;''',
                                  list_of_lists_c=[blob, int(nom_mk)])
 
         if self.ui.tabWidget_5.currentIndex() == CQT.number_table_by_name_c(self.ui.tabWidget_5, 'XML'):
@@ -1579,7 +1578,7 @@ class mywindow(QtWidgets.QMainWindow):
             else:
                 xml = eval(xml)
                 blob = F.to_binary_pickle(xml)
-            CSQ.custom_request_c(self.db_resxml, f'''UPDATE xml SET data = ? WHERE Номер_мк = ?;''',
+            CSQ.custom_request_c(self.db_resxml, f'''UPDATE xml SET data = ? WHERE Номер_мк == ?;''',
                                  list_of_lists_c=[blob, int(nom_mk)])
 
         self.ui.txt_res.setPlainText("")
@@ -1782,7 +1781,7 @@ class mywindow(QtWidgets.QMainWindow):
 
         custom_request_c = f'''SELECT mk.Пномер, mk.Тип, mk.НомКплан, naryad.Пномер as Номер_Наряда, naryad.ФИО , 
         naryad.ФИО2, naryad.Подтвержд_вып_фио  FROM mk INNER JOIN naryad ON mk.Пномер = naryad.Номер_мк WHERE
-                naryad.Подтвержд_вып_фио = "" and mk.Пномер IN ({CSQ.prepare_list_to_tuple(mkarti)});'''
+                naryad.Подтвержд_вып_фио == "" and mk.Пномер IN ({CSQ.prepare_list_to_tuple(mkarti)});'''
         dict_nepodtver_nar = CSQ.custom_request_c(self.bd_naryad, custom_request_c, rez_dict=True)
         for i in range(len(dict_nepodtver_nar)):
             if dict_nepodtver_nar[i]['ФИО'] == '' and dict_nepodtver_nar[i]['ФИО2'] == '':
@@ -1897,13 +1896,13 @@ class mywindow(QtWidgets.QMainWindow):
                     mk.Номенклатура,
                     mk.Примечание,
                     mk.Основание,
-                    CASE WHEN знпр."№ERP" IS NOT NULL 
-                        THEN знпр."№ERP" 
-                        ELSE пл_оуп."№ERP"
+                    CASE WHEN знпр.№ERP IS NOT NULL 
+                        THEN знпр.№ERP 
+                        ELSE пл_оуп.№ERP
                     END AS Номер_заказа,  
-                    CASE WHEN знпр."№проекта" IS NOT NULL 
-                       THEN знпр."№проекта" 
-                       ELSE пл_оуп."№проекта" 
+                    CASE WHEN знпр.№проекта IS NOT NULL 
+                       THEN знпр.№проекта 
+                       ELSE пл_оуп.№проекта 
                     END AS Номер_проекта
                 FROM mk
                 INNER JOIN пл_оуп ON пл_оуп.НомПл = mk.НомКплан
@@ -1968,13 +1967,13 @@ class mywindow(QtWidgets.QMainWindow):
         if mode_one:
             if not CQT.msgboxgYN(f'Завершить МК №{nom_mk}?'):
                 return
-        custom_request_c = f'''SELECT Номер_мк FROM res WHERE Номер_мк = {nom_mk}'''
+        custom_request_c = f'''SELECT Номер_мк FROM res WHERE Номер_мк == {nom_mk}'''
         rez = CSQ.custom_request_c(self.db_resxml, custom_request_c, rez_dict=True, one=True)
         if rez == False:
             CQT.msgbox(f'Не найдена ресурсная. Нужно переоткрыть')
             return False
         custom_request_c = f'''SELECT mk.Дата_завершения, mk.Статус, mk.Основание  FROM mk
-            WHERE Пномер = {nom_mk}'''
+            WHERE Пномер == {nom_mk}'''
         rez = CSQ.custom_request_c(self.bd_naryad, custom_request_c, rez_dict=True, one=True, conn=conn, cur=cur)
         if rez['Дата_завершения'] != '':
             CQT.msgbox(f'Нельзя завершить ранее завершенную МК №{nom_mk}')
@@ -1999,7 +1998,7 @@ class mywindow(QtWidgets.QMainWindow):
             else:
                 flag_zav = True
             if flag_zav:
-                custom_request_c = f'''UPDATE mk SET Статус = "Закрыта", Дата_завершения = "{F.now()}" WHERE Пномер = {nom_mk}'''
+                custom_request_c = f'''UPDATE mk SET Статус = "Закрыта", Дата_завершения = "{F.now()}" WHERE Пномер =={nom_mk}'''
                 CSQ.custom_request_c(self.bd_naryad, custom_request_c, conn=conn, cur=cur)
                 if rez['Основание'] != "":
                     arr_tmp_ass = rez['Основание'].split(';')
@@ -2277,13 +2276,13 @@ class mywindow(QtWidgets.QMainWindow):
             if not CQT.msgboxgYN(f'Заменить дату {val_date} на {now} для МК {nom_mk}? '):
                 return
 
-            request = f"""UPDATE mk SET Ресурсная_дата = '{now}' where Пномер = {nom_mk}"""
+            request = f"""UPDATE mk SET Ресурсная_дата = '{now}' where Пномер == {nom_mk}"""
             CSQ.custom_request_c(self.bd_naryad, request)
             if tip == 'Плановая':
                 if nom_pl > 1:
                     CSQ.custom_request_c(self.db_kplan, f"""UPDATE пл_топ SET 
                         ( Фдата_зав_спецЕРП, Фдата_нач_спецЕРП, Фдата_зав_ТД )
-                        = ('{now}', '{now}', '{now}') where НомПл = {nom_pl}""")
+                        = ('{now}', '{now}', '{now}') where НомПл == {nom_pl}""")
             tbl.item(tbl.currentRow(), nk_date_etap).setText(now)
             obj_msg = CMS.Msg_b24(self.db_kplan, self.bd_naryad, self.db_resxml, self.db_users, nom_pl)
             obj_msg.add_erp_info()
@@ -2535,7 +2534,7 @@ class mywindow(QtWidgets.QMainWindow):
                     price = self.DICT_NOMEN[dse['Код_ERP']]['Закупочная_цена']
                     if price == None or F.valm(price) == 0:
                         CSQ.custom_request_c(self.db_dse,
-                                             f"""UPDATE tkp SET check_prices = 2 WHERE s_nom = {self.tkp_current_schema['s_nom']}""")
+                                             f"""UPDATE tkp SET (check_prices) = (2) WHERE s_nom = {self.tkp_current_schema['s_nom']}""")
                         break
             return True
 
@@ -2645,8 +2644,8 @@ class mywindow(QtWidgets.QMainWindow):
             primech_str = '\n'.join([f'{k + ":" + " " * (max_len - len(k))} "{str(v)}"' for k, v in primech.items()])
 
             self.dict_cur_poz_cr_mk = CSQ.custom_request_c(self.db_kplan, f"""SELECT 
-             пл_оуп."№проекта" as "Проект", plan.Статус as Статус_poz, status_poz.Имя AS СтатусИмя, 
-            пл_оуп."№ERP" as "№ERP",  napravl_deyat.Псевдоним as "Вид",
+             пл_оуп.№проекта as "Проект", plan.Статус as Статус_poz, status_poz.Имя AS СтатусИмя, 
+            пл_оуп.№ERP as "№ERP",  napravl_deyat.Псевдоним as "Вид",
                          napravlenie.name as "Направление",  пл_оуп.Количество as "Количество", 
                          plan.Позиция, plan.Пномер as "Пномер", пл_оуп.Номенклатура_ЕРП as "Номен. ЕРП" 
                          FROM пл_оуп  INNER JOIN 
@@ -3110,8 +3109,8 @@ class mywindow(QtWidgets.QMainWindow):
     @CQT.onerror
     def obn_spis_pr(self):
         self.list_projects = CSQ.custom_request_c(self.db_kplan, f"""SELECT  
-        пл_оуп."№проекта" as "Проект",
-         пл_оуп."№ERP" as "№ERP", 
+        пл_оуп.№проекта as "Проект",
+         пл_оуп.№ERP as "№ERP", 
           
          napravl_deyat.Псевдоним as "Вид",
         napravlenie.name as "Направление",  
@@ -3119,10 +3118,11 @@ class mywindow(QtWidgets.QMainWindow):
         plan.Позиция, 
         plan.Пномер as "Пномер", пл_оуп.Номенклатура_ЕРП as "Номен. ЕРП" 
         FROM пл_оуп  
-        INNER JOIN plan ON пл_оуп.НомПл = plan.Пномер
-        INNER JOIN napravl_deyat ON napravl_deyat.Пномер = plan.Направление_деятельности
-        INNER JOIN napravlenie ON napravlenie.Пномер = napravl_deyat.Направление 
-        WHERE plan.Статус in (2,3,1,7) and plan.poki = {self.place.poki}""")
+        INNER JOIN plan ON пл_оуп.НомПл = plan.Пномер,
+        napravl_deyat ON napravl_deyat.Пномер = plan.Направление_деятельности,
+        napravlenie ON napravlenie.Пномер = napravl_deyat.Направление 
+        WHERE 
+        plan.Статус in (2,3,1,7) and plan.poki = {self.place.poki}""")
         if self.list_projects is None:
             CQT.msgbox("Не удалось загрузить список проектов из БД")
             return
@@ -3361,7 +3361,7 @@ class mywindow(QtWidgets.QMainWindow):
         # rez = CSQ.find_in_db_c(self.db_dse, 'dse', {'Номенклатурный_номер': nn, 'Наименование': naim})
         rez = CSQ.custom_request_c(
             self.db_dse,
-            f"""SELECT Номенклатурный_номер FROM dse WHERE Номенклатурный_номер = '{nn}' AND poki = {self.place.poki}; """)
+            f"""SELECT Номенклатурный_номер FROM dse WHERE Номенклатурный_номер == '{nn}' AND poki = {self.place.poki}; """)
         if len(rez) > 1:
             CQT.msgbox(f'ДСЕ {nn} уже существует')
             return
@@ -3507,7 +3507,7 @@ class mywindow(QtWidgets.QMainWindow):
         if qery[0][0] == "Открыта":
             # rez = CSQ.update_bd_sql(self.bd_naryad, 'mk', {'Статус': 'Закрыта'}, {'Пномер': int(nom_tek_mk)})
             rez = CSQ.custom_request_c(self.bd_naryad,
-                                       f"""UPDATE mk SET Статус = 'Закрыта' WHERE Пномер = {int(nom_tek_mk)};""")
+                                       f"""UPDATE mk SET Статус == 'Закрыта' WHERE Пномер = {int(nom_tek_mk)};""")
 
             if rez == False:
                 CQT.msgbox('Не удалось записать')
@@ -3802,7 +3802,7 @@ class mywindow(QtWidgets.QMainWindow):
                     CQT.msgbox(f'Не верный диапазон')
                     return False
             rez = CSQ.custom_request_c(self.bd_naryad,
-            f"""UPDATE mk SET Приоритет = ? WHERE Пномер = {id_mk};""" ,list_of_lists_c=[valint])
+            f"""UPDATE mk SET (Приоритет) = (?) WHERE Пномер = {id_mk};""" ,list_of_lists_c=[valint])
             if rez:
                 self.upd_color_priority(curr_row)
                 return True
@@ -3814,7 +3814,7 @@ class mywindow(QtWidgets.QMainWindow):
             val = CSQ.sanitize_sql_input(val)
 
             rez = CSQ.custom_request_c(self.bd_naryad,
-                                       f"""UPDATE mk SET Примечание = ? WHERE Пномер = {id_mk};""",
+                                       f"""UPDATE mk SET (Примечание) = (?) WHERE Пномер = {id_mk};""",
                                        list_of_lists_c=[val])
             if rez:
                 return True
@@ -3834,7 +3834,7 @@ class mywindow(QtWidgets.QMainWindow):
                 CQT.msgbox(f'Не верный диапазон')
                 return False
             rez = CSQ.custom_request_c(self.bd_naryad,
-                                       f"""UPDATE mk SET Коэф_парал = ? WHERE Пномер = {id_mk};""",
+                                       f"""UPDATE mk SET (Коэф_парал) = (?) WHERE Пномер = {id_mk};""",
                                        list_of_lists_c=[valint])
             if rez:
                 return True
@@ -3938,114 +3938,48 @@ class mywindow(QtWidgets.QMainWindow):
         kro_manager_o = MKRO()
 
 
-        custom_request_c = CSQ.SqlQuery(
-            sqlite=f'''
-SELECT 
-    mk.Пномер, 
-    Тип_мк.Имя as Тип,  
-    mk.Дата, 
-    mk.Статус,  
-    mk.Номенклатура,
-    
-    CASE WHEN "знпр"."№ERP" IS NOT NULL 
-        THEN "знпр"."№ERP" 
-        ELSE "mk"."Номер_заказа" 
-    END AS "Номер_заказа", 
-    
-    CASE WHEN "знпр"."№проекта" IS NOT NULL 
-        THEN "знпр"."№проекта" 
-        ELSE "mk"."Номер_проекта" 
-        END AS "Номер_проекта", 
-    '' as "КРО",
-    
-    CASE WHEN "napravl_deyat"."Псевдоним" IS NOT NULL 
-        THEN napravl_deyat."Псевдоним" 
-        ELSE mk."Вид" 
-    END AS "Вид", 
-    
-    mk."На_удал" as "На удаление", 
-    mk."Ресурсная_дата", 
-    mk."Примечание", 
-    mk."Основание",
-    mk."Прогресс", 
-    mk."Приоритет" AS "Приоритет",
-    plan."Приоритет"  AS "Приоритет КПЛ",
+        custom_request_c = f'''SELECT mk.Пномер, Тип_мк.Имя as Тип,  mk.Дата, mk.Статус,  mk.Номенклатура,
+            CASE WHEN знпр.№ERP IS NOT NULL 
+           THEN знпр.№ERP 
+           ELSE mk.Номер_заказа 
+           END AS Номер_заказа, 
            
-    CASE WHEN napravlenie.name IS NOT NULL 
-        THEN napravlenie.name 
-        ELSE mk.Направление 
-    END AS "Направление", 
- 
-    mk."Вес", 
-    mk."Количество",  
-    mk."Дата_завершения",  
-    mk."Коэф_парал", 
-              mk."Искл_план_рм", "тип_дорезок"."Имя" AS тип_дорезок, тип_доработок."Имя" AS тип_доработок,
-               mk."НомКплан" as "Номер КПЛ", mk."ФИО" as "Создал"  FROM mk 
-              LEFT JOIN plan ON "plan"."Пномер" = "mk"."НомКплан"  
-              LEFT JOIN napravl_deyat ON "napravl_deyat"."Пномер" = "plan"."Направление_деятельности" 
-              LEFT JOIN napravlenie ON napravlenie."Пномер" = napravl_deyat."Направление"  
-             LEFT JOIN пл_оуп ON пл_оуп."НомПл" = mk."НомКплан" 
-             LEFT JOIN знпр ON знпр.s_num = пл_оуп."Пномер_ЗП" 
-             LEFT JOIN Тип_мк ON Тип_мк."Пномер" = mk."Тип" 
-             LEFT JOIN дорезки_мк ON дорезки_мк."Номер_мк" = mk."Пномер"
-             LEFT JOIN тип_дорезок ON тип_дорезок."Пномер" = дорезки_мк."Причина"
-             LEFT JOIN тип_доработок ON тип_доработок."Пномер" = mk."Тип_доработки"
-             WHERE Date('20' || "Дата") > Date("{start_date}") and plan.poki = {self.place.poki};''',
-            postgres=f'''
-SELECT 
-    mk.Пномер, 
-    Тип_мк.Имя as Тип,  
-    mk.Дата, 
-    mk.Статус,  
-    mk.Номенклатура,
-    
-    CASE WHEN "знпр"."№ERP" IS NOT NULL 
-        THEN "знпр"."№ERP" 
-        ELSE "mk"."Номер_заказа" 
-    END AS "Номер_заказа", 
-    
-    CASE WHEN "знпр"."№проекта" IS NOT NULL 
-        THEN "знпр"."№проекта" 
-        ELSE "mk"."Номер_проекта" 
-        END AS "Номер_проекта", 
-    '' as "КРО",
-    
-    CASE WHEN "napravl_deyat"."Псевдоним" IS NOT NULL 
-        THEN napravl_deyat."Псевдоним" 
-        ELSE mk."Вид" 
-    END AS "Вид", 
-    
-    mk."На_удал" as "На удаление", 
-    mk."Ресурсная_дата", 
-    mk."Примечание", 
-    mk."Основание",
-    mk."Прогресс", 
-    mk."Приоритет" AS "Приоритет",
-    plan."Приоритет"  AS "Приоритет КПЛ",
+            CASE WHEN знпр.№проекта IS NOT NULL 
+           THEN знпр.№проекта 
+           ELSE mk.Номер_проекта 
+           END AS Номер_проекта, 
+           '' as КРО,
+           CASE WHEN napravl_deyat.Псевдоним IS NOT NULL 
+           THEN napravl_deyat.Псевдоним 
+           ELSE mk.Вид 
+           END AS Вид, 
+            mk.На_удал as "На удаление", 
+               mk.Ресурсная_дата, mk.Примечание, mk.Основание,
+             mk.Прогресс, 
+      
+            mk.Приоритет AS Приоритет,
+           plan.Приоритет  AS "Приоритет КПЛ",
            
-    CASE WHEN napravlenie.name IS NOT NULL 
-        THEN napravlenie.name 
-        ELSE mk.Направление 
-    END AS "Направление", 
- 
-    mk."Вес", 
-    mk."Количество",  
-    mk."Дата_завершения",  
-    mk."Коэф_парал", 
-              mk."Искл_план_рм", "тип_дорезок"."Имя" AS тип_дорезок, тип_доработок."Имя" AS тип_доработок,
-               mk."НомКплан" as "Номер КПЛ", mk."ФИО" as "Создал"  FROM mk 
-              LEFT JOIN plan ON "plan"."Пномер" = "mk"."НомКплан"  
-              LEFT JOIN napravl_deyat ON "napravl_deyat"."Пномер" = "plan"."Направление_деятельности" 
-              LEFT JOIN napravlenie ON napravlenie."Пномер" = napravl_deyat."Направление"  
-             LEFT JOIN пл_оуп ON пл_оуп."НомПл" = mk."НомКплан" 
-             LEFT JOIN знпр ON знпр.s_num = пл_оуп."Пномер_ЗП" 
-             LEFT JOIN Тип_мк ON Тип_мк."Пномер" = mk."Тип" 
-             LEFT JOIN дорезки_мк ON дорезки_мк."Номер_мк" = mk."Пномер"
-             LEFT JOIN тип_дорезок ON тип_дорезок."Пномер" = дорезки_мк."Причина"
-             LEFT JOIN тип_доработок ON тип_доработок."Пномер" = mk."Тип_доработки"
-             WHERE ('20' || "Дата")::timestamp > ('{start_date}')::timestamp and plan.poki = {self.place.poki};'''
-        )
+            
+            CASE WHEN napravlenie.name IS NOT NULL 
+           THEN napravlenie.name 
+           ELSE mk.Направление 
+           END AS Направление, 
+            
+             
+             mk.Вес, mk.Количество,  mk.Дата_завершения,  mk.Коэф_парал, 
+              mk.Искл_план_рм, тип_дорезок.Имя AS тип_дорезок, тип_доработок.Имя AS тип_доработок,
+               mk.НомКплан as "Номер КПЛ", mk.ФИО as "Создал"  FROM mk 
+              LEFT JOIN plan ON plan.Пномер = mk.НомКплан  
+              LEFT JOIN napravl_deyat ON napravl_deyat.Пномер = plan.Направление_деятельности 
+              LEFT JOIN napravlenie ON napravlenie.Пномер = napravl_deyat.Направление  
+             LEFT JOIN пл_оуп ON пл_оуп.НомПл = mk.НомКплан 
+             LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП 
+             LEFT JOIN Тип_мк ON Тип_мк.Пномер = mk.Тип 
+             LEFT JOIN дорезки_мк ON дорезки_мк.Номер_мк = mk.Пномер
+             LEFT JOIN тип_дорезок ON тип_дорезок.Пномер = дорезки_мк.Причина
+             LEFT JOIN тип_доработок ON тип_доработок.Пномер = mk.Тип_доработки
+             WHERE Date("20" || Дата) > Date("{start_date}") and plan.poki = {self.place.poki};'''
         # spis = CSQ.list_from_db_sql_c(self.bd_naryad, 'mk', False, True)
         data_mk = CSQ.custom_request_c(self.bd_naryad, custom_request_c, '', True, attach_dbs=(self.db_kplan),
                                     rez_dict=True)
@@ -4431,7 +4365,7 @@ SELECT
               nomen.ЕдиницаИзмерения, 
               nomen.Примечание 
               FROM nomen 
-            INNER JOIN ВидыНоменклатуры ON ВидыНоменклатуры.name = nomen.Вид WHERE ВидыНоменклатуры.s_num IN (81,33,50,165,100,102) and nomen.На_удаление = 0""",
+            INNER JOIN ВидыНоменклатуры ON ВидыНоменклатуры.name == nomen.Вид WHERE ВидыНоменклатуры.s_num IN (81,33,50,165,100,102) and nomen.На_удаление == 0""",
                                              rez_dict=True)
             kod = ''
             mat = CQT.msgboxg_get_table(self, 'Выбор материала', list_mats, 'Выбор', selection_from_tbl=True)

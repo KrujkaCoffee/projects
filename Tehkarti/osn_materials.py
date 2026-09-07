@@ -265,8 +265,8 @@ def raschet_shestig(self,spis):
     nedel_othod = dlina_shestigrannicka % dlina_zagotovki / kolvo_det
 
     norm_trub = dlina_zagotovki + nedel_othod
-    Nr = 0.87 * diametr_inscribe_c_okruj ** diametr_inscribe_c_okruj * norm_trub * plotn / 1000000
-    return Nr
+    # Nr = 0.87 * diametr_inscribe_c_okruj ** diametr_inscribe_c_okruj * norm_trub * plotn / 1000000
+    return (3 ** 0.5 / 2) * diametr_inscribe_c_okruj ** 2 * norm_trub * plotn / 1000000
 
 
 def raschet_kv(self,spis):
@@ -703,7 +703,7 @@ def get_vid_nomen(self)->str|None:
         CQT.msgbox(f'Не выбран материал')
         return
     nn = curr_row.value('Код')
-    query = f'''SELECT Вид FROM nomen WHERE Код = "{nn.strip()}"'''
+    query = f'''SELECT "Вид" FROM nomen WHERE "Код" = '{nn.strip()}';'''
     vid =  CSQ.custom_request_c(self.db_mater ,query,one=True,one_column=True,hat_c=False)
     if vid not in nomenklatura.DICT_POLE:
         CQT.msgbox(f'Вид проката {vid} не настроен для этого калькулятора')
@@ -749,5 +749,5 @@ def mat_truba_kv_load(self):
 
 def zag_param_mat(self, nn):
     query = f'''
-                SELECT * FROM nomen WHERE Код = "{nn.strip()}"'''
+                SELECT * FROM nomen WHERE "Код" = '{nn.strip()}';'''
     return CSQ.custom_request_c(self.db_mater ,query)

@@ -1295,7 +1295,7 @@ def generate_rez_tbl(e: ft.ControlEvent, tbl: ft.DataTable, ref_out, fnc_cell_cl
 
     Data: DTCLS.Data_page = e.page.data
     data = CMF.datatable_to_dicts(tbl)
-    DTCLS.Data_page.Data_module.cust_data.output_tbl = None
+    Data.Data_module.cust_data.output_tbl = None
 
     calculated, errors, success = prepare_calc_new_data(data, Data)
     if calculated is None:
@@ -1307,12 +1307,12 @@ def generate_rez_tbl(e: ft.ControlEvent, tbl: ft.DataTable, ref_out, fnc_cell_cl
 
     if errors and not _has_any_data_rows(tbl_output):
         tbl_output = make_err_tbl(errors, ref_out)
-        DTCLS.Data_page.Data_module.cust_data.output_tbl = tbl_output
+        Data.Data_module.cust_data.output_tbl = tbl_output
         Data.Data_module.status_bar.set_text(f"{warning_symbol} Ошибка расчёта: рассчитанных параметров нет")
         return False
 
 
-    DTCLS.Data_page.Data_module.cust_data.output_tbl = tbl_output
+    Data.Data_module.cust_data.output_tbl = tbl_output
     try:
         mat = str(
             Data.Data_module.cust_data.input_tbl_editbl

@@ -149,9 +149,12 @@ class Card_nesting_kelast():
         return True
 
     def load_pr_py_by_mk(self,mk:int,project:str)->tuple[str,str,str]:
-        data = CSQ.custom_request_c(DTCLS.PROJECT.db_kplan,f"""SELECT  знпр.№проекта, знпр.№ERP FROM mk
-            INNER JOIN пл_оуп ON пл_оуп.НомПл == mk.НомКплан 
-            INNER JOIN знпр ON знпр.s_num == пл_оуп.Пномер_ЗП WHERE mk.Пномер = {mk} """, rez_dict=True,one=True,attach_dbs=DTCLS.PROJECT.db_naryad)
+        data = CSQ.custom_request_c(DTCLS.PROJECT.db_kplan,f"""
+        SELECT  знпр."№проекта", знпр."№ERP" 
+        FROM mk
+        INNER JOIN пл_оуп ON пл_оуп."НомПл" = mk."НомКплан" 
+        INNER JOIN знпр ON знпр.s_num = пл_оуп."Пномер_ЗП" WHERE mk."Пномер" = {mk} """,
+                                    rez_dict=True,one=True,attach_dbs=DTCLS.PROJECT.db_naryad)
         if data:
             erp = data['№ERP'].split('-')[-1].lstrip('0')
             np = data['№проекта']

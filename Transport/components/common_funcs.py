@@ -430,18 +430,55 @@ class   Table_data():
                 return pr_row
             if not row.merge and row.is_visible:
                 pr_row = row
+
+    @staticmethod
+    def _can_focus(row: Row_data, name_field: str) -> bool:
+        if row.merge or not row.is_visible:
+            return False
+        for cell in row.cells:
+            if not cell.params_field or cell.params_field.name != name_field:
+                continue
+            control = cell.control_ref.current if cell.control_ref else None
+            if control is None:
+                return False
+            if bool(getattr(control, 'disabled', False)):
+                return False
+            if getattr(control, 'visible', True) is False:
+                return False
+            return True
+        return False
+
+    def _focus_first_editable(self) -> None:
+        for row in self.rows:
+            for cell in row.cells:
+                field = cell.params_field
+                if not field or not field.editable:
+                    continue
+                if self._can_focus(row, field.name):
+                    row.setFocus(field.name)
+                    return
+
     def set_focus_next_row(self):
-        row = self.calc_next_row()
-        if row is None:
+        if self.current_row is None or self.current_row.current_cell is None:
+            self._focus_first_editable()
             return
         name_field = self.current_row.current_cell.params_field.name
-        row.setFocus(name_field)
+        current_index = self.rows.index(self.current_row)
+        for row in self.rows[current_index + 1:]:
+            if self._can_focus(row, name_field):
+                row.setFocus(name_field)
+                return
+
     def set_focus_previous_row(self):
-        row = self.calc_previous_row()
-        if row is None:
+        if self.current_row is None or self.current_row.current_cell is None:
+            self._focus_first_editable()
             return
         name_field = self.current_row.current_cell.params_field.name
-        row.setFocus(name_field)
+        current_index = self.rows.index(self.current_row)
+        for row in reversed(self.rows[:current_index]):
+            if self._can_focus(row, name_field):
+                row.setFocus(name_field)
+                return
 
     def hide_group(self,name:str|None=None,hide=True):
 
@@ -618,7 +655,16 @@ class   Table_data():
 
     def sync_ui_to_data(self,field_name):
         """Копирует значения из UI (DataTable) в модель Table_data."""
-        DTCLS.Data_page.Data_module.status_bar.set_text()
+        page = None
+        try:
+            page = self.table_view.page if self.table_view is not None else None
+        except Exception:
+            page = None
+        status_bar = None
+        if page is not None and getattr(page, 'data', None) is not None:
+            status_bar = page.data.Data_module.status_bar
+        if status_bar:
+            status_bar.set_text()
         if not self.rows:
             return
         for row in self.rows:
@@ -634,8 +680,10 @@ class   Table_data():
                     try:
                         type_val = cell.description.cast_type(val)
                     except (ValueError, TypeError) as e:
-                        DTCLS.Data_page.Data_module.status_bar.set_text(f'{Cust_emoji.EmojiMain.Статусы.alert} Ошибка в строке `{cell.parent_row.get_val("header")}`: {e}')
-                        DTCLS.Data_page.page.update()
+                        if status_bar:
+                            status_bar.set_text(f'{Cust_emoji.EmojiMain.Статусы.alert} Ошибка в строке `{cell.parent_row.get_val("header")}`: {e}')
+                        if page is not None:
+                            page.update()
                         return
                     cell.val = cell.description.cast_type(val)
         return True
@@ -706,6 +754,8 @@ class Table_view(ft.DataTable):
             lazy_groups: bool = False,
             single_group_expand: bool = False,
             group_header_controls: dict | None = None,
+            keyboard_navigation: bool = False,
+            page: ft.Page | None = None,
 
 
     ):
@@ -1192,12 +1242,16 @@ class Table_view(ft.DataTable):
         if table_input_data.name and fnc_on_click and (not self.lazy_groups):
             table_input_data.toggle_group(None)
         # В lazy-режиме группы уже стартуют свернутыми, ничего делать не нужно.
-        DTCLS.Data_page.page.on_keyboard_event = self.on_key
+        self.keyboard_navigation = bool(keyboard_navigation)
+        if self.keyboard_navigation and page is not None:
+            # Обработчик принадлежит конкретной Flet-странице. Выходные и
+            # исторические таблицы больше не перехватывают стрелки у ввода.
+            page.on_keyboard_event = self.on_key
 
 
     def on_key(self, e: ft.KeyboardEvent):
-        #print("key:", e.key)
-        #print(f'current_row {self.table_data.current_row.dict_cells()}')
+        if not self.keyboard_navigation:
+            return
         if e.key == 'Arrow Down':
             self.table_data.set_focus_next_row()
         if e.key == 'Arrow Up':
@@ -1416,7 +1470,7 @@ def create_value_cell(cell_data: _Cell_data, visible: bool = True, width=None, h
         if cell_data.description.comment and len(cell_data.description.comment.strip()):
             tooltip = '\n'.join([f'{cell_data.description.comment}\n', f"Допустимый диапазон: {min_val}...{max_val}"])
 
-        value = str(round(val, cell_data.description.accuracy))
+        value = "" if val in (None, "") else str(round(val, cell_data.description.accuracy))
 
         return ft.DataCell(
             ft.Container(

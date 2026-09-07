@@ -1,8 +1,11 @@
 import os
 import copy
-import operator
+import io
+import json
 import math
+import pickle
 import re
+import time
 
 import flet as ft
 
@@ -14,31 +17,25 @@ import Config.srv_config as SRVCFG
 from components import (
     calc_silencer_input_params,
     calc_acoustic_input_params,
-    calc_silencer_output_params,
-    calc_acoustic_output_params
 )
-from components import calc_silencer_functions_M5_M400 as silencer_functions
-from components import calc_acoustic_functions as acoustic_functions
+from components import silencer_calculation_core as calculation_core
 from components.tech_report_excel import sort_key_params
 
 import components.common_funcs as CMF
 from components.common_funcs import Table_data
 import data_class as DTCLS
 
-CONSTANTS = {**calc_silencer_input_params.constants, **acoustic_functions.CONSTANTS}
-INPUT_PARAMS = [*calc_silencer_input_params.list_dicts_data_input, *calc_acoustic_input_params.list_dicts_data_input]
-OUTPUT_PARAMS = {**calc_silencer_output_params.OUTPUT_PARAMS, **calc_acoustic_output_params.OUTPUT_PARAMS_ACOUSTIC}
-CALC_FUNCTIONS = {**silencer_functions.CALC_FUNCTIONS, **acoustic_functions.CALC_FUNCTIONS}
-GROUPS = {**calc_silencer_output_params.GROUPS, **calc_acoustic_output_params.GROUPS}
-OPERATORS = {
-    '<=': operator.le,
-    '>=': operator.ge,
-    '=': operator.eq
-}
+CONSTANTS = calculation_core.CONSTANTS
+INPUT_PARAMS = calculation_core.INPUT_PARAMS
+INPUT_PARAM_NAMES = calculation_core.INPUT_PARAM_NAMES
+BLANK_ZERO_INPUT_NAMES = calculation_core.BLANK_ZERO_INPUT_NAMES
+OUTPUT_PARAMS = calculation_core.OUTPUT_PARAMS
+CALC_FUNCTIONS = calculation_core.CALC_FUNCTIONS
+GROUPS = calculation_core.GROUPS
 
 class Cust_module_params():
     def __init__(self):
-        self.ver_tbls_data = 1
+        self.ver_tbls_data = 2
         self.input_tbl_editbl: Table_data | None = None
         self.input_tbl_not_editbl: Table_data | None = None
         self.output_tbl: Table_data | None = None
@@ -46,6 +43,7 @@ class Cust_module_params():
         self.last_calculated: dict | None = None
         self.last_input_vals: dict | None = None
         self.last_calc_errors: list[dict] = []
+        self.last_metrics_ms: dict[str, float] = {}
 
 TBL_INPUT = Table_data()
 TBL_INPUT.append_column_desc(name='name', header='Имя', hidden=True, editable=False, unique=True)
@@ -140,30 +138,50 @@ def calc_new_tbl_input():
     return new_tbl_input_copy
 
 
-new_tbl_input = calc_new_tbl_input()
-
-
-def generate_input_data(fnc_onchange, ref, default_vals: dict | None = None) -> (ft.DataTable, Table_data):
+def generate_input_data(
+        fnc_onchange,
+        ref,
+        default_vals: dict | None = None,
+        page: ft.Page | None = None,
+) -> tuple[ft.DataTable, Table_data]:
+    # Модель ввода должна принадлежать конкретной странице. Ранее один объект
+    # ``new_tbl_input`` разделялся всеми Flet-сессиями.
+    new_tbl_input = calc_new_tbl_input()
     if default_vals:
         new_tbl_input.set_vals_into_field(default_vals, 'val')
 
-    table_view = CMF.Table_view(new_tbl_input, ref=ref, fnc_onchange=fnc_onchange)
+    table_view = CMF.Table_view(
+        new_tbl_input,
+        ref=ref,
+        fnc_onchange=fnc_onchange,
+        keyboard_navigation=page is not None,
+        page=page,
+    )
 
 
     return table_view, new_tbl_input
 
 
 def prepare_calc_new_data(data: list[dict], Data: DTCLS.Data_page) -> tuple[dict | None, list[dict], bool]:
+    sync_started = time.perf_counter()
     if not Data.Data_module.cust_data.input_tbl_editbl.sync_ui_to_data('val'):
         return None, [], False
+    sync_ms = (time.perf_counter() - sync_started) * 1000
 
     data_params = Data.Data_module.cust_data.input_tbl_editbl.to_dict_by_unique()
+    formula_started = time.perf_counter()
     calculated, errors, success = calc_new_data({k: v['val'] for k, v in data_params.items()})
+    Data.Data_module.cust_data.last_metrics_ms.update({
+        'sync_input': sync_ms,
+        'formula': (time.perf_counter() - formula_started) * 1000,
+    })
     return calculated, errors, success
 
 
 def generate_rez_tbl(e: ft.ControlEvent, tbl: ft.DataTable, ref_out, fnc_cell_click=None) -> bool | None:
     """Генерация таблицы результатов."""
+
+    total_started = time.perf_counter()
 
     def _has_any_data_rows(tbl_data: CMF.Table_data) -> bool:
         """Присутствуют ли данные в таблице output"""
@@ -175,8 +193,8 @@ def generate_rez_tbl(e: ft.ControlEvent, tbl: ft.DataTable, ref_out, fnc_cell_cl
         return False
     Data: DTCLS.Data_page = e.page.data
     data = CMF.datatable_to_dicts(tbl)
-    DTCLS.Data_page.Data_module.cust_data: Cust_module_params
-    DTCLS.Data_page.Data_module.cust_data.output_tbl = None
+    Data.Data_module.cust_data: Cust_module_params
+    Data.Data_module.cust_data.output_tbl = None
 
     calculated, errors, success = prepare_calc_new_data(data, Data)
     if calculated is None:
@@ -185,16 +203,21 @@ def generate_rez_tbl(e: ft.ControlEvent, tbl: ft.DataTable, ref_out, fnc_cell_cl
     Data.Data_module.cust_data.last_calculated = calculated
     Data.Data_module.cust_data.last_calc_errors = errors
 
+    result_model_started = time.perf_counter()
     tbl_output = make_res_tbl(calculated, ref_out, fnc_cell_click)
+    Data.Data_module.cust_data.last_metrics_ms.update({
+        'result_model': (time.perf_counter() - result_model_started) * 1000,
+        'server_total_before_push': (time.perf_counter() - total_started) * 1000,
+    })
     warning_symbol = Cust_emoji.СтатусыПроизводства.warning.symbol
     success_symbol = Cust_emoji.СтатусыПроизводства.success.symbol
     if errors and not _has_any_data_rows(tbl_output):
         tbl_output = make_err_tbl(errors, ref_out)
-        DTCLS.Data_page.Data_module.cust_data.output_tbl = tbl_output
+        Data.Data_module.cust_data.output_tbl = tbl_output
         Data.Data_module.status_bar.set_text(f"{warning_symbol} Ошибка расчёта: рассчитанных параметров нет")
         return False
 
-    DTCLS.Data_page.Data_module.cust_data.output_tbl = tbl_output
+    Data.Data_module.cust_data.output_tbl = tbl_output
 
     if errors:
         headers = '\n '.join(f"{msg.get('header')}" for msg in errors if msg.get('header'))
@@ -202,7 +225,10 @@ def generate_rez_tbl(e: ft.ControlEvent, tbl: ft.DataTable, ref_out, fnc_cell_cl
             f"{warning_symbol} Произошли ошибки при расчете {len(errors)} параметров ({headers})"
         )
     else:
-        Data.Data_module.status_bar.set_text(f"{success_symbol}] Успешно рассчитано")
+        total_ms = Data.Data_module.cust_data.last_metrics_ms.get('server_total_before_push', 0.0)
+        Data.Data_module.status_bar.set_text(
+            f"{success_symbol} Успешно рассчитано · сервер {total_ms:.0f} мс"
+        )
     return True
 
 
@@ -266,17 +292,205 @@ def make_err_tbl(data, ref_out=None) -> CMF.Table_data:
     return  new_tbl_output_err
 
 
-def load_from_db_history_calc(Data: DTCLS.Data_page, s_num: int) -> (CMF.Table_data, CMF.Table_data):
-    data = CSQ.custom_request_c(Data.Data_user.db_flet, f"""SELECT data FROM
-                        silencer_history WHERE s_num == {s_num}""", one=True, one_column=True, hat_c=False)
+_HISTORY_SCHEMA_VERSION = 2
+
+
+class _LegacyHistoryUnpickler(pickle.Unpickler):
+    """Ограниченный загрузчик прежнего формата истории.
+
+    Старые записи содержат только модели таблиц. Произвольные глобальные
+    объекты запрещены, поэтому содержимое БД не может вызвать выполнение кода.
+    """
+
+    _ALLOWED_CLASSES = {
+        ("components.common_funcs", name): getattr(CMF, name)
+        for name in (
+            "Table_data",
+            "Field_params",
+            "Row_data",
+            "_Cell_data",
+            "Cell_description",
+        )
+    }
+    _ALLOWED_BUILTINS = {
+        "bool": bool,
+        "dict": dict,
+        "float": float,
+        "int": int,
+        "list": list,
+        "set": set,
+        "str": str,
+        "tuple": tuple,
+    }
+
+    def find_class(self, module: str, name: str):
+        allowed = self._ALLOWED_CLASSES.get((module, name))
+        if allowed is not None:
+            return allowed
+        if module == "builtins" and name in self._ALLOWED_BUILTINS:
+            return self._ALLOWED_BUILTINS[name]
+        raise pickle.UnpicklingError(f"Запрещённый объект legacy-истории: {module}.{name}")
+
+
+def _load_legacy_history(raw_data):
+    if isinstance(raw_data, memoryview):
+        raw_data = raw_data.tobytes()
+    if not isinstance(raw_data, (bytes, bytearray)):
+        raise ValueError("Legacy-история должна быть бинарной")
+    return _LegacyHistoryUnpickler(io.BytesIO(raw_data)).load()
+
+
+def _json_safe(value):
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, (tuple, list, set)):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    return str(value)
+
+
+def table_data_to_payload(table_data: CMF.Table_data) -> dict:
+    """Сериализует только данные модели таблицы, без Flet-ссылок и кода."""
+    return {
+        'name': table_data.name,
+        'fields': [
+            {
+                'name': field.name,
+                'header': field.header,
+                'hidden': field.hidden,
+                'editable': field.editable,
+                'width': field.width,
+                'unique': field.unique,
+            }
+            for field in table_data.list_fields
+        ],
+        'rows': [
+            {
+                'merge': bool(getattr(row, 'merge', False)),
+                'group_name': getattr(row, 'group_name', None),
+                'table_header': bool(getattr(row, 'table_header', False)),
+                'cells': [
+                    {
+                        'value': _json_safe(cell.val),
+                        'description': {
+                            'min_max_list': _json_safe(cell.description.min_max_list),
+                            'accuracy': cell.description.accuracy,
+                            'comment': _json_safe(cell.description.comment),
+                            'data_type': getattr(cell.description.data_type, '__name__', 'str'),
+                            'default_val': _json_safe(cell.description.default_val),
+                        },
+                    }
+                    for cell in row.cells
+                ],
+            }
+            for row in table_data.rows
+        ],
+    }
+
+
+def table_data_from_payload(payload: dict) -> CMF.Table_data:
+    if not isinstance(payload, dict):
+        raise ValueError('Некорректная модель таблицы в истории')
+
+    table_data = CMF.Table_data()
+    fields = payload.get('fields')
+    rows = payload.get('rows')
+    if not isinstance(fields, list) or not isinstance(rows, list):
+        raise ValueError('В истории отсутствуют поля или строки таблицы')
+
+    for field in fields:
+        table_data.append_column_desc(
+            name=str(field['name']),
+            header=str(field.get('header') or ''),
+            hidden=bool(field.get('hidden', False)),
+            editable=bool(field.get('editable', False)),
+            width=field.get('width', 100),
+            unique=bool(field.get('unique', False)),
+        )
+
+    for row_payload in rows:
+        cell_payloads = row_payload.get('cells')
+        if not isinstance(cell_payloads, list) or len(cell_payloads) != len(fields):
+            raise ValueError('Количество ячеек истории не соответствует структуре таблицы')
+        row = CMF.Row_data(merge=bool(row_payload.get('merge', False)))
+        row.group_name = row_payload.get('group_name')
+        row.table_header = bool(row_payload.get('table_header', False))
+        for cell_payload in cell_payloads:
+            desc_payload = cell_payload.get('description') or {}
+            min_max = desc_payload.get('min_max_list')
+            if isinstance(min_max, list) and len(min_max) == 2 and all(
+                isinstance(item, (int, float)) and not isinstance(item, bool) for item in min_max
+            ):
+                min_max = tuple(min_max)
+            description = CMF.Cell_description(
+                min_max_list=min_max,
+                accuracy=int(desc_payload.get('accuracy', 3)),
+                comment=desc_payload.get('comment'),
+                data_type=str(desc_payload.get('data_type') or 'str'),
+                default_val=desc_payload.get('default_val'),
+            )
+            row.append(cell_payload.get('value'), description)
+        table_data.add_row(row)
+
+    table_data.name = payload.get('name')
+    return table_data
+
+
+def build_history_blob(input_tbl: CMF.Table_data, output_tbl: CMF.Table_data) -> bytes:
+    payload = {
+        'schema_version': _HISTORY_SCHEMA_VERSION,
+        'input_tbl': table_data_to_payload(input_tbl),
+        'output_tbl': table_data_to_payload(output_tbl),
+    }
+    return json.dumps(payload, ensure_ascii=False, separators=(',', ':'), allow_nan=False).encode('utf-8')
+
+
+def decode_history_blob(raw_data) -> tuple[CMF.Table_data, CMF.Table_data]:
+    """Читает безопасный JSON v2; pickle v1 поддерживается только как legacy."""
+    if isinstance(raw_data, memoryview):
+        raw_data = raw_data.tobytes()
+    try:
+        text = raw_data.decode('utf-8') if isinstance(raw_data, bytes) else str(raw_data)
+        payload = json.loads(text)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        legacy = _load_legacy_history(raw_data)
+        if not isinstance(legacy, dict) or 'input_tbl' not in legacy or 'output_tbl' not in legacy:
+            raise ValueError('Некорректная запись истории расчёта')
+        input_tbl = legacy['input_tbl']
+        output_tbl = legacy['output_tbl']
+        if not isinstance(input_tbl, CMF.Table_data) or not isinstance(output_tbl, CMF.Table_data):
+            raise ValueError('Некорректные таблицы в legacy-истории расчёта')
+        return input_tbl, output_tbl
+
+    if not isinstance(payload, dict):
+        raise ValueError('Некорректный JSON истории расчёта')
+    if payload.get('schema_version') != _HISTORY_SCHEMA_VERSION:
+        raise ValueError('Неподдерживаемая версия JSON истории')
+    try:
+        return (
+            table_data_from_payload(payload['input_tbl']),
+            table_data_from_payload(payload['output_tbl']),
+        )
+    except KeyError as exc:
+        raise ValueError('В JSON истории отсутствует таблица') from exc
+
+
+def load_from_db_history_calc(
+        Data: DTCLS.Data_page,
+        s_num: int,
+) -> tuple[CMF.Table_data, CMF.Table_data] | bool:
+    data = CSQ.custom_request_c(
+        Data.Data_user.db_flet,
+        "SELECT data FROM silencer_history WHERE s_num = ? AND login = ?",
+        list_of_lists_c=[[int(s_num), Data.Data_user.login]],
+        one=True,
+        one_column=True,
+        hat_c=False,
+    )
     if not data:
         return False
-    data_obj = F.from_binary_pickle(data)
-    ver = data_obj['ver']
-    input_tbl = data_obj['input_tbl']
-    output_tbl = data_obj['output_tbl']
-
-    return input_tbl, output_tbl
+    return decode_history_blob(data)
 
 
 def get_name_new_calc(input_vals: dict | None = None) -> str:
@@ -316,9 +530,24 @@ def generate_rezult_data_for_save(name: str, input_tbl: ft.DataTable, output_tbl
 
 
 def get_vals_from_input_data_tbl(tbl: ft.DataTable):
-    tbl_pre = CMF.datatable_to_dicts(tbl)
-    data_params = {_['Имя']: F.valm(_['Значение']) for _ in tbl_pre}
-    return data_params
+    table_data = getattr(tbl, 'table_data', None)
+    if isinstance(table_data, CMF.Table_data):
+        if table_data.sync_ui_to_data('val') is False:
+            raise ValueError('Не удалось синхронизировать входную таблицу')
+        data_params = table_data.to_dict_by_unique()
+        return {
+            name: values['val']
+            for name, values in data_params.items()
+            if name in INPUT_PARAM_NAMES
+        }
+
+    # Обычный ft.DataTable оставляем типизировать расчётному ядру. Иначе
+    # F.valm превращал строки (например, среду и единицу расхода) в ноль.
+    return {
+        row['Имя']: row['Значение']
+        for row in CMF.datatable_to_dicts(tbl)
+        if row.get('Имя') in INPUT_PARAM_NAMES
+    }
 
 def save_exel(list_dict_rez_input: list, list_dict_rez_output: list, name: str, dir_save: str, name_module: str) -> str | bool:
     list_dict_rez_input = [{k: v for k, v in _.items() if k != 'Имя'} for _ in list_dict_rez_input]
@@ -390,13 +619,19 @@ def file_into_blob(putf):
 
 def make_history_tbl_data(Data: DTCLS.Data_page):
     TBL_HISTORY_TMP = copy.deepcopy(TBL_HISTORY)
-    if Data.Data_module.cust_data.filtr_seach_history == "":
-        where = ''
-    else:
-        where = f'and name like "%{Data.Data_module.cust_data.filtr_seach_history}%"'
-    list_calcs = CSQ.custom_request_c(Data.Data_user.db_flet,
-                                      f"""SELECT * FROM silencer_history WHERE login = '{Data.Data_user.login}' {where} LIMIT 20;""",
-                                      rez_dict=True)
+    query = "SELECT * FROM silencer_history WHERE login = ?"
+    params = [Data.Data_user.login]
+    history_filter = str(Data.Data_module.cust_data.filtr_seach_history or '').strip()
+    if history_filter:
+        query += " AND name LIKE ?"
+        params.append(f'%{history_filter}%')
+    query += " ORDER BY s_num DESC LIMIT 20;"
+    list_calcs = CSQ.custom_request_c(
+        Data.Data_user.db_flet,
+        query,
+        list_of_lists_c=[params],
+        rez_dict=True,
+    ) or []
     for calc in list_calcs:
         row = CMF.Row_data()
         row.append(calc['s_num'], CMF.Cell_description())
@@ -410,86 +645,24 @@ def make_history_tbl_data(Data: DTCLS.Data_page):
 def save_in_db(e: ft.ControlEvent, name: str):
     Data: DTCLS.Data_page = e.page.data
     Module_data: Cust_module_params = Data.Data_module.cust_data
-    if Module_data.input_tbl_not_editbl == None or Module_data.output_tbl == None:
+    input_tbl = Module_data.input_tbl_not_editbl or Module_data.input_tbl_editbl
+    if input_tbl is None or Module_data.output_tbl is None:
         return False
-    data_save = {'ver': Module_data.ver_tbls_data, 'input_tbl': Module_data.input_tbl_not_editbl,
-                 'output_tbl': Module_data.output_tbl}
-    row = [F.now(), name, Data.Data_user.login, F.to_binary_pickle(data_save)]
-    rez = CSQ.custom_request_c(Data.Data_user.db_flet, f"""INSERT INTO silencer_history 
-                        (date, 
-                            name, 
-                            login, 
-                            data)
-                              VALUES ({CSQ.questions_for_mask(row)})""", list_of_lists_c=[row])
+    row = [
+        F.now(),
+        name,
+        Data.Data_user.login,
+        build_history_blob(input_tbl, Module_data.output_tbl),
+    ]
+    rez = CSQ.custom_request_c(
+        Data.Data_user.db_flet,
+        "INSERT INTO silencer_history (date, name, login, data) VALUES (?, ?, ?, ?)",
+        list_of_lists_c=[row],
+    )
     return rez
 
 
-def calc_new_data(input_data: dict) -> tuple[dict, list[dict], bool]:
-    list_err = []
-    calculated = {}
-
-    invisible_params = {
-        param['name']: param['val'] or 0
-        for param in INPUT_PARAMS
-            if 'visible' in param and not param['visible']
-    }
-
-    params = {**CONSTANTS, **invisible_params, **input_data}
-
-    # Вспомогательные функции проверки
-    def check_positive(name, value, header):
-        if value <= 0:
-            list_err.append({
-                'header': header,
-                'val': value,
-                'Exception': f"{header} должно быть положительным числом"
-            })
-            return False
-        return True
-
-    def check_range(name, value, min_val, max_val, header):
-        if not (min_val <= value <= max_val):
-            list_err.append({
-                'header': header,
-                'val': value,
-                'Exception': f"{header} должно быть в диапазоне [{min_val}, {max_val}]"
-            })
-            return False
-        return True
-
-    # Выполняем расчеты
-
-    for key, info in CALC_FUNCTIONS.items():
-        fn = info['fnc']
-        try:
-            validate = set()
-            if 'depends' in OUTPUT_PARAMS[key]:
-                for depend_key, creds in OUTPUT_PARAMS[key]['depends'].items():
-                    op = OPERATORS[creds['operator']]
-                    target_value = creds['value']
-                    current_value = params[depend_key]
-                    validate.add(op(target_value, current_value))
-            if all(validate):
-                calculated[key] = fn({**params, **calculated})
-            else:
-                params[key] = 0
-        except Exception as e:
-            calculated[key] = None
-            name = key
-            if key in OUTPUT_PARAMS:
-                name= OUTPUT_PARAMS[key]['header']
-            print(f"[ERROR] {key}: {e}")
-            list_err.append({
-                'header': name,
-                'val': '',
-                'Exception': f"{e}"
-            })
-
-    # Возвращаем результат в зависимости от наличия ошибок
-    if list_err:
-        return calculated, list_err, False
-    else:
-        return calculated, [], True
+calc_new_data = calculation_core.calc_new_data
 
 
 def oform_kolichestvo_kasset(cell:CMF._Cell_data,new_val):
@@ -544,5 +717,3 @@ def oform_edinica_rashoda(cell:CMF._Cell_data,new_val):
     table_input_data:CMF.Table_data = row_data.parent_table_data
     row = table_input_data.get_row_by_unique_name('rashod')
     row.set_new_val('dimension', new_val)
-
-

@@ -5,7 +5,7 @@ import project_cust_38.Cust_Functions as F
 
 
 def load_py(self):
-    custom_request_c = f'SELECT Номер_заказа, Номер_проекта, Вид, Дата_завершения  from mk'
+    custom_request_c = f'SELECT "Номер_заказа", "Номер_проекта", "Вид", "Дата_завершения"  from mk'
     set_py = set()
     rez = CSQ.custom_request_c(self.db_naryd,custom_request_c)
     for item in rez[1:]:

@@ -39,7 +39,6 @@ from project_cust_38.sub_mes.kro.manage_kro import Kro_manager as MKRO
 cfg = F.load_cfg(False)  # файл конфига, находится в папке конфиг
 
 
-
 class EditJournalActions(enum.Enum):
     ADD = 'ADD_ROW'
     EDIT_STATUS = 'EDIT_STATUS'
@@ -611,11 +610,12 @@ class mywindow(QtWidgets.QMainWindow):
                 print(item)
 
     def write_date_podtv(self):
-        query = f"""SELECT jurnal.Дата, jurnal.ФИО, jurnal.Статус, 
-        naryad.ФИО as Нар_ф, naryad.ФИО2  as Нар_ф2,
-        naryad.Фвремя as Нар_фв, naryad.Фвремя2  as Нар_фв2,
-        naryad.Пномер  from jurnal INNER JOIN naryad
-         ON naryad.Пномер == jurnal.Номер_наряда WHERE Статус == 'Завершен'"""
+        query = f"""
+        SELECT jurnal.Дата, jurnal.ФИО, jurnal.Статус, 
+            naryad.ФИО as Нар_ф, naryad.ФИО2  as Нар_ф2,
+            naryad.Фвремя as Нар_фв, naryad.Фвремя2  as Нар_фв2,
+            naryad.Пномер  from jurnal INNER JOIN naryad
+         ON naryad.Пномер = jurnal.Номер_наряда WHERE Статус = 'Завершен'"""
         rez = CSQ.custom_request_c(self.db_naryd, custom_request_c=query, rez_dict=True)
         set_double = set()
         list_dates = []
@@ -642,7 +642,7 @@ class mywindow(QtWidgets.QMainWindow):
                         if F.strtodate(nar['Дата']) > data:
                             data = F.strtodate(nar['Дата'])
             list_dates.append([F.datetostr(data), nar_nom])
-        CSQ.custom_request_c(self.db_naryd, f"""UPDATE naryad SET Подтвержд_вып_дата = ? WHERE Пномер = ?""",
+        CSQ.custom_request_c(self.db_naryd, f"""UPDATE naryad SET "Подтвержд_вып_дата" = ? WHERE "Пномер" = ?""",
                              list_of_lists_c=list_dates)
 
     @CQT.onerror
@@ -814,9 +814,8 @@ class mywindow(QtWidgets.QMainWindow):
                     if F.is_date(tabl_sp_mk.item(row, col).text(), "%d.%m.%Y") or tabl_sp_mk.item(row,
                                                                                                   col).text() == '':
                         query = f'''
-                                                    UPDATE zagot SET Дата_раскладки = "{tabl_sp_mk.item(row, col).text()}" 
-                                                    WHERE Ном_МК == {int(tabl_sp_mk.item(row, CQT.num_col_by_name_c(tabl_sp_mk, "Пномер")).text())};
-                                                    '''
+                            UPDATE zagot SET "Дата_раскладки" = "{tabl_sp_mk.item(row, col).text()}" 
+                            WHERE "Ном_МК" = {int(tabl_sp_mk.item(row, CQT.num_col_by_name_c(tabl_sp_mk, "Пномер")).text())};'''
                         CSQ.custom_request_c(self.db_naryd, query)
                     else:
                         tabl_sp_mk.item(row, col).setText('')
@@ -825,8 +824,8 @@ class mywindow(QtWidgets.QMainWindow):
                     row, col = CQT.number_selection_cell_by_row_and_column_c(tabl_sp_mk)
                     if tabl_sp_mk.item(row, col).text() in self.CORT_DOP_ZN_PRIM_REZKA_MK:
                         query = f'''
-                                UPDATE zagot SET Прим_резка = "{tabl_sp_mk.item(row, col).text()}" 
-                                WHERE Ном_МК == {int(tabl_sp_mk.item(row, CQT.num_col_by_name_c(tabl_sp_mk, "Пномер")).text())};
+                                UPDATE zagot SET "Прим_резка" = '{tabl_sp_mk.item(row, col).text()}' 
+                                WHERE "Ном_МК" = {int(tabl_sp_mk.item(row, CQT.num_col_by_name_c(tabl_sp_mk, "Пномер")).text())};
                                 '''
                         CSQ.custom_request_c(self.db_naryd, query)
                     else:
@@ -837,8 +836,9 @@ class mywindow(QtWidgets.QMainWindow):
                     row, col = CQT.number_selection_cell_by_row_and_column_c(tabl_sp_mk)
                     now_str = F.now("%Y-%m-%d %H:%M:%S")
                     query = f'''
-                            UPDATE zagot SET Дата_компл_загот = "{now_str}" 
-                            WHERE Ном_МК == {int(tabl_sp_mk.item(row, CQT.num_col_by_name_c(tabl_sp_mk, "Пномер")).text())};
+                            UPDATE zagot 
+                            SET "Дата_компл_загот" = '{now_str}' 
+                            WHERE "Ном_МК" = {int(tabl_sp_mk.item(row, CQT.num_col_by_name_c(tabl_sp_mk, "Пномер")).text())};
                             '''
                     tabl_sp_mk.item(row, col).setText(now_str)
                     CSQ.custom_request_c(self.db_naryd, query)
@@ -895,9 +895,14 @@ class mywindow(QtWidgets.QMainWindow):
         self.DICT_ACCESS_USER_DELTA = F.deploy_dict_c(
             CSQ.custom_request_c(self.db_kplan, f"""SELECT * FROM list_py_users_delta_month WHERE poki = {self.place.poki}""", rez_dict=True), 'user')
 
-        dict_poz = F.deploy_dict_c(CSQ.custom_request_c(self.db_kplan, f"""SELECT пл_оуп.НомПл, 
-        пл_оуп.№ERP FROM пл_оуп INNER JOIN plan ON plan.Пномер = пл_оуп.НомПл WHERE plan.poki = {self.place.poki} and пл_оуп.№ERP != "-";""", rez_dict=True), 'НомПл')
-        list_plans = CSQ.custom_request_c(self.db_kplan, f"""SELECT Дата, file_poz_plan FROM 
+        dict_poz = F.deploy_dict_c(CSQ.custom_request_c(self.db_kplan, f"""
+        SELECT пл_оуп."НомПл", 
+            пл_оуп."№ERP" 
+        FROM пл_оуп 
+        INNER JOIN plan ON plan."Пномер" = пл_оуп."НомПл" 
+        WHERE plan.poki = {self.place.poki} 
+            and пл_оуп."№ERP" != '-';""", rez_dict=True), 'НомПл')
+        list_plans = CSQ.custom_request_c(self.db_kplan, f"""SELECT "Дата", file_poz_plan FROM 
          mnts_plan WHERE poki = {self.place.poki} and file_poz_plan is NOT NULL""", rez_dict=True)
 
         self.DICT_ACCESS_PROJ_MONTH = dict()
@@ -1075,7 +1080,7 @@ class mywindow(QtWidgets.QMainWindow):
                 break
             day = F.datetostr(F.date_add_days(now, i, '', ''), 'd_%Y_%m_%d')
             month = F.datetostr(F.date_add_days(now, i, '', ''), 'jurnaltdz_%Y_%m_01')
-            vihodn_val = CSQ.custom_request_c(self.bd_users, f"""SELECT {day} FROM {month} WHERE Пномер = 1""")
+            vihodn_val = CSQ.custom_request_c(self.bd_users, f"""SELECT "{day}" FROM "{month}" WHERE "Пномер" = 1""")
             if vihodn_val == False:
                 CQT.msgbox(f'ОШибка загрузки календаря')
                 return False
@@ -1087,7 +1092,7 @@ class mywindow(QtWidgets.QMainWindow):
         list_month = sorted(list(set_month))
         rez = []
         for month in list_month:
-            tbl = CSQ.custom_request_c(self.bd_users, f"""SELECT * FROM {month}""")
+            tbl = CSQ.custom_request_c(self.bd_users, f"""SELECT * FROM "{month}";""")
             for i in range(3, len(tbl)):
                 if self.glob_ima in tbl[i][2]:
                     for day in dict_check_days.keys():
@@ -1212,7 +1217,7 @@ class mywindow(QtWidgets.QMainWindow):
             CQT.msgbox('Необходимо войти')
             return
         try:
-            custom_request_c = f'''SELECT Количество FROM mk WHERE Пномер == {self.glob_nom_mk}'''
+            custom_request_c = f'''SELECT "Количество" FROM mk WHERE "Пномер" = {self.glob_nom_mk}'''
             rez = CSQ.custom_request_c(self.db_naryd, custom_request_c)
             kol_izd = int(rez[-1][0])
         except:
@@ -1336,7 +1341,7 @@ class mywindow(QtWidgets.QMainWindow):
     def tbl_prosmotr_nar_jurnal_cellChanged(self, row, column, *args):
         row = CQT.get_dict_line_form_tbl(self.ui.tbl_prosmotr_nar_jurnal, row)
         CSQ.custom_request_c(self.db_naryd,
-                             f"""UPDATE jurnal SET (Примечание) = (?) WHERE Пномер = {int(row['Пномер'])};""",
+                             f"""UPDATE jurnal SET "Примечание" = ? WHERE "Пномер" = {int(row['Пномер'])};""",
                              list_of_lists_c=[[row['Примечание']]])
 
     def btns_edit_jur_in_prosmtr_nar_enabled(self, enable=True):
@@ -1357,16 +1362,30 @@ class mywindow(QtWidgets.QMainWindow):
         tblj = self.ui.tbl_prosmotr_nar_jurnal
         nk_nom_nar = CQT.num_col_by_name_c(tblp, 'Пномер')
         nom_nar = int(tblp.item(tblp.currentRow(), nk_nom_nar).text()) #02.02.2026
-        custom_request_c = f'''SELECT  
+        custom_request_c = CSQ.SqlQuery(
+            sqlite=f'''SELECT  
             Пномер, Номер_наряда, Дата, ФИО, Статус, Подытог, Примечание 
             FROM jurnal 
-            WHERE Номер_наряда == {nom_nar}
+            WHERE Номер_наряда = {nom_nar}
             ORDER BY datetime(Дата)
+        ''',
+            postgres=f'''SELECT  
+                "Пномер", "Номер_наряда", "Дата", "ФИО", "Статус", "Подытог", "Примечание" 
+            FROM jurnal 
+            WHERE "Номер_наряда" = {nom_nar}
+            ORDER BY "Дата"::timestamp
         '''
+        )
         rez = CSQ.custom_request_c(self.db_naryd, custom_request_c)
         tblp.setProperty('nom_nar', nom_nar) # 30.04.2026
-        zad = CSQ.custom_request_c(self.db_naryd, f"""SELECT mk.Дата_завершения,
-         naryad.Пномер, naryad.Задание FROM naryad Inner join mk ON mk.Пномер = naryad.Номер_мк WHERE naryad.Пномер == {nom_nar}""",
+        zad = CSQ.custom_request_c(self.db_naryd, f"""
+        SELECT 
+            mk."Дата_завершения",
+            naryad."Пномер", 
+            naryad."Задание" 
+         FROM naryad 
+         INNER JOIN mk ON mk."Пномер" = naryad."Номер_мк" 
+         WHERE naryad."Пномер" = {nom_nar}""",
                                    rez_dict=True)
         CQT.fill_wtabl_old_c(self, rez, tblj, isp_hat_c=True, separ='',
                              set_editeble_col_nomera={CQT.num_col_by_name_c(tblj, 'Примечание')})
@@ -1458,9 +1477,14 @@ class mywindow(QtWidgets.QMainWindow):
         if CQT.msgboxgYN(f'Я, {CMS.name_by_empl_c(self.glob_login)}, подтверждаю наличие полного комплекта по'
                          f' наряду №{nom_nar}. Я осознаю и несу полную ответственность за производственные'
                          f' потери, вызванные недостоверностью предоставленных данных.'):
-            custom_request_c = f'UPDATE naryad SET Компл_ФИО = "{CMS.name_by_empl_c(self.glob_login)}", Компл_Дата = "{F.now()}",' \
-                               f' Компл_номер_тара = "{tbl.item(tbl.currentRow(), nk_nom_tara).text()}",' \
-                               f' Компл_адрес = "{tbl.item(tbl.currentRow(), nk_adres).text()}" WHERE Пномер = {nom_nar}'
+            custom_request_c = f"""
+            UPDATE naryad SET 
+                "Компл_ФИО" = '{CMS.name_by_empl_c(self.glob_login)}', 
+                "Компл_Дата" = '{F.now()}',
+                "Компл_номер_тара" = '{tbl.item(tbl.currentRow(), nk_nom_tara).text()}',
+                "Компл_адрес" = '{tbl.item(tbl.currentRow(), nk_adres).text()}' 
+            WHERE "Пномер" = {nom_nar}'
+            """
             CSQ.custom_request_c(self.db_naryd, custom_request_c)
             self.load_table_komplekt()
 
@@ -2148,7 +2172,7 @@ class mywindow(QtWidgets.QMainWindow):
                     AND "ФИО_" != '' 
                     AND "Фвремя" = '' 
                     and "Подтвержд_вып_дата" = '' 
-                GROUP BY naryad."Пномер", "ФИО_";'''
+                GROUP BY naryad."Пномер", "ФИО_" '''
             list_template_req.append(template_req)
         custom_request_c = ' UNION '.join(list_template_req) + ' ORDER BY naryad."Пномер";'
 
@@ -2941,7 +2965,10 @@ class mywindow(QtWidgets.QMainWindow):
         else:
             tvrem = F.valm(tbl.item(tbl.currentRow(), nk_tvrem).text())
 
-        custom_request_c = f'''UPDATE naryad SET "ФИО"='', "ФИО2"='', "Распред_дата" ='', "Распред_ФИО" ='', "Твремя"={tvrem}  WHERE "Пномер" = {int(nom_nar)}'''
+        custom_request_c = f'''
+        UPDATE naryad 
+        SET "ФИО" = '', "ФИО2" = '', "Распред_дата" = '', "Распред_ФИО" = '', "Твремя" = {tvrem} 
+        WHERE "Пномер" = {int(nom_nar)}'''
 
         CSQ.custom_request_c(self.db_naryd, custom_request_c)
         CQT.msgbox(f'Наряд №{nom_nar} успешно очищен')
@@ -2964,7 +2991,7 @@ class mywindow(QtWidgets.QMainWindow):
         current_podr_ref = DTCLS.USER_CONFIG.User.current_Подразделение_Key
         current_user_ref = DTCLS.USER_CONFIG.User.ID_ФизЛица
         kat_vnepl_data = CSQ.custom_request_c(self.db_naryd, f"""
-                    SELECT "Внеплан", "Категория_внепл"  FROM naryad WHERE "Пномер" = {nom_nar}""", rez_dict=True, one=True)
+                    SELECT "Внеплан", "Категория_внепл" FROM naryad WHERE "Пномер" = {nom_nar}""", rez_dict=True, one=True)
         if kat_vnepl_data is None:
             return
         kat_vnepl = kat_vnepl_data['Категория_внепл']
@@ -4812,6 +4839,28 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
 
     @CQT.onerror
     def load_mk(self, lite=False, nom_mk='', conn='', res=''):
+        def fnc_dbl_click(t:CQT.TableContext,i,name_clmn,app_self:mywindow, *args):
+            row = t.get_row(i)
+            res = CMS.ResSpec(app_self.glob_nom_mk)
+            dse = res.get_dse(int(row.value('ID')))
+
+            templ = [{
+                'Код':_['Мат_код'],
+                'Наименование':_['Мат_наименование'],
+                'Ед. Изм.':_['Мат_ед_изм'],
+                'Норма':_['Мат_норма'],
+                'Норма на ед.':_['Мат_норма_ед'],
+                'Статья калькуляции':_['Материалы_Статья_калькуляции'],
+                'Способы получения':_['Способы_получения_материала'],
+                'Код CAM':  app_self.DICT_NOMEN.get(_['Мат_код'],None)['П6'] if app_self.DICT_NOMEN.get(_['Мат_код'],None) else '-',
+                'Толщина CAM': app_self.DICT_NOMEN.get(_['Мат_код'],None)['П1'] if app_self.DICT_NOMEN.get(_['Мат_код'],None) else '-',
+                      } for _ in dse.get_oper(row.value('Ном_оп')).Материалы]
+            if not templ:
+                CQT.msgbox('Нет материалов в ТД')
+                return
+            CQT.msgboxg_get_table_ok_inf(app_self,'Материалы ТД',templ,styleSheet=CQT.MES_CSS)
+
+
         if nom_mk == '':
             nom_mk = self.glob_nom_mk
         if nom_mk == 0:
@@ -4935,7 +4984,7 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
         # CQT.fill_wtabl_old_c(self, spis_shab_mk, tabl_mk, 0, set_red, '', '', 600, True, '', 20,0)
         CQT.fill_wtabl(spis_shab_mk, tabl_mk, set_red, 600, 1, 24, auto_type=False,
                        list_column_widths=CMS.load_column_widths(self, tabl_mk))
-
+        t = CQT.TableContext(tabl_mk)
         # tabl_mk.setColumnHidden(CQT.num_col_by_name_c(tabl_mk, 'ID'), True)
         nk_check = CQT.num_col_by_name_c(tabl_mk, 'Чек')
         nk_oper_kod = CQT.num_col_by_name_c(tabl_mk, "Опер_код")
@@ -4998,11 +5047,13 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
         for prof in set_prof:
             self.ui.cmb_prof.addItem(prof)
         self.glob_res = res
-
+        t.add_column_events("Масса/М1,М2,М3",on_double_click=fnc_dbl_click,parent_self=self)
         if not CMS.user_access(self.db_naryd, 'создание_создание_наряда_аутсорс', self.glob_ima, False):
             self.ui.chkb_autcourse.setEnabled(False)
         else:
             self.ui.chkb_autcourse.setEnabled(True)
+
+
 
         # ======списки для фильра маршрутов=======
         self.load_podbor_marsh(res)

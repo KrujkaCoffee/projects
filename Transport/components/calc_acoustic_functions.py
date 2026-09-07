@@ -2,6 +2,19 @@ import math
 from collections import OrderedDict
 
 from components import calc_silencer_functions_M5_M400
+from components.excel_compat import excel_round
+
+_python_float = float
+
+
+def _excel_float(value=0.0):
+    """Числовое приведение с десятичной запятой из русской Excel-книги."""
+    if isinstance(value, str):
+        value = value.replace(',', '.')
+    return _python_float(value)
+
+
+float = _excel_float
 
 def excel_if(cond, val_true, val_false = None):
     if not cond and callable(val_false):
@@ -14,9 +27,6 @@ def excel_and(*args):
 def excel_or(*args):
     return any(args)
 
-def excel_round(x, n=0):
-    return round(x, int(n))
-
 def excel_sum(p: dict, keys):
     return sum(p[k] for k in keys)
 
@@ -26,18 +36,18 @@ def SUM(*args):
 
 def calc_lp_steam_discharge_sound_power_level_db(params):
     S = math.pi * (params['vyhodnoj_vneshnij_diametr_m'] - 2 * params['tolschina_stenki_mm'] * 0.001) ** 2/4
-    S = round(S, 9)
+    S = excel_round(S, 9)
     G = params['rashod_sredy_g_kg_s']
     k = params['koeffcient_adiabaty']
 
     R = params['gazovaya_postoyannaya_m2_s2_k']
     T = params['temperatura_sredy_s_2'] + 273.15
-    wk = round(math.sqrt(2 * k / (k + 1) * R * T), 1)
-    n = round((wk * G / (k * S) + 101325) / 101325, 1)
-    λ = round(1.77 - 0.77 / n, 1)
+    wk = excel_round(math.sqrt(2 * k / (k + 1) * R * T), 1)
+    n = excel_round((wk * G / (k * S) + 101325) / 101325, 1)
+    λ = excel_round(1.77 - 0.77 / n, 1)
 
-    K_n = round(18.5 * λ - 10 * math.log10(λ ** 7 / (1 - 0.13 * λ ** 2)), 1)
-    return round(10 * math.log10(G ** 2 / S) - 10 * math.log10(n) - K_n + 141.3, 1)
+    K_n = excel_round(18.5 * λ - 10 * math.log10(λ ** 7 / (1 - 0.13 * λ ** 2)), 1)
+    return excel_round(10 * math.log10(G ** 2 / S) - 10 * math.log10(n) - K_n + 141.3, 1)
 
 
 CONSTANTS = {
@@ -3396,17 +3406,17 @@ def calc_ak_kolichestvo_plastin_sht(p: dict):
 def calc_ak_l_obl_dlina_plastin_m(p: dict):
 # Описание: # Ячейка: O772
 # Формула: =Расчеты!E29
-	return 63
+	return p["dlina_oblicovannyh_kanalov_m"]
 
 def calc_ak_ploschad_zanyataya_plastinami_m2(p: dict):
 # Описание: # Ячейка: O773
 # Формула: =Расчеты!E33
-	return 1000
+	return p["ploschadi_zanyatye_plastinami_shumoglusheniya_m2"]
 
 def calc_ak_perimetr_svobodnogo_secheniya_nezapolnennyj_perimetr(p: dict):
 # Описание: # Ячейка: O774
 # Формула: =Расчеты!E34
-	return 2000
+	return p["perimetr_svobodnogo_secheniya_m"]
 
 def calc_ak_temperatura_sredy_s(p: dict):
 # Описание: # Ячейка: O775
@@ -4161,7 +4171,7 @@ def calc_ak_r_dg(p: dict):
 def calc_ak_diametr_truby_m(p: dict):
 # Описание: # Ячейка: O933
 # Формула: =Расчеты!E27-2*Расчеты!E28
-	return p["vnutrennij_diametr_shumoglushitelya_korpus_m"]-2*31.5
+	return p["vnutrennij_diametr_shumoglushitelya_korpus_m"]-2*p["tolschina_oblicovki_m"]
 
 def calc_ak_srednegeometricheskaya_chastota_gc_31_5_92(p: dict):
 # Описание: # Ячейка: O935

@@ -84,10 +84,6 @@ modules.sub_modules["settings"].add_submodule(DTCLS.ModuleCfg("decoration",
                                                               ft.Icons.STYLE,
                               'Оформление'))
 
-_ref_main = ft.Ref[ft.Row]()
-
-
-
 def main_page(page, PATHF_IT_PLAN):
     data_it_plan = F.load_file_pickle(PATHF_IT_PLAN)
     list_plan = [_ for _ in data_it_plan if _['ТИП'] == 'Развитие процессов' and _['ПП'] == 'MES']
@@ -111,17 +107,18 @@ def main_page(page, PATHF_IT_PLAN):
                       spacing=20,  # Место для разделителя
                       expand=True,  # Растягиваем Row
                       )
-    return ft.Column([menubar(), row_plan], ref=_ref_main, spacing=20,expand=True)
+    return ft.Column([menubar(), row_plan], spacing=20, expand=True)
 
 
 def menubar():
     def handle_menu_item_click(e):
         def clc_settings():
-            if DTCLS.Data_page.Data_module.settingsRef.current and DTCLS.Data_page.Data_module.settingsRef.current.visible:
-                DTCLS.Data_page.Data_module.settingsRef.current.visible = False
+            Data: DTCLS.Data_page = e.page.data
+            if Data.Data_module.settingsRef.current and Data.Data_module.settingsRef.current.visible:
+                Data.Data_module.settingsRef.current.visible = False
             else:
-                DTCLS.Data_page.Data_module.settingsRef.current.visible = True
-            DTCLS.Data_page.page.update()
+                Data.Data_module.settingsRef.current.visible = True
+            e.page.update()
         select = e.control
         select_name = select.content.value
         pg: ft.Page = e.page
@@ -137,7 +134,7 @@ def menubar():
         except:
             module_data: DTCLS.ModuleCfg = select.data
         if e.control.parent.content.value == 'Модули':
-            pg.data.Data_module = module_data
+            pg.data.activate_module(module_data)
             pg.go(module_data.route)
 
     def add_module(modules:dict):
@@ -190,23 +187,34 @@ def menubar():
 
 
 async def load_module(page: ft.Page):
+    Data: DTCLS.Data_page = page.data
+    # Обработчики клавиатуры относятся к конкретному экрану и не должны
+    # переживать переход в другой модуль.
+    page.on_keyboard_event = None
+
+    def session_module() -> DTCLS.ModuleCfg:
+        template = modules.get_module_by_route(page.route)
+        if template is None:
+            raise ValueError(f'Неизвестный маршрут модуля: {page.route}')
+        return Data.activate_module(template)
+
     if page.route == ("/modules/pneumatic_transport_dev"):
-        MCP.apply_page_settings(page,modules.get_module_by_route(page.route))
+        MCP.apply_page_settings(page, session_module())
         return MCP.gen_page(page)
     if page.route == ("/modules/pneumatic_transport_pkn"):
-        await MCPPKN.apply_page_settings(page,modules.get_module_by_route(page.route))
+        await MCPPKN.apply_page_settings(page, session_module())
         return await MCPPKN.gen_page(page)
     if page.route == ("/modules/airslide"):
-        MCA.apply_page_settings(page,modules.get_module_by_route(page.route))
+        MCA.apply_page_settings(page, session_module())
         return MCA.gen_page(page)
     if page.route == ("/modules/pneumatic_jet"):
-        MCPj.apply_page_settings(page,modules.get_module_by_route(page.route))
+        MCPj.apply_page_settings(page, session_module())
         return MCPj.gen_page(page)
     if page.route == ("/modules/silencer"):
-        await MCS.apply_page_settings(page,modules.get_module_by_route(page.route))
+        await MCS.apply_page_settings(page, session_module())
         return await MCS.gen_page(page)
     if page.route == ("/modules/blower_zigel"):
-        await MCBZ.apply_page_settings(page,modules.get_module_by_route(page.route))
+        await MCBZ.apply_page_settings(page, session_module())
         return MCBZ.gen_page(page)
 
     return PLUG.gen_page(page)

@@ -40,6 +40,8 @@ import project_cust_38.sub_mes.resource_planning.clses as CLSS
 from project_cust_38.sub_mes.resource_planning import planner_mes
 from project_cust_38.sub_mes.resource_planning import planner_gantt
 from project_cust_38.sub_mes.resource_planning import attribute_binding as AB
+from project_cust_38.sub_mes.resource_planning import catalog_choices as CCHO
+from project_cust_38.sub_mes.resource_planning import catalog_editor as CEDIT
 
 from typing import  TYPE_CHECKING
 
@@ -75,7 +77,70 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
 
 
         _con.load_connects(self)
+        self.__last_catalog_link_draft = None
+        self.__install_catalog_links_menu()
 
+    def __install_catalog_links_menu(self):
+        self.__last_catalog_link_draft = None
+
+        self.catalog_links_menu = self.ui.menubar.addMenu('Связи')
+        self.new_catalog_link_action = self.catalog_links_menu.addAction('Новая связь справочников...')
+        self.new_catalog_link_action.setObjectName('action_new_catalog_link')
+        self.new_catalog_link_action.triggered.connect(self.open_catalog_link_editor)
+
+    def __load_catalog_field_choices(self):
+        choices = []
+        errors = []
+        try:
+            choices.extend(CCHO.load_mes_choices(DTSUB.planner_mes_types))
+        except Exception as error:
+            errors.append(f'MES: {error}')
+        try:
+            erp_base_name = CFG.Config.user_config.ERP_base.name
+            choices.extend(CCHO.load_erp_choices(
+                DTSUB.custom_types,
+                erp_source_key=f'api_erp:{erp_base_name}',
+                erp_source_caption=f'ERP ({erp_base_name})'
+            ))
+        except Exception as error:
+            errors.append(f'ERP: {error}')
+        return tuple(choices), tuple(errors)
+
+    def open_catalog_link_editor(
+            self,
+            _checked=False
+    ):
+        choices, errors = self.__load_catalog_field_choices()
+
+        if not choices:
+            return CQT.msgbox(
+                'Не удалось загрузить источники \n'
+                + '\n'.join(errors))
+
+        if errors:
+            CQT.msgbox('Часть источников недоступна:\n'
+                + '\n'.join(errors))
+
+        dialog = CEDIT.CatalogLinkEditor(
+            choices,
+            parent=self
+        )
+        if dialog.exec() != CQT.QtWidgets.QDialog.Accepted:
+            return None
+        self.__last_catalog_link_draft = dialog.link_spec
+        link = self.__last_catalog_link_draft
+        left = link.left
+        right = link.right
+        print(
+            f'{left.provider}: '
+            f'{left.entity_key}.'
+            f'{left.field_key}\n'
+            '→\n'
+            f'{right.provider}: '
+            f'{right.entity_key}.'
+            f'{right.field_key}')
+        CQT.msgbox('Связь сформирована и добавлена в черновик')
+        return link
 
     def _____________sub__________________(self):
         pass

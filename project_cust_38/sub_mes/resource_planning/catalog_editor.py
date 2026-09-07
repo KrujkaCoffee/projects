@@ -1,31 +1,10 @@
-import dataclasses
 import typing
 
 from PyQt5 import QtWidgets, QtCore
 
 from project_cust_38.sub_mes.resource_planning import catalog_link as CL
 from project_cust_38.sub_mes.resource_planning import attribute_binding as AB
-
-@dataclasses.dataclass(frozen=True, slots=True)
-class CatalogFieldChoice:
-    endpoint: CL.CatalogLinkEndpoint
-    source_caption: str = ''
-    entity_caption: str = ''
-
-    def __post_init__(self):
-        if not isinstance(self.endpoint, CL.CatalogLinkEndpoint):
-            raise TypeError('некорректный аргумент endpoint')
-        if any(not isinstance(k, str) for k in (self.source_caption, self.entity_caption)):
-            raise TypeError('Некорректный аргумент source_caption/entity_caption')
-
-    @property
-    def source_text(self) -> str:
-        return self.source_caption or self.endpoint.source_key
-
-    @property
-    def entity_text(self) -> str:
-        return self.entity_caption or self.endpoint.entity_key
-
+from project_cust_38.sub_mes.resource_planning import catalog_choices as CC
 
 class CatalogEndpointEditor(QtWidgets.QGroupBox):
     selection_changed = QtCore.pyqtSignal()
@@ -33,7 +12,7 @@ class CatalogEndpointEditor(QtWidgets.QGroupBox):
     def __init__(
             self,
             title: str,
-            choices: typing.Iterable[CatalogFieldChoice],
+            choices: typing.Iterable[CC.CatalogFieldChoice],
             parent=None
     ):
         super().__init__(title, parent)
@@ -57,9 +36,9 @@ class CatalogEndpointEditor(QtWidgets.QGroupBox):
         self.cmb_field.currentIndexChanged.connect(self.selection_changed.emit)
         self.__reload_providers()
 
-    def current_endpoint(self) -> CL.CatalogLinkEndpoint:
+    def current_endpoint(self) -> CL.CatalogLinkEndpoint | None:
         choice = self.cmb_field.currentData()
-        if not isinstance(choice, CatalogFieldChoice):
+        if not isinstance(choice, CC.CatalogFieldChoice):
             return None
         return choice.endpoint
 
@@ -163,7 +142,7 @@ class CatalogEndpointEditor(QtWidgets.QGroupBox):
 class CatalogLinkEditor(QtWidgets.QDialog):
     def __init__(
             self,
-            choices: typing.Iterable[CatalogFieldChoice],
+            choices: typing.Iterable[CC.CatalogFieldChoice],
             parent=None
     ):
         super().__init__(parent)
@@ -301,7 +280,7 @@ if __name__ == '__main__':
 
     def demo():
         return (
-            CatalogFieldChoice(
+            CC.CatalogFieldChoice(
                 CL.CatalogLinkEndpoint(
                 provider=AB.SourceProvider.MES,
                 source_key='План',
@@ -312,7 +291,7 @@ if __name__ == '__main__':
                 source_caption='Планировщик мес',
                 entity_caption='План'
             ),
-            CatalogFieldChoice(
+            CC.CatalogFieldChoice(
                 CL.CatalogLinkEndpoint(
                 provider=AB.SourceProvider.MES,
                 source_key='План',
@@ -323,7 +302,7 @@ if __name__ == '__main__':
                 source_caption='Планировщик мес',
                 entity_caption='План'
             ),
-            CatalogFieldChoice(
+            CC.CatalogFieldChoice(
                 CL.CatalogLinkEndpoint(
                 provider=AB.SourceProvider.MES,
                 source_key='План',
@@ -334,7 +313,7 @@ if __name__ == '__main__':
                 source_caption='Планировщик мес',
                 entity_caption='План'
             ),
-            CatalogFieldChoice(
+            CC.CatalogFieldChoice(
                 CL.CatalogLinkEndpoint(
                 provider=AB.SourceProvider.ERP,
                 source_key='Документ.ЗаказКлиента',
@@ -345,7 +324,7 @@ if __name__ == '__main__':
                 source_caption='ERP',
                 entity_caption='Заказ клиента'
             ),
-            CatalogFieldChoice(
+            CC.CatalogFieldChoice(
                 CL.CatalogLinkEndpoint(
                 provider=AB.SourceProvider.ERP,
                 source_key='Документ.ЗаказНаПроизводство2_2',
@@ -356,7 +335,7 @@ if __name__ == '__main__':
                 source_caption='ERP',
                 entity_caption='Заказ на производство'
             ),
-            CatalogFieldChoice(
+            CC.CatalogFieldChoice(
                 CL.CatalogLinkEndpoint(
                 provider=AB.SourceProvider.ERP,
                 source_key='Документ.ЗаказНаВнутреннееПотребление',

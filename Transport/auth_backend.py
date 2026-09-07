@@ -3,6 +3,7 @@ from __future__ import annotations
 import ctypes
 import json
 import os
+import re
 import secrets
 import threading
 import time
@@ -160,15 +161,13 @@ class DbSessionStore:
         cleanup_interval_seconds: int = 60,
     ) -> None:
         self.db_path = db_path
-        self.table_name = table_name
+        if not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', str(table_name)):
+            raise ValueError('Недопустимое имя таблицы сессий')
+        self.table_name = str(table_name)
         self.ttl_seconds = ttl_seconds
         self.cleanup_interval_seconds = cleanup_interval_seconds
         self._lock = threading.RLock()
         self._last_cleanup = 0.0
-
-    @staticmethod
-    def _quote(value: str) -> str:
-        return str(value).replace("'", "''")
 
     @staticmethod
     def _serialize_user(user: dict) -> str:
@@ -212,17 +211,16 @@ class DbSessionStore:
             return None
 
         now = time.time()
-        sid_sql = self._quote(sid)
-
         with self._lock:
             row = CSQ.custom_request_c(
                 self.db_path,
                 f"""
                 SELECT sid, user_json, created_at, expires_at, updated_at
                 FROM {self.table_name}
-                WHERE sid = '{sid_sql}'
+                WHERE sid = ?
                 LIMIT 1;
                 """,
+                list_of_lists_c=[[sid]],
                 rez_dict=True,
                 one=True,
             )
@@ -249,7 +247,7 @@ class DbSessionStore:
                         updated_at = ?
                     WHERE sid = ?;
                     """,
-                    list_of_lists_c=[new_expires_at, now, sid],
+                    list_of_lists_c=[[new_expires_at, now, sid]],
                 )
 
             return user
@@ -257,11 +255,11 @@ class DbSessionStore:
     def delete(self, sid: str | None) -> None:
         if not sid:
             return
-        sid_sql = self._quote(sid)
         with self._lock:
             CSQ.custom_request_c(
                 self.db_path,
-                f"DELETE FROM {self.table_name} WHERE sid = '{sid_sql}';",
+                f"DELETE FROM {self.table_name} WHERE sid = ?;",
+                list_of_lists_c=[[sid]],
             )
 
     def cleanup(self) -> None:
@@ -271,7 +269,8 @@ class DbSessionStore:
         with self._lock:
             CSQ.custom_request_c(
                 self.db_path,
-                f"DELETE FROM {self.table_name} WHERE expires_at <= {float(now)};",
+                f"DELETE FROM {self.table_name} WHERE expires_at <= ?;",
+                list_of_lists_c=[[float(now)]],
             )
             self._last_cleanup = now
 

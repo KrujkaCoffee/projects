@@ -5,8 +5,6 @@ import mimetypes
 import os
 import socket
 from contextlib import asynccontextmanager
-from typing import cast
-
 from starlette.responses import Response
 
 import Config.srv_config as SRVCFG
@@ -63,10 +61,8 @@ async def main(page: ft.Page):
     auth_user = current_auth_user.get() or {}
     auth_login = auth_user.get("login", "")
     page.session.store.set("auth_login", auth_login)
-    DTCLS.Data_page.page = page
-    DTCLS.Data_page.reload()
-    page.data = cast(DTCLS.Data_page, DTCLS.Data_page)
-    Data: DTCLS.Data_page = page.data
+    Data = DTCLS.Data_page(page)
+    page.data = Data
 
     page.title = name_title
     page.fonts = {
@@ -86,8 +82,8 @@ async def main(page: ft.Page):
 
         if e.route.startswith("/modules"):
             controls = await modules.load_module(page)
-            if DTCLS.Data_page.Data_module.status_bar:
-                DTCLS.Data_page.Data_module.status_bar.set_text()
+            if Data.Data_module.status_bar:
+                Data.Data_module.status_bar.set_text()
 
             if controls:
                 page.views.append(
@@ -98,7 +94,7 @@ async def main(page: ft.Page):
                 )
         else:
             _ref_settings = ft.Ref[ft.Column]()
-            DTCLS.Data_page.Data_module.settingsRef = _ref_settings
+            Data.Data_module.settingsRef = _ref_settings
             app_bar_actions = [
                 ft.Container(
                     padding=10,
@@ -214,7 +210,6 @@ async def login_submit(
     next: str = Form("/"),
 ) -> Response:
     next_url = sanitize_next_path(next)
-
     try:
         user, error_code = authenticate_windows_user(login, password)
     except ValueError as exc:
@@ -236,7 +231,7 @@ async def login_submit(
         value=sid,
         max_age=MONTH_SECONDS,
         httponly=True,
-        secure=False,
+        secure=srv_config.COOKIE_SECURE,
         samesite="lax",
         path="/",
     )

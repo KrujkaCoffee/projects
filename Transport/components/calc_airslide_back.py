@@ -317,8 +317,8 @@ def prepare_calc_new_data(data: list[dict], Data: DTCLS.Data_page) -> (list[dict
 def generate_rez_tbl(e: ft.ControlEvent, tbl: ft.DataTable, ref_out,fnc_cell_click=None) -> bool | None:
     Data: DTCLS.Data_page = e.page.data
     data = CMF.datatable_to_dicts(tbl)
-    DTCLS.Data_page.Data_module.cust_data: Cust_module_params
-    DTCLS.Data_page.Data_module.cust_data.output_tbl = None
+    Data.Data_module.cust_data: Cust_module_params
+    Data.Data_module.cust_data.output_tbl = None
     new_data, success = prepare_calc_new_data(data, Data)
     if not new_data:
         return
@@ -327,7 +327,7 @@ def generate_rez_tbl(e: ft.ControlEvent, tbl: ft.DataTable, ref_out,fnc_cell_cli
     else:
         # return  CMF.generate_param_table(Data.Data_module.cust_data.input_tbl_not_editbl,ref_out), new_data, True
         tbl_output = make_err_tbl(new_data, ref_out)
-    DTCLS.Data_page.Data_module.cust_data.output_tbl: CMF.Table_data = tbl_output
+    Data.Data_module.cust_data.output_tbl: CMF.Table_data = tbl_output
     return success
 
 

@@ -97,7 +97,7 @@ def gen_page(page):
         Data.Data_module.cust_data.input_tbl_editbl = table_data
 
         _input_column_tabels_ref.current.controls.append(input_table_datatable)
-        DTCLS.Data_page.Data_module.status_bar.set_text()
+        Data.Data_module.status_bar.set_text()
         page.update()
 
     def generate_desktop_row(page: ft.Page, rail: ft.NavigationRail):
@@ -108,7 +108,7 @@ def gen_page(page):
             page = e.page
             btn_enabled = calc_airslide_back.generate_rez_tbl(e, _input_tabe_ref.current,
                                                                                  _output_tabe_ref)
-            table_data: CMF.Table_data = DTCLS.Data_page.Data_module.cust_data.output_tbl
+            table_data: CMF.Table_data = Data.Data_module.cust_data.output_tbl
             tbl_rez = table_data.table_view
             if tbl_rez == None:
                 return
@@ -281,7 +281,7 @@ def gen_page(page):
 
     _refStatusBar = ft.Ref[ft.Container]()
     _refStatusBarText = ft.Ref[ft.Text]()
-    DTCLS.Data_page.Data_module.set_status_bar(_refStatusBar, _refStatusBarText)
+    Data.Data_module.set_status_bar(_refStatusBar, _refStatusBarText)
 
     statusBar = ft.Column([ft.Divider(height=1),
                            ft.Container(
