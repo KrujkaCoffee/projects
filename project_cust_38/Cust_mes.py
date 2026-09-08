@@ -2055,13 +2055,13 @@ def get_db_rows_pl_etaps(pnom_or_pnoms: int | list[int]):
 
 
                                  FROM plan INNER JOIN  
-                                 пл_топ  ON plan.Пномер == пл_топ.НомПл,
-                                пл_заг  ON plan.Пномер == пл_заг.НомПл,
-                                пл_мех  ON plan.Пномер == пл_мех.НомПл,
-                                пл_сб  ON plan.Пномер == пл_сб.НомПл,
-                                пл_покр  ON plan.Пномер == пл_покр.НомПл,
-                                пл_компл  ON plan.Пномер == пл_компл.НомПл, 
-                                пл_отк  ON plan.Пномер == пл_отк.НомПл, 
+                                 пл_топ  ON plan.Пномер = пл_топ.НомПл,
+                                пл_заг  ON plan.Пномер = пл_заг.НомПл,
+                                пл_мех  ON plan.Пномер = пл_мех.НомПл,
+                                пл_сб  ON plan.Пномер = пл_сб.НомПл,
+                                пл_покр  ON plan.Пномер = пл_покр.НомПл,
+                                пл_компл  ON plan.Пномер = пл_компл.НомПл, 
+                                пл_отк  ON plan.Пномер = пл_отк.НомПл, 
                                 пл_рскр ON пл_рскр.НомПл = plan.Пномер,
                                 пл_оснтк ON пл_оснтк.НомПл = plan.Пномер,
                                 пл_швк ON пл_швк.НомПл = plan.Пномер,
@@ -12004,7 +12004,6 @@ def add_only_work_days(date1:datetime.datetime,time_delta:timedelta,self):
         else:
             calendar_dict = get_prod_cal(F.strtodate(month, "m_cld_%Y_%m_01"))
             return {F.datetostr(F.strtodate(k,"%Y.%m.%d" ),'d_%Y_%m_%d'): int(v) for k,v in calendar_dict.items()}
-
 
     def is_holy_or_week(date:datetime.datetime):
         date_str = F.datetostr(date,'d_%Y_%m_%d')

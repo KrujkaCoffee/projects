@@ -42,6 +42,7 @@ from project_cust_38.sub_mes.resource_planning import planner_gantt
 from project_cust_38.sub_mes.resource_planning import attribute_binding as AB
 from project_cust_38.sub_mes.resource_planning import catalog_choices as CCHO
 from project_cust_38.sub_mes.resource_planning import catalog_editor as CEDIT
+from project_cust_38.sub_mes.resource_planning import catalog_link as CLINK
 
 from typing import  TYPE_CHECKING
 
@@ -74,15 +75,16 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
         CQT.load_icons(self, 26, dir=str(F.Cust_path(main_ui)) + F.sep() + 'icons' + F.sep())
         self.setWindowModality(CQT.Qt.ApplicationModal)
         self.apply_subj(subject_pl)
-
+        self.__catalog_link_manager = CLINK.CatalogLinkManager()
 
         _con.load_connects(self)
-        self.__last_catalog_link_draft = None
         self.__install_catalog_links_menu()
 
-    def __install_catalog_links_menu(self):
-        self.__last_catalog_link_draft = None
+    @property
+    def catalog_link_manager(self):
+        return self.__catalog_link_manager
 
+    def __install_catalog_links_menu(self):
         self.catalog_links_menu = self.ui.menubar.addMenu('Связи')
         self.new_catalog_link_action = self.catalog_links_menu.addAction('Новая связь справочников...')
         self.new_catalog_link_action.setObjectName('action_new_catalog_link')
@@ -127,8 +129,13 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
         )
         if dialog.exec() != CQT.QtWidgets.QDialog.Accepted:
             return None
-        self.__last_catalog_link_draft = dialog.link_spec
-        link = self.__last_catalog_link_draft
+        link = dialog.link_spec
+        try:
+            self.__catalog_link_manager.register(link)
+        except Exception as error:
+            CQT.msgbox(f'Не удалось добавить связь:\n {error}')
+            return None
+
         left = link.left
         right = link.right
         print(

@@ -83,7 +83,7 @@ class CatalogEndpointEditor(QtWidgets.QGroupBox):
             seen.add(endpoint.source_key)
             sources.append((
                 choice.source_text,
-                choice.entity_text
+                endpoint.source_key
             ))
         self.__set_items(self.cmb_source, sources)
         self.__reload_entities()
@@ -197,7 +197,7 @@ class CatalogLinkEditor(QtWidgets.QDialog):
 
         self.lbl_error = QtWidgets.QLabel()
         self.lbl_error.setWordWrap(True)
-        self.lbl_error.setStyleSheet('color #b00020')
+        self.lbl_error.setStyleSheet('color: #b00020')
 
         self.buttons = QtWidgets.QDialogButtonBox(
             QtWidgets.QDialogButtonBox.Save
@@ -217,6 +217,7 @@ class CatalogLinkEditor(QtWidgets.QDialog):
         self.left_editor.selection_changed.connect(self.__refresh_state)
         self.right_editor.selection_changed.connect(self.__refresh_state)
         self.buttons.accepted.connect(self.__accept_link)
+        self.buttons.rejected.connect(self.reject)
         self.__select_initial_providers()
         self.__refresh_state()
 

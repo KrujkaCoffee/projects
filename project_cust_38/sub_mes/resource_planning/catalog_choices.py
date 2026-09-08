@@ -88,9 +88,48 @@ def mes_choices_from_config(config: PMES.PlannerSourceConfig, admin_catalog: PME
             ),
             source_caption=source.caption,
             entity_caption=entity_caption,
-        )),
-        entity_caption=entity_caption
+        ))
     return tuple(result)
+
+
+def erp_choices_from_fields(
+        fields,
+        erp_source_key: str,
+        erp_source_caption: str,
+        entity_key: str,
+        entity_caption: str
+) -> tuple[CatalogFieldChoice, ...]:
+    result = []
+    used_fields = set()
+
+    for field in fields:
+        field_key = str(field.get('Имя') or '')
+        if not field_key or field_key in used_fields:
+            continue
+        used_fields.add(field_key)
+
+        result.append(CatalogFieldChoice(
+            endpoint=CL.CatalogLinkEndpoint(
+                provider=AB.SourceProvider.ERP,
+                source_key=erp_source_key,
+                entity_key=entity_key,
+                field_key=field_key,
+                caption=str(field.get('Синоним') or '')
+            ),
+            source_caption=erp_source_caption,
+            entity_caption=entity_caption
+            )
+        )
+    return tuple(result)
+
+def __iter_erp_type_items(root):
+    for item in root.inner_data.values():
+        if item.inner_data:
+            yield from __iter_erp_type_items(item)
+            continue
+        get_fields = getattr(item.value, '_get_fields', None)
+        if callable(get_fields):
+            yield item
 
 
 def load_mes_choices(mes_types: PMES.PlannerMesTypeCatalog) -> tuple[CatalogFieldChoice, ...]:
@@ -103,26 +142,54 @@ def load_mes_choices(mes_types: PMES.PlannerMesTypeCatalog) -> tuple[CatalogFiel
     return tuple(result)
 
 
+def load_erp_choices(custom_types,
+                     erp_source_key: str,
+                     erp_source_caption: str) -> tuple[CatalogFieldChoice, ...]:
+    root = custom_types.TYPE_MAP['ErpMetaClass']
+
+    result = []
+
+    for item in __iter_erp_type_items(root):
+        entity_key = custom_types.get_full_type_name(item.value,
+                                                      drop_base=True)
+        success, fields = item.value._get_fields()
+        if not success:
+            raise RuntimeError(f'Не удалось получить поля {item.text}: {fields}')
+        result.extend(erp_choices_from_fields(
+            fields,
+            erp_source_key=erp_source_key,
+            erp_source_caption=erp_source_caption,
+            entity_key=entity_key,
+            entity_caption=item.text or entity_key
+        ))
+    return tuple(result)
+
+
 if __name__ == '__main__':
-    admin_catalog = PMES.AdminCatalog(
-        tables={
-            'plan': PMES.AdminTable(
-                table_key='plan',
-                db_key='plan',
-                table_name='plan'
-            ),
-        },
-        fields={
-            ('plan', 'id'): PMES.AdminField(
-                table_key='plan',
-                field_name='id',
-                label='Идентификатор',
-                is_pk=True
-            ),
-            ('plan', 'client_order_key'): PMES.AdminField(
-                table_key='plan',
-                field_name='client_order_key',
-                label='Ссылка заказа клиента'
+    from types import SimpleNamespace
+
+    class TErpType:
+        @classmethod
+        def _get_fields(cls):
+            return (
+                True,
+                [{'Имя': 'Ссылка', 'Синоним': 'Ссылка документа'},
+                 {'Имя': 'Номер', 'Синоним': 'Номер'}]
+            )
+
+    class TCustomTypes:
+        TYPE_MAP = {
+            'ErpMetaClass': SimpleNamespace(
+                inner_data={
+                    'Документы': SimpleNamespace(
+                        inner_data={'ЗаказКлиента': SimpleNamespace(value=TErpType, text='Заказ клиента', inner_data={})}
+                    )
+                }
             )
         }
-    )
+        @staticmethod
+        def get_full_type_name(value, drop_base=False):
+            return 'Документы.ЗаказКлиента'
+
+    choices = load_erp_choices(TCustomTypes(), erp_source_key='api_erp:TEST', erp_source_caption='ERP(test)')
+    print(choices)
