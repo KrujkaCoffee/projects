@@ -350,6 +350,7 @@ class RichTextEditorWidget(QtWidgets.QWidget):
         """
         super().__init__(parent)
         self.setObjectName(self.objectName() or "RichTextEditorWidget")
+        self.__parent = parent
         self.btn_edit_css = button_edit_css
         self.btn_preview_css = button_preview_css
         if expanding:
@@ -679,15 +680,7 @@ class RichTextEditorWidget(QtWidgets.QWidget):
 
         self.mode_bar.setVisible(bool(self.config.show_mode_switcher and self.config.allow_mode_switch))
         self.toolbar.setVisible(bool(self.config.show_toolbar))
-
-        btn_edit_css = self.btn_edit_css if self.btn_edit_css else self._mode_button_css()
-        btn_preview_css = self.btn_edit_css if self.btn_preview_css else self._mode_button_css()
-        self.btn_edit.setStyleSheet(btn_edit_css)
-        self.btn_preview.setStyleSheet(btn_preview_css)
-        self._set_color_action_css(self.action_text_color, QtGui.QColor(QtCore.Qt.black))
-        self._set_color_action_css(self.action_background_color, QtGui.QColor(QtCore.Qt.white))
-
-        self.setStyleSheet(self.styleSheet() + """
+        base_css = self.styleSheet() + """
         QToolBar#RichTextEditorToolbar {
             spacing: 2px;
             padding: 2px;
@@ -700,7 +693,20 @@ class RichTextEditorWidget(QtWidgets.QWidget):
             background: rgb(255, 255, 255);
             padding: 4px;
         }
-        """)
+        """
+        if isinstance(self.__parent, QtWidgets.QWidget):
+            btn_edit_css = btn_preview_css = self.__parent.styleSheet()
+            self.setStyleSheet(base_css + self.__parent.styleSheet())
+        else:
+            btn_edit_css = self.btn_edit_css if self.btn_edit_css else self._mode_button_css()
+            btn_preview_css = self.btn_edit_css if self.btn_preview_css else self._mode_button_css()
+            self.setStyleSheet(base_css)
+        self.btn_edit.setStyleSheet(btn_edit_css)
+        self.btn_preview.setStyleSheet(btn_preview_css)
+        for attr in dir(self):
+            if attr.startswith('action_'):
+                self._set_color_action_css(getattr(self, attr), QtGui.QColor(QtCore.Qt.white))
+
 
     def set_html(self, html: str, *, mark_clean: bool = True, emit_signal: bool = False) -> None:
         """Загрузить HTML в редактор."""
@@ -1069,15 +1075,18 @@ class RichTextEditorWidget(QtWidgets.QWidget):
     @staticmethod
     def _mode_button_css() -> str:
         return """
-        QToolButton {
+        QToolButton, QAction {
             border: 1px solid rgb(190, 190, 190);
             border-radius: 3px;
             padding: 4px 10px;
             background: rgb(245, 245, 245);
+            color: black;
         }
         QToolButton:checked {
             background: rgb(225, 240, 220);
             border: 1px solid rgb(150, 190, 145);
+            background: rgb(245, 245, 245);
+            color: black;
         }
         """
 

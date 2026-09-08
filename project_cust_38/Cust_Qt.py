@@ -2318,6 +2318,23 @@ class TableContext:
         return False
 
     # ----------------------------------------------------------
+    # регистрация событий на изменение ячеек таблицы
+    # ----------------------------------------------------------
+    def add_cell_edit_events(self,fnc_adjust,add_data=None):
+        """
+        :param fnc_bool: def edit_cell(tbl:QtWidgets.QTableWidget,item:QtWidgets.QTableWidgetItem ,add_data=None)->bool:
+        :param add_data: any
+        :return:
+        """
+
+        def fnc_bool(tbl:QtWidgets.QTableWidget,item:QtWidgets.QTableWidgetItem ,add_data=None,old_val=None)->bool:
+            name_field = self.name_by_idx(item.column())
+            new_row = self.get_row(item.row())
+            new_val = new_row.value(name_field)
+            return fnc_adjust(self,name_field,new_row,new_val,old_val,add_data)
+
+        connect_cell_edit(self.tbl,fnc_bool=fnc_bool,add_data=add_data,check_old_val=True)
+    # ----------------------------------------------------------
     # регистрация событий на изменение размера таблицы
     # ----------------------------------------------------------
     def add_geometry_events(
@@ -3042,10 +3059,10 @@ def freeze_mouse_wheel(obj:QtWidgets.QComboBox):
     obj.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
 
 
-def connect_cell_edit(tbl:QtWidgets.QTableWidget,fnc_bool,add_data=None):
+def connect_cell_edit(tbl:QtWidgets.QTableWidget,fnc_bool,add_data=None,check_old_val:bool=False):
     """
     :param tbl: QtWidgets.QTableWidget
-    :param fnc_bool: def corr_mk(tbl:QtWidgets.QTableWidget,item:QtWidgets.QTableWidgetItem ,add_data=None):
+    :param fnc_bool: def corr_mk(tbl:QtWidgets.QTableWidget,item:QtWidgets.QTableWidgetItem ,add_data=None)->bool:
     :param add_data: any
     :return:
     """
@@ -3117,7 +3134,10 @@ def connect_cell_edit(tbl:QtWidgets.QTableWidget,fnc_bool,add_data=None):
         #print(f"before fnc: item={item}")
         _set_updating(tbl, True)  # ← до вызова fnc
         try:
-            result = fnc(tbl, item, add_data)
+            if check_old_val:
+                result = fnc(tbl, item, add_data, old)
+            else:
+                result = fnc(tbl, item, add_data)
         finally:
             _set_updating(tbl, False)  # ← гарантированно снимаем
         if result:
@@ -5748,8 +5768,6 @@ def get_img_size(path):
 
 def add_image(item, i, j, path='', self = '',w = None, h = None,conn_func_click = None,tooltip = '',addit_data=None,stylesheet=None):
     lbl = ClickedLabel()
-    if not os.path.exists(path):
-        path = r'C:\Users\A.A.Fedorov\MES\ideal_context\project_cust_38\icons\btn_back'
     lbl.setImage(QtGui.QPixmap(path))
 
     lbl.setCursor(QtGui.QCursor(Qt.PointingHandCursor))
@@ -7115,8 +7133,9 @@ def load_icons(self:object,size:int=32,dir:str|None=None):
                     item_o.setIconSize(QtCore.QSize(size, size))
                     tooltip = item_o.toolTip().strip()
                     if tooltip:
-                        tooltip = f'({tooltip})'
-                    item_o.setToolTip(item_o.text()+tooltip)
+                        item_o.setToolTip(tooltip)
+                    else:
+                        item_o.setToolTip(item_o.text())
                     item_o.setText("")
     
             elif isinstance(item_o,QtWidgets.QTabWidget):
@@ -7765,7 +7784,44 @@ def _load_tbl(tbl:QtWidgets.QTableWidget,tblf:QtWidgets.QTableWidget,hidden_scro
     sync_vheader_width(tblf,tbl)
 
 @progress_decorator
-def get_answ_ai(promt,hook_prog_bar=None):#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
+def get_answ_ai(promt,hook_prog_bar=None):
+    return get_answ_ai_orcarouter(prompt=promt,hook_prog_bar=hook_prog_bar)
+
+
+def get_answ_ai_orcarouter(prompt, hook_prog_bar=None):#https://www.orcarouter.ai/console/token?tab=connect&client=deepseek-harness
+    api_key = 'sk-orca-xzFj4XWLpL3L4eycvxMt0cRIQMEEAdzvl8R7Yr3KN8C'
+    from openai import OpenAI, APIError, APITimeoutError
+    import httpx
+    client = OpenAI(
+        base_url="https://api.orcarouter.ai/v1",
+        api_key=api_key,
+        http_client=httpx.Client(),  # без прокси
+        timeout = 30.0,
+    )
+
+    try:
+        response = client.chat.completions.create(
+            #model="deepseek/deepseek-v4-flash-free",
+            model="tencent/hy3-free",
+            messages=[{"role": "user", "content": prompt}],
+        )
+        # успех
+        return 200, response.choices[0].message.content
+    except APITimeoutError as e:
+        # Таймаут 
+        return 408, f"Timeout error: {str(e)}"
+    except APIError as e:
+        # Ошибка 
+        return e.status_code, f"API error: {e.message}"
+    except Exception as e:
+        # другая ошибка (сеть, таймаут и т.п.)
+        return 500, f"Unexpected error: {str(e)}"
+
+
+def get_answ_ai_openrouter(promt,
+                    hook_prog_bar=None):  # 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
+
+
     hook_prog_bar.set(1)
     hook_prog_bar.text('Построение запроса')
     # Replace with your OpenRouter API key https://openrouter.ai/settings/keys
@@ -7791,7 +7847,7 @@ def get_answ_ai(promt,hook_prog_bar=None):#sk-or-v1-a2e1900e0550fbe3776a5a717d4e
     # Send the POST request to the DeepSeek API
     hook_prog_bar.set(5)
     hook_prog_bar.text('Анализ данных подождите...')
-    response = requests.post(API_URL, json=data, headers=headers)
+    response = requests.post(API_URL, json=data, headers=headers,verify=False)
     hook_prog_bar.set(99)
     hook_prog_bar.text('Компоновка результата')
     # Check if the request was successful
@@ -8522,13 +8578,6 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
 
         self.setMinimumHeight(300 + summ_tbl_height)
         self.resize(width_dialog, 300 + summ_tbl_height)
-        
-        if self.layout():
-            self.layout().activate()
-        base_label_height = self.decor_label(
-            min_height=28,
-            max_height=180,
-        )
         btn_width = int(round((self.width() / 2 - space * 2) / 2))
         # Устанавливаем политику размера
         size_policy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred)
@@ -8596,9 +8645,11 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
         # msgBox.setWindowFlags(QtCore.Qt.WindowStaysOnTopHint)
         # msgBox.setFocus()
         # load_css(self,add_menu=False)
-        self.setStyleSheet(parent.styleSheet())
+        if parent:
+            self.setStyleSheet(parent.styleSheet())
         load_icons(self, 24)
         self.oform_action()
+        self.decor_label()
         if func_oform_tbl:
             if parent_self:
                 func_oform_tbl(tbl, parent_self)
@@ -8621,42 +8672,30 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
         self._setup_selection_status_bar()
         return
 
-    def decor_label(
-            self,
-            min_height: int = 28,
-            max_height: int = 180,
-    ) -> int:
-        lbl = self.ui.lbl_text
+    def decor_label(self):
+        label_metrics = self.ui.lbl_text.fontMetrics()
+        label_margincs = self.ui.lbl_text.contentsMargins()
+        available_height = self.ui.lbl_text.height() - label_margincs.top() - label_margincs.bottom()
+        max_width = 2000
+        width = self.ui.lbl_text.width()
+        while width < max_width:
+            text_width = width - label_margincs.left() - label_margincs.right()
 
-        lbl.setWordWrap(True)
-        lbl.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
-
-        if self.layout():
-            self.layout().activate()
-
-        width = max(1, lbl.width())
-
-        height = lbl.heightForWidth(width)
-
-        if height < 0:
-            margins = lbl.contentsMargins()
-            text_width = max(
-                1, width - margins.left() - margins.right()
+            rect = label_metrics.boundingRect(
+                0,
+                0,
+                max(1, text_width),
+                4000,
+                Qt.TextWordWrap,
+                self.ui.lbl_text.text()
             )
-            rect = lbl.fontMetrics().boundingRect(
-                QtCore.QRect(
-                    0,
-                    0,
-                    text_width,
-                    10_000
-                ),
-                QtCore.Qt.TextWordWrap,
-                lbl.text()
-            )
-            height = rect.height() + margins.top() + margins.bottom()
-        height = max(min_height, min(height, max_height))
-        lbl.setFixedHeight(height)
-        return height
+
+            if rect.height() <= available_height:
+                break
+
+            width += 10
+
+        self.ui.lbl_text.setFixedWidth(width)
 
     def set_page(self):
         current_page = self.page_manager.shown_page
@@ -9587,7 +9626,7 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
         back_dialog = ''
         back_dialog_2 = ''
         back_dialog_3 = ''
-        if 'QMenu ' in self.myparent.styleSheet():
+        if self.myparent and 'QMenu ' in self.myparent.styleSheet():
             back_dialog_color = ""
             list_attr = self.myparent.styleSheet().replace('\t', '').split('QMenu ')[-1].split('}')[0].split('{')[
                 -1].split(';')
@@ -9609,7 +9648,7 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
             back_dialog_2 = """background: """ + back_dialog_color + """;"""
             back_dialog_3 = """selection-background-color: """ + back_dialog_color + """;"""
         font_dialog = ''
-        if 'QMenuBar::item' in self.myparent.styleSheet():
+        if self.myparent and 'QMenuBar::item' in self.myparent.styleSheet():
             font_dialog_color = ''
             list_attr = \
                 self.myparent.styleSheet().replace('\t', '').split('QMenuBar::item')[1].split('}')[0].split('{')[
@@ -9895,7 +9934,8 @@ def msgboxg_get_table_ok_inf(self, msg, dict_or_list, btn0_name="OK", btn1_name=
                              selectRows=False,func_oform_filtr=None,load_links=False, conn_func_label_link=None,
                              styleSheet=None,parent_self=None,sortingEnabled=False, save_column_sort_hh: bool = False,
                              aliases_header:dict=None,showFullScreen=False,showMaximized=False,page_manager:PageManager=None):
-    self.__ansver_Dialog_tbl = None
+    if self:
+        self.__ansver_Dialog_tbl = None
 
     show_mode = None
     if showFullScreen:
