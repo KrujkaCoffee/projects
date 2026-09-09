@@ -38,7 +38,7 @@ import project_cust_38.Cust_emoji as CEMOJ
 import project_cust_38.border_painter as BORDERP
 from  functools import partial
 try:
-    from project_cust_38.isdayoff_cust import ProdCalendar
+    from project_cust_38.Сust_prod_calendar import ProdCalendar
 except:
     print(f'isdayoff err import')
 try:
@@ -50,6 +50,7 @@ except:
     print(f'Cust_b24 err import')
     pass
 import project_cust_38.operacii as operacii
+from project_cust_38.sub_mes.manual_mngr.main_mngr import CentralWindow as MNL
 #exclude import calculate_vo 11.11.25
 CFG_prj = CFG.Config.project
 FOLDER_CLOSED = f'{CEMOJ.EmojiMain.ДокументыДанные.folder_closed.symbol}{CEMOJ.EmojiMain.ДокументыДанные.plus_circled.symbol}'
@@ -149,6 +150,7 @@ class _MiniManager():
         return self._dict_states
 
 class _ImportDb():
+
     def parce_row_dict(self,item:dict,silent:bool=False):
         attrs = F.get_all_attrs_with_properties(self,include_private=True)
         for key,val in item.items():
@@ -290,6 +292,143 @@ class _DbTable:
                 self.rows.remove(row)
                 return True
         return False
+
+
+
+class Manual(_ImportDb):
+    ALIASES = {
+        'id':'_id',
+        'name_app':'Приложение',
+        'name_tabs':'_name_tabs',
+        'name_tab':'Вкладка',
+        'user_ref':'Автор',
+        'date':'Дата',
+        'ver':'Версия',
+    }
+    def __init__(self):
+        self.html: str = ''
+        self.tabs: QtWidgets.QTabWidget = None
+        self.index: int = None
+        self.app_name: str = None
+        self._dirty: bool = False
+
+        self.id: int | None = None
+        self.name_app: str | None = None
+        self.name_tabs: str | None = None
+        self.name_tab: str | None = None
+        self.user_ref: str | None = None
+        self.date: str | None = None
+        self.html: str | None = None
+        self.ver: int | None = None
+
+    @classmethod
+    def new(cls, tabs, index, app_name) -> 'Manual':
+        manual_o = Manual()
+        manual_o.tabs = tabs
+        manual_o.index = index
+        manual_o.app_name = app_name
+        manual_o.name_app = CFG.Config.app.app
+        manual_o.name_tabs = manual_o.tabs.objectName()
+        manual_o.name_tab = manual_o._get_tab().objectName()
+        manual_o.user_ref = CFG.Config.user_config.User.ID_ФизЛица
+        if not manual_o._load_db():
+            manual_o._load_shablon()
+        return manual_o
+
+    @property
+    def tab_text(self)->str:
+        return self.tabs.tabText(self.index)
+    def _get_tab(self)->QtWidgets.QWidget:
+        return self.tabs.widget(self.index)
+
+    def _load_shablon(self):
+        def _replaces(html):
+            name_tab = f'\nВкладка "{self.tab_text}"'
+            self.html = html.replace('app_name', self.app_name).replace('tab_name', name_tab)
+
+        html = F.read_multiline(F.path_to_caller_file_c() + "manual_template.html")
+        _replaces(html)
+
+        self.id: int | None = None
+
+        self.date: str | None = F.now()
+        self.ver: int | None = 1
+
+    def set_html(self, html: str):
+        if self.html.strip() == html.strip():
+            return
+        self.html = html
+        self._dirty = True
+
+    def save(self):
+        if not self._dirty:
+            return
+        self.date = F.now()
+        self._save_db()
+
+    def _save_db(self):
+        ver = 0
+        max_db_ver = CSQ.custom_request_c(CFG_prj.db_files,f"""SELECT id, ver FROM manuals WHERE 
+                    name_app = "{self.name_app}" and 
+                    name_tabs = "{self.name_tabs}" and 
+                    name_tab = "{self.name_tab}" ORDER BY ver DESC LIMIT 1  
+                    """, rez_dict = True,one=True)
+        if max_db_ver:
+            ver = max_db_ver['ver']
+        self.ver = ver+1
+        row_dict = {
+            'name_app':self.name_app,
+            'name_tabs':self.name_tabs,
+            'name_tab':self.name_tab,
+            'user_ref':self.user_ref,
+            'date':self.date,
+            'html':self.html,
+            'ver':self.ver
+        }
+        rez = CSQ.custom_request_c(CFG_prj.db_files, f"""INSERT INTO manuals 
+                ({", ".join(row_dict.keys())}) 
+                VALUES 
+                ({CSQ.questions_for_mask([_ for _ in row_dict.values()])})
+                RETURNING id ;""",list_of_lists_c=[[_ for _ in row_dict.values()]],rez_dict=True,one=True)
+        self.id = rez['id']
+
+    def _load_db(self)->bool:
+        last_raw = CSQ.custom_request_c(CFG_prj.db_files, f"""SELECT * FROM manuals WHERE 
+                            name_app = "{self.name_app}" and 
+                            name_tabs = "{self.name_tabs}" and 
+                            name_tab = "{self.name_tab}" ORDER BY ver DESC LIMIT 1  
+                            """, rez_dict=True, one=True)
+        if not last_raw:
+            return False
+        self.parce_row_dict(last_raw)
+        return True
+    def load_ver(self,ver:int):
+        last_raw = CSQ.custom_request_c(CFG_prj.db_files, f"""SELECT * FROM manuals WHERE 
+                                    name_app = "{self.name_app}" and 
+                                    name_tabs = "{self.name_tabs}" and 
+                                    name_tab = "{self.name_tab}" and 
+                                     ver = {ver}
+                                    """, rez_dict=True, one=True)
+        if not last_raw:
+            return False
+        self.parce_row_dict(last_raw)
+        return True
+
+
+    def load_db_list(self):
+        list_raw = CSQ.custom_request_c(CFG_prj.db_files, f"""SELECT 
+         id,
+        user_ref,
+        date,
+        ver
+         
+         FROM manuals WHERE 
+                                    name_app = "{self.name_app}" and 
+                                    name_tabs = "{self.name_tabs}" and 
+                                    name_tab = "{self.name_tab}" ORDER BY ver DESC   
+                                    """, rez_dict=True)
+        return list_raw
+
 class RuleAccess(_ImportDb):
     def __init__(self,
                  raw_item
@@ -2055,13 +2194,13 @@ def get_db_rows_pl_etaps(pnom_or_pnoms: int | list[int]):
 
 
                                  FROM plan INNER JOIN  
-                                 пл_топ  ON plan.Пномер = пл_топ.НомПл,
-                                пл_заг  ON plan.Пномер = пл_заг.НомПл,
-                                пл_мех  ON plan.Пномер = пл_мех.НомПл,
-                                пл_сб  ON plan.Пномер = пл_сб.НомПл,
-                                пл_покр  ON plan.Пномер = пл_покр.НомПл,
-                                пл_компл  ON plan.Пномер = пл_компл.НомПл, 
-                                пл_отк  ON plan.Пномер = пл_отк.НомПл, 
+                                 пл_топ  ON plan.Пномер == пл_топ.НомПл,
+                                пл_заг  ON plan.Пномер == пл_заг.НомПл,
+                                пл_мех  ON plan.Пномер == пл_мех.НомПл,
+                                пл_сб  ON plan.Пномер == пл_сб.НомПл,
+                                пл_покр  ON plan.Пномер == пл_покр.НомПл,
+                                пл_компл  ON plan.Пномер == пл_компл.НомПл, 
+                                пл_отк  ON plan.Пномер == пл_отк.НомПл, 
                                 пл_рскр ON пл_рскр.НомПл = plan.Пномер,
                                 пл_оснтк ON пл_оснтк.НомПл = plan.Пномер,
                                 пл_швк ON пл_швк.НомПл = plan.Пномер,
@@ -11999,11 +12138,14 @@ def add_only_work_days(date1:datetime.datetime,time_delta:timedelta,self):
         return calendar_dict
 
     def get_month_cal(month:str):
+        calendar_dict = get_prod_cal(F.strtodate(month, "m_cld_%Y_%m_01"))
+        te = {F.datetostr(F.strtodate(k, "%Y.%m.%d"), 'd_%Y_%m_%d'): int(v) for k, v in calendar_dict.items()}
         if CSQ.existence_table_c(db,month):
             return CSQ.custom_request_c(db,f"""SELECT * FROM {month} WHERE Пномер = 1""", one=True, rez_dict=True)
         else:
             calendar_dict = get_prod_cal(F.strtodate(month, "m_cld_%Y_%m_01"))
             return {F.datetostr(F.strtodate(k,"%Y.%m.%d" ),'d_%Y_%m_%d'): int(v) for k,v in calendar_dict.items()}
+
 
     def is_holy_or_week(date:datetime.datetime):
         date_str = F.datetostr(date,'d_%Y_%m_%d')
@@ -16863,19 +17005,26 @@ def prepare_empty_line_c(self,table):
 def user_access_ext(rule:str=None, msg:bool = True)->bool:
     dolgn_ref = CFG.Config.user_config.User.current_Должность_Key
     dolgn_name = CFG.Config.user_config.User.Должность
-    poki = CFG.Config.place.poki
-
+    #poki = CFG.Config.place.poki
+    poki = CFG.Config.user_config.User.current_Организация_poki
     rez = CSQ.custom_request_c(CFG_prj.db_naryad, f'''SELECT * FROM permissions_ext 
     WHERE poki = {poki} and ref_dolgn = '{dolgn_ref}' and rule_name == '{rule}'
                 ;''', rez_dict=True, one=True)
     if not rez:
         if msg:
-            CQT.msgbox(f'{CEMOJ.Эмоции.confused.symbol} Нет доступа для пользователя:\n{poki}-{dolgn_name}')
+            tbl_err= [
+                {'Парметр': 'Пользователь', '': f"{poki}-{dolgn_name}"},
+                {'Парметр': 'Правило', '': rule},
+                {'Парметр': 'Органицация app', '': CFG.Config.place.poki},
+            ]
+
+            CQT.msgboxg_get_table_ok_inf(None, f'{CEMOJ.Эмоции.confused.symbol} Нет доступа', tbl_err,
+                                         styleSheet=CQT.MES_CSS)
+
         return False
     return True
 
 def user_access(db:str=None,rule:str=None,fio:str=None, msg:bool = True, rez = '')->bool:
-    return True
     #if CFG.Config.user_config.is_developer:
     #    return True
     return user_access_ext(rule,msg)#TECT новой таблицы по должностям
@@ -18408,15 +18557,15 @@ class TypesWorkingByDirections:
                 'Родитель_Ref_Key': nomen['Родитель_Ref_Key'],
             })
         for key, nomen_mes in nomen_by_ref.items(): #27.10.25 по задаче 100062109
-            # if CFG.Config.place.poki == F.valm(nomen_mes['poki']):
-            data_for_table.append({
-                'Выбрать': '',
-                's_num': nomen_mes['s_num'],
-                'Наименование': nomen_mes['name'],
-                'Родитель': '',
-                'Ref_Key': key,
-                'Родитель_Ref_Key': nomen_mes['Родитель'],
-            })
+            if CFG.Config.place.poki == F.valm(nomen_mes['poki']):
+                data_for_table.append({
+                    'Выбрать': '',
+                    's_num': nomen_mes['s_num'],
+                    'Наименование': nomen_mes['name'],
+                    'Родитель': '',
+                    'Ref_Key': key,
+                    'Родитель_Ref_Key': nomen_mes['Родитель'],
+                })
         selected_nomen_types = ''
         column_types = CQT.num_col_by_name_c(tbl, 'ВидыНоменклатуры')
         if column_types is not None:
@@ -19083,3 +19232,68 @@ def get_start_stop_journal_pairs(
 
 def permission_change(app_self,*args):
     pass#TODO вызов sub_app_mngr_access
+
+
+def _add_custom_manual_button(self, tabs: QtWidgets.QTabWidget, index):
+    def add_tab_into_dict(tabs: QtWidgets.QTabWidget,index:int,button:QtWidgets.QToolButton):
+        name_tabs = tabs.objectName()
+        if name_tabs not in self._dict_manuals:
+            self._dict_manuals[name_tabs] = dict()
+        self._dict_manuals[name_tabs][index] = button
+
+    def on_custom_button_clicked(tabs: QtWidgets.QTabWidget, tab: QtWidgets.QWidget, index: int):
+        name_point = ''
+        if CFG.Config.app:
+            name_point = CFG.Config.app.app
+
+        if hasattr(self, 'NAME_MODULE_BASE'):
+            name_point += f" ({self.NAME_MODULE_BASE})"
+        manual_ui = MNL.start_sub_app(self,tabs,index,name_point)
+
+
+
+    # Создаем кнопку
+    button = QtWidgets.QToolButton()
+    button.setText(CEMOJ.ДокументыДанные.open_book.symbol)
+    button.setAutoRaise(True)  # Делает кнопку плоской
+    button.setFixedSize(QtCore.QSize(18, 18))
+
+
+    tab = tabs.widget(index)
+    button.clicked.connect(lambda checked, idx=index: on_custom_button_clicked(tabs, tab, index))
+
+    # Размещаем кнопку на вкладке справа
+    tabs.tabBar().setTabButton(index, QtWidgets.QTabBar.RightSide, button)
+    button.setVisible(False)
+    add_tab_into_dict(tabs,index, button)
+
+@CQT.onerror
+def connect_manuals(self):
+    self._dict_manuals = dict()
+
+    def set_tab_btns_visible(tabs, index, visible: bool):
+        btn: QtWidgets.QToolButton = self._dict_manuals[tabs.objectName()][index]
+        btn.setVisible(visible)
+
+    def _set_current_visible(tabs:QtWidgets.QTabWidget):
+        current_idx = tabs.currentIndex()
+        set_tab_btns_visible(tabs,tabs.currentIndex(),True)
+
+    def on_tab_changed(tabs:QtWidgets.QTabWidget, index:int,*args):
+        for i in range(tabs.count()):
+            set_tab_btns_visible(tabs,i,False)
+        set_tab_btns_visible(tabs,index, True)
+
+
+    for ui_name, ui in list(self.__dict__.items()):
+        if len(ui_name) < 4 and 'ui' in ui_name:
+            for item, obj in list(ui.__dict__.items()):
+                if isinstance(obj, QtWidgets.QTabWidget):
+
+                    # Подключаем сигнал смены вкладки
+                    obj.currentChanged.connect(partial(on_tab_changed,obj))
+                    print(f'{obj.objectName()} connected')
+                    # Добавляем кнопки на каждую вкладку
+                    for i in range(obj.count()):
+                        _add_custom_manual_button(self, obj, i)
+                    _set_current_visible(obj)

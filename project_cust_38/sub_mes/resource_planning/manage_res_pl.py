@@ -89,6 +89,20 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
         self.new_catalog_link_action = self.catalog_links_menu.addAction('Новая связь справочников...')
         self.new_catalog_link_action.setObjectName('action_new_catalog_link')
         self.new_catalog_link_action.triggered.connect(self.open_catalog_link_editor)
+        self.catalog_links_list_action = self.catalog_links_menu.addAction('Список связей')
+        self.catalog_links_list_action.setObjectName('action_new_catalog_link')
+        self.catalog_links_list_action.triggered.connect(self.open_catalog_links_dialog)
+
+    def open_catalog_links_dialog(self, checked: bool = False):
+        from project_cust_38.sub_mes.resource_planning import catalog_links_dialog as CLD
+        dialog = CLD.CatalogLinksDialog(
+            self.catalog_link_manager,
+            parent=self
+        )
+        try:
+            dialog.exec()
+        finally:
+            dialog.deleteLater()
 
     def __load_catalog_field_choices(self):
         choices = []
