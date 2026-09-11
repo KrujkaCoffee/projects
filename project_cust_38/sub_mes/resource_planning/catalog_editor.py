@@ -3,6 +3,7 @@ import dataclasses
 
 from PyQt5 import QtWidgets, QtCore
 
+from Tehkarti.magazin import magazin_na_del
 from project_cust_38.sub_mes.resource_planning import catalog_link as CL
 from project_cust_38.sub_mes.resource_planning import attribute_binding as AB
 from project_cust_38.sub_mes.resource_planning import catalog_choices as CC
@@ -45,20 +46,23 @@ class CatalogEndpointEditor(QtWidgets.QGroupBox):
 
     def set_endpoint(self, endpoint: CL.CatalogLinkEndpoint) -> bool:
         if not self.set_provider(endpoint.provider):
-            combos = (
-                (self.cmb_source, endpoint.source_key),
-                (self.cmb_entity, endpoint.entity_key),
-            )
-            for combobox, value in combos:
-                index = combobox.findData(value)
-                combobox.setCurrentIndex(index)
-                if index < 0:
-                    return False
-            for index in range(self.cmb_field.count()):
-                choice: CC.CatalogFieldChoice = self.cmb_field.itemData(index)
-                if choice.endpoint.lookup_key == endpoint.lookup_key:
-                    self.cmb_field.setCurrentIndex(index)
-                    return True
+            self.cmb_provider.setCurrentIndex(-1)
+            return False
+
+        combos = (
+            (self.cmb_source, endpoint.source_key),
+            (self.cmb_entity, endpoint.entity_key),
+        )
+        for combobox, value in combos:
+            index = combobox.findData(value)
+            combobox.setCurrentIndex(index)
+            if index < 0:
+                return False
+        for index in range(self.cmb_field.count()):
+            choice: CC.CatalogFieldChoice = self.cmb_field.itemData(index)
+            if choice.endpoint.lookup_key == endpoint.lookup_key:
+                self.cmb_field.setCurrentIndex(index)
+                return True
 
         self.cmb_field.setCurrentIndex(-1)
         return False
@@ -166,7 +170,7 @@ class CatalogLinkEditor(QtWidgets.QDialog):
             choices: typing.Iterable[CC.CatalogFieldChoice],
             parent=None,
             *,
-            link_spec: CL.CatalogLinkSpec
+            link_spec: CL.CatalogLinkSpec | None = None
     ):
         super().__init__(parent)
 
@@ -249,7 +253,7 @@ class CatalogLinkEditor(QtWidgets.QDialog):
         else:
             self.setWindowTitle('Редактирование связи справочников')
             self.btn_save.setText('Сохранить изменения')
-            self.__restore_link
+            self.__restore_link()
 
         self.__refresh_state()
 
@@ -277,30 +281,19 @@ class CatalogLinkEditor(QtWidgets.QDialog):
                 left=left,
                 right=right,
                 caption=caption,
+                cardinality=cardinality
             )
         manager = CL.CatalogLinkManager()
         return manager.create(
             left,
             right,
             caption=caption,
-            cardinality=cardinality,
+            cardinality=cardinality
         )
 
     @property
     def link_spec(self) -> CL.CatalogLinkSpec | None:
         return self.__link_spec
-
-    def build_spec(self) -> CL.CatalogLinkSpec:
-        error = self.__selection_error()
-        if error:
-            raise ValueError(error)
-        manager = CL.CatalogLinkManager()
-        return manager.create(
-            self.left_editor.current_endpoint(),
-            self.right_editor.current_endpoint(),
-            caption=self.edt_caption.text(),
-            cardinality=self.cmb_cardinality.currentData(),
-        )
 
     def __select_initial_providers(self) -> None:
         self.left_editor.set_provider(AB.SourceProvider.MES)
@@ -421,45 +414,7 @@ if __name__ == '__main__':
     if app is None:
         app = CAPP.SafeApplication(sys.argv)
         CAPP.install_crash_guard(app, app_name='редактор_связей', user_name='test')
-
-    choices = demo()
-    manager = CL.CatalogLinkManager()
-
-    original = manager.create(
-        choices[1].endpoint,
-        choices[4].endpoint,
-        link_key='demo_edit_link',
-        caption='Проверка редактирования',
-        cardinality=CL.CatalogLinkCardinality.ONE_TO_ONE
-    )
-    manager.register(original)
-
-    dialog = CatalogLinkEditor(
-        choices,
-        link_spec=original
-    )
+    dialog = CatalogLinkEditor(demo())
 
     if dialog.exec() == QtWidgets.QDialog.Accepted:
-        updated = dialog.link_spec
-
-        print(
-            'Ключ сохранён:',
-            updated.link_key == original.link_key
-        )
-        print(
-            'Исходный объект сохранён:',
-            manager.get(original.link_key) is original
-        )
-
-        manager.replace(updated)
-    else:
-        print(
-            'Отмена, объект сохранён:',
-            manager.get(original.link_key) is original
-        )
-
-    print('Количество связей:', len(manager))
-    print(
-        'Название в менеджере:',
-        manager.get(original.link_key).caption
-    )
+        print(dialog.link_spec.to_dict())

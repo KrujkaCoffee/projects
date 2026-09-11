@@ -15,6 +15,7 @@ except Exception:
     CPG = None
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 _PG_CONN = os.environ.get('PG_CONN') == '1'
 _PG_STAGE2_READY = bool(CPG and CPG.configure_default_from_env(strict=False))

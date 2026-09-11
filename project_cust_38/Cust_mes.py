@@ -17197,8 +17197,8 @@ def user_access_ext(rule: str = None, msg: bool = True) -> bool:
 
 
 def user_access(db: str = None, rule: str = None, fio: str = None, msg: bool = True, rez='') -> bool:
-    # if CFG.Config.user_config.is_developer:
-    #    return True
+    if CFG.Config.user_config.is_developer:
+       return True
     return user_access_ext(rule, msg)  # TECT новой таблицы по должностям
 
     if db is None:

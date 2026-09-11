@@ -339,6 +339,12 @@ DICT_VID_OTCH =  {
         "Группа": "Контроль учета и выгрузки",
         "Примечание": "по задаче 100074067 от 29.07.2026"
     },
+    "weight_by_closed_mk": {
+        "": "",
+        "Название": "Вес по закрытым МК",
+        "Группа": "Аналитика и спецотчеты",
+        "Примечание": "по задаче 100075917 от 03.09.2026"
+    },
 }
 GROUP_ICONS = {
     "Планирование и KPI": "🎯",
@@ -358,6 +364,7 @@ pass
 def get_list_month_fact(self: mywindow):
     self.list_month_fact = CSQ.custom_request_c(self.bd_naryad, f"""
     SELECT 
+        mk."Пномер", 
         mk."Направление", 
         mk."Вес",
         mk."Дата_завершения",
@@ -475,6 +482,19 @@ def vibor_sort_c_report_c(self: mywindow, *args):
     self.ui.rbut_start_of_per.setEnabled(True)
     self.ui.rbut_end_of_period.setEnabled(True)
     self.ui.cmb_addit_sort_c_report.setEnabled(False)
+
+    if name_otch == 'weight_by_closed_mk':
+        dat = F.date_add_days(F.datetostr(DT.today()), -1)
+
+        konec = F.start_end_dates_c(date=dat, vid='d')[1]
+        nach = F.start_end_dates_c(date=dat, vid='d')[0]
+        self.ui.le_end_of_period.setText(konec)
+        self.ui.le_start_of_period.setText(nach)
+        cmb = self.ui.cmb_podrazdelenie
+        cmb.clear()
+        cmb.addItem('-')
+        self.ui.cmb_podrazdelenie.setDisabled(True)
+
 
     if name_otch == 'diver_trdz_1c_mes':
         dat = F.date_add_days(F.datetostr(DT.today()), -1)
@@ -1067,6 +1087,10 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
 
     fnc_oform = None
     self.DICT_ALIASES_FIELDS_REPORT = None
+
+    if report_name == 'weight_by_closed_mk':
+        rez_spis, fnc_oform = weight_by_closed_mk(self,nach,konec)
+
 
     if report_name == 'diver_trdz_1c_mes':
         rez_spis, fnc_oform = diver_trdz_1c_mes(self,nach,konec)
@@ -6209,6 +6233,10 @@ def plan_fact_grafic_mes(self, data_nach, data_kon, *args):
         for vid_tmp in self.DICT_NAPRAVL.keys():
             if vid_tmp in item:
                 ves_pl += item[vid_tmp]
+
+        # selected =  [_ for _ in self.list_month_fact if F.start_end_dates_c(F.strtodate(_['Дата_завершения'], "%Y-%m-%d %H:%M:%S"), '', vid='m', format_out="%Y-%m-%d")[0] == data]
+        # F.save_file_pickle('check_mks.pickle',selected)
+
         for mk in self.list_month_fact:
            
             dat_str = mk['Дата_завершения']
@@ -6656,11 +6684,14 @@ SELECT "Пномер",
 
     inner = "\n".join(
         [f''' INNER JOIN "{_["Имя"]}" ON "{_["Имя"]}"."НомПл" = "пл_оуп"."НомПл" ''' for _ in podrs
+         if _["Имя"].startswith('пл_')
     ])[:-1]
     select = []
     dinamic_names_fields = []
     group_names_fields = []
     for item in podrs:
+        if not item["Имя"].startswith('пл_'):
+            continue
         list_names = item["Имя_поля"].split(';')
         for i, name in enumerate(list_names):
             if len(list_names) == 1 or i > 0:
@@ -7290,6 +7321,92 @@ def clear_graf(self):
     except:
         pass
 
+
+@CQT.onerror
+def SHABLON_NEW_REPORT(self, data_nach, data_kon, podrazd='-', *args):
+    PRJ = CFG.Config.project
+    query = CSQ.SqlQuery(
+        sqlite=f""" """,
+        postgres=f""" """
+    )
+    resp = [{'': 'Ошибка загрузки данных'}]
+    resp = CSQ.custom_request_c(PRJ.db_naryad, query, rez_dict=True, attach_dbs=PRJ.db_kplan)
+    resp = []
+
+    def fnc_oform(tbl:CQT.QtWidgets.QTableWidget):
+        t = CQT.TableContext(tbl)
+        for row in t.rows():
+            pass
+        t.hide_if_not_dev(CFG,forced_text=True)
+
+    self.DICT_ALIASES_FIELDS_REPORT = dict()
+    return resp, fnc_oform
+
+@CQT.onerror
+def weight_by_closed_mk(self, data_nach, data_kon, podrazd='-', *args):
+    PRJ = CFG.Config.project
+    dt_nach = F.strtodate(data_nach)
+    dt_kon = F.strtodate(data_kon)
+    resp = [{'':'Ошибка загрузки данных'}]
+    query = CSQ.SqlQuery(
+        sqlite=f"""SELECT 
+        
+        mk."Пномер" as "Пномер", 
+        napravlenie."name" as "Направление", 
+        mk."Вес" as "_Вес",
+        mk."Дата_завершения" as "Дата_завершения",
+        mk.xml as "_xml", 
+        zagot."Вес_по_рес" as "_Вес_по_рес",
+        '' as summ_ves,
+        '' as ves_xml_met,
+        знпр."№ERP" as "№ERP",
+        знпр."№проекта" as "№проекта",
+        пл_оуп."Номенклатура_ЕРП" as "Номенклатура_ЕРП",
+        mk."Примечание" as "МК Примечание"
+        
+         FROM mk 
+         LEFT JOIN plan ON plan."Пномер" = mk."НомКплан" 
+        LEFT JOIN zagot ON zagot."Ном_МК" = mk."Пномер"      
+        LEFT JOIN napravl_deyat ON napravl_deyat."Пномер" = plan."Направление_деятельности"      
+        LEFT JOIN napravlenie ON napravlenie."Пномер" = napravl_deyat."Направление"      
+        LEFT JOIN пл_оуп ON пл_оуп."НомПл" = mk."НомКплан" 
+        LEFT JOIN знпр ON знпр."s_num" = пл_оуп."Пномер_ЗП" 
+         
+         WHERE  (date(mk."Дата_завершения") BETWEEN 
+         "{F.datetostr(dt_nach,"%Y-%m-%d")}" AND "{F.datetostr(dt_kon,"%Y-%m-%d")}" )
+         and plan.poki = {self.place.poki} order by date(mk."Дата_завершения")
+         ;""",
+        postgres=f""" """
+    )
+
+    resp = CSQ.custom_request_c(PRJ.db_naryad, query, rez_dict=True, attach_dbs=PRJ.db_kplan)
+
+    for mk in resp:
+        summ_ves = 0
+        ves_xml_met = 0
+
+        summ_ves = mk['_Вес'] * KOEF_RASKLADKI
+        if F.valm(mk['_xml']) == 0:
+            if F.valm(mk['_Вес_по_рес']) == 0:
+                ves_xml_met = F.valm(mk['_Вес'])
+            else:
+                ves_xml_met = F.valm(mk['_Вес_по_рес'])
+        else:
+            ves_xml_met = F.valm(mk['_xml'])
+        mk['summ_ves'] = summ_ves
+        mk['ves_xml_met'] = ves_xml_met
+
+    def fnc_oform(tbl:CQT.QtWidgets.QTableWidget):
+        t = CQT.TableContext(tbl)
+        for row in t.rows():
+            pass
+        t.hide_if_not_dev(CFG,forced_text=True)
+
+    self.DICT_ALIASES_FIELDS_REPORT = {
+        'summ_ves':'Факт, уд.кг.',
+    'ves_xml_met':'По xml,кг.',
+    }
+    return resp, fnc_oform
 
 @CQT.onerror
 def diver_trdz_1c_mes(self, data_nach, data_kon, podrazd='-', *args):
