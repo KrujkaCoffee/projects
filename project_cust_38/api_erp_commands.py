@@ -29,6 +29,7 @@ USER_DO = os.environ.get('DO_HTTP_USER', USER_ERP)
 PASS_DO = os.environ.get('DO_HTTP_PASSWORD', PASS_ERP)
 
 
+
 HOSTNAME_LOCAL_MES = False
 PORT_MES = 20011
 if HOSTNAME_LOCAL_MES: #"POW-ING22":
@@ -42,7 +43,7 @@ class _ImportDb():
         for key,val in item.items():
             fix_key = str(key).replace(".", "_")
             if fix_key not in attrs:
-                print(f'class {self.__class__.__name__} ImportDbRow attr not declared :{fix_key}' )
+                logger.debug(f'class {self.__class__.__name__} ImportDbRow attr not declared :{fix_key}' )
             exec(f'self.{fix_key} = val')
 
     def __repr__(self):
@@ -93,7 +94,6 @@ def patch_state_doc_znpr(ref_key:str,name_obj:str,dict_data:dict, erp_base_name:
     dict_data["_NameDoc"] = name_obj
     url = f'{CFG.Config.project.ERB_BASE_URL}/{erp_base_name}/ru_RU/hs/mes/factexp/v1/trdz/'
     response = requests.patch(url, data=JS.dumps(dict_data), headers=headers, params=params, auth=(USER_ERP, PASS_ERP))
-    #print(F.convert_binary_to_data(response.content))
     return response.status_code, F.convert_binary_to_data(response.content)
 
 def post_kty_json(json_data:dict, erp_base_name:str = 'ERP'):
@@ -101,7 +101,6 @@ def post_kty_json(json_data:dict, erp_base_name:str = 'ERP'):
     params = dict()
     url = f'{CFG.Config.project.ERB_BASE_URL}/{erp_base_name}/ru_RU/hs/mes/factexp/v1/kty/'
     response = requests.post(url, json=json_data, headers=headers, params=params, auth=(USER_ERP, PASS_ERP))
-    #print(F.convert_binary_to_data(response.content))
     data_str = F.convert_binary_to_data(response.content)
     try:
         data = json.loads(data_str)
@@ -114,7 +113,6 @@ def post_trdz_json(json:dict, erp_base_name:str = 'ERP'):
     params = dict()
     url = f'{CFG.Config.project.ERB_BASE_URL}/{erp_base_name}/ru_RU/hs/mes/factexp/v1/trdz/'
     response = requests.post(url, json=json, headers=headers, params=params, auth=(USER_ERP, PASS_ERP))
-    #print(F.convert_binary_to_data(response.content))
     return response.status_code, F.convert_binary_to_data(response.content)
 
 
@@ -123,7 +121,6 @@ def delete_trdz_json(json:list, erp_base_name:str = 'ERP'):
     params = dict()
     url = f'{CFG.Config.project.ERB_BASE_URL}/{erp_base_name}/ru_RU/hs/mes/factexp/v1/trdz/'
     response = requests.delete(url, json=json, headers=headers, params=params, auth=(USER_ERP, PASS_ERP))
-    #print(F.convert_binary_to_data(response.content))
     return response.status_code, F.convert_binary_to_data(response.content)
 
 
@@ -133,11 +130,10 @@ def get_nomen(uid='all',erp_base_name:str = 'ERP_Audit'):#TEST
     headers = dict(Accept='application/json')
     params = dict()
     if uid == '':
-        print('err uid val')
+        logger.error('err uid val')
         return
     url = f'{CFG.Config.project.ERB_BASE_URL}/{erp_base_name}/ru_RU/hs/mes/sysexchange/v1/nomen/{uid}/?senttomes=true&carddoccreated=false'
     response = requests.get(url, json= {'d':3}, headers=headers, params=params, auth=(USER_ERP, PASS_ERP))
-    #print(F.convert_binary_to_data(response.content))
     return response.status_code, JS.loads(F.convert_binary_to_data(response.content))
 
 def patch_nomen(erp_base_name:str = 'ERP_Audit'):
@@ -149,7 +145,6 @@ def patch_nomen(erp_base_name:str = 'ERP_Audit'):
     dict_data["carddoccreated"] = 'false'
     url = f'{CFG.Config.project.ERB_BASE_URL}/{erp_base_name}/ru_RU/hs/mes/sysexchange/v1/nomen/{uid}/'
     response = requests.patch(url, data=JS.dumps(dict_data), headers=headers, params=params, auth=(USER_ERP, PASS_ERP))
-    #print(F.convert_binary_to_data(response.content))
     return response.status_code, F.convert_binary_to_data(response.content)
 
 
@@ -158,7 +153,6 @@ def clear_res_json(json:dict, erp_base_name:str = 'ERP'):
     params = dict()
     url = f'{CFG.Config.project.ERB_BASE_URL}/{erp_base_name}/ru_RU/hs/mes/resspec/v1/clear_res/'
     response = requests.patch(url, json=json, headers=headers, params=params, auth=(USER_ERP, PASS_ERP))
-    #print(F.convert_binary_to_data(response.content))
     answ = JS.loads(F.convert_binary_to_data(response.content))
     if not isinstance(answ,dict):
         if response.status_code == 200:
@@ -177,7 +171,6 @@ def delete_res_json(json:dict, erp_base_name:str = 'ERP'):
     params = dict()
     url = f'{CFG.Config.project.ERB_BASE_URL}/{erp_base_name}/ru_RU/hs/mes/resspec/v1/delete_res/'
     response = requests.patch(url, json=json, headers=headers, params=params, auth=(USER_ERP, PASS_ERP))
-    #print(F.convert_binary_to_data(response.content))
     answ = JS.loads(F.convert_binary_to_data(response.content))
     if not isinstance(answ,dict):
         if response.status_code == 200:
@@ -203,7 +196,6 @@ def post_res_json(json:dict, erp_base_name:str = 'ERP'):
         auth=(USER_ERP, PASS_ERP),
         timeout=ERP_WRITE_TIMEOUT,
     )
-    #print(F.convert_binary_to_data(response.content))
     try:
         answ = JS.loads(F.convert_binary_to_data(response.content))
     except:
@@ -273,11 +265,10 @@ def get_enum(name_enum:str, erp_base_name: str = 'ERP'):
     headers = dict(Accept='application/json')
     params = dict()
     if name_enum == '':
-        print('err name_enum val')
+        logger.error('err name_enum val')
         return
     url = f'{CFG.Config.project.ERB_BASE_URL}/{erp_base_name}/ru_RU/hs/mes/sysexchange/v1/enumeration/{name_enum}'
     response = requests.get(url, json={}, headers=headers, params=params, auth=(USER_ERP, PASS_ERP))
-    #print(F.convert_binary_to_data(response.content))
     if response.status_code == 200:
         return response.status_code, JS.loads(F.convert_binary_to_data(response.content))
     else:
@@ -308,9 +299,9 @@ def get_wet_request_DO(text: str, refs: Refs_wet | None = None, lazy_method_huou
 def _get_wet_request_base(text: str, refs: Refs_wet | None = None, lazy_method_huours=0, aut: Autentication1C = None,
                          **kwargs):
     start = F.now('')
-    print()
-    print(f'---------------')
-    print(f'{start} wet_req start: {text}')
+    logger.debug('')
+    logger.debug(f'---------------')
+    logger.debug(f'{start} wet_req start: {text}')
     def tmp_dir():
         ima_module = F.name_of_executable_file_c().split('.')[0]
         if F.existence_file_c(F.sep().join([F.put_po_umolch(), 'mes_tmp'])) == False:
@@ -345,7 +336,7 @@ def _get_wet_request_base(text: str, refs: Refs_wet | None = None, lazy_method_h
                                      [sum_hash, time, description, F.to_binary_pickle(file), size, new_file_hash]])
                 fl_upd = False
             except:
-                print(f'error INSERT into odata_lazy_resps')
+                logger.error(f'error INSERT into odata_lazy_resps')
 
         if fl_upd:
             if new_file_hash == file_hash: #те же данные (не изменились)
@@ -391,7 +382,7 @@ def _get_wet_request_base(text: str, refs: Refs_wet | None = None, lazy_method_h
         if data_cach:
             delta = (F.now('') - F.strtodate(data_cach['date'])).total_seconds()
             if F.strtodate(data_cach['date']) > date_limit_half:
-                print(f'wet_req end PC {(F.now('') - start).total_seconds()} secs.')
+                logger.debug(f'wet_req end PC {(F.now('') - start).total_seconds()} secs.')
                 old_data_db = data_cach['data']
                 return 200, data_cach['data']
 
@@ -425,7 +416,7 @@ def _get_wet_request_base(text: str, refs: Refs_wet | None = None, lazy_method_h
 
                 old_data_db = F.from_binary_pickle(data[0]['file'])
                 if F.strtodate(data[0]['resp_date']) >= date_limit:
-                    print(f'wet_req end DB {(F.now('') - start).total_seconds()}')
+                    logger.debug(f'wet_req end DB {(F.now('') - start).total_seconds()}')
                     return 200, old_data_db
     try:
         response = requests.get(
@@ -437,12 +428,11 @@ def _get_wet_request_base(text: str, refs: Refs_wet | None = None, lazy_method_h
             timeout=ERP_READ_TIMEOUT,
         )
     except:
-        print(f'wet_req end err (Code: None) resp {(F.now('')  - start).total_seconds()}')
+        logger.debug(f'wet_req end err (Code: None) resp {(F.now('')  - start).total_seconds()}')
         if old_data_db:
-            print(f'    restored_old_data')
+            logger.debug(f'    restored_old_data')
             return 200, old_data_db
         return 408, None
-    # print(F.convert_binary_to_data(response.content))
     if response.status_code == 200:
         rez = JS.loads(F.convert_binary_to_data(response.content))
         if lazy_method_huours > 0:
@@ -450,12 +440,12 @@ def _get_wet_request_base(text: str, refs: Refs_wet | None = None, lazy_method_h
             add_data_db(CFG.Config.project.db_files, fl_naid_lazy, sum_hash, rez,
                             f"{text}", file_hash_lazy, time)
             save_tmp_stukt({"data": rez, "date": time}, name_tmp_stukt)
-        print(f'wet_req end {(F.now('') - start).total_seconds()}')
+        logger.debug(f'wet_req end {(F.now('') - start).total_seconds()}')
         return response.status_code, rez
     else:
-        print(f'wet_req end err (Code: {response.status_code}) answ {(F.now('') - start).total_seconds()}')
+        logger.debug(f'wet_req end err (Code: {response.status_code}) answ {(F.now('') - start).total_seconds()}')
         if old_data_db:
-            print(f'    restored_old_data')
+            logger.debug(f'    restored_old_data')
             return 200, old_data_db
         return response.status_code, None
 
@@ -502,7 +492,6 @@ def test_post_json(json:dict, erp_base_name:str = 'ERP',postfix=''):
     params = dict()
     url = f'{CFG.Config.project.ERB_BASE_URL}/{erp_base_name}/ru_RU/hs/{postfix}'
     response = requests.patch(url, json=json, headers=headers, params=params, auth=(USER_ERP, PASS_ERP))
-    #print(F.convert_binary_to_data(response.content))
     try:
         answ = JS.loads(F.convert_binary_to_data(response.content))
     except:
@@ -524,7 +513,7 @@ def test_post_json(json:dict, erp_base_name:str = 'ERP',postfix=''):
 def get_file(path:str|list = None):
     if path == None or F.sep() not in path:
         err = f'Err {path}'
-        print(err)
+        logger.error(err)
         return None, [err]
     if isinstance(path,str):
         path = [path]
@@ -534,7 +523,6 @@ def get_file(path:str|list = None):
 
     url = f'http://{HOST_MES}:{PORT_MES}/hs/mes/get_file/v1'
     response = requests.get(url, json= {'path_files':[{'path_file':_} for _ in path]}, headers=headers, params=params)
-    #print(F.convert_binary_to_data(response.content))
     if response.status_code == 200:
         data_ = JS.loads(F.convert_binary_to_data(response.content))
         return response.status_code, [{k:base64.b64decode(v) for k,v in item.items() if v != None} for item in data_['Данные'] if isinstance(item,dict)]
@@ -635,7 +623,7 @@ class Etaps_erp():
                 self.specification_code = self.list_etaps[0].Спецификация_code
                 self.НомПартии_ЗП = self.list_etaps[0].НомерПартииЗапуска   # noqa
         except Exception as e:
-            print(e)
+            logger.error(e, exc_info=e)
             self.err = True
             self.err_msg = e
             raise e
@@ -823,7 +811,6 @@ class Etaps_erp():
         params = dict()
         url = f'{CFG.Config.project.ERB_BASE_URL}/{CFG.Config.user_config.ERP_base_name['Значение']}/ru_RU/hs/mes/etaps/v1/add_etap/'
         response = requests.post(url, json = json_data, headers=headers, params=params, auth=(USER_ERP, PASS_ERP))
-        # print(F.convert_binary_to_data(response.content))
         if response.status_code == 200:
             return response.status_code, json.loads(F.convert_binary_to_data(response.content))
         return response.status_code, F.convert_binary_to_data(response.content)

@@ -1,14 +1,25 @@
 from .orm_models import *
 __all__ = [
     "KroFiles",
+    "Manuals",
     "CompetenceVals",
+    "Eq20271201",
+    "Jurnaltdz20271201",
+    "Mtdz20271201",
+    "Rm20271201",
     "КадроваяИстория",
     "Подразделения",
     "ФизическиеЛица",
     "MesAuthSessions",
+    "MCld20271201",
     "Nomen",
     "Jurnal",
     "KroAgreementStates",
     "KroCauses",
-    "Mk"
+    "Mk",
+    "NaryadCompositPartsDse",
+    "NaryadCompositPartsFiles",
+    "PermissionsExt",
+    "PermissionsRules",
+    "Places"
 ]

@@ -3917,7 +3917,7 @@ def name_col_by_num(obj, num, not_found_val=None):
                 name = obj.horizontalHeaderItem(num).text()
             return name
 
-def num_col_by_name_c(obj, ima, not_found_val=None):
+def num_col_by_name_c(obj, ima, not_found_val=None)->int|None:
     if obj.metaObject().className() == 'QTreeWidget':
         for i in range(obj.columnCount()):
             if obj.headerItem().text(i) == ima:
@@ -6365,6 +6365,33 @@ def fill_wtree_unique(tree: QtWidgets.QTreeWidget, list_dicts: list, expand: boo
                     tree.setColumnWidth(i, min_width)
 
 
+class SelectionModes(enum.Enum):
+    SingleSelection = ('SingleSelection',QTableWidget.SelectionMode.SingleSelection)
+    ExtendedSelection = ('ExtendedSelection',QTableWidget.SelectionMode.ExtendedSelection)
+    MultiSelection = ('MultiSelection',QTableWidget.SelectionMode.MultiSelection)
+    ContiguousSelection = ('ContiguousSelection',QTableWidget.SelectionMode.ContiguousSelection)
+    NoSelection = ('NoSelection',QTableWidget.SelectionMode.NoSelection)
+
+    def __init__(self, label: str, qt_enum):
+        self.label = label
+        self.obj = qt_enum
+
+    def __str__(self):
+        return self.label
+
+class SelectionBehaviors(enum.Enum):
+    SelectRows    = ('SelectRows',    QTableWidget.SelectionBehavior.SelectRows)
+    SelectItems   = ('SelectItems',   QTableWidget.SelectionBehavior.SelectItems)
+    SelectColumns = ('SelectColumns', QTableWidget.SelectionBehavior.SelectColumns)
+
+    def __init__(self, label: str, qt_enum):
+        self.label = label
+        self.obj = qt_enum
+
+    def __str__(self):
+        return self.label
+
+
 def fill_wtabl(dict_or_list, object, set_editeble_col_nomera={}, ogr_maxshir_kol=200,
                  min_width_col=20, height_row=30, colorful_edit = True, auto_type=True,head_column:int = None,
                hide_head_column:bool=False,hide_head_rows:bool=False,StretchLastSection=True,select_last_row=False,
@@ -6433,8 +6460,8 @@ def fill_wtabl(dict_or_list, object, set_editeble_col_nomera={}, ogr_maxshir_kol
             # object_tbl.horizontalHeader().blockSignals(True)
             object_tbl.horizontalHeader().setUpdatesEnabled(False)
             object_tbl.clear()
-            object_tbl.setSelectionBehavior(eval(f'QtWidgets.QTableWidget.SelectionBehavior.{selectionBehavior}'))
-            object_tbl.setSelectionMode(eval(f'QtWidgets.QTableWidget.SelectionMode.{selectionMode}'))
+            object_tbl.setSelectionBehavior(eval(f'QtWidgets.QTableWidget.SelectionBehavior.{str(selectionBehavior)}'))
+            object_tbl.setSelectionMode(eval(f'QtWidgets.QTableWidget.SelectionMode.{str(selectionMode)}'))
             tbl_object_name = object_tbl.objectName()
 
             if isinstance(dict_or_list,dict):
@@ -8047,8 +8074,9 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
                  sortingEnabled=False, not_standart_close=False, save_column_sort_hh: bool = False,
                  aliases_header:dict=None,SelectionMode=None,show_mode=None,fnc_drag_drop=None,max_width_clms=200,
                  fnc_dbl_clck=None,fnc_currentItemChanged=None,auto_type=False,dict_or_list_user_data=None,
-                 page_manager:PageManager=None
-                 ):
+                 page_manager: PageManager = None,
+                 decorate_dialog: typing.Callable[["Dialog_tbl"], None] = None
+        ):
         """        #SP_MessageBoxCritical
         #SP_MessageBoxInformation
         #SP_MessageBoxQuestion
@@ -8670,6 +8698,8 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
         else:
             tblf.setHidden(True)
         self._setup_selection_status_bar()
+        if decorate_dialog is not None and callable(decorate_dialog):
+            decorate_dialog(self)
         return
 
     def decor_label(self):
@@ -9433,9 +9463,9 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
         if text == 'Анализ таблицы':
 
             promt = f"""
-            Можешь проверить таблицу на Сезонность и периодичность, Аномалии и выбросы,  и если это достоверно дать Прогнозирование. 
+            Можешь проверить таблицу на Сезонность и периодичность, Аномалии и выбросы, если это достоверно дать Прогнозирование и при необходимости примечание - на что обратить внимание.. 
             Результат представь в виде сухих данных без вступлений, описаний, размышелний, предложений.
-            пример ответа:
+            пример ответа (используй эмоджи где нужно акцентировать внимание):
             1. Сезонность и периодичность:
                 Факт, уд.т.: Значения сильно варьируются, но можно заметить, что в некоторые месяцы (например, апрель и декабрь) значения выше. 
                 ...
@@ -9851,7 +9881,9 @@ def msgboxg_get_table(self, msg, dict_or_list, btn0_name="✔ Ввод", btn1_na
                       save_column_sort_hh: bool = False,aliases_header=None,SelectionMode=None,showFullScreen=False,
                       showMaximized=False,fnc_drag_drop=None,property_in_rez=False,max_width_clms=200,fnc_dbl_clck=None,
                       fnc_currentItemChanged=None,auto_type=False,dict_or_list_user_data=None,func_validate_t=None,
-                      page_manager:PageManager=None)->(
+                      page_manager:PageManager=None,
+                      decorate_dialog: typing.Callable[["Dialog_tbl"], None] = None
+                      )->(
         list[dict]|tuple[list[dict],dict[str,str]]|dict[str,str]):
     """
     :param selectionBehavior: SelectItems|SelectRows|SelectColumns
@@ -9895,6 +9927,7 @@ def msgboxg_get_table(self, msg, dict_or_list, btn0_name="✔ Ввод", btn1_na
                             SelectionMode=SelectionMode,show_mode=show_mode,fnc_drag_drop=fnc_drag_drop,
                             max_width_clms=max_width_clms,fnc_dbl_clck=fnc_dbl_clck,fnc_currentItemChanged=fnc_currentItemChanged,
                             auto_type= auto_type,dict_or_list_user_data=dict_or_list_user_data,page_manager=page_manager,
+                            decorate_dialog=decorate_dialog
                             )
 
     def ret(val):
@@ -9933,7 +9966,9 @@ def msgboxg_get_table_ok_inf(self, msg, dict_or_list, btn0_name="OK", btn1_name=
                              print_hat=True,func_btn0=None,selection_from_tbl=False,ExtendedSelection=True,
                              selectRows=False,func_oform_filtr=None,load_links=False, conn_func_label_link=None,
                              styleSheet=None,parent_self=None,sortingEnabled=False, save_column_sort_hh: bool = False,
-                             aliases_header:dict=None,showFullScreen=False,showMaximized=False,page_manager:PageManager=None):
+                             aliases_header:dict=None,showFullScreen=False,showMaximized=False,page_manager:PageManager=None,
+                             decorate_dialog: typing.Callable[["Dialog_tbl"], None] = None
+                             ):
     if self:
         self.__ansver_Dialog_tbl = None
 
@@ -9951,7 +9986,8 @@ def msgboxg_get_table_ok_inf(self, msg, dict_or_list, btn0_name="OK", btn1_name=
                             ExtendedSelection=ExtendedSelection,selectRows=selectRows,func_oform_filtr=func_oform_filtr,
                             load_links=load_links, conn_func_label_link=conn_func_label_link,styleSheet=styleSheet,parent_self=parent_self,
                             sortingEnabled=sortingEnabled, save_column_sort_hh=save_column_sort_hh,
-                            aliases_header=aliases_header,show_mode=show_mode,page_manager=page_manager)
+                            aliases_header=aliases_header,show_mode=show_mode,page_manager=page_manager,
+                            decorate_dialog=decorate_dialog)
     returnValue = dialog_tbl.exec()
     return
 
@@ -10788,8 +10824,9 @@ def get_answer_dialog_table(parent, msg:str, dict_or_list, btn0_name:str="Вво
              on_confirm: callable = None,
              return_entire: bool = False,
              info_point_size: int = 15,
-             save_column_sort_hh: bool = False
-            ):
+             save_column_sort_hh: bool = False,
+             decorate_dialog: typing.Callable[["Dialog_tbl"], None] = None
+    ):
     """
     Поля дополняющие Dialog_tbl
         line_edit_default_value: str    | Стандартное значение в поле line_edit
@@ -10823,7 +10860,8 @@ def get_answer_dialog_table(parent, msg:str, dict_or_list, btn0_name:str="Вво
         use_first_row_as_header, print_hat,
         func_btn0, selection_from_tbl, ExtendedSelection, selectRows,
         func_oform_filtr, load_links, conn_func_label_link, styleSheet, parent_self,
-        sortingEnabled, not_standart_close, save_column_sort_hh
+        sortingEnabled, not_standart_close, save_column_sort_hh,
+        decorate_dialog=decorate_dialog
     )
     dialog.ui.buttonBox.setHidden(True)
     font = QtGui.QFont()
@@ -11930,8 +11968,11 @@ class ResizeTarget:
     key:       str          # уникальный ключ для debounce
     save_path: str          # полный путь к файлу сохранения
 
+
+
 @onerror
 def connect_to_resize(self,tmp_dir):
+
     if getattr(self,'_connected_to_resize',False):
         return
     setattr(self,'_connected_to_resize',True)
@@ -12016,7 +12057,6 @@ def connect_to_resize(self,tmp_dir):
                         key=f'QDockWidget:{obj.objectName()}',
                         save_path=f'{tmp_dir}{F.sep()}{obj.objectName()}_column_widths',
                     )
-
 
                 else:
                     continue  # не нужен target — не регистрируем

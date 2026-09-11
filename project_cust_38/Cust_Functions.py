@@ -375,7 +375,26 @@ def name_of_executable_file_c():
         return None
     # tmp = os.path.abspath(sys.modules['__main__'].__file__).split(os.sep)[-1]
     # return tmp
+def name_of_caller_file(depth=1):
+    try:
+        if getattr(sys, 'frozen', False):
+            return os.path.basename(sys.executable)
 
+        frame = sys._getframe(depth)
+        caller_file = frame.f_globals.get('__file__', False)
+
+        if caller_file:
+            return os.path.basename(caller_file)
+
+        # fallback'и для интерактива / exec / -c
+        if sys.argv and sys.argv[0]:
+            return os.path.basename(sys.argv[0])
+
+        return None
+    except Exception:
+        return None
+
+    return None
 #++08.07.25
 def cache_result(minutes: int, tmp_path: str = None):
     """
@@ -669,15 +688,16 @@ def path_to_caller_file_c(end_sep=True):
     caller_globals = sys._getframe(1).f_globals
     caller_file = caller_globals.get('__file__', False)
 
-    if not caller_file:
-        # нет __file__ — интерактивный режим / exec / динамический модуль
-        return os.getcwd() + os.sep if end_sep else os.getcwd()
-    elif getattr(sys, 'frozen', False):
-        return os.path.dirname(sys.executable) + os.sep
+    if getattr(sys, 'frozen', False):
+        # в бандле __file__ смотрит внутрь _MEIPASS — берём папку exe
+        base = os.path.dirname(sys.executable)
+    elif caller_file:
+        base = os.path.dirname(os.path.abspath(caller_file))
     else:
-        tmp = os.path.abspath(caller_file).split(os.sep)
-        tmp.pop()
-        return os.sep.join(tmp) + os.sep if end_sep else os.sep.join(tmp)
+        # интерактив / exec / динамический модуль
+        base = os.getcwd()
+
+    return base + os.sep if end_sep else base
 
 
 def path_to_execut_file_c(end_sep = True):
@@ -1234,6 +1254,15 @@ def create_dir_c(putt):
         print(f'PermissionError: [WinError 5] Отказано в доступе: {putt}')
         return False
 
+def read_multiline(putima)->str:
+    if putima == '':
+        return ''
+    if existence_file_c(putima) == False:
+        print(f'Не найден файл {putima}')
+        return False
+    with open(putima, 'r', encoding='utf-8-sig', errors='ignore') as f:
+        Stroki = f.readlines()
+    return '\n'.join(Stroki)
 
 def load_file(putima, sep='|'):
     if putima == '':
@@ -1286,7 +1315,7 @@ def open_file_c(putima, utf8=False, separ='', pickl=False, propuski=False):
                 Stroki = pickle.load(f)
         except:
             return
-        if separ != '':
+        if separ:
             for i in range(0, len(Stroki)):
                 Stroki[i] = Stroki[i].split(separ)
         return Stroki
@@ -1306,7 +1335,7 @@ def open_file_c(putima, utf8=False, separ='', pickl=False, propuski=False):
                 Stroki = Stroki2
         for i in range(0, len(Stroki)):
             Stroki[i] = Stroki[i].replace('\n', '')
-            if separ != '':
+            if separ:
                 Stroki[i] = Stroki[i].split(separ)
         return Stroki
 
@@ -1966,6 +1995,20 @@ def is_bool(string: str):
         return True
     return False
 
+def is_numeric_positive_integer(string: any,zero_admit=True)->bool:
+    if not is_numeric(string):
+        return False
+
+    val = valm(string)
+    if val == 0 and not zero_admit:
+        return False
+    if round(val) != val:
+        return False
+    if val < 0:
+        return False
+
+    return True
+
 def is_numeric(string: any):
     # уже число
     if isinstance(string, (int, float)):
@@ -2606,8 +2649,8 @@ def valm(ch):
         if 'e'  in ch.lower():
             try:
                 return float(ch)
-            except Exception as e:
-                return 0
+            except:
+                return 1
         if ch == '':
             return 0
         try:
@@ -3282,22 +3325,6 @@ def is_unique_identifier(identifier: str) -> bool:
     )
 
     return bool(uuid_pattern.match(identifier))
-
-
-# === START утилиты для sql
-def sql_quote_ident(value: Any) -> str:
-    return '"' + str(value or '').replace('"', '""') + '"'
-
-def sql_safe_alias(value: Any, default: str = 'rel') -> str:
-    text = str(value).strip() or default
-    text = re.sub(r'\W+', '_', text, flags=re.UNICODE).strip('_')
-    if not text:
-        text = default
-    if text[0].isdigit():
-        text = '_' + text
-    return text
-
-# === END утилиты для sql
 
 
 def replace_forbidden_symbols_for_1c_sql(string: str) -> str: #27.08.25

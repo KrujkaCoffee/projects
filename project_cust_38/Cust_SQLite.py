@@ -3,7 +3,9 @@ import os.path
 import sqlite3
 import re
 import datetime as DT
+import sys
 import typing
+import logging
 
 import project_cust_38.Cust_Functions as F
 import project_cust_38.Cust_client_socket as CSQS
@@ -12,6 +14,9 @@ try:
 except Exception:
     CPG = None
 
+logger = logging.getLogger(__name__)
+
+_PG_CONN = os.environ.get('PG_CONN') == '1'
 _PG_STAGE2_READY = bool(CPG and CPG.configure_default_from_env(strict=False))
 def add_db(bd,text):
     conn = sqlite3.connect(bd)
@@ -30,7 +35,6 @@ WAIT_TIME = 2
 RE_COUNT_SRV = 4
 
 DB_NAMES = CSQS.Servers # Содержит алиасы всех серверов БД
-_PG_CONN = os.environ.get('PG_CONN') == '1'
 
 # Пример result = CSQ.custom_request_c(CSQ.DB_NAMES.db_users,'DELETE from app_config')
 
@@ -188,7 +192,7 @@ def create_db_sql_c(bd, frase, foreign_keys=False, conn="", cur=""):
                                         client_name=F.user_name(), port=port)
        
         if rez == None or rez == False:
-            print(f'ОШибка create_db_sql_c')
+            logger.error(f'ОШибка create_db_sql_c')
             return
         return
     
@@ -213,7 +217,7 @@ def create_db_sql_c(bd, frase, foreign_keys=False, conn="", cur=""):
 def create_table_db_c(bd, table_name, spis_name_col_ogr):
     for i in range(len(spis_name_col_ogr)):
         if len(spis_name_col_ogr[i]) != 2:
-            print('Не верный список')
+            logger.warning('Не верный список')
             return False
     frase = []
     for i in range(len(spis_name_col_ogr)):
@@ -264,7 +268,7 @@ def add_line_into_db_sql_c(bd, table, stroki_strok, s_pervoi=False, conn="", cur
     if type(stroki_strok[0]) == type([]) or type(stroki_strok[0]) == type(()):
         pass
     else:
-        print('Не верный формат спсика списков')
+        logger.warning('Не верный формат спсика списков')
         return False
     if s_pervoi == False:
         spis_kol = list_of_columns_c(bd, table)[1:]
@@ -494,7 +498,7 @@ def apply_alias_list(list_resp, dict_alias):
                 if k in dict_alias:
                     new_dict[dict_alias[k]] = v
                 else:
-                    print(f'CSQ.apply_alias_list err not found alias for {k}')
+                    logger.warning(f'CSQ.apply_alias_list err not found alias for {k}')
                     new_dict[k] = v
             result[i] = new_dict
     elif isinstance(result[0], list):
@@ -504,7 +508,7 @@ def apply_alias_list(list_resp, dict_alias):
                 result[0][j] = dict_alias[result[0][j]]
                 fl_found = True
             if not fl_found:
-                print(f'CMS.apply_alias_list err not found alias for {result[0][j]}')
+                logger.warning(f'CMS.apply_alias_list err not found alias for {result[0][j]}')
     else:
         for i in range(len(result)):
             for j in range(len(result[i])):
@@ -513,7 +517,7 @@ def apply_alias_list(list_resp, dict_alias):
                     result[i][j] = dict_alias[result[i][j]]
                     fl_found = True
                 if not fl_found:
-                    print(f'CMS.apply_alias_list err not found alias for {result[i][j]}')
+                    logger.warning(f'CMS.apply_alias_list err not found alias for {result[i][j]}')
     return result
 
 def prepare_list_to_tuple(list_nums:list|set|tuple) -> str:
@@ -592,19 +596,7 @@ def make_parameters_for_return_many(parameters: list): # 25.06.2026
         new_list_parameters.extend(item)
     return new_list_parameters
 
-# @F.StatisticDecorator #18.08.25
 
-def test_request(fn):
-    def wrap(*args, **kwargs):
-        result = fn(*args, **kwargs)
-        if result is None:
-            print(args)
-            print(kwargs)
-            quit(-1)
-        return result
-    return wrap
-
-@test_request
 def custom_request_c(
         bd: CSQS.Servers | str,
         custom_request_c: str | SqlQuery,
@@ -723,7 +715,7 @@ def custom_request_c(
         if _PG_STAGE2_READY:
             CPG.stage2_observe_request(bd, custom_request_c)
     except Exception as e:
-        print(e)
+        logger.error(e, exc_info=e)
     if isinstance(list_of_lists_c[0],dict):
         list_of_lists_c = F.list_of_dicts_to_list_of_lists(list_of_lists_c)[1:]
 
@@ -759,7 +751,7 @@ def custom_request_c(
         if data_cache:
             if F.strtodate(data_cache['date']) > date_limit:
                 if debug:
-                    print(f'Load req \n"{custom_request_c}"\n from Cache: {(F.now('') - start).total_seconds()} secs.\n')
+                    logger.debug(f'Load req \n"{custom_request_c}"\n from Cache: {(F.now('') - start).total_seconds()} secs.\n')
                 return data_cache['data']
 
 
@@ -777,13 +769,13 @@ def custom_request_c(
                     "date": F.now()
                 }, cache_name)
             except Exception as e:
-                print(f'cache save error: {e}')
+                logger.error(f'cache save error: {e}', exc_info=e)
         if debug:
             total_sec = (F.now('') - start).total_seconds()
             pref_varn = ""
             if total_sec > 10:
                 pref_varn = '\n\n!!!WARNING!!!\n '
-            print(f'{F.now()} {pref_varn}Load req \n"{custom_request_c}"\n from db: {total_sec} secs.\n')
+            logger.debug(f'{F.now()} {pref_varn}Load req \n"{custom_request_c}"\n from db: {total_sec} secs.\n')
         return rez
 
     RE_COUNT = 1
@@ -798,7 +790,7 @@ def custom_request_c(
             cur = conn.cursor()
 
     except:
-        print(f'Ошибка соединения с БД {bd}')
+        logger.error(f'Ошибка соединения с БД {bd}')
         return
 
 
@@ -1011,7 +1003,7 @@ def connect_bd(bd, timeout_=6):
     if 'SRV:' in bd:
         return '', ''
     if F.existence_file_c(bd) == False:
-        print(f'DB {bd} not found')
+        logger.warning(f'DB {bd} not found')
         return False, False
     RETRY_COUNT = 5
     conn = cur = None
@@ -1026,12 +1018,12 @@ def connect_bd(bd, timeout_=6):
         except Exception as e:
             import sys
 
-            print(e, sys.exc_info())
+            logger.error('Ошибка соединения с бд', exc_info=e)
             cur and cur.close()
             conn and conn.close()
             if RETRY_COUNT == 1:
                 return False, False
-            print(f'connect_bd не удалось, попыток {RETRY_COUNT}')
+            logger.error(f'connect_bd не удалось, попыток {RETRY_COUNT}')
             F.sleep(timeout_ - 1)
     return conn, cur
 

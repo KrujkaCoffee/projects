@@ -16,6 +16,7 @@ class GetBitrixFiles:
         bitrix_file_reader.parse_xlsx_data(sheet_name='Диаграмма Ганта')
         
         ИЗВЛЕЧЕНИЕ КОДА ПУБЛИКАЦИИ:
+        # 53b6ad18caa9596af485ccdb502a0145
         Ссылка на публикацию: https://bitrix24.kelast.ru/docs/pub/89a19d9b18995d279d8e7aa189cfb495/default/?&
         Где:
          - 89a19d9b18995d279d8e7aa189cfb495 это ключ публикации необходимый для инициализации класса

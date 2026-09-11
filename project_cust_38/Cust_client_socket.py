@@ -323,7 +323,20 @@ class _ServerItem(UserString):
 class _ClassDict(type):
     def __init__(cls, name, bases, dct):
         super().__init__(name, bases, dct)
-        cls._declared_attrs = {k: dct.get(k) for k in dct.get("__annotations__", {})}
+        if "__annotations__" in dct:
+            annotations = dct["__annotations__"]
+        else :
+            import annotationlib
+            annotate = annotationlib.get_annotate_from_class_namespace(dct)
+            annotationlib.get_annotate_from_class_namespace(dct)
+            annotations = annotationlib.call_annotate_function(
+                annotate,
+                format=annotationlib.Format.STRING,
+            )
+        cls._declared_attrs = {
+            k: dct.get(k)
+            for k in annotations
+        }
         cls.__by_alias = {}
         cls.__iter = []
         cls.__by_name = {}

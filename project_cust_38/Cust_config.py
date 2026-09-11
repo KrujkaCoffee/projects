@@ -328,10 +328,12 @@ class User_emploee():
                                 "КадроваяИстория"."Сотрудник_Key",
                                 "КадроваяИстория"."Период",
                                 "КадроваяИстория".id,
+                                "Подразделения"."Организация_poki",
                               ROW_NUMBER() OVER (PARTITION BY "КадроваяИстория"."ФизическоеЛицо_Key" ORDER BY "КадроваяИстория"."Период" DESC) AS rn
                          FROM "КадроваяИстория"
                          inner join "ФизическиеЛица" ON "ФизическиеЛица"."ФизическоеЛицо_Key" = "КадроваяИстория"."ФизическоеЛицо_Key"
                          inner join "Должности" ON "Должности"."Ref_Key" = "КадроваяИстория"."Должность_Key"
+                         inner join "Подразделения" ON "Подразделения"."Подразделение_Key" = "КадроваяИстория"."Подразделение_Key"
                         {where_slice} 
                    )
                    AS ranked
@@ -361,7 +363,8 @@ class User_emploee():
         "slice"."Должность_Наименование" as "current_Должность",
         "slice"."Подразделение_Key" as "current_Подразделение_Key",
         "slice"."Организация_Key" as "current_Организация_Key",
-        "slice"."Сотрудник_Key" as "current_Сотрудник_Key"
+        "slice"."Сотрудник_Key" as "current_Сотрудник_Key",
+        "slice"."Организация_poki" as "current_Организация_poki"
         """
 
         data = CSQ.custom_request_c(user_db, f""" {slice} SELECT {fields} FROM employee 
@@ -393,6 +396,7 @@ class User_emploee():
         self.current_Подразделение_Key: str | None = None
         self.current_Организация_Key: str | None = None
         self.current_Сотрудник_Key: str | None = None
+        self.current_Организация_poki: int | None = None
         self.history = []
 
         truth_record = None
@@ -842,6 +846,7 @@ class User_config(metaclass=SingletonMeta):  # noqa
         if sub_window_name:
             sub_title = f'{sub_title} - {sub_window_name}'
         sub_self.setWindowTitle(sub_title)
+
 
     def update_window_title(self):
         if self.window_app is None:
