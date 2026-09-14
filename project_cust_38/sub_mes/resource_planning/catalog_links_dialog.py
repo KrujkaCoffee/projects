@@ -26,7 +26,7 @@ class CatalogLinksDialog(CQT.Dialog_tbl):
             [['Название', 'Откуда', 'Куда', 'Соотношение']],
             disable_btn0=True,
             disable_btn1=True,
-            show_filtr=False,
+            show_filtr=True,
             WindowTitle='Связи справочников',
             ExtendedSelection=False,
             selectRows=True,
@@ -39,10 +39,37 @@ class CatalogLinksDialog(CQT.Dialog_tbl):
         self.resize(1050, 430)
         self.reload_links()
 
-        self.tbl_links: QtWidgets.QTableWidget | None = None
-        self.btn_edit: QtWidgets.QPushButton | None = None
-        self.btn_remove: QtWidgets.QPushButton | None = None
-        self.btn_close: QtWidgets.QPushButton | None = None
+        self.tbl_links: QtWidgets.QTableWidget
+        self.btn_edit: QtWidgets.QPushButton
+        self.btn_remove: QtWidgets.QPushButton
+        self.btn_close: QtWidgets.QPushButton
+
+    def __apply_links_filter(self):
+        CQT.apply_filtr_c(self, self.ui.tbl_filtr, self.tbl_links, save_data=False)
+
+        selected_rows = self.tbl_links.selectionModel().selectedRows()
+        if any(self.tbl_links.isRowHidden(index.row()) for index in selected_rows):
+            self.tbl_links.clearSelection()
+            self.tbl_links.setCurrentCell(-1, -1)
+
+        visible_count = sum(
+            not self.tbl_links.isRowHidden(row)
+            for row in range(self.tbl_links.rowCount()))
+        self.lbl_count.setText(f'Связей: {visible_count} из {self.tbl_links.rowCount()}')
+        self.__refresh_actions()
+        self._update_selection_status_bar()
+
+    def keyPressEvent(self, event):
+        if (self.ui.tbl_filtr.hasFocus() and event.key() in (QtCore.Qt.Key_Return, QtCore.Qt.Key_Enter)):
+            event.accept()
+            return
+        super().keyReleaseEvent(self, event)
+
+    def keyReleaseEvent(self, event):
+        if (self.ui.tbl_filtr.hasFocus() and event.key() in (QtCore.Qt.Key_Return, QtCore.Qt.Key_Enter)):
+            self.__apply_links_filter()
+            return
+        super().keyReleaseEvent(self, event)
 
     def __decorate_links_dialog(self, dialog):
         self.tbl_links = dialog.ui.tbl
@@ -80,7 +107,12 @@ class CatalogLinksDialog(CQT.Dialog_tbl):
         selected_rows = self.tbl_links.selectionModel().selectedRows()
         if not selected_rows:
             return None
-        item = self.tbl_links.item(selected_rows[0].row(), 0)
+
+        row = selected_rows[0].row()
+        if self.tbl_links.isRowHidden(row):
+            return None
+
+        item = self.tbl_links.item(row, 0)
         if item is None:
             return None
         return item.data(QtCore.Qt.UserRole)
@@ -95,6 +127,9 @@ class CatalogLinksDialog(CQT.Dialog_tbl):
         self.reload_links()
 
         for row in range(self.tbl_links.rowCount()):
+            if self.tbl_links.isRowHidden(row):
+                continue
+
             item = self.tbl_links.item(row, 0)
             if item.data(QtCore.Qt.UserRole) == updated.link_key:
                 self.tbl_links.setCurrentCell(row, 0)
@@ -120,9 +155,7 @@ class CatalogLinksDialog(CQT.Dialog_tbl):
                 self.tbl_links.setItem(row, 1, left_item)
                 self.tbl_links.setItem(row, 2, right_item)
                 self.tbl_links.setItem(row, 3, cardinality_item)
-        self.lbl_count.setText(f'Связей: {len(links)}')
-        self.__refresh_actions()
-        self._update_selection_status_bar()
+        self.__apply_links_filter()
 
     def __remove_selected(self):
         link_key = self.selected_link_key()
