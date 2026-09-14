@@ -148,6 +148,8 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
                 except Exception as error:
                     dialog.lbl_error.setText(str(error))
                     continue
+                return updated
+
             return None
         finally:
             dialog.deleteLater()

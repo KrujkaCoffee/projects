@@ -5,8 +5,9 @@ from PyQt5 import QtCore, QtWidgets
 
 from project_cust_38.sub_mes.resource_planning import catalog_link as CL
 from project_cust_38.sub_mes.resource_planning import attribute_binding as AB
+from project_cust_38 import Cust_Qt as CQT
 
-class CatalogLinksDialog(QtWidgets.QDialog):
+class CatalogLinksDialog(CQT.Dialog_tbl):
     link_removed = QtCore.pyqtSignal(str)
 
     def __init__(
@@ -21,50 +22,61 @@ class CatalogLinksDialog(QtWidgets.QDialog):
         self.__manager = manager
         self.__edit_link = edit_link
 
-        self.setWindowTitle("Связи справочников")
-        self.resize(1050, 430)
-        self.lbl_count = QtWidgets.QLabel(self)
+        super().__init__(
+            parent,
+            'Связей: 0',
+            [['Название', 'Откуда', 'Куда', 'Соотношение']],
+            disable_btn0=True,
+            disable_btn1=True,
+            show_filtr=False,
+            WindowTitle='Связи справочников',
+            ExtendedSelection=False,
+            selectRows=True,
+            sortingEnabled=False,
+            decorate_dialog=self.__decorate_links_dialog
+        )
+        if parent is not None:
+            self.setParent(parent, self.windowFlags())
 
-        self.tbl_links = QtWidgets.QTableWidget(self)
-        self.tbl_links.setColumnCount(4)
-        self.tbl_links.setHorizontalHeaderLabels((
-            'Название',
-            'Откуда',
-            'Куда',
-            'Соотношение'
-        ))
-        self.tbl_links.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
-        self.tbl_links.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+        self.resize(1050, 430)
+        self.reload_links()
+
+        self.tbl_links: QtWidgets.QTableWidget | None = None
+        self.btn_edit: QtWidgets.QPushButton | None = None
+        self.btn_remove: QtWidgets.QPushButton | None = None
+        self.btn_close: QtWidgets.QPushButton | None = None
+
+    def __decorate_links_dialog(self, dialog):
+        self.tbl_links = dialog.ui.tbl
+        self.tbl_count = dialog.ui.lbl_text
         self.tbl_links.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         self.tbl_links.setAlternatingRowColors(True)
         self.tbl_links.verticalHeader().setVisible(False)
+
         header = self.tbl_links.horizontalHeader()
-        header.setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
-        header.setSectionResizeMode(1, QtWidgets.QHeaderView.Stretch)
-        header.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(3, QtWidgets.QHeaderView.Stretch)
+        header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeMode.Stretch)
 
-        self.btn_remove = QtWidgets.QPushButton('Удалить связь', self)
-        self.btn_close = QtWidgets.QPushButton('Закрыть', self)
-        self.btn_edit = QtWidgets.QPushButton('Редактировать', self)
+        button_box = dialog.ui.buttonBox
+        self.btn_edit = button_box.addButton('Редактировать', QtWidgets.QDialogButtonBox.ButtonRole.ActionRole)
+        self.btn_remove = button_box.addButton('Удалить связь', QtWidgets.QDialogButtonBox.ButtonRole.ActionRole)
+        self.btn_close = button_box.addButton('Закрыть', QtWidgets.QDialogButtonBox.ButtonRole.AcceptRole)
 
-        buttons_layout = QtWidgets.QHBoxLayout()
-        buttons_layout.addWidget(self.btn_edit)
-        buttons_layout.addWidget(self.btn_remove)
-        buttons_layout.addStretch()
-        buttons_layout.addWidget(self.btn_close)
+        for button in (self.btn_edit, self.btn_remove, self.btn_close):
+            button.setAutoDefault(False)
 
-        layout = QtWidgets.QVBoxLayout(self)
-        layout.addWidget(self.lbl_count)
-        layout.addWidget(self.tbl_links)
-        layout.addLayout(buttons_layout)
+        for caption in ('Компоновка', 'Анализ таблицы'):
+            index = dialog.ui.cmb_action.findText(caption)
+            if index >= 0:
+                dialog.ui.cmb_action.removeItem(index)
 
         self.tbl_links.itemSelectionChanged.connect(self.__refresh_actions)
-        self.btn_remove.clicked.connect(self.__remove_selected)
         self.btn_edit.clicked.connect(self.__edit_selected)
-        self.btn_close.clicked.connect(self.accept)
+        self.btn_remove.clicked.connect(self.__remove_selected)
 
-        self.reload_links()
+        self.__refresh_actions()
 
     def selected_link_key(self) -> str | None:
         selected_rows = self.tbl_links.selectionModel().selectedRows()
@@ -73,11 +85,11 @@ class CatalogLinksDialog(QtWidgets.QDialog):
         item = self.tbl_links.item(selected_rows[0].row(), 0)
         if item is None:
             return None
-        return item.date(QtCore.Qt.UserRole)
+        return item.data(QtCore.Qt.UserRole)
 
     def __edit_selected(self):
         link_key = self.selected_link_key()
-        if link_key is None or self.__edit_link is None and not callable(self.__edit_link):
+        if link_key is None or not callable(self.__edit_link):
             return
         updated = self.__edit_link(link_key, parent=self)
         if updated is None:
@@ -95,6 +107,8 @@ class CatalogLinksDialog(QtWidgets.QDialog):
         links = self.__manager.all()
         print(links)
         with QtCore.QSignalBlocker(self.tbl_links):
+            self.tbl_links.clearSelection()
+            self.tbl_links.setCurrentCell(-1, -1)
             self.tbl_links.setRowCount(len(links))
             for row, link in enumerate(links):
                 name_item = QtWidgets.QTableWidgetItem(link.display_text)
@@ -110,6 +124,7 @@ class CatalogLinksDialog(QtWidgets.QDialog):
                 self.tbl_links.setItem(row, 3, cardinality_item)
         self.lbl_count.setText(f'Связей: {len(links)}')
         self.__refresh_actions()
+        self._update_selection_status_bar()
 
     def __remove_selected(self):
         link_key = self.selected_link_key()
