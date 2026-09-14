@@ -215,6 +215,7 @@ class Krowindow(CQT.QtWidgets.QMainWindow):
         self.ui.setupUi(self)
         self.NAME_MODULE_BASE = 'Создание КРО v0.1'
         self.app_self = app_self
+
         DTKRO.self_ui = self
         DTKRO.filter_mk = filter_mk
         self.set_regime(regime)
@@ -245,6 +246,10 @@ class Krowindow(CQT.QtWidgets.QMainWindow):
         self.ui.btn_duplicate.clicked.connect(self.duplicate)
         self.ui.btn_save_as_file.clicked.connect(self.save_as_file)
 
+
+        if self.app_self:
+            CFG.BaseSubWindow.window_binding(self,F.name_of_caller_file(),self.app_self)
+
     def keyReleaseEvent(self,e):
         key = e.key()
         mod = e.modifiers()
@@ -263,6 +268,8 @@ class Krowindow(CQT.QtWidgets.QMainWindow):
             if DTKRO.current_kro_o:
                 block = DTKRO.current_kro_o.get_block()
                 block.clear_block_for_user()
+
+        CFG.BaseSubWindow.close_in_event(self)
 
     def paste_data_from_buffer(self):
         t = CQT.TableContext(self.ui.tbl_tch)
@@ -510,6 +517,7 @@ class Krowindow(CQT.QtWidgets.QMainWindow):
         else:
             self.ui.fr_list.setVisible(True)
             self.load_list_kro()
+
 
 
     def load_list_kro(self):

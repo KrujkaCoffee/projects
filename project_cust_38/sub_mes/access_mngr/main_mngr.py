@@ -100,6 +100,7 @@ class CentralWindow(CQT.QtWidgets.QMainWindow):
 
     def closeEvent(self, event):
         #before_close(self)
+        CFG.BaseSubWindow.close_in_event(self)
         event.accept()
 
     def _load_free_css(self):
@@ -123,13 +124,19 @@ class CentralWindow(CQT.QtWidgets.QMainWindow):
 
     def apply_subj(self,subject_mode:str=None):
         if subject_mode is None:
-            subject_mode = ''
-        self.NAME_MODULE_BASE = f'Менеджер прав доступа v{self.VER} - {subject_mode}'
+            subject_mode_str = ''
+        else:
+            subject_mode_str = f' - {subject_mode}'
+        self.NAME_MODULE_BASE = f'Менеджер прав доступа v{self.VER}{subject_mode_str}'
         DTCLS.CONFIG.user_config.set_sub_window_title(self)
         # CONNECTS
         _con.prepare_ui(self)
         self.init_data()
         self.reset_filters()
+        if DTCLS.app_self:
+            CFG.BaseSubWindow.window_binding(self,F.name_of_caller_file(),DTCLS.app_self)
+
+        print(f'add sub {CFG.Config.window_manager.active} into window_manager' )
 
 
     def __________main_______________(self):pass

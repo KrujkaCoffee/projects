@@ -24,6 +24,7 @@ def load_connects(sub_self:CentralWindow):
     load_btns(sub_self)
 
 
+
 def load_btns(sub_self:CentralWindow):
     sub_self.ui.btn_reset_u.clicked.connect(sub_self.reset_rule_filter)
     sub_self.ui.btn_reset_r.clicked.connect(sub_self.reset_dolgn_filter)

@@ -17,8 +17,6 @@ class CatalogLinksDialog(CQT.Dialog_tbl):
             *,
             edit_link: typing.Callable[[str, "CatalogLinksDialog"], CL.CatalogLinkSpec] = None
     ):
-        super().__init__(parent)
-
         self.__manager = manager
         self.__edit_link = edit_link
 
@@ -48,7 +46,7 @@ class CatalogLinksDialog(CQT.Dialog_tbl):
 
     def __decorate_links_dialog(self, dialog):
         self.tbl_links = dialog.ui.tbl
-        self.tbl_count = dialog.ui.lbl_text
+        self.lbl_count = dialog.ui.lbl_text
         self.tbl_links.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         self.tbl_links.setAlternatingRowColors(True)
         self.tbl_links.verticalHeader().setVisible(False)

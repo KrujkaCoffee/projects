@@ -38,13 +38,13 @@ class ReferenceStore():
 
     @classmethod
     def load_data_reference(cls):
-        cls.DICT_Подразделения_by_ref = DDM.Подразделения.object_manager.all().deploy_dict(
-            DDM.Подразделения.Подразделение_Key)
-        cls.DICT_ФизическиеЛица_by_ref = DDM.ФизическиеЛица.object_manager.all().deploy_dict(
-            DDM.ФизическиеЛица.ФизическоеЛицо_Key)
-        cls.DICT_КадроваяИстория_by_ref = DDM.КадроваяИстория.object_manager.all().group_by(
-            DDM.КадроваяИстория.ФизическоеЛицо_Key.name, mode=CORM.GroupByTypes.LAST)
-
+        #cls.DICT_Подразделения_by_ref = DDM.Подразделения.object_manager.all().deploy_dict(
+        #    DDM.Подразделения.Подразделение_Key)
+        #cls.DICT_ФизическиеЛица_by_ref = DDM.ФизическиеЛица.object_manager.all().deploy_dict(
+        #    DDM.ФизическиеЛица.ФизическоеЛицо_Key)
+        #cls.DICT_КадроваяИстория_by_ref = DDM.КадроваяИстория.object_manager.all().group_by(
+        #    DDM.КадроваяИстория.ФизическоеЛицо_Key.name, mode=CORM.GroupByTypes.LAST)
+        pass
 
 class data_app(SingletonMeta):
     if CFG.Config.place.poki == None:

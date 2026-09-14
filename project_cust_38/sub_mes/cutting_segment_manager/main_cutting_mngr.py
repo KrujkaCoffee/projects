@@ -61,13 +61,14 @@ class CentralWindow(CQT.QtWidgets.QMainWindow):
 
         self.setAttribute(CQT.Qt.WA_DeleteOnClose)
         CQT.connect_to_resize(self, CMS.tmp_dir())
-        CMS.connect_manuals(self)
+
 
         CQT.load_icons(self, 26, dir=str(F.Cust_path(cutting_mngr_ui)) + F.sep() + 'icons' + F.sep())
         self.setWindowModality(CQT.Qt.ApplicationModal)
         self.apply_subj()
 
         _con.load_connects(self)
+        CMS.connect_manuals(self)
     def _____________service_______________(self):pass
 
     def keyReleaseEvent(self, e):
@@ -103,9 +104,12 @@ class CentralWindow(CQT.QtWidgets.QMainWindow):
 
     def closeEvent(self, event):
         #before_close(self)
+        CFG.BaseSubWindow.close_in_event(self)
         event.accept()
+
     @classmethod
     def start_sub_app(cls,app_self)->'CentralWindow':
+
         window_manual = CentralWindow(app_self)
         window_manual.showMaximized()
         return window_manual
@@ -123,9 +127,17 @@ class CentralWindow(CQT.QtWidgets.QMainWindow):
 
     def apply_subj(self,subject_mode:str=None):
         if subject_mode is None:
-            subject_mode = ''
-        self.NAME_MODULE_BASE = f'Менеджер учета сегментов раскроя v{self.VER} - {subject_mode}'
+            subject_mode_str = ''
+        else:
+            subject_mode_str = f' - {subject_mode}'
+        self.NAME_MODULE_BASE = f'Менеджер учета сегментов раскроя v{self.VER}{subject_mode_str}'
         DTCLS.CONFIG.user_config.set_sub_window_title(self)
+
+        if DTCLS.app_self:
+            CFG.BaseSubWindow.window_binding(self,F.name_of_caller_file(),DTCLS.app_self)
+
+        print(f'add sub {CFG.Config.window_manager.active} into window_manager' )
+
         # CONNECTS
         _con.prepare_ui(self)
         self.init_data()
@@ -348,6 +360,7 @@ class CentralWindow(CQT.QtWidgets.QMainWindow):
                 CQT.add_btn(t.tbl,row.i,t.nf['btn'],'Выбор данных',conn_func_checked_row_col=fnc_select_dse,self=self,img_path=icon_path)
             if name_row == 'select_dir_parts':
                 CQT.add_btn(t.tbl,row.i,t.nf['btn'],'Выбор данных',conn_func_checked_row_col=fnc_select_dir_parts,self=self,img_path=icon_path)
+        t.hide_if_not_dev(CFG)
         t.h_header.hide()
         t.set_width('btn',row.heigt)
 
