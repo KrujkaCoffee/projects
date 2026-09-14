@@ -36,6 +36,7 @@ import winreg
 import project_cust_38.api_erp_commands as APIERP
 import project_cust_38.Cust_emoji as CEMOJ
 import project_cust_38.border_painter as BORDERP
+import project_cust_38.sub_mes.access_mngr.main_mngr as ACCSSMNGR
 from functools import partial
 
 try:
@@ -51,7 +52,7 @@ except:
     print(f'Cust_b24 err import')
     pass
 import project_cust_38.operacii as operacii
-from project_cust_38.sub_mes.manual_mngr.main_mngr import CentralWindow as MNL
+from project_cust_38.sub_mes.manual_mngr.manual_mngr import CentralWindow as MNL
 
 # exclude import calculate_vo 11.11.25
 CFG_prj = CFG.Config.project
@@ -157,13 +158,16 @@ class _MiniManager():
 
 class _ImportDb():
 
-    def parce_row_dict(self, item: dict, silent: bool = False):
+    def parce_row_dict(self, item: dict, silent: bool = False,declared_only:bool = False):
         attrs = F.get_all_attrs_with_properties(self, include_private=True)
         for key, val in item.items():
             fix_key = str(key).replace(".", "_")
             if fix_key not in attrs:
+                if declared_only:
+                    continue
                 if not silent:
                     print(f'class {self.__class__.__name__} ImportDbRow attr not declared :{fix_key}')
+
             exec(f'self.{fix_key} = val')
 
     def __repr__(self):
@@ -303,7 +307,7 @@ class Manual(_ImportDb):
         self.html: str = ''
         self.tabs: QtWidgets.QTabWidget = None
         self.index: int = None
-        self.app_name: str = None
+        self.app_title: str = None
         self._dirty: bool = False
 
         self.id: int | None = None
@@ -316,12 +320,12 @@ class Manual(_ImportDb):
         self.ver: int | None = None
 
     @classmethod
-    def new(cls, tabs, index, app_name) -> 'Manual':
+    def new(cls, tabs, index, app_title) -> 'Manual':
         manual_o = Manual()
         manual_o.tabs = tabs
         manual_o.index = index
-        manual_o.app_name = app_name
-        manual_o.name_app = CFG.Config.app.app
+        manual_o.app_title = app_title
+        manual_o.name_app = CFG.Config.window_manager.active.parent.cfg.app
         manual_o.name_tabs = manual_o.tabs.objectName()
         manual_o.name_tab = manual_o._get_tab().objectName()
         manual_o.user_ref = CFG.Config.user_config.User.ID_ФизЛица
@@ -339,7 +343,7 @@ class Manual(_ImportDb):
     def _load_shablon(self):
         def _replaces(html):
             name_tab = f'\nВкладка "{self.tab_text}"'
-            self.html = html.replace('app_name', self.app_name).replace('tab_name', name_tab)
+            self.html = html.replace('app_name', self.app_title).replace('tab_name', name_tab)
 
         html = F.read_multiline(F.path_to_caller_file_c() + "manual_template.html")
         _replaces(html)
@@ -8108,7 +8112,7 @@ class Composition(_ImportDb):
         return True
 
     def template_pozs(self) -> list[dict]:
-        return [_.template() for _ in self.pozs]
+        return [_.template() for _ in self.pozs],[_.template_data() for _ in self.pozs]
 
     def find_poz(self, id: int) -> Composition_poz | None:
         if self.pozs is None:
@@ -8252,6 +8256,76 @@ class Couple_nar_poz(_ImportDb):
             return Composition_poz(cmp_o, rez_comp_poz[0])
         return None
 
+class RegistredPartialSegment(_ImportDb):
+    def __init__(self,row:dict):
+        self.segment_id:int | None = None
+        self.segment_id_dse:int | None = None
+        self.segment_name:str | None = None
+        self.segmentcountt:int | None = None
+        self.parce_row_dict(row,declared_only=True)
+
+    @property
+    def name_no_ext(self)->str|None:
+        if self.segment_name:
+            return '.'.join(self.segment_name.split('.')[:-1])
+
+class RegistredPartial(_ImportDb):
+    def __init__(self,row:dict):
+        self.partial_id:int|None = None
+        self.partial_name:str|None = None
+        self.partial_nn:str|None = None
+        self.partial_izdel:str|None = None
+        self.partial_link_to_docs_object:str|None = None
+        self.partial_erp_code:str|None = None
+        self.partial_raw_dir:str|None = None
+        self.partial_raw_dir_nn:str|None = None
+        self.partial_raw_dir_name:str|None = None
+        self.parce_row_dict(row,declared_only=True)
+
+        self.dict_segments:dict[str,RegistredPartialSegment] = dict()
+
+    def add_segment(self,segment_o:RegistredPartialSegment):
+        self.dict_segments[segment_o.name_no_ext] = segment_o
+
+class RegistredPartials():
+    def __init__(self):
+        self.dict_dse:dict[tuple,RegistredPartial]=dict()
+
+    def load_data(self):
+        self.dict_dse = dict()
+        rez = CSQ.custom_request_c(CFG_prj.db_naryad,f"""SELECT 
+        partial.id as partial_id,
+        partial.name as partial_name,
+        partial.nn as partial_nn,
+        partial.izdel as partial_izdel,
+        partial.link_to_docs_object as partial_link_to_docs_object,
+        partial.erp_code as partial_erp_code,
+        partial.raw_dir as partial_raw_dir,
+        partial.raw_dir_nn as partial_raw_dir_nn,
+        partial.raw_dir_name as partial_raw_dir_name,
+        segment.id as segment_id,
+        segment.id_dse as segment_id_dse,
+        segment.name as segment_name,
+        segment.count as segmentcount
+        
+         FROM naryad_composit_parts_files as segment
+            INNER JOIN naryad_composit_parts_dse as partial ON partial.id == segment.id_dse""",
+                             rez_dict=True)
+        for item in rez:
+            partial_reg_o = RegistredPartial(item)
+            key = (partial_reg_o.partial_nn,partial_reg_o.partial_name)
+            if key not in self.dict_dse:
+                self.dict_dse[key] = partial_reg_o
+
+            partial_o = self.dict_dse[key]
+            segment_o = RegistredPartialSegment(item)
+            partial_o.add_segment(segment_o)
+
+
+    def find_by_sector(self,nn:str,name:str)->RegistredPartial|None:
+        for dse in self.dict_dse.values():
+            if ' '.join((nn,name)) in dse.dict_segments:
+                return dse
 
 class ManagePartialDse():
     def __init__(self, name_dsp: str):
@@ -8380,6 +8454,7 @@ class Composition_poz(_ImportDb):
         'deleted': 'Ошибки',
         'finished': 'Завершена',
 
+
     }
 
     def __init__(self, parent, item: dict):
@@ -8403,6 +8478,7 @@ class Composition_poz(_ImportDb):
         self.aviable_to_create: int | None = None
         self.count_by_mk: int | None = None
         self.parts: dict[tuple, PartialDseOld] | None = None
+        self.registred: RegistredPartial|None = None
         self._load_couples()
         self._calc_finished()
         self.update_nn_hand_compare()
@@ -8415,6 +8491,8 @@ class Composition_poz(_ImportDb):
     def nn_compare(self) -> str:
         if self.nn_hand_compare:
             return self.nn_hand_compare
+        if self.registred:
+            return self.registred.partial_nn
         if self.parts:
             my_part = self.my_part()
             if my_part is None:
@@ -8471,14 +8549,33 @@ class Composition_poz(_ImportDb):
         data = F.get_all_attrs_with_properties(self)
         data = {k: v for k, v in data.items() if k in self.ALIASES}
         emoj_parts = ''
+        emoj_registred = ''
         if self.parts:
             emoj_parts = " " + CEMOJ.ДокументыДанные.parts.symbol
+
+            if not self.registred:
+                emoj_registred = CEMOJ.СтатусыПроизводства.not_allowed.symbol
+
+
         data['pr_py'] = '-'.join([self.proj, self.py])
         data['is_coupled'] = CEMOJ.ОборудованиеИнструменты.link.symbol if data['is_coupled'] else ''
         data['finished'] = CEMOJ.СтатусыПроизводства.success.symbol if data['finished'] else ''
-        data['dse'] = f"{CEMOJ.ОперацииПроизводства.dse.symbol} {data['dse']}{emoj_parts}"
+
+        data['dse'] = f"{CEMOJ.ОперацииПроизводства.dse.symbol} {data['dse']}{emoj_parts}{emoj_registred}"
         data['deleted'] = CEMOJ.СтатусыПроизводства.alert.symbol if data['deleted'] else ''
         data['nn_hand_compare'] = data['nn_hand_compare'] if data['nn_hand_compare'] else ''
+        data = F.sort_dict_by_sample(data, self.ALIASES)
+        return data
+
+    def template_data(self) -> dict:
+        self.update_nn_hand_compare()
+        data = F.get_all_attrs_with_properties(self)
+        data = {k: v for k, v in data.items() if k in self.ALIASES}
+        emoj_parts = ''
+        if self.parts:
+            emoj_parts = " " + CEMOJ.ДокументыДанные.parts.symbol
+        data['pr_py'] = [self.proj, self.py]
+
         data = F.sort_dict_by_sample(data, self.ALIASES)
         return data
 
@@ -14544,12 +14641,12 @@ def list_emploee_full_with_del(bd_users, org_name: str = None):
     return list_emploee_with_del
 
 
-def dict_emploee(bd_users, conn=''):
+def dict_emploee(bd_users, conn='')->dict:
     query = f"""SELECT * FROM employee WHERE "Статус" != 'Увольнение' AND "Должность" not in ('-','+','') """
     DICT_EMPLOEE = dict()
     list_emploee = CSQ.custom_request_c(bd_users, query, rez_dict=True, conn=conn)
-    if list_emploee == False:
-        return False
+    if not list_emploee:
+        return DICT_EMPLOEE
     for emploee in list_emploee:
         DICT_EMPLOEE[emploee['ФИО']] = emploee['Должность']
     return DICT_EMPLOEE
@@ -17197,8 +17294,8 @@ def user_access_ext(rule: str = None, msg: bool = True) -> bool:
 
 
 def user_access(db: str = None, rule: str = None, fio: str = None, msg: bool = True, rez='') -> bool:
-    if CFG.Config.user_config.is_developer:
-       return True
+    # if CFG.Config.user_config.is_developer:
+    #    return True
     return user_access_ext(rule, msg)  # TECT новой таблицы по должностям
 
     if db is None:
@@ -19446,7 +19543,8 @@ def get_start_stop_journal_pairs(
 
 
 def permission_change(app_self, *args):
-    pass  # TODO вызов sub_app_mngr_access
+    window = ACCSSMNGR.CentralWindow(app_self)
+    window.showMaximized()
 
 
 def _add_custom_manual_button(self, tabs: QtWidgets.QTabWidget, index, list_manuals: list[list[str]]):
@@ -19458,16 +19556,15 @@ def _add_custom_manual_button(self, tabs: QtWidgets.QTabWidget, index, list_manu
 
     def on_custom_button_clicked(tabs: QtWidgets.QTabWidget, tab: QtWidgets.QWidget, index: int):
         name_point = ''
-        if CFG.Config.app:
-            name_point = CFG.Config.app.app
-
-        if hasattr(self, 'NAME_MODULE_BASE'):
-            name_point += f" ({self.NAME_MODULE_BASE})"
+        if CFG.Config.window_manager.active:
+            name_point = CFG.Config.window_manager.active.cfg.app
+            if hasattr(CFG.Config.window_manager.active.window, 'NAME_MODULE_BASE'):
+                name_point = f" ({CFG.Config.window_manager.active.window.NAME_MODULE_BASE})"
         manual_ui = MNL.start_sub_app(self, tabs, index, name_point)
 
     tab = tabs.widget(index)
     emo = CEMOJ.ДокументыДанные.open_book.symbol
-    if [CFG.Config.app.app, tabs.objectName(), tab.objectName()] in list_manuals:
+    if [CFG.Config.window_manager.active.cfg.app, tabs.objectName(), tab.objectName()] in list_manuals:
         emo = CEMOJ.ДокументыДанные.archive.symbol
 
     # Создаем кнопку

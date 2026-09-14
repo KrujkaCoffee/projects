@@ -3,7 +3,6 @@ import dataclasses
 
 from PyQt5 import QtWidgets, QtCore
 
-from Tehkarti.magazin import magazin_na_del
 from project_cust_38.sub_mes.resource_planning import catalog_link as CL
 from project_cust_38.sub_mes.resource_planning import attribute_binding as AB
 from project_cust_38.sub_mes.resource_planning import catalog_choices as CC

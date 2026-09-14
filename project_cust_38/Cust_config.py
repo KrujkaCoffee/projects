@@ -5,7 +5,8 @@ import logging
 import copy
 import os
 import dataclasses
-
+import weakref
+from typing import Optional
 import config
 import project_cust_38.Cust_emoji as CEMOJ
 
@@ -40,6 +41,9 @@ class SingletonMeta(type):
     __instances = {}
 
     def __call__(cls, *args, **kwargs):
+
+        if getattr(cls, "_singleton", True) is False: # если помечен _singleton = False  то не синглтон)
+            return super().__call__(*args, **kwargs)
         if cls not in cls.__instances:
             instance = super().__call__(*args, **kwargs)
             cls.__instances[cls] = instance
@@ -223,8 +227,10 @@ class VerticalConfig(BaseConfig, typing.Generic[T]):
 class HorizontalConfig(BaseConfig):
     horizontal = True
 
-    def __init__(self):
-        super().__init__(module=F.name_of_executable_file_c())
+    def __init__(self,module = None):
+        if module is None:
+            module = F.name_of_executable_file_c()
+        super().__init__(module=module)
 
     def set(self, **kwargs):
         set_sql = ', '.join(f'{key} = ("{value}")' for key, value in kwargs.items())
@@ -261,6 +267,7 @@ class ProjectConfig(VerticalConfig['ProjectConfig']):
 
 class AppConfig(HorizontalConfig):
     __table__ = 'app_config'
+    app:str = Desc()
     version: str = Desc(is_dynamic=True)
     last_update: str = Desc(is_dynamic=True, default='')
     module: str = Desc()  # 18,08.25
@@ -268,6 +275,29 @@ class AppConfig(HorizontalConfig):
     path: str = Desc()
     is_ui: bool = Desc()  # 11.11.25 Для функций с ветвлением графического/консольного вывода
 
+    def __repr__(self):
+        return f"AppConfig(module='{self.module}', version='{self.version}')"
+
+
+
+class WindowConfig(HorizontalConfig):
+    """Конфиг одного под-окна. Загружается из БД по module. Не синглтон."""
+    _singleton = False
+
+    app:str = Desc()
+    version: str = Desc(is_dynamic=True)
+    last_update: str = Desc(is_dynamic=True, default='')
+    module: str = Desc()  # 18,08.25
+    params: list = Desc(sep='|')
+    path: str = Desc()
+    is_ui: bool = Desc()  # 11.11.25 Для функций с ветвлением графического/консольного вывода
+
+    def __init__(self, module: str):
+        # module обязателен — иначе HorizontalConfig подставит имя текущего exe
+        super().__init__(module=module)
+
+    def __repr__(self):
+        return f"WindowConfig(module={getattr(self, 'module', '?')!r})"
 
 class TableRuntimeState:
     """
@@ -442,6 +472,192 @@ class User_emploee():
 
     def __str__(self):
         return f'{self.ФИО} {self.Должность} {self.ID_ФизЛица}'
+
+class WindowNode:
+    __slots__ = (
+        "cfg", "_window_ref", "_parent_ref", "_children",
+        "_manager_ref", "__weakref__",
+    )
+
+    def __init__(self, cfg: WindowConfig, manager: "WindowManager",
+                 window=None, parent: Optional["WindowNode"] = None):
+        self.cfg = cfg
+        self._window_ref: Optional[weakref.ref] = None
+        self._parent_ref: Optional[weakref.ref] = None
+        self._children: list["WindowNode"] = []
+        self._manager_ref = weakref.ref(manager)
+        if window is not None:
+            self.attach_window(window)
+        if parent is not None:
+            parent.add_child(self)
+
+    def attach_window(self, window) -> None:
+        self._window_ref = weakref.ref(window)
+
+    @property
+    def window(self):
+        return self._window_ref() if self._window_ref else None
+
+    @property
+    def is_window_alive(self) -> bool:
+        return self.window is not None
+
+    @property
+    def parent(self) -> Optional["WindowNode"]:
+        return self._parent_ref() if self._parent_ref else None
+
+    @property
+    def children(self) -> tuple["WindowNode", ...]:
+        return tuple(self._children)
+
+    def add_child(self, node: "WindowNode") -> "WindowNode":
+        if node.parent is not None:
+            node.parent.remove_child(node)
+        node._parent_ref = weakref.ref(self)
+        self._children.append(node)
+        return node
+
+    def remove_child(self, node: "WindowNode") -> None:
+        try:
+            self._children.remove(node)
+        except ValueError:
+            return
+        node._parent_ref = None
+
+    def detach(self) -> None:
+        p = self.parent
+        if p is not None:
+            p.remove_child(self)
+
+    def destroy(self) -> None:
+        for child in list(self._children):
+            child.destroy()
+        self._children.clear()
+        self.detach()
+
+        w = self.window
+        if w is not None:
+            mgr = self._manager_ref()
+            if mgr is not None:
+                mgr._closing.add(id(self))
+            try:
+                w.close()
+            except RuntimeError:
+                pass  # C++ объект уже удалён Qt-ом
+            finally:
+                if mgr is not None:
+                    mgr._closing.discard(id(self))
+        self._window_ref = None
+
+    def walk(self):
+        yield self
+        for c in self._children:
+            yield from c.walk()
+
+    def find(self, predicate):
+        for n in self.walk():
+            if predicate(n.cfg):
+                return n
+        return None
+
+    def __repr__(self):
+        return f"WindowNode(cfg={self.cfg!r}, children={len(self._children)})"
+
+
+class WindowManager:
+    _instance = None
+
+    def __new__(cls, *a, **kw):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance.root: Optional[WindowNode] = None
+            cls._instance.active: Optional[WindowNode] = None  # для фокуса
+            cls._instance._closing: set[int] = set()
+        return cls._instance
+
+    def open_window(self, cfg: WindowConfig, window=None,
+                    parent_node: Optional[WindowNode] = None) -> WindowNode:
+        node = WindowNode(cfg, self, window=window, parent=parent_node)
+        if self.root is None:
+            self.root = node
+        elif parent_node is None:
+            self.root.add_child(node)
+        self.active = node
+        return node
+
+    def close(self, node: WindowNode) -> None:
+        if node is None:
+            return
+        if node is self.root:
+            node.destroy()
+            self.root = None
+            self.active = None
+        else:
+            node.destroy()
+        if self.active is node:
+            self.active = self.root
+
+    def is_closing(self, node: WindowNode) -> bool:
+        return id(node) in self._closing
+
+    def find(self, predicate):
+        return self.root.find(predicate) if self.root else None
+
+    def find_by_module(self, module: str):
+        return self.find(lambda c: getattr(c, "module", None) == module)
+
+class BaseSubWindow():
+
+    @staticmethod
+    def set_as_root(sub_app):
+        module_name = F.name_of_executable_file_c()
+        """
+        Назначить окно корневым. Если root уже есть — переиспользовать его,
+        а окно подвесить как ребёнка. Если root нет — создать.
+        Если окно уже привязано (_node есть) — ничего не делаем.
+        """
+        if hasattr(sub_app, "_node") and sub_app._node is not None:
+            return sub_app._node
+
+        mgr = Config.window_manager
+
+        if mgr.root is None:
+            cfg = WindowConfig(module=module_name)
+            sub_app._node = mgr.open_window(cfg, window=sub_app, parent_node=None)
+
+        return sub_app._node
+
+
+    @staticmethod
+    def window_binding(sub_app, module_name: str, parent_app):
+        if hasattr(parent_app, "_node") and parent_app._node is not None:
+            parent_node = parent_app._node
+        else:
+            raise ValueError(f'Не назначен window_binding на parent_app')
+        cfg = WindowConfig(module=module_name)
+        sub_app._node = Config.window_manager.open_window(
+            cfg, window=sub_app, parent_node=parent_node
+        )
+    """
+    @property
+    def node(self) -> WindowNode:
+        return self._node
+
+    @property
+    def cfg(self) -> WindowConfig:
+        return self._node.cfg"""
+
+    @staticmethod
+    def close_in_event(sub_app):
+        if not hasattr(sub_app,'_node'):
+            return
+        mgr = Config.window_manager
+        if mgr.is_closing(sub_app._node):
+            # нас сносит родитель — не мешаем, дерево уже чистится
+
+            return
+        mgr.close(sub_app._node)
+
 
 
 def tmp_dir():
@@ -847,7 +1063,6 @@ class User_config(metaclass=SingletonMeta):  # noqa
             sub_title = f'{sub_title} - {sub_window_name}'
         sub_self.setWindowTitle(sub_title)
 
-
     def update_window_title(self):
         if self.window_app is None:
             return
@@ -1083,4 +1298,4 @@ class Config(metaclass=ConfigMeta):  # 18.08.25
     user_config: User_config = User_config(common_config=project)  # 18.07.25
     app_args: dict = F.parse_args(sys.argv)
     place: Place = Place(dev=user_config.is_developer)
-
+    window_manager:WindowManager=WindowManager()

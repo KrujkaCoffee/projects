@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import typing
 
 from PySide6 import QtWidgets
 
@@ -97,7 +98,8 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
         from project_cust_38.sub_mes.resource_planning import catalog_links_dialog as CLD
         dialog = CLD.CatalogLinksDialog(
             self.catalog_link_manager,
-            parent=self
+            parent=self,
+            edit_link=self.edit_catalog_link
         )
         try:
             dialog.exec()
@@ -121,6 +123,34 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
         except Exception as error:
             errors.append(f'ERP: {error}')
         return tuple(choices), tuple(errors)
+
+    def edit_catalog_link(self, link_key: str, parent: typing.Callable = None):
+        original = self.catalog_link_manager.get(link_key)
+        if original is None:
+            CQT.msgbox('Выбранная связь больше не существует')
+            return
+        choices, errors = self.__load_catalog_field_choices()
+        if not choices:
+            CQT.msgbox('Не удалось загрузить поля справочников:\n' + '\n'.join(errors))
+            return None
+        if errors:
+            CQT.msgbox('Часть источников недоступна:\n' + '\n'.join(errors))
+        dialog = CEDIT.CatalogLinkEditor(
+            choices,
+            parent=parent if parent is not None else self,
+            link_spec=original
+        )
+        try:
+            while dialog.exec() == CQT.QtWidgets.QDialog.Accepted:
+                updated = dialog.link_spec
+                try:
+                    self.catalog_link_manager.replace(updated)
+                except Exception as error:
+                    dialog.lbl_error.setText(str(error))
+                    continue
+            return None
+        finally:
+            dialog.deleteLater()
 
     def open_catalog_link_editor(
             self,

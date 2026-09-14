@@ -6178,16 +6178,107 @@ def plan_fact_grafic_mes(self, data_nach, data_kon, *args):
         CQT.msgbox(f'Дата начала слишком ранняя')
         return
 
-    self.DICT_NN_NTK = CMS.load_dict_dse(self.db_dse)
-    query = CSQ.SqlQuery(
+    query_mnts = CSQ.SqlQuery(
         sqlite=f"""SELECT * FROM mnts_plan WHERE 
             datetime(Дата) >= datetime("{data_nach}") 
             and datetime(Дата) < datetime("{data_kon}") and poki = {USRCNF.Config.place.poki}""",
         postgres=f"""SELECT * FROM mnts_plan WHERE 
-            ("Дата")::timestamp >= CAST('{data_nach}'AS TIMESTAMP ) 
-            and ("Дата")::timestamp < CAST('{data_kon}'AS TIMESTAMP)  and poki = {USRCNF.Config.place.poki}"""
+            "Дата"::timestamp >= CAST('{data_nach}'AS TIMESTAMP) 
+            and "Дата"::timestamp < CAST('{data_kon}'AS TIMESTAMP) and poki = {USRCNF.Config.place.poki}"""
     )
-    self.list_month_plan = list_month_plan = CSQ.custom_request_c(self.db_kplan, query, rez_dict=True)
+    postfix = "" # todo workers on date
+    # ===
+
+    query = CSQ.SqlQuery(
+        sqlite=f"""SELECT DISTINCT
+                                naryad.Пномер, naryad.Твремя, naryad.Норма_времени,  naryad.Номер_мк, naryad.Внеплан, 
+                    naryad.ФИО  as ФИО , naryad.ФИО2  as ФИО2, 
+                                naryad.Фвремя, naryad.Фвремя2, naryad.Примечание,naryad.ДСЕ,naryad.ДСЕ_ID,naryad.Опер_колво,
+                                naryad.Профессии, naryad.Операции, naryad.Опер_время, naryad.Виды_работ, mk.Вид, mk.Направление, 
+                                 Тип_мк.Имя as Тип, тип_доработок.Имя as Доработка, naryad.Коэфф_сложности,
+                    mk.Вес, 
+                            CASE WHEN знпр.№ERP IS NOT NULL 
+                   THEN знпр.№ERP 
+                   ELSE mk.Номер_заказа 
+                   END AS Номер_заказа,  
+
+                     CASE WHEN знпр.№проекта IS NOT NULL 
+                   THEN знпр.№проекта 
+                   ELSE mk.Номер_проекта 
+                   END AS Номер_проекта,  
+
+                    mk.Дата_завершения, mk.Количество, 
+                    mk.Номенклатура, mk.НомКплан, jurnal.Пномер as ПномерЖ, jurnal.Дата as Дата_журнал , jurnal.ФИО as fio_jur_zav, 
+                    "" as Дата_выгрузки_ЕРП, "" as ФИО_выгрузки_ЕРП, 0 as Минут_выгружено_ЕРП, "" as base_ERP, 
+                    category_vnepl.value as Категория_внепл , 
+                    naryad.Подтвержд_вып_дата as Подтвержд_вып_дата ,
+                    mk.Дата as Дата_мк
+                    FROM jurnal 
+                                INNER JOIN naryad ON jurnal.Номер_наряда = naryad.Пномер  
+                                INNER JOIN mk ON mk.Пномер = naryad.Номер_мк  
+                                LEFT JOIN category_vnepl ON category_vnepl.kod = naryad.Категория_внепл AND (category_vnepl.poki = {poki} OR category_vnepl.poki IS NULL) 
+                                INNER JOIN Тип_мк ON Тип_мк.Пномер = mk.Тип 
+                                INNER JOIN тип_доработок ON тип_доработок.Пномер = mk.Тип_доработки  
+                                LEFT JOIN plan ON plan.Пномер = mk.НомКплан  
+                                LEFT JOIN пл_оуп ON пл_оуп.НомПл = mk.НомКплан 
+                                LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП 
+                    WHERE {postfix} 
+                    
+                    
+                    naryad.Внеплан != {unconfirm_work_code} 
+                    AND naryad.Подтвержд_вып == 1 
+                    AND naryad.Аутсорсинг == 0 and 
+                    jurnal.Статус == "Завершен" 
+                    
+                    and plan.poki == {poki} 
+                    and datetime(jurnal.Дата) >= datetime("{nach_data}") 
+                    and datetime(jurnal.Дата) <= datetime("{kon_data}")
+        """
+    )
+
+    # ===
+
+    query_journals = f"""
+    SELECT
+        strftime('%Y-%m-01', jurnal.Дата) AS main_date, 
+        jurnal.Пномер, 
+        jurnal.Дата, 
+        jurnal.ФИО, 
+        jurnal.Подытог, 
+        jurnal.Номер_наряда, 
+        jurnal.Статус, 
+        naryad.Твремя, 
+        naryad.Норма_времени, 
+        jurnal.Подытог_нормы, 
+        naryad.Коэфф_сложности, 
+        naryad.Внеплан, 
+        naryad.Подтвержд_вып, 
+        CASE WHEN знпр.№проекта IS NOT NULL 
+           THEN знпр.№проекта 
+           ELSE mk.Номер_проекта 
+           END AS Номер_проекта 
+            FROM jurnal 
+    INNER JOIN naryad ON naryad.Пномер = jurnal.Номер_наряда 
+    INNER JOIN mk ON naryad.Номер_мк == mk.Пномер  
+    LEFT JOIN пл_оуп ON пл_оуп.НомПл = mk.НомКплан 
+    LEFT JOIN plan ON plan.Пномер = mk.НомКплан 
+    LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП 
+    LEFT JOIN коды_веплана_для_наряда ON коды_веплана_для_наряда.code = naryad.Внеплан
+    WHERE коды_веплана_для_наряда.poki = {USRCNF.Config.place.poki} 
+        and jurnal.Дата <= strftime("%Y-%m-%d %H:%M:00", datetime("{data_kon}")) 
+        AND jurnal.Дата >= strftime("%Y-%m-%d %H:%M:00", datetime("{data_nach}")) {postfix};
+    """
+    journals = CSQ.custom_request_c(
+        CFG.Config.project.db_naryad,
+        query_journals,
+        rez_dict=True,
+        attach_dbs=CFG.Config.project.db_kplan
+    )
+    journals_by_mnts_date = defaultdict(list)
+    for item in journals:
+        journals_by_mnts_date[item['main_date']].append(item)
+
+    self.list_month_plan = list_month_plan = CSQ.custom_request_c(self.db_kplan, query_mnts, rez_dict=True)
     get_list_month_fact(self)
 
 
@@ -6195,8 +6286,11 @@ def plan_fact_grafic_mes(self, data_nach, data_kon, *args):
          FROM дорезки_мк INNER JOIN тип_дорезок ON "тип_дорезок"."Пномер" = "дорезки_мк"."Причина";""", rez_dict=True),
                                    "Номер_мк")
 
-    table_vnepan = F.list_of_lists_to_dict_of_dicts(
-        vneplan_po_napravl(self, data_nach, data_kon, 'Все', generate_graf=False,), 'Месяц')
+    plan_vneplan = get_plan_vneplan_data( # todo next
+        self, data_nach, data_kon, 'Все', include_details=False)
+    if not plan_vneplan or plan_vneplan[0] is None:
+        return
+    table_vnepan = F.list_of_lists_to_dict_of_dicts(plan_vneplan[0], 'Месяц')
 
     
     plan_tab_time_req = F.deploy_dict_c(CSQ.custom_request_c(self.db_kplan,f"""SELECT month, SUM(normo_smen)  FROM plan_tabel_workforce 
@@ -6205,10 +6299,34 @@ def plan_fact_grafic_mes(self, data_nach, data_kon, *args):
 
     rez = [['Месяц', 'Факт, уд.т.','По xml,т.', 'План(ПДО), н-см.', 'Освоено (МК Тип = Плановая), н-см.', 'Внеплан, %',
             'Освоено(план+внеплан работы), н-см.','Плановое табельное время, н-см.','Сумм. осв. время по журналу, н-см.(Подытог норм)']]
+    fact_by_month = {}
+    report_months = {item['Дата'] for item in list_month_plan}
+    for mk in (self.list_month_fact if report_months else ()):
+        month_key = F.start_end_dates_c(
+            F.strtodate(mk['Дата_завершения'], "%Y-%m-%d %H:%M:%S"),
+            '', vid='m', format_out="%Y-%m-%d")[0]
+        if month_key not in report_months:
+            continue
+        if month_key not in fact_by_month:
+            fact_by_month[month_key] = [0, 0]
+        totals = fact_by_month[month_key]
+        totals[0] += mk['Вес'] * KOEF_RASKLADKI
+        if F.valm(mk['xml']) == 0:
+            if F.valm(mk['Вес_по_рес']) == 0:
+                totals[1] += F.valm(mk['Вес'])
+            else:
+                totals[1] += F.valm(mk['Вес_по_рес'])
+        else:
+            totals[1] += F.valm(mk['xml'])
+
+
+
     for item in list_month_plan:
         summ_ves = 0
         data = item['Дата']
         month = F.datetostr(F.strtodate(data), "%Y-%m-%d")
+
+        month_journals = journals_by_mnts_date.get(data) or []
         ves_pl = 0
         fact_tab_time = 0
         plan_tab_time = 0
@@ -6220,7 +6338,7 @@ def plan_fact_grafic_mes(self, data_nach, data_kon, *args):
                                                                    
                                                                    podrazdelenie='Сборочный цех Производства',
                                                                    organization=self.USER_CONFIG.Organization[
-                                                                       'Значение'],additional_fix=False)
+                                                                       'Значение'],additional_fix=False, month_journals=month_journals)
 
         fact_tab_time = round(sum([_['Подытог_по_нормам'] for _ in spis_vir_sotr])/8,2)
         #CQT.msgboxg_get_table(self,'',spis_vir_sotr)
@@ -6970,13 +7088,13 @@ def get_plan_vneplan_data(self, data_nach, data_kon, vid='Все', etap='Сбо�
             summ += F.valm(item['Твремя']) * clac_fio_for_pfanal(self, item['ФИО2'])
         return summ
 
-    if "DICT_NN_NTK" not in self.__dict__ or self.DICT_NN_NTK == None:
-        self.DICT_NN_NTK = CMS.load_dict_dse(self.db_dse)
 
     TUPLE_DOUBLE_SHOVOV = (
         'Т3', "Н2", "С7", "С12", "С14", "С15", "С16", "С43", "С21", "С45", "С23", "С25", "С26", "С27", "С39",
         "С40", "У5", "У7", "У8", "У10", "Т7", "Т2", "Т8", "Т9", "Т5",)
-
+    place = USRCNF.Config.place  # 17.04.2026
+    unconfirm_work_code = place.КодыНарядов.НеподтвержденныйВнеплан
+    poki = place.poki
 
 
     query = CSQ.SqlQuery(
@@ -6991,9 +7109,6 @@ def get_plan_vneplan_data(self, data_nach, data_kon, vid='Все', etap='Сбо�
     self.list_month_plan  = CSQ.custom_request_c(self.db_kplan, query, rez_dict=True)
     list_month_plan = self.list_month_plan
 
-    if 'list_month_fact' not in self.__dict__ or self.list_month_fact == None:
-        get_list_month_fact(self)
-    list_month_fact = self.list_month_fact
 
 
     rez = [['Месяц', 'Этап', 'Внеплан сумма, н-см./чел.', 'План, н-см./чел.']]
@@ -7054,13 +7169,6 @@ def get_plan_vneplan_data(self, data_nach, data_kon, vid='Все', etap='Сбо�
             dict_cat_vnepl[kat] = 0
 
         data = item['Дата']
-        for mk in list_month_fact:
-            if mk['Направление'] == vid or vid == 'Все':
-                dat_str = mk['Дата_завершения']
-                dat_f = \
-                F.start_end_dates_c(F.strtodate(dat_str, "%Y-%m-%d %H:%M:%S"), '', vid='m', format_out="%Y-%m-%d")[
-                    0]
-
         nach_data, kon_data = F.start_end_dates_c(F.strtodate(data, "%Y-%m-%d"), '', vid='m',
                                                   format_out="%Y-%m-%d %H:%M:%S")
         postfix = ''
@@ -7069,9 +7177,7 @@ def get_plan_vneplan_data(self, data_nach, data_kon, vid='Все', etap='Сбо�
 
         DICT_VID_NAPR = F.deploy_dict_c(
             CSQ.custom_request_c(self.db_kplan, f"""SELECT "НомПл", "Вид" FROM пл_топ;""", rez_dict=True), 'НомПл')
-        place = USRCNF.Config.place #17.04.2026
-        unconfirm_work_code = place.КодыНарядов.НеподтвержденныйВнеплан
-        poki = place.poki
+
         query = CSQ.SqlQuery(
             sqlite=f"""SELECT DISTINCT
                                     naryad.Пномер, naryad.Твремя, naryad.Норма_времени,  naryad.Номер_мк, naryad.Внеплан, 

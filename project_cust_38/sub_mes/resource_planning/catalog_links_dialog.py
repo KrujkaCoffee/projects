@@ -1,4 +1,5 @@
 import sys
+import typing
 
 from PyQt5 import QtCore, QtWidgets
 
@@ -8,10 +9,18 @@ from project_cust_38.sub_mes.resource_planning import attribute_binding as AB
 class CatalogLinksDialog(QtWidgets.QDialog):
     link_removed = QtCore.pyqtSignal(str)
 
-    def __init__(self, manager: CL.CatalogLinkManager, parent=None):
+    def __init__(
+            self,
+            manager: CL.CatalogLinkManager,
+            parent = None,
+            *,
+            edit_link: typing.Callable[[str, "CatalogLinksDialog"], CL.CatalogLinkSpec] = None
+    ):
         super().__init__(parent)
 
         self.__manager = manager
+        self.__edit_link = edit_link
+
         self.setWindowTitle("Связи справочников")
         self.resize(1050, 430)
         self.lbl_count = QtWidgets.QLabel(self)
@@ -37,8 +46,10 @@ class CatalogLinksDialog(QtWidgets.QDialog):
 
         self.btn_remove = QtWidgets.QPushButton('Удалить связь', self)
         self.btn_close = QtWidgets.QPushButton('Закрыть', self)
+        self.btn_edit = QtWidgets.QPushButton('Редактировать', self)
 
         buttons_layout = QtWidgets.QHBoxLayout()
+        buttons_layout.addWidget(self.btn_edit)
         buttons_layout.addWidget(self.btn_remove)
         buttons_layout.addStretch()
         buttons_layout.addWidget(self.btn_close)
@@ -50,9 +61,35 @@ class CatalogLinksDialog(QtWidgets.QDialog):
 
         self.tbl_links.itemSelectionChanged.connect(self.__refresh_actions)
         self.btn_remove.clicked.connect(self.__remove_selected)
+        self.btn_edit.clicked.connect(self.__edit_selected)
         self.btn_close.clicked.connect(self.accept)
 
         self.reload_links()
+
+    def selected_link_key(self) -> str | None:
+        selected_rows = self.tbl_links.selectionModel().selectedRows()
+        if not selected_rows:
+            return None
+        item = self.tbl_links.item(selected_rows[0].row(), 0)
+        if item is None:
+            return None
+        return item.date(QtCore.Qt.UserRole)
+
+    def __edit_selected(self):
+        link_key = self.selected_link_key()
+        if link_key is None or self.__edit_link is None and not callable(self.__edit_link):
+            return
+        updated = self.__edit_link(link_key, parent=self)
+        if updated is None:
+            return
+        self.reload_links()
+
+        for row in range(self.tbl_links.rowCount()):
+            item = self.tbl_links.item(row, 0)
+            if item.data(QtCore.Qt.UserRole) == updated.link_key:
+                self.tbl_links.setCurrentCell(row, 0)
+                self.tbl_links.selectRow(row)
+                break
 
     def reload_links(self):
         links = self.__manager.all()
@@ -73,15 +110,6 @@ class CatalogLinksDialog(QtWidgets.QDialog):
                 self.tbl_links.setItem(row, 3, cardinality_item)
         self.lbl_count.setText(f'Связей: {len(links)}')
         self.__refresh_actions()
-
-    def selected_link_key(self) -> str | None:
-        row = self.tbl_links.currentRow()
-        if row < 0:
-            return None
-        item = self.tbl_links.item(row, 0)
-        if item is None:
-            return None
-        return item.data(QtCore.Qt.UserRole)
 
     def __remove_selected(self):
         link_key = self.selected_link_key()
@@ -115,7 +143,9 @@ class CatalogLinksDialog(QtWidgets.QDialog):
         ))
 
     def __refresh_actions(self):
+        has_selection = self.selected_link_key() is not None
         self.btn_remove.setEnabled(self.selected_link_key() is not None)
+        self.btn_edit.setEnabled(has_selection and callable(self.__edit_link))
 
     def __cardinality_text(self, cardinality) -> str:
         return {
