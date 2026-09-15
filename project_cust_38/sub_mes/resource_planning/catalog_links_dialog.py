@@ -17,11 +17,20 @@ class CatalogLinksDialog(CQT.Dialog_tbl):
             parent = None,
             *,
             edit_link: typing.Callable[[str, "CatalogLinksDialog"], CL.CatalogLinkSpec] = None,
-            remove_link: typing.Callable[[str], bool] = None
+            remove_link: typing.Callable[[str], bool] | None = None,
+            select_between: tuple[CL.CatalogLinkEndpoint, CL.CatalogLinkEndpoint] | None = None
     ):
+        self.tbl_links: QtWidgets.QTableWidget | None = None
+        self.btn_edit: QtWidgets.QPushButton | None = None
+        self.btn_remove: QtWidgets.QPushButton | None = None
+        self.btn_close: QtWidgets.QPushButton | None = None
+        self.btn_choose: QtWidgets.QPushButton | None = None
+
         self.__manager = manager
         self.__edit_link = edit_link
         self.__remove_link = remove_link
+        self.__select_between = select_between
+        self.__chosen_link = None
 
         super().__init__(
             parent,
@@ -30,7 +39,7 @@ class CatalogLinksDialog(CQT.Dialog_tbl):
             disable_btn0=True,
             disable_btn1=True,
             show_filtr=True,
-            WindowTitle='Связи справочников',
+            WindowTitle='Выбор связи' if select_between is not None else  'Связи справочников',
             ExtendedSelection=False,
             selectRows=True,
             sortingEnabled=False,
@@ -41,11 +50,6 @@ class CatalogLinksDialog(CQT.Dialog_tbl):
 
         self.resize(1050, 430)
         self.reload_links()
-
-        self.tbl_links: QtWidgets.QTableWidget
-        self.btn_edit: QtWidgets.QPushButton
-        self.btn_remove: QtWidgets.QPushButton
-        self.btn_close: QtWidgets.QPushButton
 
     def __apply_links_filter(self):
         CQT.apply_filtr_c(self, self.ui.tbl_filtr, self.tbl_links, save_data=False)
@@ -75,7 +79,7 @@ class CatalogLinksDialog(CQT.Dialog_tbl):
         super().keyReleaseEvent(event)
 
     def __decorate_links_dialog(self, dialog):
-        self.tbl_links = dialog.ui.tbl
+        self.tbl_links: QtWidgets.QTableWidget = dialog.ui.tbl
         self.lbl_count = dialog.ui.lbl_text
         self.tbl_links.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         self.tbl_links.setAlternatingRowColors(True)
@@ -88,23 +92,50 @@ class CatalogLinksDialog(CQT.Dialog_tbl):
         header.setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeMode.Stretch)
 
         button_box = dialog.ui.buttonBox
-        self.btn_edit = button_box.addButton('Редактировать', QtWidgets.QDialogButtonBox.ButtonRole.ActionRole)
-        self.btn_remove = button_box.addButton('Удалить связь', QtWidgets.QDialogButtonBox.ButtonRole.ActionRole)
-        self.btn_close = button_box.addButton('Закрыть', QtWidgets.QDialogButtonBox.ButtonRole.AcceptRole)
 
-        for button in (self.btn_edit, self.btn_remove, self.btn_close):
+        if self.__select_between is None:
+            self.btn_edit = button_box.addButton('Редактировать', QtWidgets.QDialogButtonBox.ButtonRole.ActionRole)
+            self.btn_remove = button_box.addButton('Удалить связь', QtWidgets.QDialogButtonBox.ButtonRole.ActionRole)
+            self.btn_close = button_box.addButton('Закрыть', QtWidgets.QDialogButtonBox.ButtonRole.AcceptRole)
+            self.tbl_links.itemSelectionChanged.connect(self.__refresh_actions)
+            self.btn_edit.clicked.connect(self.__edit_selected)
+            self.btn_remove.clicked.connect(self.__remove_selected)
+            buttons = (self.btn_edit, self.btn_remove, self.btn_close)
+        else:
+            self.btn_choose = button_box.addButton('Выбрать связь', QtWidgets.QDialogButtonBox.ButtonRole.ActionRole)
+            self.btn_close = button_box.addButton('Выбрать связь', QtWidgets.QDialogButtonBox.ButtonRole.ActionRole)
+            self.tbl_links.doubleClicked.connect(lambda *_: self.accept())
+
+            buttons = (self.btn_choose,)
+        for button in buttons:
             button.setAutoDefault(False)
-
         for caption in ('Компоновка', 'Анализ таблицы'):
             index = dialog.ui.cmb_action.findText(caption)
             if index >= 0:
                 dialog.ui.cmb_action.removeItem(index)
 
-        self.tbl_links.itemSelectionChanged.connect(self.__refresh_actions)
-        self.btn_edit.clicked.connect(self.__edit_selected)
-        self.btn_remove.clicked.connect(self.__remove_selected)
-
         self.__refresh_actions()
+
+    def __available_links(self):
+        if self.__select_between is None:
+            return self.__manager.all()
+        return self.__manager.find_direct(*self.__select_between)
+
+    def accept(self):
+        if self.__select_between is not None:
+            link_key = self.selected_link_key()
+            selected = next((link for link in self.__available_links() if link.link_key == link_key), None)
+            if selected is None:
+                self.reload_links()
+                return
+            self.__chosen_link = selected
+        super().accept()
+
+    @property
+    def chosen_link(self) -> CL.CatalogLinkSpec | None:
+        if self.result() != QtWidgets.QDialog.Accepted:
+            return None
+        return self.__chosen_link
 
     def selected_link_key(self) -> str | None:
         selected_rows = self.tbl_links.selectionModel().selectedRows()
@@ -140,8 +171,7 @@ class CatalogLinksDialog(CQT.Dialog_tbl):
                 break
 
     def reload_links(self):
-        links = self.__manager.all()
-        print(links)
+        links = self.__available_links()
         with QtCore.QSignalBlocker(self.tbl_links):
             self.tbl_links.clearSelection()
             self.tbl_links.setCurrentCell(-1, -1)
@@ -184,7 +214,7 @@ class CatalogLinksDialog(CQT.Dialog_tbl):
             else:
                 removed = self.__manager.remove(link_key)
         except Exception as error:
-            logging.error('Ошибка удаления связи', exc_info=e)
+            logging.error('Ошибка удаления связи', exc_info=error)
             return
         if removed:
             self.link_removed.emit(link_key)
@@ -201,8 +231,12 @@ class CatalogLinksDialog(CQT.Dialog_tbl):
 
     def __refresh_actions(self):
         has_selection = self.selected_link_key() is not None
-        self.btn_remove.setEnabled(self.selected_link_key() is not None)
-        self.btn_edit.setEnabled(has_selection and callable(self.__edit_link))
+        if self.btn_remove:
+            self.btn_remove.setEnabled(self.selected_link_key() is not None)
+        if self.btn_edit:
+            self.btn_edit.setEnabled(has_selection and callable(self.__edit_link))
+        if self.btn_choose is not None:
+            self.btn_choose.setEnabled(has_selection)
 
     def __cardinality_text(self, cardinality) -> str:
         return {
@@ -254,8 +288,15 @@ if __name__ == '__main__':
 
     application = QtWidgets.QApplication(sys.argv)
 
-
-    dialog = CatalogLinksDialog(manager)
+    dialog = CatalogLinksDialog(
+        manager,
+        select_between=(
+            te[1][0],
+            te[1][1],
+        )
+    )
 
     dialog.exec()
-    print(manager.to_list())
+
+    selected = dialog.chosen_link
+    print(selected.link_key if selected is not None else None)

@@ -130,6 +130,23 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
         self.catalog_links_list_action.setObjectName('action_new_catalog_link')
         self.catalog_links_list_action.triggered.connect(self.open_catalog_links_dialog)
 
+    def choose_catalog_link(self, source_field, target_field, parent = None):
+        if self.__catalog_links_load_error is not None:
+            CQT.msgbox('Выбор связи недоступен')
+            return None
+        from project_cust_38.sub_mes.resource_planning import catalog_links_dialog as CLD
+        dialog = CLD.CatalogLinksDialog(
+            self.catalog_link_manager,
+            parent=parent if parent is not None else self,
+            select_between=(source_field, target_field)
+        )
+        try:
+            if dialog.exec() == CQT.QtWidgets.QDialog.DialogCode.Accepted:
+                return dialog.chosen_link
+            return None
+        finally:
+            dialog.deleteLater()
+
     def open_catalog_links_dialog(self, checked: bool = False):
         from project_cust_38.sub_mes.resource_planning import catalog_links_dialog as CLD
         dialog = CLD.CatalogLinksDialog(
