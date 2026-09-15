@@ -232,7 +232,7 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
             f'{right.provider}: '
             f'{right.entity_key}.'
             f'{right.field_key}')
-        CQT.msgbox('Связь сформирована и добавлена в черновик')
+        CQT.msgbox('Связь сохранена')
         return link
 
     def _____________sub__________________(self):
