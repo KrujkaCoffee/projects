@@ -56,7 +56,9 @@ class CatalogLinkEndpoint:
     def from_dict(cls, data: dict) -> "CatalogLinkEndpoint":
         if not isinstance(data, dict):
             raise TypeError('некорректный аргумент data')
-        return cls(**data)
+        values = dict(data)
+        values['provider'] = AB.SourceProvider(values['provider'])
+        return cls(**values)
 
     # def __post_init__(self):
     #     try:
@@ -111,12 +113,13 @@ class CatalogLinkSpec:
             version=data.get('version') or 1,
             link_key=data.get('link_key'),
             caption=data.get('caption') or '',
-            cardinality=data.get('cardinality') or CatalogLinkCardinality.MANY_TO_ONE,
-            comparison=data.get('comparison') or CatalogLinkComparison.EQUAL,
-            direction=data.get('direction') or CatalogLinkDirection.LEFT_TO_RIGHT,
+            cardinality=CatalogLinkCardinality(data.get('cardinality')) or CatalogLinkCardinality.MANY_TO_ONE,
+            comparison=CatalogLinkComparison(data.get('comparison')) or CatalogLinkComparison.EQUAL,
+            direction=CatalogLinkDirection(data.get('direction')) or CatalogLinkDirection.LEFT_TO_RIGHT,
             left=CatalogLinkEndpoint.from_dict(data.get('left')),
             right=CatalogLinkEndpoint.from_dict(data.get('right')),
         )
+
 
 class CatalogLinkManager:
     def __init__(self, links: typing.Iterable[CatalogLinkSpec] = ()):

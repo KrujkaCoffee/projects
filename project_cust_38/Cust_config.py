@@ -226,8 +226,12 @@ class VerticalConfig(BaseConfig, typing.Generic[T]):
 
 class HorizontalConfig(BaseConfig):
     horizontal = True
+    is_server = False
 
     def __init__(self,module = None):
+        if F.user_name() == 'srv-mes':
+            is_server = True
+            return
         if module is None:
             module = F.name_of_executable_file_c()
         super().__init__(module=module)
