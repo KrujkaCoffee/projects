@@ -17,8 +17,48 @@ if TYPE_CHECKING:
     from project_cust_38.sub_mes.resource_planning.manage_res_pl import (Plwindow,Type_entity)
     from project_cust_38.sub_mes.resource_planning.manage_res_pl import Plwindow
 
+def te():
+    from dataclasses import replace
+
+    from project_cust_38.sub_mes.resource_planning import attribute_binding as AB
+    from project_cust_38.sub_mes.resource_planning import catalog_link as CL
+
+    manager = CL.CatalogLinkManager()
+
+    left = CL.CatalogLinkEndpoint(
+        provider=AB.SourceProvider.MES,
+        source_key='demo_mes',
+        entity_key='пл_оуп',
+        field_key='Пномер_ЗП',
+    )
+
+    right = CL.CatalogLinkEndpoint(
+        provider=AB.SourceProvider.MES,
+        source_key='demo_mes',
+        entity_key='знпр',
+        field_key='s_num',
+    )
+
+    manager.register(manager.create(
+        left,
+        right,
+        link_key='operation_to_order',
+        caption='Операция → заказ на производство',
+    ))
+
+    # Поля, выбранные для отображения.
+    selected_left = replace(left, field_key='НомПл')
+    selected_right = replace(right, field_key='Ref_Key_py')
+
+    found = manager.find_direct(selected_left, selected_right)
+
+    print([link.link_key for link in found])
+    print(found[0].left.field_key, found[0].right.field_key)
+    print(manager.find_direct(selected_right, selected_left))
+
 
 def toggle_focus(new_focus):
+    te()
     DTSUB.sub_self.ui.fr_cont_event.setVisible(False)
     DTSUB.sub_self.ui.fr_cont_res.setVisible(False)
     if DTSUB.info_o:

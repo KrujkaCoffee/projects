@@ -97,6 +97,9 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
         try:
             loaded = self.__catalog_link_store.load()
         except Exception as error:
+            self.__catalog_links_load_error = str(error)
+            self.new_catalog_link_action.setEnabled(False)
+            self.catalog_links_list_action.setEnabled(False)
             logging.error('Ошибка при загрузке связей справочников', exc_info=error)
             CQT.msgbox('Не удалось загрузить связи справочников')
             return

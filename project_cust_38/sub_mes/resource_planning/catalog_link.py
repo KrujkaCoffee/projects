@@ -171,6 +171,17 @@ class CatalogLinkManager:
     def all(self) -> tuple[CatalogLinkSpec, ...]:
         return tuple(self.__links.values())
 
+    def find_direct(self, source_field: CatalogLinkEndpoint, target_field: CatalogLinkEndpoint
+                    ) -> tuple[CatalogLinkSpec, ...]:
+        source_catalog = source_field.catalog_key
+        target_catalog = target_field.catalog_key
+        return tuple(
+            link for link in self.__links.values()
+            if link.direction == CatalogLinkDirection.LEFT_TO_RIGHT
+                and link.left.catalog_key == source_catalog
+                and link.right.catalog_key == target_catalog
+        )
+
     def remove(self, link_key: str) -> bool:
         return self.__links.pop(link_key, None) is not None
 
