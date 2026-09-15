@@ -113,9 +113,9 @@ class CatalogLinkSpec:
             version=data.get('version') or 1,
             link_key=data.get('link_key'),
             caption=data.get('caption') or '',
-            cardinality=CatalogLinkCardinality(data.get('cardinality')) or CatalogLinkCardinality.MANY_TO_ONE,
-            comparison=CatalogLinkComparison(data.get('comparison')) or CatalogLinkComparison.EQUAL,
-            direction=CatalogLinkDirection(data.get('direction')) or CatalogLinkDirection.LEFT_TO_RIGHT,
+            cardinality=CatalogLinkCardinality(data.get('cardinality') or CatalogLinkCardinality.MANY_TO_ONE),
+            comparison=CatalogLinkComparison(data.get('comparison') or CatalogLinkComparison.EQUAL),
+            direction=CatalogLinkDirection(data.get('direction') or CatalogLinkDirection.LEFT_TO_RIGHT),
             left=CatalogLinkEndpoint.from_dict(data.get('left')),
             right=CatalogLinkEndpoint.from_dict(data.get('right')),
         )

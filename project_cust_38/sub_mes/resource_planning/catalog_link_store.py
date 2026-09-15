@@ -36,7 +36,11 @@ class CatalogLinkStore:
         try:
             with tempfile.NamedTemporaryFile(
                 mode='w',
-
+                encoding='utf-8',
+                dir=self.path.parent,
+                prefix=self.path.name + '.',
+                suffix='.tmp',
+                delete=False
             ) as stream:
                 temporary_path = pathlib.Path(stream.name)
                 stream.write(text)

@@ -1,3 +1,4 @@
+import logging
 import sys
 import typing
 
@@ -15,10 +16,12 @@ class CatalogLinksDialog(CQT.Dialog_tbl):
             manager: CL.CatalogLinkManager,
             parent = None,
             *,
-            edit_link: typing.Callable[[str, "CatalogLinksDialog"], CL.CatalogLinkSpec] = None
+            edit_link: typing.Callable[[str, "CatalogLinksDialog"], CL.CatalogLinkSpec] = None,
+            remove_link: typing.Callable[[str], bool] = None
     ):
         self.__manager = manager
         self.__edit_link = edit_link
+        self.__remove_link = remove_link
 
         super().__init__(
             parent,
@@ -63,13 +66,13 @@ class CatalogLinksDialog(CQT.Dialog_tbl):
         if (self.ui.tbl_filtr.hasFocus() and event.key() in (QtCore.Qt.Key_Return, QtCore.Qt.Key_Enter)):
             event.accept()
             return
-        super().keyReleaseEvent(self, event)
+        super().keyPressEvent(event)
 
     def keyReleaseEvent(self, event):
         if (self.ui.tbl_filtr.hasFocus() and event.key() in (QtCore.Qt.Key_Return, QtCore.Qt.Key_Enter)):
             self.__apply_links_filter()
             return
-        super().keyReleaseEvent(self, event)
+        super().keyReleaseEvent(event)
 
     def __decorate_links_dialog(self, dialog):
         self.tbl_links = dialog.ui.tbl
@@ -175,7 +178,15 @@ class CatalogLinksDialog(CQT.Dialog_tbl):
         if answer != QtWidgets.QMessageBox.Yes:
             return
 
-        if self.__manager.remove(link_key):
+        try:
+            if self.__remove_link is not None:
+                removed = self.__remove_link(link_key)
+            else:
+                removed = self.__manager.remove(link_key)
+        except Exception as error:
+            logging.error('Ошибка удаления связи', exc_info=e)
+            return
+        if removed:
             self.link_removed.emit(link_key)
         self.reload_links()
 

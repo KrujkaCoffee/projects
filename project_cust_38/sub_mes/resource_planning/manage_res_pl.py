@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import pathlib
 import typing
 
 from PySide6 import QtWidgets
@@ -44,6 +45,7 @@ from project_cust_38.sub_mes.resource_planning import attribute_binding as AB
 from project_cust_38.sub_mes.resource_planning import catalog_choices as CCHO
 from project_cust_38.sub_mes.resource_planning import catalog_editor as CEDIT
 from project_cust_38.sub_mes.resource_planning import catalog_link as CLINK
+from project_cust_38.sub_mes.resource_planning import catalog_link_store as LINKSTORE
 
 from typing import  TYPE_CHECKING
 
@@ -59,7 +61,7 @@ STORE = DTCLS.ReferenceStore
 
 
 class Plwindow(CQT.QtWidgets.QMainWindow):
-    def __init__(self,app_self,subject_pl:SubjectPl):
+    def __init__(self, app_self, subject_pl: CLSS.SubjectPl, catalog_links_path = None):
         super(Plwindow, self).__init__()
         self.ui = main_ui.Ui_mainWindow()
         self.ui.setupUi(self)
@@ -80,10 +82,41 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
 
         _con.load_connects(self)
         self.__install_catalog_links_menu()
+        self.__init_catalog_links(catalog_links_path)
 
     @property
     def catalog_link_manager(self):
         return self.__catalog_link_manager
+
+    def __init_catalog_links(self, path = None):
+        if path is None:
+            path = pathlib.Path(F.put_po_umolch()) / 'mes_data' / 'resource_planning' / 'catalog_links.json'
+        self.__catalog_link_store = LINKSTORE.CatalogLinkStore(path)
+        self.__catalog_links_load_error = None
+
+        try:
+            loaded = self.__catalog_link_store.load()
+        except Exception as error:
+            logging.error('Ошибка при загрузке связей справочников', exc_info=error)
+            CQT.msgbox('Не удалось загрузить связи справочников')
+            return
+        self.__catalog_link_manager = loaded
+
+    def __save_catalog_links(self, candidate):
+        if self.__catalog_links_load_error is not None:
+            raise RuntimeError('Сохранение недоступно файл связей не загружен')
+        try:
+            self.__catalog_link_store.save(candidate)
+        except Exception as error:
+            raise RuntimeError('Не удалось сохранить связи') from error
+
+    def remove_catalog_link(self, link_key: str):
+        candidate = CLINK.CatalogLinkManager(self.catalog_link_manager.all())
+        if not candidate.remove(link_key):
+            return False
+        self.__save_catalog_links(candidate)
+        return self.catalog_link_manager.remove(link_key)
+
 
     def __install_catalog_links_menu(self):
         self.catalog_links_menu = self.ui.menubar.addMenu('Связи')
@@ -99,7 +132,8 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
         dialog = CLD.CatalogLinksDialog(
             self.catalog_link_manager,
             parent=self,
-            edit_link=self.edit_catalog_link
+            edit_link=self.edit_catalog_link,
+            remove_link=self.remove_catalog_link
         )
         try:
             dialog.exec()
@@ -144,6 +178,9 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
             while dialog.exec() == CQT.QtWidgets.QDialog.Accepted:
                 updated = dialog.link_spec
                 try:
+                    candidate = CLINK.CatalogLinkManager(self.catalog_link_manager.all())
+                    candidate.replace(updated)
+                    self.__save_catalog_links(candidate)
                     self.catalog_link_manager.replace(updated)
                 except Exception as error:
                     dialog.lbl_error.setText(str(error))
@@ -177,6 +214,9 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
             return None
         link = dialog.link_spec
         try:
+            candidate = CLINK.CatalogLinkManager(self.catalog_link_manager.all())
+            candidate.register(link)
+            self.__save_catalog_links(candidate)
             self.__catalog_link_manager.register(link)
         except Exception as error:
             CQT.msgbox(f'Не удалось добавить связь:\n {error}')
