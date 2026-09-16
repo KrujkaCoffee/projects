@@ -61,7 +61,7 @@ class BindingField:
 
     presentation_key: str
     caption: str = ""
-    relation_steps: tuple[str] = ()
+    relation_steps: tuple[str, ...] = ()
 
     def __post_init__(self):
         # todo валидация полей

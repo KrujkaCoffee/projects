@@ -186,6 +186,15 @@ class _AttributeInfo:
             False,
             ''
         )
+        self.catalog_link_spec: _AttributeInfoMeta = _AttributeInfoMeta(
+            dict,
+            None,
+            'catalog_link_spec',
+            'Связь с другим атрибутом данного шаблона',
+            'Связь с другим полем',
+            'По какому полю и какой связи получать связанную запись',
+            6, True, '🔗'
+        )
         self.base_attr: _AttributeInfoMeta = _AttributeInfoMeta(bool, True, 'base_attr', 'Базовый', 'Базовый',
                                                                 'Базовый', 53, False, '')
         self.master_attr: _AttributeInfoMeta = _AttributeInfoMeta(bool, False, 'master_attr', 'Мастер атрибут',
@@ -233,6 +242,8 @@ class _AttributeInfo:
         return data_attrs
 
     def to_ui(self, name: str):
+        if name == 'catalog_link_spec':
+            return 'Настроена' if self.catalog_link_spec else 'Не настроена'
         attr: _AttributeInfoMeta = self._meta(name)
         return attr.to_ui()
 
@@ -258,7 +269,7 @@ class _AttributeInfo:
                 if custom_types is None:
                     raise TypeError('Не инициализирован каталог типов пользовательских атрибутов.')
                 value = custom_types.serialize_type(value)
-            if name == 'binding_spec':
+            if name in ('binding_spec', 'catalog_link_spec'):
                 value = copy.deepcopy(value)
             result[name] = value
         return result
@@ -277,12 +288,11 @@ class _AttributeInfo:
                     if custom_types is None:
                         raise TypeError('Не инициализирован каталог типов пользовательских атрибутов.')
                     value = custom_types.deserialize_type(value)
-                if name == 'binding_spec':
+                if name in ('binding_spec', 'catalog_link_spec'):
                     if value is not None and not isinstance(value, dict):
                         value = None
-                        logging.warning('Некорректный тип значения у ключа binding_spec.')
-
-
+                        logging.warning(f'Некорректный тип значения у ключа {name}.')
+                    value = copy.deepcopy(value)
                 # Устанавливаем значение через setattr – он сам найдёт мета‑объект и обновит его .val
                 setattr(obj, name, value)
         return obj
@@ -1122,6 +1132,47 @@ class Info():
 
     def edit_attr(self, attribute: _Attribute) -> AttributeEditDraft:
         return self._new_attr(attribute)
+
+    def __current_template(self):
+        if DTSUB.current_settings_mode is Type_entitys.Res:
+            templates = DTSUB.shablons_res
+        else:
+            templates = DTSUB.shablons_eve
+        return templates.get(self._dict_data['id'])
+
+    def __catalog_endpoint(self, type_value, binding):
+        from project_cust_38.sub_mes.resource_planning import catalog_link as CLINK
+        if binding is None or not isinstance(type_value, type):
+            return None
+        if issubclass(type_value, AB.SourceProvider):
+            choice = DTSUB.planner_mes_types.choice_for_type(type_value)
+            return CLINK.CatalogLinkEndpoint(
+                provider=AB.SourceProvider.MES,
+                source_key=choice.source_key,
+                entity_key=choice.table_key,
+                field_key=choice.identity_field_name,
+                caption=choice.caption
+            )
+        if issubclass(type_value, Erp_type) and binding.fields:
+            return CLINK.CatalogLinkEndpoint(
+                provider=AB.SourceProvider.ERP,
+                source_key=f'api_erp:{CFG.Config.user_config.ERP_base.name}',
+                entity_key=DTSUB.custom_types.get_full_type_name(type_value, drop_base=True),
+                field_key=binding.fields[0].field_key,
+                caption=binding.field[0].display_name
+            )
+        return None
+
+    def catalog_link_text(self, spec):
+        if not spec:
+            return 'Не настроена'
+        attrs = self.__current_template().cust_attrs.value.get_dict_attrs()
+        source_attr = attrs.get(spec.get('source_attr_name'))
+        link = DTSUB.sub_self.catalog_link_manager.get(spec.get('link_key'))
+
+        source_text = source_attr.info.alias if source_attr else 'Поле не найдено'
+        link_text = link.diplay_text if link else 'Связь не найдена'
+        return f'По полю <{source_text}>: {link_text}'
     
     def __build_mes_binding(self, type_value, presentation_keys, origin, binding_manager: AB.AttributeBindingManager):
         choice = DTSUB.planner_mes_types.choice_for_type(type_value)
@@ -1212,10 +1263,95 @@ class Info():
                         label_instance.set_text(view_text)
 
             t = CQT.TableContext(tbl)
+            def set_catalog_link(row: CQT.TableRow, spec):
+                meta: _AttributeInfoMeta = row.value('Значение', get_cust_content=True)
+                meta.set_value(copy.deepcopy(spec))
+                row.set_value('Значение', meta, set_cust_content=True)
+
+                text = self.catalog_link_text(spec)
+                row.set_value('Значение', text)
+
+                widget = row.tbl.cellWidget(row.i, row.nf['Значение'])
+                if widget is not None:
+                    label = widget.property('_interactive_label_instance')
+                    if label is not None:
+                        label.set_text(text)
+
+            def choose_catalog_link(lbl, sub_self, i, j, row: CQT.TableRow):
+                type_row = row.ctx.find_row({'_name': 'type'}, first=True)
+                type_meta = type_row.value('Значение', get_cust_content=True)
+                target = self.__catalog_endpoint(type_meta.val, binding_state['value'])
+                if target is None:
+                    CQT.msgbox('Сначала выберите тип и его представление')
+                    return
+                manager = DTSUB.sub_self.catalog_link_manager
+                attrs = self.__current_template().cust_attrs.value.get_dict_attrs()
+                sources = {}
+                rows =[]
+                for name, attribute in attrs.items():
+                    if attribute is edit_attribute:
+                        continue
+                    try:
+                        binding = binding_manager.get_binding(attribute.info)
+                        endpoint = self.__catalog_endpoint(attribute.info.type, binding)
+                    except Exception:
+                        logging.exception(f'Не удалось определить справочник поля {name}')
+                        continue
+                    if endpoint is None or not manager.find_direct(endpoint, target):
+                        continue
+                    sources[name] = endpoint
+                    type_info = DTSUB.custom_types.get_mainType_o_by_type(attribute.info.type)
+                    rows.append({
+                        '_name': name,
+                        'Поле шаблона': attribute.info.alias,
+                        'Система': endpoint.provider.value,
+                        'Справочник': getattr(type_info, 'text', ''),
+                        'Представление': binding.display_text
+                    })
+                if not rows:
+                    CQT.msgbox('Нет полей с подходящей прямой связью.')
+                    return
+                selected = CQT.msgboxg_get_table(
+                    DTSUB.sub_self,
+                    'По какому полю получать связанную запись?',
+                    rows,
+                    func_oform_tbl=lambda tbl, *args: tbl.setColumnHidden(0, True),
+                    selectRows=True,
+                    selection_from_tbl=True,
+                    ExtendedSelection=False,
+                    sortingEnabled=False,
+                    WindowTitle='Выбор исходного поля'
+                )
+                if not selected:
+                    return
+                source_name = selected['_name']
+                link = DTSUB.sub_self.choose_catalog_link(sources[source_name], target)
+                if link is not None:
+                    set_catalog_link(row, {'source_attr_name': source_name, 'link_key': link.link_key})
+
+            def clear_catalog_link(lbl, sub_self, i, j, row: CQT.TableRow):
+                set_catalog_link(row, None)
+
             for row in t.rows():
                 attr_o: _AttributeInfoMeta = row.value('Значение', get_cust_content=True)
                 attr_o_type = attr_o.type
                 if attr_o_type is type:
+                    if attr_o.name == 'catalog_link_spec':
+                        row.set_editable('Значение', False)
+                        set_catalog_link(row, attr_o.val)
+                        widget = CQT.add_interactive_label(
+                            t.tbl,
+                            row.i,
+                            t.nf['Значение'],
+                            row.value('Значение'),
+                            parent_self=DTSUB.sub_self,
+                            grab_style_from_cell=True,
+                            autoupdate_column_size=False
+                        )
+                        widget.add_button('...', 'Выбрать связь', choose_catalog_link, cell_val=row)
+                        widget.add_button('x', 'Убрать связь', clear_catalog_link, cell_val=row)
+                        continue
+
                     if edit_draft is not None:
                         row.set_editable('Значение', False)
                         row.set_font_format(italic=True, col_name='Значение')
@@ -1255,6 +1391,9 @@ class Info():
                         lbl.set_text(new_type.text)
 
                         binding_state['value'] = None
+                        row_link = row.ctx.find_row({'_name': 'catalog_link_spec'}, first=True)
+                        set_catalog_link(row_link, None)
+
                         #====================clear view=================================
                         row_view_type = row.ctx.find_row({'_name': 'attr_view'}, first=True)
                         meta_view_type: _AttributeInfoMeta = row_view_type.value('Значение', get_cust_content=True)
@@ -1424,6 +1563,8 @@ class Info():
                         row.set_editable('Значение', True)
                 elif attr_o_type is bool:
                     CQT.add_check_box_switcher(t.tbl, row.i, t.nf['Значение'], attr_o.val, fnc_switch)
+                elif attr_o_type is dict:
+                    ...
                 else:
                     raise Exception(f'Неизвестный тип {attr_o_type}')
 
@@ -1485,6 +1626,7 @@ class Info():
                                                    for_new=rez['for_new'], order=rez['order'],
                                                    for_report=rez['for_report'],
                                                    report_user_hidden=rez['report_user_hidden'])
+            new_attr.info.catalog_link_spec = copy.deepcopy(rez['catalog_link_spec'])
 
             if binding_state['value'] is not None:
                 binding_manager.apply_binding(

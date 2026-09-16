@@ -665,6 +665,8 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
                     binding_manager = AB.AttributeBindingManager()
 
                     def preview_value(name, value): # todo объединить в класс
+                        if name == 'catalog_link_spec':
+                            return info_o.catalog_link_text(value)
                         if name == 'binding_spec':
                             if value is None:
                                 return 'Не настроена'
@@ -828,9 +830,16 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
                 row_cust_attr = t.find_row({'_name': 'cust_attrs'}, first=True)
 
                 if not read_only:
-                    CQT.add_image(row_cust_attr.tbl,row_cust_attr.i,row_cust_attr.nf['Дств'],tooltip= 'Добавить атрибут', conn_func_click=
-                            fnd_click_btn_add_attr, addit_data=  DTSUB.sub_self, path= F.sep().join([F.path_to_caller_file_c(),
-                                                                         'icons', 'btn_add']),stylesheet=DTSUB.sub_self.styleSheet())
+                    CQT.add_image(
+                        row_cust_attr.tbl,
+                        row_cust_attr.i,
+                        row_cust_attr.nf['Дств'],
+                        tooltip='Добавить атрибут',
+                        conn_func_click=fnd_click_btn_add_attr,
+                        addit_data=DTSUB.sub_self,
+                        path=F.sep().join([F.path_to_caller_file_c(),'icons', 'btn_add']),
+                        stylesheet=DTSUB.sub_self.styleSheet()
+                    )
                     t.hide('Дств', False)
 
 
