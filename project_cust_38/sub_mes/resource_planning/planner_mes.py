@@ -1838,6 +1838,43 @@ class MesEntityService:
         self.executor = executor
         self.max_page_size = max(1, min(int(max_page_size), MAX_PAGE_SIZE))
 
+    def read_field(self, choice: MesTypeChoice, reference, field_name: str):
+        reference = MesEntityRef.deserialize(reference)
+        if reference.source_key != choice.source_key:
+            raise MesEntityError('Ссылка принадлежит другому справочнику.')
+        identity = reference.identity_dict
+        if set(identity) != {choice.identity_field_name}:
+            raise MesEntityError('Состав идентичности источника изменился.')
+        table = self.catalog.tables.get(choice.table_key)
+        if table is None:
+            raise MesEntityError(f'Таблица {choice.table_key!r} отсутсвует в каталоге')
+
+        self._require_field(choice.table_key, choice.identity_field_name)
+        self._require_field(choice.table_key, field_name)
+
+        value_alias = '__mes_field_value'
+        query = f"""
+            SELECT {_quote(field_name)} AS {_quote(value_alias)}
+            FROM {_quote(table.table_name)}
+            WHERE {_quote(choice.identity_field_name)} = ?
+            LIMIT 2
+        """
+        try:
+            rows = list(self.executor(table.db_key, query, (identity[choice.identity_field_name],)) or ())
+        except MesEntityError:
+            raise
+        except Exception as exc:
+            raise MesEntityError(f'Не удалось прочитать поле {field_name!r}: {exc}')
+
+        if not rows:
+            raise MesEntityError('Выбранная запись больше не найдена в источнике')
+        if len(rows) > 1:
+            raise MesEntityError('Идентичность выбранной записи соответсвует нескольким строкам.')
+        row = rows[0]
+        if not isinstance(row, Mapping) or value_alias not in row:
+            raise MesEntityError('Исполнитель SQL не вернул запрошенное поле.')
+        return row[value_alias]
+
     @classmethod
     def from_type_catalog(
         cls,

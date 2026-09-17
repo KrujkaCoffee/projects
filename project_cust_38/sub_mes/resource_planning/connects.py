@@ -18,43 +18,64 @@ if TYPE_CHECKING:
     from project_cust_38.sub_mes.resource_planning.manage_res_pl import Plwindow
 
 def te():
-    from dataclasses import replace
+    import sqlite3
+    from project_cust_38.sub_mes.resource_planning import planner_mes as PM
 
-    from project_cust_38.sub_mes.resource_planning import attribute_binding as AB
-    from project_cust_38.sub_mes.resource_planning import catalog_link as CL
-
-    manager = CL.CatalogLinkManager()
-
-    left = CL.CatalogLinkEndpoint(
-        provider=AB.SourceProvider.MES,
-        source_key='demo_mes',
-        entity_key='пл_оуп',
-        field_key='Пномер_ЗП',
+    db = sqlite3.connect(':memory:')
+    db.execute(
+        'CREATE TABLE source_rows '
+        '(id INTEGER PRIMARY KEY, parent_id INTEGER)'
+    )
+    db.executemany(
+        'INSERT INTO source_rows VALUES (?, ?)',
+        [(1, 700), (2, None), (3, 0)],
     )
 
-    right = CL.CatalogLinkEndpoint(
-        provider=AB.SourceProvider.MES,
-        source_key='demo_mes',
-        entity_key='знпр',
-        field_key='s_num',
+    table_key = 'demo.source_rows'
+
+    catalog = PM.AdminCatalog(
+        tables={
+            table_key: PM.AdminTable(table_key, 'demo', 'source_rows'),
+        },
+        fields={
+            (table_key, name): PM.AdminField(table_key, name)
+            for name in ('id', 'parent_id')
+        },
+        relations={},
     )
 
-    manager.register(manager.create(
-        left,
-        right,
-        link_key='operation_to_order',
-        caption='Операция → заказ на производство',
-    ))
+    choice = PM.MesTypeChoice(
+        source_key='demo.source',
+        table_key=table_key,
+        caption='Проверка',
+        identity_field_name='id',
+        presentations=(),
+    )
 
-    # Поля, выбранные для отображения.
-    selected_left = replace(left, field_key='НомПл')
-    selected_right = replace(right, field_key='Ref_Key_py')
+    service = PM.MesEntityService(
+        catalog,
+        PM.SqliteConnectionExecutor(db),
+    )
 
-    found = manager.find_direct(selected_left, selected_right)
+    def read_parent(row_id):
+        reference = PM.MesEntityRef.create(
+            source_key=choice.source_key,
+            identity={'id': row_id},
+            presentation_key='demo.presentation',
+            display_snapshot='Произвольный текст представления',
+        )
+        return service.read_field(choice, reference, 'parent_id')
 
-    print([link.link_key for link in found])
-    print(found[0].left.field_key, found[0].right.field_key)
-    print(manager.find_direct(selected_right, selected_left))
+    print(read_parent(1))
+    print(read_parent(2))
+    print(read_parent(3))
+
+    try:
+        read_parent(999)
+    except PM.MesEntityError as error:
+        print(error)
+
+    db.close()
 
 
 def toggle_focus(new_focus):
