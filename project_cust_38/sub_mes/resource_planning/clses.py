@@ -1144,7 +1144,7 @@ class Info():
         from project_cust_38.sub_mes.resource_planning import catalog_link as CLINK
         if binding is None or not isinstance(type_value, type):
             return None
-        if issubclass(type_value, AB.SourceProvider):
+        if issubclass(type_value, Mes_type):
             choice = DTSUB.planner_mes_types.choice_for_type(type_value)
             return CLINK.CatalogLinkEndpoint(
                 provider=AB.SourceProvider.MES,
@@ -1159,7 +1159,7 @@ class Info():
                 source_key=f'api_erp:{CFG.Config.user_config.ERP_base.name}',
                 entity_key=DTSUB.custom_types.get_full_type_name(type_value, drop_base=True),
                 field_key=binding.fields[0].field_key,
-                caption=binding.field[0].display_name
+                caption=binding.fields[0].display_name
             )
         return None
 
@@ -1171,7 +1171,7 @@ class Info():
         link = DTSUB.sub_self.catalog_link_manager.get(spec.get('link_key'))
 
         source_text = source_attr.info.alias if source_attr else 'Поле не найдено'
-        link_text = link.diplay_text if link else 'Связь не найдена'
+        link_text = link.display_text if link else 'Связь не найдена'
         return f'По полю <{source_text}>: {link_text}'
     
     def __build_mes_binding(self, type_value, presentation_keys, origin, binding_manager: AB.AttributeBindingManager):
@@ -1335,6 +1335,23 @@ class Info():
             for row in t.rows():
                 attr_o: _AttributeInfoMeta = row.value('Значение', get_cust_content=True)
                 attr_o_type = attr_o.type
+                if attr_o.name == 'catalog_link_spec':
+                    row.set_editable('Значение', False)
+                    set_catalog_link(row, attr_o.val)
+
+                    widget = CQT.add_interactive_label(
+                        t.tbl,
+                        row.i,
+                        t.nf['Значение'],
+                        row.value('Значение'),
+                        parent_self=DTSUB.sub_self,
+                        grab_style_from_cell=True,
+                        autoupdate_column_size=False
+                    )
+                    widget.add_button('...', 'Выбрать связь', choose_catalog_link, cell_val=row)
+                    widget.add_button('x', 'Убрать связь', clear_catalog_link, cell_val=row)
+                    continue
+
                 if attr_o_type is type:
                     if attr_o.name == 'catalog_link_spec':
                         row.set_editable('Значение', False)
@@ -1563,8 +1580,6 @@ class Info():
                         row.set_editable('Значение', True)
                 elif attr_o_type is bool:
                     CQT.add_check_box_switcher(t.tbl, row.i, t.nf['Значение'], attr_o.val, fnc_switch)
-                elif attr_o_type is dict:
-                    ...
                 else:
                     raise Exception(f'Неизвестный тип {attr_o_type}')
 
@@ -2955,7 +2970,6 @@ class Reports():
     table = Report("table", "", "Таблица")
     pivottable = Report("pivot_table", "", "Сводная таблица")
     gant = Report("gant", "", "Гант")
-    mes_relations = Report("mes_relations", "", "Карта связей MES")
 
     @classmethod
     def template(cls):

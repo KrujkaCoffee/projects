@@ -285,7 +285,6 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
         if getattr(self,'_draft_tools_host',None) is None:
             self._draft_tools_host = planner_gantt.DraftToolsHost(
                 parent=self.ui.fr_gr_tbl,
-                catalog_provider=lambda: DTSUB.planner_mes_types.session.get_runtime().catalog,
                 schedule_provider=lambda: (DTSUB.resources,DTSUB.events,DTSUB.crosses),
             )
             self.ui.horizontalLayout_10.addWidget(self._draft_tools_host)

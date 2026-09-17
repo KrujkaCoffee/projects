@@ -366,100 +366,6 @@ class _DraftPage(QtWidgets.QWidget):
         self._body = widget
         self.layout_root.addWidget(widget, 1)
 
-
-class RelationsDraftPage(_DraftPage):
-    def __init__(self, catalog_provider: Callable[[], Any], parent=None) -> None:
-        super().__init__("Карта связей MES", parent)
-        self.catalog_provider = catalog_provider
-        self.payload = None
-        self.canvas = None
-        self._changing_root = False
-        self.root_combo = QtWidgets.QComboBox(self.toolbar)
-        self.root_combo.setMinimumWidth(260)
-        self.root_combo.setToolTip("Таблица в центре карты")
-        self.refresh_button = QtWidgets.QPushButton("Обновить", self.toolbar)
-        self.status_label = QtWidgets.QLabel(self.toolbar)
-        self.status_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
-        self.toolbar_layout.addSpacing(12)
-        self.toolbar_layout.addWidget(QtWidgets.QLabel("Начать с:", self.toolbar))
-        self.toolbar_layout.addWidget(self.root_combo)
-        self.toolbar_layout.addWidget(self.refresh_button)
-        self.toolbar_layout.addStretch(1)
-        self.toolbar_layout.addWidget(self.status_label)
-        self.refresh_button.clicked.connect(self.refresh)
-        self.root_combo.currentIndexChanged.connect(self._root_changed)
-
-    def refresh(self) -> None:
-        try:
-            canvas_type = _load_relations_canvas()
-            requested_root = str(self.root_combo.currentData() or "")
-            self.payload = relation_graph_payload(
-                self.catalog_provider(),
-                requested_root,
-            )
-            self._fill_roots(self.payload.root_table_key)
-            canvas = canvas_type(self)
-            canvas.setObjectName("mesDraftRelationsCanvas")
-            canvas.setProperty("draftReadOnly", True)
-            canvas.load_graph(
-                list(self.payload.tables),
-                {
-                    key: list(value)
-                    for key, value in self.payload.fields_by_table.items()
-                },
-                list(self.payload.relations),
-                {
-                    key: list(value)
-                    for key, value in self.payload.pairs_by_relation.items()
-                },
-                self.payload.root_table_key,
-            )
-            self.canvas = canvas
-            self._set_body(canvas)
-            self.status_label.setText(" (test)Просмотр · без сохранения")
-        except Exception as exc:
-            self.canvas = None
-            self.status_label.setText("Основное окно продолжает работать")
-            state = FriendlyState(
-                "Карта связей сейчас недоступна",
-                "",
-                icon="🧩",
-                details=str(exc),
-                parent=self,
-            )
-            state.retryRequested.connect(self.refresh)
-            self._set_body(state)
-
-    def _fill_roots(self, selected: str) -> None:
-        if self.payload is None:
-            return
-        self._changing_root = True
-        try:
-            self.root_combo.clear()
-            for table in self.payload.tables:
-                key = str(table.get("table_key") or "")
-                name = str(table.get("table_name") or key)
-                self.root_combo.addItem(f"{name}  [{key}]", key)
-            index = self.root_combo.findData(selected)
-            self.root_combo.setCurrentIndex(max(0, index))
-        finally:
-            self._changing_root = False
-
-    def _root_changed(self) -> None:
-        if self._changing_root or self.canvas is None or self.payload is None:
-            return
-        root = str(self.root_combo.currentData() or "")
-        if not root:
-            return
-        self.canvas.load_graph(
-            list(self.payload.tables),
-            {key: list(value) for key, value in self.payload.fields_by_table.items()},
-            list(self.payload.relations),
-            {key: list(value) for key, value in self.payload.pairs_by_relation.items()},
-            root,
-        )
-
-
 class GantDraftPage(_DraftPage):
     def __init__(self, schedule_provider: Callable[[], tuple[Any, Any, Any]], parent=None) -> None:
         super().__init__("(test)Гант", parent)
@@ -548,13 +454,11 @@ class DraftToolsHost(QtWidgets.QStackedWidget):
     def __init__(
         self,
         *,
-        catalog_provider: Callable[[], Any],
         schedule_provider: Callable[[], tuple[Any, Any, Any]],
         parent=None,
     ) -> None:
         super().__init__(parent)
         self.pages = {
-            "mes_relations": RelationsDraftPage(catalog_provider, self),
             "gant": GantDraftPage(schedule_provider, self),
         }
         for page in self.pages.values():
@@ -624,7 +528,6 @@ __all__ = [
     "relation_graph_payload",
     "schedule_snapshot",
     "FriendlyState",
-    "RelationsDraftPage",
     "GantDraftPage",
     "DraftToolsHost",
 ]

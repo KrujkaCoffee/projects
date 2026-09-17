@@ -72,6 +72,7 @@ from .view_options import (
     TimeScale,
     ViewOptions,
 )
+from .qt import ScheduleWidget
 
 __all__ = [
     "Allocation",
@@ -138,12 +139,3 @@ __all__ = [
     "normalization_maxima",
     "slice_metrics_from_allocations",
 ]
-
-
-def __getattr__(name: str):
-    # Keeping Qt lazy makes domain-only use and headless tests independent of PyQt5.
-    if name == "ScheduleWidget":
-        from .qt import ScheduleWidget
-
-        return ScheduleWidget
-    raise AttributeError(name)
