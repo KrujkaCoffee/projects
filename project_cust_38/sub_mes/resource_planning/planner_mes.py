@@ -1875,6 +1875,49 @@ class MesEntityService:
             raise MesEntityError('Исполнитель SQL не вернул запрошенное поле.')
         return row[value_alias]
 
+    def find_by_field(self, choice: MesTypeChoice, field_name: str, value, *, presentation_key=None):
+        """Найти запись по значению поля связи"""
+        table = self.catalog.tables.get(choice.table_key)
+        if table is None:
+            raise MesEntityError(f'Таблица {choice.table_key} отсутствует в каталоге')
+        self._require_field(choice.table_key, choice.identity_field_name)
+        self._require_field(choice.table_key, field_name)
+        if value is None:
+            return None
+        presentations = self._presentations(choice, presentation_key)
+        identity_alias = '__mes_found_identity'
+        query = f"""
+            SELECT {_quote(choice.identity_field_name)} AS {_quote(identity_alias)}
+            FROM {_quote(table.table_name)}
+            WHERE {_quote(field_name)} = ?
+            LIMIT 2
+        """
+        try:
+            rows = list(self.executor(table.db_key, query, (value,) or ()))
+        except MesEntityError:
+            raise
+        except Exception as exc:
+            raise MesEntityError(f'Не удалось выполнить поиск по полю {field_name!r}: {exc}') from exc
+        if not rows:
+            return None
+        if len(rows) > 1:
+            raise MesEntityError(f'Связь неоднозначная в справочнике {choice.caption!r}')
+        row = rows[0]
+        if not isinstance(row, Mapping) or identity_alias not in row:
+            raise MesEntityError('Не найдено поле идентичности')
+        reference = MesEntityRef.create(
+            source_key=choice.source_key,
+            identity={choice.identity_field_name: row[identity_alias]},
+            presentation_key=PRESENTATION_SEPARATOR.join(
+                item.presentation_key for item in presentations
+            ),
+            display_snapshot=''
+        )
+        resolution = self.resolve(choice, reference)
+        if not resolution.resolved or resolution.current is None:
+            raise MesEntityError(resolution.reason or 'Не удалось получить представление записи')
+        return resolution.current
+
     @classmethod
     def from_type_catalog(
         cls,

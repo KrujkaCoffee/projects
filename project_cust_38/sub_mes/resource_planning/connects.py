@@ -23,55 +23,56 @@ def te():
 
     db = sqlite3.connect(':memory:')
     db.execute(
-        'CREATE TABLE source_rows '
-        '(id INTEGER PRIMARY KEY, parent_id INTEGER)'
+        'CREATE TABLE target_rows '
+        '(id INTEGER PRIMARY KEY, code INTEGER, title TEXT)'
     )
     db.executemany(
-        'INSERT INTO source_rows VALUES (?, ?)',
-        [(1, 700), (2, None), (3, 0)],
+        'INSERT INTO target_rows VALUES (?, ?, ?)',
+        [
+            (11, 700, 'Заказ 700'),
+            (12, 800, 'Первый заказ'),
+            (13, 800, 'Второй заказ'),
+            (14, 0, 'Нулевой код'),
+        ],
     )
 
-    table_key = 'demo.source_rows'
-
+    table_key = 'demo.target_rows'
     catalog = PM.AdminCatalog(
         tables={
-            table_key: PM.AdminTable(table_key, 'demo', 'source_rows'),
+            table_key: PM.AdminTable(table_key, 'demo', 'target_rows'),
         },
         fields={
             (table_key, name): PM.AdminField(table_key, name)
-            for name in ('id', 'parent_id')
+            for name in ('id', 'code', 'title')
         },
         relations={},
     )
-
+    presentation = PM.MesPresentationChoice(
+        presentation_key='demo.target.title',
+        caption='Наименование',
+        source_field_name='title',
+        result_table_key=table_key,
+        result_field_name='title',
+        is_default=True,
+    )
     choice = PM.MesTypeChoice(
-        source_key='demo.source',
+        source_key='demo.target',
         table_key=table_key,
-        caption='Проверка',
+        caption='Заказы',
         identity_field_name='id',
-        presentations=(),
+        presentations=(presentation,),
     )
+    service = PM.MesEntityService(catalog, PM.SqliteConnectionExecutor(db))
 
-    service = PM.MesEntityService(
-        catalog,
-        PM.SqliteConnectionExecutor(db),
-    )
-
-    def read_parent(row_id):
-        reference = PM.MesEntityRef.create(
-            source_key=choice.source_key,
-            identity={'id': row_id},
-            presentation_key='demo.presentation',
-            display_snapshot='Произвольный текст представления',
-        )
-        return service.read_field(choice, reference, 'parent_id')
-
-    print(read_parent(1))
-    print(read_parent(2))
-    print(read_parent(3))
+    result = service.find_by_field(choice, 'code', 700)
+    print(result.identity_dict)
+    print(result.display_snapshot)
+    print(service.find_by_field(choice, 'code', 999))
+    print(service.find_by_field(choice, 'code', None))
+    print(service.find_by_field(choice, 'code', 0).identity_dict)
 
     try:
-        read_parent(999)
+        service.find_by_field(choice, 'code', 800)
     except PM.MesEntityError as error:
         print(error)
 
