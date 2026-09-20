@@ -11,9 +11,10 @@ import threading
 import uuid
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, Protocol, TYPE_CHECKING
 
 from project_cust_38 import Cust_postgresql_executor as postgres
+from project_cust_38.sub_mes.resource_planning import catalog_link as CLINK
 
 PLANNER_SCHEMA = "planner"
 ADMIN_SCHEMA = "public"
@@ -1893,7 +1894,7 @@ class MesEntityService:
             LIMIT 2
         """
         try:
-            rows = list(self.executor(table.db_key, query, (value,) or ()))
+            rows = list(self.executor(table.db_key, query, (value,)) or ())
         except MesEntityError:
             raise
         except Exception as exc:
@@ -1917,6 +1918,32 @@ class MesEntityService:
         if not resolution.resolved or resolution.current is None:
             raise MesEntityError(resolution.reason or 'Не удалось получить представление записи')
         return resolution.current
+
+    def resolve_link(self, link: CLINK.CatalogLinkSpec, source_choice: MesTypeChoice, source_reference,
+                     target_choice: MesTypeChoice, *, presentation_key = None):
+        """
+        Получить запись по связи MES -> MES
+        """
+        from project_cust_38.sub_mes.resource_planning.attribute_binding import SourceProvider
+        if not isinstance(link, CLINK.CatalogLinkSpec):
+            raise MesEntityError("Некорректный тип аргумента link")
+        if link.version != 1:
+            raise MesEntityError("Версия не поддерживается")
+        if link.left.provider != SourceProvider.MES or link.right.provider != SourceProvider.MES:
+            raise MesEntityError(f'Связка {link.left.provider} -> {link.right.provider} не поддерживается')
+        if link.direction != CLINK.CatalogLinkDirection.LEFT_TO_RIGHT:
+            raise MesEntityError(f'связь {link.direction} не поддерживается')
+        if link.comparison != CLINK.CatalogLinkComparison.EQUAL:
+            raise MesEntityError('Поддерживается связь по равенству значений')
+        if link.cardinality not in (CLINK.CatalogLinkCardinality.ONE_TO_ONE, CLINK.CatalogLinkCardinality.MANY_TO_ONE):
+            raise MesEntityError(f'Не поддерживается связь {link.cardinality}')
+        if (link.left.source_key, link.left.entity_key) != (source_choice.source_key, source_choice.table_key):
+            raise MesEntityError('Исходный справочник не совпадает с левой связью')
+        if (link.right.source_key, link.right.entity_key) != (target_choice.source_key, target_choice.table_key):
+            raise MesEntityError('Исходный справочник не совпадает с правой связью')
+        value = self.read_field(source_choice, source_reference, link.left.field_key)
+        return self.find_by_field(target_choice, link.right.field_key, value, presentation_key=presentation_key)
+
 
     @classmethod
     def from_type_catalog(

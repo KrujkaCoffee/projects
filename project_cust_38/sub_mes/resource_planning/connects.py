@@ -20,59 +20,87 @@ if TYPE_CHECKING:
 def te():
     import sqlite3
     from project_cust_38.sub_mes.resource_planning import planner_mes as PM
+    from project_cust_38.sub_mes.resource_planning import catalog_link as CL
+    from project_cust_38.sub_mes.resource_planning import attribute_binding as AB
 
     db = sqlite3.connect(':memory:')
-    db.execute(
-        'CREATE TABLE target_rows '
-        '(id INTEGER PRIMARY KEY, code INTEGER, title TEXT)'
-    )
-    db.executemany(
-        'INSERT INTO target_rows VALUES (?, ?, ?)',
-        [
+    db.executescript("""
+        CREATE TABLE src (id INTEGER PRIMARY KEY, order_code INTEGER);
+        INSERT INTO src VALUES (1, 700), (2, NULL), (3, 999), (4, 800);
+
+        CREATE TABLE orders (id INTEGER PRIMARY KEY, code INTEGER, title TEXT);
+        INSERT INTO orders VALUES
             (11, 700, 'Заказ 700'),
             (12, 800, 'Первый заказ'),
-            (13, 800, 'Второй заказ'),
-            (14, 0, 'Нулевой код'),
-        ],
-    )
+            (13, 800, 'Второй заказ');
+    """)
 
-    table_key = 'demo.target_rows'
     catalog = PM.AdminCatalog(
         tables={
-            table_key: PM.AdminTable(table_key, 'demo', 'target_rows'),
+            'demo.src': PM.AdminTable('demo.src', 'demo', 'src'),
+            'demo.orders': PM.AdminTable('demo.orders', 'demo', 'orders'),
         },
         fields={
-            (table_key, name): PM.AdminField(table_key, name)
-            for name in ('id', 'code', 'title')
+            (table, name): PM.AdminField(table, name)
+            for table, names in {
+                'demo.src': ('id', 'order_code'),
+                'demo.orders': ('id', 'code', 'title'),
+            }.items()
+            for name in names
         },
         relations={},
     )
-    presentation = PM.MesPresentationChoice(
-        presentation_key='demo.target.title',
-        caption='Наименование',
-        source_field_name='title',
-        result_table_key=table_key,
-        result_field_name='title',
-        is_default=True,
+
+    source_choice = PM.MesTypeChoice(
+        'demo.source', 'demo.src', 'Источник', 'id',
+        (PM.MesPresentationChoice(
+            'demo.source.id', 'Код', 'id', 'demo.src', 'id',
+            is_default=True,
+        ),),
     )
-    choice = PM.MesTypeChoice(
-        source_key='demo.target',
-        table_key=table_key,
-        caption='Заказы',
-        identity_field_name='id',
-        presentations=(presentation,),
+    target_choice = PM.MesTypeChoice(
+        'demo.target', 'demo.orders', 'Заказы', 'id',
+        (PM.MesPresentationChoice(
+            'demo.target.title', 'Наименование', 'title',
+            'demo.orders', 'title', is_default=True,
+        ),),
     )
+
+    link = CL.CatalogLinkSpec(
+        link_key='demo.link',
+        left=CL.CatalogLinkEndpoint(
+            AB.SourceProvider.MES, 'demo.source', 'demo.src', 'order_code',
+        ),
+        right=CL.CatalogLinkEndpoint(
+            AB.SourceProvider.MES, 'demo.target', 'demo.orders', 'code',
+        ),
+    )
+
+    links = CL.CatalogLinkManager.from_list([link.to_dict()])
     service = PM.MesEntityService(catalog, PM.SqliteConnectionExecutor(db))
 
-    result = service.find_by_field(choice, 'code', 700)
+    def follow(source_id):
+        reference = PM.MesEntityRef.create(
+            source_key='demo.source',
+            identity={'id': source_id},
+            presentation_key='demo.source.id',
+            display_snapshot=f'Исходная строка {source_id}',
+        )
+        return service.resolve_link(
+            links.get('demo.link'),
+            source_choice,
+            reference,
+            target_choice,
+        )
+
+    result = follow(1)
     print(result.identity_dict)
     print(result.display_snapshot)
-    print(service.find_by_field(choice, 'code', 999))
-    print(service.find_by_field(choice, 'code', None))
-    print(service.find_by_field(choice, 'code', 0).identity_dict)
+    print(follow(2))
+    print(follow(3))
 
     try:
-        service.find_by_field(choice, 'code', 800)
+        follow(4)
     except PM.MesEntityError as error:
         print(error)
 
