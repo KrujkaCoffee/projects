@@ -15,6 +15,7 @@ from typing import Any, Protocol, TYPE_CHECKING
 
 from project_cust_38 import Cust_postgresql_executor as postgres
 from project_cust_38.sub_mes.resource_planning import catalog_link as CLINK
+from project_cust_38 import Cust_orm as corm
 
 PLANNER_SCHEMA = "planner"
 ADMIN_SCHEMA = "public"
@@ -777,11 +778,9 @@ class CustOrmModels:
 
 
 def build_cust_orm_models(
-    corm_module: Any | None = None,
     *,
     planner_schema: str = PLANNER_SCHEMA,
 ) -> CustOrmModels:
-    corm = corm_module or _import_cust_orm()
     _validate_sql_identifier(planner_schema, "схема planner")
     table_names = {
         "source": f"{planner_schema}.planner_sources",
@@ -881,13 +880,10 @@ class CustOrmPlannerRegistryRepository:
         self,
         transaction_factory: Callable[..., Any],
         *,
-        corm_module: Any | None = None,
         planner_schema: str = PLANNER_SCHEMA,
     ) -> None:
         self.transaction_factory = transaction_factory
-        self.corm = corm_module or _import_cust_orm()
         self.models = build_cust_orm_models(
-            self.corm,
             planner_schema=planner_schema,
         )
 
@@ -1148,18 +1144,6 @@ class CustOrmPlannerRegistryRepository:
         ):
             for item in self._children(model, source_key, executor):
                 item.delete()
-
-
-def _import_cust_orm() -> Any:
-    try:
-        from project_cust_38 import Cust_orm as corm
-    except ImportError as exc:
-        raise PlannerRepositoryError(
-            "Cust_orm не найден. Поместите модуль в окружение project_cust_38 "
-            "либо передайте corm_module явно."
-        ) from exc
-    return corm
-
 
 def _required_text(row: Mapping[str, Any], key: str, entity: str) -> str:
     value = str(row.get(key) or "").strip()
@@ -2751,7 +2735,6 @@ class PlannerRegistryRuntime:
         *,
         executor: postgres.PostgreSqlExecutor | None = None,
         executor_config: postgres.ExecutorConfig | None = None,
-        corm_module: Any | None = None,
     ) -> "PlannerRegistryRuntime":
         resolved_conninfo = conninfo() if callable(conninfo) else conninfo
         active_executor, owns_executor = _resolve_executor(
@@ -2766,7 +2749,6 @@ class PlannerRegistryRuntime:
                     active_executor,
                     write=write,
                 ),
-                corm_module=corm_module,
                 planner_schema=PLANNER_SCHEMA,
             )
             service = PlannerRegistryService(catalog, repository)

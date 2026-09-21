@@ -149,7 +149,7 @@ class _AttributeInfo:
                                                             True, '🏷️')
         self.description: _AttributeInfoMeta = _AttributeInfoMeta(str, '', 'description', '', 'Описание',
                                                                   'Описание атрибута', 10, True, '📝')
-        self.protected: _AttributeInfoMeta = _AttributeInfoMeta(bool, True, 'protected', 'для юзера', 'Изменяемый',
+        self.protected: _AttributeInfoMeta = _AttributeInfoMeta(bool, False, 'protected', 'для юзера', 'Изменяемый',
                                                                 'Возможность изменить', 10, True, '🛡️')
         self.user_hidden: _AttributeInfoMeta = _AttributeInfoMeta(bool, False, 'user_hidden', 'для юзера аналог _',
                                                                   'Скрытый', 'Видимость для пользователя', 15, True,

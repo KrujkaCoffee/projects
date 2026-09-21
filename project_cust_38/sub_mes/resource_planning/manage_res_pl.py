@@ -499,7 +499,7 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
                     if not isinstance(type_attr,type) or not issubclass(type_attr,CLSS.Mes_type):
                         continue
                     row_mes = t.find_row({'_name':attr_name},first=True)
-                    if not row_mes :# or attr.info.protected:
+                    if not row_mes: #or attr.info.protected:
                         continue
 
                     def fnc_select_mes_entity(lbl:CQT.InteractiveLabelInstance,sub_self,i,j,row:CQT.TableRow,
@@ -528,9 +528,10 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
                             return
                         new_value = None if result.reference is None else type_attr(result.reference)
                         text_value = '' if new_value is None else str(new_value)
-                        row.set_value('Значение',text_value)
-                        row.set_value('Значение',new_value,set_cust_content=True)
-                        lbl.set_text(text_value)
+                        with CQT.table_updating(t, hide_table=False):
+                            row.set_value('Значение',new_value, set_cust_content=True)
+                            row.set_value('Значение',text_value)
+                            lbl.set_text(text_value)
 
                     def fnc_fill_mes_by_link(
                             lbl: CQT.InteractiveLabelInstance, sub_self, i, j,
@@ -555,11 +556,9 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
                             if not isinstance(source_type, type) or not issubclass(source_type, CLSS.Mes_type):
                                 return
                             source_row = t.find_row({'_name': source_name}, first=True)
-                            if source_row is None:
-                                return
                             source_value = (
-                                source_row.value('Значение', get_cust_attrs=True)
-                                if source_row is None
+                                source_row.value('Значение', get_cust_content=True)
+                                if source_row is not None
                                 else source_row.value
                             )
                             source_ref = getattr(source_value, 'reference', None)

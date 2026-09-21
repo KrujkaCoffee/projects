@@ -1,10 +1,4 @@
-"""Native Qt layout study. Import Ui_mainWindow in place of the generated UI class.
-
-Requires the same PyQt5 binding as resource_planning/main_ui.py.
-No MES imports, queries, data replacement or generated-file writes happen here.
-"""
 from pathlib import Path
-import sys
 from PyQt5 import QtCore, QtWidgets, uic
 
 VARIANTS = ('resource', 'event', 'relations')
@@ -12,11 +6,7 @@ CAPTIONS = ('От ресурса', 'От события', 'Три сущност
 
 
 class Ui_mainWindow:
-    """Compatible setupUi facade; all original form attributes remain available."""
-
-    def __init__(self, variant='resource'):
-        if variant not in VARIANTS:
-            raise ValueError(f'Unknown layout {variant!r}; expected one of {VARIANTS}')
+    def __init__(self, variant='event'):
         self._initial_variant = variant
 
     def setupUi(self, window):
@@ -33,8 +23,6 @@ class Ui_mainWindow:
 
 
 class LayoutController(QtCore.QObject):
-    """Move existing panels; never reconstruct tables or connect business slots."""
-
     def __init__(self, window, ui, variant):
         super().__init__(window)
         self.window = window
@@ -44,8 +32,6 @@ class LayoutController(QtCore.QObject):
         self.apply(variant)
         ui.cmb_preview_layout.currentIndexChanged.connect(self.choose)
         ui.btn_preview_reset.clicked.connect(self.reset_sizes)
-        # Existing MES restoration schedules dock sizes for 150 ms after startup.
-        # Apply the initial study geometry after that, once, with a parented timer.
         self._initial_geometry = QtCore.QTimer(self)
         self._initial_geometry.setSingleShot(True)
         self._initial_geometry.timeout.connect(self._finish_initial_geometry)
@@ -68,7 +54,6 @@ class LayoutController(QtCore.QObject):
         enabled = self.window.updatesEnabled()
         self.window.setUpdatesEnabled(False)
         try:
-            # Table -> QFrame parent relationships used by connects.py stay intact.
             for panel in (ui.fr_resources, ui.fr_events, ui.fr_cross):
                 panel.setParent(ui.fr_work)
             ui.splitter.setParent(ui.fr_work)
@@ -107,14 +92,11 @@ class LayoutController(QtCore.QObject):
             height = max(ui.splitter.height(), 420)
             ui.splitter.setSizes([int(height * .57), int(height * .43)])
         ui.splitter_3.setSizes([260, 900])
-        # Keep real QDockWidgets registered with QMainWindow and MES persistence.
         self.window.resizeDocks([ui.dck_info], [300], QtCore.Qt.Horizontal)
         self.window.resizeDocks([ui.dckGraph], [270], QtCore.Qt.Vertical)
 
 
 class DemoWindow(QtWidgets.QMainWindow):
-    """Offline population to inspect the forms without importing or contacting MES."""
-
     def __init__(self, variant='resource'):
         super().__init__()
         self.ui = Ui_mainWindow(variant)
@@ -166,11 +148,6 @@ class DemoWindow(QtWidgets.QMainWindow):
         u.btn_shab_res.clicked.connect(lambda:self.templates('ресурсов'))
         u.btn_shab_eve.clicked.connect(lambda:self.templates('событий'))
         u.btn_shab_extit.clicked.connect(self.leave_templates)
-        for name in ('btn_add_new_res','btn_add_new_eve','btn_add_new_sbjpl','btn_cross_add',
-                     'btn_cross_del','btn_info_ok','btn_info_cancel','btn_s_shab_new',
-                     'btn_s_shab_save','btn_report_preset'):
-            getattr(u, name).clicked.connect(self.explain_demo)
-        u.cmb_select_sbjpl.currentIndexChanged.connect(self.explain_demo)
         self.statusBar().showMessage('Демо: выбор строк, фильтрация участий, свойства и переключение компоновок.')
         self.select_resource(0)
 
@@ -235,23 +212,3 @@ class DemoWindow(QtWidgets.QMainWindow):
         self.ui.fr_settings.hide()
         self.ui.fr_work.show()
         self.ui.btn_shab_extit.hide()
-
-    def explain_demo(self, _checked=False):
-        QtWidgets.QMessageBox.information(self,'Демонстрационный просмотр',
-            'В отдельном просмотре заполнение демонстрационное.\n'
-            'При подключении Ui_mainWindow к Plwindow эта кнопка работает через существующий код MES.')
-
-
-def main():
-    import argparse
-    parser=argparse.ArgumentParser(description='Offline Qt layout preview, no MES connection')
-    parser.add_argument('--variant',choices=VARIANTS,default='resource')
-    args=parser.parse_args()
-    app=QtWidgets.QApplication(sys.argv[:1])
-    window=DemoWindow(args.variant)
-    window.show()
-    return app.exec_()
-
-
-if __name__=='__main__':
-    raise SystemExit(main())
