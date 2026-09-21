@@ -3202,43 +3202,44 @@ def select_cmb_by_data(cmb:QtWidgets.QComboBox,data):
         cmb.setCurrentIndex(index)
         
 def fill_list_combobx(self,cmb:QtWidgets.QComboBox,list_rows,list_colors=[],list_tooltip=[], sep_col = ';',first_void = False,list_bold=[],list_data=[],current_text=None):
-    cmb.clear()
-    model = cmb.model()
+    with block_signals_keep_state(cmb):
+        cmb.clear()
+        model = cmb.model()
 
-    for i in range(len(list_rows)):
-        entry = QtGui.QStandardItem(list_rows[i])
-        if list_colors:
-            if i < len(list_colors):
-                r = g= b = "254"
-                if list_colors[i]:
-                    if sep_col in list_colors[i]: 
-                        r, g, b = list_colors[i].split(sep_col)
-                color = QtGui.QColor.fromRgb(int(r), int(g), int(b))
-                entry.setForeground(color)
-        if i < len(list_bold):
-            font = entry.font()
-            font.setBold(list_bold[i])
-            entry.setFont(font)
+        for i in range(len(list_rows)):
+            entry = QtGui.QStandardItem(list_rows[i])
             if list_colors:
-                entry.setForeground(color)
-        model.appendRow(entry)
-    for i in range(cmb.count()):
-        if len(list_tooltip) == len(list_rows):
-            cmb.setItemData(i, list_tooltip[i], QtCore.Qt.ToolTipRole)
-        if list_data and len(list_data) == len(list_rows):
-            cmb.setItemData(i, list_data[i], QtCore.Qt.UserRole)
-    if first_void:
-        model.insertRow(0,QtGui.QStandardItem(""))
-        cmb.setCurrentIndex(0)
-    if current_text:
-        if isinstance(current_text, int):
-            cmb.setCurrentIndex(current_text)
-        elif isinstance(current_text, str):
-            cmb.setCurrentText(current_text)
-        else:
-            print("Error in current_text")
+                if i < len(list_colors):
+                    r = g= b = "254"
+                    if list_colors[i]:
+                        if sep_col in list_colors[i]:
+                            r, g, b = list_colors[i].split(sep_col)
+                    color = QtGui.QColor.fromRgb(int(r), int(g), int(b))
+                    entry.setForeground(color)
+            if i < len(list_bold):
+                font = entry.font()
+                font.setBold(list_bold[i])
+                entry.setFont(font)
+                if list_colors:
+                    entry.setForeground(color)
+            model.appendRow(entry)
+        for i in range(cmb.count()):
+            if len(list_tooltip) == len(list_rows):
+                cmb.setItemData(i, list_tooltip[i], QtCore.Qt.ToolTipRole)
+            if list_data and len(list_data) == len(list_rows):
+                cmb.setItemData(i, list_data[i], QtCore.Qt.UserRole)
+        if first_void:
+            model.insertRow(0,QtGui.QStandardItem(""))
+            cmb.setCurrentIndex(0)
+        if current_text:
+            if isinstance(current_text, int):
+                cmb.setCurrentIndex(current_text)
+            elif isinstance(current_text, str):
+                cmb.setCurrentText(current_text)
+            else:
+                print("Error in current_text")
 
-    cmb.setMaxVisibleItems(len(list_rows))
+        cmb.setMaxVisibleItems(len(list_rows))
 
 # def set_cell_editable(tbl:QtWidgets.QTableWidget, r:int, c:int, val:bool): 03.07.2026 Дубликат
 #     if val:

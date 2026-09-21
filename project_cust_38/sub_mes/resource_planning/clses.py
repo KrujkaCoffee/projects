@@ -16,17 +16,40 @@ import copy
 import project_cust_38.api_erp_commands as APIERP
 import project_cust_38.sub_mes.resource_planning.attribute_binding as AB
 import project_cust_38.sub_mes.resource_planning.planner_mes as PMES
+import project_cust_38.sub_mes.resource_planning.planner_erp as PERP
 
 T = TypeVar("T")
 SQLITE_TYPES = (type(None), str, int, float, bool, bytes, dict, list, tuple)
 
 DTSUB = DTCLS.module_manage_sub_app
-import project_cust_38.sub_mes.resource_planning.planner_erp as PERP
+
 
 class Mes_type:
     pass
 
 class Erp_type:
+    def __init__(self, reference=None):
+        self.reference = None
+        if reference is None:
+            return
+        parsed = PERP.ErpEntityRef.deserialize(reference)
+        custom_types = DTSUB.custom_types
+        if custom_types is None:
+            raise PERP.ErpEntityError('Каталог типов ERP не инициализирован')
+        entity_key = custom_types.get_full_type_name(type(self), drop_base=True)
+        if parsed.entity_key != entity_key:
+            raise PERP.ErpEntityError(f'Ссылка на {parsed.entity_key!r} не принадлежит типу {entity_key}')
+        self.reference = parsed
+
+    def serialize(self):
+        if self.reference is None:
+            return None
+        return self.reference.serialize()
+
+    @classmethod
+    def deserialize(cls, data):
+        return cls(data)
+
     @classmethod
     def _get_fields(cls):
         path = DTSUB.custom_types.get_full_type_name(cls, drop_base=True)
@@ -47,38 +70,6 @@ class Erp_type:
             {'_name': _['Имя'], 'Поле': _['Синоним'], 'Тип': _['Тип'], 'Стандартный': '⭐' if _['Стандартный'] else '',
              'Комментарий': _['Комментарий']} for _ in data_erp]
         return rez
-
-    def __init__(self, reference=None):
-        self.reference = None
-        if reference is None:
-            return
-
-        parsed = PERP.ErpEntityRef.deserialize(reference)
-        custom_types = getattr(DTSUB, 'custom_types', None)
-        if custom_types is None:
-            raise PERP.ErpEntityError(
-                'Не инициализирован каталог типов пользовательских атрибутов.'
-            )
-
-        entity_key = custom_types.get_full_type_name(
-            type(self), drop_base=True
-        )
-        if parsed.entity_key != entity_key:
-            raise PERP.ErpEntityError(
-                f'Ссылка на {parsed.entity_key!r} '
-                f'не принадлежит типу {entity_key!r}.'
-            )
-
-        self.reference = parsed
-
-    def serialize(self):
-        if self.reference is None:
-            return None
-        return self.reference.serialize()
-
-    @classmethod
-    def deserialize(cls, data):
-        return cls(data)
 
     def __str__(self):
         return '' if self.reference is None else str(self.reference)

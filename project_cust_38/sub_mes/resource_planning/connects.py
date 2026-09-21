@@ -18,42 +18,32 @@ if TYPE_CHECKING:
     from project_cust_38.sub_mes.resource_planning.manage_res_pl import Plwindow
 
 def te():
-    import json
+    import project_cust_38.Cust_config as CFG
+    import project_cust_38.api_erp_commands as APIERP
 
-    from project_cust_38.sub_mes.resource_planning import clses as CLSS
-    from project_cust_38.sub_mes.resource_planning.planner_erp import (
-        ErpEntityRef,
+    from project_cust_38.sub_mes.resource_planning import planner_erp as PERP
+
+    def current_erp_source_key():
+        return f'api_erp:{CFG.Config.user_config.ERP_base.name}'
+
+    service = PERP.ErpEntityService(
+        interface=APIERP,
+        source_key_getter=current_erp_source_key,
     )
 
-    reference = ErpEntityRef(
-        source_key="api_erp:TEST",
-        entity_key="Документы.ЗаказКлиента",
-        ref_key="6D9D712A-9332-47DD-9BF0-32B236060B17",
-        display_snapshot="Заказ № 15",
+    reference = PERP.ErpEntityRef(
+        source_key=current_erp_source_key(),
+        entity_key='Документы.ЗаказНаПроизводство2_2',
+        ref_key='5fa846d3-94a4-11f1-a4b7-30e1716be59f',
     )
 
-    value = CLSS.ClientOrder(reference)
+    result = service.read(reference)
 
-    attribute = CLSS._Attribute.attr(
-        value,
-        CLSS.ClientOrder,
-        alias="Тестовый заказ",
-        protected=False,
-    )
-    attribute.info.base_attr = False
+    print(result is not None)
 
-    saved = json.dumps(
-        attribute.serialize(),
-        ensure_ascii=False,
-    )
-
-    restored = CLSS._Attribute.deserialize(json.loads(saved))
-
-    print(type(restored.value).__name__)
-    print(str(restored.value))
-    print(restored.value == value)
-    print(restored.info.type is CLSS.ClientOrder)
-    print(CLSS.ClientOrder().serialize())
+    if result is not None:
+        print(result.identity_key == reference.identity_key)
+        print(str(result))
 
 def toggle_focus(new_focus):
     te()
