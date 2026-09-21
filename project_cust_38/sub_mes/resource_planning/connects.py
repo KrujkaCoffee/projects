@@ -18,94 +18,43 @@ if TYPE_CHECKING:
     from project_cust_38.sub_mes.resource_planning.manage_res_pl import Plwindow
 
 def te():
-    import sqlite3
-    from project_cust_38.sub_mes.resource_planning import planner_mes as PM
-    from project_cust_38.sub_mes.resource_planning import catalog_link as CL
-    from project_cust_38.sub_mes.resource_planning import attribute_binding as AB
+    import json
+    from dataclasses import replace
 
-    db = sqlite3.connect(':memory:')
-    db.executescript("""
-        CREATE TABLE src (id INTEGER PRIMARY KEY, order_code INTEGER);
-        INSERT INTO src VALUES (1, 700), (2, NULL), (3, 999), (4, 800);
-
-        CREATE TABLE orders (id INTEGER PRIMARY KEY, code INTEGER, title TEXT);
-        INSERT INTO orders VALUES
-            (11, 700, 'Заказ 700'),
-            (12, 800, 'Первый заказ'),
-            (13, 800, 'Второй заказ');
-    """)
-
-    catalog = PM.AdminCatalog(
-        tables={
-            'demo.src': PM.AdminTable('demo.src', 'demo', 'src'),
-            'demo.orders': PM.AdminTable('demo.orders', 'demo', 'orders'),
-        },
-        fields={
-            (table, name): PM.AdminField(table, name)
-            for table, names in {
-                'demo.src': ('id', 'order_code'),
-                'demo.orders': ('id', 'code', 'title'),
-            }.items()
-            for name in names
-        },
-        relations={},
+    from project_cust_38.sub_mes.resource_planning.planner_erp import (
+        ErpEntityRef,
     )
 
-    source_choice = PM.MesTypeChoice(
-        'demo.source', 'demo.src', 'Источник', 'id',
-        (PM.MesPresentationChoice(
-            'demo.source.id', 'Код', 'id', 'demo.src', 'id',
-            is_default=True,
-        ),),
-    )
-    target_choice = PM.MesTypeChoice(
-        'demo.target', 'demo.orders', 'Заказы', 'id',
-        (PM.MesPresentationChoice(
-            'demo.target.title', 'Наименование', 'title',
-            'demo.orders', 'title', is_default=True,
-        ),),
+    # Тестовая ссылка; соединение с ERP не требуется.
+    reference = ErpEntityRef(
+        source_key="api_erp:TEST",
+        entity_key="Документы.ЗаказКлиента",
+        ref_key="6D9D712A-9332-47DD-9BF0-32B236060B17",
+        display_snapshot="Заказ № 15",
     )
 
-    link = CL.CatalogLinkSpec(
-        link_key='demo.link',
-        left=CL.CatalogLinkEndpoint(
-            AB.SourceProvider.MES, 'demo.source', 'demo.src', 'order_code',
-        ),
-        right=CL.CatalogLinkEndpoint(
-            AB.SourceProvider.MES, 'demo.target', 'demo.orders', 'code',
-        ),
+    saved = json.dumps(
+        reference.serialize(),
+        ensure_ascii=False,
     )
 
-    links = CL.CatalogLinkManager.from_list([link.to_dict()])
-    service = PM.MesEntityService(catalog, PM.SqliteConnectionExecutor(db))
+    restored = ErpEntityRef.deserialize(json.loads(saved))
 
-    def follow(source_id):
-        reference = PM.MesEntityRef.create(
-            source_key='demo.source',
-            identity={'id': source_id},
-            presentation_key='demo.source.id',
-            display_snapshot=f'Исходная строка {source_id}',
-        )
-        return service.resolve_link(
-            links.get('demo.link'),
-            source_choice,
-            reference,
-            target_choice,
-        )
+    renamed = replace(
+        restored,
+        display_snapshot="Заказ № 15 (уточнён)",
+    )
 
-    result = follow(1)
-    print(result.identity_dict)
-    print(result.display_snapshot)
-    print(follow(2))
-    print(follow(3))
+    another_base = replace(
+        restored,
+        source_key="api_erp:OTHER",
+    )
 
-    try:
-        follow(4)
-    except PM.MesEntityError as error:
-        print(error)
-
-    db.close()
-
+    print(str(restored))
+    print(restored.ref_key)
+    print(restored == reference)
+    print(renamed.identity_key == reference.identity_key)
+    print(another_base.identity_key == reference.identity_key)
 
 def toggle_focus(new_focus):
     te()
