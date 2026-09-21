@@ -19,13 +19,12 @@ if TYPE_CHECKING:
 
 def te():
     import json
-    from dataclasses import replace
 
+    from project_cust_38.sub_mes.resource_planning import clses as CLSS
     from project_cust_38.sub_mes.resource_planning.planner_erp import (
         ErpEntityRef,
     )
 
-    # Тестовая ссылка; соединение с ERP не требуется.
     reference = ErpEntityRef(
         source_key="api_erp:TEST",
         entity_key="Документы.ЗаказКлиента",
@@ -33,28 +32,28 @@ def te():
         display_snapshot="Заказ № 15",
     )
 
+    value = CLSS.ClientOrder(reference)
+
+    attribute = CLSS._Attribute.attr(
+        value,
+        CLSS.ClientOrder,
+        alias="Тестовый заказ",
+        protected=False,
+    )
+    attribute.info.base_attr = False
+
     saved = json.dumps(
-        reference.serialize(),
+        attribute.serialize(),
         ensure_ascii=False,
     )
 
-    restored = ErpEntityRef.deserialize(json.loads(saved))
+    restored = CLSS._Attribute.deserialize(json.loads(saved))
 
-    renamed = replace(
-        restored,
-        display_snapshot="Заказ № 15 (уточнён)",
-    )
-
-    another_base = replace(
-        restored,
-        source_key="api_erp:OTHER",
-    )
-
-    print(str(restored))
-    print(restored.ref_key)
-    print(restored == reference)
-    print(renamed.identity_key == reference.identity_key)
-    print(another_base.identity_key == reference.identity_key)
+    print(type(restored.value).__name__)
+    print(str(restored.value))
+    print(restored.value == value)
+    print(restored.info.type is CLSS.ClientOrder)
+    print(CLSS.ClientOrder().serialize())
 
 def toggle_focus(new_focus):
     te()

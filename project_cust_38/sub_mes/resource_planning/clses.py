@@ -21,7 +21,7 @@ T = TypeVar("T")
 SQLITE_TYPES = (type(None), str, int, float, bool, bytes, dict, list, tuple)
 
 DTSUB = DTCLS.module_manage_sub_app
-
+import project_cust_38.sub_mes.resource_planning.planner_erp as PERP
 
 class Mes_type:
     pass
@@ -47,6 +47,49 @@ class Erp_type:
             {'_name': _['Имя'], 'Поле': _['Синоним'], 'Тип': _['Тип'], 'Стандартный': '⭐' if _['Стандартный'] else '',
              'Комментарий': _['Комментарий']} for _ in data_erp]
         return rez
+
+    def __init__(self, reference=None):
+        self.reference = None
+        if reference is None:
+            return
+
+        parsed = PERP.ErpEntityRef.deserialize(reference)
+        custom_types = getattr(DTSUB, 'custom_types', None)
+        if custom_types is None:
+            raise PERP.ErpEntityError(
+                'Не инициализирован каталог типов пользовательских атрибутов.'
+            )
+
+        entity_key = custom_types.get_full_type_name(
+            type(self), drop_base=True
+        )
+        if parsed.entity_key != entity_key:
+            raise PERP.ErpEntityError(
+                f'Ссылка на {parsed.entity_key!r} '
+                f'не принадлежит типу {entity_key!r}.'
+            )
+
+        self.reference = parsed
+
+    def serialize(self):
+        if self.reference is None:
+            return None
+        return self.reference.serialize()
+
+    @classmethod
+    def deserialize(cls, data):
+        return cls(data)
+
+    def __str__(self):
+        return '' if self.reference is None else str(self.reference)
+
+    def __repr__(self):
+        return f'{type(self).__name__}(reference={self.reference!r})'
+
+    def __eq__(self, other):
+        if type(self) is not type(other):
+            return NotImplemented
+        return self.reference == other.reference
 
 
 class Plan(Mes_type):
