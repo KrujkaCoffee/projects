@@ -63,6 +63,8 @@ STORE = DTCLS.ReferenceStore
 class Plwindow(CQT.QtWidgets.QMainWindow):
     def __init__(self, app_self, subject_pl: CLSS.SubjectPl, catalog_links_path = None):
         super(Plwindow, self).__init__()
+        # from project_cust_38.sub_mes.resource_planning.ui_variants.preview_ui import Ui_mainWindow
+        # self.ui = Ui_mainWindow('resource')
         self.ui = main_ui.Ui_mainWindow()
         self.ui.setupUi(self)
         self.app_self = app_self
@@ -530,6 +532,62 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
                         row.set_value('Значение',new_value,set_cust_content=True)
                         lbl.set_text(text_value)
 
+                    def fnc_fill_mes_by_link(
+                            lbl: CQT.InteractiveLabelInstance, sub_self, i, j,
+                            row: CQT.TableRow, target_attr: CLSS._Attribute=attr):
+                        try:
+                            if target_attr.info.protected:
+                                CQT.msgbox('Поле защищено от изменения')
+                                return
+                            spec = getattr(target_attr.info, 'catalog_link_spec', None)
+                            if not spec:
+                                CQT.msgbox('Связь для поля не настроена')
+                                return
+                            link = self.catalog_link_manager.get(spec.get('link_key'))
+                            if link is None:
+                                return CQT.msgbox('Правило не найдено')
+                            source_name = spec.get('source_attr_name')
+                            source_attr: CLSS._Attribute = cust_attrs.get(source_name)
+                            if source_attr is None:
+                                CQT.msgbox('Исходное поле связи не найдено')
+                                return
+                            source_type = source_attr.info.type
+                            if not isinstance(source_type, type) or not issubclass(source_type, CLSS.Mes_type):
+                                return
+                            source_row = t.find_row({'_name': source_name}, first=True)
+                            if source_row is None:
+                                return
+                            source_value = (
+                                source_row.value('Значение', get_cust_attrs=True)
+                                if source_row is None
+                                else source_row.value
+                            )
+                            source_ref = getattr(source_value, 'reference', None)
+                            if source_ref is None:
+                                CQT.msgbox(f'Сначала выберите значение для поля {source_attr.info.alias}')
+                                return
+                            DTSUB.custom_types.refresh_mes_types()
+                            source_choice = DTSUB.planner_mes_types.choice_for_type(source_type)
+                            target_type: typing.Callable = target_attr.info.type
+                            target_choice = DTSUB.planner_mes_types.choice_for_type(target_type)
+                            service = planner_mes.MesEntityService.from_type_catalog(DTSUB.planner_mes_types)
+                            reference = service.resolve_link(
+                                link, source_choice, source_ref, target_choice,
+                                presentation_key=target_attr.info.attr_view or None
+                            )
+                            if reference is None:
+                                CQT.msgbox('По выбранной связи запись не найдена. Значение поля сохранено')
+                                return
+                            new_value = target_type(reference)
+                            text_value = str(new_value)
+
+                        except Exception as e:
+                            CQT.msgbox(f'Не удалось заполнить поле по связи: {e}')
+                            return
+                        with CQT.table_updating(t, hide_table=False):
+                            row.set_value('Значение', new_value, set_cust_content=True)
+                            row.set_value('Значение', text_value)
+                            lbl.set_text(text_value)
                     widg = CQT.add_interactive_label(
                         t.tbl,row_mes.i,t.nf['Значение'],row_mes.value('Значение'),
                         parent_self=DTSUB.sub_self,grab_style_from_cell=True,
@@ -539,6 +597,8 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
                         '...','Выбрать сущность МЕС',fnc_select_mes_entity,cell_val=row_mes,
                         img_path=F.sep().join([F.path_to_caller_file_c(),'icons','btn_select'])
                     )
+                    if getattr(attr.info, 'catalog_link_spec', None) and not attr.info.protected:
+                        widg.add_button('↗', 'Заполнить по связи', fnc_fill_mes_by_link, cell_val=row_mes)
                 # ====================================================================
                 # =======================cross_res==============================
                 row_res = t.find_row({'_name': 'res'}, first=True)
