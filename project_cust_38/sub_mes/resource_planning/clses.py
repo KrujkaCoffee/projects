@@ -22,7 +22,9 @@ T = TypeVar("T")
 SQLITE_TYPES = (type(None), str, int, float, bool, bytes, dict, list, tuple)
 
 DTSUB = DTCLS.module_manage_sub_app
-
+CFG_u = CFG.Config.user_config
+CFG_pl = CFG.Config.place
+CFG_prj = CFG.Config.project
 
 class Mes_type:
     pass
@@ -1041,25 +1043,58 @@ class UserPh():
 
 
 class SubjectPl:
-    def __init__(self, name, text, descr):
+    def __init__(self, name, text, descr, owner_fl_ref,date):
         self.name = name
         self.text = text
         self.descr = descr
+        self.owner_fl_ref = owner_fl_ref
+        self.date = date
 
+    def __repr__(self):
+        return f"SubjectPl(name='{self.name}', text='{self.text}', owner='{self.owner_fl_ref}', date={self.date})"
 
 class SubjectsPl:
-    rab_place = SubjectPl('rab_place', 'Рабочее место', 'План по постам, По ТЗ 100066480')
-    supervising_еngineer = SubjectPl('supervising_еngineer', 'Шеф-инженер', 'По ТЗ 100057602')
+    NAME_CACHE = 'SubjectsPl'
+
+
+    @classmethod
+    def get_first(cls)->SubjectPl:
+        for it in F.get_all_attrs(cls,attr_type=SubjectPl).values():
+            return it
+
+    @classmethod
+    def reload(cls):
+        data = CSQ.CPG.custom_request_c('postgres',f"""SELECT * FROM planner.opl_profiles""",rez_dict=True)
+        for it in data:
+            setattr(cls,it['name'],SubjectPl(it['name'],it['text'],it['descr'],it['owner_fl_ref'],it['date']))
+
+    @classmethod
+    def new(cls,name,text,descr)->tuple[bool,str]:
+        if name in F.get_all_attrs(cls, attr_type=SubjectPl):
+
+            return False, 'Такой профиль уже есть'
+
+        rez = CSQ.CPG.custom_request_c('postgres',f"""INSERT INTO planner.opl_profiles (name,text,descr,owner_fl_ref,date) 
+        VALUES (%s, %s, %s, %s, %s)""",  list_of_lists_c=[name,text,descr,CFG_u.User.ID_ФизЛица,F.now("%Y-%m-%d")])
+        if not rez:
+            return False , 'Ошибка записи в БД'
+        cls.reload()
+
+        return  True, cls.get(name)
+
+    @staticmethod
+    def _clear_db():
+        rez = CSQ.CPG.custom_request_c('postgres', f"""DELETE FROM planner.opl_profiles;""")
 
     @classmethod
     def get(cls, name) -> SubjectPl | None:
-        for sbj in F.get_all_attrs(cls).values():
+        for sbj in F.get_all_attrs(cls, attr_type=SubjectPl).values():
             if sbj.name == name:
                 return sbj
 
     @classmethod
     def get_all(cls) -> list[SubjectPl]:
-        return [_ for _ in F.get_all_attrs(SubjectsPl).values() if isinstance(_, SubjectPl)]
+        return [_ for _ in F.get_all_attrs(cls, attr_type=SubjectPl).values() if isinstance(_, SubjectPl)]
 
 
 class Type_entity:
@@ -1847,7 +1882,7 @@ class _BaseEntity():
         self.color: _Attribute[Color] = _Attribute.attr(color, Color, alias='Цвет', description='', protected=False,
                                                         user_hidden=False, for_list=False, for_details=True,
                                                         report_user_hidden=True, order=33)
-        self.cust_attrs: _Attribute[CustAttrs] = _Attribute.attr(CustAttrs(), CustAttrs, alias='Доп. атрибуты',
+        self.cust_attrs: _Attribute[CustAttrs] = _Attribute.attr(CustAttrs(), CustAttrs, alias='Доп.\nатрибуты',
                                                                  description='Для формиарования ресурсов и событий',
                                                                  protected=False, user_hidden=False, for_list=False,
                                                                  for_details=True, report_user_hidden=True, order=77)

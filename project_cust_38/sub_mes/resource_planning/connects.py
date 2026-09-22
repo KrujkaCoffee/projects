@@ -34,19 +34,30 @@ def te():
     reference = PERP.ErpEntityRef(
         source_key=current_erp_source_key(),
         entity_key='Документы.ЗаказНаПроизводство2_2',
-        ref_key='5fa846d3-94a4-11f1-a4b7-30e1716be59f',
+        ref_key=input('UUID существующего заказа: ').strip(),
     )
 
-    result = service.read(reference)
+    fields = ('Номер', 'Дата', 'Проведен')
 
-    print(result is not None)
+    row = service.read_fields(reference, fields)
 
-    if result is not None:
-        print(result.identity_key == reference.identity_key)
-        print(str(result))
+    print(row is not None)
+
+    if row is not None:
+        print(row.reference.identity_key == reference.identity_key)
+
+        for field_key in fields:
+            value = row.values[field_key]
+            presentation = row.presentations[field_key]
+
+            print(
+                f'{field_key}: {value!r} '
+                f'({type(value).__name__}) → {presentation}'
+            )
 
 def toggle_focus(new_focus):
     te()
+
     DTSUB.sub_self.ui.fr_cont_event.setVisible(False)
     DTSUB.sub_self.ui.fr_cont_res.setVisible(False)
     if DTSUB.info_o:
@@ -183,6 +194,7 @@ def load_btns(sub_self):
     sub_self.ui.btn_cross_add.clicked.connect(sub_self.cross_add)
     sub_self.ui.btn_cross_show_all.clicked.connect(sub_self.cross_show_all)
     sub_self.ui.btn_report_preset.clicked.connect(sub_self.report_preset)
+    sub_self.ui.btn_add_new_sbjpl.clicked.connect(sub_self.make_new_sbjpl)
 
 
 def key_release_event(sub_self:Plwindow, key:int, mod:CQT.QtCore.Qt.KeyboardModifiers):

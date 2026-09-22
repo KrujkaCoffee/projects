@@ -5,7 +5,6 @@ import logging
 import pathlib
 import typing
 
-from PySide6 import QtWidgets
 
 if __name__ == "__main__":
     import sys
@@ -49,8 +48,6 @@ from project_cust_38.sub_mes.resource_planning import catalog_link_store as LINK
 
 from typing import  TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from Viewer import mywindow
 
 
 
@@ -61,10 +58,8 @@ STORE = DTCLS.ReferenceStore
 
 
 class Plwindow(CQT.QtWidgets.QMainWindow):
-    def __init__(self, app_self, subject_pl: CLSS.SubjectPl, catalog_links_path = None):
+    def __init__(self, app_self, subject_pl_name:str|None = None, catalog_links_path = None):
         super(Plwindow, self).__init__()
-        # from project_cust_38.sub_mes.resource_planning.ui_variants.preview_ui import Ui_mainWindow
-        # self.ui = Ui_mainWindow('resource')
         self.ui = main_ui.Ui_mainWindow()
         self.ui.setupUi(self)
         self.app_self = app_self
@@ -79,8 +74,7 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
         DTSUB.sub_self = self
         CQT.load_icons(self, 26, dir=str(F.Cust_path(main_ui)) + F.sep() + 'icons' + F.sep())
         self.setWindowModality(CQT.Qt.ApplicationModal)
-        self.apply_subj(subject_pl)
-        self.__catalog_link_manager = CLINK.CatalogLinkManager()
+        self.load_profile(subject_pl_name)
 
         _con.load_connects(self)
         self.__install_catalog_links_menu()
@@ -260,6 +254,14 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
     def _____________sub__________________(self):
         pass
 
+    def load_profile(self,subject_pl_name:str|None = None):
+        CLSS.SubjectsPl.reload()
+        if not subject_pl_name:
+            subject_pl_name = CMS.load_tmp_stukt(CLSS.SubjectsPl.NAME_CACHE)
+            subject_pl = CLSS.SubjectsPl.get(
+                subject_pl_name) if subject_pl_name else None or CLSS.SubjectsPl.get_first()
+        self.apply_subj(subject_pl)
+
     def init_data(self):
         CQT.load_resize_splitters(self, CQT.qt_tmp_dir())
 
@@ -335,6 +337,7 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
         if planner_mes_types_o is not None:
             planner_mes_types_o.close()
             DTSUB.planner_mes_types = None
+        CFG.BaseSubWindow.close_in_event(self)
         event.accept()
 
     def _____________subjects_________________(self):
@@ -346,10 +349,83 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
         # CONNECTS
         _con.prepare_ui(self)
         self.init_data()
+        if self.app_self:
+            CFG.BaseSubWindow.window_binding(self,F.name_of_caller_file(),self.app_self)
+            print(f'add sub {CFG.Config.window_manager.active} into window_manager' )
+
     def select_sbjpl(self,*args):
         cmb = self.ui.cmb_select_sbjpl
         name_sbjpl = CQT.get_cmb_current_data(cmb)
         self.apply_subj(CLSS.SubjectsPl.get(name_sbjpl))
+        CMS.save_tmp_stukt(name_sbjpl,f'{CLSS.SubjectsPl.NAME_CACHE}')
+
+    def make_new_sbjpl(self,*args):
+
+        tmplate = [
+                   {'_name':'name', 'Параметр':'name','Значение':''},
+                   {'_name':'text', 'Параметр':'Название','Значение':''},
+                   {'_name':'descr', 'Параметр':'Описание','Значение':''},
+                   ]
+        def fnc_bool(tbl:CQT.QtWidgets.QTableWidget,item:CQT.QtWidgets.QTableWidgetItem,add_data,*args)->bool:
+            t = CQT.TableContext(tbl)
+            row = t.get_row(item.row())
+            if row.value('_name') != 'text':
+                return True
+            val = row.value('Значение')
+            val = F.sanitize_text(val)
+            if len(val) < 3:
+                CQT.msgbox(f'Длина названия должна быть больше 3 символов',app_self=DTCLS.app_self)
+                return False
+            name = F.to_pep_var_name(val)
+            if not name:
+                return False
+            row_name = t.find_row({'_name':'name'},first=True)
+            row_name.set_value('Значение',name)
+            row.set_value('Значение',val)
+            return True
+
+
+        def fnc_oform(tbl:CQT.QtWidgets.QTableWidget,*args):
+            t = CQT.TableContext(tbl)
+            t.set_editable('Значение')
+            row = t.find_row({'_name':'name'},first=True)
+            if not row:
+                return
+            row.hide(True)
+            t.hide_if_not_dev(CFG)
+            CQT.connect_cell_edit(t.tbl,fnc_bool)
+            pass
+
+        def fnc_validate_t(t:CQT.TableContext,*args):
+            return CQT.list_from_wtabl_c(t.tbl,rez_dict=True)
+
+
+        new_name = None
+        new_text = None
+        new_descr = None
+
+        rez = CQT.msgboxg_get_table(self,'Новый шаблон',tmplate,styleSheet=CQT.MES_CSS,func_oform_tbl=fnc_oform,func_validate_t=fnc_validate_t)
+        if not rez:
+            return
+
+        new_name = rez[0]['Значение']
+        new_text = rez[1]['Значение']
+        new_descr = F.sanitize_text(rez[2]['Значение'])
+
+        if not new_name:
+            return
+        succ, subj = CLSS.SubjectsPl.new(
+                            name=new_name,
+                            text=new_text,
+                            descr=new_descr,
+                            )
+        if not succ:
+            return
+        _con.fill_list_subj_pl(self)
+        CQT.select_cmb_by_data(self.ui.cmb_select_sbjpl,subj.name)
+        self.select_sbjpl()
+
+
 
 
     def _____________info__________________(self):
@@ -951,9 +1027,10 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
         name = current_settings_mode.name
         name_pl = DTSUB.subj_pl.name
         file_name = f"{name}_{name_pl}.json"
-        if not F.existence_file_c(file_name):
+        path_ = F.path_to_execut_file_c() + file_name
+        if not F.existence_file_c(path_):
             return
-        data = F.load_file_pickle(file_name)
+        data = F.load_file_pickle(path_)
         if not data:
             return
         if current_settings_mode is CLSS.Type_entitys.Res:
@@ -1185,9 +1262,10 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
 
         name = DTSUB.subj_pl.name
         file_name = f"{name}_resources.json"
-        if not F.existence_file_c(file_name):
+        path_ = F.path_to_execut_file_c() + file_name
+        if not F.existence_file_c(path_):
             return
-        data = F.load_file_pickle(file_name)
+        data = F.load_file_pickle(path_)
         if not data:
             return
         DTSUB.resources = CLSS.Resources().from_dict(data)
@@ -1233,9 +1311,10 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
             self.list_events_reload(clear=True)
         name = DTSUB.subj_pl.name
         file_name = f"{name}_events.json"
-        if not F.existence_file_c(file_name):
+        path_ = F.path_to_execut_file_c() + file_name
+        if not F.existence_file_c(path_):
             return
-        data = F.load_file_pickle(file_name)
+        data = F.load_file_pickle(path_)
         if not data:
             return
         DTSUB.events = CLSS.Events().from_dict(data)
@@ -1392,9 +1471,10 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
             self.list_crosses_reload(clear=True)
         name = DTSUB.subj_pl.name
         file_name = f"{name}_crosses.json"
-        if not F.existence_file_c(file_name):
+        path_ = F.path_to_execut_file_c() + file_name
+        if not F.existence_file_c(path_):
             return
-        data = F.load_file_pickle(file_name)
+        data = F.load_file_pickle(path_)
         if not data:
             return
         DTSUB.crosses = CLSS.Crosses().from_dict(data)
@@ -1679,8 +1759,10 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
 if __name__ == "__main__":
     from project_cust_38.Cust_application import install_crash_guard, SafeApplication
     app = SafeApplication(sys.argv)
+    # CQT.QtWinExtras.QtWin.setCurrentProcessExplicitAppUserModelID(f'Powerz.BAG.SustControlWork.0.0.0 {F.name_of_caller_file}')
+    app.setWindowIcon(CQT.QtGui.QIcon(os.path.join(F.path_to_caller_file_c(False), "icons", "icon.png")))
     install_crash_guard(app, app_name='',user_name='', log_qt_warnings=False,log_qt_debug_info=False, enable_native_fault_handler=False)
     #CQT.ThemeManager.apply(app)
-    sub_window = Plwindow(None,CLSS.SubjectsPl.rab_place)
+    sub_window = Plwindow(None)
     sub_window.showMaximized()
     sys.exit(app.exec())

@@ -50,6 +50,14 @@ class ErpEntityRef:
     def __str__(self):
         return self.display_snapshot or self.ref_key
 
+
+@dataclass
+class ErpEntityRow:
+    reference: ErpEntityRef
+    values: dict[str, object]
+    presentations: dict[str, str]
+
+
 class ErpEntityService:
     def __init__(self, interface, source_key_getter):
         self.interface: APIERP = interface
@@ -67,16 +75,39 @@ class ErpEntityService:
         return f'{prefix}.{name}'
 
     def read(self, reference) -> ErpEntityRef | None:
-        """"""
+        row = self.read_fields(reference)
+        return None if row is None else row.reference
+
+    def read_fields(self, reference: typing.Mapping, field_keys=()) -> ErpEntityRow | None:
+        """Чтение строки из 1с"""
         reference = ErpEntityRef.deserialize(reference)
+
+        if not isinstance(field_keys, (list, tuple)):
+            raise ErpEntityError('Некорректный параметр field_keys')
+
+        for field_key in field_keys:
+            if not isinstance(field_key, str) or not field_key.isidentifier():
+                raise ErpEntityError(f'Некорректное имя ERP-поля: {field_key!r}.')
+
+        field_keys = tuple(dict.fromkeys(field_keys))
+
         current_source_key = self.__source_key_getter()
         if reference.source_key != current_source_key:
             raise ErpEntityError(f'Некорректный источник')
         table = self.__query_table(reference.entity_key)
+        columns = [
+            'ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(Источник.Ссылка)) КАК ref_key',
+            'ПРЕДСТАВЛЕНИЕ(Источник.Ссылка) КАК display_snapshot',
+        ]
+
+        for index, field_key in enumerate(field_keys):
+            columns.append(f'Источник.{field_key} КАК value_{index}')
+            columns.append(f'ПРЕДСТАВЛЕНИЕ(Источник.{field_key}) КАК presentation_{index}')
+
+        select_columns = ',\n'.join(columns)
         query = f"""
             ВЫБРАТЬ ПЕРВЫЕ 2
-                ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(Источник.Ссылка)) КАК ref_key,
-                ПРЕДСТАВЛЕНИЕ(Источник.Ссылка) КАК display_snapshot
+                {select_columns}
             ИЗ
                 {table} КАК Источник
             ГДЕ 
@@ -103,6 +134,12 @@ class ErpEntityService:
         if len(rows) != 1:
             raise ErpEntityError('ERP вернула несколько записей для одного UUID')
         row = rows[0]
+        required_columns = ['ref_key', 'display_snapshot']
+        for index in range(len(field_keys)):
+            required_columns.extend((f'value_{index}', f'presentation_{index}'))
+
+        if not isinstance(row, typing.Mapping) or any(name not in row for name in required_columns):
+            raise ErpEntityError('Отсутсвует запись запрошенного поля')
 
         result = ErpEntityRef(
             source_key=reference.source_key,
@@ -112,5 +149,18 @@ class ErpEntityService:
         )
         if result.identity_key != reference.identity_key:
             raise ErpEntityError('ERP вернула запись с другим UUID')
-        return result
+
+        values = {}
+        presentations = {}
+
+        for index, field_key in enumerate(field_keys):
+            values[field_key] = row[f'value_{index}']
+            text_value = row[f'presentation_{index}']
+            presentations[field_key] = ('' if text_value is None else str(text_value))
+
+        return ErpEntityRow(
+            reference=reference,
+            values=values,
+            presentations=presentations
+        )
 
