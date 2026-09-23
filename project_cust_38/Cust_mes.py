@@ -3948,7 +3948,7 @@ class Techkards():
             return False
 
     def list_osn_mats(self, DICT_VID_NOMEN: dict, DICT_NOMEN: dict) -> list:
-        return []  # todo
+        return []
 
 
 class _base_marshrut_cards(_ImportDb):
@@ -3957,8 +3957,9 @@ class _base_marshrut_cards(_ImportDb):
     db_users = CFG.Config.project.db_users
     db_kplan = CFG.Config.project.db_kplan
 
-    def get_str_select(self) -> str:
-        dict_fields = CSQ.dict_types_tbl(self.db, 'mk')
+    @staticmethod
+    def get_str_select() -> str:
+        dict_fields = CSQ.dict_types_tbl(CFG_prj.db_naryad, 'mk')
         select_list = [_ for _, v in dict_fields.items() if
                        v not in [bytes] and _ not in ['Номер_заказа', 'Номер_проекта']]
         str_select = ', '.join([f'mk.{field}' for field in select_list])
@@ -3984,8 +3985,8 @@ class Marshrut_cards_list(_base_marshrut_cards):
         self.DICT_RC = self._calc_dict_rc()
 
         str_select = self.get_str_select()
-        postfix = ''
-        join_postfix = 'NULL as res,'
+        postfix = 'NULL as res,'
+        join_postfix = ''
         attach_dbs = [self.db_kplan]
         if load_resource:
             postfix = f'res.data as res, '
@@ -4037,11 +4038,13 @@ class Marshrut_cards_list(_base_marshrut_cards):
           FROM naryad WHERE Номер_мк in ({CSQ.prepare_list_to_tuple(set_nums)}) and Внеплан == {CFG.Config.place.КодыНарядов.Плановая};"""
         data_nars = CSQ.custom_request_c(self.db_naryad, req_nars, rez_dict=True)
         self.marshrut_cards: list[Marshrut_cards] = []
+        self.marshrut_cards_dict: dict[int,Marshrut_cards] = dict()
         for it in data:
             list_nars = [_ for _ in data_nars if _['Номер_мк'] == it['Пномер']]
-            self.marshrut_cards.append(
-                Marshrut_cards(None, None, None, load_resource, it, it['res'], self.DICT_RC, list_nars)
-            )
+            mk_o =  Marshrut_cards(None, None, None, load_resource, it, it['res'], self.DICT_RC, list_nars)
+
+            self.marshrut_cards.append(mk_o)
+            self.marshrut_cards_dict[mk_o.Пномер] = mk_o
 
 
 class Marshrut_cards(_base_marshrut_cards):
@@ -7555,8 +7558,8 @@ class ResOper():
             if key not in ('Освоено,шт.', 'Закрыто,шт.'):
                 exec(f'self.{str(key).replace(".", "_").replace(" ", "")} = wet_data_row[key]')
 
-        self.Освоено: int = wet_data_row['Освоено,шт.']
-        self.Закрыто: int = wet_data_row['Закрыто,шт.']
+        self.Освоено: int = wet_data_row.get('Освоено,шт.', 0)
+        self.Закрыто: int = wet_data_row.get('Закрыто,шт.', 0)
 
     def __str__(self):
         return f'{self.Опер_номер}, {self.Опер_код} {self.Опер_наименование} - ({self.Опер_Тпз},{self.Опер_Тшт}) на {self.parent.parent.count} изд. '
@@ -7623,6 +7626,73 @@ class ResDse():
     def __str__(self):
         return f'N {self.Номерпп}, {self.Наименование} {self.Номенклатурный_номер} - {self.Количество} шт.'
 
+class ResSpecs():
+    def __init__(self,list_nums:list|set|tuple):
+        self._list_nums:list[int] = list(list_nums) if isinstance(list_nums, (set, tuple)) else list_nums
+        self.dict_res:[int,ResSpec]=dict()
+        self.load_data()
+
+    def load_data(self):
+        self.dict_res = dict()
+        dict_res = self._load_datas()
+        mks_o = self._load_mk_os()
+        for id_mk, wet_data in dict_res.items():
+            mk_o = mks_o.marshrut_cards_dict[id_mk]
+            res_o = ResSpec(wet_data=wet_data, mk_o=mk_o)
+            self.dict_res[res_o.mk.Пномер] = res_o
+
+    def _calc_dict_etaps(self)->dict:
+        etaps = CSQ.custom_request_c(CFG_prj.db_users,
+                                     f"""SELECT etaps.name as etaps_name, rab_c."Код" , rab_c."Имя" FROM rab_c 
+                        INNER JOIN etaps ON 
+                        etaps.s_num = rab_c.etaps_num 
+                        WHERE rab_c.poki = {CFG.Config.place.poki}""",
+                                     attach_dbs=CFG_prj.db_naryad, rez_dict=True)
+        dict_etaps = F.deploy_dict_c(etaps, 'Код')
+        return dict_etaps
+
+    def _load_mk_os(self)->Marshrut_cards_list:
+        mks_o =Marshrut_cards_list(self._list_nums,False)
+        return mks_o
+
+    def _load_datas(self)->dict[int,list]:
+
+        db_users = CFG_prj.db_users
+        poki = CFG.Config.place.poki
+        db_naryad = CFG_prj.db_naryad
+        db_resxml = CFG_prj.db_resxml
+
+        rez_dict = dict()
+
+        dict_etaps = self._calc_dict_etaps()
+        list_nars = CSQ.custom_request_c(db_naryad, f"""SELECT "Номер_мк", "ФИО", "ФИО2", "Фвремя", "Фвремя2", 
+       "ДСЕ_ID", "Операции", "Опер_колво"
+            FROM naryad WHERE "Номер_мк" in ({CSQ.prepare_list_to_tuple(self._list_nums)})
+                            and "Внеплан" = {CFG.Config.place.КодыНарядов.Плановая};""",
+                                         rez_dict=True)
+        dict_naryads = F.grouping_list_dicts(list_nars,'Номер_мк')
+        bin_data_list = CSQ.custom_request_c(db_resxml,
+                                    f"""SELECT "Номер_мк", data FROM res 
+                                                        WHERE "Номер_мк" in 
+                                        ({CSQ.prepare_list_to_tuple(self._list_nums)});""",
+                                    rez_dict=True
+                                    )
+        for data_row in bin_data_list:
+            bin_data = data_row['data']
+            nom_mk = data_row['Номер_мк']
+            if F.is_empty_blob(bin_data):
+                CQT.msgbox(f'Нет данных для МК {nom_mk}')
+                return
+            rez_spis = F.from_binary_pickle(bin_data)
+
+
+            res = add_to_res_detail_counts(rez_spis)
+            res = _update_name_rc_and_etaps(res, dict_etaps=dict_etaps)
+            res = fix_mastered_count(res, nom_mk,
+                                     list_nars=dict_naryads[nom_mk])
+            rez_dict[nom_mk] = res
+        return rez_dict
+
 
 class ResSpec():
     def __init__(self, num_mk: int | None = None, wet_data=None, mk_o: Marshrut_cards = None):
@@ -7645,7 +7715,8 @@ class ResSpec():
         if mk_o:
             self.mk: Marshrut_cards = mk_o
         else:
-            self.mk: Marshrut_cards = Marshrut_cards(num_mk, CFG.Config.project.db_naryad, CFG.Config.project.db_resxml,
+            self.mk: Marshrut_cards = Marshrut_cards(num_mk, CFG.Config.project.db_naryad,
+                                                     CFG.Config.project.db_resxml,
                                                      False)
         for it in self.data:
             id = it.Номерпп - 1
@@ -8060,7 +8131,18 @@ class Composition(_ImportDb):
         return rez
 
     def recalc_signed(self):
-        rez = sum([len(_.couples) for _ in self.pozs])
+        rez = False
+        for _ in self.pozs:
+            if _.couples:
+                rez = True
+                break
+            if _.parts_couples:
+                for it in _.parts_couples:
+                    if it.id_file == self.id:
+                        rez = True
+                        break
+
+
         if rez and not self.signed:
             self.signed = True
             self.upload()
@@ -8079,6 +8161,12 @@ class Composition(_ImportDb):
             self.upload()
         return rez
 
+    def recalc_registred_partial(self,registred_partials:RegistredPartials):
+        for poz in self.pozs:
+            if not poz.parts:
+                continue
+            poz.set_registred_partial(registred_partials)
+
     def recalc_errors(self):
         rez = sum([int(_.is_deleted) for _ in self.pozs]) > 0
         if rez and not self.errors:
@@ -8088,6 +8176,12 @@ class Composition(_ImportDb):
             self.errors = False
             self.upload()
         return rez
+
+    def load_count_by_mk(self):
+        for poz in self.pozs:
+            poz.calc_count_by_mk()
+        #[poz.count_by_mk for poz in self.pozs]
+        pass
 
     def delete(self, forced: bool = False) -> bool:
         if self.signed and not forced:
@@ -8148,27 +8242,51 @@ class Composition(_ImportDb):
         return Composition_poz(self, {})
 
     def load_dict_res_o(self):
-        self._dic_res_o
+        set_mks = set([poz.mk for poz in self.pozs])
+        self._dic_res_o = ResSpecs(set_mks).dict_res
         for poz in self.pozs:
-            if poz.mk not in self._dic_res_o:
-                res = ResSpec(poz.mk)
-                self._dic_res_o[poz.mk] = res
+            poz.res_o = self._dic_res_o[poz.mk]
 
     def load_pozs(self, mngr: ManagePartialDse):
         self.pozs: list[Composition_poz] = []
-        result = CSQ.custom_request_c(CFG.Config.project.db_naryad, f"""SELECT id,
+        result = CSQ.custom_request_c(CFG.Config.project.db_naryad, CSQ.SqlQuery(
+            sqlite= f"""SELECT id,
                    id_file,
                    dse,
                    count,
                    proj, 
                    py,
                    mk,
-                   id_dse_mk_hand_compare 
-              FROM naryad_composit_poz WHERE id_file = {self.id}; """,
-                                      rez_dict=True)
+                   id_dse_mk_hand_compare, 
+                mk.Количество as count_izd, 
+                mk.НомКплан as id_kpl, 
+                пл_оуп.Количество as count_kpl 
+              FROM naryad_composit_poz
+            
+            left join mk on mk.Пномер = naryad_composit_poz.mk
+            left join пл_оуп on пл_оуп.НомПл = mk.НомКплан
+               WHERE id_file = {self.id}; """,
+            postgres= f"""SELECT id,
+                           id_file,
+                           dse,
+                           count,
+                           proj, 
+                           py,
+                           mk,
+                           id_dse_mk_hand_compare, 
+                        mk."Количество" as count_izd, 
+                        "пл_оуп"."НомПл" as id_kpl, 
+                        "пл_оуп"."Количество" as count_kpl 
+                      FROM naryad_composit_poz
+
+                    left join mk on mk."Пномер" = naryad_composit_poz.mk
+                    left join "пл_оуп" on "пл_оуп"."НомПл" = mk."НомКплан"
+                       WHERE id_file = {self.id}; """
+        ) ,
+                                      rez_dict=True, attach_dbs=CFG_prj.db_kplan)
         for item in result:
-            poz = Composition_poz(self, item)
-            poz.apply_mngr(mngr)
+            poz = Composition_poz(self, item,mngr)
+
             self.pozs.append(poz)
 
 
@@ -8185,17 +8303,20 @@ class Compositions():
         self.comps = []
         filtr_str = ''
         if filtr_nars is not None:
-            filtr_str = f'''inner join naryad_composit_poz on naryad_composit_poz.id_file = naryad_composit_files.id
+            filtr_str = f'''
+            inner join naryad_composit_poz on naryad_composit_poz.id_file = naryad_composit_files.id
             inner join naryad_composit_poz_snum_nars on naryad_composit_poz_snum_nars.id_poz = naryad_composit_poz.id
             where naryad_composit_poz_snum_nars.snum_nar in ({CSQ.prepare_list_to_tuple(filtr_nars)}) and naryad_composit_files.poki = {self.poki}'''
         else:
-            filtr_str = f'''where naryad_composit_files.poki = {self.poki}'''
+            filtr_str = f'''
+
+            where naryad_composit_files.poki = {self.poki}'''
 
         text = f"""
             SELECT naryad_composit_files.* from 
                 naryad_composit_files {filtr_str};
                     """
-        rez = CSQ.custom_request_c(CFG.Config.project.db_naryad, text, rez_dict=True)
+        rez = CSQ.custom_request_c(CFG_prj.db_naryad, text, rez_dict=True)
 
         for item in rez:
             self.comps.append(Composition(item))
@@ -8228,11 +8349,14 @@ class Couple_nar_poz(_ImportDb):
         self.id_dse: int | None = None
         self.n_oper: str | None = None
         self.с_oper: str | None = None
+        self.id_part: int | None = None
+        self.id_file: int | None = None
         self.parce_row_dict(item)
 
     @classmethod
     def get(self, id: int) -> Couple_nar_poz | None:
-        rez = CSQ.custom_request_c(CFG.Config.project.db_naryad, f'SELECT * FROM naryad_composit_poz_snum_nars '
+        rez = CSQ.custom_request_c(CFG.Config.project.db_naryad,
+                                   f'SELECT * FROM naryad_composit_poz_snum_nars '
                                                                  f' WHERE id ={id}', rez_dict=True)
         if rez:
             return Couple_nar_poz(rez[0])
@@ -8261,7 +8385,7 @@ class RegistredPartialSegment(_ImportDb):
         self.segment_id:int | None = None
         self.segment_id_dse:int | None = None
         self.segment_name:str | None = None
-        self.segmentcountt:int | None = None
+        self.segmentcount:int | None = None
         self.parce_row_dict(row,declared_only=True)
 
     @property
@@ -8283,6 +8407,9 @@ class RegistredPartial(_ImportDb):
         self.parce_row_dict(row,declared_only=True)
 
         self.dict_segments:dict[str,RegistredPartialSegment] = dict()
+    @property
+    def full_name(self)->str:
+        return ' '.join((self.partial_nn,self.partial_name))
 
     def add_segment(self,segment_o:RegistredPartialSegment):
         self.dict_segments[segment_o.name_no_ext] = segment_o
@@ -8327,16 +8454,22 @@ class RegistredPartials():
             if ' '.join((nn,name)) in dse.dict_segments:
                 return dse
 
+    def find_by_sector_full_name(self,full_name:str)->RegistredPartial|None:
+        for dse in self.dict_dse.values():
+            if full_name in dse.dict_segments:
+                return dse
+
 class ManagePartialDse():
     def __init__(self, name_dsp: str):
         self._name_dsp = name_dsp
         self.dse: dict[str, dict[int, PartialDseOld]] = {}
+        self.dict_by_id_dse: dict[int, dict[int, PartialDseOld]] = {}
         self._max_part = 0
         self._load()
         self._calc_total_parts()
 
-    def calc_min_part_count(self, nn: str) -> int:
-        parts = self.get_dict_parts(nn)
+    def calc_min_part_count(self, id_dse: int) -> int:
+        parts = self.get_dict_parts(id_dse)
         dict_parts = {}
         for part_o in parts.values():
             part_num = part_o.part
@@ -8346,8 +8479,8 @@ class ManagePartialDse():
         min_part_count = min([_ for _ in dict_parts.values()])
         return min_part_count
 
-    def check_proportions(self, nn: str) -> bool:
-        parts = self.get_dict_parts(nn)
+    def check_proportions(self, id_dse: int) -> bool:
+        parts = self.get_dict_parts(id_dse)
         dict_parts = {}
         for part_o in parts.values():
             part_num = part_o.part
@@ -8375,8 +8508,12 @@ class ManagePartialDse():
                 continue
             if dse_o.nn not in self.dse:
                 self.dse[dse_o.nn] = {}
+            if dse_o.id_dse not in self.dict_by_id_dse:
+                self.dict_by_id_dse[dse_o.id_dse] = {}
+
             ids = (dse_o.id_f, dse_o.id_dse)
             self.dse[dse_o.nn][ids] = dse_o
+            self.dict_by_id_dse[dse_o.id_dse][ids] = dse_o
             if dse_o.part > self._max_part:
                 self._max_part = dse_o.part
 
@@ -8386,56 +8523,131 @@ class ManagePartialDse():
                 if dse_o.total_parts is None:
                     self.dse[name][id].total_parts = self._max_part
 
-    def get_dict_parts(self, nn: str) -> dict[int, PartialDseOld] | None:
-        try:
-            part_o = PartialDseOld(nn, '', '', '')
-        except ValueError:
-            return
-        if part_o.nn in self.dse:
-            return self.dse[part_o.nn]
+    def get_dict_parts(self, id_dse: int) -> dict[int, PartialDseOld] | None:
+        if id_dse in self.dict_by_id_dse:
+            return self.dict_by_id_dse[id_dse]
 
 
-class PartialDse():
-    SEP = '|'
-    SEP_COUNT = 2
 
-    def __init__(self, nn_raw: str, id_f: int, id_dse: int, total_count_dse: int):
-        if self.SEP not in nn_raw:
-            raise ValueError(f'nn_raw={nn_raw} не содержит разделителя {self.SEP}')
-        self.nn: str = None
-        self.nn_raw: str = nn_raw
-        self.part: int | None = None
-        self.total_parts: int | None = None
-        self.id_f: int | None = id_f
-        self.id_dse: int | None = id_dse
-        self.total_count_dse: int | None = total_count_dse
-        nn, part, total_parts = nn_raw.split(self.SEP)
-        self.nn = nn
-        self.part = int(part)
-        self.total_parts = int(total_parts)
-
-
-class PartialDseOld(PartialDse):
+class PartialDseOld():
     SEP = '('
     SEP_COUNT = 1
+    SEP_END = ')'
 
     def __init__(self, nn_raw: str, id_f: int, id_dse: int, total_count_dse: int):
         if self.SEP not in nn_raw:
             raise ValueError(f'nn_raw={nn_raw} не содержит разделителя {self.SEP}')
         self.nn: str = None
+        self.raw_name : str = None
         self.nn_raw: str = nn_raw
         self.part: int | None = None
         self.total_parts: int | None = None
         self.id_f: int | None = id_f
         self.id_dse: int | None = id_dse
         self.total_count_dse: int | None = total_count_dse
-        self.nn, wet_row = nn_raw.split(self.SEP)
-        pref = wet_row.split(')')[0]
+        self.nn, self.raw_name = nn_raw.split(self.SEP)
+        pref = self.raw_name.split(self.SEP_END)[0]
         if not F.is_numeric(pref):
             self.part = None
         else:
             self.part = int(pref)
 
+
+    def is_exists_registered_parts(self,registred:RegistredPartial|None)->str:
+        rez = CEMOJ.СтатусыПроизводства.not_allowed
+        if registred:
+            if self.nn_raw in registred.dict_segments:
+                rez = CEMOJ.СтатусыПроизводства.success
+        return rez
+
+    def registered_dse(self,registred:RegistredPartial|None,registred_partials: RegistredPartials|None)->str:
+        rez = ''
+        if registred:
+            if self.nn_raw in registred.dict_segments:
+                registred_partial = registred_partials.find_by_sector_full_name(self.nn_raw)
+                if registred_partial:
+                    rez = registred_partial.full_name
+        return rez
+
+    def registred_part(self,registred:RegistredPartial|None)-> RegistredPartialSegment:
+        if registred:
+            if self.nn_raw in registred.dict_segments:
+                return registred.dict_segments[self.nn_raw]
+
+    def registered_count_per_project(self,registred:RegistredPartial|None)->int:
+        rez = 0
+        if registred:
+            if self.nn_raw in registred.dict_segments:
+                segment_count = registred.dict_segments[self.nn_raw].segmentcount
+                return segment_count
+
+        return rez
+
+    def registered_count_per_dse(self,registred:RegistredPartial|None)->int:
+        rez = 0
+        if registred:
+            if self.nn_raw in registred.dict_segments:
+                segment_count = registred.dict_segments[self.nn_raw].segmentcount
+                return segment_count
+
+        return rez
+
+    def calc_summ_coupled(self,
+                          parts_couples:list[Couple_nar_poz]|None,
+                          registred: RegistredPartial|None,
+                          parts:dict[tuple, PartialDseOld] | None )->int:
+        #TODO проверить нужно ли использовать find_linked_couples при других расчетах кол-ва (calc_summ_coupled)
+        summ_ceil_dse = 0
+        if not registred:
+            return summ_ceil_dse
+
+        if parts_couples:
+            list_linked_couples = self.find_linked_couples(parts_couples,parts)
+            summ_ceil_dse += sum([cpl.count_nar for cpl in list_linked_couples if cpl.id_part == self.part])
+
+        return summ_ceil_dse
+
+    def find_linked_couples(self,couples:list[Couple_nar_poz]|None,
+                           parts:dict[tuple, PartialDseOld] | None )->list[Couple_nar_poz]:
+
+        list_linked_parts = self.find_linked_parts(parts)
+        list_tuples_linked_parts = [(_.id_f, _.id_dse, _.part) for _ in list_linked_parts]
+        return [cpl for cpl in couples if
+                                  (cpl.id_file, cpl.id_poz, cpl.id_part) in list_tuples_linked_parts]
+
+
+
+    def find_linked_parts(self,
+                           parts:dict[tuple, PartialDseOld] | None )->list[PartialDseOld]:
+
+        rez = []
+        if parts is None :
+            return rez
+        for part in parts.values():
+            if part.nn == self.nn:
+                rez.append(part)
+        return rez
+
+class Composition_poz_summ_part():
+    def __init__(self,id_reg_part):
+        self.id_reg_part = id_reg_part
+        self.reg_cnt:int=0
+        self.by_dse_cnt:int=0
+
+    def __repr__(self):
+        return f'id_reg_part={self.id_reg_part}; reg_cnt={self.reg_cnt}; by_dse_cnt={self.by_dse_cnt}'
+
+    def add_count_reg(self,cnt:int):
+        self.reg_cnt+=cnt
+
+    def add_count_by_dse(self,cnt:int):
+        self.by_dse_cnt+=cnt
+
+    @property
+    def cnt_filled(self)->int:
+        if not self.by_dse_cnt:
+            return 0
+        return self.reg_cnt // self.by_dse_cnt
 
 class Composition_poz(_ImportDb):
     ALIASES = {
@@ -8445,19 +8657,23 @@ class Composition_poz(_ImportDb):
         'proj': '_proj',
         'py': '_py',
         'mk': 'МК',
-        'dse': 'ДСЕ',
-        'nn_hand_compare': 'Имя для\nсвязывания',
+        'dse_ui': 'ДСЕ/Части',
+        'nn_hand_compare_ui': 'Имя для\nсвязывания',
+
         'count': 'Кол-во\nна лист',
-        'count_aggregate': 'Общee\nколичество',
-        'count_left_couple': 'Не\nсвязано',
-        'is_coupled': 'Связана',
+        'count_count_aggregate_dse': 'На листы\nДСЕ',
+        'count_left_couple': 'Не связаны\nДСЕ',
+
+        'count_aggregate': 'На листы\nчасти',
+        'count_left_couple_parts': 'Не связаны\nчасти',
+        'coupled': 'Связь',
         'deleted': 'Ошибки',
         'finished': 'Завершена',
 
 
     }
-
-    def __init__(self, parent, item: dict):
+    UNREGISTERED_MARK = f'{CEMOJ.СтатусыПроизводства.alert_exclamation} Незарегистрировано'
+    def __init__(self, parent, item: dict,mngr:ManagePartialDse):
         self.id: int | None = None
         self.id_file: int | None = None
         self.dse: str | None = None
@@ -8473,43 +8689,129 @@ class Composition_poz(_ImportDb):
         self.parent: Composition = parent
         self.finished: bool = False
         self.deleted: bool = False
+        self.id_kpl: int | None = None
+        self.count_kpl: int | None = None
+        self.count_izd: int | None = None
         self.parce_row_dict(item)
         self.aviable_to_composite: int | None = None
         self.aviable_to_create: int | None = None
         self.count_by_mk: int | None = None
         self.parts: dict[tuple, PartialDseOld] | None = None
+        self.parts_couples: list[Couple_nar_poz] | None = None
         self.registred: RegistredPartial|None = None
+        self.res_o: ResSpec | None = None
         self._load_couples()
+        if mngr:
+            self.apply_mngr(mngr)
         self._calc_finished()
         self.update_nn_hand_compare()
+
+
+
+    @property
+    def dse_in_res(self,common_part=False)->bool:
+        if not self.res:
+            return False
+        for it in self.res.data:
+            if it.Наименование == self.name and it.Номенклатурный_номер == self.nn:
+                return True
+            if it.full_name == self.dse or it.Номенклатурный_номер == self.dse:
+                return True
+        return False
+
+
+
+    @property
+    def my_parts_couples(self,common_part=False)->list[Couple_nar_poz]:
+        my_part = self.my_part()
+        rez = []
+        if not my_part:
+            return rez
+        if common_part:
+            rez = [_ for _ in self.parts_couples if
+                                  _.id_file == my_part.id_f and _.id_poz == my_part.id_dse]
+        else:
+            rez = [_ for _ in self.parts_couples if
+                   _.id_file == my_part.id_f and _.id_poz == my_part.id_dse and _.id_part == my_part.part]
+        return rez
+
+    @property
+    def parts_linked(self)->list[PartialDseOld]:
+        if self.parts is None:
+            return []
+        my_part = self.my_part()
+        if my_part is None:
+            return []
+        return my_part.find_linked_parts(self.parts)
+
+    @property
+    def parts_couples_linked(self)->list[Couple_nar_poz]:
+        if self.parts is None:
+            return []
+        if self.parts_couples is None or not self.parts_couples:
+            return []
+        my_part = self.my_part()
+        if my_part is None:
+            return []
+
+        return my_part.find_linked_couples(self.parts_couples, self.parts)
+
 
     @property
     def res(self) -> ResSpec | None:
         return self.parent._dic_res_o.get(self.mk, None)
 
     @property
+    def nn_hand_compare_ui(self) -> str:
+        nn_hand_compare = ''
+        if not self.parts:
+            return nn_hand_compare
+
+        nn_hand_compare = self.UNREGISTERED_MARK
+        if self.nn_hand_compare and self.registred:
+            nn_hand_compare = self.nn_hand_compare
+        return nn_hand_compare
+
+
+    @property
     def nn_compare(self) -> str:
         if self.nn_hand_compare:
             return self.nn_hand_compare
-        if self.registred:
-            return self.registred.partial_nn
-        if self.parts:
-            my_part = self.my_part()
-            if my_part is None:
-                CQT.show_message('Ошибка', 'Не найдена часть для сравнения')
-                return ''
-            return my_part.nn
+
         return self.nn
 
+
+
     @property
-    def count_aggregate(self) -> int:
+    def count_aggregate(self) -> int:#Общее количество ДСЕ
         if self.count is None or self.parent.count is None:
             return 0
         return self.count * self.parent.count
 
+
+    @property
+    def count_count_aggregate_dse(self) -> int:
+        if self.parts:
+            if not self.count_by_mk:
+                return 0
+            return self.count_by_mk
+        else:
+            return self.count_aggregate
+
     @property
     def count_left_couple(self) -> int:
-        return self.count_aggregate - sum([_.count_nar for _ in self.couples])
+
+        if self.parts:
+            if not self.count_by_mk:
+                return 0
+            return self.count_by_mk - self.calc_summ_coupled()
+        else:
+            return self.count_aggregate - self.calc_summ_coupled()
+
+
+    @property
+    def count_left_couple_parts(self) -> int:
+        return self.count_aggregate - self.calc_summ_coupled_parts()
 
     @property
     def is_deleted(self) -> bool:
@@ -8523,47 +8825,97 @@ class Composition_poz(_ImportDb):
             return True
         return False
 
+    @property
+    def is_coupled_parts(self) -> bool:
+        if self.count_aggregate == self.calc_summ_coupled_parts() and self.count_aggregate > 0 and not self.deleted:
+            return True
+        return False
+
+    @property
+    def dse_ui(self) -> str:
+        emoj_parts = ''
+        emoj_registred = ''
+        if self.parts:
+            emoj_parts = " " + CEMOJ.ДокументыДанные.parts.symbol
+            if not self.registred:
+                emoj_registred = CEMOJ.СтатусыПроизводства.not_allowed.symbol
+        else:
+            if not self.dse_in_res:
+                emoj_registred = CEMOJ.СтатусыПроизводства.not_allowed.symbol
+        return f"{CEMOJ.ОперацииПроизводства.dse.symbol} {self.dse}{emoj_parts}{emoj_registred}"
+
     def __setattr__(self, key, value):
         object.__setattr__(self, key, value)
         if value:
             if key == "dse":
                 self._calc_nn_naim()
 
+    def set_registred_partial(self,registred_partials:RegistredPartials):
+        self.registred = registred_partials.find_by_sector(self.nn, self.name)
+        if self.registred:
+            self.nn_hand_compare = self.registred.partial_nn
+
+    def registered_count_per_project(self,part:PartialDseOld)-> int:
+        return part.registered_count_per_project(self.registred)
+
+    def registered_count_per_dse(self,part:PartialDseOld)-> int:
+        registered_count_per_project_val = part.registered_count_per_project(self.registred)
+        if not registered_count_per_project_val:
+            return 0
+        if self.count_izd and self.count_by_mk:
+            count_by_izd = self.count_by_mk / self.count_izd
+            return round(registered_count_per_project_val / count_by_izd)
+        return 0
+
+    
     def my_part(self) -> PartialDseOld | None:
+        if not self.parts:
+            return
         key = (self.id_file, self.id)
+
         my_part = self.parts.get((self.id_file, self.id), None)
         return my_part
 
     def apply_mngr(self, mngr: ManagePartialDse):
-        self.parts = mngr.get_dict_parts(self.nn)
+        self.parts = mngr.get_dict_parts(self.id)
+
+        if self.parts is not None:
+            self.parts_couples = []
+            list_files_id = [_[0] for _ in self.parts.keys()]
+            data = CSQ.custom_request_c(CFG.Config.project.db_naryad,
+            f'''SELECT naryad_composit_poz_snum_nars.*, naryad_composit_poz.id_file FROM naryad_composit_poz_snum_nars 
+            INNER JOIN naryad_composit_poz ON naryad_composit_poz.id = naryad_composit_poz_snum_nars.id_poz 
+             WHERE naryad_composit_poz_snum_nars.id_part is not NULL and naryad_composit_poz.id_file IN ({CSQ.prepare_list_to_tuple(list_files_id)});
+              ''', rez_dict=True)
+
+            for item in data:
+                self.parts_couples.append(Couple_nar_poz(item))
 
     def update_nn_hand_compare(self):
-        if self.id_dse_mk_hand_compare:
-            res = self.res
-            if res:
-                dse = res.get_dse(self.id_dse_mk_hand_compare)
-                self.nn_hand_compare = dse.Номенклатурный_номер
+        if not self.id_dse_mk_hand_compare:
+            return
+
+        res = self.res
+        if not res:
+            return
+
+        dse = res.get_dse(self.id_dse_mk_hand_compare)
+        self.nn_hand_compare = dse.Номенклатурный_номер
 
     def template(self) -> dict:
         self.update_nn_hand_compare()
         data = F.get_all_attrs_with_properties(self)
         data = {k: v for k, v in data.items() if k in self.ALIASES}
-        emoj_parts = ''
-        emoj_registred = ''
-        if self.parts:
-            emoj_parts = " " + CEMOJ.ДокументыДанные.parts.symbol
-
-            if not self.registred:
-                emoj_registred = CEMOJ.СтатусыПроизводства.not_allowed.symbol
-
+        
 
         data['pr_py'] = '-'.join([self.proj, self.py])
-        data['is_coupled'] = CEMOJ.ОборудованиеИнструменты.link.symbol if data['is_coupled'] else ''
         data['finished'] = CEMOJ.СтатусыПроизводства.success.symbol if data['finished'] else ''
-
-        data['dse'] = f"{CEMOJ.ОперацииПроизводства.dse.symbol} {data['dse']}{emoj_parts}{emoj_registred}"
+        data['count_left_couple_parts'] = '' if not self.parts else data['count_left_couple_parts']
+        data['coupled'] = CEMOJ.ОборудованиеИнструменты.link.symbol if (self.is_coupled or self.is_coupled_parts) else ''
         data['deleted'] = CEMOJ.СтатусыПроизводства.alert.symbol if data['deleted'] else ''
-        data['nn_hand_compare'] = data['nn_hand_compare'] if data['nn_hand_compare'] else ''
+        data['count_aggregate'] = data['count_aggregate'] if self.parts else ''
+
+
         data = F.sort_dict_by_sample(data, self.ALIASES)
         return data
 
@@ -8575,7 +8927,7 @@ class Composition_poz(_ImportDb):
         if self.parts:
             emoj_parts = " " + CEMOJ.ДокументыДанные.parts.symbol
         data['pr_py'] = [self.proj, self.py]
-
+        data['coupled'] = self.is_coupled or self.is_coupled_parts
         data = F.sort_dict_by_sample(data, self.ALIASES)
         return data
 
@@ -8601,6 +8953,8 @@ class Composition_poz(_ImportDb):
 
     def _calc_finished(self):
         nnars = list(set([_.snum_nar for _ in self.couples]))
+        if self.parts_couples:
+            nnars.extend( list(set([_.snum_nar for _ in self.parts_couples])))
         ALIASES = {'Пномер': 'Наряд',
                    'ФИО': 'ФИО',
                    'ФИО2': 'ФИО2',
@@ -8625,6 +8979,17 @@ class Composition_poz(_ImportDb):
                 if not self._is_closed_nar(nar):
                     fl_finished = False
                     break
+        if self.parts_couples:
+            for c in self.parts_couples:
+                if c.snum_nar not in dict_nars:
+                    fl_finished = False
+                    fl_deleted = True
+                else:
+                    nar = dict_nars[c.snum_nar]
+
+                    if not self._is_closed_nar(nar):
+                        fl_finished = False
+                        break
 
         if fl_finished and self.is_coupled:
             self.finished = True
@@ -8636,7 +9001,61 @@ class Composition_poz(_ImportDb):
             self.deleted = False
 
     def calc_summ_coupled(self):
-        return sum([_.count_nar for _ in self.couples])
+        def fill_reg_parts(dict_id_parts:dict[int, Composition_poz_summ_part]):
+            def fill_parts(couples:list[Couple_nar_poz],dict_id_parts:dict[int, Composition_poz_summ_part]):
+                for _ in couples:
+                    if _.id_part is None:
+                        continue
+                    if _.id_part in dict_id_parts:
+
+                        dict_id_parts[_.id_part].add_count_reg(_.count_nar)
+                return dict_id_parts
+
+            dict_id_parts = fill_parts(self.couples, dict_id_parts)
+            dict_id_parts = fill_parts(self.parts_couples, dict_id_parts)
+            return dict_id_parts
+
+        def _calc_summ_coupled_parts()->int:
+            dict_id_parts = dict()
+
+            for part in self.parts.values():
+
+                reg_part = part.registred_part(self.registred)
+                id_part = reg_part.segment_id
+                count_by_dse = self.registered_count_per_dse(part)
+                if id_part not in dict_id_parts:
+                    dict_id_parts[id_part] = Composition_poz_summ_part(id_part)
+                    dict_id_parts[id_part].add_count_by_dse(count_by_dse)
+            dict_id_parts = fill_reg_parts(dict_id_parts)
+
+            return min([_.cnt_filled for _ in dict_id_parts.values() ])
+
+
+        summ_ceil_dse = sum([_.count_nar for _ in self.couples if _.id_part is None])
+
+
+        if self.parts and self.registred and self.count_by_mk:
+
+            filled =  _calc_summ_coupled_parts()
+
+            summ_ceil_dse += filled #TODO
+
+        return summ_ceil_dse
+
+
+    def calc_summ_coupled_parts(self):
+
+        summ_ceil_dse = 0
+
+        if self.parts and self.registred and self.count_by_mk:
+            my_part = self.my_part()
+            filled =  sum([_.count_nar for _ in self.parts_couples_linked
+                           if _.id_part == my_part.part and _.id_file == my_part.id_f
+                           and _.id_poz == my_part.id_dse])
+
+            summ_ceil_dse += filled #TODO
+
+        return summ_ceil_dse
 
     def del_associated_dse(self, snum_nar: int) -> bool:
         id_poz = self.id
@@ -8654,9 +9073,10 @@ class Composition_poz(_ImportDb):
         self.parent.recalc_errors()
         return True
 
-    def add_associated_dse(self, snum_nar: int, id_dse: int, count_nar: int, n_oper: str, с_oper: str) -> bool:
+    def add_associated_dse(self, snum_nar: int, id_dse: int, count_nar: int, n_oper: str,
+                           с_oper: str, id_reg_part:int|None=None) -> bool:
         id_poz = self.id
-        data = [id_poz, snum_nar, count_nar, id_dse, n_oper, с_oper]
+        data = [id_poz, snum_nar, count_nar, id_dse, n_oper, с_oper,id_reg_part]
 
         rez = CSQ.custom_request_c(CFG.Config.project.db_naryad, f"""
         INSERT INTO naryad_composit_poz_snum_nars 
@@ -8666,7 +9086,8 @@ class Composition_poz(_ImportDb):
                                 count_nar,
                                 id_dse,
                                 n_oper,
-                                с_oper
+                                с_oper,
+                                id_part
                               ) 
                               VALUES ({CSQ.questions_for_mask(data)});
             """, list_of_lists_c=[data])
@@ -8684,8 +9105,10 @@ class Composition_poz(_ImportDb):
         self.couples = []
         if self.id is None:
             return
-        data = CSQ.custom_request_c(CFG.Config.project.db_naryad, f'SELECT * FROM naryad_composit_poz_snum_nars '
-                                                                  f' WHERE id_poz ={self.id}', rez_dict=True)
+        data = CSQ.custom_request_c(CFG.Config.project.db_naryad,
+                                f'SELECT naryad_composit_poz_snum_nars.*, naryad_composit_poz.id_file FROM naryad_composit_poz_snum_nars '
+                                f'INNER JOIN naryad_composit_poz ON naryad_composit_poz.id = naryad_composit_poz_snum_nars.id_poz'
+                                                    f' WHERE id_poz ={self.id} and naryad_composit_poz_snum_nars.id_part is NULL', rez_dict=True)
 
         for item in data:
             self.couples.append(Couple_nar_poz(item))
@@ -8702,7 +9125,14 @@ class Composition_poz(_ImportDb):
 
     def load_template_chose_nar(self):
         rez = []
-        nnars = list(set([_.snum_nar for _ in self.couples]))
+        common_сouples = []
+        common_сouples.extend(self.couples)
+        if self.my_parts_couples:
+            common_сouples.extend(self.my_parts_couples)
+
+        set_nnars = set([_.snum_nar for _ in common_сouples])
+
+        nnars = list(set_nnars)
         ALIASES = {'Пномер': 'Наряд',
                    '""': 'Удален',
 
@@ -8721,7 +9151,7 @@ class Composition_poz(_ImportDb):
                             Пномер in ({CSQ.prepare_list_to_tuple(nnars)});""",
                                                          rez_dict=True), 'Наряд')
 
-        for couple in self.couples:
+        for couple in common_сouples:
             if couple.snum_nar not in dict_nars:
                 tmp_data = {v: '' for v in ALIASES.values()}
                 tmp_data['Наряд'] = couple.snum_nar
@@ -8737,6 +9167,7 @@ class Composition_poz(_ImportDb):
             tmp_data = F.insert_key_to_dict(tmp_data, 1, 'Наряд', couple.snum_nar)
             tmp_data = F.insert_key_to_dict(tmp_data, 9, 'Завершен', closed_state)
             rez.append(tmp_data)
+
         for it in rez:
             it['Наряд'] = f"{CEMOJ.ДокументыДанные.document.symbol} {it['Наряд']}"
         if rez:
@@ -8745,12 +9176,23 @@ class Composition_poz(_ImportDb):
             return [['Количество', '_snum_couple', 'Завершен', *(ALIASES.values())]]
 
     def calc_count_composite(self, DICT_DOLGN_ETAP, DICT_EMPLOEE_FULL, DICT_OPER_NAME, *args) -> int:
+        if self.parts:
+            if self.is_coupled_parts:
+                self.aviable_to_composite = 0
+                return 0
+        if self.is_coupled:
+            self.aviable_to_composite = 0
+            return 0
         template = self.calc_composite_templ(DICT_DOLGN_ETAP, DICT_EMPLOEE_FULL, DICT_OPER_NAME)
-        count = sum([_['Кол_во'] for _ in template])
+        count = sum([_['Кол-во'] for _ in template])
         self.aviable_to_composite = count
         return count
 
-    def calc_composite_templ(self: Composition_poz, DICT_DOLGN_ETAP, DICT_EMPLOEE_FULL, DICT_OPER_NAME) -> list[dict]:
+    def calc_composite_templ(self: Composition_poz, 
+                             DICT_DOLGN_ETAP, 
+                             DICT_EMPLOEE_FULL, 
+                             DICT_OPER_NAME,
+                             registered_count_per_dse=None) -> list[dict]:
         text = f'''SELECT
                 пл_оуп.НомПл as KPL, 
                 пл_оуп.Номенклатура_ЕРП as Номенклатура_ЕРП, 
@@ -8794,7 +9236,10 @@ class Composition_poz(_ImportDb):
                     if id != self.id_dse_mk_hand_compare:
                         continue
                 tmp_count = copy.deepcopy(param.Опер_колво)
-
+                tmp_emo_parts = ''
+                if registered_count_per_dse:
+                    tmp_count =registered_count_per_dse * tmp_count
+                    tmp_emo_parts = CEMOJ.ДокументыДанные.parts
                 name_oper = param.Операции_имя
                 if name_oper not in DICT_OPER_NAME:
                     print(f'{name_oper} not found in db')
@@ -8805,6 +9250,11 @@ class Composition_poz(_ImportDb):
                         if (couple.id_dse == param.ДСЕ_ID and couple.snum_nar == nar.Пномер and
                                 param.Операции_номер == couple.n_oper):
                             tmp_count -= couple.count_nar
+                    if self.parts_couples:
+                        for couple in self.parts_couples:
+                            if (couple.id_dse == param.ДСЕ_ID and couple.snum_nar == nar.Пномер and
+                                    param.Операции_номер == couple.n_oper):
+                                tmp_count -= couple.count_nar
 
                     if not tmp_count:
                         continue
@@ -8827,20 +9277,30 @@ class Composition_poz(_ImportDb):
                         '№ Опер.': param.Операции_номер,
                         'Код опер.': oper_code,
                         'Имя опер.': name_oper,
-                        'Кол_во': tmp_count,
+                        'Кол-во': tmp_count,
+                        'Частей': tmp_emo_parts,
                         'Выбрано шт.': '',
                     })
         return template
 
     @CQT.onerror
     def calc_count_create(self, *args) -> int:
+        if self.parts:
+            if self.is_coupled_parts:
+                self.aviable_to_create = 0
+                return 0
+        if self.is_coupled:
+            self.aviable_to_create = 0
+            return 0
         template = self.calc_composite_create_templ()
         count = sum([_['Доступно'] for _ in template])
         self.aviable_to_create = count
         return count
 
     @CQT.onerror
-    def calc_count(self, *args) -> int:
+    def calc_count_by_mk(self, *args) -> int:
+        if self.count_by_mk is not None:
+            return self.count_by_mk
         template = self.calc_all_templ()
         count = sum([_['Количество'] for _ in template])
         self.count_by_mk = count
@@ -8848,7 +9308,10 @@ class Composition_poz(_ImportDb):
 
     def calc_composite_create_templ(self: Composition_poz) -> list[dict]:
         template = []  # Naryads(165205,CFG.Config.project.db_naryad,None,CFG.Config.project.db_users)
-        res = ResSpec(self.mk)
+        res = self.res_o
+        if res is None:
+            CQT.msgbox(f'ResSpec is None')
+            raise Exception
         for dse in res.data:
             id = dse.Номерпп
             if self.id_dse_mk_hand_compare:
@@ -8881,7 +9344,10 @@ class Composition_poz(_ImportDb):
 
     def calc_all_templ(self: Composition_poz) -> list[dict]:
         template = []  # Naryads(165205,CFG.Config.project.db_naryad,None,CFG.Config.project.db_users)
-        res = ResSpec(self.mk)
+        res = self.res_o
+        if res is None:
+            CQT.msgbox(f'ResSpec is None')
+            raise Exception
         for dse in res.data:
             id = dse.Номерпп
             if self.id_dse_mk_hand_compare:
@@ -11415,7 +11881,8 @@ class Poz_gant():
             for gr in tmp_dict_grps.values():
                 gr.calc_start_end(tmp_day_dt, dict_template_cld, dict_cust_wends)
                 if gr.is_filled:
-                    tmp_day_dt = F.date_add_days(gr.end, 1, '', '')
+                    if gr.end:
+                        tmp_day_dt = F.date_add_days(gr.end, 1, '', '')
                     if gr.end and (pre_max_date is None or gr.end > pre_max_date):
                         pre_max_date = gr.end
                     if gr.start and (pre_min_date is None or gr.start < pre_min_date):
@@ -11777,7 +12244,7 @@ class Poz_gant():
 
     def grenerete_template(self, filtered_days: dict[datetime.datetime, Month_cld_day] | None,
                            dict_tabels_db_info: dict[str, Table_db_info]) -> list[
-        dict]:  # TODO add addit_ data from settings
+        dict]:
         template = []
 
         clear_empty_rows = False
@@ -14441,10 +14908,33 @@ def fix_mastered_count(res: list, s_num_mk: int, list_nars: list[dict] = None):
                     oper['Закрыто,шт.'] = dict_zav[id][oper_num]
     return res
 
+def _update_name_rc_and_etaps(res, dict_etaps: dict = None):
+    db_users = CFG.Config.project.db_users
+    db_naryad = CFG.Config.project.db_naryad
+    poki = CFG.Config.place.poki
+    if dict_etaps is None:
+        etaps = CSQ.custom_request_c(db_users,
+                                     f"""SELECT etaps.name as etaps_name, rab_c."Код" , rab_c."Имя" FROM rab_c 
+                INNER JOIN etaps ON 
+                etaps.s_num = rab_c.etaps_num 
+                WHERE rab_c.poki = {poki}""",
+                                     attach_dbs=db_naryad, rez_dict=True)
+        dict_etaps = F.deploy_dict_c(etaps, 'Код')
+
+    for dse_i, dse in enumerate(res):
+        for oper_i, oper in enumerate(res[dse_i]['Операции']):
+            rc = oper['Опер_РЦ_код']
+            if rc in dict_etaps:
+                oper['Этап'] = dict_etaps[rc]['etaps_name']
+                oper['Опер_РЦ_наименование'] = dict_etaps[rc]['Имя']
+    return res
+
 
 def load_res(nom_mk: int, conn='', cur='', db_resxml='', self=None,
-             from_xml=False, tkp=False, db_users=None, poki=None, db_naryad=None, list_nars: list[dict] = None,
+             from_xml=False, tkp=False, db_users=None, poki=None, db_naryad=None,
+             list_nars: list[dict] = None,
              dict_etaps: dict = None):
+
     if db_users is None:
         db_users = CFG.Config.project.db_users
     if poki is None:
@@ -14458,23 +14948,6 @@ def load_res(nom_mk: int, conn='', cur='', db_resxml='', self=None,
     if self == None:
         from_xml = False
 
-    def update_name_rc_and_etaps(res, dict_etaps: dict = None):
-        if dict_etaps is None:
-            etaps = CSQ.custom_request_c(db_users,
-                                         f"""SELECT etaps.name as etaps_name, rab_c."Код" , rab_c."Имя" FROM rab_c 
-                    INNER JOIN etaps ON 
-                    etaps.s_num = rab_c.etaps_num 
-                    WHERE rab_c.poki = {poki}""",
-                                         attach_dbs=db_naryad, rez_dict=True)
-            dict_etaps = F.deploy_dict_c(etaps, 'Код')
-
-        for dse_i, dse in enumerate(res):
-            for oper_i, oper in enumerate(res[dse_i]['Операции']):
-                rc = oper['Опер_РЦ_код']
-                if rc in dict_etaps:
-                    oper['Этап'] = dict_etaps[rc]['etaps_name']
-                    oper['Опер_РЦ_наименование'] = dict_etaps[rc]['Имя']
-        return res
 
     def fix_old_custom_res(rez_spis):
 
@@ -14502,7 +14975,8 @@ def load_res(nom_mk: int, conn='', cur='', db_resxml='', self=None,
         if self == '':
             raise Exception('Val err self')
         rez_xml = CSQ.custom_request_c(db_resxml,
-                                       f"""SELECT data FROM predv_res WHERE "Пномер" = {int(nom_mk)};"""
+                                       f"""SELECT data 
+                                       FROM predv_res WHERE "Пномер" = {int(nom_mk)};"""
                                        )
         rez_spis = F.from_binary_pickle(rez_xml[1][0])
 
@@ -14523,7 +14997,9 @@ def load_res(nom_mk: int, conn='', cur='', db_resxml='', self=None,
             if isinstance(nom_mk, list):
                 rez_spis = F.from_binary_pickle(nom_mk[1][0])
             else:
-                bin_data = CSQ.custom_request_c(db_resxml, f"""SELECT data FROM res WHERE "Номер_мк" = {int(nom_mk)}""",
+                bin_data = CSQ.custom_request_c(db_resxml,
+                                                f"""SELECT data FROM res 
+                                                WHERE "Номер_мк" = {int(nom_mk)}""",
                                                 rez_dict=True,
                                                 one=True)
                 if isinstance(bin_data, dict) and len(bin_data) == 0:
@@ -14544,7 +15020,7 @@ def load_res(nom_mk: int, conn='', cur='', db_resxml='', self=None,
             rez_spis = resource_from_xml_c(self, spis_xml, kol_vo_izdeliy, nom_mk)
 
     res = add_to_res_detail_counts(rez_spis)
-    res = update_name_rc_and_etaps(res, dict_etaps=dict_etaps)
+    res = _update_name_rc_and_etaps(res, dict_etaps=dict_etaps)
     if isinstance(nom_mk, list):
         s_nom_mk = nom_mk[0]
     else:
@@ -19564,6 +20040,8 @@ def _add_custom_manual_button(self, tabs: QtWidgets.QTabWidget, index, list_manu
 
     tab = tabs.widget(index)
     emo = CEMOJ.ДокументыДанные.open_book.symbol
+    if CFG.Config.window_manager.active is None:
+        raise ValueError(f'Не найден активный класс в window_manager нужно подвязать через CFG.BaseSubWindow.window_binding')
     if [CFG.Config.window_manager.active.cfg.app, tabs.objectName(), tab.objectName()] in list_manuals:
         emo = CEMOJ.ДокументыДанные.archive.symbol
 

@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from itertools import count
 from contextlib import contextmanager
 import inspect
-from PyQt5 import QtWidgets, QtCore, QtGui, uic, QtWebEngineWidgets
+from PyQt5 import QtWidgets, QtCore, QtGui, uic, QtWebEngineWidgets, QtWinExtras
 from PyQt5.QtWidgets import (QStyledItemDelegate, QMainWindow, QTableWidget, QHeaderView,
                              QApplication, QTabWidget, QTableWidgetItem,QMenu)
 from PyQt5.QtGui import QPixmap, QPen, QColor
@@ -2647,7 +2647,12 @@ class TableRow:
             setCustData(item,value,False,100+num_user_data)
             return
         item.setText(str(value))
-    
+
+    def set_value_into_cust_content(self,col_name: str,num_user_data:CustUserRoles|int=CustUserRoles.table):
+        val = self.value(col_name)
+        self.set_value(col_name,val,True,num_user_data)
+
+
     def setToolTip(self, col_name: str, value):
         j = self._col_index(col_name)
         item = self.tbl.item(self.i, j)
@@ -3059,7 +3064,8 @@ def freeze_mouse_wheel(obj:QtWidgets.QComboBox):
     obj.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
 
 
-def connect_cell_edit(tbl:QtWidgets.QTableWidget,fnc_bool,add_data=None,check_old_val:bool=False):
+def connect_cell_edit(tbl:QtWidgets.QTableWidget,fnc_bool,add_data=None,
+                      check_old_val:bool=False,fnc_replace_edit_data:Callable=None):
     """
     :param tbl: QtWidgets.QTableWidget
     :param fnc_bool: def corr_mk(tbl:QtWidgets.QTableWidget,item:QtWidgets.QTableWidgetItem ,add_data=None)->bool:
@@ -3087,7 +3093,6 @@ def connect_cell_edit(tbl:QtWidgets.QTableWidget,fnc_bool,add_data=None,check_ol
         if isinstance(data,tuple):
             return data
         return False,None
-
 
     def save_old_val(tbl, item: QtWidgets.QTableWidgetItem,if_none_only:bool=False):
         if item and is_cell_editable(item):
@@ -3120,7 +3125,6 @@ def connect_cell_edit(tbl:QtWidgets.QTableWidget,fnc_bool,add_data=None,check_ol
             finally:
                 _set_updating(tbl, False)
 
-
     def tbl_current_elem_itemChanged(tbl:QtWidgets.QTableWidget, item: QtWidgets.QTableWidgetItem, fnc,add_data):
         if is_table_updating(tbl):
             return
@@ -3144,6 +3148,23 @@ def connect_cell_edit(tbl:QtWidgets.QTableWidget,fnc_bool,add_data=None,check_ol
             save_old_val(tbl, item)
         else:
             restore_old_val(item)
+
+    def fnc_replace_edit_data_wrapper(le:QtWidgets.QLineEdit):
+        if is_table_updating(tbl):
+            return
+        item = tbl.currentItem()
+        if item is None:
+            return
+        if not is_cell_editable(item):
+            return
+        filled, old = is_filled_and_data(item)
+        fnc_replace_edit_data(tbl, item, le ,add_data,old)
+
+
+    if fnc_replace_edit_data:
+        cell_delegator = TableHandCellEditDelegator(tbl)
+        cell_delegator.fnc_replace_text_edit = fnc_replace_edit_data_wrapper
+        tbl.setItemDelegate(cell_delegator)
 
     # --- защита от двойного подключения ---
 
@@ -5507,7 +5528,8 @@ def is_btn_item(item_or_index) -> bool:
         return item_or_index.data(ITEM_BUTTON_HANDLE_ROLE) is not None
     return False
 
-def add_btn_push_btn(item:QTableWidget, i, j, text='', val=True, conn_func_checked_row_col = '', self = '',img_path='',height = '',fontsize='',
+def add_btn_push_btn(item:QTableWidget, i, j, text='', val=True, conn_func_checked_row_col = '', self = '',img_path='',
+                     height = '',fontsize='',
             cell_val=None,checkable:bool= False,initial_state:bool=False):
     __MUTABLE_CELLS_KEY = '__MUTABLE_CELLS_KEY'
     __MUTABLE_RESIZE_EVENT = '__MUTABLE_RESIZE_EVENT'
@@ -9779,7 +9801,7 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
         if isinstance(value, bool):
             return None
         try:
-            after_check = float(str(value).replace('.', ','))
+            after_check = float(str(value).replace(',', '.'))
         except Exception as e:
             after_check = None
         numeric_value = None
@@ -9825,7 +9847,7 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
             'count': len(indexes),
             'numeric_count': len(numeric_values),
             'sum': selection_sum,
-            'average': selection_average,
+            'average': round(selection_average, 3) if isinstance(selection_average, float) else selection_average ,
             'values': tuple(values),
             'numeric_values': tuple(numeric_values),
         }
@@ -9835,7 +9857,7 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
         if value is None:
             return '—'
         if isinstance(value, float):
-            return f'{value:.12g}'.replace('.', ',')
+            return f'{value:.3g}'.replace('.', ',')
         return str(value)
 
     def _update_selection_status_bar(self, *args):
@@ -10827,6 +10849,7 @@ def get_answer_dialog_table(parent, msg:str, dict_or_list, btn0_name:str="Вво
              info_point_size: int = 15,
              save_column_sort_hh: bool = False,
              decorate_dialog: typing.Callable[["Dialog_tbl"], None] = None
+
     ):
     """
     Поля дополняющие Dialog_tbl
@@ -11447,15 +11470,19 @@ def fill_filtr_c(self, tblf:QtWidgets.QTableWidget, tbl:QtWidgets.QTableWidget, 
                             dict_count[value]=0
                         dict_count[value]+=1
                     list_text = sorted(list(set_tmp))
+                    list_data = []
+                    for _ in list_text:
+                        val = _
+                        if _ == '':
+                            val = '!*'
+                        list_data.append(val)
                 else:
+                    if isinstance(list_text[0],dict):
+                        list_data = [_['data'] for _ in list_text]
+                        list_text = [_['text'] for _ in list_text]
                     dict_count = {_:'' for _ in list_text}
 
-                list_data = []
-                for _ in list_text:
-                    val = _
-                    if _ == '':
-                        val = '!*'
-                    list_data.append(val)
+
                 widget = add_interactive_label(tblf, row=0, column=col_index,
                                                    text=tblf.item(0,col_index).text(),
                                                mark_not_changed_item=False,
@@ -12497,6 +12524,18 @@ def delete_obj(obj):
         obj = None
     except:
         print(f'delete_obj err')
+
+class TableHandCellEditDelegator(QStyledItemDelegate):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.fnc_replace_text_edit = None  # каст  функцию
+
+
+    def setEditorData(self, editor, index):
+        super().setEditorData(editor, index)
+        if isinstance(editor,QtWidgets.QLineEdit) and self.fnc_replace_text_edit:
+            self.fnc_replace_text_edit(editor)
+            editor.selectAll()
 
 class TableValidator(QStyledItemDelegate):
     """

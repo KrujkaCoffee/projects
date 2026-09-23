@@ -33,8 +33,8 @@ import win32com  # 27.02.2026
 import winreg
 from collections.abc import MutableMapping
 from types import ModuleType
-
-
+import keyword
+import unicodedata
 try:
     print(f'import config try...')
     import config
@@ -3046,6 +3046,68 @@ def fix_decode(text):
         if item in obr:
             rez.append(item)
     return ''.join(rez)
+
+def to_pep_var_name(name: str) -> str | None:
+
+    """
+    Превращает произвольную строку в PEP 8-совместимое имя
+    переменной/атрибута (snake_case), либо возвращает None,
+    если имя невозможно построить корректно.
+
+     to_pep_var_name("HelloWorld")
+    'hello_world'
+     to_pep_var_name("HTTPResponse")
+    'http_response'
+     to_pep_var_name("my-var name!")
+    'my_var_name'
+     to_pep_var_name("123abc") is None
+    True
+     to_pep_var_name("class") is None
+    True
+     to_pep_var_name("") is None
+    True
+    """
+
+    def _split_case(s: str) -> str:
+        """Вставляет пробелы на границах регистра (camelCase, АКРОНИМЫ)."""
+        out = []
+        prev = ''
+        for i, ch in enumerate(s):
+            nxt = s[i + 1] if i + 1 < len(s) else ''
+            if prev:
+                # lower/digit -> Upper        helloWorld -> hello World
+                if (prev.islower() or prev.isdigit()) and ch.isupper():
+                    out.append(' ')
+                # АКРОНИМ -> Слово          HTTPResponse -> HTTP Response
+                elif prev.isupper() and ch.isupper() and nxt.islower():
+                    out.append(' ')
+            out.append(ch)
+            prev = ch
+        return ''.join(out)
+
+    if not isinstance(name, str) or not name:
+        return None
+
+        # 1. Любой не-буквенно-цифровой Unicode-символ -> разделитель.
+        #    isalnum() в Python 3 понимает кириллицу, греческий, CJK и т.п.
+    cleaned = ''.join(ch if ch.isalnum() else ' ' for ch in name)
+
+    # 2. Разбиваем по границам регистра
+    cleaned = _split_case(cleaned)
+
+    words = cleaned.split()
+    if not words:
+        return None
+
+    # 3. snake_case
+    result = '_'.join(w.lower() for w in words)
+
+    # 4. Валидация
+    if not result.isidentifier() or keyword.iskeyword(result):
+        return None
+
+    return transliterate(result).replace('`','')
+
 
 
 def to_snake_notation(text: str):
