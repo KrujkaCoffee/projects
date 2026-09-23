@@ -793,8 +793,8 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
                         self.info_shablon(shablon_o,read_only=read_only)
 
                 def fnd_click_btn_del_attr(self: Plwindow, i, j, addit_data, *args):
-                    row: CQT.TableRow = addit_data[0]
-                    shablon_o: CLSS.ShablonRes = addit_data[1]
+                    table_context, shablon_o = addit_data
+                    row: CQT.TableRow = table_context.get_row(i)
                     attr_name = row.value('_name')
                     custom_attrs = shablon_o.cust_attrs.value.get_dict_attrs()
                     attr_o = custom_attrs.get(attr_name)
@@ -813,8 +813,8 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
                                              protected_names=shablon_o.get_protected_names(), fnc_oform=func_oform)
 
                 def fnd_click_btn_edit_attr(sub_self:Plwindow,i,j,addit_data,*args):
-                    attr_row: CQT.TableRow = addit_data[0]
-                    shablon_o: CLSS.ShablonRes = addit_data[1]
+                    table_context, shablon_o = addit_data
+                    attr_row = table_context.get_row(i)
                     attr_name = attr_row.value('_name')
 
                     custom_attrs = shablon_o.cust_attrs.value.get_dict_attrs()
@@ -1006,18 +1006,25 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
                 if t_sub:
                     if not read_only:
                         for sub_row in t_sub.rows():
+                            CQT.add_btn(
+                                t_sub.tbl,
+                                sub_row.i,
+                                sub_row.nf['ca_del'],
+                                text='Удалить атрибут',
+                                conn_func_checked_row_col=fnd_click_btn_del_attr,
+                                self=DTSUB.sub_self,
+                                cell_val=(t_sub, shablon_o),
+                                img_path=F.sep().join([F.path_to_caller_file_c(), 'icons', 'btn_del']))
 
-                            CQT.add_btn(t_sub.tbl, sub_row.i, sub_row.nf['ca_del'], tooltip='Удалить атрибут',
-                                          conn_func_click=
-                                          fnd_click_btn_del_attr, addit_data=DTSUB.sub_self,
-                                          path=F.sep().join([F.path_to_caller_file_c(),
-                                                             'icons', 'btn_del']), stylesheet=DTSUB.sub_self.styleSheet())
-
-                            CQT.add_btn(t_sub.tbl, sub_row.i, sub_row.nf['ca_edit'], tooltip='Изменить атрибут',
-                                          conn_func_click=
-                                          fnd_click_btn_edit_attr, addit_data=DTSUB.sub_self,
-                                          path=F.sep().join([F.path_to_caller_file_c(),
-                                                             'icons', 'btn_edit']), stylesheet=DTSUB.sub_self.styleSheet())
+                            CQT.add_btn(
+                                t_sub.tbl,
+                                sub_row.i,
+                                sub_row.nf['ca_edit'],
+                                text='Изменить атрибут',
+                                conn_func_checked_row_col=fnd_click_btn_edit_attr,
+                                self=DTSUB.sub_self,
+                                cell_val=(t_sub, shablon_o),
+                                img_path=F.sep().join([F.path_to_caller_file_c(), 'icons', 'btn_edit']))
                     t_sub.hide_if_not_dev(CFG,True)
 
 
