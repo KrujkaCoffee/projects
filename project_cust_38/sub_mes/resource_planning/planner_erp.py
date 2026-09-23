@@ -116,7 +116,7 @@ class ErpEntityService:
         refs = self.interface.Refs_wet(query)
         refs.add_ref(self.interface.Ref_wet('PlannerRef', reference.entity_key, reference.ref_key))
         try:
-            code, payload = self.interface.get_wet_request(text=query, refs=refs, lazy_method_hours=0)
+            code, payload = self.interface.get_wet_request(text=query, refs=refs, lazy_method_huours=0)
         except Exception as exc:
             raise ErpEntityError('Не удалось выполнить запрос к ERP') from exc
         if code != 200:
@@ -126,8 +126,11 @@ class ErpEntityService:
         if payload.get('ЕстьОшибки'):
             raise ErpEntityError(f"Ошибка ERP: {payload.get('Ошибки')}")
         rows = payload.get('data')
-        if isinstance(rows, typing.Mapping) and rows.get('ЕстьОшибки') or not isinstance(rows, list):
+        if isinstance(rows, typing.Mapping) and rows.get('ЕстьОшибки'):
             raise ErpEntityError(f"Ошибка ERP: {rows.get('Ошибки')}")
+        if not isinstance(rows, list):
+            raise ErpEntityError('Ошибка ERP некорректный ответ')
+
 
         if not rows:
             return None
@@ -159,7 +162,7 @@ class ErpEntityService:
             presentations[field_key] = ('' if text_value is None else str(text_value))
 
         return ErpEntityRow(
-            reference=reference,
+            reference=result,
             values=values,
             presentations=presentations
         )

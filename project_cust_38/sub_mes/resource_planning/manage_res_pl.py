@@ -74,7 +74,9 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
         DTSUB.sub_self = self
         CQT.load_icons(self, 26, dir=str(F.Cust_path(main_ui)) + F.sep() + 'icons' + F.sep())
         self.setWindowModality(CQT.Qt.ApplicationModal)
+        self.__catalog_link_manager = CLINK.CatalogLinkManager()
         self.load_profile(subject_pl_name)
+
 
         _con.load_connects(self)
         self.__install_catalog_links_menu()
@@ -254,12 +256,17 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
     def _____________sub__________________(self):
         pass
 
-    def load_profile(self,subject_pl_name:str|None = None):
+    def load_profile(self, subject_pl_name: str | None = None):
         CLSS.SubjectsPl.reload()
-        if not subject_pl_name:
+        if subject_pl_name:
+            subject_pl = CLSS.SubjectsPl.get(subject_pl_name)
+        else:
             subject_pl_name = CMS.load_tmp_stukt(CLSS.SubjectsPl.NAME_CACHE)
-            subject_pl = CLSS.SubjectsPl.get(
-                subject_pl_name) if subject_pl_name else None or CLSS.SubjectsPl.get_first()
+            subject_pl = CLSS.SubjectsPl.get(subject_pl_name)
+            if subject_pl is None:
+                subject_pl = CLSS.SubjectsPl.get_first()
+        if subject_pl is None:
+            raise ValueError(f'Профиль {subject_pl_name} не найден')
         self.apply_subj(subject_pl)
 
     def init_data(self):
@@ -785,11 +792,29 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
                         shablon_o.upadte_child_attrs(dimensions)
                         self.info_shablon(shablon_o,read_only=read_only)
 
-                def fnd_click_btn_del_attr(sub_self: Plwindow, i, j, addit_data, *args):
-                    pass
+                def fnd_click_btn_del_attr(self: Plwindow, i, j, addit_data, *args):
+                    row: CQT.TableRow = addit_data[0]
+                    shablon_o: CLSS.ShablonRes = addit_data[1]
+                    attr_name = row.value('_name')
+                    custom_attrs = shablon_o.cust_attrs.value.get_dict_attrs()
+                    attr_o = custom_attrs.get(attr_name)
+                    if attr_o is None:
+                        return CQT.msgbox(f'Атрибут {attr_name!r} не найден')
+                    if not CQT.msgboxgYN(f'Удалить из шаблона атрибут\n"{attr_o.info.alias!r}" ?'):
+                        return
+                    shablon_o.del_custom_attr(attr_name)
 
-                def fnd_click_btn_edit_attr(addit_data, i, j, sub_self: Plwindow, *args):
-                    attr_row = t_sub.get_row(i)
+                    data, dict_data, dict_aliases = shablon_o.full_template()
+                    dict_aliases: dict
+                    dict_aliases.update(CLSS.CustAttrs.aliases())
+                    DTSUB.info_o.update_info(data, dict_data, not read_only, fnc_update_data=fnc_update_data,
+                                             dict_aliases=dict_aliases,
+                                             fnc_edit_cells=fnc_edit_cells,
+                                             protected_names=shablon_o.get_protected_names(), fnc_oform=func_oform)
+
+                def fnd_click_btn_edit_attr(sub_self:Plwindow,i,j,addit_data,*args):
+                    attr_row: CQT.TableRow = addit_data[0]
+                    shablon_o: CLSS.ShablonRes = addit_data[1]
                     attr_name = attr_row.value('_name')
 
                     custom_attrs = shablon_o.cust_attrs.value.get_dict_attrs()
@@ -982,13 +1007,13 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
                     if not read_only:
                         for sub_row in t_sub.rows():
 
-                            CQT.add_image(t_sub.tbl, sub_row.i, sub_row.nf['ca_del'], tooltip='Удалить атрибут',
+                            CQT.add_btn(t_sub.tbl, sub_row.i, sub_row.nf['ca_del'], tooltip='Удалить атрибут',
                                           conn_func_click=
                                           fnd_click_btn_del_attr, addit_data=DTSUB.sub_self,
                                           path=F.sep().join([F.path_to_caller_file_c(),
                                                              'icons', 'btn_del']), stylesheet=DTSUB.sub_self.styleSheet())
 
-                            CQT.add_image(t_sub.tbl, sub_row.i, sub_row.nf['ca_edit'], tooltip='Изменить атрибут',
+                            CQT.add_btn(t_sub.tbl, sub_row.i, sub_row.nf['ca_edit'], tooltip='Изменить атрибут',
                                           conn_func_click=
                                           fnd_click_btn_edit_attr, addit_data=DTSUB.sub_self,
                                           path=F.sep().join([F.path_to_caller_file_c(),
@@ -1010,6 +1035,7 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
         pass
 
     def s_shab_save(self):
+        data = None
         if DTSUB.current_settings_mode is CLSS.Type_entitys.Res:
             data = CLSS.ShablonsResDB().to_dict(DTSUB.shablons_res)
         if DTSUB.current_settings_mode is CLSS.Type_entitys.Eve:
@@ -1018,7 +1044,8 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
             name = DTSUB.current_settings_mode.name
             name_pl = DTSUB.subj_pl.name
             file_name = f"{name}_{name_pl}.json"
-            F.save_file_pickle(file_name, data)
+            path_ = F.path_to_execut_file_c() + file_name
+            F.save_file_pickle(path_, data)
 
     def load_s_shab(self,current_settings_mode:CLSS.Type_entity, reload_ui=False):
         if reload_ui:
@@ -1254,7 +1281,8 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
         if data:
             name = DTSUB.subj_pl.name
             file_name = f"{name}_resources.json"
-            F.save_file_pickle(file_name, data)
+            path_ = F.path_to_execut_file_c() + file_name
+            F.save_file_pickle(path_, data)
 
     def load_resources(self, reload_ui=False):
         if reload_ui:
@@ -1303,7 +1331,8 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
         if data:
             name = DTSUB.subj_pl.name
             file_name = f"{name}_events.json"
-            F.save_file_pickle(file_name, data)
+            path_ = F.path_to_execut_file_c() + file_name
+            F.save_file_pickle(path_, data)
 
 
     def load_events(self, reload_ui=False):
@@ -1464,7 +1493,8 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
         if data:
             name = DTSUB.subj_pl.name
             file_name = f"{name}_crosses.json"
-            F.save_file_pickle(file_name, data)
+            path_ = F.path_to_execut_file_c() + file_name
+            F.save_file_pickle(path_, data)
 
     def load_crosses(self, reload_ui=False):
         if reload_ui:

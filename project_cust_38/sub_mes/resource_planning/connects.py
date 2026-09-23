@@ -17,46 +17,8 @@ if TYPE_CHECKING:
     from project_cust_38.sub_mes.resource_planning.manage_res_pl import (Plwindow,Type_entity)
     from project_cust_38.sub_mes.resource_planning.manage_res_pl import Plwindow
 
-def te():
-    import project_cust_38.Cust_config as CFG
-    import project_cust_38.api_erp_commands as APIERP
-
-    from project_cust_38.sub_mes.resource_planning import planner_erp as PERP
-
-    def current_erp_source_key():
-        return f'api_erp:{CFG.Config.user_config.ERP_base.name}'
-
-    service = PERP.ErpEntityService(
-        interface=APIERP,
-        source_key_getter=current_erp_source_key,
-    )
-
-    reference = PERP.ErpEntityRef(
-        source_key=current_erp_source_key(),
-        entity_key='Документы.ЗаказНаПроизводство2_2',
-        ref_key=input('UUID существующего заказа: ').strip(),
-    )
-
-    fields = ('Номер', 'Дата', 'Проведен')
-
-    row = service.read_fields(reference, fields)
-
-    print(row is not None)
-
-    if row is not None:
-        print(row.reference.identity_key == reference.identity_key)
-
-        for field_key in fields:
-            value = row.values[field_key]
-            presentation = row.presentations[field_key]
-
-            print(
-                f'{field_key}: {value!r} '
-                f'({type(value).__name__}) → {presentation}'
-            )
 
 def toggle_focus(new_focus):
-    te()
 
     DTSUB.sub_self.ui.fr_cont_event.setVisible(False)
     DTSUB.sub_self.ui.fr_cont_res.setVisible(False)

@@ -1846,8 +1846,14 @@ class CustAttrs():
         self.__setattr__(name, data)
         print(f'New attr {name} added')
 
+    def del_attr(self, name):
+        if not hasattr(self, name):
+            return
+        self.__delattr__(name)
+        print(f'Attr {name} deleted')
 
-class _BaseEntity():
+
+class _BaseEntity:
     _TYPE_ENTITY: Type_entity = None
 
     def __setattr__(self, key, value):
@@ -1944,14 +1950,13 @@ class _BaseEntity():
             raise
         return changes
 
-
-
-
-
-
     def add_new_custom_attr(self, data: _Attribute):
         cust_attr_o = self.cust_attrs.value
         cust_attr_o.add_new_attr(data)
+
+    def del_custom_attr(self, name:str):
+        cust_attr_o = self.cust_attrs.value
+        cust_attr_o.del_attr(name)
 
     def to_dump(self, attr_name):
         attr_value: _Attribute = getattr(self, attr_name)
