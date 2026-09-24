@@ -359,6 +359,8 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
         if self.app_self:
             CFG.BaseSubWindow.window_binding(self,F.name_of_caller_file(),self.app_self)
             print(f'add sub {CFG.Config.window_manager.active} into window_manager' )
+        else:
+            CFG.BaseSubWindow.set_as_root(self)
 
     def select_sbjpl(self,*args):
         cmb = self.ui.cmb_select_sbjpl

@@ -18,8 +18,60 @@ if TYPE_CHECKING:
     from project_cust_38.sub_mes.resource_planning.manage_res_pl import Plwindow
 
 
-def toggle_focus(new_focus):
+def te():
+    from dataclasses import replace
+    from project_cust_38 import Cust_config as CFG
+    from project_cust_38 import api_erp_commands as APIERP
+    from project_cust_38.sub_mes.resource_planning import planner_erp as PERP
+    from project_cust_38.sub_mes.resource_planning import attribute_binding as AB
 
+    service = PERP.ErpEntityService(
+        interface=APIERP,
+        source_key_getter=lambda: f'api_erp:{CFG.Config.user_config.ERP_base.name}'
+    )
+    reference = PERP.ErpEntityRef(
+        source_key=f'api_erp:{CFG.Config.user_config.ERP_base.name}',
+        entity_key='Документы.ЗаказНаПроизводство2_2',
+        ref_key='5fa846d3-94a4-11f1-a4b7-30e1716be59f',
+        display_snapshot='Старый текст'
+    )
+    number = AB.BindingField(
+        provider=AB.SourceProvider.ERP,
+        source_key=reference.entity_key,
+        entity_key=reference.entity_key,
+        field_key='Номер',
+        presentation_key='Номер',
+        caption='Номер заказа'
+    )
+    date = replace(
+        number,
+        field_key='Дата',
+        presentation_key='Дата',
+        caption='Дата заказа'
+    )
+    manager = AB.AttributeBindingManager()
+    binding = manager.concat(number, date, separator=' от ')
+
+    row = service.read_fields(reference, ('Номер', 'Дата'))
+    direct = service.read_bound(reference, manager.direct(number))
+    combined = service.read_bound(reference, binding.to_dict())
+    assert row is not None and direct is not None and combined is not None
+
+    expected = ' от '.join(
+        row.presentations[key]
+        for key in ('Номер', 'Дата')
+        if row.presentations[key] != ''
+    )
+    print(direct.display_snapshot == row.presentations['Номер'])
+    print(combined.display_snapshot == expected)
+    print(direct.identity_key == combined.identity_key == reference.identity_key)
+    print(reference.display_snapshot == 'Старый текст')
+    print(PERP.ErpEntityRef.deserialize(combined.serialize()) == combined)
+    print(combined)
+
+
+def toggle_focus(new_focus):
+    te()
     DTSUB.sub_self.ui.fr_cont_event.setVisible(False)
     DTSUB.sub_self.ui.fr_cont_res.setVisible(False)
     if DTSUB.info_o:

@@ -1,9 +1,10 @@
 import typing
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from uuid import UUID
 
 from project_cust_38 import api_erp_commands as APIERP
+from project_cust_38.sub_mes.resource_planning import attribute_binding as AB
 
 
 ERP_ENTITY_REF_VERSION = 1
@@ -77,6 +78,33 @@ class ErpEntityService:
     def read(self, reference) -> ErpEntityRef | None:
         row = self.read_fields(reference)
         return None if row is None else row.reference
+
+    def read_bound(self, reference, binding: AB.AttributeBinding | dict) -> ErpEntityRef | None:
+        reference = ErpEntityRef.deserialize(reference)
+        if isinstance(binding, dict):
+            binding = AB.AttributeBinding.from_dict(binding)
+        if not isinstance(binding, AB.AttributeBinding):
+            raise ErpEntityService('Ожидается настройка AttributeBinding.')
+        if binding.version != 1:
+            raise ErpEntityError('Неподдерживаемая версия настройки представления.')
+        if binding.mode == AB.CombineMode.DIRECT:
+            expected_count = 1
+        elif binding.mode == AB.CombineMode.CONCAT:
+            expected_count = 2
+        else:
+            raise ErpEntityError('Неподдерживаемый способ формирования надписи')
+        if len(binding.fields) != expected_count:
+            raise ErpEntityError(f'Для выбранного способа требуется {expected_count} полей')
+        row = self.read_fields(reference, tuple(field.field_key for field in binding.fields))
+        if row is None:
+            return None
+
+        parts = [row.presentations[field.field_key] for field in binding.fields]
+        if binding.mode == AB.CombineMode.DIRECT:
+            display_snapshot = parts[0]
+        else:
+            display_snapshot = binding.separator.join(part for part in parts if part)
+        return replace(row.reference, display_snapshot=display_snapshot)
 
     def read_fields(self, reference: typing.Mapping, field_keys=()) -> ErpEntityRow | None:
         """Чтение строки из 1с"""

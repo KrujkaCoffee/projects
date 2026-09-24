@@ -1766,22 +1766,12 @@ def vremya_tsht(ima_operacii, arr_tmp):
                 return
             if ima_operacii == 'Упаковывание':
                 vrema = upacovivanie(ima_operacii, arr_tmp)
-            # if ima_operacii == 'Электроэрозионная':       # 20.08.26 Переход на excel
-            #     vrema = el_erozion(ima_operacii, arr_tmp)
-            # if ima_operacii == 'Вальцовка':               # 24.07.25 Переход на excel
-            #     vrema = valcovka(ima_operacii, arr_tmp)
             if ima_operacii == 'Гибка':
                 vrema = gibka(ima_operacii, arr_tmp)
-            # if ima_operacii == 'Сборка общая':
-            #     vrema = sbor_obsh(ima_operacii, arr_tmp)
             if ima_operacii == 'Слесарная(зачистка швов)':
                 vrema = sles_zach_shvov(ima_operacii, arr_tmp)
             if ima_operacii == 'Сборка под сварку':
                 vrema = sb_pod_sv(ima_operacii, arr_tmp)
-            # if ima_operacii == 'Гравировальная':          # 24.07.25 Переход на excel
-            #     vrema = gravir(ima_operacii, arr_tmp)
-            # if ima_operacii == 'Слесарная(снять заусенцы)':
-            #     vrema = sles_zausenci(ima_operacii, arr_tmp)
             if ima_operacii == 'Отрезка(гильотина)':
                 vrema = gilotina(ima_operacii, arr_tmp)
             if ima_operacii == 'Окрашивание':
@@ -1796,14 +1786,8 @@ def vremya_tsht(ima_operacii, arr_tmp):
                 vrema = ukladka_nabivki(ima_operacii, arr_tmp)
             if ima_operacii == 'Формовка линз':
                 vrema = formovka_linz(ima_operacii, arr_tmp)
-            # if ima_operacii == 'Отрезка слесарная': #25.09.25  переход на excel
-            #     vrema = otrez_sles(ima_operacii, arr_tmp)
             if ima_operacii == 'Дробеструйная':
                 vrema = drobestrui(ima_operacii, arr_tmp)
-            # if ima_operacii == 'Слесарная(правка в плоскости)':
-            #     vrema = sles_prav(ima_operacii, arr_tmp)
-            # if ima_operacii == 'Сверлильная': # 15.09.25 Переход на excel
-            #     vrema = sverlil(ima_operacii, arr_tmp)
             if ima_operacii == 'Слесарная(сверление)':
                 vrema = sles_sverl(ima_operacii, arr_tmp)
             if ima_operacii == 'Штамповочная(перфорация)':
@@ -1812,8 +1796,6 @@ def vremya_tsht(ima_operacii, arr_tmp):
                 vrema = sles_rezba(ima_operacii, arr_tmp)
             if ima_operacii == 'Слесарная(разделка кромок)':
                 vrema = sles_razd_krom(ima_operacii, arr_tmp)
-            # if ima_operacii == 'Слесарная(разметка)': #24.09.25 переход на excel
-            #     vrema = sles_razmetka(ima_operacii, arr_tmp)
             if ima_operacii == 'Кантование':
                 vrema = kantovanie(ima_operacii, arr_tmp)
             if ima_operacii == 'Резка(ЧПУ)':
