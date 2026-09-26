@@ -39,6 +39,7 @@ import project_cust_38.Cust_config as USRCNF
 from project_cust_38 import Cust_config as CFG
 import  magazin as MAGAZ
 import correctirovka as CORR
+import tk_bulk as TKB
 import ko_izv_izm as II
 import k_plan_top as KPT
 '''
@@ -456,6 +457,16 @@ class mywindow(QtWidgets.QMainWindow):
 
         butt_del = self.ui.pushButton_Del
         butt_del.clicked.connect(self.tree_del)
+
+        self.btn_bulk_parameters = QtWidgets.QPushButton('Общие параметры', self)
+        self.btn_bulk_parameters.setToolTip('Параметры всех операций и переходов открытой техкарты')
+        self.ui.horizontalLayout_18.insertWidget(0, self.btn_bulk_parameters)
+        self.btn_bulk_parameters.clicked.connect(lambda: TKB.show_bulk_parameters(self))
+
+        self.btn_bulk_recalc = QtWidgets.QPushButton('Пересчитать всё', self)
+        self.btn_bulk_recalc.setToolTip('Пересчитать нормы всех операций и переходов открытой техкарты')
+        self.ui.horizontalLayout_18.insertWidget(1, self.btn_bulk_recalc)
+        self.btn_bulk_recalc.clicked.connect(lambda: TKB.show_bulk_recalc(self))
 
         butt_vigruz = self.ui.pushButton_vigruzit
         butt_vigruz.clicked.connect(self.vigruzit)
