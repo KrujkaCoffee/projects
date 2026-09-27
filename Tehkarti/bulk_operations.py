@@ -164,8 +164,6 @@ class BulkParametersDialog(QtWidgets.QDialog):
                 group.name + (f' ({", ".join(sorted(kinds))})' if any(kinds) else '')))
             self.table.setItem(row, 2, QtWidgets.QTableWidgetItem(''))
             current = 'РАЗЛИЧАЮТСЯ: ' + ', '.join(sorted(values)) if len(values) > 1 else (next(iter(values)) if values else 'не заполнено')
-            if incompatible:
-                current += '; разные типы'
             self.table.setItem(row, 3, QtWidgets.QTableWidgetItem(current))
             self.table.setItem(row, 4, QtWidgets.QTableWidgetItem('; '.join(use.label for use in group.uses)))
         layout.addWidget(self.table)
@@ -226,23 +224,23 @@ class BulkParametersDialog(QtWidgets.QDialog):
                     if not use.enabled:
                         continue
                     value = validate_value(raw_value, use.kind)
-                    key = use.item
+                    key = id(use.item)
                     if key not in changes:
-                        changes[key] = (use.names, use.values[:])
-                    names, values = changes[key]
-                    if names != use.names:
+                        changes[key] = (use.item, use.names, use.values[:], use.original_raw)
+
+                    item, names, values, original_raw = changes[key]
+                    if names != use.names or original_raw != use.original_raw:
                         raise ValueError(f'{use.label}: изменился набор параметров')
                     values[use.index] = value
             if not changes:
                 raise ValueError('Нет выбранных изменений')
-            for item, (names, values) in changes.items():
-                originals = [use.original_raw for group in self.groups for use in group.uses if use.item is item]
-                if not originals or any(item.text(14) != raw for raw in originals):
+            for item, names, values, original_raw in changes.values():
+                if item.text(14) != original_raw:
                     raise ValueError('Техкарта изменилась после открытия окна. Откройте список заново')
         except (ValueError, OverflowError) as exc:
             CQT.msgbox(str(exc))
             return
-        for item, (names, values) in changes.items():
+        for item, names, values, _ in changes.values():
             item.setText(14, '$'.join(values))
             item.setText(16, str(dict(zip(names, values))))
         self.changed_count = len(changes)
@@ -351,6 +349,7 @@ def recalc_one(window, op, with_materials):
         elif F.is_numeric(pereh.text(7)):
             time = number_or_error(F.valm(pereh.text(7)), item_label(pereh))
         else:
+            return None, None
             raise ValueError(f'{item_label(pereh)}: не задано время и нет параметров')
         total += time
         has_transition_time = True
