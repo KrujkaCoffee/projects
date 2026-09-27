@@ -1,3 +1,4 @@
+import __future__
 import dataclasses
 import enum
 import logging
@@ -5,6 +6,14 @@ import typing
 import uuid
 
 import project_cust_38.sub_mes.resource_planning.attribute_binding as AB
+from project_cust_38.sub_mes.resource_planning import planner_erp as PERP
+
+if typing.TYPE_CHECKING:
+    from project_cust_38.sub_mes.resource_planning.planner_mes import MesTypeChoice, MesEntityService
+
+
+class CatalogLinkResolveError(ValueError):
+    ...
 
 
 class CatalogLinkCardinality(str, enum.Enum):
@@ -206,6 +215,63 @@ class CatalogLinkManager:
 
     def __len__(self) -> int:
         return len(self.__links)
+
+
+def resolve_mes_to_erp(
+        link: CatalogLinkSpec | dict,
+        source_choice: "MesTypeChoice",
+        source_reference,
+        *,
+        mes_service: "MesEntityService",
+        erp_service: PERP.ErpEntityService,
+        binding: AB.AttributeBinding | dict | None = None
+) -> PERP.ErpEntityRef | None:
+    if isinstance(link, dict):
+        link = CatalogLinkSpec.from_dict(link)
+    if not isinstance(link, CatalogLinkSpec):
+        raise CatalogLinkResolveError('некорректный тип link spec')
+    if link.version != 1:
+        raise CatalogLinkResolveError('данные не поддерживаются')
+    # if link.left.provider != AB.SourceProvider.MES or link.right.provider != AB.SourceProvider.ERP:
+    #     raise CatalogLinkResolveError('ожидалась связь mes->erp')
+    # if link.direction != CatalogLinkDirection.LEFT_TO_RIGHT:
+    #     raise CatalogLinkResolveError('некорректное направление')
+    if link.comparison != CatalogLinkComparison.EQUAL:
+        raise CatalogLinkResolveError('Поддерживается сравнение по раввенству')
+    if link.cardinality not in (CatalogLinkCardinality.ONE_TO_ONE, CatalogLinkCardinality.MANY_TO_ONE):
+        raise CatalogLinkResolveError('некорректная метка связи')
+    if (link.left.source_key, link.left.entity_key) != (source_choice.source_key, source_choice.table_key):
+        raise CatalogLinkResolveError('Выбранный справчоник не совпадает с левой частью связи')
+    if link.right.field_key != 'Ссылка':
+        raise CatalogLinkResolveError('Способ связи не поддерживается') # todo соединение по ref
+    if isinstance(binding, dict):
+        binding = AB.AttributeBinding.from_dict(binding)
+    if binding is not None:
+        if not isinstance(binding, AB.AttributeBinding):
+            raise CatalogLinkResolveError('некорректный тип binding')
+        for field in binding.fields:
+            if (field.provider != AB.SourceProvider.ERP or field.entity_key != link .right.entity_key
+                or field.source_key not in (link.right.source_key, link.right.entity_key)
+                or field.relation_steps
+            ):
+                raise CatalogLinkResolveError('Представление не соответствует данным из ссылки')
+    value = mes_service.read_field(source_choice, source_reference, link.left.field_key)
+    value = str(value).strip()
+    try:
+        ref_uuid = uuid.UUID(value)
+    except ValueError as exc:
+        raise CatalogLinkResolveError('некорректный uuid') from exc
+    if ref_uuid.int == 0:
+        return None
+
+    reference = PERP.ErpEntityRef(
+        source_key=link.right.source_key,
+        entity_key=link.right.entity_key,
+        ref_key=str(ref_uuid)
+    )
+    if binding is None:
+        return erp_service.read(reference)
+    return erp_service.read_bound(reference, binding)
 
 
 if __name__ == '__main__':

@@ -18,60 +18,72 @@ if TYPE_CHECKING:
     from project_cust_38.sub_mes.resource_planning.manage_res_pl import Plwindow
 
 
-def te():
+def check_mes_erp_link():
     from dataclasses import replace
+    from uuid import UUID
     from project_cust_38 import Cust_config as CFG
     from project_cust_38 import api_erp_commands as APIERP
+    from project_cust_38.sub_mes.resource_planning import clses as CLSS
+    from project_cust_38.sub_mes.resource_planning import planner_mes as PMES
     from project_cust_38.sub_mes.resource_planning import planner_erp as PERP
     from project_cust_38.sub_mes.resource_planning import attribute_binding as AB
+    from project_cust_38.sub_mes.resource_planning import catalog_link as CLR
 
-    service = PERP.ErpEntityService(
-        interface=APIERP,
-        source_key_getter=lambda: f'api_erp:{CFG.Config.user_config.ERP_base.name}'
+    state = CLSS.DTSUB
+    base_key = f'api_erp:{CFG.Config.user_config.ERP_base.name}'
+    links = [
+        link for link in state.sub_self.catalog_link_manager.all()
+        if link.left.provider == AB.SourceProvider.MES
+        and link.left.entity_key == 'DB_kplan.знпр'
+        and link.left.field_key == 'Ref_Key_py'
+        and link.right.provider == AB.SourceProvider.ERP
+        and link.right.source_key == base_key
+        and link.right.entity_key == 'Документы.ЗаказНаПроизводство2_2'
+        and link.right.field_key == 'Ссылка'
+    ]
+    assert len(links) == 1, 'Для проверки нужно одно правило знпр.Ref_Key_py → ERP.Ссылка.'
+    link = links[0]
+
+    state.custom_types.refresh_mes_types()
+    types = state.planner_mes_types
+    source_type = types.type_for_source(link.left.source_key, CLSS.Mes_type)
+    choice = types.choice_for_type(source_type)
+    mes = PMES.MesEntityService.from_type_catalog(types)
+    erp = PERP.ErpEntityService(
+        APIERP,
+        lambda: f'api_erp:{CFG.Config.user_config.ERP_base.name}'
     )
-    reference = PERP.ErpEntityRef(
-        source_key=f'api_erp:{CFG.Config.user_config.ERP_base.name}',
-        entity_key='Документы.ЗаказНаПроизводство2_2',
-        ref_key='5fa846d3-94a4-11f1-a4b7-30e1716be59f',
-        display_snapshot='Старый текст'
-    )
+    selection = PMES.select_mes_entity(state.sub_self, mes, choice)
+    if not selection.accepted or selection.reference is None:
+        print('Проверка отменена.')
+        return
+
     number = AB.BindingField(
         provider=AB.SourceProvider.ERP,
-        source_key=reference.entity_key,
-        entity_key=reference.entity_key,
+        source_key=link.right.entity_key,
+        entity_key=link.right.entity_key,
         field_key='Номер',
         presentation_key='Номер',
-        caption='Номер заказа'
     )
-    date = replace(
-        number,
-        field_key='Дата',
-        presentation_key='Дата',
-        caption='Дата заказа'
-    )
-    manager = AB.AttributeBindingManager()
-    binding = manager.concat(number, date, separator=' от ')
+    date = replace(number, field_key='Дата', presentation_key='Дата')
+    binding = AB.AttributeBindingManager().concat(number, date, separator=' от ')
 
-    row = service.read_fields(reference, ('Номер', 'Дата'))
-    direct = service.read_bound(reference, manager.direct(number))
-    combined = service.read_bound(reference, binding.to_dict())
-    assert row is not None and direct is not None and combined is not None
-
-    expected = ' от '.join(
-        row.presentations[key]
-        for key in ('Номер', 'Дата')
-        if row.presentations[key] != ''
+    result = CLR.resolve_mes_to_erp(
+        link, choice, selection.reference,
+        mes_service=mes, erp_service=erp, binding=binding
     )
-    print(direct.display_snapshot == row.presentations['Номер'])
-    print(combined.display_snapshot == expected)
-    print(direct.identity_key == combined.identity_key == reference.identity_key)
-    print(reference.display_snapshot == 'Старый текст')
-    print(PERP.ErpEntityRef.deserialize(combined.serialize()) == combined)
-    print(combined)
+    assert result is not None, 'Поле UUID пустое либо запись не найдена в ERP.'
+    source_uuid = mes.read_field(choice, selection.reference, link.left.field_key)
+    print(result.ref_key == str(UUID(str(source_uuid).strip())))
+    print(result.source_key == link.right.source_key)
+    print(result.entity_key == link.right.entity_key)
+    print(PERP.ErpEntityRef.deserialize(result.serialize()) == result)
+    print(result)
+    return result
 
 
 def toggle_focus(new_focus):
-    te()
+    check_mes_erp_link()
     DTSUB.sub_self.ui.fr_cont_event.setVisible(False)
     DTSUB.sub_self.ui.fr_cont_res.setVisible(False)
     if DTSUB.info_o:

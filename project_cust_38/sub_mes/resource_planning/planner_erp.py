@@ -1,7 +1,5 @@
 import typing
-from collections.abc import Mapping
 from dataclasses import dataclass, replace
-from uuid import UUID
 
 from project_cust_38 import api_erp_commands as APIERP
 from project_cust_38.sub_mes.resource_planning import attribute_binding as AB
@@ -84,7 +82,7 @@ class ErpEntityService:
         if isinstance(binding, dict):
             binding = AB.AttributeBinding.from_dict(binding)
         if not isinstance(binding, AB.AttributeBinding):
-            raise ErpEntityService('Ожидается настройка AttributeBinding.')
+            raise ErpEntityError('Ожидается настройка AttributeBinding.')
         if binding.version != 1:
             raise ErpEntityError('Неподдерживаемая версия настройки представления.')
         if binding.mode == AB.CombineMode.DIRECT:
