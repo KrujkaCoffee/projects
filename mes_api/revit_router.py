@@ -25,38 +25,21 @@ from project_cust_38 import Cust_odata_erp as COE
 from project_cust_38 import Cust_resource_creator as CRC
 from project_cust_38 import api_erp_commands as APIERP
 
-try:
-    from .revit_contract import (
-        MAX_SEARCH_SCAN,
-        TtlCache,
-        build_codes_query,
-        build_search_query,
-        chunked,
-        local_resource_errors,
-        normalize_code,
-        normalize_nomenclature_items,
-        normalize_resource_row,
-        normalize_search_query,
-        normalize_search_window,
-        quote_odata_string,
-        unique_codes,
-    )
-except ImportError:  # API_server imports this module as a top-level file.
-    from revit_contract import (
-        MAX_SEARCH_SCAN,
-        TtlCache,
-        build_codes_query,
-        build_search_query,
-        chunked,
-        local_resource_errors,
-        normalize_code,
-        normalize_nomenclature_items,
-        normalize_resource_row,
-        normalize_search_query,
-        normalize_search_window,
-        quote_odata_string,
-        unique_codes,
-    )
+from revit_contract import (
+    MAX_SEARCH_SCAN,
+    TtlCache,
+    build_codes_query,
+    build_search_query,
+    chunked,
+    local_resource_errors,
+    normalize_code,
+    normalize_nomenclature_items,
+    normalize_resource_row,
+    normalize_search_query,
+    normalize_search_window,
+    quote_odata_string,
+    unique_codes,
+)
 
 
 router = APIRouter(prefix="/api/v1/revit")
@@ -111,7 +94,6 @@ class ResourceMaterial(BaseModel):
     match_state: str = ""
     match_info: str = ""
 
-    # Legacy fields remain accepted while old clients are upgraded.
     Stage: str | None = None
     FamilyName: str = ""
     TypeName: str = ""
@@ -363,7 +345,6 @@ def _upload_resource_once(body: ResourceRequest, normalized_rows: list[Any]) -> 
         Описание=body.comment,
         СпособРаспределенияЗатратНаВыходныеИзделия=allocation_method,
         ИмяБазы=_base_name,
-        ПроверятьОсновноеИзделие=False,
     )
 
     article = getattr(CRC.ArticulationArticlesData, "_hnt_основной_фот_none", None)

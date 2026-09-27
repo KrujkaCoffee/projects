@@ -1,9 +1,3 @@
-"""Pure helpers for the Revit ERP HTTP contract.
-
-The module intentionally has no FastAPI or project_cust_38 imports.  This keeps
-the contract parsing/query construction testable without connecting to 1C.
-"""
-
 from __future__ import annotations
 
 import math
@@ -96,11 +90,6 @@ def _positive_int(value: Any, default: int) -> int:
 
 
 def quote_1c_string(value: Any) -> str:
-    """Return a safe 1C query string literal.
-
-    1C escapes a quote inside a string by doubling it. Control characters are
-    replaced with spaces so a value cannot change the query layout.
-    """
 
     text = "" if value is None else str(value)
     text = "".join(" " if ord(char) < 32 else char for char in text)
@@ -108,7 +97,6 @@ def quote_1c_string(value: Any) -> str:
 
 
 def quote_odata_string(value: Any) -> str:
-    """Return an OData single-quoted string literal."""
 
     text = "" if value is None else str(value)
     text = "".join(" " if ord(char) < 32 else char for char in text)
@@ -429,9 +417,6 @@ def local_resource_errors(
                     same_group = previous.element_ids == row.element_ids
                     same_code = previous.erp_code.casefold() == row.erp_code.casefold()
                     if same_group and same_code:
-                        # Itemized schedules may contain visually identical rows.
-                        # Revit intentionally assigns the same association group;
-                        # preserving both quantities is correct when the code agrees.
                         continue
                     if same_group:
                         association_errors.add(
@@ -450,7 +435,6 @@ def local_resource_errors(
 
 
 class TtlCache:
-    """Small thread-safe bounded TTL cache for read-only ERP lookups."""
 
     def __init__(self, ttl_seconds: float, max_items: int = 128):
         if ttl_seconds <= 0 or max_items <= 0:
