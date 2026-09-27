@@ -16,7 +16,7 @@ from uuid import UUID
 
 import requests
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictBool
 from starlette.responses import JSONResponse
 
 from project_cust_38 import Cust_Functions as F
@@ -26,6 +26,7 @@ from project_cust_38 import Cust_resource_creator as CRC
 from project_cust_38 import api_erp_commands as APIERP
 
 from revit_contract import (
+    MAX_RESOURCE_ROWS,
     MAX_SEARCH_SCAN,
     TtlCache,
     build_codes_query,
@@ -37,6 +38,7 @@ from revit_contract import (
     normalize_resource_row,
     normalize_search_query,
     normalize_search_window,
+    partition_resource_rows,
     quote_odata_string,
     unique_codes,
 )
@@ -53,6 +55,18 @@ _reference_cache = TtlCache(ttl_seconds=600, max_items=16)
 _validated_payloads = TtlCache(ttl_seconds=120, max_items=512)
 _crc_reload_lock = threading.Lock()
 _crc_last_reload = 0.0
+COST_ARTICLE_PARENT = "e566b3c1-019f-11e7-80c0-4ccc6a67082d"
+# Preserve the accepted catalogue for old callers and for unconfigured sources.
+DEFAULT_EXCLUDED_KINDS = {
+    "6f1c7234-5795-11ee-84be-00d861dd2b4a",
+    "a67f77cb-c347-11ee-8502-00d861dd2b4a",
+    "fe0bdde9-5e4d-11ec-8463-00d861dd2b4a",
+    "55066dac-e639-11ec-8468-00d861dd2b4a",
+    "4afe4741-7ec6-11ee-84d2-00d861dd2b4a",
+    "d4b555aa-7b2a-11eb-845c-00d861dd2b4a",
+    "cf2f3789-b017-11e7-80c7-4ccc6a67082d",
+    "ecc86b0a-b4e9-11e8-80d2-4ccc6a67082d",
+}
 
 
 class ErpUnavailableError(RuntimeError):
@@ -65,6 +79,7 @@ class ResourceUploadError(RuntimeError):
 
 class ActionRequest(BaseModel):
     action: str = ""
+    source: str = Field(default="main", max_length=80)
 
 
 class NomenclatureRequest(BaseModel):
@@ -116,6 +131,9 @@ class ResourceRequest(BaseModel):
     end_date: str = ""
     comment: str = "ПР:T:1"
     user: str = ""
+    skip_unmapped_rows: StrictBool = False
+    # None keeps the former article for legacy clients; explicit empty is invalid.
+    cost_article_ref: str | None = None
 
 
 class CreateNomenSchemeRequest(BaseModel):
@@ -230,15 +248,18 @@ def _validate_resource_request(
 ) -> tuple[dict[str, str], list[dict[str, Any]], list[Any], list[str]]:
     field_errors: dict[str, str] = {}
     warnings: list[str] = []
-    schedule_columns = (
-        body.schedule.get("columns", []) if isinstance(body.schedule, dict) else []
-    )
-    normalized_rows = [
-        normalize_resource_row(material, index, schedule_columns)
-        for index, material in enumerate(body.rows, start=1)
-    ]
+    normalized_rows, skipped_rows = _resource_rows(body)
     local_fields, table_errors = local_resource_errors(normalized_rows, body.contract_version)
     field_errors.update(local_fields)
+    if len(body.rows) > MAX_RESOURCE_ROWS:
+        field_errors["rows"] = f"В одной выгрузке допускается не более {MAX_RESOURCE_ROWS} строк"
+    if skipped_rows:
+        warnings.append(f"Пропущено строк без кода 1C-ERP: {len(skipped_rows)}")
+    if body.cost_article_ref is not None:
+        try:
+            _resolve_cost_article(body.cost_article_ref)
+        except (ValueError, ErpUnavailableError) as error:
+            field_errors["cost_article_ref"] = str(error)
 
     if body.contract_version >= 2:
         if body.action != "upload_resource_map":
@@ -311,6 +332,68 @@ def _validate_resource_request(
     return field_errors, table_errors, normalized_rows, warnings
 
 
+def _resource_rows(body: ResourceRequest) -> tuple[list[Any], list[Any]]:
+    columns = body.schedule.get("columns", []) if isinstance(body.schedule, dict) else []
+    rows = [normalize_resource_row(row, index, columns)
+            for index, row in enumerate(body.rows, start=1)]
+    return partition_resource_rows(rows, body.skip_unmapped_rows)
+
+
+def _export_summary(body: ResourceRequest) -> dict[str, Any]:
+    included, skipped = _resource_rows(body)
+    return {
+        "exported_rows": len(included),
+        "skipped_rows": len(skipped),
+        "skipped_source_rows": [row.source_row for row in skipped],
+    }
+
+
+def _load_cost_articles() -> list[dict[str, str]]:
+    cached = _reference_cache.get("cost_articles")
+    if cached is not None:
+        return cached
+    query = """
+        ВЫБРАТЬ
+            УНИКАЛЬНЫЙИДЕНТИФИКАТОР(СтатьиКалькуляции.Ссылка) КАК Ref_Key,
+            СтатьиКалькуляции.Наименование КАК Description
+        ИЗ
+            Справочник.СтатьиКалькуляции КАК СтатьиКалькуляции
+        ГДЕ
+            СтатьиКалькуляции.Родитель = &Родитель
+            И СтатьиКалькуляции.ЭтоГруппа = ЛОЖЬ
+            И СтатьиКалькуляции.ПометкаУдаления = ЛОЖЬ
+        УПОРЯДОЧИТЬ ПО
+            СтатьиКалькуляции.Наименование
+    """
+    refs = APIERP.Refs_wet(query)
+    refs.add_ref(APIERP.Ref_wet("Родитель", "Справочники.СтатьиКалькуляции", COST_ARTICLE_PARENT))
+    result = []
+    for row in _run_wet_query(query, refs):
+        if not isinstance(row, dict):
+            raise ErpUnavailableError("Некорректная строка справочника статей калькуляции")
+        try:
+            ref_key = str(UUID(str(row.get("Ref_Key", ""))))
+        except ValueError as error:
+            raise ErpUnavailableError("Некорректная ссылка статьи калькуляции") from error
+        name = str(row.get("Description") or "").strip()
+        if not name:
+            raise ErpUnavailableError("Не заполнено наименование статьи калькуляции")
+        result.append({"Ref_Key": ref_key, "Description": name})
+    _reference_cache.set("cost_articles", result)
+    return result
+
+
+def _resolve_cost_article(ref_key: str) -> dict[str, str]:
+    try:
+        normalized_ref = str(UUID(ref_key.strip()))
+    except (ValueError, AttributeError) as error:
+        raise ValueError("Выберите статью калькуляции из списка") from error
+    for item in _load_cost_articles():
+        if item["Ref_Key"] == normalized_ref:
+            return item
+    raise ValueError("Статья калькуляции недоступна в выбранной группе; обновите справочник")
+
+
 def _validation_response(
     field_errors: dict[str, str], table_errors: list[dict[str, Any]]
 ) -> JSONResponse:
@@ -347,10 +430,16 @@ def _upload_resource_once(body: ResourceRequest, normalized_rows: list[Any]) -> 
         ИмяБазы=_base_name,
     )
 
-    article = getattr(CRC.ArticulationArticlesData, "_hnt_основной_фот_none", None)
-    if article is None:
-        CRC.ArticulationArticlesData.init_data()
-        article = CRC.ArticulationArticlesData._hnt_основной_фот_none
+    if body.cost_article_ref is not None:
+        selected = _resolve_cost_article(body.cost_article_ref)
+        article = CRC.ArticulationArticles(
+            name=selected["Description"], parent=COST_ARTICLE_PARENT, ref_key=selected["Ref_Key"]
+        )
+    else:
+        article = getattr(CRC.ArticulationArticlesData, "_hnt_основной_фот_none", None)
+        if article is None:
+            CRC.ArticulationArticlesData.init_data()
+            article = CRC.ArticulationArticlesData._hnt_основной_фот_none
     obtaining_method = CRC.MethodOfObtainingMaterialspecificationsData.find_by_ref(
         "5c796eb7-92d0-494a-aad9-76cf7a28b3dd"
     )
@@ -432,21 +521,58 @@ def mark_folders(rows: Any) -> list[dict[str, Any]]:
     ]
 
 
+def _filter_kinds_for_source(rows: list[dict[str, Any]], source: str) -> list[dict[str, Any]]:
+    """Display policy only. Raw ERP data is cached; source policies never share results."""
+    source = (source or "main").strip().casefold() or "main"
+    try:
+        policies = json.loads(os.environ.get("REVIT_NOMENCLATURE_FILTERS", "{}"))
+        if not isinstance(policies, dict):
+            raise ValueError("Ожидается объект с настройками источников")
+        policy = policies.get(source, policies.get("main", {}))
+        if not isinstance(policy, dict):
+            raise ValueError("Настройка источника должна быть объектом")
+        excluded = policy.get("exclude_refs", sorted(DEFAULT_EXCLUDED_KINDS))
+        included = policy.get("include_refs")
+        if not isinstance(excluded, list) or (included is not None and not isinstance(included, list)):
+            raise ValueError("include_refs / exclude_refs должны быть массивами UUID")
+        excluded = {str(UUID(value)) for value in excluded}
+        included = None if included is None else {str(UUID(value)) for value in included}
+    except (ValueError, TypeError, AttributeError) as error:
+        logger.error("Revit API: неверная настройка фильтра видов для source=%s: %s", source, error)
+        raise HTTPException(status_code=503, detail="Некорректная настройка фильтра видов номенклатуры") from error
+
+    rows = [{**row, "Ref_Key": str(row.get("Ref_Key") or "").lower(),
+             "Parent_Key": str(row.get("Parent_Key") or "").lower()}
+            for row in rows if isinstance(row, dict)]
+    # Deleted folders must also hide their descendants.
+    excluded.update(row["Ref_Key"] for row in rows if row.get("ПометкаУдаления"))
+    visible = exclude_descendants_iterative(rows, excluded)
+    if included is None:
+        return visible
+    by_ref = {row["Ref_Key"]: row for row in visible}
+    allowed = included & by_ref.keys()
+    changed = True
+    while changed:
+        before = len(allowed)
+        allowed.update(row["Ref_Key"] for row in visible if row["Parent_Key"] in allowed)
+        changed = len(allowed) != before
+    # Keep only the ancestors needed to reach an allowed kind, not their siblings.
+    for ref_key in list(allowed):
+        parent = by_ref[ref_key]["Parent_Key"]
+        seen = set()
+        while parent in by_ref and parent not in seen:
+            seen.add(parent)
+            allowed.add(parent)
+            parent = by_ref[parent]["Parent_Key"]
+    return [row for row in visible if row["Ref_Key"] in allowed]
+
+
+@router.post("/types/")
 @router.post("/types")
 def nomen_types(credentials: ActionRequest) -> list[dict[str, Any]]:
-    cached = _reference_cache.get("types")
+    cached = _reference_cache.get("types_raw")
     if cached is not None:
-        return cached
-    filtered_types = {
-        "6f1c7234-5795-11ee-84be-00d861dd2b4a",
-        "a67f77cb-c347-11ee-8502-00d861dd2b4a",
-        "fe0bdde9-5e4d-11ec-8463-00d861dd2b4a",
-        "55066dac-e639-11ec-8468-00d861dd2b4a",
-        "4afe4741-7ec6-11ee-84d2-00d861dd2b4a",
-        "d4b555aa-7b2a-11eb-845c-00d861dd2b4a",
-        "cf2f3789-b017-11e7-80c7-4ccc6a67082d",
-        "ecc86b0a-b4e9-11e8-80d2-4ccc6a67082d",
-    }
+        return mark_folders(_filter_kinds_for_source(cached, credentials.source))
     query = """
         ВЫБРАТЬ
             ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ВидыНоменклатуры.Ссылка)) КАК Ref_Key,
@@ -460,13 +586,11 @@ def nomen_types(credentials: ActionRequest) -> list[dict[str, Any]]:
             ВидыНоменклатуры.Наименование
     """
     try:
-        result = mark_folders(
-            exclude_descendants_iterative(_run_wet_query(query), filtered_types)
-        )
+        rows = _run_wet_query(query)
     except ErpUnavailableError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
-    _reference_cache.set("types", result)
-    return result
+    _reference_cache.set("types_raw", rows)
+    return mark_folders(_filter_kinds_for_source(rows, credentials.source))
 
 
 @router.post("/nomens")
@@ -668,6 +792,14 @@ def stages(credentials: ActionRequest) -> list[dict[str, Any]]:
     return []
 
 
+@router.post("/resource/cost_articles/")
+def cost_articles(credentials: ActionRequest) -> list[dict[str, str]]:
+    try:
+        return _load_cost_articles()
+    except ErpUnavailableError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+
+
 @router.post("/nomen/units/form/")
 def nomen_units(credentials: ActionRequest) -> list[dict[str, Any]]:
     cached = _reference_cache.get("units")
@@ -721,6 +853,7 @@ def validate_resource(body: ResourceRequest) -> Any:
         "contract_version": body.contract_version,
         "validated_rows": len(normalized_rows),
         "warnings": warnings,
+        **_export_summary(body),
     }
 
 
@@ -729,19 +862,14 @@ def create_resource(body: ResourceRequest) -> Any:
     fingerprint = _payload_fingerprint(body)
     validated = _validated_payloads.pop(fingerprint) is True
     if validated:
-        schedule_columns = (
-            body.schedule.get("columns", []) if isinstance(body.schedule, dict) else []
-        )
-        normalized_rows = [
-            normalize_resource_row(material, index, schedule_columns)
-            for index, material in enumerate(body.rows, start=1)
-        ]
+        normalized_rows, _ = _resource_rows(body)
     else:
         field_errors, table_errors, normalized_rows, _ = _validate_resource_request(body)
         if field_errors or table_errors:
             return _validation_response(field_errors, table_errors)
     try:
-        return upload_resource(body, normalized_rows)
+        response = upload_resource(body, normalized_rows)
+        return {**response, "export_summary": _export_summary(body)}
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     except (
