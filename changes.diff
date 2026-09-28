@@ -1,0 +1,409 @@
+--- a/class.php
++++ b/class.php
+@@ -16,6 +16,11 @@
+     private $departmentIdblockId = 55;
+ 
+     protected $extraFieldsConfig = [];
++
++    // Новые поля снабжения: конфигурация общая для формы и серверной проверки.
++    private $serviceRequirements = [];
++    private $serviceRequirementIds = [];
++    private $serviceRequirementGroups = [];
+ 
+     public function __construct($component = null){
+         parent::__construct($component);
+@@ -69,7 +74,8 @@
+     }
+ 
+     private function fillExtraFields(){
+-        $this->extraFieldsConfig = include 'config.php';
++        $this->extraFieldsConfig = include __DIR__ . '/config.php';
++        $this->fillServiceRequirements();
+ 
+ 
+         $projects = [];
+@@ -121,6 +127,165 @@
+             unset($field);
+         endforeach;
+         unset($element);
++    }
++
++    /**
++     * Дополняет штатный config.php новыми полями, не меняя старые определения.
++     * Один и тот же список ID используется при отображении и отправке.
++     */
++    private function fillServiceRequirements()
++    {
++        $this->serviceRequirements = require __DIR__ . '/service_requirements.php';
++        $environment = (string)($_SERVER['APP_ENV'] ?? '');
++        $settings = $this->serviceRequirements['environments'][$environment] ?? [];
++
++        if (empty($settings['enabled'])) {
++            return;
++        }
++
++        $ids = $settings['service_ids'] ?? [];
++        if (!empty($settings['include_ved'])) {
++            $ids = array_merge($ids, $settings['ved_service_ids'] ?? []);
++        }
++        $this->serviceRequirementIds = array_values(array_unique(array_map('intval', $ids)));
++        if (!$this->serviceRequirementIds) {
++            return;
++        }
++
++        // Только новые поля собираются в описание на сервере.
++        $decorate = static function (array $fields): array {
++            foreach ($fields as &$field) {
++                $field['server_description'] = true;
++            }
++            unset($field);
++            return $fields;
++        };
++
++        $this->serviceRequirementGroups[] = [
++            'values' => $this->serviceRequirementIds,
++            'fields' => $decorate($this->serviceRequirements['fields']),
++        ];
++        $outsourceIds = array_values(array_intersect(
++            $this->serviceRequirementIds,
++            array_map('intval', $settings['outsource_service_ids'] ?? [])
++        ));
++        if ($outsourceIds) {
++            $this->serviceRequirementGroups[] = [
++                'values' => $outsourceIds,
++                'fields' => $decorate($this->serviceRequirements['outsource_fields']),
++            ];
++        }
++
++        $this->extraFieldsConfig['elements'] = array_merge(
++            $this->extraFieldsConfig['elements'],
++            $this->serviceRequirementGroups
++        );
++        $this->extraFieldsConfig['serviceRequirements'] = [
++            'version' => $this->serviceRequirements['version'],
++        ];
++    }
++
++    /** Пробелы, переносы и неразрывные/нулевой ширины пробелы не считаются вводом. */
++    private function normalizeRequirementValue($value)
++    {
++        if (!is_string($value)) {
++            return null;
++        }
++        return preg_replace(
++            '/\A[\s\p{Z}\x{FEFF}\x{200B}]+|[\s\p{Z}\x{FEFF}\x{200B}]+\z/u',
++            '',
++            $value
++        );
++    }
++
++    /**
++     * Проверяет ТОЛЬКО новые поля и дополняет описание.
++     * Не обращается к построителю, не загружает файлы и не создаёт задачу.
++     * Возвращает ошибки отдельным массивом для обработчика формы.
++     */
++    private function prepareServiceRequirementDescription($serviceId, $description, $request): array
++    {
++        $result = ['description' => $description, 'errors' => []];
++        if (!in_array((int)$serviceId, $this->serviceRequirementIds, true)) {
++            // После отключения/изменения охвата не теряем данные открытой ранее формы молча.
++            $knownFields = array_merge(
++                $this->serviceRequirements['fields'] ?? [],
++                $this->serviceRequirements['outsource_fields'] ?? []
++            );
++            foreach ($knownFields as $field) {
++                if ($request->getPost($field['name']) !== null) {
++                    $result['errors'][] = 'Настройка услуги изменилась. Сохраните введённые сведения и обновите страницу перед отправкой.';
++                    break;
++                }
++            }
++            return $result;
++        }
++
++        if ($request->getPost('service_requirements_version') !== $this->serviceRequirements['version']) {
++            $result['errors'][] = 'Форма услуг обновилась. Сохраните введённый текст и обновите страницу, затем заполните обязательные поля.';
++            return $result;
++        }
++        if ($description === null) {
++            $description = '';
++        }
++        if (!is_string($description)) {
++            $result['errors'][] = 'Некорректное описание заявки.';
++            return $result;
++        }
++
++        $lines = [];
++        foreach ($this->serviceRequirementGroups as $group) {
++            if (!in_array((int)$serviceId, $group['values'], true)) {
++                continue;
++            }
++            foreach ($group['fields'] as $field) {
++                // Проверяем условие на сервере, а не доверяем скрытию поля в HTML.
++                if (!empty($field['visible_if'])) {
++                    $condition = $field['visible_if'];
++                    $source = $this->normalizeRequirementValue($request->getPost($condition['field']));
++                    if ($source !== (string)$condition['equals']) {
++                        continue;
++                    }
++                }
++
++                $raw = $request->getPost($field['name']);
++                $value = $raw === null ? '' : $this->normalizeRequirementValue($raw);
++                if ($value === null) {
++                    $result['errors'][] = 'Некорректное значение поля «' . $field['label'] . '».';
++                    continue;
++                }
++                if ($value === '') {
++                    if (!empty($field['required'])) {
++                        $result['errors'][] = 'Заполните поле «' . $field['label'] . '».';
++                    }
++                    continue;
++                }
++                if ($field['type'] === 'list') {
++                    $allowed = array_map('strval', array_column($field['values'], 'value'));
++                    if (!in_array($value, $allowed, true)) {
++                        $result['errors'][] = 'Выберите допустимое значение поля «' . $field['label'] . '».';
++                        continue;
++                    }
++                }
++                $lines[] = $field['label'] . ': ' . $value;
++            }
++        }
++        if ($result['errors']) {
++            return $result;
++        }
++
++        $mandatoryText = trim((string)($this->serviceRequirements['text'] ?? ''));
++        if ($mandatoryText === '') {
++            $result['errors'][] = 'Не настроен обязательный текст услуги. Обратитесь к администратору.';
++            return $result;
++        }
++
++        $description = rtrim($description) . "\n\nСведения по заявке\n\n" . implode("\n\n", $lines);
++        if (strpos($description, $mandatoryText) === false) {
++            $description .= "\n\n" . $mandatoryText;
++        }
++        $result['description'] = $description;
++        return $result;
+     }
+ 
+     private function getResponsibleDepartments( int $parentId = 0 ) : array {
+@@ -238,6 +403,13 @@
+             $deadline = new DateTime($deadline);
+         }
+ 
++        // Проверка до загрузки файлов и до new TaskServiceBuilder / build().
++        $requirements = $this->prepareServiceRequirementDescription($service, $description, $request);
++        if ($requirements['errors']) {
++            return ['validationErrors' => $requirements['errors']];
++        }
++        $description = $requirements['description'];
++
+         $fileField = $this->parseFiles($request->getFile('task_files'));
+ 
+         if ($fileField):
+--- a/script.js
++++ b/script.js
+@@ -11,6 +11,32 @@
+     let extraFieldsMap = [];
+ 
+     let fieldsForConcatTitle = [];
++
++    // Новые обязательные поля: условия видимости не затрагивают старые поля.
++    const trimRequirementValue = value => String(value).replace(/^[\s\u200B]+|[\s\u200B]+$/g, '');
++
++    const refreshServiceRequirementFields = () => {
++        extraFieldsMap.forEach(field => {
++            if (!field.server_description) return;
++            const input = document.getElementById(field.id);
++            if (!input) return;
++
++            let visible = true;
++            if (field.visible_if) {
++                const source = document.getElementById(field.visible_if.field);
++                visible = !!source && trimRequirementValue(source.value) === String(field.visible_if.equals);
++            }
++            const container = input.closest('.container-grid-field');
++            if (container) {
++                container.hidden = !visible;
++                container.style.display = visible ? '' : 'none';
++                const label = container.querySelector('label');
++                if (label) label.textContent = field.label + (visible && field.required ? ' *' : '');
++            }
++            input.disabled = !visible;
++            input.required = visible && !!field.required;
++        });
++    };
+ 
+     let createResponsibleBlock = (departments, depth) => {
+ 
+@@ -103,7 +129,7 @@
+         let buildLabel = (text, id) => {
+             let label = document.createElement('label');
+             label.innerText = text;
+-            label.for = id;
++            label.htmlFor = id;
+             return label;
+         };
+ 
+@@ -198,6 +224,15 @@
+             switch (field.type){
+                 case 'text':
+                     input = buildInput(field.name, field.name);
++                    break;
++                case 'textarea':
++                    input = document.createElement('textarea');
++                    input.name = field.name;
++                    input.id = field.name;
++                    input.rows = field.rows || 4;
++                    input.style.width = '100%';
++                    input.style.boxSizing = 'border-box';
++                    input.style.resize = 'vertical';
+                     break;
+                 case 'list':
+                     input = buildSelect(field.values, field.name);
+@@ -278,6 +313,9 @@
+                     break;
+             }
+ 
++            if (input && field.server_description && field.placeholder) {
++                input.placeholder = field.placeholder;
++            }
+             return input;
+         }
+ 
+@@ -304,7 +342,7 @@
+                         }
+                     });
+ 
+-                    if ( element.values.some((elementId) => parseInt(elementId) === services[index].value ) ){
++                    if ( element.values.some((elementId) => Number(elementId) === Number(services[index].value) ) ){
+                         element.fields.forEach(field => {
+                             let div = buildDiv('container-grid-field');
+                             let label = buildLabel(field.label, field.name);
+@@ -350,6 +388,8 @@
+             if (services[index].startText){
+                 descriptionField.value = services[index].startText;
+             }
++
++            refreshServiceRequirementFields();
+ 
+ 
+         });
+@@ -374,7 +414,7 @@
+         //Внедряем дополнительные поля для разделов
+         if ( extraFieldsConfig.sections.length ){
+             extraFieldsConfig.sections.forEach( section => {
+-                if ( section.values.some((sectionId) => sectionId === parentDepartment ) ){
++                if ( section.values.some((sectionId) => Number(sectionId) === Number(parentDepartment) ) ){
+ 
+                     section.fields.forEach(field => {
+                         let div = buildDiv('container-grid-field');
+@@ -456,6 +496,7 @@
+         let form = document.querySelector('#service-form');
+         let isAjax = false;
+         if ( form ){
++            form.addEventListener('change', refreshServiceRequirementFields);
+             form.addEventListener('submit', async e => {
+                 e.preventDefault();
+                 let department = form.querySelector('#select-department');
+@@ -489,9 +530,15 @@
+                     //Валидация дополнительных полей
+                     for ( let field of extraFieldsMap ){
+                         let fieldForm = form.querySelector('#' + field.id);
+-                        if ( fieldForm && !fieldForm.value && field.required ){
+-                            alert('Пожалуйста, заполните поле "' + field.label + '"!');
+-                            return false;
++                        if (fieldForm && !fieldForm.disabled && field.required) {
++                            const value = field.server_description
++                                ? trimRequirementValue(fieldForm.value)
++                                : fieldForm.value;
++                            if (!value) {
++                                alert('Пожалуйста, заполните поле "' + field.label + '"!');
++                                if (field.server_description) fieldForm.focus();
++                                return false;
++                            }
+                         }
+                     }
+ 
+@@ -508,21 +555,26 @@
+                 if ( isAjax ) return;
+                 isAjax = true;
+ 
+-                //Загрузка дополнительных полей в описание
+-                description.value += "\n\n";
++                // Старые поля остаются в прежнем текстовом представлении.
++                // Новые поля собирает сервер из POST после проверки.
++                // Поле описания на странице не меняем: повторная отправка не дублирует текст.
++                let descriptionForSend = description.value + "\n\n";
+                 extraFieldsMap.forEach(field => {
+                     let fieldForm = form.querySelector('#' + field.id);
+-                    if ( fieldForm && !fieldsForConcatTitle.includes(field.id) ){
+-                        if ( fieldForm.tagName === 'SELECT' && fieldForm.multiple ){
+-                            description.value += field.label + ": " + Array.from(fieldForm.options).filter(o => o.selected).map(o => o.value).join('; ') + "\n\n";
+-
+-                        }else{
+-                            description.value += field.label + ": " + fieldForm.value + "\n\n";
++                    if (fieldForm && !fieldForm.disabled && !field.server_description && !fieldsForConcatTitle.includes(field.id)) {
++                        if (fieldForm.tagName === 'SELECT' && fieldForm.multiple) {
++                            descriptionForSend += field.label + ": " + Array.from(fieldForm.options).filter(o => o.selected).map(o => o.value).join('; ') + "\n\n";
++                        } else {
++                            descriptionForSend += field.label + ": " + fieldForm.value + "\n\n";
+                         }
+                     }
+                 });
+ 
+                 let data = new FormData(form);
++                data.set('description', descriptionForSend);
++                if (extraFieldsConfig.serviceRequirements) {
++                    data.set('service_requirements_version', extraFieldsConfig.serviceRequirements.version);
++                }
+ 
+                 extraFieldsMap.forEach(field => {
+                     let fieldForm = form.querySelector('#' + field.id);
+@@ -541,16 +593,20 @@
+                         data: data,
+                     });
+ 
++                    if (Array.isArray(response.data.validationErrors) && response.data.validationErrors.length) {
++                        alert(response.data.validationErrors.join("\n"));
++                        return;
++                    }
++
+                     if ( response.data.userId && response.data.taskId ){
+                         location.href = `/company/personal/user/${response.data.userId}/tasks/task/view/${response.data.taskId}/`;
+                     }
+ 
+                 } catch(err) {
+                     alert('Произошла неожиданная ошибка! Пожалуйста, попробуйте позже!');
++                } finally {
++                    isAjax = false;
+                 }
+-
+-
+-                isAjax = false;
+             });
+ 
+         }
+@@ -592,7 +648,9 @@
+                         id: field.name,
+                         required: field.required,
+                         label: field.label,
+-                        type: field.type
++                        type: field.type,
++                        server_description: !!field.server_description,
++                        visible_if: field.visible_if || null
+                     });
+ 
+                     if (field.type === "text" && field?.concat_title) {
+@@ -607,7 +665,9 @@
+                         id: field.name,
+                         required: field.required,
+                         label: field.label,
+-                        type: field.type
++                        type: field.type,
++                        server_description: !!field.server_description,
++                        visible_if: field.visible_if || null
+                     });
+ 
+                     if (field.type === "text" && field?.concat_title) {

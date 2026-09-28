@@ -1,0 +1,742 @@
+--- a/component/class.php
++++ b/component/class.php
+@@ -158,84 +158,99 @@
+         return in_array((int)$serviceId, $this->serviceRuleIds, true);
+     }
+ 
+-    private function getServiceDescriptionSchema($serviceId): array
++    private function getServiceFieldSchema($serviceId): array
+     {
+         if (!$this->serviceRuleApplies($serviceId)) {
+             return [];
+         }
+         $outsource = in_array((int)$serviceId, $this->serviceOutsourceIds, true);
+-        $fields = array_values(array_filter($this->serviceRules['description_fields'],
++        $fields = array_values(array_filter($this->serviceRules['fields'],
+             static function ($field) use ($outsource) {
+                 return empty($field['outsource_only']) || $outsource;
+             }));
+         return ['version' => $this->serviceRules['version'], 'fields' => $fields];
+     }
+ 
+-    /** Проверяет исходное описание до присоединения значений прежних допполей. */
+-    private function validateServiceDescription($serviceId, $description): array
+-    {
+-        $schema = $this->getServiceDescriptionSchema($serviceId);
++    /** Пустая строка и строка только из Unicode-пробелов считаются незаполненными. */
++    private function normalizeServiceFieldValue($value)
++    {
++        if ($value === null) {
++            return '';
++        }
++        if (!is_string($value) || !preg_match('//u', $value)) {
++            return null;
++        }
++        $value = str_replace(["\r\n", "\r"], "\n", $value);
++        return preg_replace('/^[\s\p{Z}\x{200B}\x{FEFF}]+|[\s\p{Z}\x{200B}\x{FEFF}]+$/u', '', $value);
++    }
++
++    /** Схема берётся с сервера: клиент передаёт только значения отдельных полей. */
++    private function prepareServiceRequirementDescription($serviceId, $description, $request): array
++    {
++        $result = ['description' => $description, 'errors' => [], 'fieldErrors' => []];
++        $schema = $this->getServiceFieldSchema($serviceId);
+         if (!$schema) {
+-            return [];
+-        }
+-        if (!is_string($description) || !preg_match('//u', $description)) {
+-            return ['Некорректное описание заявки. Обновите страницу и заполните шаблон.'];
++            return $result;
++        }
++        if ($request->getPost('service_fields_version') !== $schema['version']) {
++            $result['errors'][] = 'Форма услуги обновлена. Сохраните введённые сведения и обновите страницу перед отправкой заявки.';
++            return $result;
++        }
++        $description = $description ?? '';
++        $extraDescription = $request->getPost('extra_fields_description') ?? '';
++        if ($this->normalizeServiceFieldValue($description) === null
++            || $this->normalizeServiceFieldValue($extraDescription) === null) {
++            $result['errors'][] = 'Некорректное описание или дополнительные сведения заявки.';
++            return $result;
+         }
+ 
+         $values = [];
+-        $seen = [];
+-        $errors = [];
+-        $current = null;
+-        foreach (preg_split('/\R/u', $description) as $line) {
+-            $matched = false;
+-            foreach ($schema['fields'] as $field) {
+-                $pattern = '/^\s*' . preg_quote($field['label'], '/') . '\s*:[\t ]*(.*)$/iu';
+-                if (preg_match($pattern, $line, $match)) {
+-                    $current = $field['key'];
+-                    if (isset($seen[$current])) {
+-                        $errors[] = 'Строка «' . $field['label'] . '» повторяется. Объедините сведения в одном блоке.';
+-                    }
+-                    $seen[$current] = true;
+-                    $values[$current] = $match[1];
+-                    $matched = true;
+-                    break;
++        foreach ($schema['fields'] as $field) {
++            $values[$field['name']] = $this->normalizeServiceFieldValue($request->getPost($field['name']));
++        }
++        $lines = [];
++        foreach ($schema['fields'] as $field) {
++            if (!empty($field['visible_if'])) {
++                $condition = $field['visible_if'];
++                if (($values[$condition['field']] ?? '') !== (string)$condition['equals']) {
++                    // Скрытое поле не обязательно и не включается в задачу, даже если его прислали вручную.
++                    continue;
+                 }
+             }
+-            if (!$matched && $current !== null) {
+-                $values[$current] .= "\n" . $line;
++            $name = $field['name'];
++            $value = $values[$name];
++            $message = '';
++            if ($value === null) {
++                $message = 'Некорректное значение поля «' . $field['label'] . '».';
++            } elseif (!empty($field['required']) && $value === '') {
++                $message = 'Заполните поле «' . $field['label'] . '».';
++            } elseif ($value !== '' && $field['type'] === 'list'
++                && !in_array($value, array_column($field['values'], 'value'), true)) {
++                $message = 'Выберите допустимое значение поля «' . $field['label'] . '».';
+             }
+-        }
+-
+-        // Нормализация нужна только для проверки: исходный текст сохраняется в задаче.
+-        foreach ($values as $key => $value) {
+-            $values[$key] = trim(preg_replace('/[\s\p{Z}\x{200B}\x{FEFF}]+/u', ' ', $value));
+-        }
+-        foreach ($schema['fields'] as $field) {
+-            if (!empty($field['choices']) && isset($values[$field['key']])) {
+-                foreach ($field['choices'] as $choice) {
+-                    if (preg_match('/^' . preg_quote($choice, '/') . '$/iu', $values[$field['key']])) {
+-                        $values[$field['key']] = $choice;
+-                        break;
+-                    }
+-                }
++            if ($message !== '') {
++                $result['fieldErrors'][$name] = $message;
++            } elseif ($value !== '') {
++                $lines[] = $field['label'] . ': ' . $value;
+             }
+         }
+-        foreach ($schema['fields'] as $field) {
+-            $required = !empty($field['required']);
+-            if (!empty($field['required_if'])) {
+-                $condition = $field['required_if'];
+-                $required = ($values[$condition['key']] ?? '') === $condition['equals'];
+-            }
+-            $value = $values[$field['key']] ?? '';
+-            $empty = $value === '' || preg_match('/^[\p{P}\p{S}\s]+$/u', $value)
+-                || preg_match('/^\[?заполните\]?$/iu', $value);
+-            if ($required && $empty) {
+-                $errors[] = 'Заполните строку «' . $field['label'] . '» в описании проблемы (сохраните заголовок и двоеточие).';
+-            } elseif ($value !== '' && !empty($field['choices']) && !in_array($value, $field['choices'], true)) {
+-                $errors[] = 'В строке «' . $field['label'] . '» укажите ' . implode(' или ', $field['choices']) . '.';
+-            }
+-        }
+-        return array_values(array_unique($errors));
++        if ($result['fieldErrors']) {
++            $result['errors'] = array_values($result['fieldErrors']);
++            return $result;
++        }
++
++        $parts = [];
++        if (trim($description) !== '') {
++            $parts[] = rtrim($description);
++        }
++        if (trim($extraDescription) !== '') {
++            $parts[] = trim($extraDescription);
++        }
++        if ($lines) {
++            $parts[] = "Сведения по заявке:\n" . implode("\n\n", $lines);
++        }
++        $result['description'] = implode("\n\n", $parts);
++        return $result;
+     }
+ 
+     /** Выполняется до загрузки файлов и создания задачи. */
+@@ -334,7 +349,7 @@
+         \Bitrix\Main\UI\Extension::load('ui.entity-selector');
+ 
+         // Стили ограничены новым блоком .service-rules.
+-        Asset::getInstance()->addCss("/local/components/kuratovru/services.main/service_rules.css?v=20260915-2");
++        Asset::getInstance()->addCss("/local/components/kuratovru/services.main/service_rules.css?v=20260915-3");
+         Asset::getInstance()->addCss("/local/templates/.default/assets/css/flatpickr.min.css");
+         Asset::getInstance()->addJs("/local/templates/.default/assets/js/flatpickr.min.js");
+         Asset::getInstance()->addJs("/local/templates/.default/assets/js/l10n/ru.js");
+@@ -374,19 +389,14 @@
+             $deadline = new DateTime($deadline);
+         }
+ 
+-        $validationErrors = $this->validateServiceDescription($service, $description);
+-        if ($validationErrors) {
+-            return ['validationErrors' => $validationErrors];
+-        }
+-        if ($this->serviceRuleApplies($service)) {
+-            $extraDescription = $request->getPost('extra_fields_description') ?? '';
+-            if (!is_string($extraDescription)) {
+-                return ['validationErrors' => ['Некорректные дополнительные сведения заявки.']];
+-            }
+-            if (trim($extraDescription) !== '') {
+-                $description = rtrim($description) . "\n\n" . trim($extraDescription);
+-            }
+-        }
++        $requirements = $this->prepareServiceRequirementDescription($service, $description, $request);
++        if ($requirements['errors']) {
++            return [
++                'validationErrors' => $requirements['errors'],
++                'fieldErrors' => $requirements['fieldErrors'],
++            ];
++        }
++        $description = $requirements['description'];
+         $description = $this->appendServiceRules($service, $description);
+ 
+         $fileField = $this->parseFiles($request->getFile('task_files'));
+@@ -518,7 +528,7 @@
+                     'value' => $service['ID'],
+                     'description' => $service['PREVIEW_TEXT'],
+                     'hasServiceRules' => $hasServiceRules,
+-                    'descriptionSchema' => $this->getServiceDescriptionSchema($service['ID']),
++                    'fieldSchema' => $this->getServiceFieldSchema($service['ID']),
+                     'leadTime' => FL\Util\Util::getSecondFromServiceFormat($service['LEAD_TIME']),
+                     'timeAt' => $service['TIME_AT'],
+                     'timeTo' => $service['TIME_TO'],
+--- a/component/service_rules.php
++++ b/component/service_rules.php
+@@ -2,11 +2,12 @@
+ /**
+  * Правила services.main по ТЗ от 11.09.2026.
+  * Единый текст для правой колонки и описания новой задачи.
+- * Прежние поля остаются в config.php. Новые сведения заполняются в описании.
++ * Прежние поля остаются в config.php. Новые поля объявлены в fields.
++ * Браузер строит элементы формы, сервер проверяет значения и собирает описание.
+  * ID взяты из ранее предоставленной выгрузки APP_ENV=prod.
+  */
+ return [
+-    'version' => 'supply-rules-20260915-v2',
++    'version' => 'supply-rules-20260915-v3',
+     'environments' => [
+         'prod' => [
+             'enabled' => true,
+@@ -92,25 +93,70 @@
+         ],
+     ],
+     'task_heading' => 'Обязательный текст',
+-    // Заголовки строк — часть шаблона. По ним браузер и сервер проверяют заполнение.
+-    'description_fields' => [
+-        ['key' => 'item', 'label' => 'Наименование', 'required' => true,
+-            'hint' => 'Наименование оборудования, материала или комплектующего.'],
+-        ['key' => 'quantity', 'label' => 'Количество', 'required' => true,
+-            'hint' => 'Укажите количество и единицу измерения; можно перечислить несколько позиций.'],
+-        ['key' => 'characteristics', 'label' => 'Основные характеристики', 'required' => true,
+-            'hint' => 'Характеристики, применимые к оборудованию, материалу, комплектующему.'],
+-        ['key' => 'new_product', 'label' => 'Абсолютно новая продукция', 'required' => true,
+-            'choices' => ['Да', 'Нет'], 'hint' => 'Укажите Да или Нет.'],
+-        ['key' => 'activity', 'label' => 'Направление деятельности',
+-            'required_if' => ['key' => 'new_product', 'equals' => 'Да'],
+-            'hint' => 'Для абсолютно новой продукции: аспирация, металлообработка, запорная арматура и т.д.'],
+-        ['key' => 'conditions', 'label' => 'Особые условия', 'required' => true,
+-            'hint' => 'Доставка, документация, маркировка, упаковка, гарантия, сервис, установка. Если условий нет, укажите Нет.'],
+-        ['key' => 'outsource', 'label' => 'Вид работы (аутсорсинг)', 'required' => true,
+-            'outsource_only' => true, 'hint' => 'Гибка, сварка, резка, полное изготовление по чертежу.'],
+-        ['key' => 'notes', 'label' => 'Дополнительные сведения',
+-            'hint' => 'Пояснения и ссылки, если необходимы.'],
++    // Стабильное name связывает элемент формы с серверной проверкой.
++    // required действует только пока выполнено visible_if, если оно указано.
++    'fields' => [
++        [
++            'name' => 'field_supply_item_name',
++            'label' => 'Наименование',
++            'type' => 'text',
++            'required' => true,
++            'hint' => 'Наименование оборудования, материала или комплектующего.',
++        ],
++        [
++            'name' => 'field_supply_quantity',
++            'label' => 'Количество',
++            'type' => 'text',
++            'required' => true,
++            'placeholder' => 'Например, 10 шт.',
++            'hint' => 'Количество и единица измерения; можно перечислить несколько позиций.',
++        ],
++        [
++            'name' => 'field_supply_characteristics',
++            'label' => 'Основные характеристики',
++            'type' => 'textarea',
++            'rows' => 3,
++            'layout' => 'wide',
++            'required' => true,
++            'hint' => 'Характеристики, применимые к оборудованию, материалу, комплектующему.',
++        ],
++        [
++            'name' => 'field_supply_new_product',
++            'label' => 'Абсолютно новая продукция',
++            'type' => 'list',
++            'required' => true,
++            'values' => [['label' => 'Да', 'value' => 'Да'], ['label' => 'Нет', 'value' => 'Нет']],
++            'hint' => 'Выберите Да или Нет.',
++        ],
++        [
++            'name' => 'field_supply_activity',
++            'label' => 'Направление деятельности',
++            'type' => 'textarea',
++            'rows' => 2,
++            'required' => true,
++            'visible_if' => ['field' => 'field_supply_new_product', 'equals' => 'Да'],
++            'condition_hint' => 'Для новой продукции',
++            'hint' => 'Аспирация, металлообработка, запорная арматура и т.д.',
++        ],
++        [
++            'name' => 'field_supply_special_conditions',
++            'label' => 'Особые условия',
++            'type' => 'textarea',
++            'rows' => 3,
++            'layout' => 'wide',
++            'required' => true,
++            'hint' => 'Доставка, документация, маркировка, упаковка, гарантия, сервис, установка. Если условий нет, укажите Нет.',
++        ],
++        [
++            'name' => 'field_supply_outsource_work',
++            'label' => 'Вид работы (аутсорсинг)',
++            'type' => 'textarea',
++            'rows' => 3,
++            'layout' => 'wide',
++            'required' => true,
++            'outsource_only' => true,
++            'hint' => 'Гибка, сварка, резка, полное изготовление по чертежу.',
++        ],
+     ],
+     // Меняйте формулировки здесь: и форма, и задача получат этот текст.
+     // kind влияет только на оформление: primary, standard, notice, details.
+--- a/component/service_rules.css
++++ b/component/service_rules.css
+@@ -13,8 +13,7 @@
+ }
+ .service-rules[hidden] { display: none !important; }
+ .service-rules-original-hidden,
+-.service-executor-rules[hidden],
+-.service-description-help[hidden] { display: none !important; }
++.service-executor-rules[hidden] { display: none !important; }
+ .service-rules--executor { padding: 16px 18px; }
+ .service-rules__table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 12px; }
+ .service-rules__table th,
+@@ -23,8 +22,29 @@
+ .service-rules__table th:first-child { width: 37%; }
+ .service-rules__table tbody th { font-weight: 600; }
+ .service-rules__requirement { display: block; margin-bottom: 4px; color: #29485f; }
+-.service-description-help { margin: 0 0 10px; color: #536a7b; font-size: 13px; line-height: 1.45; }
+-#service-form #description.service-description--template { min-height: 390px; }
++.service-requirements { min-width: 0; margin: 0 0 24px; padding: 14px 18px 18px; border: 1px solid #d7e2e9; border-radius: 6px; background: #fbfdfe; color: #344b5d; font-size: 13px; }
++.service-requirements[hidden],
++.service-requirements [hidden] { display: none !important; }
++.service-requirements legend { padding: 0 7px; color: #29485f; font-size: 15px; font-weight: 600; }
++.service-requirements__intro { margin: 0 0 16px; color: #657b8c; font-size: 12px; }
++.service-requirements__grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px 16px; }
++.service-requirements__field { min-width: 0; }
++.service-requirements__field--wide { grid-column: 1 / -1; }
++#service-form .service-requirements label { display: block; margin: 0 0 6px; color: #344b5d; font-size: 13px; }
++.service-requirements input,
++.service-requirements select,
++.service-field-textarea { box-sizing: border-box; width: 100%; margin: 0; padding: 8px; border: 1px solid #bccbd5; border-radius: 3px; background: #fff; color: #344b5d; font-family: inherit; font-size: 13px; line-height: 1.4; }
++.service-field-textarea { display: block; min-height: 70px; resize: vertical; }
++.service-requirements input:focus,
++.service-requirements select:focus,
++.service-requirements textarea:focus { outline: 2px solid #5293b8; outline-offset: 1px; }
++.service-requirements [aria-invalid="true"] { border-color: #b64545; }
++.service-requirements__hint { margin: 6px 0 0; color: #657b8c; font-size: 12px; line-height: 1.4; }
++.service-requirements__error { margin: 6px 0 0; color: #a93030; font-size: 12px; line-height: 1.4; }
++@media (max-width: 640px) {
++    .service-requirements { padding: 12px 14px 16px; }
++    .service-requirements__grid { grid-template-columns: minmax(0, 1fr); }
++}
+ .service-rules .service-rules__section {
+     box-sizing: border-box;
+     margin: 0;
+--- a/template/script.js
++++ b/template/script.js
+@@ -8,11 +8,12 @@
+     let generalRulesNodes = [];
+ 
+     let descriptionField = null;
+-    let descriptionHelp = null;
+-    let activeDescriptionKey = null;
+-    let activeDescriptionSchema = null;
++    let requirementFieldsBlock = null;
++    const requirementControls = new Map();
++    let activeServiceKey = null;
++    let activeFieldSchema = null;
+     let unassignedDescription = '';
+-    const descriptionDrafts = new Map();
++    const serviceDrafts = new Map();
+ 
+     let marketingLogic = 0;
+ 
+@@ -86,7 +87,7 @@
+ 
+     const appendRequirementsTable = (body, fields) => {
+         body.appendChild(createRulesElement('p', 'service-rules__paragraph',
+-            'Заполните строки в описании проблемы. Сохраните заголовки и двоеточия.'));
++            'Обязательные сведения заполняются в полях заявки.'));
+         const table = createRulesElement('table', 'service-rules__table');
+         const thead = document.createElement('thead');
+         const heading = document.createElement('tr');
+@@ -98,14 +99,14 @@
+         thead.appendChild(heading);
+         table.appendChild(thead);
+         const tbody = document.createElement('tbody');
+-        fields.filter(field => field.required || field.required_if).forEach(field => {
++        fields.filter(field => field.required || field.visible_if).forEach(field => {
+             const row = document.createElement('tr');
+             const label = createRulesElement('th', '', field.label);
+             label.scope = 'row';
+             row.appendChild(label);
+             const cell = document.createElement('td');
+             cell.appendChild(createRulesElement('strong', 'service-rules__requirement',
+-                field.required_if ? 'Для новой продукции' : 'Обязательно'));
++                field.visible_if ? (field.condition_hint || 'При выполнении условия') : 'Обязательно'));
+             cell.appendChild(createRulesElement('span', '', field.hint));
+             row.appendChild(cell);
+             tbody.appendChild(row);
+@@ -152,99 +153,150 @@
+         serviceRulesBlock.hidden = false;
+     };
+ 
+-    const saveDescriptionDraft = () => {
++    const normalizedFieldValue = value => String(value || '').replace(
++        /^[\s\p{Z}\u200B\uFEFF]+|[\s\p{Z}\u200B\uFEFF]+$/gu, '');
++
++    const currentRequirementValues = () => {
++        const values = {};
++        requirementControls.forEach((control, name) => { values[name] = control.input.value; });
++        return values;
++    };
++
++    const clearRequirementError = control => {
++        control.error.textContent = '';
++        control.error.hidden = true;
++        control.input.removeAttribute('aria-invalid');
++        control.input.setCustomValidity('');
++    };
++
++    const showRequirementErrors = errors => {
++        let first = null;
++        Object.entries(errors).forEach(([name, message]) => {
++            const control = requirementControls.get(name);
++            if (!control || control.input.disabled) return;
++            control.error.textContent = message;
++            control.error.hidden = false;
++            control.input.setAttribute('aria-invalid', 'true');
++            control.input.setCustomValidity(message);
++            if (!first) first = control.input;
++        });
++        if (first) first.focus();
++        return !!first;
++    };
++
++    const updateRequirementVisibility = () => {
++        const values = currentRequirementValues();
++        requirementControls.forEach(control => {
++            const condition = control.field.visible_if;
++            const visible = !condition || normalizedFieldValue(values[condition.field]) === String(condition.equals);
++            control.wrapper.hidden = !visible;
++            control.input.disabled = !visible;
++            control.input.required = visible && !!control.field.required;
++            control.input.setAttribute('aria-required', control.input.required ? 'true' : 'false');
++            if (!visible) clearRequirementError(control);
++        });
++    };
++
++    const validateRequirementFields = () => {
++        const errors = {};
++        requirementControls.forEach(control => {
++            if (control.input.disabled) return;
++            const {field, input} = control;
++            const value = normalizedFieldValue(input.value);
++            if (field.required && !value) {
++                errors[field.name] = 'Заполните поле «' + field.label + '».';
++            } else if (value && field.type === 'list' && !field.values.some(item => item.value === value)) {
++                errors[field.name] = 'Выберите допустимое значение поля «' + field.label + '».';
++            }
++        });
++        return errors;
++    };
++
++    const renderRequirementFields = (schema, createField, savedValues = {}) => {
++        requirementControls.clear();
++        if (requirementFieldsBlock) {
++            requirementFieldsBlock.textContent = '';
++            requirementFieldsBlock.hidden = true;
++        }
++        if (!schema) return;
++        if (!requirementFieldsBlock) {
++            requirementFieldsBlock = createRulesElement('fieldset', 'service-requirements');
++            const anchor = document.querySelector('#service-form label[for="description"]') || descriptionField;
++            anchor.insertAdjacentElement('beforebegin', requirementFieldsBlock);
++        }
++        requirementFieldsBlock.appendChild(createRulesElement('legend', '', 'Сведения по заявке'));
++        requirementFieldsBlock.appendChild(createRulesElement('p', 'service-requirements__intro', 'Поля со звёздочкой обязательны.'));
++        const grid = createRulesElement('div', 'service-requirements__grid');
++        schema.fields.forEach(field => {
++            const wrapper = createRulesElement('div', 'service-requirements__field');
++            if (field.layout === 'wide') wrapper.classList.add('service-requirements__field--wide');
++            const label = createRulesElement('label', '', field.label + (field.required ? ' *' : ''));
++            label.htmlFor = field.name;
++            // Один и тот же конструктор используется для config.php и новых деклараций.
++            const input = createField(field);
++            if (!input) throw new Error('Неподдерживаемый тип поля: ' + field.type);
++            input.value = Object.prototype.hasOwnProperty.call(savedValues, field.name) ? savedValues[field.name] : '';
++            const hint = createRulesElement('p', 'service-requirements__hint', field.hint || '');
++            hint.id = field.name + '_hint';
++            hint.hidden = !field.hint;
++            const error = createRulesElement('p', 'service-requirements__error');
++            error.id = field.name + '_error';
++            error.hidden = true;
++            error.setAttribute('aria-live', 'polite');
++            input.setAttribute('aria-describedby', [hint.id, error.id].join(' '));
++            wrapper.append(label, input, hint, error);
++            grid.appendChild(wrapper);
++            const control = {field, input, wrapper, error};
++            requirementControls.set(field.name, control);
++            const onEdit = () => { clearRequirementError(control); updateRequirementVisibility(); };
++            input.addEventListener('input', onEdit);
++            input.addEventListener('change', onEdit);
++            input.addEventListener('invalid', () => {
++                if (input.validity.valueMissing) {
++                    error.textContent = 'Заполните поле «' + field.label + '».';
++                    error.hidden = false;
++                    input.setAttribute('aria-invalid', 'true');
++                }
++            });
++        });
++        requirementFieldsBlock.appendChild(grid);
++        requirementFieldsBlock.hidden = false;
++        updateRequirementVisibility();
++    };
++
++    const saveServiceDraft = () => {
+         if (!descriptionField) return;
+-        if (activeDescriptionKey !== null) {
+-            descriptionDrafts.set(activeDescriptionKey, descriptionField.value);
++        if (activeServiceKey !== null) {
++            serviceDrafts.set(activeServiceKey, {
++                description: descriptionField.value,
++                fields: currentRequirementValues(),
++            });
+         } else {
+             unassignedDescription = descriptionField.value;
+         }
+     };
+ 
+-    const updateDescriptionHelp = () => {
+-        const hasTemplate = !!activeDescriptionSchema;
+-        descriptionField.classList.toggle('service-description--template', hasTemplate);
+-        if (descriptionHelp) descriptionHelp.hidden = !hasTemplate;
+-    };
+-
+-    const selectServiceDescription = service => {
+-        saveDescriptionDraft();
+-        activeDescriptionKey = String(service.value);
+-        activeDescriptionSchema = service.hasServiceRules && service.descriptionSchema
+-            && Array.isArray(service.descriptionSchema.fields) ? service.descriptionSchema : null;
+-        if (descriptionDrafts.has(activeDescriptionKey)) {
+-            // В том числе восстанавливаем намеренно очищенный текст.
+-            descriptionField.value = descriptionDrafts.get(activeDescriptionKey);
++    const selectServiceForm = (service, createField) => {
++        saveServiceDraft();
++        activeServiceKey = String(service.value);
++        activeFieldSchema = service.hasServiceRules && service.fieldSchema
++            && Array.isArray(service.fieldSchema.fields) ? service.fieldSchema : null;
++        const draft = serviceDrafts.get(activeServiceKey);
++        if (draft) {
++            descriptionField.value = draft.description;
+         } else {
+-            const parts = [];
+-            if (service.startText) parts.push(String(service.startText).trim());
+-            if (unassignedDescription.trim()) parts.push(unassignedDescription);
+-            if (activeDescriptionSchema) {
+-                const seedLines = parts.join('\n\n').split(/\r?\n/);
+-                const missingFields = activeDescriptionSchema.fields.filter(field =>
+-                    !seedLines.some(line => descriptionLinePattern(field).test(line)));
+-                if (missingFields.length) parts.push(missingFields.map(field => field.label + ': ').join('\n\n'));
+-            }
+-            descriptionField.value = parts.join('\n\n');
+-        }
+-        updateDescriptionHelp();
+-    };
+-
+-    const resetServiceDescription = () => {
+-        saveDescriptionDraft();
+-        activeDescriptionKey = null;
+-        activeDescriptionSchema = null;
+-        if (descriptionField) {
+-            descriptionField.value = unassignedDescription;
+-            updateDescriptionHelp();
+-        }
+-    };
+-
+-    const descriptionLinePattern = field => new RegExp(
+-        '^\\s*' + field.label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*:[\\t ]*(.*)$', 'iu');
+-
+-    const validateServiceDescription = (description, schema) => {
+-        if (!schema || !Array.isArray(schema.fields)) return [];
+-        const values = {};
+-        const seen = new Set();
+-        const errors = [];
+-        let current = null;
+-        const patterns = schema.fields.map(field => ({field, pattern: descriptionLinePattern(field)}));
+-        description.split(/\r\n|[\n\r\v\f\u0085\u2028\u2029]/).forEach(line => {
+-            let matched = false;
+-            for (const {field, pattern} of patterns) {
+-                const match = line.match(pattern);
+-                if (!match) continue;
+-                current = field.key;
+-                if (seen.has(current)) errors.push('Строка «' + field.label + '» повторяется. Объедините сведения в одном блоке.');
+-                seen.add(current);
+-                values[current] = match[1];
+-                matched = true;
+-                break;
+-            }
+-            if (!matched && current !== null) values[current] += '\n' + line;
+-        });
+-        Object.keys(values).forEach(key => {
+-            values[key] = values[key].replace(/[\s\p{Z}\u200B\uFEFF]+/gu, ' ').trim();
+-        });
+-        schema.fields.forEach(field => {
+-            if (field.choices && values[field.key] !== undefined) {
+-                const choice = field.choices.find(item => item.toLowerCase() === values[field.key].toLowerCase());
+-                if (choice) values[field.key] = choice;
+-            }
+-        });
+-        schema.fields.forEach(field => {
+-            const required = field.required_if
+-                ? (values[field.required_if.key] || '') === field.required_if.equals : !!field.required;
+-            const value = values[field.key] || '';
+-            const empty = !value || /^[\p{P}\p{S}\s]+$/u.test(value) || /^\[?заполните\]?$/iu.test(value);
+-            if (required && empty) {
+-                errors.push('Заполните строку «' + field.label + '» в описании проблемы (сохраните заголовок и двоеточие).');
+-            } else if (value && field.choices && !field.choices.includes(value)) {
+-                errors.push('В строке «' + field.label + '» укажите ' + field.choices.join(' или ') + '.');
+-            }
+-        });
+-        return [...new Set(errors)];
++            descriptionField.value = [service.startText || '', unassignedDescription]
++                .filter(text => String(text).trim()).join('\n\n');
++        }
++        renderRequirementFields(activeFieldSchema, createField, draft ? draft.fields : {});
++    };
++
++    const resetServiceForm = () => {
++        saveServiceDraft();
++        activeServiceKey = null;
++        activeFieldSchema = null;
++        renderRequirementFields(null);
++        if (descriptionField) descriptionField.value = unassignedDescription;
+     };
+ 
+     let createResponsibleBlock = (departments, depth) => {
+@@ -290,7 +342,7 @@
+ 
+     let deleteServiceBlock = () => {
+         renderServiceRules([]);
+-        resetServiceDescription();
++        resetServiceForm();
+         marketingLogic = 0;
+         if (serviceBlock){
+             serviceBlock.remove();
+@@ -437,6 +489,13 @@
+             switch (field.type){
+                 case 'text':
+                     input = buildInput(field.name, field.name);
++                    break;
++                case 'textarea':
++                    input = document.createElement('textarea');
++                    input.className = 'service-field-textarea';
++                    input.name = field.name;
++                    input.id = field.name;
++                    input.rows = field.rows || 3;
+                     break;
+                 case 'list':
+                     input = buildSelect(field.values, field.name);
+@@ -517,7 +576,10 @@
+                     break;
+             }
+ 
+-            if (input) input.setAttribute('aria-required', field.required ? 'true' : 'false');
++            if (input) {
++                input.setAttribute('aria-required', field.required ? 'true' : 'false');
++                if (field.placeholder) input.setAttribute('placeholder', field.placeholder);
++            }
+             return input;
+         }
+ 
+@@ -532,12 +594,12 @@
+             let index = (serviceSelect.selectedIndex-1);
+             if (!services[index]) {
+                 renderServiceRules([]);
+-                resetServiceDescription();
++                resetServiceForm();
+                 return;
+             }
+             fullServiceDescription(services[index].description, services[index].leadTime, services[index].timeAt, services[index].timeTo);
+-            selectServiceDescription(services[index]);
+-            renderServiceRules(services[index].hasServiceRules ? serviceRules : [], activeDescriptionSchema);
++            selectServiceForm(services[index], createField);
++            renderServiceRules(services[index].hasServiceRules ? serviceRules : [], activeFieldSchema);
+ 
+             //Внедряем дополнительные поля для элементов
+             if ( extraFieldsConfig.elements.length ){
+@@ -750,10 +812,9 @@
+ 
+ 
+ 
+-                const descriptionErrors = validateServiceDescription(description.value, activeDescriptionSchema);
+-                if (descriptionErrors.length) {
+-                    alert(descriptionErrors.join('\n'));
+-                    description.focus();
++                const fieldErrors = validateRequirementFields();
++                if (Object.keys(fieldErrors).length) {
++                    showRequirementErrors(fieldErrors);
+                     return false;
+                 }
+ 
+@@ -775,10 +836,11 @@
+                 });
+ 
+                 let data = new FormData(form);
+-                // Для целевых услуг сервер сначала проверит сам шаблон, затем добавит допполя.
+-                data.set('description', activeDescriptionSchema ? description.value
++                // Новые значения идут отдельными POST-полями; описание собирается сервером.
++                data.set('description', activeFieldSchema ? description.value
+                     : description.value + (extraDescription ? '\n\n' + extraDescription : ''));
+                 data.set('extra_fields_description', extraDescription);
++                if (activeFieldSchema) data.set('service_fields_version', activeFieldSchema.version);
+ 
+                 extraFieldsMap.forEach(field => {
+                     let fieldForm = form.querySelector('#' + field.id);
+@@ -798,8 +860,9 @@
+                     });
+ 
+                     if (Array.isArray(response.data.validationErrors) && response.data.validationErrors.length) {
+-                        alert(response.data.validationErrors.join('\n'));
+-                        description.focus();
++                        if (!showRequirementErrors(response.data.fieldErrors || {})) {
++                            alert(response.data.validationErrors.join('\n'));
++                        }
+                     }
+ 
+                     if ( response.data.userId && response.data.taskId ){
+@@ -838,10 +901,7 @@
+         descriptionField = document.querySelector('#description');
+         if (descriptionField) {
+             unassignedDescription = descriptionField.value;
+-            descriptionHelp = createRulesElement('p', 'service-description-help',
+-                'Заполните строки после двоеточий. Если особых условий нет, укажите «Нет». Направление деятельности нужно только для абсолютно новой продукции.');
+-            descriptionHelp.hidden = true;
+-            descriptionField.insertAdjacentElement('beforebegin', descriptionHelp);
++
+         }
+ 
+         if ( mainSelect ) {

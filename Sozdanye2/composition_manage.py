@@ -27,10 +27,18 @@ if TYPE_CHECKING:
 def _______INITS__________():
     pass
 
+def init_data():
+    update_comp_files()
+    DTCLS.registred_partials = CMS.RegistredPartials()
+    DTCLS.registred_partials.load_data()
+
 @CQT.onerror
 def update_comp_files():
     tbl = DTCLS.app_self.ui.tbl_comp_files
     tblf = DTCLS.app_self.ui.tbl_comp_files_filtr
+    t = CQT.TableContext(tbl)
+    if t.count:
+        t.save_coord()
     comps = CMS.Compositions(DTCLS.PLACE.poki)
     DTCLS.compositions = comps
     templ = comps.template()
@@ -43,7 +51,8 @@ def update_comp_files():
             t.hide_startsunderscore(True)
 
         CMS.load_column_widths(DTCLS.app_self,tbl)
-        CMS.fill_filtr_c(DTCLS.app_self,tblf,tbl)
+        CMS.fill_filtr_c(DTCLS.app_self,tblf,tbl,hidden_scroll=True,show_header=False)
+    t.restore_selected_cell()
 
 
 @CQT.onerror
@@ -149,12 +158,9 @@ class Card_nesting_kelast():
         return True
 
     def load_pr_py_by_mk(self,mk:int,project:str)->tuple[str,str,str]:
-        data = CSQ.custom_request_c(DTCLS.PROJECT.db_kplan,f"""
-        SELECT  знпр."№проекта", знпр."№ERP" 
-        FROM mk
-        INNER JOIN пл_оуп ON пл_оуп."НомПл" = mk."НомКплан" 
-        INNER JOIN знпр ON знпр.s_num = пл_оуп."Пномер_ЗП" WHERE mk."Пномер" = {mk} """,
-                                    rez_dict=True,one=True,attach_dbs=DTCLS.PROJECT.db_naryad)
+        data = CSQ.custom_request_c(DTCLS.PROJECT.db_kplan,f"""SELECT  знпр.№проекта, знпр.№ERP FROM mk
+            INNER JOIN пл_оуп ON пл_оуп.НомПл == mk.НомКплан 
+            INNER JOIN знпр ON знпр.s_num == пл_оуп.Пномер_ЗП WHERE mk.Пномер = {mk} """, rez_dict=True,one=True,attach_dbs=DTCLS.PROJECT.db_naryad)
         if data:
             erp = data['№ERP'].split('-')[-1].lstrip('0')
             np = data['№проекта']
@@ -268,6 +274,173 @@ def ________TBLS_______________():
     pass
 @CQT.onerror
 def btn_comp_load_file(id_file:int|None = None,*args):
+
+    def fnc_clear_new_name(lbl:CQT.InteractiveLabelInstance,app_self,i,j,row_o:CQT.TableRow,*args):
+        poz = _get_poz_obj(row_o)
+        if poz is None:
+            return
+        poz.nn_hand_compare = None
+        poz.id_dse_mk_hand_compare = None
+        poz.upload()
+        row_o.set_value('nn_hand_compare', '')
+        lbl.set_text('')
+        tbl_comp_dse()
+    def fnc_select_new_name(lbl:CQT.InteractiveLabelInstance,app_self,i,j,row_o:CQT.TableRow,*args):
+        poz = _get_poz_obj(row_o)
+
+        template = []  # Naryads(165205,CFG.Config.project.db_naryad,None,CFG.Config.project.db_users)
+        res = poz.res
+        for dse in res.data:
+            for oper in dse.Операции:
+                if not oper.Опер_код == poz.parent.oper_code:
+                    continue
+                available = dse.Количество - oper.Освоено  # available = 2
+                excess_count_dse = dse.Количество - poz.count_aggregate
+                if excess_count_dse >=0:
+                    template.append({
+                        'МК': res.mk.Пномер,
+                        '_ДСЕ ID': dse.Номерпп,
+                        'ДСЕ Наим.': dse.Наименование,
+                        'ДСЕ НН': dse.Номенклатурный_номер,
+                        'Опер. Код': oper.Опер_код,
+                        'Опер. Наименование': oper.Опер_наименование,
+                        'Опер. Номер': oper.Опер_номер,
+                        'Опер. Tпз': oper.Опер_Тпз,
+                        'Опер. Tшт': oper.Опер_Тшт_ед,
+                        'КОИД': oper.Опер_КОИД,
+                        '_Опер. Проф.Код': oper.Опер_профессия_код,
+                        '_Опер. Проф.': oper.Опер_профессия_наименование,
+                        'Кол-во ДСЕ': dse.Количество,
+                        'Доступно': available
+                    })
+        if not template:
+            CQT.msgbox('Нет подходящих ДСЕ')
+            return
+        rez = CQT.msgboxg_get_table(DTCLS.app_self,'Выбор имени',template,selectRows=True,styleSheet=CQT.MES_CSS,selection_from_tbl=True,ExtendedSelection=False)
+        if not rez:
+            return
+        poz.nn_hand_compare = rez['ДСЕ НН']
+        poz.id_dse_mk_hand_compare = int(rez['_ДСЕ ID'])
+        poz.upload()
+        row_o.set_value('nn_hand_compare', poz.nn_hand_compare)
+        lbl.set_text(poz.nn_hand_compare)
+        tbl_comp_dse()
+        return
+    def fnc_dbl_click_dse(t:CQT.TableContext,i,name_clmn:str, *args):
+        def fnc_oform_tbl_parts(tbl,*args):
+            t = CQT.TableContext(tbl)
+            count_parts = 0
+            for row in t.rows():
+                count_parts = int(row.value('Частей\nв раскроях'))
+            step = round(100/count_parts)
+            for row in t.rows():
+                part = int(row.value('Часть'))
+                clr = CMS.Color_tbl(part*step)
+                row.set_color_background(*clr.rgb)
+            pass
+
+        poz = _get_poz_obj(t.get_row(i))
+        if not poz:
+            return CQT.msgbox('Позиция не найдено')
+        parts = DTCLS.part_manager.get_dict_parts(poz.id)
+        if not parts:
+            return CQT.msgbox('Частей ДСЕ не найдено')
+
+        template = []
+        dict_pozs = dict()
+        dict_mks = dict()
+        dict_files = dict()
+        for _ in parts.values():
+            if _.id_f not in dict_files:
+                file_for_part = DTCLS.compositions.find(_.id_f)
+                file_for_part.load_pozs(DTCLS.part_manager)
+                file_for_part.load_dict_res_o()
+                file_for_part.recalc_registred_partial(DTCLS.registred_partials)
+                dict_files[_.id_f] = file_for_part
+            else:
+                file_for_part = dict_files[_.id_f]
+
+
+
+            poz_for_part = file_for_part.find_poz(_.id_dse)
+            if (poz_for_part.id_kpl,poz_for_part.mk,_.nn_raw) not in dict_mks:
+
+                poz_for_part.calc_count_by_mk()
+
+                dict_mks[(poz_for_part.id_kpl,poz_for_part.mk,_.nn_raw)] = poz_for_part
+            else:
+                poz_for_part = dict_mks[(poz_for_part.id_kpl,poz_for_part.mk,_.nn_raw)]
+
+            dict_pozs[(_.id_f, _.id_dse)] = poz_for_part
+
+        for _ in parts.values():
+
+            registered_count_per_dse_val = poz.registered_count_per_dse(_)
+            registered_count_per_project_val = poz.registered_count_per_project(_)
+            poz_for_part = dict_pozs[(_.id_f,_.id_dse)]
+            templ_row ={
+            'КПЛ №': poz_for_part.id_kpl,
+            'Кол-во изд.\nпо КПЛ': poz_for_part.count_kpl,
+
+            'МК №': poz_for_part.mk,
+            'Кол-во изд.\nв МК': poz_for_part.count_izd,
+            'Общee\nкол-во ДСЕ': poz_for_part.count_count_aggregate_dse,
+
+            'Раскрой\n№': _.id_f,
+            '№\nсегмента': _.id_dse,
+            'Сегмент\nв раскрое': _.nn_raw,
+            'Часть': _.part,
+            'Частей\nв раскроях': _.total_parts,
+            'Кол-во\nв раскрое': _.total_count_dse,
+            'Сегмент\nзарег-ан':_.is_exists_registered_parts(poz.registred),
+            'Плановая\nДСЕ':_.registered_dse(poz.registred,DTCLS.registred_partials),
+            'Рег.кол-во\nна изд.':registered_count_per_project_val if registered_count_per_project_val else '',
+            'Рег.кол-во\nна ДСЕ':registered_count_per_dse_val if registered_count_per_dse_val else '',
+            'Связано': _.calc_summ_coupled(poz.parts_couples,poz.registred,poz.parts)
+          }
+            template.append(templ_row)
+        template.sort(key=lambda _: _['Часть'])
+        template.sort(key=lambda _: _['Сегмент\nв раскрое'])
+        rez = CQT.msgboxg_get_table_ok_inf(DTCLS.app_self,'Загруженные части',template,styleSheet=CQT.MES_EDIT_CSS,func_oform_tbl=fnc_oform_tbl_parts)
+        return
+    def fnc_dbl_click_mk(t:CQT.TableContext,i,name_clmn:str, *args):
+        poz = _get_poz_obj(t.get_row(i))
+        template = []  # Naryads(165205,CFG.Config.project.db_naryad,None,CFG.Config.project.db_users)
+        res = poz.res
+        for dse in res.data:
+            for oper in dse.Операции:
+                if not oper.Опер_код == poz.parent.oper_code:
+                    continue
+                available = dse.Количество - oper.Освоено  # available = 2
+                template.append({
+                    'МК': res.mk.Пномер,
+                    'Кол-во изд.\nв МК': poz.count_izd,
+                    'КПЛ №': poz.id_kpl,
+                    'Кол-во изд.\nпо КПЛ': poz.count_kpl,
+                    '_ДСЕ ID': dse.Номерпп,
+                    'ДСЕ Наим.': dse.Наименование,
+                    'ДСЕ НН': dse.Номенклатурный_номер,
+                    'Опер.\nКод': oper.Опер_код,
+                    'Опер.\nНаименование': oper.Опер_наименование,
+                    'Опер.\nНомер': oper.Опер_номер,
+                    'Опер.\nTпз': oper.Опер_Тпз,
+                    'Опер.\nTшт': oper.Опер_Тшт_ед,
+                    'КОИД': oper.Опер_КОИД,
+                    '_Опер.\nПроф.Код': oper.Опер_профессия_код,
+                    '_Опер.\nПроф.': oper.Опер_профессия_наименование,
+                    'Кол-во\nДСЕ': dse.Количество,
+                    'Доступно': available
+                })
+        if not template:
+            CQT.msgbox('Нет подходящих ДСЕ')
+            return
+        def fnc_oform(tbl):
+            t  = CQT.TableContext(tbl)
+            t.hide_if_not_dev(CFG,forced_text=True)
+        rez = CQT.msgboxg_get_table_ok_inf(DTCLS.app_self, 'МК', template,  styleSheet=CQT.MES_CSS,
+                                    func_oform_tbl=fnc_oform)
+
+
     tbl_comp_f = DTCLS.app_self.ui.tbl_comp_files
     tbl = DTCLS.app_self.ui.tbl_comp_dse
     CQT.clear_tbl(tbl)
@@ -284,24 +457,59 @@ def btn_comp_load_file(id_file:int|None = None,*args):
     else:
         id = id_file
     comp:CMS.Composition = DTCLS.compositions.find(id)
-    comp.load_pozs()
+    load_partial_poz(comp.name)
+    comp.load_pozs(DTCLS.part_manager)
+
+    comp.load_dict_res_o()
+
     comp.recalc_signed()
     comp.recalc_coupled()
     comp.recalc_finished()
     comp.recalc_errors()
+    comp.recalc_registred_partial(DTCLS.registred_partials)
+
+    comp.load_count_by_mk()
     if comp.is_edited:
         btn_update_files(DTCLS.app_self)
         comp.set_not_edited()
-    templ = comp.template_pozs()
+    templ,templ_data = comp.template_pozs()
+
+
 
     CQT.fill_wtabl(templ, tbl, styleSheet=CQT.MES_CSS, selectionBehavior="SelectRows", sortingEnabled=True,
-                   aliases_header=CMS.Composition_poz.ALIASES)
+                   aliases_header=CMS.Composition_poz.ALIASES,dict_or_list_user_data=templ_data)
+
     t = CQT.TableContext(tbl)
     with CQT.table_updating(tbl):
-        if not CFG.Config.user_config.is_developer:
-            t.hide_startsunderscore(True)
+        t.hide_if_not_dev(CFG,True)
+
+        for row_o in t.rows():
+            poz = _get_poz_obj(row_o)
+
+            if poz.count_left_couple != poz.count_aggregate:#Начато связывание - менять ДСЕ для связывания поздно
+                continue
+
+            if poz.registred:
+                continue
+            else:
+                continue
+
+            widg = CQT.add_interactive_label(t.tbl, row_o.i, t.nf['nn_hand_compare'], row_o.value('nn_hand_compare'),
+                                             parent_self=DTCLS.app_self, grab_style_from_cell=True,
+                                             autoupdate_column_size=False)
+            widg.add_button('...', 'Выбор',
+                            fnc_select_new_name,
+                            cell_val=row_o, img_path=F.sep().join([F.path_to_caller_file_c(),
+                                                                     'icons', 'select_from']))
+            widg.add_button('...', 'Очистить',
+                            fnc_clear_new_name,
+                            cell_val=row_o, img_path=F.sep().join([F.path_to_caller_file_c(),
+                                                                   'icons', 'comp_tbl_dse_clear_name']))
+
+        t.add_column_events('mk',on_double_click=fnc_dbl_click_mk)
+        t.add_column_events('dse_ui',on_double_click=fnc_dbl_click_dse)
         CMS.load_column_widths(DTCLS.app_self, tbl)
-        CMS.fill_filtr_c(DTCLS.app_self, tblf, tbl)
+        CMS.fill_filtr_c(DTCLS.app_self, tblf, tbl,hidden_scroll=True,show_header=False)
 
 
 @CQT.onerror
@@ -314,14 +522,19 @@ def tbl_comp_dse(id_poz:int|None =None,*args):
     CQT.fill_wtabl(templ, tbl_ch, styleSheet=CQT.MES_CSS, selectionBehavior="SelectRows"
                    )
     t = CQT.TableContext(tbl_ch)
-    if not CFG.Config.user_config.is_developer:
-        t.hide_startsunderscore()
+    t.hide_if_not_dev(CFG)
 
-    set_lbl_count_composite_aviable(poz.calc_count_composite(DTCLS.app_self.DICT_DOLGN_ETAP,
+    DTCLS.poz_aviable_count_composite = (poz.calc_count_composite(DTCLS.app_self.DICT_DOLGN_ETAP,
                                                              DTCLS.app_self.DICT_EMPLOEE_FULL,
                                                              DTCLS.app_self.DICT_OPER_NAME
     ))
-    set_lbl_count_composite_create_aviable(poz.calc_count_create())
+    poz.calc_count_create()
+
+    poz.calc_count_by_mk()
+
+
+    set_lbl_count_composite_aviable(poz.aviable_to_composite,False)
+    set_lbl_count_composite_create_aviable(poz.aviable_to_create,False)
     btn_create = DTCLS.app_self.ui.btn_comp_dse_cr_nar
     btn_comp = DTCLS.app_self.ui.btn_comp_dse
     fl_disable_create = False
@@ -329,12 +542,13 @@ def tbl_comp_dse(id_poz:int|None =None,*args):
     if poz.is_coupled:
         fl_disable_create = True
         fl_disable_comp = True
-    if poz.count_left_couple <= poz.aviable_to_composite:
+    if not poz.aviable_to_composite:
+        fl_disable_comp = True
+    if not poz.aviable_to_create:
         fl_disable_create = True
+
     btn_create.setEnabled(not fl_disable_create)
     btn_comp.setEnabled(not fl_disable_comp)
-
-
     check_count()
 
 def ________BTNS_______________():
@@ -498,6 +712,38 @@ def btn_fr_comp_dse_nars_delete(app_self,*args):
 
 
 @CQT.onerror
+def is_full_set_upload(cmp:CMS.Composition)->bool:
+    cmps_set_locals = set([_.local_num for _ in DTCLS.compositions.comps if _.name == cmp.name])
+    suggestion_locals = set(range(1,cmp.local_count+1))
+    delta = suggestion_locals - cmps_set_locals
+    if delta:
+        return False
+    return True
+
+
+
+@CQT.onerror
+def check_poz_parts(poz,*args)->bool:
+    if not poz.registred:
+        CQT.msgbox(
+            f'{CEMOJ.EmojiMain.Эмоции.confused.symbol} составные части не зарегистрированы')
+        return False
+
+    if not CFG.Config.user_config.is_developer:
+        if not is_full_set_upload(poz.parent):
+            CQT.msgbox(
+                f'{CEMOJ.EmojiMain.Эмоции.confused.symbol} Есть составные части, но не загружен полный комплект раскроев.')
+            return False
+
+    if not DTCLS.part_manager.check_proportions(poz.id):
+        CQT.msgbox(f'Пропорции в составных частях не равны')
+        return False
+
+
+
+    return True
+
+@CQT.onerror
 def btn_comp_dse_cr_nar(app_self,*args):
     poz = _get_current_poz_obj()
     if poz is None:
@@ -505,6 +751,18 @@ def btn_comp_dse_cr_nar(app_self,*args):
     if poz.is_coupled:
         CQT.msgbox(f'Наряды уже связанны количеством {poz.count_aggregate}')
         return
+    if poz.parts:
+       if not check_poz_parts(poz):
+           return
+    part = poz.my_part()
+    id_reg_part = None
+    if part:
+        reg_part = part.registred_part(poz.registred)
+        if reg_part:
+            id_reg_part = reg_part.segment_id
+        if id_reg_part is None:
+            CQT.msgbox(f'Не найдена зарегистрированная часть для  {poz.dse}')
+            return
     template = poz.calc_composite_create_templ()
 
     def fnc_check_select(btn, dialog, t):
@@ -523,7 +781,7 @@ def btn_comp_dse_cr_nar(app_self,*args):
                 CQT.msgbox(
                     f'не указано количество в графе "Выбрано шт."')
                 return
-            overrun = [str(_.i + 1) for _ in t.rows() if _.value('Выбрано шт.') > _.value('Доступно')]
+            overrun = [str(_.i + 1) for _ in t.rows() if int(_.value('Выбрано шт.')) > int(_.value('Доступно'))]
             if overrun:
                 CQT.msgbox(
                     f'Превышение доступности в графе "Выбрано шт."\n в строках "{overrun}"')
@@ -598,12 +856,14 @@ def btn_comp_dse_cr_nar(app_self,*args):
     new_nar.save()
     for param_o in new_nar.params_o:
         snum_nar = param_o.parent.Пномер
-        id_dse = param_o.ДСЕ_ID
-        count_nar = param_o.Опер_колво
+        id_dse = int(param_o.ДСЕ_ID)
+        count_nar = int(param_o.Опер_колво)
         n_oper = param_o.Операции_номер
-        с_oper = param_o.code_oper
-        if not poz.add_associated_dse(snum_nar, id_dse, count_nar, n_oper, с_oper):
-            CQT.msgbox(f'Ошибка связывания с нарядом')
+        c_oper = param_o.code_oper
+
+
+        if not poz.add_associated_dse(snum_nar, id_dse, count_nar,n_oper,c_oper,id_reg_part):
+            CQT.msgbox(f'Ошибка связывания при создании наряда')
             continue
 
     btn_comp_load_file( poz.parent.id)
@@ -612,15 +872,32 @@ def btn_comp_dse_cr_nar(app_self,*args):
 @CQT.onerror
 def btn_comp_dse(app_self,*args):
     poz = _get_current_poz_obj()
+
     if poz is None:
         return
     if poz.is_coupled:
         CQT.msgbox(f'Наряды уже связанны количеством {poz.count_aggregate}')
         return
+    if poz.parts:
+       if not check_poz_parts(poz):
+           return
+    part = poz.my_part()
+    id_reg_part = None
+    if part:
+        reg_part = part.registred_part(poz.registred)
+        if reg_part:
+            id_reg_part = reg_part.segment_id
 
+        if id_reg_part is None:
+            CQT.msgbox(f'Не найдена зарегистрированная часть для  {poz.dse}')
+            return
+    registered_count_per_dse = None
+    if part:
+        registered_count_per_dse =poz.registered_count_per_dse(part)
     template = poz.calc_composite_templ(DTCLS.app_self.DICT_DOLGN_ETAP,
                                                              DTCLS.app_self.DICT_EMPLOEE_FULL,
-                                                             DTCLS.app_self.DICT_OPER_NAME)
+                                                             DTCLS.app_self.DICT_OPER_NAME,
+                                        registered_count_per_dse)
 
     def fnc_check_select(btn, dialog, t):
         if dialog.is_btn_yes_role(btn):
@@ -655,7 +932,7 @@ def btn_comp_dse(app_self,*args):
                     f'Нельзя выбрать разные операции,(1 наряд - 1 опер):\n{str(ower_select)}')
                 return
 
-            overrun = [str(_.i + 1) for _ in t.rows() if _.value('Выбрано шт.') > _.value('Кол_во')]
+            overrun = [str(_.i + 1) for _ in t.rows() if int(_.value('Выбрано шт.')) > int(_.value('Кол-во'))]
             if overrun:
                 CQT.msgbox(
                     f'Превышение доступности в графе "Выбрано шт."\n в строках "{overrun}"')
@@ -678,12 +955,20 @@ def btn_comp_dse(app_self,*args):
     def func_oform_tbl(tbl, *args):
         t = CQT.TableContext(tbl)
         t.set_editable('Выбрано шт.')
+        if not part:
+            t.hide('Частей')
+        def fnc_dblclick_copy_count(t:CQT.TableContext,i:int,name_clmn:str,*args):
+            row = t.get_row(i)
+            row.set_value('Выбрано шт.',row.value('Кол-во'))
 
+        t.add_column_events('Кол-во',on_double_click=fnc_dblclick_copy_count)
     if not  template:
         CQT.msgbox(f'Нарядов для связывания не найдено')
         return
-
-    rez = CQT.msgboxg_get_table(DTCLS.app_self, f'Выбор нарядов для связи на {poz.count_left_couple} шт.', template,
+    msg = f'Выбор нарядов для связи на {poz.count_left_couple} ДСЕ.'
+    if poz.parts:
+        msg = f'Выбор нарядов для связи на {poz.count_left_couple_parts} частей.'
+    rez = CQT.msgboxg_get_table(DTCLS.app_self, msg, template,
                                 styleSheet=CQT.MES_EDIT_CSS, selectRows=True, ExtendedSelection=False,
                                 not_standart_close=True, func_btn0=fnc_check_select, func_validate=fnc_get_table,
                                 func_oform_tbl=func_oform_tbl,showMaximized=True
@@ -691,13 +976,16 @@ def btn_comp_dse(app_self,*args):
     if rez == False:
         return
 
+
+
     for item in rez:
         snum_nar = int(item['Наряд'])
         id_dse = int(item['N ДСЕ'])
         count_nar = int(item['Выбрано шт.'])
         n_oper = item['№ Опер.']
-        с_oper = item['Код опер.']
-        if not poz.add_associated_dse(snum_nar, id_dse, count_nar,n_oper,с_oper):
+        c_oper = item['Код опер.']
+
+        if not poz.add_associated_dse(snum_nar, id_dse, count_nar,n_oper,c_oper,id_reg_part):
             CQT.msgbox(f'Ошибка связывания с нарядом')
             return
 
@@ -739,14 +1027,37 @@ def ________SUBS_______________():
 def check_count(*args):
     pass
 
-def set_lbl_count_composite_aviable(count:int|str = '-'):
+def set_lbl_count_composite_aviable(count:int|str|None = '-',parts:dict|None=None):
     lbl:CQT.QtWidgets.QLabel = DTCLS.app_self.ui.lbl_compos_count
-    lbl.setText(f'Доступно к связыванию: {count} шт.')
+    str_alias = 'ДСЕ'
+    if parts:
+        str_alias = 'частей'
+    if count:
+        lbl.setText(f'Доступно к связыванию: {count} {str_alias}.')
+        return
+    lbl.setText(f'Не доступно к связыванию')
 
-def set_lbl_count_composite_create_aviable(count:int|str = '-'):
+def set_lbl_count_composite_create_aviable(count:int|str|None = '-',parts:dict|None=None):
     lbl:CQT.QtWidgets.QLabel = DTCLS.app_self.ui.lbl_compos_create_count
-    lbl.setText(f'Доступно к созданию: {count} шт.')
+    str_alias = 'ДСЕ'
+    if parts:
+        str_alias = 'частей'
+    if count:
+        lbl.setText(f'Доступно к созданию: {count} {str_alias}.')
+        return
+    lbl.setText(f'Не доступно к созданию')
 
+def _get_poz_obj(row_o:CQT.TableRow)-> CMS.Composition_poz | None:
+    id_f = int(row_o.value('id_file'))
+    comp = DTCLS.compositions.find(id_f)
+    id_p = int(row_o.value('id'))
+    if comp.pozs is None:
+        comp.load_pozs(DTCLS.part_manager)
+    poz = comp.find_poz(id_p)
+    if poz is None:
+        CQT.msgbox(f"ДСЕ не найдена в БД")
+        return
+    return poz
 
 def _get_current_poz_obj()-> CMS.Composition_poz | None:
     tbl = DTCLS.app_self.ui.tbl_comp_dse
@@ -754,11 +1065,11 @@ def _get_current_poz_obj()-> CMS.Composition_poz | None:
     row = t.current_row()
     if row.no_selection:
         return
-    id_f = int(row.value('id_file'))
-    comp = DTCLS.compositions.find(id_f)
-    id_p = int(row.value('id'))
-    poz = comp.find_poz(id_p)
-    if poz is None:
-        CQT.msgbox(f"ДСЕ не найдена в БД")
-        return
-    return poz
+    return _get_poz_obj(row)
+
+
+
+def load_partial_poz(name_dsp):
+    mng = CMS.ManagePartialDse(name_dsp)
+    DTCLS.part_manager= mng
+

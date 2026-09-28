@@ -361,6 +361,8 @@ def _upload_resource_once(body: ResourceRequest, normalized_rows: list[Any]) -> 
         if stage_data is None:
             stage_data = CRC.StageData(Подразделение=dispatcher, ДлительностьМинут=0)
             stages[stage_name] = stage_data
+
+        CRC.ArticulationArticles
         stage_data.add_material(CRC.Material(row.erp_code, row.quantity, article, obtaining_method))
 
     specification = CRC.ResourceSpecification(header)

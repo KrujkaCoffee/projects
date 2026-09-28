@@ -51,6 +51,10 @@ class Ui_MainWindow(object):
         self.chk_consider_project_abs_product.setToolTip("")
         self.chk_consider_project_abs_product.setObjectName("chk_consider_project_abs_product")
         self.horizontalLayout_27.addWidget(self.chk_consider_project_abs_product)
+        self.btn_cutting_mngr = QtWidgets.QPushButton(self.tab)
+        self.btn_cutting_mngr.setMinimumSize(QtCore.QSize(0, 40))
+        self.btn_cutting_mngr.setObjectName("btn_cutting_mngr")
+        self.horizontalLayout_27.addWidget(self.btn_cutting_mngr)
         self.pushButton_add_v_bd = QtWidgets.QPushButton(self.tab)
         self.pushButton_add_v_bd.setMinimumSize(QtCore.QSize(0, 40))
         font = QtGui.QFont()
@@ -3000,7 +3004,7 @@ class Ui_MainWindow(object):
         self.menubar.addAction(self.menu.menuAction())
 
         self.retranslateUi(MainWindow)
-        self.tabWidget.setCurrentIndex(5)
+        self.tabWidget.setCurrentIndex(0)
         self.tabWidget_2.setCurrentIndex(0)
         self.tabWidget_5.setCurrentIndex(0)
         self.tab_rs_tch.setCurrentIndex(0)
@@ -3019,6 +3023,7 @@ class Ui_MainWindow(object):
         _translate = QtCore.QCoreApplication.translate
         MainWindow.setWindowTitle(_translate("MainWindow", "MainWindow"))
         self.chk_consider_project_abs_product.setText(_translate("MainWindow", "Учитывать изделие проекта"))
+        self.btn_cutting_mngr.setText(_translate("MainWindow", "Менеджер учета сегментов раскроя"))
         self.pushButton_add_v_bd.setText(_translate("MainWindow", "Добавить изделие в БД"))
         self.pushButton_add_v_MK.setText(_translate("MainWindow", "Добавить узел в МК"))
         self.pushButton_ass_nomen_MK_korr_2.setText(_translate("MainWindow", "Ассоциировать  с выбранной строкой в корректировке МК"))

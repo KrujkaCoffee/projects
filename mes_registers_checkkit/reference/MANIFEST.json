@@ -1,0 +1,40 @@
+{
+  "repository": "KrujkaCoffee/projects",
+  "commit": "eaee1fa7a7e068e10e2608b9d81623881e9d2edb",
+  "description": "Reference source for an offline test harness; not replacement application files.",
+  "sources": {
+    "Cust_virbotka.py": {
+      "original_sha256": "da01226d798d067c668d2e40e155ac43fe21b96dc825c216af604ba0e3511c36",
+      "extracted_functions": [
+        "list_per_month_new_c"
+      ],
+      "fixture_sha256": "6aa63a63b2f23bc790c08bc90e39ad94af53a7533b118696c7309875186c43ef",
+      "github_blob": "85ad587a06046cca7fa5c5025574f61024a7e24b"
+    },
+    "Cust_Functions.py": {
+      "original_sha256": "deb901115dc9f6bcd77592be920228dafcde3f639db7f878b170f76735a95f09",
+      "extracted_functions": [
+        "strtodate",
+        "datetostr",
+        "boolm",
+        "valm",
+        "is_numeric"
+      ],
+      "fixture_sha256": "19baf2e92d5f7f76caf1558f14b507acaf2986e64a1aced792261c3151c95a18",
+      "github_blob": "ab2f39d2902067769e7e94c886b819a40a64e560"
+    },
+    "Cust_SQLite.py": {
+      "original_sha256": "7757f8b9e532c04345a207cd6248e4cb8f65214019055946d94cb6badc2796d9",
+      "extracted_functions": [
+        "prepare_list_to_tuple"
+      ],
+      "fixture_sha256": "44afbf7606aba0274b3380e05c7f7125ea0273a0277bffcf455567dda2ef5ce3",
+      "github_blob": "75a1b9956dabfacedfdf74d1895423a92eedf984"
+    },
+    "mes_registers.py": {
+      "sha256": "7c87a001377169e325da38087e6ffd41618b9fb8cb236e8806e7e4f98f49f3af",
+      "github_blob": "f616955b3273853b2a193f2b93b0d28951448065"
+    }
+  },
+  "pinned_commit_verified": true
+}

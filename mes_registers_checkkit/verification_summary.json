@@ -1,0 +1,78 @@
+{
+  "data_origin": "synthetic; actual ERP and BD_users snapshot unavailable",
+  "suite_passed": true,
+  "scenarios": 260,
+  "verdict_counts": {
+    "MATCH": 235,
+    "DIFFERENT": 8,
+    "BLOCKED": 10,
+    "INCONCLUSIVE": 7
+  },
+  "comparator_checks": 12,
+  "native_contract_checks": 9,
+  "capture_adapter_tests": {
+    "command": "python -m unittest -v test_capture",
+    "tests_run": 9,
+    "failures": 0,
+    "errors": 0
+  },
+  "stress_case": {
+    "name": "stress_large",
+    "purpose": "seed=73021; 10000 физлиц × 8 кадровых событий × 20 фрагментов.",
+    "expected": "MATCH",
+    "expectation_passed": true,
+    "errors": [],
+    "comparison": {
+      "verdict": "MATCH",
+      "checks": {
+        "positions_set": true,
+        "selected_fios_set": true,
+        "raw_rows_bag": true,
+        "returned_rows_bag": true,
+        "returned_rows_order": true,
+        "norms_by_fio": true
+      },
+      "sources": {
+        "old": "erp",
+        "new": "register"
+      },
+      "diagnostic_positions_sequence_equal": true,
+      "counts": {
+        "old": {
+          "positions": 3,
+          "selected_fios": 6233,
+          "raw_rows": 124660,
+          "returned_rows": 115060,
+          "norms_fio": 6233
+        },
+        "new": {
+          "positions": 3,
+          "selected_fios": 6233,
+          "raw_rows": 124660,
+          "returned_rows": 115060,
+          "norms_fio": 6233
+        }
+      }
+    },
+    "native_query_count": 2,
+    "fixture_counts": {
+      "people": 10000,
+      "history": 80000,
+      "jurnal": 200000
+    },
+    "timing_seconds": {
+      "fixture_and_comparison": 11.133585250001488,
+      "old_function": 2.738972561000992,
+      "new_function": 3.014019730002474,
+      "new_positions": 0.2216852379970078
+    },
+    "old_error": null,
+    "new_error": null
+  },
+  "limitations": [
+    "No real ERP comparison performed here",
+    "No full monthly report execution",
+    "No live PostgreSQL validation",
+    "Elapsed times are not a real ERP speedup benchmark"
+  ]
+}

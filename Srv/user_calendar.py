@@ -1108,7 +1108,9 @@ def main():
     print('==================================')
     print('Проверка производственного календаря...')
     #spis_empl = CSQ.custom_request_c(put_db,"""SELECT * FROM employee""")
-    spis_empl_live = CSQ.custom_request_c(put_db, """SELECT * FROM employee WHERE Статус == "Работа";""")
+    organizations = CSQ.custom_request_c(CFG.Config.project.db_naryad, f"""SELECT * FROM places""", rez_dict=True)
+    for poki in organizations:
+    spis_empl_live = CSQ.custom_request_c(put_db, """SELECT * FROM employee WHERE Статус = "Работа";""")
     LIST_DICT_EMPLOYEE_FULL = CMS.list_emploee_full_with_del(put_db)
 
     query = f"""SELECT Кол_во, Пномер, "" AS Прим FROM equipment"""

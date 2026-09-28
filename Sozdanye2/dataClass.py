@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from Sozdanie import mywindow
     from project_cust_38.competence_matrix import Competencies
     from project_cust_38.Cust_mes import Emploee_usr
-    from project_cust_38.Cust_mes import Compositions
+    from project_cust_38.Cust_mes import Compositions, ManagePartialDse, RegistredPartials
 
 class SingletonMeta(type):
     __instances = {}
@@ -41,7 +41,9 @@ class data_app(SingletonMeta):
     APP_ARGS:dict = CFG.Config.app_args
     #======COMPOZITIONS=============
     compositions: Compositions|None = None
-
+    part_manager: ManagePartialDse|None = None
+    registred_partials: RegistredPartials|None = None
+    poz_aviable_count_composite:int|None = None
 
     @classmethod
     def load_data_main(cls):

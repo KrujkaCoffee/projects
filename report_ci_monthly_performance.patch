@@ -1,0 +1,253 @@
+--- a/project_cust_38/report_ci.py
++++ b/project_cust_38/report_ci.py
+@@ -6178,7 +6178,6 @@
+         CQT.msgbox(f'Дата начала слишком ранняя')
+         return
+ 
+-    self.DICT_NN_NTK = CMS.load_dict_dse(self.db_dse)
+     query = CSQ.SqlQuery(
+         sqlite=f"""SELECT * FROM mnts_plan WHERE 
+             datetime(Дата) >= datetime("{data_nach}") 
+@@ -6195,8 +6194,11 @@
+          FROM дорезки_мк INNER JOIN тип_дорезок ON "тип_дорезок"."Пномер" = "дорезки_мк"."Причина";""", rez_dict=True),
+                                    "Номер_мк")
+ 
+-    table_vnepan = F.list_of_lists_to_dict_of_dicts(
+-        vneplan_po_napravl(self, data_nach, data_kon, 'Все', generate_graf=False,), 'Месяц')
++    plan_vneplan = get_plan_vneplan_data(
++        self, data_nach, data_kon, 'Все', include_details=False)
++    if not plan_vneplan or plan_vneplan[0] is None:
++        return
++    table_vnepan = F.list_of_lists_to_dict_of_dicts(plan_vneplan[0], 'Месяц')
+ 
+     
+     plan_tab_time_req = F.deploy_dict_c(CSQ.custom_request_c(self.db_kplan,f"""SELECT month, SUM(normo_smen)  FROM plan_tabel_workforce 
+@@ -6205,6 +6207,26 @@
+ 
+     rez = [['Месяц', 'Факт, уд.т.','По xml,т.', 'План(ПДО), н-см.', 'Освоено (МК Тип = Плановая), н-см.', 'Внеплан, %',
+             'Освоено(план+внеплан работы), н-см.','Плановое табельное время, н-см.','Сумм. осв. время по журналу, н-см.(Подытог норм)']]
++    fact_by_month = {}
++    report_months = {item['Дата'] for item in list_month_plan}
++    for mk in (self.list_month_fact if report_months else ()):
++        month_key = F.start_end_dates_c(
++            F.strtodate(mk['Дата_завершения'], "%Y-%m-%d %H:%M:%S"),
++            '', vid='m', format_out="%Y-%m-%d")[0]
++        if month_key not in report_months:
++            continue
++        if month_key not in fact_by_month:
++            fact_by_month[month_key] = [0, 0]
++        totals = fact_by_month[month_key]
++        totals[0] += mk['Вес'] * KOEF_RASKLADKI
++        if F.valm(mk['xml']) == 0:
++            if F.valm(mk['Вес_по_рес']) == 0:
++                totals[1] += F.valm(mk['Вес'])
++            else:
++                totals[1] += F.valm(mk['Вес_по_рес'])
++        else:
++            totals[1] += F.valm(mk['xml'])
++
+     for item in list_month_plan:
+         summ_ves = 0
+         data = item['Дата']
+@@ -6237,20 +6259,7 @@
+         # selected =  [_ for _ in self.list_month_fact if F.start_end_dates_c(F.strtodate(_['Дата_завершения'], "%Y-%m-%d %H:%M:%S"), '', vid='m', format_out="%Y-%m-%d")[0] == data]
+         # F.save_file_pickle('check_mks.pickle',selected)
+ 
+-        for mk in self.list_month_fact:
+-           
+-            dat_str = mk['Дата_завершения']
+-            dat_f = F.start_end_dates_c(F.strtodate(dat_str, "%Y-%m-%d %H:%M:%S"), '', vid='m', format_out="%Y-%m-%d")[
+-                0]
+-            if dat_f == data:
+-                summ_ves += mk['Вес'] * KOEF_RASKLADKI
+-                if F.valm(mk['xml']) == 0:
+-                    if F.valm(mk['Вес_по_рес']) == 0:
+-                        ves_xml_met += F.valm(mk['Вес'])
+-                    else:
+-                        ves_xml_met += F.valm(mk['Вес_по_рес'])
+-                else:
+-                    ves_xml_met += F.valm(mk['xml'])
++        summ_ves, ves_xml_met = fact_by_month.get(data, (0, 0))
+         nach_data, kon_data = F.start_end_dates_c(F.strtodate(data, "%Y-%m-%d"), '', vid='m',
+                                                   format_out="%Y-%m-%d %H:%M:%S")
+ 
+@@ -6275,7 +6284,6 @@
+ 
+     rez = F.sort_by_column_c(rez,'Месяц',False,True,date_format="%Y-%m-%d")
+ 
+-    load_browser(self)
+     create_gant(self, rez)
+ 
+     rez.append(['' for _ in rez[0]])
+@@ -6950,7 +6958,9 @@
+ 
+ 
+ @CQT.onerror
+-def get_plan_vneplan_data(self, data_nach, data_kon, vid='Все', etap='Сборка+сварка'):
++def get_plan_vneplan_data(self, data_nach, data_kon, vid='Все', etap='Сборка+сварка',
++                         *, include_details=True):
++    """Возвращает (сводка, детализация); без include_details детализация пуста."""
+     if vid == '-':
+         vid = 'Все'
+     if etap == '':
+@@ -6970,8 +6980,6 @@
+             summ += F.valm(item['Твремя']) * clac_fio_for_pfanal(self, item['ФИО2'])
+         return summ
+ 
+-    if "DICT_NN_NTK" not in self.__dict__ or self.DICT_NN_NTK == None:
+-        self.DICT_NN_NTK = CMS.load_dict_dse(self.db_dse)
+ 
+     TUPLE_DOUBLE_SHOVOV = (
+         'Т3', "Н2", "С7", "С12", "С14", "С15", "С16", "С43", "С21", "С45", "С23", "С25", "С26", "С27", "С39",
+@@ -6991,9 +6999,6 @@
+     self.list_month_plan  = CSQ.custom_request_c(self.db_kplan, query, rez_dict=True)
+     list_month_plan = self.list_month_plan
+ 
+-    if 'list_month_fact' not in self.__dict__ or self.list_month_fact == None:
+-        get_list_month_fact(self)
+-    list_month_fact = self.list_month_fact
+ 
+ 
+     rez = [['Месяц', 'Этап', 'Внеплан сумма, н-см./чел.', 'План, н-см./чел.']]
+@@ -7054,21 +7059,15 @@
+             dict_cat_vnepl[kat] = 0
+ 
+         data = item['Дата']
+-        for mk in list_month_fact:
+-            if mk['Направление'] == vid or vid == 'Все':
+-                dat_str = mk['Дата_завершения']
+-                dat_f = \
+-                F.start_end_dates_c(F.strtodate(dat_str, "%Y-%m-%d %H:%M:%S"), '', vid='m', format_out="%Y-%m-%d")[
+-                    0]
+-
+         nach_data, kon_data = F.start_end_dates_c(F.strtodate(data, "%Y-%m-%d"), '', vid='m',
+                                                   format_out="%Y-%m-%d %H:%M:%S")
+         postfix = ''
+         if vid != 'Все':
+             postfix = f'mk.Вид = "{vid}" AND '
+ 
+-        DICT_VID_NAPR = F.deploy_dict_c(
+-            CSQ.custom_request_c(self.db_kplan, f"""SELECT "НомПл", "Вид" FROM пл_топ;""", rez_dict=True), 'НомПл')
++        if include_details:
++            DICT_VID_NAPR = F.deploy_dict_c(
++                CSQ.custom_request_c(self.db_kplan, f"""SELECT "НомПл", "Вид" FROM пл_топ;""", rez_dict=True), 'НомПл')
+         place = USRCNF.Config.place #17.04.2026
+         unconfirm_work_code = place.КодыНарядов.НеподтвержденныйВнеплан
+         poki = place.poki
+@@ -7158,22 +7157,23 @@
+             """
+         )
+         list_zav_nar_po = CSQ.custom_request_c(self.bd_naryad, query, rez_dict=True, attach_dbs=self.db_kplan) # 06.07.2026
+-        s_num_nars = list({_['Пномер'] for _ in list_zav_nar_po})
+-        starts_with_params_erp_upload = CSQ.custom_request_c(
+-            self.bd_naryad,
+-            f"""SELECT 
+-                jurnal."Пномер" as "ПномерЖ", 
+-                jurnal."Дата", 
+-                jurnal."Номер_наряда", 
+-                jurnal."ФИО" as "fio_jur_zav", 
+-                jurnal."Дата_выгрузки_ЕРП", 
+-                jurnal."ФИО_выгрузки_ЕРП", 
+-                "jurnal"."Минут_выгружено_ЕРП", 
+-                "jurnal"."base_ERP"
+-            FROM "jurnal" 
+-             WHERE "jurnal"."Номер_наряда" IN ({CSQ.prepare_list_to_tuple(s_num_nars)})
+-             AND "jurnal"."Статус" = 'Начат' 
+-             ORDER BY jurnal."Пномер" DESC""",rez_dict=True)
++        if include_details:
++            s_num_nars = list({_['Пномер'] for _ in list_zav_nar_po})
++            starts_with_params_erp_upload = CSQ.custom_request_c(
++                self.bd_naryad,
++                f"""SELECT 
++                    jurnal."Пномер" as "ПномерЖ", 
++                    jurnal."Дата", 
++                    jurnal."Номер_наряда", 
++                    jurnal."ФИО" as "fio_jur_zav", 
++                    jurnal."Дата_выгрузки_ЕРП", 
++                    jurnal."ФИО_выгрузки_ЕРП", 
++                    "jurnal"."Минут_выгружено_ЕРП", 
++                    "jurnal"."base_ERP"
++                FROM "jurnal" 
++                 WHERE "jurnal"."Номер_наряда" IN ({CSQ.prepare_list_to_tuple(s_num_nars)})
++                 AND "jurnal"."Статус" = 'Начат' 
++                 ORDER BY jurnal."Пномер" DESC""",rez_dict=True)
+ 
+         summ_ves_plan = 0
+         summ_ves_vir_vneplan = 0
+@@ -7182,26 +7182,27 @@
+         set_errors = set()
+         etap_user = type_vneplan = ''
+         for item_zav_nar in list_zav_nar_po:
+-            item_zav_nar['Дата_журнал_нач.'] = ''
+-            item_zav_nar['Дата_журнал_кон.'] = item_zav_nar['Дата_журнал']
+-            item_zav_nar['Дата_выгрузки_ЕРП'] = ''
+-            for item_params_erp in starts_with_params_erp_upload:
+-                if item_params_erp['fio_jur_zav'] == item_zav_nar['fio_jur_zav']:
+-                    if item_params_erp['Номер_наряда'] == item_zav_nar['Пномер']:
+-                        if item_params_erp['ПномерЖ'] < item_zav_nar['ПномерЖ']:
+-                            if item_zav_nar['Дата_журнал_нач.'] == '' or F.strtodate(item_zav_nar['Дата_журнал_нач.']) >  F.strtodate(item_params_erp['Дата']):
+-                                item_zav_nar['Дата_журнал_нач.'] = item_params_erp['Дата']
+-                            if item_zav_nar['Дата_журнал_кон.'] == '' or F.strtodate(item_zav_nar['Дата_журнал_кон.']) <  F.strtodate(item_params_erp['Дата']):
+-                                item_zav_nar['Дата_журнал_кон.'] = item_params_erp['Дата']
+-                            item_zav_nar['Дата_выгрузки_ЕРП'] = item_zav_nar['Дата_выгрузки_ЕРП'] + ";" + item_params_erp['Дата_выгрузки_ЕРП']
+-                            item_zav_nar['ФИО_выгрузки_ЕРП'] = item_params_erp['ФИО_выгрузки_ЕРП']
+-                            item_zav_nar['Минут_выгружено_ЕРП'] += item_params_erp['Минут_выгружено_ЕРП']
+-                            item_zav_nar['base_ERP'] = item_params_erp['base_ERP']
+-            item_zav_nar['Дата_выгрузки_ЕРП'] = item_zav_nar['Дата_выгрузки_ЕРП'][1:]
+-
+-            item_zav_nar['виды_по_напр'] = 1
+-            if item_zav_nar['НомКплан'] in DICT_VID_NAPR:
+-                item_zav_nar['виды_по_напр'] = DICT_VID_NAPR[item_zav_nar['НомКплан']]
++            if include_details:
++                item_zav_nar['Дата_журнал_нач.'] = ''
++                item_zav_nar['Дата_журнал_кон.'] = item_zav_nar['Дата_журнал']
++                item_zav_nar['Дата_выгрузки_ЕРП'] = ''
++                for item_params_erp in starts_with_params_erp_upload:
++                    if item_params_erp['fio_jur_zav'] == item_zav_nar['fio_jur_zav']:
++                        if item_params_erp['Номер_наряда'] == item_zav_nar['Пномер']:
++                            if item_params_erp['ПномерЖ'] < item_zav_nar['ПномерЖ']:
++                                if item_zav_nar['Дата_журнал_нач.'] == '' or F.strtodate(item_zav_nar['Дата_журнал_нач.']) >  F.strtodate(item_params_erp['Дата']):
++                                    item_zav_nar['Дата_журнал_нач.'] = item_params_erp['Дата']
++                                if item_zav_nar['Дата_журнал_кон.'] == '' or F.strtodate(item_zav_nar['Дата_журнал_кон.']) <  F.strtodate(item_params_erp['Дата']):
++                                    item_zav_nar['Дата_журнал_кон.'] = item_params_erp['Дата']
++                                item_zav_nar['Дата_выгрузки_ЕРП'] = item_zav_nar['Дата_выгрузки_ЕРП'] + ";" + item_params_erp['Дата_выгрузки_ЕРП']
++                                item_zav_nar['ФИО_выгрузки_ЕРП'] = item_params_erp['ФИО_выгрузки_ЕРП']
++                                item_zav_nar['Минут_выгружено_ЕРП'] += item_params_erp['Минут_выгружено_ЕРП']
++                                item_zav_nar['base_ERP'] = item_params_erp['base_ERP']
++                item_zav_nar['Дата_выгрузки_ЕРП'] = item_zav_nar['Дата_выгрузки_ЕРП'][1:]
++
++                item_zav_nar['виды_по_напр'] = 1
++                if item_zav_nar['НомКплан'] in DICT_VID_NAPR:
++                    item_zav_nar['виды_по_напр'] = DICT_VID_NAPR[item_zav_nar['НомКплан']]
+             fio_zav = item_zav_nar['fio_jur_zav']
+             add_time = calc_sb_sv_time_minutes(item_zav_nar, fio_zav)
+             if fio_zav not in self.Data.ETAP_BY_FIO:
+@@ -7218,13 +7219,15 @@
+                 if item_zav_nar['Тип'] == 'Плановая':  # Плановая
+                     if item_zav_nar['Внеплан'] in (0,10):
+                         summ_ves_plan += add_time
+-                        list_by_vid_rab.append(['план', etap_user, '', add_time, item_zav_nar])
++                        if include_details:
++                            list_by_vid_rab.append(['план', etap_user, '', add_time, item_zav_nar])
+ 
+                     else:  # ===item['Внеплан'] == 2 ===Внеплановый наряд по плановой МК
+                         if item_zav_nar['Категория_внепл'] in dict_cat_vnepl:
+                             summ_ves_vir_vneplan += add_time
+-                            list_by_vid_rab.append(
+-                                ['внеплан', etap_user, item_zav_nar['Категория_внепл'], add_time, item_zav_nar])
++                            if include_details:
++                                list_by_vid_rab.append(
++                                    ['внеплан', etap_user, item_zav_nar['Категория_внепл'], add_time, item_zav_nar])
+                             dict_cat_vnepl[item_zav_nar['Категория_внепл']] += add_time
+ 
+                 else:
+@@ -7254,7 +7257,8 @@
+                             type_vneplan = 'Доработка_' + item_zav_nar['Доработка']
+                         summ_ves_vir_vneplan += add_time
+                         dict_cat_vnepl[type_vneplan] += add_time
+-                    list_by_vid_rab.append(['внеплан', etap_user, type_vneplan, add_time, item_zav_nar])
++                    if include_details:
++                        list_by_vid_rab.append(['внеплан', etap_user, type_vneplan, add_time, item_zav_nar])
+             except:
+                 print(f'err {item_zav_nar}')
+ 

@@ -310,6 +310,7 @@ def btns(self: mywindow):
     ui.btn_mat_mold_calc.clicked.connect(lambda: TTKZ.mat_mold_calc(self))
     ui.btn_res_product.clicked.connect(lambda: TTKZ.create_res_product(self))
     ui.btn_apply_next_stage.clicked.connect(lambda: TTKZ.apply_next_stage(self))
+    ui.btn_cutting_mngr.clicked.connect(self.open_cutting_mngr)
 
 
 
@@ -372,7 +373,7 @@ def tbls(self: mywindow):
     ui.table_spis_MK.setSelectionMode(1)
     CQT.set_color_sort_cell_table_c(ui.table_spis_MK)
     ui.tbl_poz_from_exel.itemSelectionChanged.connect(lambda: GKPL.fill_select_poz_exel(self))
-    ui.tbl_kal_pl.itemSelectionChanged.connect(lambda: KPL.clck_tbl_kal_pl_tbl(self))
+
 
     ui.tbl_pl_gaf.itemSelectionChanged.connect(
         lambda x=self, y=ui.tbl_pl_gaf: KPL.clck_tbl_pl_gaf(x, y))
@@ -391,7 +392,9 @@ def tbls(self: mywindow):
         lambda x=self, y=ui.tbl_preview: KPL.clck_tbl_preview(x, y))
     self.ui.tbl_preview.viewport().installEventFilter(self)
 
-    # ui.tbl_kal_pl.clicked.connect(lambda : KPL.clck_tbl_kal_pl_tbl(self))
+    CQT.connect_cell_edit(ui.tbl_kal_pl, KPL.tbl_kal_pl_cellChanged_wrapper_for_connect_cell_edit,
+                          self,fnc_replace_edit_data=KPL.fnc_replace_edit_data_for_connect_cell_edit)
+    ui.tbl_kal_pl.itemSelectionChanged.connect(lambda: KPL.clck_tbl_kal_pl_tbl(self))
     ui.tbl_kal_pl.doubleClicked.connect(lambda: KPL.doubleclck_tbl_kal_pl(self))
     ui.tbl_rc.itemSelectionChanged.connect(self.clck_tbl_rc)
     ui.tbl_rc.clicked.connect(self.clck_tbl_rc)

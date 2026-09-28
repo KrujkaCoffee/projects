@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import copy
 import datetime
-import datetime as DT
+
 import re
 import project_cust_38.Cust_Qt as CQT
 import project_cust_38.Cust_Functions as F
 import project_cust_38.Cust_SQLite  as CSQ
 import kal_plan as KPL
-from  copy import deepcopy
+
 import project_cust_38.Cust_mes as CMS
 import gui_vol_plan as VPL
 from typing import TYPE_CHECKING, Dict, Any, List
@@ -290,7 +290,7 @@ def move_manage(self,direction:int):
     fl_update_gant_tmp ,errors = move(g_handler, direction, self.ui.le_edit_local_gant_nach.text(),
                                       start=True)
     if errors:
-        CQT.msgbox('\n'.join(list[errors]))
+        CQT.msgbox('\n'.join(list(errors)))
         return
     if fl_update_gant_tmp:
         fl_update_gant = True
@@ -298,7 +298,7 @@ def move_manage(self,direction:int):
     fl_update_gant_tmp, errors = move(g_handler, direction, self.ui.le_edit_local_gant_kon.text(),
                                       start=False)
     if errors:
-        CQT.msgbox('\n'.join(list[errors]))
+        CQT.msgbox('\n'.join(list(errors)))
         return
     if fl_update_gant_tmp:
         fl_update_gant = True
@@ -928,30 +928,6 @@ def tab_addit_info_poz_gant_click(self:mywindow,ind):
 
         if tab.tabText(ind) == 'Этапы':
 
-            def fnc_upd_etaps_znpr(lblself:CQT.InteractiveLabelInstance,self, row, col, poz:CMS.Pozition):
-                list_proj = CSQ.custom_request_c(self.db_kplan, f"""SELECT s_num, Статус_поз_ЕРП, 
-                      №ERP, Дата_заявки_на_произв, Ref_Key_py 
-                                    FROM знпр 
-                               WHERE s_num = {poz.dict_tables['пл_оуп']['s_num']};""",
-                                                 rez_dict=True)
-                CQT.msgboxg_get_table_ok_inf(self,'Параметры ЗП для обновления этапов',list_proj,styleSheet=CQT.MES_CSS)
-                # result_resps = []
-                # m = CMS.ODAT.OrdersComposit()
-                # for item in list_proj:
-                #     py = item['№ERP']
-                #     s_num = item['s_num']
-                #     if py == '-':
-                #         continue
-                #     ref_key_py = item['Ref_Key_py']
-                    # resp = CMS.make_dict_etaps_from_erp(m, ref_key_py)
-                    # if isinstance(resp, CMS.ErpStagesLoadResult):
-                    #     resp = resp.data
-                    #
-                    # if CMS.update_data_etaps_from_erp(self.db_kplan, resp, s_num):
-                    #     [result_resps.extend(_['Этапы']) for _ in resp.values()]
-                # tab_addit_info_poz_gant_click(self,1)
-                # CQT.msgboxg_get_table_ok_inf(self, 'Этапы обновлены', result_resps,
-                #                                      styleSheet=CQT.MES_CSS)
 
             if exel_mode:
                 return
@@ -1232,7 +1208,7 @@ def update_dates_obesp(self:mywindow,*args):
 
             data_etap_erp = CSQ.custom_request_c(CFG.Config.project.db_kplan,
                                         f"""SELECT пл_оуп.№ERP, пл_оуп.Дата_заявки_на_произв, 
-                                         знпр.Ref_Key_py, знпр.data_etaps_from_erp 
+                                         знпр.Ref_Key_py
                                  FROM знпр INNER JOIN пл_оуп ON пл_оуп.Пномер_ЗП = знпр.s_num WHERE пл_оуп.НомПл == {s_num_kpl}""",
                                                  rez_dict=True, one=True)
             if data_etap_erp == None or data_etap_erp == False:
@@ -1242,7 +1218,8 @@ def update_dates_obesp(self:mywindow,*args):
 
             if F.is_date(data_etap_erp['Дата_заявки_на_произв'], "%Y-%m-%d") == False:
                 list_errs.append({'КПЛ': s_num_kpl, "Этап кода": "Расчет этапов",
-                                  'Ошибка': f'В КПЛ {s_num_kpl},Дата_заявки_на_произв не дата, обратиться в ПДО'})
+                                  'Ошибка': f'В КПЛ {s_num_kpl}, Дата_заявки_на_произв не дата: '
+                                            f'"{data_etap_erp['Дата_заявки_на_произв']}"\n, обратиться в ПДО'})
                 return
 
             try:

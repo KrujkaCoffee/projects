@@ -47,7 +47,7 @@ class mywindow(QtWidgets.QMainWindow):
         self.USER_CONFIG: USRCNF.User_config = None
         self.place: USRCNF.Place = None
         USRCNF.Config.user_config.load_user_config(self,DTCLS)
-
+        USRCNF.BaseSubWindow.set_as_root(self)
         CQT.load_icons(self, 24)
         DTCLS.app_self = self
         CQT.connect_to_resize(self, CMS.tmp_dir())
@@ -200,6 +200,7 @@ class mywindow(QtWidgets.QMainWindow):
                                                 f'  Для КЛ и ТППР - srv-docs-pkb.powerz.ru')
         CQT.load_css(self)
         GRM.clear()
+        CMS.connect_manuals(self)
         self.start_up()
         # ====ВРЕМЕННО
         self.ui.cmb_dolgn.setCurrentIndex(4)
@@ -368,23 +369,22 @@ class mywindow(QtWidgets.QMainWindow):
         start = "2026-06-01 04:18:36"
         end = "2026-06-02 04:18:36"
 
-        end_str_sqlite = end_str_pg = ''
+        end_str = ''
         if end:
-            end_str_pg = f''' AND "Дата"::timestamp < '{end}'::timestamp'''
-            end_str_sqlite = f''' AND datetime(Дата)::timestamp < datetime('{end}')'''
+            end_str = f''' AND ("Дата")::timestamp < ('{end}')::timestamp'''
         list_nar = []
         start_nar = None
         str_add = ''
         if list_nar:
             str_add = f' AND "Номер_наряда" IN ({", ".join([str(_) for _ in list_nar])})'
 
-        if not CQT.msgboxgYN(f'Обновить подытоги у нарядов WHERE datetime(Дата) > datetime("{start}") {end_str_sqlite}'):
+        if not CQT.msgboxgYN(f'Обновить подытоги у нарядов WHERE datetime(Дата) > datetime("{start}") {end_str}'):
             return
         list_users = CSQ.custom_request_c(self.db_naryd,
             CSQ.SqlQuery(sqlite=f"""SELECT DISTINCT "ФИО", "Номер_наряда" FROM jurnal
-         WHERE datetime(Дата) > datetime("{start}") {end_str_sqlite}  {str_add} ORDER BY Номер_наряда;""",
+         WHERE datetime(Дата) > datetime("{start}") {end_str}  {str_add} ORDER BY Номер_наряда;""",
                          postgres=f"""SELECT DISTINCT "ФИО", "Номер_наряда" FROM jurnal
-         WHERE "Дата"::timestamp > '{start}'::timestamp {end_str_pg}  {str_add} ORDER BY "Номер_наряда";""")
+         WHERE "Дата"::timestamp > '{start}'::timestamp {end_str}  {str_add} ORDER BY "Номер_наряда";""")
         ,rez_dict=True)
 
         list_emploee_with_del = CMS.list_emploee_full_with_del(self.bd_users)
@@ -1570,7 +1570,7 @@ class mywindow(QtWidgets.QMainWindow):
                     INNER JOIN "mk" ON mk."Пномер" = naryad."Номер_мк" 
                     LEFT JOIN "plan" ON mk."НомКплан" = plan."Пномер"
                     LEFT JOIN "пл_оуп" ON mk."НомКплан" = пл_оуп."НомПл"
-                    LEFT JOIN "знпр" ON знпр.s_nm = пл_оуп."Пномер_ЗП"
+                    LEFT JOIN "знпр" ON знпр.s_num = пл_оуп."Пномер_ЗП"
                     INNER JOIN коды_веплана_для_наряда ON коды_веплана_для_наряда.code = naryad."Внеплан"
                     INNER JOIN zagot ON zagot."Ном_МК" = naryad."Номер_мк" 
                     LEFT JOIN naryad_groups ON  (naryad_groups.id_nar = naryad.Пномер AND naryad_groups.fio IN ({user}))

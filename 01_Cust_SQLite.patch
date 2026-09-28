@@ -1,0 +1,33 @@
+diff --git a/project_cust_38/Cust_SQLite.py b/project_cust_38/Cust_SQLite.py
+index 75a1b99..cf4887c 100644
+--- a/project_cust_38/Cust_SQLite.py
++++ b/project_cust_38/Cust_SQLite.py
+@@ -663,7 +663,18 @@ def custom_request_c(
+     else:
+         postgres_query = custom_request_c
+ 
+-    if _PG_CONN or is_ready_for_pg:
++    if is_ready_for_pg:
++        from project_cust_38 import Cust_pg_pilot
++        pilot_result = Cust_pg_pilot.try_read(
++            CPG, bd, postgres_query, conn=conn, cur=cur,
++            hat_c=hat_c, list_of_lists_c=list_of_lists_c,
++            rez_dict=rez_dict, one=one, one_column=one_column,
++            attach_dbs=attach_dbs,
++        )
++        if pilot_result is not Cust_pg_pilot.USE_SQLITE:
++            return pilot_result
++        # Продолжаем старый SQLite-путь с исходным SQL и параметрами.
++    elif _PG_CONN:
+         postgres_query = postgres_query.replace('?', '%s').replace('==', '=')
+         f = CPG.custom_request_c(
+             bd=bd,
+@@ -713,7 +724,7 @@ def custom_request_c(
+         return obj
+ 
+     try:
+-        if _PG_STAGE2_READY:
++        if _PG_STAGE2_READY and not is_ready_for_pg:
+             CPG.stage2_observe_request(bd, custom_request_c)
+     except Exception as e:
+         logger.error(e, exc_info=e)

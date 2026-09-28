@@ -39,7 +39,7 @@ if TYPE_CHECKING:
 FOLDER_CLOSED = f'{CEMOJ.EmojiMain.ДокументыДанные.folder_closed.symbol}{CEMOJ.EmojiMain.ДокументыДанные.plus_circled.symbol}'
 FOLDER_OPEN = f'{CEMOJ.EmojiMain.ДокументыДанные.folder.symbol}{CEMOJ.EmojiMain.ДокументыДанные.minus_circled.symbol}'
 DOC_EMOJI = f'    {CEMOJ.EmojiMain.ДокументыДанные.document.symbol}'
-FIELDS_S_NUM_WITH_DATA = {6,}
+FIELDS_S_NUM_WITH_DATA = {6,37,39}
 FIELDS_S_NUM_WITH_DATA_INT = {6,}
 
 
@@ -503,15 +503,44 @@ def check_edit_permission()->tuple[bool,str]:
         fl_check_field = False
 
     return fl_check_field, msg_err
+
+def fnc_replace_edit_data_for_connect_cell_edit(tbl, item, le:CQT.QtWidgets.QLineEdit,add_data,old, *args):
+    t = CQT.TableContext(tbl)
+
+    row = t.current_row()
+    if row.no_selection:
+        return False
+    name_field = t.current_column_name()
+    DICT_FIELDS = DTCLS.FIELDS_DB_INFO.dict_fields
+    field_o: CMS.Field_db_info = DICT_FIELDS[name_field]
+    if field_o.s_num in FIELDS_S_NUM_WITH_DATA:
+        data = row.value(name_field,get_cust_content=True)
+        if isinstance(data, str):
+            le.setText(data)
+
+
+def tbl_kal_pl_cellChanged_wrapper_for_connect_cell_edit(tbl:CQT.QtWidgets.QTableWidget,
+                                                         item:QtWidgets.QTableWidgetItem ,
+                                                         add_data=None)->bool:
+    app_self = add_data
+    rez = tbl_kal_pl_cellChanged(app_self, rollback=False)
+    return rez
+
 @CQT.onerror
-def tbl_kal_pl_cellChanged(self: mywindow, *args):
+def tbl_kal_pl_cellChanged(self: mywindow, rollback:bool=True, *args)->bool:
+    '''
+    :param self:
+    :param rollback: откат не делать
+    :param args:
+    :return:
+    '''
     tbl = self.ui.tbl_kal_pl
     msg_err = ''
     t = CQT.TableContext(tbl)
 
     row = t.current_row()
     if row.no_selection:
-        return
+        return False
 
     name_field = t.current_column_name()
     DICT_FIELDS = DTCLS.FIELDS_DB_INFO.dict_fields
@@ -537,6 +566,7 @@ def tbl_kal_pl_cellChanged(self: mywindow, *args):
 
     fl_return_back = False
     if fl_check_field and fl_update_val:
+
         s_num = int(
             data_row[field_o.parent_tbale.source_table_primary_name.name_mes
             ])  # поле которое имеет ссылку на УИД по которому можно найти запись ячейки в ее таблице.
@@ -549,10 +579,12 @@ def tbl_kal_pl_cellChanged(self: mywindow, *args):
         if rez:
             with QtCore.QSignalBlocker(tbl):
                 row.set_value(name_field, str(new_val))
+                if field_o.s_num in FIELDS_S_NUM_WITH_DATA:
+                    row.set_value_into_cust_content(name_field)
                 oforml_row_plan_tbl(row)
-                new_val_dict = delta_dict = {field_o.name_mes :new_val}
-                old_val_dict  = {field_o.name_mes :old_val}
-                post_edit_handling(delta_dict,old_val_dict,new_val_dict,s_num_kpl)
+                new_val_dict = delta_dict = {field_o.name_mes: new_val}
+                old_val_dict = {field_o.name_mes: old_val}
+                post_edit_handling(delta_dict, old_val_dict, new_val_dict, s_num_kpl)
                 obj_jur = CMS.Logs(self.bd_files)
                 obj_jur.add_note(s_num, name_field, new_val, 'tbl_kal_pl')
         else:
@@ -562,10 +594,12 @@ def tbl_kal_pl_cellChanged(self: mywindow, *args):
         fl_return_back = True
 
     if fl_return_back:
-        with QtCore.QSignalBlocker(tbl):
-            row.set_value(name_field, str(old_val))
+        if rollback:
+            with QtCore.QSignalBlocker(tbl):
+                row.set_value(name_field, str(old_val))
         CQT.msgbox(msg_err)
-        return
+        return False
+    return True
 
 
 def check_edit_poz(old_list:dict,dict_edit_new:dict,poz:CMS.Pozition)->bool:
@@ -580,7 +614,8 @@ def check_edit_poz(old_list:dict,dict_edit_new:dict,poz:CMS.Pozition)->bool:
         field_o = DICT_FIELDS[key]
         val = checker_o.fix_value_field(val,field_o)
         succ = checker_o.check_value_field(val,field_o)
-
+        if succ:
+            dict_edit_new[key] = val
 
     dict_checked = checker_o.get_results()
     #======end for==============
@@ -611,6 +646,7 @@ def fnc_click_load_tbl_edit_poz(ind:QtCore.QModelIndex):
 @CQT.onerror
 def load_tbl_edit_poz(self: mywindow):
     podrs = DTCLS.FIELDS_DB_INFO.tables_db.tabels_ordered
+    DTCLS.current_podr_for_edit = None
     dict_podr = {i: _ for i, _ in enumerate(podrs)}
 
     tbl_select_podr = self.ui.tbl_select_etap_edit_poz
@@ -1817,13 +1853,18 @@ def load_db(self: mywindow, pnom: bool | int = False, only_hat=False) -> None | 
     {postfix} {limit} {sort_by} ;--{F.now()}
     """
 
-    text_req =  text_req.replace('"status_poz"."Имя" AS ', '"status_poz"."Пномер" AS ') # TODO удалить заплатку после 09.06.2026
+    #text_req =  text_req.replace('"status_poz"."Имя" AS ', '"status_poz"."Пномер" AS ') # TODO удалить заплатку после 09.06.2026 # 18.09.2026 удалил
 
     list_db = CSQ.custom_request_c(self.db_kplan, text_req, attach_dbs=(self.bd_naryad), rez_dict=True)  # 18.07.25
     if not list_db:
         CQT.msgbox(f'Ошибка в динамическом запросе')
         return
 
+    if fl_one_row and pnom:
+        if not list_db:
+            return None
+        list_db.sort(key=lambda x: (x[name_gr_field] in ('', None), x[name_gr_field] or '', int(x['plan.Пномер'])))
+        return list_db[0]
 
 
     if DTCLS.FIELDS_DB_INFO.use_groups:
@@ -1847,8 +1888,7 @@ def load_db(self: mywindow, pnom: bool | int = False, only_hat=False) -> None | 
                 item_group = item[name_gr_field].strip()
                 if item_group:
                     item['plan.ТипГр'] = DOC_EMOJI
-    if fl_one_row and pnom:
-        return list_db[0]
+
 
     DTCLS.list_dict_from_db = list_db
     DTCLS.dict_dict_from_db = F.deploy_dict_c(DTCLS.list_dict_from_db, 'plan.Пномер', True)
@@ -1856,6 +1896,25 @@ def load_db(self: mywindow, pnom: bool | int = False, only_hat=False) -> None | 
 
 @CQT.onerror
 def oforml_row_plan_tbl(row: CQT.TableRow, *args):
+    def like_code_erp(val:str)->bool:
+        if not val.startswith('00-'):
+            return False
+        if not F.is_numeric(val[3:]):
+            return False
+        return True
+
+    def fill_ui_code_res(name_field: str):
+
+        val_data = row.value(name_field, get_cust_content=True).strip()
+
+        state_ref = None
+        if isinstance(val_data, str) and like_code_erp(val_data):
+            state_ref = '383507d4-e0a6-4355-a6fb-953d8502f3da'
+            if val_data in DTCLS.DICT_RES_ERP:
+                state_ref = DTCLS.DICT_RES_ERP[val_data]
+        if state_ref in DTCLS.DICT_STATUSES_RES_ERP:
+            val_ui = f'{DTCLS.DICT_STATUSES_RES_ERP[state_ref]["emo"]} {val_data}'
+            row.set_value(name_field, val_ui)
     if 'cust.client_order' in row.nf:
         ref_zk = row.value("cust.client_order")
         if ref_zk and '|' in ref_zk:
@@ -1933,7 +1992,7 @@ def oforml_row_plan_tbl(row: CQT.TableRow, *args):
             r, g, b = DTCLS.DICT_STATUS_NORM_NAME[state]['color'].split(';')
             CQT.set_color_wtab_c(row.tbl, row.i, row.nf['plan.Статус_норм'], r, g, b)
     if 'plan.Статус' in row.nf:
-        state_num  = row.value('plan.Статус',get_cust_content=True)
+        state_num  = int(row.value('plan.Статус',get_cust_content=True))
         DICT_STATUS = DTCLS.DICT_STATUS_POZ
         if state_num not in DICT_STATUS:
             if state_num == 'Группа':
@@ -1955,6 +2014,12 @@ def oforml_row_plan_tbl(row: CQT.TableRow, *args):
         mk = row.value('plan.МК')
         if mk == '0':
             CQT.set_color_wtab_c(row.tbl, row.i, row.nf['plan.МК'], 206, 128, 128)
+
+    if 'пл_топ.Предв_спецификация_ЕРП' in row.nf:
+        fill_ui_code_res('пл_топ.Предв_спецификация_ЕРП')
+    if 'пл_топ.Спецификация_код_ЕРП' in row.nf:
+        fill_ui_code_res('пл_топ.Спецификация_код_ЕРП')
+
     DICT_FIELDS = DTCLS.FIELDS_DB_INFO.dict_fields
     for clmn in row.nf.keys():
         if clmn in DICT_FIELDS:
@@ -2033,15 +2098,34 @@ def load_table_db(self, hook_prog_bar=None):
         #[_ for _ in list_refs_zp if _['НомПл'] == 8851]
         text = f"""
             ВЫБРАТЬ
+    ЭтапПроизводства2_2ВыходныеИзделия.Ссылка КАК Ссылка,
+    ЭтапПроизводства2_2ВыходныеИзделия.Номенклатура КАК Номенклатура
+ПОМЕСТИТЬ ВТ_ВИ
+ИЗ
+    Документ.ЭтапПроизводства2_2.ВыходныеИзделия КАК ЭтапПроизводства2_2ВыходныеИзделия
+ГДЕ
+    ЭтапПроизводства2_2ВыходныеИзделия.Ссылка.Распоряжение.Ссылка В ({list_lnks})
+
+СГРУППИРОВАТЬ ПО
+    ЭтапПроизводства2_2ВыходныеИзделия.Ссылка,
+    ЭтапПроизводства2_2ВыходныеИзделия.Номенклатура
+;
+
+////////////////////////////////////////////////////////////////////////////////
+
+ВЫБРАТЬ
                 ЭтапПроизводства2_2ВыходныеИзделия.Ссылка.Распоряжение.Ссылка КАК ЗП,
                 ЭтапПроизводства2_2ВыходныеИзделия.Номенклатура.Представление КАК Номенклатура,
                 МАКСИМУМ(ПриходныйОрдерНаТоварыТовары.Ссылка.Дата) КАК ДатаОрдер,
                 СУММА(ПриходныйОрдерНаТоварыТовары.КоличествоУпаковок) КАК КоличествоУпаковокОрдер,
                 СУММА(ДвижениеПродукцииИМатериаловТовары.КоличествоУпаковок) КАК КоличествоУпаковокДвижение,
-                МАКСИМУМ(ДвижениеПродукцииИМатериаловТовары.Ссылка.Дата) КАК ДатаДвижение
+                МАКСИМУМ(ДвижениеПродукцииИМатериаловТовары.Ссылка.Дата) КАК ДатаДвижение,
+                ДвижениеПродукцииИМатериаловТовары.Ссылка КАК ДвижениеПродукцииИМатериаловТовары,
+                ПриходныйОрдерНаТоварыТовары.Ссылка КАК ПриходныйОрдерНаТоварыТовары
+                
             ПОМЕСТИТЬ ВТ
             ИЗ
-                Документ.ЭтапПроизводства2_2.ВыходныеИзделия КАК ЭтапПроизводства2_2ВыходныеИзделия
+                ВТ_ВИ КАК ЭтапПроизводства2_2ВыходныеИзделия
                     ЛЕВОЕ СОЕДИНЕНИЕ Документ.ДвижениеПродукцииИМатериалов.Товары КАК ДвижениеПродукцииИМатериаловТовары
                         ЛЕВОЕ СОЕДИНЕНИЕ Документ.ПриходныйОрдерНаТовары.Товары КАК ПриходныйОрдерНаТоварыТовары
                         ПО (ПриходныйОрдерНаТоварыТовары.Ссылка.Распоряжение = ДвижениеПродукцииИМатериаловТовары.Ссылка)
@@ -2052,9 +2136,7 @@ def load_table_db(self, hook_prog_bar=None):
                         И (ЭтапПроизводства2_2ВыходныеИзделия.Номенклатура = ДвижениеПродукцииИМатериаловТовары.Номенклатура)
                         И (ДвижениеПродукцииИМатериаловТовары.Ссылка.Проведен = ИСТИНА)
                         И (ДвижениеПродукцииИМатериаловТовары.Ссылка.ПометкаУдаления = ЛОЖЬ)
-            ГДЕ
 
-             ЭтапПроизводства2_2ВыходныеИзделия.Ссылка.Распоряжение.Ссылка В ({list_lnks})
 
         СГРУППИРОВАТЬ ПО
             ЭтапПроизводства2_2ВыходныеИзделия.Ссылка.Распоряжение.Ссылка,
@@ -2062,7 +2144,8 @@ def load_table_db(self, hook_prog_bar=None):
             ПриходныйОрдерНаТоварыТовары.Ссылка.ПометкаУдаления,
             ПриходныйОрдерНаТоварыТовары.Ссылка.Проведен,
             ДвижениеПродукцииИМатериаловТовары.Ссылка,
-            ДвижениеПродукцииИМатериаловТовары.Номенклатура
+            ДвижениеПродукцииИМатериаловТовары.Номенклатура,
+            ПриходныйОрдерНаТоварыТовары.Ссылка
         ;
         
         ////////////////////////////////////////////////////////////////////////////////
@@ -2072,9 +2155,12 @@ def load_table_db(self, hook_prog_bar=None):
             ВТ.КоличествоУпаковокДвижение КАК КоличествоУпаковокДвижение,
             ВТ.ДатаДвижение КАК ДатаДвижение,
             ВТ.ДатаОрдер КАК ДатаОрдер,
-            ВТ.КоличествоУпаковокОрдер КАК КоличествоУпаковокОрдер
+            ВТ.КоличествоУпаковокОрдер КАК КоличествоУпаковокОрдер,
+            ВТ.ДвижениеПродукцииИМатериаловТовары,
+            ВТ.ПриходныйОрдерНаТоварыТовары
         ИЗ
             ВТ КАК ВТ
+        
         """
         refs = APIERP.Refs_wet(text)
         for k, link in dict_ref_alias.items():
@@ -2085,35 +2171,41 @@ def load_table_db(self, hook_prog_bar=None):
             CQT.msgbox(f'Ошибка получения данных ЗаказНаПроизводство2_2 из ЕРП ')
             return
         erp_list_zp = res['data']
-        erp_dict_zp = {(_['Ref_Key'], _['Номенклатура']): _ for _ in erp_list_zp}
+
+        DTCLS.DICT_Дата_прих_ордера_гп = F.grouping_list_dicts(erp_list_zp, ['Ref_Key', 'Номенклатура'])
 
         for item in data:
             nomen = item['пл_оуп.Номенклатура_ЕРП']
             kpl = item['plan.Пномер']
             count_poz = item['пл_оуп.Количество']
-            if kpl in dict_refs_zp:
-                ref = dict_refs_zp[kpl]['Ref_Key_py']
-                k_item = (ref, nomen)
-                if k_item in erp_dict_zp:
-                    data_erp_poz = erp_dict_zp[k_item]
-                    count_moving = data_erp_poz['КоличествоУпаковокДвижение']
-                    date_moving = ''
-                    date_order = ''
-                    if data_erp_poz['ДатаДвижение']:
-                        date_moving = F.dateStrToStr(data_erp_poz['ДатаДвижение'], "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d", '')
-                    count_order = data_erp_poz['КоличествоУпаковокОрдер']
-                    if data_erp_poz['ДатаОрдер']:
-                        date_order = F.dateStrToStr(data_erp_poz['ДатаОрдер'], "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d", '')
-                    if fl_order and date_order:
-                        if count_order == count_poz:
-                            item['cust.Дата_прих_ордера_гп'] = date_order
-                        else:
-                            item['cust.Дата_прих_ордера_гп'] = f'{date_order}-{count_order} шт.'
-                    if fl_moving and date_moving:
-                        if count_moving == count_poz:
-                            item['cust.Дата_движение_гп'] = date_moving
-                        else:
-                            item['cust.Дата_движение_гп'] = f'{date_moving}-{count_moving} шт.'
+            if kpl not in dict_refs_zp:
+                continue
+            ref = dict_refs_zp[kpl]['Ref_Key_py']
+            k_item = (ref, nomen)
+            if k_item not in DTCLS.DICT_Дата_прих_ордера_гп:
+                continue
+            data_erp_poz = DTCLS.DICT_Дата_прих_ордера_гп[k_item]
+            summ_count_moving = sum([_['КоличествоУпаковокДвижение'] for _ in data_erp_poz if _['ДвижениеПродукцииИМатериаловТовары']])
+            summ_count_order = sum([_['КоличествоУпаковокОрдер'] for _ in data_erp_poz if _['ПриходныйОрдерНаТоварыТовары']])
+            max_date_moving = max([_['ДатаДвижение'] for _ in data_erp_poz if _['ДатаДвижение']], default=None)
+            max_date_order = max([_['ДатаОрдер'] for _ in data_erp_poz if _['ДатаОрдер']], default=None)
+            max_date_moving_str = ''
+            max_date_order_str = ''
+            if max_date_moving:
+                max_date_moving_str = F.dateStrToStr(max_date_moving, "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d", '')
+            if max_date_order:
+                max_date_order_str = F.dateStrToStr(max_date_order, "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d", '')
+            emo_order = ''
+            emo_moving = ''
+            if fl_order and max_date_order_str:
+                if count_poz == summ_count_order:
+                    emo_order = '✅ '
+                item['cust.Дата_прих_ордера_гп'] = f'{emo_order}{max_date_order_str} ({summ_count_order} шт.)'
+
+            if fl_moving and max_date_moving_str:
+                if count_poz == summ_count_moving:
+                    emo_moving = '✅ '
+                item['cust.Дата_движение_гп'] = f'{emo_moving}{max_date_moving_str} ({summ_count_moving} шт.)'
 
         return data
 
@@ -2126,7 +2218,6 @@ def load_table_db(self, hook_prog_bar=None):
             else:
                 t.hide('plan.ТипГр', False)
                 t.set_width('plan.ТипГр', 100)
-
 
     def oforml_table(self):
 
@@ -2148,10 +2239,14 @@ def load_table_db(self, hook_prog_bar=None):
             row = t.get_row(i)
             if row.no_selection:
                 return
+            field_o = DTCLS.FIELDS_DB_INFO.dict_fields[name_clmn]
 
-            val = row.value(name_clmn).strip()
-            if not val:
-                return
+            if field_o.s_num in FIELDS_S_NUM_WITH_DATA:
+                val = row.value(name_clmn,get_cust_content=True)
+            else:
+                val = row.value(name_clmn).strip()
+                if not val:
+                    return
 
             if name_clmn == 'cust.client_order':
                 ref_zk = row.value(name_clmn, get_cust_content=True)
@@ -2166,7 +2261,7 @@ def load_table_db(self, hook_prog_bar=None):
 
             poz.load_kpl_table('пл_оуп')
             checker = CMS.Checker_val_fields(poz,DTCLS.DICT_ITERS_FOR_CHECK_FIELDS)
-            field_o = DTCLS.FIELDS_DB_INFO.dict_fields[name_clmn]
+
             if not checker.check_value_field(val, field_o):
                 return
 
@@ -2219,6 +2314,7 @@ def load_table_db(self, hook_prog_bar=None):
                             Номенклатура.Наименование = "{val}"
                         """
                 doc_name = 'Справочник.Номенклатура'
+
             if text:
                 succ, rez = APIERP.get_wet_request(text)
                 if succ != 200:
@@ -2282,6 +2378,44 @@ def load_table_db(self, hook_prog_bar=None):
                                       fnc)
 
 
+        def fnc_details_Дата_движение_гп(t: CQT.TableContext, i: int, name_clm: str, self: mywindow, *args):
+            row = t.current_row()
+            if row.no_selection:
+                return
+            poz = CMS.Pozition(int(row.value('plan.Пномер')))
+            poz.load_kpl_table('пл_оуп')
+            key = (
+                poz.dict_tables['пл_оуп']['Ref_Key_py'],
+                poz.dict_tables['пл_оуп']['Номенклатура_ЕРП'])
+            if key not in DTCLS.DICT_Дата_прих_ордера_гп:
+                return
+            tmplate = [{
+                'Движение':_['ДвижениеПродукцииИМатериаловТовары'],
+                'Дата':F.dateStrToStr(_['ДатаДвижение'], "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d", ''),
+                'Количество':_['КоличествоУпаковокДвижение']
+                    } for _ in DTCLS.DICT_Дата_прих_ордера_гп[key] if _['ДвижениеПродукцииИМатериаловТовары']]
+            CQT.msgboxg_get_table_ok_inf(self,'Движение ГП',tmplate,styleSheet=CQT.MES_CSS)
+
+        def fnc_details_Дата_прих_ордера_гп(t: CQT.TableContext, i: int, name_clm: str, self: mywindow, *args):
+            row = t.current_row()
+            if row.no_selection:
+                return
+            poz = CMS.Pozition(int(row.value('plan.Пномер')))
+            poz.load_kpl_table('пл_оуп')
+            key = (
+                poz.dict_tables['пл_оуп']['Ref_Key_py'],
+                poz.dict_tables['пл_оуп']['Номенклатура_ЕРП'])
+            if key not in DTCLS.DICT_Дата_прих_ордера_гп:
+                return
+
+            tmplate = [{
+                'Ордер': _['ПриходныйОрдерНаТоварыТовары'],
+                'Дата': F.dateStrToStr(_['ДатаОрдер'], "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d", ''),
+                'Количество': _['КоличествоУпаковокОрдер']
+            } for _ in DTCLS.DICT_Дата_прих_ордера_гп[key] if _['ПриходныйОрдерНаТоварыТовары']]
+            CQT.msgboxg_get_table_ok_inf(self,'Движение ГП',tmplate,styleSheet=CQT.MES_CSS)
+
+
         def fnc_open_kro(t: CQT.TableContext, i: int, name_clm: str, self: mywindow, *args):
 
             poz_id = int(t.get_row(i).value('plan.Пномер'))
@@ -2341,6 +2475,13 @@ def load_table_db(self, hook_prog_bar=None):
                                             on_context_menu=on_context_menu)
                         t.set_color_font(*CMS.Colors.link_blue.rgb, col_name= name)
 
+                    if name == 'cust.Дата_движение_гп' and field_o.accessed:
+
+                        t.add_column_events(name, on_double_click=fnc_details_Дата_движение_гп, parent_self=self)
+
+                    if name == 'cust.Дата_прих_ордера_гп' and field_o.accessed:
+
+                        t.add_column_events(name, on_double_click=fnc_details_Дата_прих_ордера_гп, parent_self=self)
 
 
 
@@ -2416,13 +2557,16 @@ def load_table_db(self, hook_prog_bar=None):
                                            func_oform_tbl=fnc_oform_tbl_res,
                                            func_btn0=fnc_select_tbl_res,
                                            ExtendedSelection=False, selectRows=True, styleSheet=CQT.ERP_CSS,
-                                           sortingEnabled=True)
+                                           sortingEnabled=True,selection_from_tbl=True)
             if result:
-                res_code = result['Код']
+                res_code = result['Код'].strip()
             else:
                 return
         with QtCore.QSignalBlocker(tbl):
-            tbl.item(i, j).setText(res_code)
+            t = CQT.TableContext(tbl)
+            row = t.get_row(i)
+
+            row.set_value(t.name_by_idx(j), res_code)
             tbl_kal_pl_cellChanged(DTCLS.app_self)
 
 
@@ -2434,6 +2578,7 @@ def load_table_db(self, hook_prog_bar=None):
     hook_prog_bar.set(0)
     hook_prog_bar.text("Загрузка данных")
     DTCLS.FIELDS_DB_INFO.use_groups = self.ui.chk_kpl_groups.isChecked()
+    DTCLS.upd_dict_res_erp()
 
     load_db(self)
 
@@ -2621,8 +2766,16 @@ def load_table_db(self, hook_prog_bar=None):
 
 def fill_filtr_main_tbl_pl(dict_vals:dict|list=None):
     self = DTCLS.app_self
-    dict_cmb_filter = {k.name_mes: None for k in DTCLS.FIELDS_DB_INFO.list_fields if k.is_bool}
-    dict_chck_filter = {k.name_mes: None for k in DTCLS.FIELDS_DB_INFO.list_fields if k.is_state}
+    dict_cmb_filter:dict[str,dict|None] = {k.name_mes: None for k in DTCLS.FIELDS_DB_INFO.list_fields if k.is_bool}
+    dict_chck_filter:dict[str,dict|None] = {k.name_mes: None for k in DTCLS.FIELDS_DB_INFO.list_fields if k.is_state}
+
+    if 'пл_топ.Спецификация_код_ЕРП' in dict_chck_filter:
+        dict_chck_filter['пл_топ.Спецификация_код_ЕРП'] =\
+            [{'text':f"{_['emo']} {_['text']}",'data':_['emo']} for _ in DTCLS.DICT_STATUSES_RES_ERP.values()]
+
+    if 'пл_топ.Предв_спецификация_ЕРП' in dict_chck_filter:
+        dict_chck_filter['пл_топ.Предв_спецификация_ЕРП'] =\
+            [{'text':f"{_['emo']} {_['text']}",'data':_['emo']} for _ in DTCLS.DICT_STATUSES_RES_ERP.values()]
 
     CQT.fill_filtr_c(self, self.ui.tbl_filtr_kal_pl, self.ui.tbl_kal_pl, spis_znach=dict_vals,
                      hidden_scroll=True,
@@ -3475,7 +3628,7 @@ def update_graf_pad_moshn(self: mywindow, selected_napr=None, as_table=False,  *
     dict_estimated_podr_filtr = {k:v for k,v in self.Data_plan.DICT_PODR_POKI.items() if k in SET_estimated_podr}
     list_fields_and_tabels =  [[', '.join([f"{k}.{_['Имя_начала_этапа']} AS Пдата_нач" ,
                         f"{k}.{_['Имя_конца_этапа']} AS Пдата_зав", f"{k}.{_['Имя_поля'].split(';')[0]} AS Нчас"]),
-                            f'INNER JOIN {k} ON {k}.НомПл = пл_оуп.НомПл' ] for k, _ in dict_estimated_podr_filtr.items()]
+                            f'INNER JOIN {k} ON {k}.НомПл == пл_оуп.НомПл' ] for k, _ in dict_estimated_podr_filtr.items()]
 
     prefix = """
     SELECT "plan"."Пномер", "napravlenie"."name", 
@@ -3504,6 +3657,9 @@ def update_graf_pad_moshn(self: mywindow, selected_napr=None, as_table=False,  *
                                 rez_dict=True)
     max_date = F.now("%Y-%m-%d")
 
+    if resp is None or not resp:
+        CQT.msgbox(f'Ошибка получения данных из БД, обратитесь к разработчику.')
+        return
     dict_pozs = dict()
     for item in resp:
         if (F.is_date(item['Пдата_зав'],"%Y-%m-%d") and
@@ -4501,10 +4657,6 @@ def dict_norm_from_res(self:mywindow, res, dict_norm='', koef_vneplana=1, koef_p
                         else:
 
                             dict_norm[podr] += round(time_paral + koef_smen, 2)
-                        current_time = round(time_paral + koef_smen, 2)
-                        if podr.startswith('пл_сб'):
-                            print(current_time)
-
                         mat_znch = 0
                         mat_name = ''
                         link_docs = ''
@@ -4922,7 +5074,7 @@ def btn_pl_load_norm(self: mywindow):
                     F.valm(data_etap['average_efficiency']) * 1.32 * ves, 6)
         return dict_norm
 
-    def load_norm_vo(self, pnom: int, dict_norm: dict):
+    def load_norm_vo(self, pnom: int, dict_norm: dict,show_details:bool=False):
         item = CSQ.custom_request_c(self.db_kplan, f"""SELECT * FROM пл_топ WHERE "НомПл" = {pnom}""", one=True,
                                     rez_dict=True)
         if item['Уд_вес_ВО'] == '' or item['Уд_вес_ВО'] == 0:
@@ -4946,7 +5098,7 @@ def btn_pl_load_norm(self: mywindow):
                    f" кг/пост/смену (выборка {self.Data_plan.DICT_VID_PO_NAPR[item['Вид']]['Выборка']} изд.)"
                    f"koef_vneplana {koef_vneplana}, "
                    f"koef_pogr_norm {koef_pogr_norm}")
-
+        details = []
         for etap_name in self.Data_plan.DICT_VID_PO_NAPR[item['Вид']]:
             for item_sootv in self.Data_plan.LIST_GROUP_VID_RAB_FOR_PLAN_VS_ETAP:
                 if item_sootv['pep_notation'] == etap_name:
@@ -4954,9 +5106,24 @@ def btn_pl_load_norm(self: mywindow):
                     koef = item_sootv['koef']
                     if kpl_etap in self.Data_plan.DICT_GROUP_PODR_VID_RAB_FOR_PLAN:
                         if kpl_etap in dict_norm and etap_name in self.Data_plan.DICT_VID_PO_NAPR[item['Вид']]:
-                            dict_norm[kpl_etap] += \
-                            round(F.valm(self.Data_plan.DICT_VID_PO_NAPR[item['Вид']][etap_name]) *
-                                  koef_vneplana * ves  *koef / 100, 6)
+                            коэфф_норм_этапов_по_видам_направлений = F.valm(self.Data_plan.DICT_VID_PO_NAPR[item['Вид']][etap_name])
+                            rounded_time = round( коэфф_норм_этапов_по_видам_направлений*
+                                  koef_vneplana * ves  *koef , 6)
+                            dict_norm[kpl_etap] += rounded_time
+                            if show_details:
+                                details.append({
+                                    'Этап':etap_name,
+                                    'Подэтап':kpl_etap,
+                                    'коэфф_норм (мин./кг.)':коэфф_норм_этапов_по_видам_направлений,
+                                    'k_внеплана':koef_vneplana,
+                                    'вес, кг.':ves,
+                                    'k_подэтапа':koef,
+                                    'Итог, час.':round(rounded_time/60,1),
+                                                })
+        if details:
+            CQT.msgboxg_get_table_ok_inf(self,'Расшифровка норм',details,styleSheet=CQT.MES_CSS)
+
+
         return dict_norm
 
     def calc_by_tkp(resp, poz, dict_norm, koef_vneplana, koef_pogr_norm, pnom, nk_stat_norm):
@@ -4976,10 +5143,9 @@ def btn_pl_load_norm(self: mywindow):
             return
         return dict_norm
 
-
-    def calc_by_vo(self, pnom, dict_norm, nk_stat_norm):
+    def calc_by_vo(self, pnom, dict_norm, nk_stat_norm,show_details:bool=False):
         # ==============ПО ВО===================
-        dict_norm = load_norm_vo(self, pnom, dict_norm)
+        dict_norm = load_norm_vo(self, pnom, dict_norm,show_details=show_details)
         if dict_norm == None:
             return
 
@@ -5166,11 +5332,11 @@ def btn_pl_load_norm(self: mywindow):
         return data_rez
 
     summary_info = [
-        {'':emo_off,'Вид расчета':'По МК',       'Основа':'','Новый статус':''},
-        {'':emo_off,'Вид расчета':'Ресурсная 1С','Основа':'','Новый статус':''},
-        {'':emo_off,'Вид расчета':'ТКПА',        'Основа':'','Новый статус':''},
-        {'':emo_off,'Вид расчета':'По виду',     'Основа':'','Новый статус':''},
-        {'':emo_on, 'Вид расчета':'По весу',     'Основа':'','Новый статус':''},
+        {'':emo_off,'Вид расчета':'По МК',       'Основа':'','Новый статус':'','Расшифровка':''},
+        {'':emo_off,'Вид расчета':'Ресурсная 1С','Основа':'','Новый статус':'','Расшифровка':''},
+        {'':emo_off,'Вид расчета':'ТКПА',        'Основа':'','Новый статус':'','Расшифровка':''},
+        {'':emo_off,'Вид расчета':'По виду',     'Основа':'','Новый статус':'','Расшифровка':''},
+        {'':emo_on, 'Вид расчета':'По весу',     'Основа':'','Новый статус':'','Расшифровка':''},
     ]
 
     if len(list_mk):
@@ -5233,6 +5399,10 @@ def btn_pl_load_norm(self: mywindow):
         def fnc_set_val(self,val,i,j):
             val_str = val if val else ''
             tbl.item(i,j).setText(str(val_str))
+        t = CQT.TableContext(tbl)
+
+        def fnc_switch(row:CQT.TableRow,tbl,val:bool,i,j,*args):
+            row.set_value(row.ctx.name_by_idx(j),str(F.valm(val)))
 
         for i in range(tbl.rowCount()):
             CQT.add_combobox(self, tbl, i, nf['Новый статус'], [_['Имя'] for _ in DICT_STATUS_NORM.values()], True,
@@ -5249,6 +5419,11 @@ def btn_pl_load_norm(self: mywindow):
             enable = tbl.item(i,nf['']).text()
             if enable == emo_off:
                 CQT.setRowDisabled(tbl,i)
+            row = t.get_row(i)
+            type_calc = row.value('Вид расчета')
+            if type_calc == 'По виду':
+                CQT.add_check_box_switcher(t.tbl,row.i,nf['Расшифровка'],False,fnc_switch,row)
+
 
     @CQT.onerror
     def fnc_check_select(btn, dialog, t, p):
@@ -5313,7 +5488,7 @@ def btn_pl_load_norm(self: mywindow):
             else:
                 list_err.append({'Ошибка':f"Этап 1c `{et['ЭтапНаименование']}` не имеет соответствия в настройках МЕС. Норма не учтена"})
     elif result['Вид расчета'] == 'По виду':
-        dict_norm = calc_by_vo(self, pnom, dict_norm, nk_stat_norm)
+        dict_norm = calc_by_vo(self, pnom, dict_norm, nk_stat_norm,show_details=F.boolm(result['Расшифровка']))
     else:#result['Вид расчета'] == 'По весу':
         dict_norm = calc_by_weight(self,ves,dict_norm,nk_stat_norm)
 

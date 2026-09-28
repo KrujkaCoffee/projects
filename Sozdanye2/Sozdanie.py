@@ -1,8 +1,8 @@
-import colorsys
+
 import copy
 import collections
 import enum
-import json
+
 import typing
 import operator
 
@@ -36,6 +36,7 @@ import project_cust_38.Cust_emoji as CEMOJ
 # import traceback
 import project_cust_38.api_erp_commands as APIERP
 from project_cust_38.sub_mes.kro.manage_kro import Kro_manager as MKRO
+from project_cust_38.sub_mes.cutting_segment_manager.main_cutting_mngr import CentralWindow as CUTMNGR
 cfg = F.load_cfg(False)  # файл конфига, находится в папке конфиг
 
 
@@ -46,10 +47,10 @@ class EditJournalActions(enum.Enum):
 class EditJournalState(typing.NamedTuple):
     pk: int | None
     action: EditJournalActions
-    status: str = None
-    fio: str = None
-    date: str = None
-    comment: str = None
+    status: str| None = None
+    fio: str| None = None
+    date: str| None = None
+    comment: str| None = None
 
 class EditJournalManager:
     @staticmethod
@@ -57,7 +58,7 @@ class EditJournalManager:
         return table_widget.property('CURRENT_EDIT_STATE')
 
     @staticmethod
-    def set_state(table_widget: QtWidgets.QTableWidget, state: "EditState"):
+    def set_state(table_widget: QtWidgets.QTableWidget, state: "EditJournalState"):
         return table_widget.setProperty('CURRENT_EDIT_STATE', state)
 
 
@@ -69,11 +70,12 @@ class mywindow(QtWidgets.QMainWindow):
         self.versia = '1.6.0.7'
         self.NAME_MODULE_BASE = f"Создание"
         self.name_module = f'{self.NAME_MODULE_BASE}'
-        self.USER_CONFIG: CFG.User_config = None
-        self.place: CFG.Place = None
+        self.USER_CONFIG: CFG.User_config | None = None
+        self.place: CFG.Place | None = None
         if CMS.kontrol_ver(self.versia, "Создание2") == False:
             sys.exit()
         CFG.Config.user_config.load_user_config(self)
+        CFG.BaseSubWindow.set_as_root(self)
         self.app_icons()
         DTCLS.app_self = self
         DTCLS.init_data()
@@ -84,13 +86,15 @@ class mywindow(QtWidgets.QMainWindow):
         # ===========================================connects
         # ==================BTN
         dic = CMS.dict_emploee(CFG.Config.project.db_users)
+        if not dic:
+            raise ValueError('Не найдены данные должностей для юзера')
         self.auth_manager = userm.UserManager(
             window=self,
             combo_fio=self.ui.lbx_spis_sotr,
             input_password=self.ui.le_parol,
             input_password_reset1=self.ui.le_Nparol,
             input_password_reset2=self.ui.le_Nparol2,
-            employee_by_fio=dic,
+            employee_by_fio= dic,
             on_success_login=self.on_success_login,
             on_logout=self.clear_widgets,
             btn_login=self.ui.btn_login,
@@ -99,6 +103,7 @@ class mywindow(QtWidgets.QMainWindow):
         if self.USER_CONFIG.is_developer:
             dev_menu = CMS.ActionDevMenu(self)
             dev_menu.add_action('action_tmp', self.action_tmp)
+            dev_menu.add_action('Настройка прав доступа', CMS.permission_change)  # удаление строки КПЛ 04.09.2025
         if 'btn':
             self.ui.btn_comp_add_file.clicked.connect(lambda: CMPM.btn_comp_add_file(self))
             self.ui.btn_comp_delete_file.clicked.connect(lambda: CMPM.btn_comp_delete_file(self))
@@ -158,6 +163,7 @@ class mywindow(QtWidgets.QMainWindow):
             self.ui.btn_del_rc_custom.clicked.connect(lambda: MARSH.del_rc_custom(self))
             self.ui.btn_order_recheck_otk.clicked.connect(self.order_recheck_otk)
             self.ui.btn_peresilniy.clicked.connect(self.create_peresilniy)
+            self.ui.btn_cutting_mngr.clicked.connect(self.open_cutting_mngr)
         # ==================lines
         if 'le':
             self.ui.le_Nparol.setVisible(False)
@@ -172,7 +178,7 @@ class mywindow(QtWidgets.QMainWindow):
             self.ui.tbl_projs_raspred.itemSelectionChanged.connect(self.select_tbl_projs_raspred)
             self.ui.tableWidget_vibor_mk.doubleClicked.connect(self.open_papka_chpy)
             self.ui.tableWidget_vibor_mk.clicked.connect(self.tbl_mk_click)
-            self.ui.tableWidget_vibor_mk.setSelectionBehavior(0)
+            self.ui.tableWidget_vibor_mk.setSelectionBehavior(CQT.SelectionBehaviors.SelectItems.obj)
             self.ui.tbl_dse.clicked.connect(self.tbl_dse_click)
             self.ui.tbl_dse.itemSelectionChanged.connect(self.tbl_dse_select)
             self.ui.tbl_dse.currentItemChanged.connect(self.raschet_naruada_time_tmp)
@@ -413,15 +419,15 @@ class mywindow(QtWidgets.QMainWindow):
         # --- 16.06.25
         self.ui.sp_select_opers.setSizes([30,600])
         self.fill_cmb_select_rc_nar_korr()
-
+        CMS.connect_manuals(self)
 
         # =====================временно
         # OFFself.write_date_podtv()
         self.fix_error()
         #self.dev_add_vnepl_nars()
     def action_tmp(self,*args):
-        #self.dev_add_vnepl_nars()
-        outplan.send_msg(self)
+        self.dev_add_vnepl_nars()
+
 
         pass
 
@@ -558,7 +564,7 @@ class mywindow(QtWidgets.QMainWindow):
                     nar.recalc_jur_n_time(nar.ФИО)
                 if nar.ФИО2:
                     nar.recalc_jur_n_time(nar.ФИО2)
-        # fix_nar2025_10_13_1332()
+
         return
 
         def clear_naryad_stat_and_related_journals():
@@ -979,7 +985,7 @@ class mywindow(QtWidgets.QMainWindow):
         if name == 'МК':
             pass
         if name == 'Компоновка':
-            CMPM.update_comp_files()
+            CMPM.init_data()
         if name == 'ДСЕ':
             # self.load_brak()
             # if self.ui.tbl_brak.rowCount() > 0:
@@ -1131,9 +1137,13 @@ class mywindow(QtWidgets.QMainWindow):
 
         if self.ui.tabWidget.currentIndex() == CQT.number_table_by_name_c(self.ui.tabWidget, 'Создание наряда'):
             if self.ui.tableWidget_vibor_mk.currentRow() != -1:
+                nf_zk = CQT.num_col_by_name_c(self.ui.tableWidget_vibor_mk,
+                                                                                 'Номер_заказа')
+                if nf_zk is None:
+                    CQT.msgbox(f'Не найдено поле Номер_заказа')
+                    return
                 nom_pu = self.ui.tableWidget_vibor_mk.item(self.ui.tableWidget_vibor_mk.currentRow(),
-                                                           CQT.num_col_by_name_c(self.ui.tableWidget_vibor_mk,
-                                                                                 'Номер_заказа')).text()
+                                                           nf_zk ).text()
                 nom_pr = self.ui.tableWidget_vibor_mk.item(self.ui.tableWidget_vibor_mk.currentRow(),
                                                            CQT.num_col_by_name_c(self.ui.tableWidget_vibor_mk,
                                                                                  'Номер_проекта')).text()
@@ -1963,7 +1973,7 @@ class mywindow(QtWidgets.QMainWindow):
         if not DTCLS.USER_CONFIG.is_developer:
             return
 
-        noms_nar = [179637
+        noms_nar = [185513
                     ]
         for nom_nar in noms_nar:
             rez = CSQ.custom_request_c(self.db_naryd,f"""SELECT "ФИО", "ФИО2" FROM naryad WHERE "Пномер" = {nom_nar}""",rez_dict=True,one=True)
@@ -4353,7 +4363,7 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
         )
         author_nar = current_row['Автор']
         if not CMS.user_access(self.db_naryd, f'создание_корректировка_журнал_работ_{author_nar}',
-                               CMS.name_by_empl_c(self.glob_login)):
+                               CMS.name_by_empl_c(self.glob_login),msg=False):
             if not CMS.user_access(self.db_naryd, f'создание_корректировка_журнал_работ',
                                    CMS.name_by_empl_c(self.glob_login)):
                 return
@@ -5767,6 +5777,9 @@ naryad.Операции, naryad.Опер_колво, naryad.Опер_время,
                 tmp_dict[alias]= it[key]
             tbl_data.append(tmp_dict)
         CQT.msgboxg_get_table_ok_inf(self,'Список РЦ',tbl_data,styleSheet=CQT.MES_CSS)
+
+    def open_cutting_mngr(self):
+        window = CUTMNGR.start_sub_app(self)
 
 
 # app = QtWidgets.QApplication(sys.argv)

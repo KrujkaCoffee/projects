@@ -1,0 +1,4 @@
+RewriteEngine On
+
+RewriteCond %{HTTP_HOST} ^gummikompensator.*\.de$ [NC]
+RewriteRule ^ https://powerz.co/ [R=302,L,QSD]
