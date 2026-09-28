@@ -643,7 +643,7 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
                             source_value = (
                                 source_row.value('Значение', get_cust_content=True)
                                 if source_row is not None
-                                else source_row.value
+                                else source_attr.value
                             )
                             source_ref = getattr(source_value, 'reference', None)
                             if source_ref is None:
@@ -651,16 +651,24 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
                                 return
                             DTSUB.custom_types.refresh_mes_types()
                             source_choice = DTSUB.planner_mes_types.choice_for_type(source_type)
+
                             target_type: typing.Callable = target_attr.info.type
-                            target_choice = DTSUB.planner_mes_types.choice_for_type(target_type)
+                            # target_choice = DTSUB.planner_mes_types.choice_for_type(target_type)
                             service = planner_mes.MesEntityService.from_type_catalog(DTSUB.planner_mes_types)
-                            reference = service.resolve_link(
-                                link, source_choice, source_ref, target_choice,
-                                presentation_key=target_attr.info.attr_view or None
-                            )
-                            if reference is None:
-                                CQT.msgbox('По выбранной связи запись не найдена. Значение поля сохранено')
-                                return
+                            if issubclass(target_type, CLSS.Erp_type):
+                                binding = AB.AttributeBindingManager().get_binding(target_attr.info)
+                                from project_cust_38 import api_erp_commands as APIERP
+                                erp_service = PERP.ErpEntityService(
+                                    APIERP,
+                                        lambda : f'api_erp:{CFG.Config.user_config.ERP_base.name}')
+                                reference = CLINK.resolve_mes_to_erp(
+                                    link, source_choice, source_ref, mes_service=service,
+                                    erp_service=erp_service,
+                                    binding=binding
+                                )
+                                if reference is None:
+                                    CQT.msgbox('По выбранной связи запись не найдена. Значение поля сохранено')
+                                    return
                             new_value = target_type(reference)
                             text_value = str(new_value)
 
@@ -676,10 +684,11 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
                         parent_self=DTSUB.sub_self,grab_style_from_cell=True,
                         autoupdate_column_size=False
                     )
-                    widg.add_button(
-                        '...','Выбрать сущность МЕС',fnc_select_mes_entity,cell_val=row_mes,
-                        img_path=F.sep().join([F.path_to_caller_file_c(),'icons','btn_select'])
-                    )
+                    if issubclass(type_attr, CLSS.Mes_type):
+                        widg.add_button(
+                            '...','Выбрать сущность МЕС', fnc_select_mes_entity, cell_val=row_mes,
+                            img_path=F.sep().join([F.path_to_caller_file_c(),'icons','btn_select'])
+                        )
                     if getattr(attr.info, 'catalog_link_spec', None) and not attr.info.protected:
                         widg.add_button('↗', 'Заполнить по связи', fnc_fill_by_link, cell_val=row_mes)
                 # ====================================================================
