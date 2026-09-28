@@ -48,6 +48,7 @@ remote_run.py
 /admin
 /register
 /orm_registers
+/mes_registers_checkkit
 upd_*
 */logs/
 doc
