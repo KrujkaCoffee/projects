@@ -323,8 +323,10 @@ def recalc_one(window, op, with_materials):
     else:
         missing_operation_params = ''
     changes = []
-    total = 0
-    has_transition_time = False
+    op_params_dict = dict(zip(*op_params)) if op_params else {}
+    transition_total = 0
+    informative_count = 0
+    fallback_count = 0
     material = op.text(10)
     if with_materials and op_params:
         result = operacii.materiali(window, op.text(0), copy.deepcopy(op_params))
@@ -336,63 +338,69 @@ def recalc_one(window, op, with_materials):
         if pereh.text(20) != '2':
             continue
         pereh_params = params_for_calc(window, pereh)
-        if pereh_params:
-            time = operacii.vremya_tsht_perehodi(op.text(0), pereh.text(0),
-                                                 copy.deepcopy(pereh_params),
-                                                 op.text(14).split('$') if op.text(14) else [])
-            if time is None and not window.xl_formulas.check_approved(
-                    operation=op.text(0), pereh=pereh.text(0)) and F.is_numeric(pereh.text(7)):
-                time = number_or_error(F.valm(pereh.text(7)), item_label(pereh))
-            else:
-                time = number_or_error(time, item_label(pereh))
-                changes.append((pereh, 7, str(time)))
-        elif F.is_numeric(pereh.text(7)):
+        if not pereh_params and not pereh.text(7).strip() and not window.xl_formulas.check_approved(
+                operation=op.text(0), pereh=pereh.text(0)):
+            # Переход с одним только описанием не требует расчёта времени.
+            informative_count += 1
+            continue
+        if not pereh_params and pereh.text(7).strip() and not F.is_numeric(pereh.text(7)):
+            raise ValueError(f'{item_label(pereh)}: некорректное время перехода')
+        # Та же форма параметров, что в Techkards.recalc_opers: словари
+        # перехода и операции. Формула перехода может читать оба набора.
+        result = operacii.vremya_tsht_perehodi(
+            op.text(0), pereh.text(0),
+            dict(zip(*pereh_params)) if pereh_params else {}, op_params_dict.copy())
+        if result is None:
             time = number_or_error(F.valm(pereh.text(7)), item_label(pereh))
+            fallback_count += 1
         else:
-            return None, None
-            raise ValueError(f'{item_label(pereh)}: не задано время и нет параметров')
-        total += time
-        has_transition_time = True
+            time = number_or_error(result, item_label(pereh))
+        # Нулевой переход в recalc_opers освобождает поле Тшт.
+        new_time = '' if time == 0 else str(time)
+        if new_time != pereh.text(7):
+            changes.append((pereh, 7, new_time))
+        transition_total += time
         if with_materials and pereh_params:
             result = operacii.materiali(window, op.text(0), copy.deepcopy(pereh_params))
             if result is not None:
                 material = merge_materials(material, result)
 
-    operation_time = 0
-    setup_time = None
-    if op_params:
-        result = operacii.vremya_tsht(op.text(0), copy.deepcopy(op_params))
-        if isinstance(result, tuple) and len(result) == 2:
-            operation_time, setup_time = result
-            setup_time = number_or_error(setup_time, item_label(op) + ' Тпз')
-        else:
-            operation_time = result
-        if operation_time is None and not window.xl_formulas.check_approved(operation=op.text(0)):
-            operation_time = 0
-        else:
-            operation_time = number_or_error(operation_time, item_label(op))
-    if not operation_time and not has_transition_time:
-        if with_materials and material != op.text(10):
-            return [(op, 10, material)], 'нет расчёта времени; материалы пересчитаны'
-        return None, 'нет рассчитанного времени или переходов'
-    time = operation_time if operation_time > 0 else total
+    # recalc_opers берёт Тпз из справочника и заменяет его только парой из формулы.
+    setup_time = number_or_error(F.valm(window.DICT_OPERS[op.text(0)]['Tpz']), item_label(op) + ' Тпз')
+    result = operacii.vremya_tsht(op.text(0), op_params_dict.copy())
+    operation_fallback = result is None
+    if operation_fallback:
+        operation_time = number_or_error(F.valm(op.text(7)), item_label(op))
+    elif isinstance(result, tuple) and len(result) == 2:
+        operation_time = number_or_error(result[0], item_label(op))
+        setup_time = number_or_error(result[1], item_label(op) + ' Тпз')
+    else:
+        operation_time = number_or_error(result, item_label(op))
+    time = operation_time if operation_time != 0 else transition_total
     if time == 0 and window.xl_formulas.check_strict_calc(operation=op.text(0)):
         raise ValueError('Операция с обязательным расчётом вернула нулевое Тшт')
     limit = CFG.Config.place.limit_time_on_naryad
     if time >= limit:
         raise ValueError(f'Тшт {time} превышает лимит {limit}')
-    changes.append((op, 7, str(round(time, 3))))
-    if setup_time is not None:
+    if str(time) != op.text(7):
+        changes.append((op, 7, str(time)))
+    if str(setup_time) != op.text(6):
         changes.append((op, 6, str(setup_time)))
     if with_materials and material != op.text(10):
         changes.append((op, 10, material))
-    source = 'формула операции' if operation_time > 0 else 'сумма переходов'
-    message = f'Тшт: {op.text(7)} → {round(time, 3)} ({source})'
-    if material != op.text(10):
+    source = 'время операции' if operation_time != 0 else 'сумма переходов'
+    message = f'Тшт: {op.text(7)} → {time} ({source}); Тпз: {op.text(6)} → {setup_time}'
+    if with_materials and material != op.text(10):
         message += '; материалы пересчитаны'
+    if operation_fallback:
+        message += '; нет результата формулы операции — взято время из ТК'
+    if fallback_count:
+        message += f'; переходов без результата формулы: {fallback_count}'
+    if informative_count:
+        message += f'; информативных переходов: {informative_count}'
     if missing_operation_params:
         message += '; ' + missing_operation_params
-    return changes, message
+    return changes or None, message
 
 from project_cust_38 import Cust_Qt as CQT
 
