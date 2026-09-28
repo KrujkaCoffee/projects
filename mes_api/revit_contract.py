@@ -311,6 +311,7 @@ class NormalizedResourceRow:
     element_ids: tuple[int, ...]
     match_state: str
     match_info: str
+    erp_code_missing: bool = False
 
 
 def normalize_resource_row(
@@ -365,14 +366,26 @@ def normalize_resource_row(
         row=row,
         source_row=source_row,
         stage=stage,
-        erp_code=normalize_code(erp_code),
+        erp_code="" if erp_code.strip() == "-" else normalize_code(erp_code),
         unit=unit,
         quantity_text=quantity_text,
         quantity=parse_positive_quantity(quantity_value),
         element_ids=tuple(element_ids),
         match_state=_first_text(source, "match_state"),
         match_info=_first_text(source, "match_info"),
+        erp_code_missing=erp_code.strip() in ("", "-"),
     )
+
+
+def partition_resource_rows(
+    rows: Sequence[NormalizedResourceRow], skip_unmapped_rows: bool = False,
+) -> tuple[list[NormalizedResourceRow], list[NormalizedResourceRow]]:
+    """Only blank / '-' codes may be skipped; malformed filled codes stay errors."""
+    included, skipped = [], []
+    for row in rows:
+        target = skipped if skip_unmapped_rows and row.erp_code_missing else included
+        target.append(row)
+    return included, skipped
 
 
 def local_resource_errors(
