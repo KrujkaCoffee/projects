@@ -45,6 +45,7 @@ class СтатусыПроизводства:
     idle: ClassVar[EmojiItem] = EmojiItem('🟡', 'idle', 'status', 'Ожидание')
     alert: ClassVar[EmojiItem] = EmojiItem('🚨', 'alert', 'status', 'Тревога')
     alert_exclamation: ClassVar[EmojiItem] = EmojiItem('❗', 'alert_exclamation', 'status', 'Тревога')
+    manual: ClassVar[EmojiItem] = EmojiItem('❓', 'manual', 'status', 'Справка-мануал')
     normal: ClassVar[EmojiItem] = EmojiItem('🟢', 'normal', 'status', 'Нормальный режим')
     ellipsis: ClassVar[EmojiItem] = EmojiItem('…', 'ellipsis', 'menu', 'Ещё / Дополнительно')
     vert_ellipsis: ClassVar[EmojiItem] = EmojiItem('⁞', 'vertEllipsis', 'menu', 'Ещё / Дополнительно')
@@ -110,6 +111,8 @@ class ПерсоналРоли:
     
 class ДокументыДанные:
     """Категория документов и данных"""
+    expensive: ClassVar[EmojiItem] = EmojiItem('💰', 'expensive', 'documents', 'Дорогой материал')
+    profile: ClassVar[EmojiItem] = EmojiItem('📇', 'profile', 'documents', 'Профиль')
     plan: ClassVar[EmojiItem] = EmojiItem('📅', 'plan', 'documents', 'План')
     fact: ClassVar[EmojiItem] = EmojiItem('🏁', 'fact', 'documents', 'Факт')
     parts: ClassVar[EmojiItem] = EmojiItem('🧩', 'parts', 'documents', 'Составные части')
@@ -135,6 +138,7 @@ class ДокументыДанные:
     database: ClassVar[EmojiItem] = EmojiItem('🗄️', 'database', 'documents', 'База данных')
     analysis: ClassVar[EmojiItem] = EmojiItem('📊', 'analysis', 'documents', 'Анализ данных')
     archive: ClassVar[EmojiItem] = EmojiItem('🗃️', 'archive', 'documents', 'Архив')
+    open_book: ClassVar[EmojiItem] = EmojiItem('📖', 'open_book', 'documents', 'Раскрытая книга')
     expand: ClassVar[EmojiItem] = EmojiItem('🔽', 'expand', 'documents', 'Развернуть')
     up: ClassVar[EmojiItem] = EmojiItem('🔼', 'up', 'documents', 'Вверх')
     collapse: ClassVar[EmojiItem] = EmojiItem('▶️', 'collapse', 'documents', 'Свернуть')

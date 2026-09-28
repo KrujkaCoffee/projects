@@ -170,9 +170,9 @@ def zap_spis(spisok,putf,wb_name,ws_name,row,column,autofit=True, zag_bold=True,
             app.kill()
         except:
             pass
-        if return_putf and rez == True:
-            return file_path
-        return rez
+    if return_putf and rez == True:# для версии 3.14.7 питона
+        return file_path
+    return rez
     
 def pechat_table(spisok,row,column, orient_g_v = 'v', zag_bold = True, otstup_l=5.0, otstup_r=5.0,otstup_v=5.0,otstup_n=5.0,zoom=100,copies=1):
     #file_path = F.put_po_umolch() + F.sep() + "wb_tmp"

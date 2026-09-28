@@ -45,10 +45,9 @@ from project_cust_38.sub_mes.resource_planning import catalog_choices as CCHO
 from project_cust_38.sub_mes.resource_planning import catalog_editor as CEDIT
 from project_cust_38.sub_mes.resource_planning import catalog_link as CLINK
 from project_cust_38.sub_mes.resource_planning import catalog_link_store as LINKSTORE
+from project_cust_38.sub_mes.resource_planning import planner_erp as PERP
 
 from typing import  TYPE_CHECKING
-
-
 
 
 DTSUB = DTCLS.module_manage_sub_app
@@ -581,7 +580,7 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
                 cust_attrs = get_cust_attrs() if callable(get_cust_attrs) else {}
                 for attr_name,attr in cust_attrs.items():
                     type_attr = attr.info.type
-                    if not isinstance(type_attr,type) or not issubclass(type_attr,CLSS.Mes_type):
+                    if not isinstance(type_attr, type) or not issubclass(type_attr, (CLSS.Mes_type, CLSS.Erp_type)):
                         continue
                     row_mes = t.find_row({'_name':attr_name},first=True)
                     if not row_mes: #or attr.info.protected:
@@ -618,7 +617,7 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
                             row.set_value('Значение',text_value)
                             lbl.set_text(text_value)
 
-                    def fnc_fill_mes_by_link(
+                    def fnc_fill_by_link(
                             lbl: CQT.InteractiveLabelInstance, sub_self, i, j,
                             row: CQT.TableRow, target_attr: CLSS._Attribute=attr):
                         try:
@@ -682,7 +681,7 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
                         img_path=F.sep().join([F.path_to_caller_file_c(),'icons','btn_select'])
                     )
                     if getattr(attr.info, 'catalog_link_spec', None) and not attr.info.protected:
-                        widg.add_button('↗', 'Заполнить по связи', fnc_fill_mes_by_link, cell_val=row_mes)
+                        widg.add_button('↗', 'Заполнить по связи', fnc_fill_by_link, cell_val=row_mes)
                 # ====================================================================
                 # =======================cross_res==============================
                 row_res = t.find_row({'_name': 'res'}, first=True)

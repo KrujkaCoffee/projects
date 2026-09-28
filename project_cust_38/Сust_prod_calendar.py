@@ -92,7 +92,7 @@ def _validate_rows(year: int, calendar_key: str, rows: list[dict]) -> tuple[str,
 class ProdCalendar:
     DELIMITER = '%7C'
 
-    def __init__(self, locale, format_date='%Y.%m.%d', *, source=None):
+    def __init__(self, format_date='%Y.%m.%d', *, source=None):
         self.format_date = format_date
         self.calendar_key = CFG.Config.project.prod_calendar_uuid   # noqa
         self.cache_ttl = 6 * 60 * 60

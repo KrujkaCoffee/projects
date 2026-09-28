@@ -9,11 +9,120 @@ import project_cust_38.Cust_Qt as CQT
 # import Cust_Qt as CQT
 import project_cust_38.Erp_connector_plan as ERP
 import project_cust_38.Cust_mes as CMS
+from project_cust_38 import Cust_emoji as CEMOJ
+import project_cust_38.api_erp_commands as APIERP
+import re
+
+db_mater = CMS.CFG_prj.db_nomen
+
+class SingletonMeta(type):
+    __instances = {}
+
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls.__instances:
+            instance = super().__call__(*args, **kwargs)
+            cls.__instances[cls] = instance
+        return cls.__instances[cls]
+
+
+class ExpensiveChecker(metaclass=SingletonMeta):
+    EMO = CEMOJ.ДокументыДанные.expensive.symbol
+    # --- пример использования ---
+    #
+    #    chk = ExpensiveChecker()
+    #    print(chk.is_expensive("12Х18Н10Т"))  # True
+    #    print(chk.is_expensive("12x18h10t"))  # True (латиница-двойник)
+    #    print(chk.is_expensive("12-Х-18-Н-10-Т"))  # True (дефисы)
+    #    print(chk.is_expensive("12 Х 18 Н 10 Т"))  # True (пробелы)
+    #    print(chk.is_expensive("a i s i   3 2 1"))  # True
+    #    print(chk.is_expensive("AISI-316Ti"))  # True
+    #    print(chk.is_expensive("Ст3"))  # False
 
 
 
-#if __name__ == '__main__':
-#    exit()
+
+    # Однозначные визуальные "двойники": латиница -> кириллица
+    TWIN_DICT = {
+        'A': 'А', 'B': 'В', 'C': 'С', 'E': 'Е', 'H': 'Н',
+        'K': 'К', 'M': 'М', 'O': 'О', 'P': 'Р', 'T': 'Т',
+        'X': 'Х', 'Y': 'У',
+    }
+
+
+    # Пробелы, подчёркивания и все виды дефисов/тире/минусов
+    _SEP_RE = re.compile(r'[\s_\-\u2010\u2011\u2012\u2013\u2014\u2015\u2212]+')
+
+    def __init__(self):
+        text = f"""
+        ВЫБРАТЬ
+            MES_ПодстрокиПодбораДорогойНоменклатуры.Подстрока КАК Подстрока
+        ИЗ
+            Справочник.MES_ПодстрокиПодбораДорогойНоменклатуры КАК MES_ПодстрокиПодбораДорогойНоменклатуры
+        ГДЕ
+            MES_ПодстрокиПодбораДорогойНоменклатуры.ПометкаУдаления = ЛОЖЬ
+            """
+        code, data = APIERP.get_wet_request(text=text)
+        list_nomen = []
+        if code != 200:
+            CQT.msgbox(f'Запрос get_wet_request ExpensiveChecker в 1С ошибка {code}')
+            self.close()
+            return
+
+        self._expensive = set([_["Подстрока"] for _ in data['data']])
+        pass
+
+    @classmethod
+    def _normalize(cls, s: str) -> str:
+        # 1. убрать разделители
+        s = cls._SEP_RE.sub('', s)
+        # 2. верхний регистр
+        s = s.upper()
+        # 3. латиницу-двойник -> кириллицу
+        return ''.join(cls.TWIN_DICT.get(ch, ch) for ch in s)
+
+    def is_expensive_mat(self, name_mat: str) -> bool:
+        if not name_mat:
+            return False
+        return self._normalize(name_mat) in self._expensive
+
+    def is_expensive_nomen(self, name_nomen: str, emo_rez:bool=False) -> bool|str:
+        rez_false = (False, '')
+        rez_true = (True, self.EMO)
+
+        if not name_nomen:
+            return rez_false[emo_rez]
+        norm_name_nomen = self._normalize(name_nomen)
+        for shabl_it in self._expensive:
+            if shabl_it in norm_name_nomen:
+                return rez_true[emo_rez]
+        return  rez_false[emo_rez]
+
+    def reclalc_db(self):
+        data = CSQ.custom_request_c(db_mater,f"""SELECT Пномер, Наименование, expensive 
+                    FROM nomen;""",rez_dict=True)
+        rezult_msg = []
+        delta_exp = []
+        delta_not_exp = []
+        for it in data:
+            exp = F.valm(self.is_expensive_nomen(it['Наименование']))
+            if exp != it['expensive']:
+                if exp:
+                    delta_exp.append(it['Пномер'])
+                else:
+                    delta_not_exp.append(it['Пномер'])
+        if delta_exp:
+            if CSQ.custom_request_c(db_mater,f"""UPDATE nomen 
+            SET expensive = 1 where 
+                Пномер in ({CSQ.prepare_list_to_tuple(delta_exp)});"""):
+                rezult_msg.append({'#':1,'msg':f'Обновлено как дорогие {len(delta_exp)} номенклатур'})
+        if delta_not_exp:
+            if CSQ.custom_request_c(db_mater,f"""UPDATE nomen 
+            SET expensive = 0 where
+                Пномер in ({CSQ.prepare_list_to_tuple(delta_not_exp)});"""):
+                rezult_msg.append({'#':2,'msg':f'Обновлено как недорогие {len(delta_not_exp)} номенклатур'})
+        return rezult_msg
+
+
 
 DICT_POLE = {
     'Листовой металл (10,01)': {
@@ -767,6 +876,9 @@ def obn_mat_erp_file(db_mater, *args):
     ###        CQT.msgbox(rez)
 
 if __name__ == '__main__':
+    #exit()
+    exp = ExpensiveChecker()
+    exp.reclalc_db()
 
-    db_mater = 'SRV:DB_nomenklatura_erp.db'
-    obn_mat_erp_file(db_mater)
+    #obn_mat_erp_file(db_mater)
+    exit()

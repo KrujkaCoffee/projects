@@ -19,21 +19,17 @@ import project_cust_38.Cust_SQLite as CSQ
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-ERP_READ_TIMEOUT = (5, 25)
-ERP_WRITE_TIMEOUT = (5, 35)
+USER_ERP = 'mes_user'
+PASS_ERP = '89Luham'
 
-USER_ERP = os.environ.get('ERP_HTTP_USER', 'mes_user')
-PASS_ERP = os.environ.get('ERP_HTTP_PASSWORD', '89Luham')
-
-USER_DO = os.environ.get('DO_HTTP_USER', USER_ERP)
-PASS_DO = os.environ.get('DO_HTTP_PASSWORD', PASS_ERP)
-
+USER_DO = 'mes_user'
+PASS_DO= '89Luham'
 
 
 HOSTNAME_LOCAL_MES = False
 PORT_MES = 20011
 if HOSTNAME_LOCAL_MES: #"POW-ING22":
-    HOST_MES = '192.168.14.71'# AG local
+    HOST_MES = '192.168.17.149'# AG local
 else:
     HOST_MES = '192.168.50.44'# server
 
@@ -188,14 +184,8 @@ def post_res_json(json:dict, erp_base_name:str = 'ERP'):
     headers = dict(Accept='application/json')
     params = dict()
     url = f'{CFG.Config.project.ERB_BASE_URL}/{erp_base_name}/ru_RU/hs/mes/resspec/v1/make_res/'
-    response = requests.post(
-        url,
-        json=json,
-        headers=headers,
-        params=params,
-        auth=(USER_ERP, PASS_ERP),
-        timeout=ERP_WRITE_TIMEOUT,
-    )
+    response = requests.post(url, json=json, headers=headers, params=params, auth=(USER_ERP, PASS_ERP))
+    #print(F.convert_binary_to_data(response.content))
     try:
         answ = JS.loads(F.convert_binary_to_data(response.content))
     except:
@@ -419,14 +409,7 @@ def _get_wet_request_base(text: str, refs: Refs_wet | None = None, lazy_method_h
                     logger.debug(f'wet_req end DB {(F.now('') - start).total_seconds()}')
                     return 200, old_data_db
     try:
-        response = requests.get(
-            url,
-            json=dict_data,
-            headers=headers,
-            params=params,
-            auth=(aut.login, aut.password),
-            timeout=ERP_READ_TIMEOUT,
-        )
+        response = requests.get(url, json=dict_data, headers=headers, params=params, auth=(aut.login, aut.password))
     except:
         logger.debug(f'wet_req end err (Code: None) resp {(F.now('')  - start).total_seconds()}')
         if old_data_db:
@@ -469,14 +452,7 @@ def make_nomen(dict_data:dict):
     params = dict()
 
     url = f'{CFG.Config.project.ERB_BASE_URL}/{CFG.Config.user_config.ERP_base_name["Значение"]}/ru_RU/hs/mes/sysexchange/v1/make_nomen/none'
-    response = requests.post(
-        url,
-        json=dict_data,
-        headers=headers,
-        params=params,
-        auth=(USER_ERP, PASS_ERP),
-        timeout=ERP_WRITE_TIMEOUT,
-    )
+    response = requests.post(url, json=dict_data, headers=headers, params=params, auth=(USER_ERP, PASS_ERP))
     data = F.convert_binary_to_data(response.content)
     try:
         data = JS.loads(data)
@@ -581,6 +557,7 @@ class Etap_erp(_ImportDb):
         self.НомерСледующегоЭтапа:int = None
         self.ФактическоеНачалоЭтапа:datetime.datetime = None
         self.ФактическоеОкончаниеЭтапа:datetime.datetime = None
+        self.ПартияПроизводства_ref:str = None
         self.parce_row_dict(item)
         if F.is_date(self.ФактическоеНачалоЭтапа,"%Y-%m-%dT%H:%M:%S"):
             self.ФактическоеНачалоЭтапа = F.strtodate(self.ФактическоеНачалоЭтапа,"%Y-%m-%dT%H:%M:%S")
@@ -612,6 +589,7 @@ class Etaps_erp():
         self.specification_code:str = ''
         self.err = False
         self.err_msg = ''
+        self.production_party_ref = ''
         if not self.nomenclature_ref:
             raise NotFoundNomenclature('Некорректно привязана номенклатура!')
         try:
@@ -706,7 +684,8 @@ class Etaps_erp():
                         ЭтапПроизводства2_2.НомерЭтапа КАК НомерЭтапа,
                         ЭтапПроизводства2_2.НомерСледующегоЭтапа КАК НомерСледующегоЭтапа,
                         ЭтапПроизводства2_2.ФактическоеНачалоЭтапа,
-                        ЭтапПроизводства2_2.ФактическоеОкончаниеЭтапа
+                        ЭтапПроизводства2_2.ФактическоеОкончаниеЭтапа,
+                        ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЭтапПроизводства2_2.ПартияПроизводства)) КАК ПартияПроизводства_ref
                     ИЗ
                         Документ.ЭтапПроизводства2_2 КАК ЭтапПроизводства2_2
                             ЛЕВОЕ СОЕДИНЕНИЕ Документ.ЗаказНаПроизводство2_2.Продукция КАК ЗаказНаПроизводство2_2Продукция
@@ -757,7 +736,8 @@ class Etaps_erp():
                         ЭтапПроизводства2_2.НомерЭтапа КАК НомерЭтапа,
                         ЭтапПроизводства2_2.НомерСледующегоЭтапа КАК НомерСледующегоЭтапа,
                         ЭтапПроизводства2_2.ФактическоеНачалоЭтапа,
-                        ЭтапПроизводства2_2.ФактическоеОкончаниеЭтапа
+                        ЭтапПроизводства2_2.ФактическоеОкончаниеЭтапа,
+                        ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЭтапПроизводства2_2.ПартияПроизводства)) КАК ПартияПроизводства_ref
                     ИЗ
                         Документ.ЭтапПроизводства2_2 КАК ЭтапПроизводства2_2
                             ЛЕВОЕ СОЕДИНЕНИЕ Документ.ЗаказНаПроизводство2_2.Продукция КАК ЗаказНаПроизводство2_2Продукция
@@ -805,6 +785,7 @@ class Etaps_erp():
         json_data = {'name':name,
                 'ref_py':self.ref_py,
                 'НомПартии_ЗП':self.НомПартии_ЗП,
+                'ПартияПроизводства_ref':self.production_party_ref,
                 'Подразделение_Key':ref_podr
                 }
         headers = dict(Accept='application/json')

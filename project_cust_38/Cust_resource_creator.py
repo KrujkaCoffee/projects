@@ -134,7 +134,7 @@ class SourceOfTheHalffactoryReceipt:
                         РесурсныеСпецификации.ПометкаУдаления = ЛОЖЬ
                          И РесурсныеСпецификации.Код = "{code}"
                     """
-        key, data_rez = APIERP.get_wet_request(req_text)
+        key, data_rez = APIERP.get_wet_request(req_text, lazy_method_huours=LAZY_METHOD_HUOURS)
         if key != 200:
             raise ConnectionError(f'Ошибка получения данных РесурсныеСпецификации из ERP')
 
@@ -227,8 +227,7 @@ class ResourceHeader:
                  ВыпускПроизвольнымиПорциями: bool = False,
                  ИмяБазы=CFG.Config.user_config.ERP_base_name['Значение'],
                  Описание: str = '',
-                 Код: str | None = None,  # для обновления = Код
-                 ПроверятьОсновноеИзделие: bool = True,
+                 Код: str | None = None  # для обновления = Код
                  ):
         '''
 
@@ -267,8 +266,7 @@ class ResourceHeader:
         self.Описание: Optional[str] = Описание
         self.Код: Optional[str] = Код  # для обновления = Код
 
-        if ПроверятьОсновноеИзделие:
-            self.check_ОсновноеИзделиеКод()
+        self.check_ОсновноеИзделиеКод()
         self.check_ТекущийПользователь()
         self.check_Даты()
         self.check_ОбновленияКод()
@@ -421,16 +419,15 @@ class TypeOfWork:
 
 class CurrentUser:
     def __init__(self, name: str):
-        safe_name = F.sql_quote_ident(name)
         req_text = f"""
                 ВЫБРАТЬ ПЕРВЫЕ 1
                     УНИКАЛЬНЫЙИДЕНТИФИКАТОР(Пользователи.Ссылка) КАК ref_key
                 ИЗ
                     Справочник.Пользователи КАК Пользователи
                 ГДЕ
-                    Пользователи.Наименование = {safe_name}
+                    Пользователи.Наименование = "{name}"
                 """
-        key, data_rez = APIERP.get_wet_request(req_text)
+        key, data_rez = APIERP.get_wet_request(req_text, lazy_method_huours=LAZY_METHOD_HUOURS)
         if key != 200:
             raise ConnectionError(f'Ошибка получения данных Пользователи из ERP')
 

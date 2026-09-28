@@ -24,7 +24,8 @@ import os
 import time
 import statistics
 import project_cust_38.calc_alloy_prices as CALC_ALLOY
-
+import project_cust_38.Cust_config as CFG
+CFG_prj = CFG.Config.project
 
 if TYPE_CHECKING:
     from API_server import data_parse_prices
@@ -36,11 +37,11 @@ os.environ['LAST_UPDATE_FOR1C_MODULE'] = str(time.time())
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-file_db = F.scfg('files')
-db_kplan = F.scfg('DB_kplan')
-db_resxml = F.scfg('db_resxml')
-db_naryad = F.scfg('Naryad')
-db_users = F.scfg('BD_users')
+file_db = CFG_prj.db_files
+db_kplan = CFG_prj.db_kplan
+db_resxml = CFG_prj.db_resxml
+db_naryad = CFG_prj.db_naryad
+db_users = CFG_prj.db_users
 
 DICT_ORGANIZTIONS = F.deploy_dict_c(CSQ.custom_request_c(db_naryad, f"""SELECT * FROM places""", rez_dict=True),
                                     "doc_prefix")

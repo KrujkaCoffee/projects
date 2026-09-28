@@ -41,7 +41,7 @@ class UserManager:
     btn_login: QtWidgets.QPushButton
     btn_logout: QtWidgets.QPushButton
 
-    employee_by_fio: dict[str, dict]
+    employee_by_fio: dict[str, dict] = None
     on_success_login: typing.Callable = None
     on_logout: typing.Callable = None
 

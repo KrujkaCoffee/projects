@@ -6423,7 +6423,8 @@ def fill_wtabl(dict_or_list, object, set_editeble_col_nomera={}, ogr_maxshir_kol
                selectionBehavior="SelectItems",count_rows_cell_max=1, load_links=False, conn_func_label_link=None,
                styleSheet=None,parent_self=None,sortingEnabled=False,selectionMode="ExtendedSelection",
                fncContextMenu=None,aliases_header:dict=None,dict_or_list_user_data=None,font_size:int|None=None,
-               aliases_vert_header:dict=None,modifier_user_data:int=101, lite_threshold: int = 50000):
+               aliases_vert_header:dict=None,modifier_user_data:int=101, lite_threshold: int = 50000,
+               order_fields:list[str]|None = None):
 
 #16.07.25
     """
@@ -6487,6 +6488,7 @@ def fill_wtabl(dict_or_list, object, set_editeble_col_nomera={}, ogr_maxshir_kol
             object_tbl.setSelectionMode(eval(f'QtWidgets.QTableWidget.SelectionMode.{str(selectionMode)}'))
             tbl_object_name = object_tbl.objectName()
 
+            list_user_data = None
             if isinstance(dict_or_list,dict):
                 list_of_data = F.dict_of_dicts_to_list_of_lists(dict_or_list)
                 if dict_or_list_user_data:
@@ -6509,6 +6511,13 @@ def fill_wtabl(dict_or_list, object, set_editeble_col_nomera={}, ogr_maxshir_kol
                             dict_or_list_user_data = [[_] for _ in dict_or_list_user_data]
                     list_of_data = dict_or_list
                     list_user_data = dict_or_list_user_data
+
+            if order_fields:
+                new_idx_fields = [list_of_data[0].index(_) for _ in order_fields if _ in list_of_data[0]]
+                if list_of_data:
+                    list_of_data = F.reorder_table(list_of_data,new_idx_fields)
+                if list_user_data:
+                    list_user_data = F.reorder_table(list_user_data,new_idx_fields)
 
             if set_editeble_col_nomera != '*':
                 for _ in set_editeble_col_nomera:

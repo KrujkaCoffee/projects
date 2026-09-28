@@ -35,6 +35,9 @@ from collections.abc import MutableMapping
 from types import ModuleType
 import keyword
 import unicodedata
+from operator import itemgetter
+
+
 try:
     print(f'import config try...')
     import config
@@ -164,6 +167,45 @@ class LazyModule:
             return f"<LazyModule {module_name!r}, not loaded>"
 
         return repr(module)
+
+
+
+def reorder_table(data, order):
+    """
+    Переупорядочивает столбцы таблицы (первая строка — заголовки).
+
+    data  : list[list] — таблица, где data[0] это заголовки
+    order : list[int]  — индексы столбцов в желаемом порядке
+
+    Возвращает НОВЫЙ список списков:
+    сначала столбцы в порядке `order`,
+    затем все оставшиеся индексы в исходном порядке.
+    """
+    if not data:
+        return []
+
+    n_cols = len(data[0])
+    order = list(order)
+
+    # --- валидация ---
+    if len(set(order)) != len(order):
+        raise ValueError("order содержит дубликаты")
+    for i in order:
+        if not isinstance(i, int) or not (0 <= i < n_cols):
+            raise ValueError(f"Недопустимый индекс: {i!r} (столбцов: {n_cols})")
+
+    # --- добиваем order остальными индексами в исходном порядке ---
+    used = set(order)
+    remaining = [i for i in range(n_cols) if i not in used]
+    full_order = order + remaining
+
+    # --- быстрая перестановка ---
+    if len(full_order) == 1:
+        i = full_order[0]
+        return [[row[i]] for row in data]
+
+    getter = itemgetter(*full_order)          # работает в C
+    return [list(getter(row)) for row in data]
 
 #02.07.2026
 def find_via_exe_name(app_name: str, roots: tuple[str, ...] | None = None):

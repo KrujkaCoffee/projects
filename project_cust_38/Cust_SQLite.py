@@ -3,7 +3,6 @@ import os.path
 import sqlite3
 import re
 import datetime as DT
-import sys
 import typing
 import logging
 
@@ -15,7 +14,6 @@ except Exception:
     CPG = None
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 _PG_CONN = os.environ.get('PG_CONN') == '1'
 _PG_STAGE2_READY = bool(CPG and CPG.configure_default_from_env(strict=False))
@@ -665,7 +663,7 @@ def custom_request_c(
 
     if _PG_CONN or is_ready_for_pg:
         postgres_query = postgres_query.replace('?', '%s').replace('==', '=')
-        f = CPG.custom_request_c(
+        return CPG.custom_request_c(
             bd=bd,
             custom_request_c=postgres_query,
             conn=conn,
@@ -679,9 +677,6 @@ def custom_request_c(
             lazy_method_hours=lazy_method_hours,
             debug=debug
         )
-        if f is None or f is False:
-            raise
-        return f
 
     if list_of_lists_c is None:
         list_of_lists_c = [[]]
