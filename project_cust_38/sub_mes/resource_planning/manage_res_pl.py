@@ -666,9 +666,19 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
                                     erp_service=erp_service,
                                     binding=binding
                                 )
-                                if reference is None:
-                                    CQT.msgbox('По выбранной связи запись не найдена. Значение поля сохранено')
-                                    return
+
+                            else:
+                                target_choice = DTSUB.planner_mes_types.choice_for_type(target_type)
+                                reference = service.resolve_link(
+                                    link,
+                                    source_choice,
+                                    source_ref,
+                                    target_choice,
+                                    presentation_key=target_attr.info.attr_view or None
+                                )
+                            if reference is None:
+                                CQT.msgbox('По выбранной связи запись не найдена. Значение поля сохранено')
+                                return
                             new_value = target_type(reference)
                             text_value = str(new_value)
 
