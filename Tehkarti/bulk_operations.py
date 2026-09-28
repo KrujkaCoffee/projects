@@ -398,8 +398,8 @@ def recalc_one(window, op, with_materials):
         elif F.is_numeric(pereh.text(7)):
             per_time = number_or_error(F.valm(pereh.text(7)), item_label(pereh))
         else:
-            if pereh.text(7).strip():
-                raise ValueError(f'{item_label(pereh)}: некорректное время перехода')
+            # Без параметров расчёт не запускается. Текстовое значение Тшт
+            # информационного перехода оставляем как есть и не суммируем.
             informative_count += 1
             continue
         transition_total += float(per_time)
