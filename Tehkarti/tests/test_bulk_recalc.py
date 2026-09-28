@@ -111,8 +111,8 @@ class BulkRecalcTests(unittest.TestCase):
     def calculate(self, op, params, op_result, transition_results=None, *, approved=(), strict=False,
                   with_materials=False, material_result=None, available=True, hardcoded=False):
         window = types.SimpleNamespace(
-            DICT_OPERS={'Резка': {'Tpz': '2'}},
-            spis_op=[['Резка', 100, 2, '']],
+            DICT_OPERS={op.text(0): {'Tpz': '2'}},
+            spis_op=[[op.text(0), 100, 2, '']],
             xl_formulas=FormulaRegistry(approved, strict, available))
         self.bulk.operacii.Data_oper_norm.DICT_OPERS_CALC = {'Резка': {}} if hardcoded else {}
         self.bulk.operacii.vremya_tsht = mock.Mock(return_value=op_result)
@@ -138,6 +138,24 @@ class BulkRecalcTests(unittest.TestCase):
         self.bulk.operacii.vremya_tsht.assert_called_once_with('Резка', [['Количество'], ['12']])
         self.bulk.operacii.vremya_tsht_perehodi.assert_called_once_with(
             'Резка', 'Отрезать', [['Длина'], ['7']], ['12'])
+
+    def test_informative_transition_with_text_time_is_left_untouched(self):
+        info = Item('Комплектовать ДСЕ на участке сборки', '2', time='—')
+        op = Item('Комплектовочная', '1', time='0.2', setup='2', children=[info])
+        changes, report = self.calculate(op, {op: [['Количество'], ['2']]}, 0.3)
+        self.assertEqual(changes, [(op, 7, '0.3')])
+        self.assertIn('информативных переходов: 1', report)
+        self.assertEqual(info.text(7), '—')
+        self.bulk.operacii.vremya_tsht_perehodi.assert_not_called()
+
+    def test_text_only_transition_is_not_added_to_numeric_transition_sum(self):
+        info = Item('Указать комплектность', '2', time='Без нормы')
+        numeric = Item('Упаковать', '2', time='1,5')
+        op = Item('Комплектовочная', '1', time='0', setup='2', children=[info, numeric])
+        changes, report = self.calculate(op, {op: [['Количество'], ['2']]}, 0)
+        self.assertEqual(changes, [(op, 7, '1.5')])
+        self.assertIn('информативных переходов: 1', report)
+        self.assertEqual(info.text(7), 'Без нормы')
 
     def test_zero_operation_uses_transitions_and_preserves_zero_result(self):
         calculated = Item('Отрезать', '2', time='5')
