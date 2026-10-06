@@ -254,6 +254,41 @@ class ResourceValidationTests(unittest.TestCase):
                 self.assertEqual(selected.name, "Сырье")
                 self.assertEqual(selected.parent, self.router.COST_ARTICLE_PARENT)
 
+        second_ref = "33333333-3333-3333-3333-333333333333"
+        body.rows[0].cost_article_ref = second_ref
+        body.rows[1].cost_article_ref = body.cost_article_ref
+        body.rows[0].erp_code = body.rows[1].erp_code
+        normalized = [self.router.normalize_resource_row(row, index)
+                      for index, row in enumerate(body.rows, start=1)]
+        articles = {body.cost_article_ref: article,
+                    second_ref: {"Ref_Key": second_ref, "Description": "Упаковка"}}
+        with patch.object(self.router, "CRC", fake_crc), patch.object(
+            self.router, "_resolve_cost_article", side_effect=lambda ref: articles[ref]
+        ) as resolve:
+            self.router._upload_resource_once(body, normalized)
+        materials = [material for stage in created[-1].stages for material in stage.data.materials]
+        self.assertEqual([material.args[2].ref_key for material in materials],
+                         [second_ref, body.cost_article_ref, body.cost_article_ref])
+        self.assertEqual([material.args[2].name for material in materials], ["Упаковка", "Сырье", "Сырье"])
+        self.assertEqual([material.args[1] for material in materials], [1.5, 2, 3])
+        self.assertEqual(resolve.call_count, 2)
+
+    def test_article_order_is_preserved_unless_server_default_is_configured(self):
+        first = {"Ref_Key": "11111111-1111-1111-1111-111111111111", "Description": "Я"}
+        second = {"Ref_Key": "33333333-3333-3333-3333-333333333333", "Description": "А"}
+        items = [first, second]
+        with patch.dict(self.router.os.environ, {"REVIT_COST_ARTICLE_DEFAULT_REF": ""}):
+            self.assertEqual(self.router._order_cost_articles(items), [first, second])
+        with patch.dict(self.router.os.environ, {"REVIT_COST_ARTICLE_DEFAULT_REF": second["Ref_Key"]}):
+            self.assertEqual(self.router._order_cost_articles(items), [second, first])
+        self.assertEqual(items, [first, second])
+
+    def test_invalid_server_default_does_not_silently_select_another_article(self):
+        for ref in ("not-a-uuid", "22222222-2222-2222-2222-222222222222"):
+            with self.subTest(ref=ref), patch.dict(self.router.os.environ, {"REVIT_COST_ARTICLE_DEFAULT_REF": ref}):
+                with self.assertRaises(self.router.ErpUnavailableError):
+                    self.router._order_cost_articles([])
+
     def test_partial_export_requires_opt_in_and_preserves_source_rows(self):
         body = self._body()
         body.rows[0].erp_code = ""

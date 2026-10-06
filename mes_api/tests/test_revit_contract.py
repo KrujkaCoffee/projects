@@ -71,6 +71,12 @@ class NomenclatureNormalizationTests(unittest.TestCase):
 
 
 class ResourceContractTests(unittest.TestCase):
+    def test_row_article_keeps_explicit_empty_separate_from_legacy_fallback(self):
+        self.assertIsNone(normalize_resource_row({}, 1).cost_article_ref)
+        self.assertIsNone(normalize_resource_row({"cost_article_ref": None}, 1).cost_article_ref)
+        self.assertEqual(normalize_resource_row({"cost_article_ref": "  "}, 1).cost_article_ref, "")
+        self.assertEqual(normalize_resource_row({"cost_article_ref": " row-ref "}, 1).cost_article_ref, "row-ref")
+
     def test_only_unfilled_codes_can_be_skipped(self):
         rows = [normalize_resource_row({"erp_code": code, "quantity": "1"}, index)
                 for index, code in enumerate(("", "-", " ", "A", 'A"invalid'), start=1)]
