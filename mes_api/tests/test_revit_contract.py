@@ -13,6 +13,7 @@ from mes_api.revit_contract import (
     normalize_search_query,
     normalize_search_window,
     parse_positive_quantity,
+    partition_resource_rows,
     quote_1c_string,
     quote_odata_string,
     unique_codes,
@@ -70,6 +71,22 @@ class NomenclatureNormalizationTests(unittest.TestCase):
 
 
 class ResourceContractTests(unittest.TestCase):
+    def test_only_unfilled_codes_can_be_skipped(self):
+        rows = [normalize_resource_row({"erp_code": code, "quantity": "1"}, index)
+                for index, code in enumerate(("", "-", " ", "A", 'A"invalid'), start=1)]
+        included, skipped = partition_resource_rows(rows, True)
+        self.assertEqual([row.row for row in included], [4, 5])
+        self.assertEqual([row.row for row in skipped], [1, 2, 3])
+        _, errors = local_resource_errors(included, contract_version=1)
+        self.assertEqual([error["row"] for error in errors], [5])
+        self.assertEqual(partition_resource_rows(rows), (rows, []))
+
+    def test_all_unfilled_rows_still_fail_empty_export(self):
+        rows = [normalize_resource_row({"erp_code": "-", "quantity": "1"}, 1)]
+        included, _ = partition_resource_rows(rows, True)
+        fields, _ = local_resource_errors(included, 2)
+        self.assertIn("rows", fields)
+
     def test_parses_revit_formatted_positive_quantity(self):
         self.assertEqual(parse_positive_quantity("1 234,50 м"), 1234.5)
         self.assertEqual(parse_positive_quantity(3), 3.0)
