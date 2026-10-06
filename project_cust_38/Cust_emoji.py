@@ -63,6 +63,7 @@ class ОперацииПроизводства:
     res: ClassVar[EmojiItem] = EmojiItem('📘', 'res', 'operations', 'Ресурсная спецификация')
     trd: ClassVar[EmojiItem] = EmojiItem('⏱️', 'trd', 'operations', 'Трудозатраты')
     purchased: ClassVar[EmojiItem] = EmojiItem('🛒', 'purchased', 'operations', 'Покупнина')
+    calculated: ClassVar[EmojiItem] = EmojiItem('🧮', 'calculated', 'operations', 'Автокалькулируемая')
 
 
 class ПоказателиМетрики:
@@ -111,6 +112,8 @@ class ПерсоналРоли:
     
 class ДокументыДанные:
     """Категория документов и данных"""
+    new_thread: ClassVar[EmojiItem] = EmojiItem('🗨️', 'new_thread', 'order', 'Новая дискуссия')
+    join_thread: ClassVar[EmojiItem] = EmojiItem('💬', 'join_thread', 'order', 'Обсуждение')
     expensive: ClassVar[EmojiItem] = EmojiItem('💰', 'expensive', 'documents', 'Дорогой материал')
     profile: ClassVar[EmojiItem] = EmojiItem('📇', 'profile', 'documents', 'Профиль')
     plan: ClassVar[EmojiItem] = EmojiItem('📅', 'plan', 'documents', 'План')

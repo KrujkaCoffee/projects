@@ -844,19 +844,22 @@ def load_cfg(log=True): #21.11.25
             msg = f'Файл настроек не найден по {put_conf}'
             return
         else:
-            try:
-                cfg = config.Config(put_conf)
-                print(f'    {put_conf}', end='\n') if log else None  # файл конфига, находится п папке конфиг
-            except:
-                print(f'    Не корректный файл {put_conf} формат должен быть без спецификации') if log else None
-                msg = f"Ошибка инициализации объекта локальной конфигурации {put_conf}"
-                win_msgbox(
-                    title="Ошибка",
-                    message=msg
-                )
-                quit(1)
+            # try:
+            #     cfg = config.Config(put_conf)
+            #     print(f'    {put_conf}', end='\n') if log else None  # файл конфига, находится п папке конфиг
+            # except:
+            #     print(f'    Не корректный файл {put_conf} формат должен быть без спецификации') if log else None
+            #     msg = f"Ошибка инициализации объекта локальной конфигурации {put_conf}"
+            #     win_msgbox(
+            #         title="Ошибка",
+            #         message=msg
+            #     )
+            #     quit(1)
             tmp_dict = dict()
-            cfg_dict = cfg.as_dict()
+            # cfg_dict = cfg.as_dict()
+            from project_cust_38.Constants import CFG
+            from dataclasses import asdict
+            cfg_dict = asdict(CFG)
             for key in cfg_dict.keys():
                 list_path = cfg_dict[key].split(';')
                 if len(list_path) > 1:

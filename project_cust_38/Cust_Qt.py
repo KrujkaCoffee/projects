@@ -333,6 +333,274 @@ MES_EDIT_CSS = """
     color: rgb(140,140,140);
     }
     """
+_MES_TREE_CSS = """QTreeWidget {
+    border: none;
+    background-color: rgb(250,250,250);
+    color: rgb(40,40,40);
+    selection-background-color: transparent;
+    outline: none;
+}
+/* Чекбокс/галка */
+QTreeWidget::indicator {
+    width: 14px;
+    height: 14px;
+    border: 1px solid rgb(180,180,180);
+    background-color: rgb(255,255,255);
+    border-radius: 2px;
+}
+
+QTreeWidget::indicator:hover {
+    border: 1px solid rgb(150,180,140);
+}
+
+QTreeWidget::indicator:unchecked {
+    background-color: rgb(255,255,255);
+}
+
+QTreeWidget::indicator:unchecked:disabled {
+    background-color: rgb(235,235,235);
+    border: 1px solid rgb(200,200,200);
+}
+
+QTreeWidget::indicator:checked {
+    background-color: rgb(120,170,90);
+    border: 1px solid rgb(90,140,70);
+    /* вот эта строка и рисует саму "птичку": */
+    image: url(__path_indicator_check);
+}
+
+QTreeWidget::indicator:checked:disabled {
+    background-color: rgb(200,210,195);
+    border: 1px solid rgb(170,180,165);
+}
+
+QTreeWidget::indicator:indeterminate {
+    background-color: rgb(120,170,90);
+    border: 1px solid rgb(90,140,70);
+    image: url(__path_indicator_partial);
+}
+/* Элементы */
+QTreeWidget::item {
+    border-bottom: 1px solid rgb(225,225,225);
+    padding: 2px 2px;
+    min-height: 18px;
+}
+
+/* Зебра */
+QTreeWidget::item:!selected:alternate {
+    background-color: rgb(244,246,248);
+}
+
+/* Hover по строке */
+QTreeWidget::item:hover {
+    background-color: rgb(238,244,232);
+}
+
+/* Выделение без фокуса */
+QTreeWidget::item:selected {
+    background-color: rgb(225,240,220);
+    color: rgb(35,35,35);
+}
+
+/* Выделение с фокусом */
+QTreeWidget::item:selected:focus {
+    background-color: rgb(205,225,195);
+    border: 1px solid rgb(170,205,160);
+    color: rgb(30,30,30);
+}
+
+/* Заголовки */
+QTreeWidget QHeaderView::section {
+    background-color: rgb(235,237,239);
+    color: rgb(30,30,30);
+    padding: 2px 2px;
+    border: none;
+    border-right: 1px solid rgb(200,200,200);
+    border-bottom: 2px solid rgb(180,180,180);
+    font-weight: bold;
+}
+
+/* Hover заголовка */
+QTreeWidget QHeaderView::section:hover {
+    background-color: rgb(220,225,230);
+}
+
+/* Вертикальный хедер (если есть) */
+QTreeWidget QHeaderView::section:vertical {
+    border-right: none;
+    border-bottom: 1px solid rgb(200,200,200);
+}
+
+/* Индикатор раскрытия ветки (стрелка) */
+QTreeWidget::branch {
+    background: transparent;
+}
+
+QTreeWidget::branch:has-children:!has-siblings:closed,
+QTreeWidget::branch:closed:has-children:has-siblings {
+    border-image: none;
+    image: url(__branch_closed);
+}
+
+QTreeWidget::branch:open:has-children:!has-siblings,
+QTreeWidget::branch:open:has-children:has-siblings {
+    border-image: none;
+    image: url(__branch_open);
+}
+
+/* Disabled */
+QTreeWidget:disabled {
+    background-color: rgb(235,235,235);
+    color: rgb(140,140,140);
+}
+
+QTreeWidget::item:disabled {
+    color: rgb(140,140,140);
+}"""
+
+
+def MES_TREE_CSS(
+        branch_closed:str='',
+        branch_open:str='',
+        path_check: str = '',
+        path_partial :str = ''
+
+                )-> str:
+    MES_TREE_CSS = copy.copy(_MES_TREE_CSS)
+
+    def gen_path(name_icon):
+        path_icon = f'{F.path_to_execut_file_c()}{"icons"}{F.sep()}{name_icon}'
+        sl = chr(92)
+        return  f'"{path_icon.replace(sl, r'/')}"'
+
+    dict_replace = {
+          '__path_check':path_check,
+          '__path_partial':path_partial,
+          '__branch_closed':branch_closed,
+          '__branch_open':branch_open,
+
+        }
+
+    for key, name_icon in dict_replace.items():
+
+        path_icon = gen_path(name_icon)
+        MES_TREE_CSS = MES_TREE_CSS.replace(key, path_icon)
+    return MES_TREE_CSS
+
+
+MES_TREE_EDIT_CSS = """QTreeWidget {
+    border: none;
+    background-color: rgb(250,250,250);
+    color: rgb(40,40,40);
+    selection-background-color: transparent;
+    outline: none;
+}
+
+
+/* Заголовки */
+QTreeWidget QHeaderView::section {
+    background-color: rgb(235,237,239);
+    color: rgb(30,30,30);
+    padding: 2px 2px;
+    border: none;
+    border-right: 1px solid rgb(200,200,200);
+    border-bottom: 2px solid rgb(180,180,180);
+    font-weight: bold;
+}
+
+/* Hover заголовка */
+QTreeWidget QHeaderView::section:hover {
+    background-color: rgb(220,225,230);
+}
+
+/* Вертикальный хедер (если есть) */
+QTreeWidget QHeaderView::section:vertical {
+    border-right: none;
+    border-bottom: 1px solid rgb(200,200,200);
+}
+
+/* Индикатор раскрытия ветки (стрелка) */
+QTreeWidget::branch {
+    background: transparent;
+}
+
+QTreeWidget::branch:has-children:!has-siblings:closed,
+QTreeWidget::branch:closed:has-children:has-siblings {
+    border-image: none;
+    image: url(:/icons/branch-closed.png); /* при необходимости подставь свои иконки */
+}
+
+QTreeWidget::branch:open:has-children:!has-siblings,
+QTreeWidget::branch:open:has-children:has-siblings {
+    border-image: none;
+    image: url(:/icons/branch-open.png);
+}
+
+/* Disabled */
+QTreeWidget:disabled {
+    background-color: rgb(235,235,235);
+    color: rgb(140,140,140);
+}
+
+QTreeWidget::item:disabled {
+    color: rgb(140,140,140);
+}"""
+
+TREE_CSS = """
+QTreeWidget, QTreeView {
+    background: #ffffff;
+    border: 1px solid #e3e6ea;
+    border-radius: 6px;
+    outline: 0;
+    padding: 4px;
+    font: 13px "Segoe UI", "Inter", sans-serif;
+    color: #1f2328;
+}
+
+QTreeWidget::item, QTreeView::item {
+    padding: 6px 8px;
+    margin: 2px 0;
+    border-radius: 4px;
+    color: #1f2328;
+}
+
+QTreeWidget::item:hover, QTreeView::item:hover {
+    background: #f3f6fb;
+}
+
+QTreeWidget::item:selected, QTreeView::item:selected {
+    background: #e8f0fe;
+    color: #1a3d8f;
+}
+"""
+PLAINTEXT_CSS = """
+QPlainTextEdit {
+    background: #ffffff;
+    border: 1px solid #e3e6ea;
+    border-radius: 6px;
+    padding: 8px 10px;
+    font: 13px "Segoe UI", "Inter", sans-serif;
+    color: #1f2328;
+    selection-background-color: #e8f0fe;
+    selection-color: #1a3d8f;
+}
+
+QPlainTextEdit:focus {
+    border: 1px solid #b9cdf5;
+    outline: 0;
+}
+
+QPlainTextEdit:disabled {
+    background: #f6f7f9;
+    color: #9aa4b2;
+}
+
+QPlainTextEdit[readOnly="true"] {
+    background: #fafbfc;
+    color: #4a5460;
+}
+"""
+
 FILTR_TOOLTIP = f"""фильтр по вхождению: \n* - любой символ\n! - не\n= - полное совпадение\n| - ИЛИ\n& - И
                         \n'... - RegEx \nдаты: <24-11-11 & >24-11-01 или >сегодня(-5) & <now()"""
 
@@ -1861,6 +2129,14 @@ class TableContext:
     def current_column_name(self)->Any:
         c = self.tbl.currentColumn()
         return name_col_by_num(self.tbl,c)
+
+    def selected_rows(self)->list[TableRow]:
+
+        idxs = set([index.row() for index in self.tbl.selectedIndexes()])
+        if not idxs:
+            return []
+        return [self.get_row(_) for _ in idxs]
+
 
     def find_row(self,rules:dict,first=False)->list[TableRow]|TableRow:
         list_res = []
@@ -6415,6 +6691,180 @@ class SelectionBehaviors(enum.Enum):
         return self.label
 
 
+class FloatingButtonManager:
+    def __init__(self, discuss_anchor_field_name:str,fnc_on_click:callable,fnc_on_selection_changed:callable,
+                 fnc_oform:callable,addit_data=None):
+        self.discuss_anchor_field_name:str = discuss_anchor_field_name
+        self.fnc_on_click:callable = fnc_on_click
+        self.fnc_on_selection_changed:callable = fnc_on_selection_changed
+        self.fnc_oform:callable = fnc_oform
+        self.addit_data = addit_data
+
+
+def _attach_floating_button(
+    table,
+    floating_btn_mngr:FloatingButtonManager,
+    text="⋯",
+    tooltip:str|None = None,
+    size:tuple[int, int] =(26, 22),
+    right_margin:int=6,
+
+    style=None,
+):
+    # ── если уже привязана — снести старую ──
+    old = getattr(table, "_float_btn", None)
+    if old is not None:
+        # отключаем сигналы, чтобы _reposition не прилетел на удалённый виджет
+        try:
+            old.clicked.disconnect()
+        except TypeError:
+            pass
+        old.setParent(None)
+        old.deleteLater()
+        table._float_btn = None
+
+    """
+    Прикрепляет плавающую кнопку к правому видимому краю выбранной строки.
+
+    :param table: QTableWidget (или QTableView)
+    :param text: надпись на кнопке
+    :param size: (width, height) кнопки
+    :param right_margin: отступ от правого края viewport
+    :param on_click: callable(row_index) или callable() — вызывается при клике
+    :param style: QSS строка для кнопки
+    :return: созданный QPushButton
+    """
+
+
+    # --- создаём кнопку как ребёнка viewport ---
+    btn = QtWidgets.QPushButton('', table.viewport())
+    if tooltip:
+        btn.setToolTip(tooltip)
+    btn.setFixedSize(*size)
+    btn.setCursor(Qt.PointingHandCursor)
+    btn.setStyleSheet(style or """
+        QPushButton {
+            background: #4a90e2;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        QPushButton:hover { background: #357ab8; }
+    """)
+    # --- сохраняем параметры на самой таблице ---
+    table._float_btn = btn
+    table._float_btn_margin = right_margin
+    table._discuss_anchor_field_name = floating_btn_mngr.discuss_anchor_field_name
+    table._float_btn_on_click = floating_btn_mngr.fnc_on_click
+    table._float_selection_changed = floating_btn_mngr.fnc_on_selection_changed
+    table._addit_data = floating_btn_mngr.addit_data
+    table._last_reposition_row = None
+
+    if floating_btn_mngr.fnc_oform:
+        floating_btn_mngr.fnc_oform(table, table.currentRow(),btn,table._discuss_anchor_field_name,table._addit_data)
+
+    btn.hide()
+
+
+
+
+    def _selection_changed():
+        row = table.currentRow()
+        if row < 0:
+            return
+
+        try:
+            btn.width()
+        except RuntimeError:
+            # виджет удалён — считаем, что нас больше нет
+            return
+
+        if table._last_reposition_row != row and table._float_selection_changed:
+            table._float_selection_changed(table, row, btn, table._discuss_anchor_field_name, table._addit_data)
+            btn.update()
+        table._last_reposition_row = row
+
+
+    # --- функция пересчёта позиции ---
+    def _reposition():
+
+        try:
+            row = table.currentRow()
+            ...
+        except RuntimeError:
+            # виджет удалён — считаем, что нас больше нет
+            return
+
+        try:
+            btn.width()
+        except RuntimeError:
+            # виджет удалён — считаем, что нас больше нет
+            return
+
+
+        if row < 0:
+            btn.hide()
+            return
+
+        # y-координата строки в viewport (учитывает вертикальный скролл,
+        # никак не зависит от горизонтального)
+        y_top = table.rowViewportPosition(row)
+        h = table.rowHeight(row)
+
+        # если строка целиком выше или ниже видимой области — прячем
+        if y_top + h <= 0 or y_top >= table.viewport().height():
+            btn.hide()
+            return
+
+        # x всегда от правого края видимой области
+        x = table.viewport().width() - btn.width() - table._float_btn_margin
+        # центрируем по вертикали строки
+        y = y_top + h // 2 - btn.height() // 2
+
+        btn.move(x, y)
+        btn.raise_()
+        btn.show()
+
+
+
+
+
+    # --- обработчик клика ---
+    def _clicked():
+        cb = table._float_btn_on_click
+        if cb is None:
+            return
+        # пытаемся передать номер строки, если функция его принимает
+        try:
+            cb(table, table.currentRow(), btn,table._discuss_anchor_field_name,table._addit_data)
+        except TypeError:
+            cb()
+
+    btn.clicked.connect(_clicked)
+
+    # --- подписки на события ---
+    table.itemSelectionChanged.connect(_reposition)
+    if table._float_selection_changed:
+        table.itemSelectionChanged.connect(_selection_changed)
+    table.verticalScrollBar().valueChanged.connect(_reposition)
+    table.horizontalScrollBar().valueChanged.connect(_reposition)
+
+    # resizeEvent у QTableWidget переопределяем через eventFilter на viewport
+    # (проще и надёжнее, чем monkey-patching класса)
+    original_resize = table.resizeEvent
+    def resizeEvent(event, _orig=original_resize):
+        if _orig:
+            _orig(event)
+        _reposition()
+    table.resizeEvent = resizeEvent
+
+    # первичная отрисовка
+    _reposition()
+
+    return btn
+
+
 def fill_wtabl(dict_or_list, object, set_editeble_col_nomera={}, ogr_maxshir_kol=200,
                  min_width_col=20, height_row=30, colorful_edit = True, auto_type=True,head_column:int = None,
                hide_head_column:bool=False,hide_head_rows:bool=False,StretchLastSection=True,select_last_row=False,
@@ -6424,7 +6874,10 @@ def fill_wtabl(dict_or_list, object, set_editeble_col_nomera={}, ogr_maxshir_kol
                styleSheet=None,parent_self=None,sortingEnabled=False,selectionMode="ExtendedSelection",
                fncContextMenu=None,aliases_header:dict=None,dict_or_list_user_data=None,font_size:int|None=None,
                aliases_vert_header:dict=None,modifier_user_data:int=101, lite_threshold: int = 50000,
-               order_fields:list[str]|None = None):
+               order_fields:list[str]|None = None, floating_btn_mngr:FloatingButtonManager|None = None):
+    if floating_btn_mngr:
+
+        _attach_floating_button(object,floating_btn_mngr)
 
 #16.07.25
     """
@@ -7566,13 +8019,16 @@ def msgboxgYN(msg, btn0_name="Да", btn1_name="Нет", func_theme = '', icon =
     # msgBox.setFocus()
     if func_theme != '':
         func_theme(msgBox)
-
-    config_theme_path = F.sep().join([F.path_to_execut_file_c(), 'css', 'current_theme_name.txt'])
-    if F.existence_file_c(config_theme_path):
-        theme = F.load_file(config_theme_path)
-        apply_css_theme(msgBox, theme)
     else:
-        msgBox.setStyleSheet(None)
+        try:
+            msgBox.setStyleSheet(CFG.Config.window_manager.active.window.styleSheet())
+        except:
+            config_theme_path = F.sep().join([F.path_to_execut_file_c(), 'css', 'current_theme_name.txt'])
+            if F.existence_file_c(config_theme_path):
+                theme = F.load_file(config_theme_path)
+                apply_css_theme(msgBox, theme)
+            else:
+                msgBox.setStyleSheet(None)
 
     returnValue = msgBox.exec()
 
@@ -7713,16 +8169,18 @@ def msgbox(msg, btn0_name="OK", func_theme = '', time_life = 0, icon = QtWidgets
         if time_life>0:
             QtCore.QTimer.singleShot(round(time_life*1000), lambda: msgBox.done(0))
 
-        config_theme_path = F.sep().join([F.path_to_execut_file_c(), 'css', 'current_theme_name.txt'])
         if stylesheet:
             msgBox.setStyleSheet(stylesheet)
-
         else:
-            if F.existence_file_c(config_theme_path):
-                theme = F.load_file(config_theme_path)
-                apply_css_theme(msgBox, theme)
-            else:
-                msgBox.setStyleSheet(None)
+            try:
+                msgBox.setStyleSheet(CFG.Config.window_manager.active.window.styleSheet())
+            except:
+                config_theme_path = F.sep().join([F.path_to_execut_file_c(), 'css', 'current_theme_name.txt'])
+                if F.existence_file_c(config_theme_path):
+                    theme = F.load_file(config_theme_path)
+                    apply_css_theme(msgBox, theme)
+                else:
+                    msgBox.setStyleSheet(None)
 
         returnValue = msgBox.exec()
 
@@ -9928,7 +10386,7 @@ def msgboxg_get_table(self, msg, dict_or_list, btn0_name="✔ Ввод", btn1_na
             4	    ContiguousSelection	        Только смежные элементы (работает Shift, но не Ctrl)
     :param  not_standart_close
           func_btn0 = def fnc_check_select(btn: QtWidgets.QPushButton, dialog:CQT.Dialog_tbl, tbl: QtWidgets.QTableWidget, parent_self):
-                if btn.text() == 'smth':
+                if dialog.is_btn_yes_role(btn):
                         ...
                         dialog.accept()
                     else:
@@ -12006,9 +12464,58 @@ class ResizeTarget:
     save_path: str          # полный путь к файлу сохранения
 
 
+def connect_to_resize_treew(self, tree_o:QtWidgets.QTreeWidget,tmp_dir)->ResizeTarget:
+    header = tree_o.header()
+    target = ResizeTarget(
+        widget=tree_o,
+        obj_name=tree_o.objectName(),
+        type_name='QTreeWidget',
+        key=f'QTreeWidget:{tree_o.objectName()}',
+        save_path=f'{tmp_dir}{F.sep()}{tree_o.objectName()}_column_widths',
+    )
+    header.sectionResized.connect(
+        lambda idx, old, new, t=target: _on_resize_event(self, t)
+    )
+    return target
+
+def connect_to_resize_tablew(self, table:QtWidgets.QTableWidget,tmp_dir)->ResizeTarget:
+
+    table.setToolTip('Ctrl+Shift+C - Копировать таблицу\nCtrl+Shift+P - Вывод доп.табличной формы')
+    header = table.horizontalHeader()
+    obj_name = table.objectName()
+    # print(f'[TABLE] Найдена таблица: {obj_name}')
+
+    target = ResizeTarget(
+        widget=table,
+        obj_name=obj_name,
+        type_name='QTableWidget',
+        key=f'QTableWidget:{obj_name}',
+        save_path=f'{tmp_dir}{F.sep()}{obj_name}_column_widths',
+    )
+
+    receivers_before = header.receivers(header.sectionResized)
+
+    def make_handler(sel, tgt):
+        def handler(*args):
+            # print(f'[HANDLER] Вызван с args={args}')
+            return _on_resize_event(sel, tgt)
+
+        return handler
+
+    # _resize_slots существует только для удержания ссылки.
+    slot = make_handler(self, target)
+
+    if not hasattr(self, '_resize_slots'):
+        self._resize_slots = []
+    self._resize_slots.append(slot)
+
+    header.sectionResized.connect(slot)
+
+    install_sort_guard(table)  # 03.04.2026
+    return target
 
 @onerror
-def connect_to_resize(self,tmp_dir):
+def connect_to_resize(self,tmp_dir)->ResizeTarget:
 
     if getattr(self,'_connected_to_resize',False):
         return
@@ -12016,56 +12523,14 @@ def connect_to_resize(self,tmp_dir):
 
     for ui_name, ui in list(self.__dict__.items()):
         if len(ui_name) < 4 and 'ui' in ui_name:
-            for item, obj in list(ui.__dict__.items()):
-                if isinstance(ui.__dict__[item],QtWidgets.QTableWidget):
-                    table = ui.__dict__[item]
-                    table.setToolTip('Ctrl+Shift+C - Копировать таблицу\nCtrl+Shift+P - Вывод доп.табличной формы')
-                    header = ui.__dict__[item].horizontalHeader()
-                    if 'filtr' in item:
+            for name, obj in list(ui.__dict__.items()):
+                if isinstance(ui.__dict__[name],QtWidgets.QTableWidget):
+                    if 'filtr' in name:
                         continue
-                    obj_name = obj.objectName()
-                    #print(f'[TABLE] Найдена таблица: {obj_name}')
-
-                    target = ResizeTarget(
-                        widget=obj,
-                        obj_name=obj.objectName(),
-                        type_name='QTableWidget',
-                        key=f'QTableWidget:{obj.objectName()}',
-                        save_path=f'{tmp_dir}{F.sep()}{obj.objectName()}_column_widths',
-                    )
-                    header = obj.horizontalHeader()
-                    receivers_before = header.receivers(header.sectionResized)
-                    
-                    def make_handler(sel, tgt):
-                        def handler(*args):
-                            #print(f'[HANDLER] Вызван с args={args}')
-                            return _on_resize_event(sel, tgt)
-
-                        return handler
-                    # _resize_slots существует только для удержания ссылки.
-                    slot = make_handler(self, target)
-
-                    if not hasattr(self, '_resize_slots'):
-                        self._resize_slots = []
-                    self._resize_slots.append(slot)
-
-                    header.sectionResized.connect(slot)
-
-                    install_sort_guard(table) #03.04.2026
+                    target = connect_to_resize_tablew(self,obj,tmp_dir)
                     # ── QTreeWidget ────────────────────────────────────────────────
                 elif isinstance(obj, QtWidgets.QTreeWidget):
-                    header = obj.header()
-                    target = ResizeTarget(
-                        widget=obj,
-                        obj_name=obj.objectName(),
-                        type_name='QTreeWidget',
-                        key=f'QTreeWidget:{obj.objectName()}',
-                        save_path=f'{tmp_dir}{F.sep()}{obj.objectName()}_column_widths',
-                    )
-                    header.sectionResized.connect(
-                        lambda idx, old, new, t=target: _on_resize_event(self, t)
-                    )
-
+                    target = connect_to_resize_treew(self,obj,tmp_dir)
                     #def make_handler(header):
                     #    return lambda idx, old, new, h=header: on_section_resized_tree(self, tmp_dir,  h, idx, old, new)
 
@@ -12414,7 +12879,7 @@ def adjust_last_column_width(table: QtWidgets.QTableWidget, *args):
                     header.resizeSection(last_col, limit_last_col)
 @onerror
 def load_column_widths(self='',
-                       tbl: QtWidgets.QTableWidget | QtWidgets.QSplitter = None,
+                       tbl: QtWidgets.QTableWidget | QtWidgets.QSplitter | QtWidgets.QTreeWidget = None,
                        tmp_dir='', adjust_last_column:bool=True,only_nums:set[int]=None)->list:
     
     

@@ -12,6 +12,7 @@ class FileDXF(CMS._ImportDb):
         self.id_dse: int | None = None
         self.name: str | None = None
         self.count: int | None = None
+        self.comment: str | None = None
         self._dirty: bool = False
 
         if isinstance(pathf_or_dict,str):
@@ -32,7 +33,9 @@ class FileDXF(CMS._ImportDb):
             upd_dict = {'id': self.id,
              'id_dse': self.id_dse,
              'name': self.name,
-             'count': self.count}
+             'count': self.count,
+             'comment': self.comment,
+                        }
 
             rez = CSQ.custom_request_c(PRJCT.db_naryad,f"""UPDATE naryad_composit_parts_files SET 
                             ({', '.join(upd_dict.keys())})
@@ -46,7 +49,9 @@ class FileDXF(CMS._ImportDb):
             ins_dict = {
                         'id_dse': self.id_dse,
                         'name': self.name,
-                        'count': self.count}
+                        'count': self.count,
+                        'comment': self.comment,
+            }
 
             rez = CSQ.custom_request_c(PRJCT.db_naryad, f"""INSERT INTO 
                         naryad_composit_parts_files ({', '.join(ins_dict.keys())})
@@ -59,6 +64,10 @@ class FileDXF(CMS._ImportDb):
             self._dirty = False
             return True
 
+
+    def set_comment(self,value:str|None=None):
+        self.comment = F.sanitize_text(value)
+        self._dirty = True
 
     def set_count(self,value:int|None=None):
         self.count = value
@@ -273,7 +282,8 @@ class  ConnectionDSE(CMS._ImportDb):
         file_o.id_dse = self.id
 
     def get_template_files_edit(self):
-        return  [{'_id':id, 'Количество':_.count if _.count else '','Название':_.name} for id,_ in self.files_dxf.items()]
+        return  [{'_id':id, 'Количество':_.count if _.count else '','Название':_.name,'Примечание':_.comment}
+                 for id,_ in self.files_dxf.items()]
 
 
     def __repr__(self):

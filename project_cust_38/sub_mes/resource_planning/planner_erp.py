@@ -3,7 +3,7 @@ from dataclasses import dataclass, replace
 
 from project_cust_38 import api_erp_commands as APIERP
 from project_cust_38.sub_mes.resource_planning import attribute_binding as AB
-
+from uuid import UUID
 
 ERP_ENTITY_REF_VERSION = 1
 
@@ -55,6 +55,10 @@ class ErpEntityRow:
     reference: ErpEntityRef
     values: dict[str, object]
     presentations: dict[str, str]
+
+class ErpSearchResult:
+    items: tuple[ErpEntityRef, ...]
+    has_more: bool
 
 
 class ErpEntityService:
@@ -193,3 +197,35 @@ class ErpEntityService:
             presentations=presentations
         )
 
+    def search_test(
+            self,
+            field: AB.BindingField | dict,
+            text: str,
+            *,
+            limit: int = 100
+    ) -> ErpSearchResult:
+        """Поиск значения по одному строковому полю ERP"""
+        if isinstance(field, dict):
+            field = AB.BindingField.from_dict(field)
+        if not isinstance(field, AB.BindingField):
+            raise ErpEntityError('field должен быть типа BindingField или dict')
+        if field.provider != AB.SourceProvider.ERP or field.relation_steps:
+            raise ErpEntityError('атрибут provider у field не поддерживается')
+        if not isinstance(field.field_key, str) or not field.field_key.isidentifier():
+            raise ErpEntityError('Некорректное имя поля')
+        if type(limit) is not int or not 1 <= limit <= 500:
+            raise ErpEntityError('Лимит должен быть целым чистом от 1 до 500')
+        if not isinstance(text, str) or len(text) > 200:
+            raise ErpEntityError('Строка поиска превышает лимит')
+
+        source_key = self.__source_key_getter()
+        if field.source_key not in (source_key, field.entity_key):
+            raise ErpEntityError('Поле относится к другому источнику ERP')
+        table = self.__query_table(field.entity_key)
+        text = text.strip()
+        if text:
+            from project_cust_38 import Cust_Functions as F
+            for char in '%_[]^':
+                pattern = pattern.replace(char, '~' + char)
+            pattern =
+            pattern = text.replace('~', '~~')

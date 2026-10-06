@@ -62,7 +62,8 @@ class GetFromDataclass():
             CQT.msgbox(f'{name} не найден в БД')
             return False
 
-class OperationConfig: #28.10.25
+
+class OperationConfig:  # 28.10.25
     @classmethod
     def operation_table_path(cls, operation: str, pereh: str = ''):
         cache_with_poki = Path(F.scfg('cash')) / str(CFG.Config.place.poki)
@@ -91,7 +92,8 @@ def vremya_tsht_perehodi(ima_operacii, ima_perehoda, arr_tmp, arr_tmp_parent):
         for param in params:
             if is_xl:
                 head = arr_tmp[0] if len(arr_tmp) > 0 else []
-                vrema += obj.client.srv_pereh_calc(oper_name=ima_operacii, pereh_name=ima_perehoda, params=[head, param])
+                vrema += obj.client.srv_pereh_calc(oper_name=ima_operacii, pereh_name=ima_perehoda,
+                                                   params=[head, param])
                 continue
             if CFG.Config.place.poki == 1:
                 return
@@ -1510,7 +1512,7 @@ def toch_ust_pereust_sn_det(ima_operacii, ima_perehoda, arr_tmp, arr_tmp_parent)
                 kkon = 1.2
 
             summa_vremeni += tvy * (
-                        1 + pereust) * kkon  # + tpz/n --  это должно быть в результируюей операции токарная а не здесь
+                    1 + pereust) * kkon  # + tpz/n --  это должно быть в результируюей операции токарная а не здесь
 
     else:
         return 0
@@ -1720,6 +1722,7 @@ def frezerovnie_ploskosti(ima_operacii, ima_perehoda, arr_tmp, arr_tmp_parent):
     summa_vremeni *= 1.2 * koef_mater
     return summa_vremeni
 
+
 class Operations:
     def __init__(self, params) -> None:
         self.params = params
@@ -1732,6 +1735,7 @@ class Operations:
             row = [elem.split(';')[num] for elem in self.params[1]]
             converted_params.append(row)
         return converted_params
+
 
 def vremya_tsht(ima_operacii, arr_tmp):
     try:
@@ -2635,9 +2639,7 @@ def sles_rezba(ima_operacii, arr_tmp):
 
     putf = put + F.sep() + 'table1.txt'
 
-
     for i in range(len(count_arr)):
-
         material = str(mat_arr[i])
         gluh = str(gluh_arr[i])
         diam = F.valm(diam_arr[i])
@@ -3583,8 +3585,8 @@ class Data_oper_norm():
             , "Вид сварки(20-П,21-А)":
                        {"type": "str", "comment": '', "vals": {20: {'val': 'Полуавтоамат', 'prim': 'Полуавтоамат'},
                                                                21: {'val': 'Аргон', 'prim': 'Аргон'}, }}
-            # , "Кол-во входящих ДСЕ": #21.05.2026 по задаче 100071184
-            #            {"type": "int", "comment": '', "vals": {}}
+                   # , "Кол-во входящих ДСЕ": #21.05.2026 по задаче 100071184
+                   #            {"type": "int", "comment": '', "vals": {}}
             , "Положение шва":
                        {"type": "int", "comment": '', "vals": {
                            1: {'val': 'нижнее', 'prim': 'нижнее в пространстве'},
@@ -3598,7 +3600,7 @@ class Data_oper_norm():
 
 
 @CQT.onerror
-def sb_pod_sv(ima_operacii, arr_tmp): #28.10.25
+def sb_pod_sv(ima_operacii, arr_tmp):  # 28.10.25
     def acc_type(ima_operacii, name):
         if arr_tmp[1][F.num_col_by_name_in_hat_c(arr_tmp, name)] == '+':
             return 0
@@ -3647,7 +3649,8 @@ def sb_pod_sv(ima_operacii, arr_tmp): #28.10.25
 
     if vid_konstr == '1':  # СБОРКА МЕТАЛЛОКОНСТРУКЦИЙ ПОД СВАРКУ ИЗ ЛИСТОВОГО МЕТАЛЛА
         koef_slognost = \
-        Data_oper_norm.DICT_OPERS_CALC[ima_operacii]['Коэфф сложности']['Коэфф сложности значения'][slogn_sobs][vid_izd]
+            Data_oper_norm.DICT_OPERS_CALC[ima_operacii]['Коэфф сложности']['Коэфф сложности значения'][slogn_sobs][
+                vid_izd]
         Tsht = 0.0158 * mass ** 0.26 * kol_vo ** 0.71 * dl_stik ** 0.18 * koef_met * koef_slognost * koef_uzl * 60
 
     elif vid_konstr == '2':  # сборка металлоконструкций под сварку из профильного и листового металла
@@ -3779,7 +3782,7 @@ def upacovivanie(ima_operacii, arr_tmp):
     idx_N = F.num_col_by_name_in_hat_c(arr_tmp, 'Количество')
     idx_mat_name = F.num_col_by_name_in_hat_c(arr_tmp, 'Изделие')
     mat_name = arr_tmp[1][idx_mat_name]
-    if mat_name == '3': # ШГ
+    if mat_name == '3':  # ШГ
         t_p = 10.03  # Время, происходящее на поддоне, мин/ кв.м
         t_d = 0.06  # Время работы с ШГ, мин/ мм упаковка
         const = 49.8  # Постоянные операции, мин
@@ -3787,20 +3790,20 @@ def upacovivanie(ima_operacii, arr_tmp):
         D = float(arr_tmp[-1][idx_D])  # Диаметр  ШГ, мм
         N = float(arr_tmp[-1][idx_N])  # Количество ШГ  на поддоне
         return t_p * S + t_d * D * N + const, 5
-    if mat_name == '1': # КК
+    if mat_name == '1':  # КК
         t_p = 7.53  # Время  , происходящее на поддоне, мин/ кв.м
         t_d = 0.02  # Время  работы с ШГ, мин/ мм упаковка
         const = 115.7  # Постоянные операции, мин
         S = float(arr_tmp[-1][idx_S])  # Площадь поддона, кв.метры
         D = float(arr_tmp[-1][idx_D])  # Диаметр  ШГ, мм
         return t_p * S + t_d * D + const, 5
-    if mat_name == '4': # ГГ
+    if mat_name == '4':  # ГГ
         t_co_gg = 85.0  # Время комплектовки ГГ, мин/шт
         t_co_so = 85.0  # Время комплектовкиСОПЛА, мин/шт
         const = 96.0  # Постоянные операции, мин
         N = float(arr_tmp[-1][idx_N])  # Количество ШГ  на поддоне
         return (t_co_gg + t_co_so) * N + const, 5
-    if mat_name == '2': # КТ
+    if mat_name == '2':  # КТ
         t_p = 10.03  # Время, происходящее на поддоне, мин/ кв.м
         const = 49.8  # Постоянные операции, мин
         S = float(arr_tmp[-1][idx_S])  # Площадь поддона, кв.метры
@@ -3831,6 +3834,7 @@ def valtcovka_linz(ima_operacii, arr_tmp):
     Nvr = 25 if diametr_linz <= 1000 else 21 if diametr_linz <= 1500 else 16 if diametr_linz <= 2000 else 12
     return Nvr * segmenti
 
+
 def normilize_path(path: str) -> str:
     pattern = r'\\([^\\]+ / \d+)\\'
     match = re.search(pattern, path)
@@ -3840,6 +3844,7 @@ def normilize_path(path: str) -> str:
         if len(op_code) == 2:
             return path.replace(result, op_code[0])
     return path
+
 
 def table(putf, vert, gor=None, rez_valm=True):
     putf = normilize_path(putf)
@@ -3941,7 +3946,6 @@ def oform_operation(self: mywindow2, tbl: QTableWidget, oper_name: str):
                                     break
                             break
 
-
     def hide_fields(self: mywindow2, tbl: QTableWidget, oper_name, name_field, key):
         list_show = ''
         if 'show' in Data_oper_norm.DICT_OPERS_CALC[oper_name][name_field]['vals'][key]:
@@ -3993,7 +3997,7 @@ def oform_operation(self: mywindow2, tbl: QTableWidget, oper_name: str):
             dict_vals = dict()
             for key in Data_oper_norm.DICT_OPERS_CALC[oper_name][param]["vals"]:
                 dict_vals[Data_oper_norm.DICT_OPERS_CALC[oper_name][param]["vals"][key]['val']] = \
-                Data_oper_norm.DICT_OPERS_CALC[oper_name][param]["vals"][key]['prim']
+                    Data_oper_norm.DICT_OPERS_CALC[oper_name][param]["vals"][key]['prim']
 
             if len(dict_vals):
                 if not self.pself.chbox_edit_combos:
@@ -4033,7 +4037,7 @@ def oform_pereh(self: mywindow2, tbl: QTableWidget, pereh_name: str, struct: dic
                 break
 
         item = tbl.item(row, col)
-        if item is not None: # 26.03.2026
+        if item is not None:  # 26.03.2026
             item.setText(str(val))
 
         # self.ui2.lbl_prim.setText(struct[name_field]['comment'])
@@ -4044,7 +4048,7 @@ def oform_pereh(self: mywindow2, tbl: QTableWidget, pereh_name: str, struct: dic
             dict_vals = dict()
             for key in struct[param]["vals"]:
                 dict_vals[struct[param]["vals"][key]['val']] = \
-                struct[param]["vals"][key]['prim']
+                    struct[param]["vals"][key]['prim']
 
             if len(dict_vals):
                 if not self.pself.chbox_edit_combos:
@@ -4060,6 +4064,7 @@ def oform_pereh(self: mywindow2, tbl: QTableWidget, pereh_name: str, struct: dic
 @CQT.onerror
 def del_welds(self: mywindow2, *args):
     CQT.clear_tbl(self.ui2.tab_vib)
+
 
 def check_line(self, dict_line):
     oper_name = self.ui2.lineEdit.text()
@@ -4196,6 +4201,7 @@ def del_one_weld(self: mywindow2, *args):
         tbl.removeRow(tbl.currentRow())
     tbl.clearFocus()
 
+
 def validate_welds(self: mywindow2, row: int) -> None:
     tbl = self.ui2.tab_vib
     dict_line = CQT.list_from_wtabl_c(
@@ -4223,4 +4229,4 @@ def validate_welds(self: mywindow2, row: int) -> None:
 def table_sum_cell_changed(self: mywindow2, row, col):
     if self.ui2.combo2.currentText() == 'Сварка':
         validate_welds(self, row)
-     
+

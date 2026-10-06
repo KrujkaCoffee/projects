@@ -37,6 +37,7 @@ import project_cust_38.api_erp_commands as APIERP
 import project_cust_38.Cust_emoji as CEMOJ
 import project_cust_38.border_painter as BORDERP
 import project_cust_38.sub_mes.access_mngr.main_mngr as ACCSSMNGR
+
 from functools import partial
 
 try:
@@ -7630,16 +7631,21 @@ class ResSpecs():
     def __init__(self,list_nums:list|set|tuple):
         self._list_nums:list[int] = list(list_nums) if isinstance(list_nums, (set, tuple)) else list_nums
         self.dict_res:[int,ResSpec]=dict()
-        self.load_data()
+        suc, msg = self.load_data()
+        if not suc:
+            raise Exception(msg)
 
-    def load_data(self):
+    def load_data(self)->tuple[bool,str]:
         self.dict_res = dict()
-        dict_res = self._load_datas()
+        suc, dict_res = self._load_datas()
+        if not suc:
+            return False, dict_res
         mks_o = self._load_mk_os()
         for id_mk, wet_data in dict_res.items():
             mk_o = mks_o.marshrut_cards_dict[id_mk]
             res_o = ResSpec(wet_data=wet_data, mk_o=mk_o)
             self.dict_res[res_o.mk.Пномер] = res_o
+        return True, ''
 
     def _calc_dict_etaps(self)->dict:
         etaps = CSQ.custom_request_c(CFG_prj.db_users,
@@ -7655,7 +7661,7 @@ class ResSpecs():
         mks_o =Marshrut_cards_list(self._list_nums,False)
         return mks_o
 
-    def _load_datas(self)->dict[int,list]:
+    def _load_datas(self)->tuple[bool,dict[int,list]|str]:
 
         db_users = CFG_prj.db_users
         poki = CFG.Config.place.poki
@@ -7680,18 +7686,20 @@ class ResSpecs():
         for data_row in bin_data_list:
             bin_data = data_row['data']
             nom_mk = data_row['Номер_мк']
+
             if F.is_empty_blob(bin_data):
-                CQT.msgbox(f'Нет данных для МК {nom_mk}')
-                return
+
+                return False , f'Нет данных для МК {nom_mk}'
             rez_spis = F.from_binary_pickle(bin_data)
 
 
             res = add_to_res_detail_counts(rez_spis)
             res = _update_name_rc_and_etaps(res, dict_etaps=dict_etaps)
-            res = fix_mastered_count(res, nom_mk,
-                                     list_nars=dict_naryads[nom_mk])
+            if nom_mk in dict_naryads:
+                res = fix_mastered_count(res, nom_mk,
+                                         list_nars=dict_naryads[nom_mk])
             rez_dict[nom_mk] = res
-        return rez_dict
+        return True, rez_dict
 
 
 class ResSpec():
@@ -8241,11 +8249,15 @@ class Composition(_ImportDb):
     def add_poz(self) -> Composition_poz:
         return Composition_poz(self, {})
 
-    def load_dict_res_o(self):
+    def load_dict_res_o(self)->tuple[bool,str]:
         set_mks = set([poz.mk for poz in self.pozs])
-        self._dic_res_o = ResSpecs(set_mks).dict_res
+        try:
+            self._dic_res_o = ResSpecs(set_mks).dict_res
+        except Exception as e:
+            return False, f'Ошибка загрузки ResSpec: {e}'
         for poz in self.pozs:
             poz.res_o = self._dic_res_o[poz.mk]
+        return True, ''
 
     def load_pozs(self, mngr: ManagePartialDse):
         self.pozs: list[Composition_poz] = []
@@ -8673,7 +8685,7 @@ class Composition_poz(_ImportDb):
 
     }
     UNREGISTERED_MARK = f'{CEMOJ.СтатусыПроизводства.alert_exclamation} Незарегистрировано'
-    def __init__(self, parent, item: dict,mngr:ManagePartialDse):
+    def __init__(self, parent, item: dict, mngr:ManagePartialDse|None=None):
         self.id: int | None = None
         self.id_file: int | None = None
         self.dse: str | None = None
@@ -8702,7 +8714,7 @@ class Composition_poz(_ImportDb):
         self.res_o: ResSpec | None = None
         self._load_couples()
         if mngr:
-            self.apply_mngr(mngr)
+            self.apply_mngr(mngr)# грузим  self.parts , self.parts_couples из mngr
         self._calc_finished()
         self.update_nn_hand_compare()
 
@@ -8935,13 +8947,26 @@ class Composition_poz(_ImportDb):
         if self.dse is None:
             return
         list_w = self.dse.split(' ')
-        for w in list_w:
+        list_remove = []
+
+
+        for i, w in enumerate(list_w):
             if '.' in w:
-                self.nn = w
+                nn = w
+                list_remove.append(nn)
+                for j in range(i-1,-1,-1):
+                    prefix = list_w[j]
+                    if prefix.upper() == list_w[j]:
+                        nn =  prefix + ' ' + nn
+                        list_remove.append(prefix)
+                    else:
+                        break
+                self.nn = nn
                 break
         list_name: list = copy.copy(list_w)
         if self.nn:
-            list_name.remove(self.nn)
+            for prefix in list_remove:
+                list_name.remove(prefix)
             self.name = ' '.join(list_name)
         else:
             self.name = ''
@@ -9057,7 +9082,7 @@ class Composition_poz(_ImportDb):
 
         return summ_ceil_dse
 
-    def del_associated_dse(self, snum_nar: int) -> bool:
+    def del_associated_dse(self, snum_nar: int, mngr: ManagePartialDse) -> bool:
         id_poz = self.id
         rez = CSQ.custom_request_c(CFG.Config.project.db_naryad, f"""
                 DELETE FROM naryad_composit_poz_snum_nars 
@@ -9066,7 +9091,7 @@ class Composition_poz(_ImportDb):
         if rez == False:
             return False
         self._load_couples()
-        self.parent.load_pozs()
+        self.parent.load_pozs(mngr)
         self.parent.recalc_coupled()
         self.parent.recalc_signed()
         self.parent.recalc_finished()
@@ -15200,6 +15225,17 @@ def DICT_CLD_KPLAN(bd_kplan) -> dict[datetime.datetime, Month_cld_day]:
         raise ValueError(f'DICT_CLD_KPLAN err load')
     return data
 
+class CalendarMngr():
+    def __init__(self,dict_cldr:dict[datetime.datetime, Month_cld_day]):
+        self._dict_cldr:dict[datetime.datetime, Month_cld_day] = dict_cldr
+
+    def get_delta_days(self,date1:datetime.datetime,date2:datetime.datetime,work_days:bool)->list[Month_cld_day]:
+        days = [v for k,v in self._dict_cldr.items() if date1 <= k <= date2]
+        if work_days:
+            return  [_ for _ in days if not _.is_holyday]
+        return days
+
+
 
 def DICT_PLACES(self, bd_users):
     query = f"""SELECT * FROM places_capacity"""
@@ -17556,10 +17592,12 @@ def calc_and_fill_weight_by_xml_and_res(self, db_resxml, bd_naryad, bd_mat, nom_
 
     try:
         if DICT_FILTR == "":
-            DICT_FILTR = F.deploy_dict_c(
-                CSQ.custom_request_c(bd_mat, f"""SELECT * FROM complex_filtr""", rez_dict=True), 'kod')
+            DICT_FILTR =  F.deploy_dict_c(
+            CSQ.custom_request_c(bd_mat, f"""SELECT s_num, kod FROM complex_filtr""", rez_dict=True), 'kod')
         if DICT_MAT == "":
-            DICT_MAT = F.deploy_dict_c(CSQ.custom_request_c(bd_mat, f"""SELECT * FROM nomen""", rez_dict=True), 'Код')
+            DICT_MAT = F.deploy_dict_c(
+            CSQ.custom_request_c(bd_mat, f"""SELECT Код, П5, П6 FROM nomen""", rez_dict=True),
+            'Код')
         list_hz_mat = []
         if not calc_and_fill_weight_by_xml(self, db_resxml, nom_mk, kol_vo_izd, bd_naryad):
             pass
@@ -20040,14 +20078,16 @@ def _add_custom_manual_button(self, tabs: QtWidgets.QTabWidget, index, list_manu
 
     tab = tabs.widget(index)
     emo = CEMOJ.ДокументыДанные.open_book.symbol
+    ttip = 'Новая документация'
     if CFG.Config.window_manager.active is None:
         raise ValueError(f'Не найден активный класс в window_manager нужно подвязать через CFG.BaseSubWindow.window_binding')
     if [CFG.Config.window_manager.active.cfg.app, tabs.objectName(), tab.objectName()] in list_manuals:
         emo = CEMOJ.ДокументыДанные.archive.symbol
-
+        ttip = 'Документация к ознакомлению'
     # Создаем кнопку
     button = QtWidgets.QToolButton()
     button.setText(emo)
+    button.setToolTip(ttip)
     button.setAutoRaise(True)  # Делает кнопку плоской
     button.setFixedSize(QtCore.QSize(18, 18))
 
@@ -20096,3 +20136,44 @@ def connect_manuals(self):
                     for i in range(obj.count()):
                         _add_custom_manual_button(self, obj, i, list_manuals)
                     _set_current_visible(obj)
+
+def register_floadting_btn_threads(discuss_anchor_field_name:str)->CQT.FloatingButtonManager:
+
+
+    def fnc_oform(tbl:QtWidgets.QtableWidget,i:int,btn:QtWidgets.QPushButton,discuss_anchor_field_name:str,addit_data,*args):
+        btn.setText(CEMOJ.ДокументыДанные.new_thread.symbol)
+        btn.setToolTip('Создать тему')
+        btn.setStyleSheet(CFG.Config.window_manager.active.window.styleSheet())
+
+    def fnc_on_selection_changed(tbl:QtWidgets.QtableWidget,i:int,btn:QtWidgets.QPushButton,discuss_anchor_field_name:str,addit_data,*args):
+        print(f'fnc_on_selection_changed {i}')
+        t = CQT.TableContext(tbl)
+        row = t.get_row(i)
+
+        h = tbl.rowHeight(i)-8
+        btn.setFixedHeight(h)
+        btn.setFixedWidth(h)
+        f = btn.font()
+        f.setPixelSize(int(btn.height() * 0.7))
+        btn.setFont(f)
+
+        val = row.value(discuss_anchor_field_name)
+        if DISCUSS.CLSS.Discussion.has_discussion(CFG.Config.window_manager.active.cfg.app,
+                                        tbl.objectName(),id_row=val):
+            btn.setText(CEMOJ.ДокументыДанные.join_thread.symbol)
+            btn.setToolTip('Прочитать') #btn.text()
+        else:
+            btn.setText(CEMOJ.ДокументыДанные.new_thread.symbol)
+            btn.setToolTip('Создать тему')
+
+    def fnc_on_click(tbl:QtWidgets.QtableWidget,i:int,btn:QtWidgets.QPushButton,discuss_anchor_field_name:str,addit_data,*args):
+        print(f'fnc_on_click {i}')
+        t = CQT.TableContext(tbl)
+        row = t.get_row(i)
+        val = row.value(discuss_anchor_field_name)
+        sub_app = DISCUSS.CentralWindow(CFG.Config.window_manager.active.window,
+                                        CFG.Config.window_manager.active.cfg.app,
+                                        tbl.objectName(),id_row=val)
+        sub_app.show()
+
+    return CQT.FloatingButtonManager(discuss_anchor_field_name,fnc_on_click,fnc_on_selection_changed,fnc_oform)

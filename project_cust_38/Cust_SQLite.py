@@ -12,7 +12,7 @@ try:
     from project_cust_38 import Cust_postgresql_executor as CPG
 except Exception:
     CPG = None
-
+import psycopg
 logger = logging.getLogger(__name__)
 
 _PG_CONN = os.environ.get('PG_CONN') == '1'
@@ -595,6 +595,46 @@ def make_parameters_for_return_many(parameters: list): # 25.06.2026
         new_list_parameters.extend(item)
     return new_list_parameters
 
+
+def pg_request(
+        sql: str,
+        one: bool = False,
+        one_column: bool = False,
+        params: list[list[typing.Any]] | list[typing.Any] | None = None,
+        lazy_method_hours: float = 0,
+        debug: bool = True,
+        cur: psycopg.Cursor | None = None,  # type: ignore[type-arg]
+        conn: psycopg.Connection | None = None,  # type: ignore[type-arg]
+        bd: str | None = None,
+        connect_timeout: int = 10,
+        statement_timeout: int | None = 60_000,
+) -> bool | None | list[dict] | dict | list[object] | object:
+    rez = custom_request_pg(sql,list_of_lists_c=params,one=one,one_column=one_column,
+                           debug=debug,db=bd,lazy_method_hours=lazy_method_hours)
+    return rez
+
+def custom_request_pg(
+
+        custom_request_c: str ,
+        hat_c=True,
+        list_of_lists_c: list[list[typing.Any]] | list[typing.Any] = None,
+        one=False,
+        one_column=False,
+        attach_dbs: tuple | str=(),
+        lazy_method_hours: float = 0,
+        debug: bool = True,
+        db:str|None ='postgres'
+) -> bool | None | list[dict] | list[list] | list | object|dict[str]:
+
+    return CPG.custom_request_c(db, custom_request_c, rez_dict=True,
+                         hat_c=hat_c,
+                         list_of_lists_c=list_of_lists_c,
+                         one=one,
+                         one_column=one_column,
+                         attach_dbs=attach_dbs,
+                         lazy_method_hours=lazy_method_hours,
+                         debug=debug,
+                         )
 
 def custom_request_c(
         bd: CSQS.Servers | str,

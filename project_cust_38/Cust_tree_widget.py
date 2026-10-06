@@ -1129,7 +1129,7 @@ class BaseTreeWidget(QtWidgets.QTreeWidget):
             uuid_ = nd.get('uuid')
             obj_ref_id = nd.get('_obj_ref_id')
             system_props = nd.get('system_props')
-            temp_props = None
+            temp_props = nd.get('temp_props')
             # ——— восстановление объектов из кэша ———
             if hasattr(self, "_drag_cache"): 
                 cache_entry = self._drag_cache.get(obj_ref_id)
@@ -1138,7 +1138,7 @@ class BaseTreeWidget(QtWidgets.QTreeWidget):
                 # чистим после использования
                 self._drag_cache.pop(obj_ref_id,None)
 
-            temp_props = nd.get('temp_props')
+
 
             if isinstance(droped_text, dict):
                 for col in range(self.columnCount()):
@@ -1153,7 +1153,7 @@ class BaseTreeWidget(QtWidgets.QTreeWidget):
             struct = [headers, texts]
             if self.nick_name_level:
                 column_level = F.num_col_by_name_in_hat_c(struct, self.nick_name_level)
-                if column_level < len(texts):
+                if column_level is not None and column_level < len(texts):
                     texts[column_level] = new_level
             item = ExtTreeWidgetItem(texts, new_level, object_uuid=uuid_, system_data=system_props, temp_data=temp_props)
             for ch in nd.get('children', []):
@@ -1291,7 +1291,7 @@ class BaseTreeWidget(QtWidgets.QTreeWidget):
             return
         try:
             for item in items:
-                return self.on_drop_access(item.parent(), item)
+                self.on_drop_access(item.parent(), item)
         except Exception as e:
             logger.info(f'Ошибка при вызове: on_drop_access {e}')
 
@@ -1522,12 +1522,29 @@ class BaseTreeWidget(QtWidgets.QTreeWidget):
         self.apply_alternate_colors()
 
     def set_row_colors(self, odd_color, even_color):
+
         if None in (odd_color, even_color):
             return
-        if isinstance(odd_color, str):
-            odd_color = QtGui.QColor(odd_color)
-        if isinstance(even_color, str):
-            even_color = QtGui.QColor(even_color)
+        def parse_color(color)->QtGui.QColor:
+            if isinstance(color, QtGui.QColor):
+                return color
+            if isinstance(color, str):
+                return QtGui.QColor(color)
+            if isinstance(color, (tuple, list)):
+                if len(color) == 3:
+                    r, g, b = color
+                    return QtGui.QColor(r, g, b)
+                elif len(color) == 4:
+                    r, g, b, a = color
+                    return QtGui.QColor(r, g, b, a)
+                else:
+                    raise ValueError(f"Bad color tuple: {color}")
+
+
+        odd_color = parse_color(odd_color)
+
+        even_color = parse_color(even_color)
+
         self._odd_color = odd_color
         self._even_color = even_color
         self.apply_alternate_colors()

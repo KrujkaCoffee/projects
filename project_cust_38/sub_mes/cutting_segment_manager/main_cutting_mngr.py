@@ -135,8 +135,11 @@ class CentralWindow(CQT.QtWidgets.QMainWindow):
 
         if DTCLS.app_self:
             CFG.BaseSubWindow.window_binding(self,F.name_of_caller_file(),DTCLS.app_self)
+            print(f'add sub {CFG.Config.window_manager.active} into window_manager')
 
-        print(f'add sub {CFG.Config.window_manager.active} into window_manager' )
+        else:
+            CFG.BaseSubWindow.set_as_root(self)
+
 
         # CONNECTS
         _con.prepare_ui(self)
@@ -280,20 +283,29 @@ class CentralWindow(CQT.QtWidgets.QMainWindow):
             t_pr = CQT.TableContext(self.ui.tbl_reg_parts)
             t_pr.set_editable('Количество', False)
             for row in t_pr.rows():
+                row.set_editable('Примечание', True)
                 count = row.value('Количество')
                 if count and F.is_numeric(count):
                     continue
                 row.set_editable('Количество', True)
             t_pr.hide_if_not_dev(CFG, True)
+
             def edit_cell(t:CQT.TableContext,name_field:str,new_row:CQT.TableRow,new_val,old_val,add_data,*args)->bool:
-                if not F.is_numeric_positive_integer(new_val,zero_admit=False):
-                    return False
                 id_dse = int(new_row.value('_id'))
                 file_edit_o = DTCLS.connection_dse.files_dxf[id_dse]
-                file_edit_o.set_count(int(new_val))
+                if name_field == 'Количество':
+                    if not F.is_numeric_positive_integer(new_val,zero_admit=False):
+                        return False
 
-                return True
+                    file_edit_o.set_count(int(new_val))
 
+                    return True
+                if name_field == 'Примечание':
+
+                    file_edit_o.set_comment(new_val)
+                    new_row.set_value(name_field,file_edit_o.comment)
+                    return True
+                return False
 
 
             t_pr.add_cell_edit_events(edit_cell)
