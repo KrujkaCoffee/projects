@@ -1342,7 +1342,7 @@ def btn_pl_ok_add_poz_click(self, *args):
                     VALUES (?,?,?,?,?) RETURNING "Пномер";""",
                                 list_of_lists_c=[F.now("%Y-%m-%d"), list_add['plan.Позиция'],
                                                 list_add['plan.Направление_деятельности'],
-                                                int(list_add['plan.Статус']), self.place.poki],
+                                                int(list_add['plan.Статус'] or 0), self.place.poki],
                                             one=True,one_column=True,hat_c=False)
 
         list_podr = [_ for _ in CSQ.get_list_of_tables_c(self.db_kplan) if _.startswith('пл_')]
@@ -5505,11 +5505,12 @@ def btn_pl_load_norm(self: mywindow):
         CQT.msgboxg_get_table_ok_inf(self,f'Ошибки расчета',list_err)
 
     list_change = fill_norm_db(self, dict_norm, pnom, poz.row_time_etap, poz.row_time_add_etap)
-
     for field in dict_norm:
         nk_field = CQT.num_col_by_name_c(tbl, field)
         if nk_field != None:
-            tbl.item(tbl.currentRow(), nk_field).setText(str(round(dict_norm[field] / 60, 2)))
+            with CQT.block_signals_keep_state(tbl):
+
+                tbl.item(tbl.currentRow(), nk_field).setText(str(round(dict_norm[field] / 60, 2)))
 
     if list_change:
         update_local_graf( update=True, pnom=pnom,fill_gant=not is_local_gant_hidden(self))

@@ -236,6 +236,11 @@ class Card_nesting_powerz():
 
         if not comp.upload():
             return False
+        if not self._add_to_db_dse(comp):
+            return False
+        return True
+
+    def _add_to_db_dse(self,comp:CMS.Composition):
         for poz in self.dse:
             poz_comp = comp.add_poz()
             poz_comp.id_file = comp.id
@@ -251,7 +256,6 @@ class Card_nesting_powerz():
                 poz_comp.proj, poz_comp.py, poz.project = self.load_pr_py_by_mk(poz_comp.mk,poz.project)
             if not poz_comp.upload():
                 return False
-
         return True
 
     def load_pr_py_by_mk(self,mk:int,project:str)->tuple[str,str,str]:
@@ -272,6 +276,18 @@ class Card_nesting_powerz():
 
 def ________TBLS_______________():
     pass
+
+def reload_dse_from_comp(comp:CMS.Composition):
+    fileo = F.Cust_path(comp.path)
+    data = None
+    if CFG.Config.place.poki == 0:
+        data = CEX.read_file(fileo.path_str, c2=18)
+        if not is_composition(data):
+            CQT.msgbox(f'Файл {fileo.name} не корректный')
+            return
+        card_nesting = Card_nesting_powerz(data, fileo)
+        card_nesting._add_to_db_dse(comp)
+
 @CQT.onerror
 def btn_comp_load_file(id_file:int|None = None,*args):
 
@@ -459,7 +475,11 @@ def btn_comp_load_file(id_file:int|None = None,*args):
     comp:CMS.Composition = DTCLS.compositions.find(id)
     load_partial_poz(comp.name)
     comp.load_pozs(DTCLS.part_manager)
-
+    # ========= для перезагрузки дсе из раскроя если была ошибка =============
+    #if not comp.pozs and CFG.Config.user_config.is_developer:
+    #    reload_dse_from_comp(comp)
+    #    return
+    # =========================================================================
     comp.load_dict_res_o()
 
     comp.recalc_signed()
@@ -554,29 +574,32 @@ def tbl_comp_dse(id_poz:int|None =None,*args):
 def ________BTNS_______________():
     pass
 
+
+def is_composition(data)->bool:
+    def is_empty_row(row):
+        row_list = [_.strip() for _ in row]
+        if  len(set(row_list))==1 and row_list[0] == '':
+            return True
+        return False
+
+    if not data:
+        return False
+    if DTCLS.PLACE.poki == 0:
+        if '|__|__|__|__|__|__|__|__|__|__|__|__|__|__|__|__|' not in data[5][2]:
+            return False
+        return True
+    elif DTCLS.PLACE.poki==1:
+        if len(data[0]) != 13:
+            return False
+        if is_empty_row(data[0]) and is_empty_row(data[2]):
+            return True
+    return False
+
+
+
 @CQT.onerror
 def btn_comp_add_file(app_self,*args):
     POKI = DTCLS.PLACE.poki
-
-    def is_composition(data)->bool:
-        def is_empty_row(row):
-            row_list = [_.strip() for _ in row]
-            if  len(set(row_list))==1 and row_list[0] == '':
-                return True
-            return False
-
-        if not data:
-            return False
-        if POKI == 0:
-            if '|__|__|__|__|__|__|__|__|__|__|__|__|__|__|__|__|' not in data[5][2]:
-                return False
-            return True
-        elif POKI==1:
-            if len(data[0]) != 13:
-                return False
-            if is_empty_row(data[0]) and is_empty_row(data[2]):
-                return True
-        return False
 
     default_path = load_last_dir()
     if POKI == 0:
@@ -640,6 +663,7 @@ def btn_comp_add_file(app_self,*args):
         if not F.existence_file_c(new_path):
             CQT.msgbox(f'Файл не скопирован {card_nesting.num}')
             return
+
         if not card_nesting.add_to_db(new_path):
             CQT.msgbox(f'Файл не может быть добавлен а БД')
 
@@ -706,7 +730,8 @@ def btn_fr_comp_dse_nars_delete(app_self,*args):
             CQT.msgbox('Ошибка удаления')
 
     composition_poz = couple_o.get_composition_poz()
-    composition_poz.del_associated_dse(couple_o.snum_nar)
+    load_partial_poz(composition_poz.name)
+    composition_poz.del_associated_dse(couple_o.snum_nar,DTCLS.part_manager)
     btn_comp_load_file(composition_poz.parent.id)
     tbl_comp_dse(composition_poz.id)
 

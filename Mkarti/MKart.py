@@ -2242,24 +2242,21 @@ class mywindow(QtWidgets.QMainWindow):
                 CQT.msgbox(f'Нельзя проводить изменения {vid} если наряды уже существуют')
                 return
             if len(journal) > 1:
-                if not self.USER_CONFIG.is_developer:
-                    user = F.user_full_namre()
-                    result = CB24.B24Sender().send_msg_table(journal, 'chat83112', f'{user} пересчитал(а) {type_recalc} МК {nom_mk}')
-                    result = CB24.B24Sender().send_msg_table_by_action(
-                        action='Готовность Маршрутных карт',
-                        title=f'{user} пересчитал(а) {type_recalc!r} МК {nom_mk}',
-                        tbl=journal)
-                    if not result:
-                        CQT.msgbox('Ошибка отправки сообщения в б24')
-                else:
-                    return
+                user = F.user_full_namre()
+                result = CB24.B24Sender().send_msg_table(journal, 'chat83112', f'{user} пересчитал(а) {type_recalc} МК {nom_mk}')
+                result = CB24.B24Sender().send_msg_table_by_action(
+                    action='Готовность Маршрутных карт',
+                    title=f'{user} пересчитал(а) {type_recalc!r} МК {nom_mk}',
+                    tbl=journal)
+                if not result:
+                    CQT.msgbox('Ошибка отправки сообщения в б24')
             ves, ves_res_list = self.raschet_vesa_dse(res)
             if not self.USER_CONFIG.is_developer:
                 CSQ.custom_request_c(self.bd_naryad, f"""UPDATE mk SET Вес = {ves} WHERE Пномер = {int(nom_mk)}""")
             nk_ves = CQT.num_col_by_name_c(tbl, 'Вес')
             tbl.item(tbl.currentRow(), nk_ves).setText(str(ves))
-            if not self.USER_CONFIG.is_developer:
-                CMS.save_res(self.db_resxml, nom_mk, res)
+            # if not self.USER_CONFIG.is_developer:
+            CMS.save_res(self.db_resxml, nom_mk, res)
             CQT.msgbox(f'маршрутка {nom_mk} обновлена, {len(journal) - 1} изменений')
         else:
             CQT.msgbox(f'маршрутка {nom_mk} ОТСУТСТВУЕТ')
@@ -4549,7 +4546,7 @@ SELECT
         tabl_cr_stukt.item(q_strok + 1, nk_level).setText(
             str(int(tabl_cr_stukt.item(q_strok, nk_level).text()) + int(ur)))
         tabl_cr_stukt.item(q_strok + 1, 6).setText(str(F.get_time_shtamp_c()))
-        tabl_cr_stukt.item(q_strok + 1, 4).setText('/М1/М2/М3')
+        tabl_cr_stukt.item(q_strok + 1, 4).setText('1/М1/М2/М3')
 
         # CQT.fill_wtabl_old_c(self, spisok, tabl_cr_stukt, 0, self.edit_cr_mk_ruch, (), (), 200, True, '', 30)
         tabl_cr_stukt.clearSelection()
@@ -4573,7 +4570,7 @@ SELECT
             strok[6] = F.get_time_shtamp_c()
         else:
             strok[6] = id
-        strok[4] = '/М1/М2/М3'
+        strok[4] = '1/М1/М2/М3'
         spisok.append(strok)
 
         CQT.fill_wtabl_old_c(self, spisok, tabl_cr_stukt, 0, self.edit_cr_mk_ruch, (), (), 200, True, '', 30)
@@ -4805,6 +4802,14 @@ SELECT
 
         # =========================================РЕСУРСНАЯ
         list_msg = []
+        # s_vert = []
+        column_name = F.num_col_by_name_in_hat_c(s_vert, 'Наименование')
+        column_nn = F.num_col_by_name_in_hat_c(s_vert, 'Обозначение')
+        for item in s_vert:
+            if isinstance(s_vert[column_name], str):
+                item[column_name] = s_vert[column_name].strip().strip('_')
+            if isinstance(s_vert[column_nn], str):
+                item[column_name] = s_vert[column_nn].strip().strip('_')
         self.res = CMS.resursnaya_from_cust_struktura(self, s_vert, kol_vo_izdeliy=self.kol_izdeliy, ruchnoi=True,
                                                       list_msg=list_msg)
         if self.res == None:

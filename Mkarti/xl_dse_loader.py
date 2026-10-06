@@ -77,7 +77,10 @@ class ExcelNomenclatureImporter:
             if nn in seen:
                 continue
             seen.add(dse['Обозначение'])
-            data_for_insert.append([dse['Наименование'], dse['Обозначение'], dse['Комментарий'],
+            data_for_insert.append([
+                dse['Наименование'].strip().strip('_'),
+                dse['Обозначение'].strip().strip('_'),
+                dse['Комментарий'],
                                     CFG.Config.place.poki]
                                    )
         query = 'INSERT INTO dse(Наименование, Номенклатурный_номер, Примечание, poki) VALUES (?, ?, ?, ?)'
