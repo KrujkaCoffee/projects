@@ -312,6 +312,7 @@ class NormalizedResourceRow:
     match_state: str
     match_info: str
     erp_code_missing: bool = False
+    cost_article_ref: str | None = None
 
 
 def normalize_resource_row(
@@ -353,6 +354,7 @@ def normalize_resource_row(
         stage = _first_text(source, "Stage")
 
     raw_element_ids = _read_value(source, "element_ids") or []
+    cost_article_ref = _read_value(source, "cost_article_ref")
     element_ids: list[int] = []
     if isinstance(raw_element_ids, (list, tuple, set)):
         for raw_id in raw_element_ids:
@@ -374,6 +376,7 @@ def normalize_resource_row(
         match_state=_first_text(source, "match_state"),
         match_info=_first_text(source, "match_info"),
         erp_code_missing=erp_code.strip() in ("", "-"),
+        cost_article_ref=None if cost_article_ref is None else str(cost_article_ref).strip(),
     )
 
 

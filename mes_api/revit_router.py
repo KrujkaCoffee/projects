@@ -108,6 +108,7 @@ class ResourceMaterial(BaseModel):
     element_ids: list[int] = Field(default_factory=list)
     match_state: str = ""
     match_info: str = ""
+    cost_article_ref: str | None = None
 
     Stage: str | None = None
     FamilyName: str = ""
@@ -255,11 +256,23 @@ def _validate_resource_request(
         field_errors["rows"] = f"В одной выгрузке допускается не более {MAX_RESOURCE_ROWS} строк"
     if skipped_rows:
         warnings.append(f"Пропущено строк без кода 1C-ERP: {len(skipped_rows)}")
-    if body.cost_article_ref is not None:
-        try:
-            _resolve_cost_article(body.cost_article_ref)
-        except (ValueError, ErpUnavailableError) as error:
-            field_errors["cost_article_ref"] = str(error)
+    article_errors: dict[str, str | None] = {}
+    for row in normalized_rows:
+        article_ref = _row_cost_article_ref(body, row)
+        if article_ref is None:
+            continue
+        if article_ref not in article_errors:
+            try:
+                _resolve_cost_article(article_ref)
+                article_errors[article_ref] = None
+            except (ValueError, ErpUnavailableError) as error:
+                article_errors[article_ref] = str(error)
+        article_error = article_errors[article_ref]
+        if article_error:
+            if row.cost_article_ref is None:
+                field_errors["cost_article_ref"] = article_error
+            else:
+                _append_table_error(table_errors, row, "Статья калькуляции: " + article_error)
 
     if body.contract_version >= 2:
         if body.action != "upload_resource_map":
@@ -394,6 +407,24 @@ def _resolve_cost_article(ref_key: str) -> dict[str, str]:
     raise ValueError("Статья калькуляции недоступна в выбранной группе; обновите справочник")
 
 
+def _row_cost_article_ref(body: ResourceRequest, row: Any) -> str | None:
+    ref_key = row.cost_article_ref if row.cost_article_ref is not None else body.cost_article_ref
+    return ref_key.strip().lower() if ref_key is not None else None
+
+
+def _order_cost_articles(items: list[dict[str, str]]) -> list[dict[str, str]]:
+    default_ref = os.environ.get("REVIT_COST_ARTICLE_DEFAULT_REF", "").strip()
+    if not default_ref:
+        return items
+    try:
+        default_ref = str(UUID(default_ref))
+    except ValueError as error:
+        raise ErpUnavailableError("Некорректный UUID статьи калькуляции по умолчанию в настройках API") from error
+    if not any(item["Ref_Key"] == default_ref for item in items):
+        raise ErpUnavailableError("Статья калькуляции по умолчанию недоступна в заданной группе")
+    return sorted(items, key=lambda item: item["Ref_Key"] != default_ref)
+
+
 def _validation_response(
     field_errors: dict[str, str], table_errors: list[dict[str, Any]]
 ) -> JSONResponse:
@@ -430,29 +461,32 @@ def _upload_resource_once(body: ResourceRequest, normalized_rows: list[Any]) -> 
         ИмяБазы=_base_name,
     )
 
-    if body.cost_article_ref is not None:
-        selected = _resolve_cost_article(body.cost_article_ref)
-        article = CRC.ArticulationArticles(
-            name=selected["Description"], parent=COST_ARTICLE_PARENT, ref_key=selected["Ref_Key"]
-        )
-    else:
-        article = getattr(CRC.ArticulationArticlesData, "_hnt_основной_фот_none", None)
-        if article is None:
-            CRC.ArticulationArticlesData.init_data()
-            article = CRC.ArticulationArticlesData._hnt_основной_фот_none
+    articles: dict[str | None, Any] = {}
     obtaining_method = CRC.MethodOfObtainingMaterialspecificationsData.find_by_ref(
         "5c796eb7-92d0-494a-aad9-76cf7a28b3dd"
     )
     stages: OrderedDict[str, Any] = OrderedDict()
     for row in normalized_rows:
+        article_ref = _row_cost_article_ref(body, row)
+        if article_ref not in articles:
+            if article_ref is not None:
+                selected = _resolve_cost_article(article_ref)
+                article = CRC.ArticulationArticles(
+                    name=selected["Description"], parent=COST_ARTICLE_PARENT, ref_key=selected["Ref_Key"]
+                )
+            else:
+                article = getattr(CRC.ArticulationArticlesData, "_hnt_основной_фот_none", None)
+                if article is None:
+                    CRC.ArticulationArticlesData.init_data()
+                    article = CRC.ArticulationArticlesData._hnt_основной_фот_none
+            articles[article_ref] = article
         stage_name = row.stage.strip()
         stage_data = stages.get(stage_name)
         if stage_data is None:
             stage_data = CRC.StageData(Подразделение=dispatcher, ДлительностьМинут=0)
             stages[stage_name] = stage_data
 
-        CRC.ArticulationArticles
-        stage_data.add_material(CRC.Material(row.erp_code, row.quantity, article, obtaining_method))
+        stage_data.add_material(CRC.Material(row.erp_code, row.quantity, articles[article_ref], obtaining_method))
 
     specification = CRC.ResourceSpecification(header)
     for stage_name, stage_data in stages.items():
@@ -797,7 +831,7 @@ def stages(credentials: ActionRequest) -> list[dict[str, Any]]:
 @router.post("/resource/cost_articles/")
 def cost_articles(credentials: ActionRequest) -> list[dict[str, str]]:
     try:
-        return _load_cost_articles()
+        return _order_cost_articles(_load_cost_articles())
     except ErpUnavailableError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
 
@@ -854,6 +888,7 @@ def validate_resource(body: ResourceRequest) -> Any:
         "status": "ok",
         "contract_version": body.contract_version,
         "validated_rows": len(normalized_rows),
+        "row_cost_articles_supported": True,
         "warnings": warnings,
         **_export_summary(body),
     }

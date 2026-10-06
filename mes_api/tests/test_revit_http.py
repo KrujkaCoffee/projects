@@ -22,6 +22,7 @@ class RevitHttpTests(unittest.TestCase):
         self.router.COE = SimpleNamespace(OrdersComposit=lambda base: SimpleNamespace(
             get_response=lambda *args, **kwargs: (200, [])))
         self.article = "11111111-1111-1111-1111-111111111111"
+        self.article_b = "33333333-3333-3333-3333-333333333333"
         self.payload = {
             "action": "upload_resource_map", "contract_version": 2,
             "title": "Ресурсная тест", "creator": "Иван Иванов",
@@ -39,7 +40,8 @@ class RevitHttpTests(unittest.TestCase):
         self.fetch = self._patch("_fetch_nomenclature", return_value={
             "out": {"Code": "OUT"}, "a": {"Code": "A"}})
         self._patch("_load_cost_articles", return_value=[{
-            "Ref_Key": self.article, "Description": "Сырье"}])
+            "Ref_Key": self.article, "Description": "Сырье"},
+            {"Ref_Key": self.article_b, "Description": "Упаковка"}])
         self.upload = self._patch("upload_resource", return_value={"e1c_link": "e1c://created"})
 
     def _patch(self, name, **kwargs):
@@ -64,6 +66,68 @@ class RevitHttpTests(unittest.TestCase):
         self.assertEqual([(row.source_row, row.erp_code, row.quantity) for row in rows], [(8, "A", 2.5)])
         self.assertEqual(created.json()["export_summary"], {
             "exported_rows": 1, "skipped_rows": 1, "skipped_source_rows": [7]})
+
+    def test_distinct_row_articles_survive_direct_and_cached_create(self):
+        self.payload.pop("cost_article_ref")
+        self.payload["rows"][0]["erp_code"] = "A"
+        self.payload["rows"][0]["cost_article_ref"] = self.article
+        self.payload["rows"][1]["cost_article_ref"] = self.article_b
+        for validate_first in (False, True):
+            with self.subTest(validate_first=validate_first):
+                self.fetch.reset_mock()
+                if validate_first:
+                    checked = self.post("validate")
+                    self.assertEqual(checked.status_code, 200, checked.text)
+                    self.assertTrue(checked.json()["row_cost_articles_supported"])
+                created = self.post("create")
+                self.assertEqual(created.status_code, 200, created.text)
+                self.fetch.assert_called_once()
+                rows = self.upload.call_args.args[1]
+                self.assertEqual([(row.source_row, row.cost_article_ref) for row in rows],
+                                 [(7, self.article), (8, self.article_b)])
+
+    def test_row_article_overrides_common_article_and_errors_point_to_source_row(self):
+        self.payload["skip_unmapped_rows"] = True
+        self.payload["rows"][1]["cost_article_ref"] = self.article_b
+        self.payload["cost_article_ref"] = "unused-invalid-header"
+        self.assertEqual(self.post("validate").status_code, 200)
+        self.payload["cost_article_ref"] = self.article
+        for invalid in ("", "bad-uuid", "22222222-2222-2222-2222-222222222222"):
+            with self.subTest(invalid=invalid):
+                self.payload["rows"][1]["cost_article_ref"] = invalid
+                response = self.post("create")
+                self.assertEqual(response.status_code, 400)
+                errors = response.json()["table_errors"]
+                self.assertEqual([(row["row"], row["source_row"]) for row in errors], [(2, 8)])
+                self.assertIn("Статья калькуляции", errors[0]["msg"])
+        self.upload.assert_not_called()
+
+    def test_row_article_change_invalidates_validation_cache(self):
+        self.payload["skip_unmapped_rows"] = True
+        self.payload["rows"][1]["cost_article_ref"] = self.article
+        self.assertEqual(self.post("validate").status_code, 200)
+        self.payload["rows"][1]["cost_article_ref"] = "22222222-2222-2222-2222-222222222222"
+        response = self.post("create")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["table_errors"][0]["source_row"], 8)
+        self.upload.assert_not_called()
+
+    def test_skipped_unmapped_row_does_not_require_an_article(self):
+        self.payload["skip_unmapped_rows"] = True
+        self.payload["rows"][0]["cost_article_ref"] = "bad-uuid"
+        self.payload["rows"][1]["cost_article_ref"] = self.article_b
+        response = self.post("create")
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual([row.cost_article_ref for row in self.upload.call_args.args[1]], [self.article_b])
+
+    def test_articles_endpoint_promotes_server_default_without_changing_cached_order(self):
+        with patch.dict(self.router.os.environ, {"REVIT_COST_ARTICLE_DEFAULT_REF": self.article_b}):
+            response = self.post("cost_articles", {"action": "get_cost_articles"})
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual([row["Ref_Key"] for row in response.json()], [self.article_b, self.article])
+        with patch.dict(self.router.os.environ, {"REVIT_COST_ARTICLE_DEFAULT_REF": ""}):
+            response = self.post("cost_articles", {})
+            self.assertEqual([row["Ref_Key"] for row in response.json()], [self.article, self.article_b])
 
     def test_direct_create_applies_same_skip_rule(self):
         self.payload["skip_unmapped_rows"] = True
