@@ -6,7 +6,6 @@ the normal Save button persists the resulting tree.
 
 from __future__ import annotations
 
-import ast
 import copy
 import math
 from dataclasses import dataclass, field
@@ -231,23 +230,23 @@ class BulkParametersDialog(QtWidgets.QDialog):
                     if not use.enabled:
                         continue
                     value = validate_value(raw_value, use.kind)
-                    key = use.item
+                    key = id(use.item)
                     if key not in changes:
-                        changes[key] = (use.names, use.values[:])
-                    names, values = changes[key]
+                        changes[key] = (use.item, use.names, use.values[:])
+                    item, names, values = changes[key]
                     if names != use.names:
                         raise ValueError(f'{use.label}: изменился набор параметров')
                     values[use.index] = value
             if not changes:
                 raise ValueError('Нет выбранных изменений')
-            for item, (names, values) in changes.items():
+            for item, names, values in changes.values():
                 originals = [use.original_raw for group in self.groups for use in group.uses if use.item is item]
                 if not originals or any(item.text(14) != raw for raw in originals):
                     raise ValueError('Техкарта изменилась после открытия окна. Откройте список заново')
         except (ValueError, OverflowError) as exc:
             QtWidgets.QMessageBox.warning(self, 'Общие параметры', str(exc))
             return
-        for item, (names, values) in changes.items():
+        for item, names, values in changes.values():
             item.setText(14, '$'.join(values))
             item.setText(16, str(dict(zip(names, values))))
         self.changed_count = len(changes)
@@ -257,24 +256,23 @@ class BulkParametersDialog(QtWidgets.QDialog):
 def params_for_calc(window, item):
     descriptors = declared_params(window, item)
     names = [name for name, _ in descriptors]
-    if not names and item.text(16):
-        data = ast.literal_eval(item.text(16))
-        if isinstance(data, dict):
-            names = list(data)
     if not names:
         return None
     values = stored_values(item, names)
-    if any(value.strip() in ('', '-', '+') or value.startswith("f'") for value in values):
-        raise ValueError(f'{item_label(item)}: не все параметры заполнены')
     for (name, kind), value in zip(descriptors, values):
-        if kind in ('int', 'float', "<class 'float'>", "<class 'int'>"):
-            for part in value.split(';'):
-                try:
-                    number = float(part.replace(',', '.'))
-                except ValueError:
-                    raise ValueError(f'{item_label(item)}: {name} не число') from None
-                if not math.isfinite(number) or ('int' in kind and not number.is_integer()):
-                    raise ValueError(f'{item_label(item)}: {name} не число указанного типа')
+        if value.strip() in ('', '-'):
+            raise ValueError(f'{item_label(item)}: не заполнена переменная «{name}»')
+        # Редактор допускает скрытое поле (+), отложенную формулу (f')
+        # и несколько строк значений, объединённых точкой с запятой.
+        if value == '+' or value.startswith("f'") or ';' in value:
+            continue
+        if numeric_kind(kind):
+            try:
+                number = float(value.replace(',', '.'))
+            except ValueError:
+                raise ValueError(f'{item_label(item)}: переменная «{name}» не число') from None
+            if not math.isfinite(number) or ('int' in kind and not number.is_integer()):
+                raise ValueError(f'{item_label(item)}: переменная «{name}» не число указанного типа')
     return [names, values]
 
 
@@ -331,86 +329,143 @@ def confirm_editor_state(window):
     ) == QtWidgets.QMessageBox.Yes
 
 
+def transition_calc_enabled(window, op_name):
+    for row in window.spis_op:
+        if row[0] == op_name:
+            return int(row[1]) > int(F.scfg('limit_p')) and F.existence_file_c(
+                window.xl_formulas.get_pereh_txt_path(op_name))
+    return False
+
+
 def recalc_one(window, op, with_materials):
     if op.text(7).startswith('=') or op.text(6).startswith('='):
         return None, 'ручная норма (=)'
-    try:
-        op_params = params_for_calc(window, op)
-    except ValueError as exc:
-        op_params = None
-        missing_operation_params = str(exc)
-    else:
-        missing_operation_params = ''
-    changes = []
-    total = 0
-    has_transition_time = False
-    material = op.text(10)
-    if with_materials and op_params:
-        result = operacii.materiali(window, op.text(0), copy.deepcopy(op_params))
-        if result is not None:
-            material = merge_materials(material, result)
+    name = op.text(0)
+    xl = window.xl_formulas
+    if xl.check_approved(operation=name) and not xl.check_op(name, True):
+        raise ValueError('недоступна утверждённая формула операции')
+    if name not in window.DICT_OPERS:
+        raise ValueError(f'операция «{name}» отсутствует в справочнике')
 
+    changes = []
+    material = op.text(10)
+    material_errors = []
+    op_params = params_for_calc(window, op)
+    deferred = bool(op_params and any(value.startswith("f'") for value in op_params[1]))
+    operation_time = None
+    setup_time = None
+    if op_params:
+        if deferred:
+            operation_time = 0
+        else:
+            # Это тот же вход [заголовки, значения], что даёт tab_vib.
+            # vremya_tsht сам выбирает утверждённую Excel-формулу либо код.
+            result = operacii.vremya_tsht(name, copy.deepcopy(op_params))
+            if result is None:
+                raise ValueError('формула операции не вернула время')
+            if isinstance(result, tuple) and len(result) == 2:
+                operation_time = number_or_error(result[0], item_label(op))
+                setup_time = number_or_error(result[1], item_label(op) + ' Тпз')
+            else:
+                operation_time = number_or_error(result, item_label(op))
+            if with_materials:
+                try:
+                    calculated = operacii.materiali(window, name, copy.deepcopy(op_params))
+                    if calculated is not None:
+                        material = merge_materials(material, calculated)
+                except Exception as exc:
+                    material_errors.append(f'материалы операции: {exc}')
+        if name not in operacii.Data_oper_norm.DICT_OPERS_CALC and not xl.check_op(name, True):
+            setup_time = number_or_error(F.valm(window.DICT_OPERS[name]['Tpz']), item_label(op) + ' Тпз')
+
+    transition_total = 0
+    transition_count = 0
+    calculated_transitions = 0
+    informative_count = 0
+    can_calc_transitions = transition_calc_enabled(window, name)
     for index in range(op.childCount()):
         pereh = op.child(index)
         if pereh.text(20) != '2':
             continue
-        pereh_params = params_for_calc(window, pereh)
-        if pereh_params:
-            time = operacii.vremya_tsht_perehodi(op.text(0), pereh.text(0),
-                                                 copy.deepcopy(pereh_params),
-                                                 op.text(14).split('$') if op.text(14) else [])
-            if time is None and not window.xl_formulas.check_approved(
-                    operation=op.text(0), pereh=pereh.text(0)) and F.is_numeric(pereh.text(7)):
-                time = number_or_error(F.valm(pereh.text(7)), item_label(pereh))
-            else:
-                time = number_or_error(time, item_label(pereh))
-                changes.append((pereh, 7, str(time)))
+        per_name = pereh.text(0)
+        approved = xl.check_approved(operation=name, pereh=per_name)
+        if approved and not xl.check_per(name, per_name, True):
+            raise ValueError(f'{item_label(pereh)}: недоступна утверждённая формула перехода')
+        if approved and not can_calc_transitions:
+            raise ValueError(f'{item_label(pereh)}: переход недоступен для расчёта в редакторе')
+        # Строка в блокноте Z: с именем и рейтингом только предлагает переход.
+        # Параметры берутся из третьего поля или из утверждённого Excel.
+        per_params = params_for_calc(window, pereh) if can_calc_transitions else None
+        if per_params:
+            if any(value.startswith("f'") for value in per_params[1]):
+                raise ValueError(f'{item_label(pereh)}: отложенную формулу требуется рассчитать индивидуально')
+            result = operacii.vremya_tsht_perehodi(
+                name, per_name, copy.deepcopy(per_params), op.text(14).split('$'))
+            if result is None:
+                raise ValueError(f'{item_label(pereh)}: формула перехода не вернула время')
+            per_time = number_or_error(result, item_label(pereh))
+            if per_time >= CFG.Config.place.limit_time_on_naryad:
+                raise ValueError(f'{item_label(pereh)}: Тшт {per_time} превышает лимит')
+            if str(per_time) != pereh.text(7):
+                changes.append((pereh, 7, str(per_time)))
+            calculated_transitions += 1
         elif F.is_numeric(pereh.text(7)):
-            time = number_or_error(F.valm(pereh.text(7)), item_label(pereh))
+            per_time = number_or_error(F.valm(pereh.text(7)), item_label(pereh))
         else:
-            raise ValueError(f'{item_label(pereh)}: не задано время и нет параметров')
-        total += time
-        has_transition_time = True
-        if with_materials and pereh_params:
-            result = operacii.materiali(window, op.text(0), copy.deepcopy(pereh_params))
-            if result is not None:
-                material = merge_materials(material, result)
+            informative_count += 1
+            continue
+        transition_total += float(per_time)
+        transition_count += 1
 
-    operation_time = 0
-    setup_time = None
-    if op_params:
-        result = operacii.vremya_tsht(op.text(0), copy.deepcopy(op_params))
-        if isinstance(result, tuple) and len(result) == 2:
-            operation_time, setup_time = result
-            setup_time = number_or_error(setup_time, item_label(op) + ' Тпз')
-        else:
-            operation_time = result
-        if operation_time is None and not window.xl_formulas.check_approved(operation=op.text(0)):
-            operation_time = 0
-        else:
-            operation_time = number_or_error(operation_time, item_label(op))
-    if not operation_time and not has_transition_time:
-        if with_materials and material != op.text(10):
-            return [(op, 10, material)], 'нет расчёта времени; материалы пересчитаны'
-        return None, 'нет рассчитанного времени или переходов'
-    time = operation_time if operation_time > 0 else total
-    if time == 0 and window.xl_formulas.check_strict_calc(operation=op.text(0)):
-        raise ValueError('Операция с обязательным расчётом вернула нулевое Тшт')
-    limit = CFG.Config.place.limit_time_on_naryad
-    if time >= limit:
-        raise ValueError(f'Тшт {time} превышает лимит {limit}')
-    changes.append((op, 7, str(round(time, 3))))
-    if setup_time is not None:
+    if operation_time is not None and operation_time != 0:
+        time = operation_time
+        source = 'формула операции'
+    elif transition_count:
+        time = round(transition_total, 1)
+        source = 'сумма переходов'
+    elif operation_time is not None:
+        time = 0
+        source = 'нет рассчитанного времени'
+    else:
+        time = None
+        source = 'нет параметров для автоматического расчёта'
+
+    if time is not None:
+        if time == 0 and xl.check_strict_calc(operation=name):
+            raise ValueError('операция с обязательным расчётом вернула нулевое Тшт')
+        if time >= CFG.Config.place.limit_time_on_naryad:
+            raise ValueError(f'Тшт {time} превышает лимит {CFG.Config.place.limit_time_on_naryad}')
+        if str(time) != op.text(7):
+            changes.append((op, 7, str(time)))
+    if setup_time is not None and str(setup_time) != op.text(6):
         changes.append((op, 6, str(setup_time)))
+
+    if with_materials and calculated_transitions:
+        # raschet_kompleksov(..., perehod=True) получает Тшт родительской
+        # операции. Передаём это значение после разрешения её приоритета.
+        parent_time = str(time) if time is not None else op.text(7)
+        for _ in range(calculated_transitions):
+            try:
+                calculated = operacii.materiali(window, name, ['', parent_time.split('$')])
+                if calculated is not None:
+                    material = merge_materials(material, calculated)
+            except Exception as exc:
+                material_errors.append(f'материалы после перехода: {exc}')
     if with_materials and material != op.text(10):
         changes.append((op, 10, material))
-    source = 'формула операции' if operation_time > 0 else 'сумма переходов'
-    message = f'Тшт: {op.text(7)} → {round(time, 3)} ({source})'
-    if material != op.text(10):
+
+    message = f'Тшт: {op.text(7)} → {time} ({source})' if time is not None else source
+    if setup_time is not None:
+        message += f'; Тпз: {op.text(6)} → {setup_time}'
+    if deferred:
+        message += "; отложенный расчёт f' сохранён"
+    if informative_count:
+        message += f'; информативных переходов: {informative_count}'
+    if with_materials and material != op.text(10):
         message += '; материалы пересчитаны'
-    if missing_operation_params:
-        message += '; ' + missing_operation_params
-    return changes, message
+    if material_errors:
+        message += '; ОШИБКА: ' + '; '.join(material_errors)
+    return changes or None, message
 
 
 def show_bulk_parameters(window):
@@ -436,8 +491,13 @@ def show_bulk_recalc(window):
     if not op_items:
         QtWidgets.QMessageBox.information(window, 'Пересчёт', 'В текущей техкарте нет операций')
         return
-    if not confirm_editor_state(window) or not check_formula_sources(window):
+    if not confirm_editor_state(window):
         return
+    # Ошибку утверждённой формулы показываем в строке операции отчёта.
+    try:
+        window.xl_formulas.get_actual_srv_data()
+    except Exception:
+        pass
     dialog = QtWidgets.QDialog(window)
     dialog.setWindowTitle('Пересчёт текущей техкарты')
     layout = QtWidgets.QVBoxLayout(dialog)
