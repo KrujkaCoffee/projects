@@ -41,6 +41,7 @@ import  magazin as MAGAZ
 import correctirovka as CORR
 import ko_izv_izm as II
 import k_plan_top as KPT
+import tk_bulk as TKB
 
 '''
 ТК 
@@ -459,6 +460,16 @@ class mywindow(QtWidgets.QMainWindow):
 
         butt_del = self.ui.pushButton_Del
         butt_del.clicked.connect(self.tree_del)
+
+        self.ui.btn_bulk_parameters = QtWidgets.QPushButton('Параметры ТК', self.ui.frame)
+        self.ui.btn_bulk_parameters.setMinimumHeight(33)
+        self.ui.btn_bulk_parameters.clicked.connect(lambda: TKB.show_bulk_parameters(self))
+        self.ui.horizontalLayout_18.addWidget(self.ui.btn_bulk_parameters)
+
+        self.ui.btn_bulk_recalc = QtWidgets.QPushButton('Пересчитать ТК', self.ui.frame)
+        self.ui.btn_bulk_recalc.setMinimumHeight(33)
+        self.ui.btn_bulk_recalc.clicked.connect(lambda: TKB.show_bulk_recalc(self))
+        self.ui.horizontalLayout_18.addWidget(self.ui.btn_bulk_recalc)
 
         butt_vigruz = self.ui.pushButton_vigruzit
         butt_vigruz.clicked.connect(self.vigruzit)
