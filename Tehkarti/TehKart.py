@@ -39,7 +39,6 @@ import project_cust_38.Cust_config as USRCNF
 from project_cust_38 import Cust_config as CFG
 import  magazin as MAGAZ
 import correctirovka as CORR
-import tk_bulk as TKB
 import ko_izv_izm as II
 import k_plan_top as KPT
 
@@ -460,16 +459,6 @@ class mywindow(QtWidgets.QMainWindow):
 
         butt_del = self.ui.pushButton_Del
         butt_del.clicked.connect(self.tree_del)
-
-        self.btn_bulk_parameters = QtWidgets.QPushButton('Общие параметры', self)
-        self.btn_bulk_parameters.setToolTip('Параметры всех операций и переходов открытой техкарты')
-        self.ui.horizontalLayout_18.insertWidget(0, self.btn_bulk_parameters)
-        self.btn_bulk_parameters.clicked.connect(lambda: TKB.show_bulk_parameters(self))
-
-        self.btn_bulk_recalc = QtWidgets.QPushButton('Пересчитать всё', self)
-        self.btn_bulk_recalc.setToolTip('Пересчитать нормы всех операций и переходов открытой техкарты')
-        self.ui.horizontalLayout_18.insertWidget(1, self.btn_bulk_recalc)
-        self.btn_bulk_recalc.clicked.connect(lambda: TKB.show_bulk_recalc(self))
 
         butt_vigruz = self.ui.pushButton_vigruzit
         butt_vigruz.clicked.connect(self.vigruzit)
@@ -1839,16 +1828,20 @@ class mywindow(QtWidgets.QMainWindow):
                     END AS Номер_проекта, 
                     mk.Вид, res.data
                 FROM mk 
-                INNER JOIN plan ON plan.Пномер = mk.НомКплан 
-                INNER JOIN пл_оуп ON plan.Пномер = пл_оуп.НомПл
-                INNER JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП
-                INNER JOIN res ON res.Номер_мк = mk.Пномер
-                WHERE plan.poki = {CFG.Config.place.poki} and mk.Прогресс != "Завершено" AND mk.Статус != "НаУдаление" 
+                LEFT JOIN plan ON plan.Пномер = mk.НомКплан 
+                LEFT JOIN пл_оуп ON plan.Пномер = пл_оуп.НомПл
+                LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП
+                LEFT JOIN res ON res.Номер_мк = mk.Пномер
+                WHERE plan.poki = {CFG.Config.place.poki} 
+                    and mk.Прогресс != "Завершено" 
+                    AND mk.Статус != "НаУдаление" 
+                    AND INSTR(res.data, ?) > 0
             '''
             spis_mk = CSQ.custom_request_c(
                 self.db_naryad,custom_request_c,
                 attach_dbs=(self.db_kplan, self.db_resxml),
-                rez_dict=True
+                rez_dict=True,
+                list_of_lists_c=[[nn.encode(encoding='utf-8')]]
             )
             spis_mk_rez = [["Пномер","Дата","Статус", "Номер_заказа", "Номер_проекта","Вид"]]
             for mk in spis_mk:
@@ -1856,7 +1849,7 @@ class mywindow(QtWidgets.QMainWindow):
                 if res == ['']:
                     continue
                 for dse in res:
-                    if dse.get('Наименование', '').strip() == naim and dse.get('Номенклатурный_номер', '').strip() == nn:
+                    if dse.get('Номенклатурный_номер', '').strip() == nn:
                         spis_mk_rez.append([
                             mk.get('Пномер'),
                             mk.get('Дата'),
