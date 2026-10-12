@@ -11,6 +11,13 @@ from project_cust_38 import Cust_config as CFG
 from project_cust_38 import operacii
 
 
+@dataclass(frozen=True)
+class ChoiceOption:
+    label: str
+    note: str = ''
+    show: tuple[str, ...] | None = None
+
+
 @dataclass
 class ParamUse:
     item: QtWidgets.QTreeWidgetItem
@@ -21,6 +28,7 @@ class ParamUse:
     original_raw: str
     kind: str
     enabled: bool = True
+    choices: dict[str, ChoiceOption] = field(default_factory=dict)
 
     @property
     def value(self) -> str:
@@ -73,6 +81,42 @@ def declared_params(window, item):
     return []
 
 
+def choices_for_item(window, item):
+    """Use the same answer labels and saved keys as the operation editor."""
+    xl = window.xl_formulas
+    if item.text(20) == '1':
+        name = item.text(0)
+        if xl.check_op(name, True):
+            definitions = xl.convert_old_struct(name)
+        elif window.place.poki == 0:
+            definitions = operacii.Data_oper_norm.DICT_OPERS_CALC.get(name, {})
+        else:
+            definitions = {}
+    else:
+        parent = item.parent()
+        operation, transition = parent.text(0), item.text(0)
+        definitions = xl.convert_old_struct(operation, transition) if xl.check_per(operation, transition, True) else {}
+
+    result = {}
+    for name, definition in definitions.items():
+        if not isinstance(definition, dict):
+            continue
+        options = {}
+        for key, entry in definition.get('vals', {}).items():
+            # Legacy dictionaries can also contain auxiliary coefficient tables.
+            if not isinstance(entry, dict) or 'val' not in entry:
+                continue
+            show = entry.get('show')
+            if isinstance(show, (list, tuple)):
+                show = tuple(show)
+            else:
+                show = None
+            options[str(key)] = ChoiceOption(str(entry['val']), str(entry.get('prim', '')), show)
+        if options:
+            result[name] = options
+    return result
+
+
 def split_name_type(value):
     name, _, kind = value.partition(':')
     return name.strip(), kind.strip().lower()
@@ -111,15 +155,32 @@ def collect_parameters(window):
                         warnings.append(f'{item_label(item)}: не найдено описание параметров')
                     continue
                 values = stored_values(item, names)
+                choices = choices_for_item(window, item)
                 for index, (name, kind) in enumerate(descriptors):
                     if not name:
                         continue
                     group = groups.setdefault(name, ParamGroup(name))
                     group.uses.append(ParamUse(item, names, values[:], index, item_label(item), item.text(14), kind,
-                                               enabled=';' not in values[index]))
+                                               enabled=';' not in values[index], choices=choices.get(name, {})))
             except (ValueError, KeyError, IndexError, TypeError) as exc:
                 warnings.append(f'{item_label(item)}: {exc}')
     return sorted(groups.values(), key=lambda group: group.name.casefold()), warnings
+
+
+def group_choices(group):
+    choices = {}
+    for use in group.uses:
+        for key, option in use.choices.items():
+            choices.setdefault((key, option.label), option)
+    return choices
+
+
+def display_current(use):
+    value = use.value
+    if value in ('', '-'):
+        return 'не заполнено'
+    option = use.choices.get(value)
+    return f'{option.label} [{value}]' if option else value
 
 
 def numeric_kind(kind):
@@ -156,18 +217,33 @@ class BulkParametersDialog(QtWidgets.QDialog):
         self.table.setColumnWidth(3, 175)
 
         for row, group in enumerate(groups):
-            values = {use.value for use in group.uses if use.value not in ('', '-')}
+            values = {display_current(use) for use in group.uses if use.value not in ('', '-')}
             kinds = group.kinds
             incompatible = len(kinds) > 1 and not all(numeric_kind(kind) for kind in kinds)
-            conflict = len(values) > 1 or incompatible
+            variants = {frozenset((key, option.label) for key, option in use.choices.items())
+                        for use in group.uses}
+            choices = group_choices(group)
+            conflict = len(values) > 1 or incompatible or (bool(choices) and len(variants) > 1)
             toggle = QtWidgets.QTableWidgetItem()
             toggle.setFlags(QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsUserCheckable)
             toggle.setCheckState(QtCore.Qt.Unchecked if conflict else QtCore.Qt.Checked)
             self.table.setItem(row, 0, toggle)
             self.table.setItem(row, 1, QtWidgets.QTableWidgetItem(
-                group.name + (f' ({", ".join(sorted(kinds))})' if any(kinds) else '')))
-            self.table.setItem(row, 2, QtWidgets.QTableWidgetItem(''))
+                group.name + (' (варианты)' if choices else
+                              (f' ({", ".join(sorted(kinds))})' if any(kinds) else ''))))
+            if choices:
+                selector = QtWidgets.QComboBox(self.table)
+                selector.addItem('Выберите вариант…', None)
+                for (key, label), option in choices.items():
+                    selector.addItem(f'{label} [{key}]', (key, label))
+                    if option.note:
+                        selector.setItemData(selector.count() - 1, option.note, QtCore.Qt.ToolTipRole)
+                self.table.setCellWidget(row, 2, selector)
+            else:
+                self.table.setItem(row, 2, QtWidgets.QTableWidgetItem(''))
             current = 'РАЗЛИЧАЮТСЯ: ' + ', '.join(sorted(values)) if len(values) > 1 else (next(iter(values)) if values else 'не заполнено')
+            if choices and len(variants) > 1:
+                current += '; варианты различаются — проверьте места применения'
             self.table.setItem(row, 3, QtWidgets.QTableWidgetItem(current))
             self.table.setItem(row, 4, QtWidgets.QTableWidgetItem('; '.join(use.label for use in group.uses)))
 
@@ -206,7 +282,7 @@ class BulkParametersDialog(QtWidgets.QDialog):
         row = self.table.currentRow()
         if row >= 0:
             for use in self.groups[row].uses:
-                typed_value = use.value or 'не заполнено'
+                typed_value = display_current(use)
                 if use.kind:
                     typed_value += f' ({use.kind})'
                 item = QtWidgets.QTreeWidgetItem(self.targets, [use.label, typed_value])
@@ -224,17 +300,28 @@ class BulkParametersDialog(QtWidgets.QDialog):
 
     def apply_values(self):
         changes = {}
+        masks = {}
         try:
             for row, group in enumerate(self.groups):
                 if self.table.item(row, 0).checkState() != QtCore.Qt.Checked:
                     continue
-                raw_value = self.table.item(row, 2).text().strip()
-                if not raw_value:
+                selector = self.table.cellWidget(row, 2)
+                selected = selector.currentData() if selector is not None else None
+                raw_value = self.table.item(row, 2).text().strip() if selector is None else ''
+                if selected is None and not raw_value:
                     continue
                 for use in group.uses:
                     if not use.enabled:
                         continue
-                    value = validate_value(raw_value, use.kind)
+                    if selector is not None:
+                        code, label = selected
+                        option = use.choices.get(code)
+                        if use.choices and (option is None or option.label != label):
+                            raise ValueError(f'{use.label}: вариант «{label} [{code}]» недоступен')
+                        value = validate_value(code, '' if use.choices else use.kind)
+                    else:
+                        option = None
+                        value = validate_value(raw_value, use.kind)
                     key = id(use.item)
                     if key not in changes:
                         changes[key] = (use.item, use.names, use.values[:])
@@ -242,8 +329,20 @@ class BulkParametersDialog(QtWidgets.QDialog):
                     if names != use.names:
                         raise ValueError(f'{use.label}: изменился набор параметров')
                     values[use.index] = value
+                    if option is not None and option.show is not None:
+                        masks.setdefault(key, []).append((use.label, option.show))
             if not changes:
                 raise ValueError('Нет выбранных изменений')
+            for key, rules in masks.items():
+                if len({show for _, show in rules}) > 1:
+                    raise ValueError(f'{rules[0][0]}: выбранные варианты по-разному скрывают поля; измените их в редакторе операции')
+                item, names, values = changes[key]
+                show = rules[0][1]
+                for index, name in enumerate(names):
+                    if show and name not in show:
+                        values[index] = '+'
+                    elif values[index] == '+':
+                        values[index] = '-'
             for item, names, values in changes.values():
                 originals = [use.original_raw for group in self.groups for use in group.uses if use.item is item]
                 if not originals or any(item.text(14) != raw for raw in originals):
@@ -264,10 +363,15 @@ def params_for_calc(window, item):
     if not names:
         return None
     values = stored_values(item, names)
+    choices = choices_for_item(window, item)
     for (name, kind), value in zip(descriptors, values):
         if value.strip() in ('', '-'):
             raise ValueError(f'{item_label(item)}: не заполнена переменная «{name}»')
         if value == '+' or value.startswith("f'") or ';' in value:
+            continue
+        # A combo box stores its key, which can be text even for an Excel
+        # parameter represented by the generic float metadata type.
+        if value in choices.get(name, {}):
             continue
         if numeric_kind(kind):
             try:
