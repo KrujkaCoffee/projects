@@ -1,16 +1,10 @@
-"""Bulk parameter editing and norm calculation for the open TechKart tree.
-
-The tree remains the editor's source of truth.  Neither dialog writes a TK file;
-the normal Save button persists the resulting tree.
-"""
-
 from __future__ import annotations
 
 import copy
 import math
 from dataclasses import dataclass, field
 
-from PyQt5 import QtCore, QtWidgets
+from PyQt5 import QtCore, QtWidgets, Qt, QtGui
 
 from project_cust_38 import Cust_Functions as F
 from project_cust_38 import Cust_config as CFG
@@ -88,7 +82,10 @@ def stored_values(item, names):
     raw = item.text(14)
     values = raw.split('$') if raw else [''] * len(names)
     if len(values) != len(names):
-        raise ValueError(f'Ожидалось {len(names)} значений, в ТК найдено {len(values)}')
+        if len(values) < len(names):
+            raise ValueError(f'Ожидалось {len(names)} значений, в ТК найдено {len(values)}')
+        return values[:len(names)]
+
     return values
 
 
@@ -157,6 +154,7 @@ class BulkParametersDialog(QtWidgets.QDialog):
         self.table.setColumnWidth(1, 200)
         self.table.setColumnWidth(2, 145)
         self.table.setColumnWidth(3, 175)
+
         for row, group in enumerate(groups):
             values = {use.value for use in group.uses if use.value not in ('', '-')}
             kinds = group.kinds
@@ -170,10 +168,17 @@ class BulkParametersDialog(QtWidgets.QDialog):
                 group.name + (f' ({", ".join(sorted(kinds))})' if any(kinds) else '')))
             self.table.setItem(row, 2, QtWidgets.QTableWidgetItem(''))
             current = 'РАЗЛИЧАЮТСЯ: ' + ', '.join(sorted(values)) if len(values) > 1 else (next(iter(values)) if values else 'не заполнено')
-            if incompatible:
-                current += '; разные типы'
             self.table.setItem(row, 3, QtWidgets.QTableWidgetItem(current))
             self.table.setItem(row, 4, QtWidgets.QTableWidgetItem('; '.join(use.label for use in group.uses)))
+
+        for row in range(self.table.rowCount()):
+            for c in range(self.table.columnCount()):
+                if c != 2:
+                    item = self.table.item(row, c)
+                    if item is not None:
+                        item.setFlags(item.flags() & ~QtCore.Qt.ItemFlag.ItemIsEditable)
+                        item.setBackground(QtGui.QColor("#e0e0e0"))
+                        # item.setForeground(QtGui.QColor("#808080"))
         layout.addWidget(self.table)
         layout.addWidget(QtWidgets.QLabel('Места применения выбранного параметра (многозначные параметры недоступны для общей замены):'))
         self.targets = QtWidgets.QTreeWidget(self)
@@ -262,17 +267,15 @@ def params_for_calc(window, item):
     for (name, kind), value in zip(descriptors, values):
         if value.strip() in ('', '-'):
             raise ValueError(f'{item_label(item)}: не заполнена переменная «{name}»')
-        # Редактор допускает скрытое поле (+), отложенную формулу (f')
-        # и несколько строк значений, объединённых точкой с запятой.
         if value == '+' or value.startswith("f'") or ';' in value:
             continue
         if numeric_kind(kind):
             try:
-                number = float(value.replace(',', '.'))
+                number = F.valm(value)
             except ValueError:
                 raise ValueError(f'{item_label(item)}: переменная «{name}» не число') from None
-            if not math.isfinite(number) or ('int' in kind and not number.is_integer()):
-                raise ValueError(f'{item_label(item)}: переменная «{name}» не число указанного типа')
+            if not F.is_numeric(str(number)):
+                raise ValueError(f'{item_label(item)}: переменная «{name}» не число ')
     return [names, values]
 
 
@@ -297,36 +300,6 @@ def merge_materials(old, calculated):
         else:
             result.append(part)
     return '{'.join(result)
-
-
-def check_formula_sources(window):
-    """Do not silently substitute legacy formulas for approved Excel formulas."""
-    xl = window.xl_formulas
-    xl.get_actual_srv_data()
-    missing = []
-    for op in operations(window.ui.tree):
-        if xl.check_approved(operation=op.text(0)) and not xl.check_op(op.text(0), True):
-            missing.append(item_label(op))
-        for index in range(op.childCount()):
-            pereh = op.child(index)
-            if pereh.text(20) == '2' and xl.check_approved(operation=op.text(0), pereh=pereh.text(0)) \
-                    and not xl.check_per(op.text(0), pereh.text(0), True):
-                missing.append(item_label(pereh))
-    if missing:
-        QtWidgets.QMessageBox.warning(window, 'Excel формулы недоступны',
-                                      'Не удалось получить действующие параметры формул для:\n' + '\n'.join(missing[:20]))
-        return False
-    return True
-
-
-def confirm_editor_state(window):
-    return QtWidgets.QMessageBox.question(
-        window, 'Текущая техкарта',
-        'Если вы правили обычные таблицы операции, переходов или материалов, сначала нажмите их «Применить».\n'
-        'Продолжить работу с текущими значениями дерева ТК?',
-        QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.Cancel,
-        QtWidgets.QMessageBox.Cancel,
-    ) == QtWidgets.QMessageBox.Yes
 
 
 def transition_calc_enabled(window, op_name):
@@ -358,8 +331,6 @@ def recalc_one(window, op, with_materials):
         if deferred:
             operation_time = 0
         else:
-            # Это тот же вход [заголовки, значения], что даёт tab_vib.
-            # vremya_tsht сам выбирает утверждённую Excel-формулу либо код.
             result = operacii.vremya_tsht(name, copy.deepcopy(op_params))
             if result is None:
                 raise ValueError('формула операции не вернула время')
@@ -393,8 +364,6 @@ def recalc_one(window, op, with_materials):
             raise ValueError(f'{item_label(pereh)}: недоступна утверждённая формула перехода')
         if approved and not can_calc_transitions:
             raise ValueError(f'{item_label(pereh)}: переход недоступен для расчёта в редакторе')
-        # Строка в блокноте Z: с именем и рейтингом только предлагает переход.
-        # Параметры берутся из третьего поля или из утверждённого Excel.
         per_params = params_for_calc(window, pereh) if can_calc_transitions else None
         if per_params:
             if any(value.startswith("f'") for value in per_params[1]):
@@ -421,7 +390,7 @@ def recalc_one(window, op, with_materials):
         time = operation_time
         source = 'формула операции'
     elif transition_count:
-        time = round(transition_total, 1)
+        time = round(transition_total, 3)
         source = 'сумма переходов'
     elif operation_time is not None:
         time = 0
@@ -441,8 +410,6 @@ def recalc_one(window, op, with_materials):
         changes.append((op, 6, str(setup_time)))
 
     if with_materials and calculated_transitions:
-        # raschet_kompleksov(..., perehod=True) получает Тшт родительской
-        # операции. Передаём это значение после разрешения её приоритета.
         parent_time = str(time) if time is not None else op.text(7)
         for _ in range(calculated_transitions):
             try:
@@ -472,8 +439,6 @@ def show_bulk_parameters(window):
     if not any(operations(window.ui.tree)):
         QtWidgets.QMessageBox.information(window, 'Общие параметры', 'В текущей техкарте нет операций')
         return
-    if not confirm_editor_state(window) or not check_formula_sources(window):
-        return
     groups, warnings = collect_parameters(window)
     if not groups:
         QtWidgets.QMessageBox.information(window, 'Общие параметры', 'Параметры не найдены. ' + '; '.join(warnings))
@@ -491,9 +456,6 @@ def show_bulk_recalc(window):
     if not op_items:
         QtWidgets.QMessageBox.information(window, 'Пересчёт', 'В текущей техкарте нет операций')
         return
-    if not confirm_editor_state(window):
-        return
-    # Ошибку утверждённой формулы показываем в строке операции отчёта.
     try:
         window.xl_formulas.get_actual_srv_data()
     except Exception:
@@ -503,7 +465,8 @@ def show_bulk_recalc(window):
     layout = QtWidgets.QVBoxLayout(dialog)
     layout.addWidget(QtWidgets.QLabel(f'Рассчитать {len(op_items)} операций и их переходы?'))
     materials = QtWidgets.QCheckBox('Пересчитать также нормы материалов', dialog)
-    materials.setChecked(True)
+    materials.setChecked(False)
+    materials.setHidden(True)
     layout.addWidget(materials)
     buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel, dialog)
     buttons.accepted.connect(dialog.accept)
