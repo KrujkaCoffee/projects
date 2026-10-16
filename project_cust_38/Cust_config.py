@@ -443,7 +443,7 @@ class User_emploee():
         if self.login:
             self.login = self.login.split(F.sep())[-1]
         postfix = f'.{self.Отчество[0]}' if self.Отчество else ''
-        self.ФИОк = f'{self.Фамилия} {self.Имя[0]}{postfix}'  # 22.06.2026
+        self.ФИОк = f'{self.Фамилия} {self.Имя[0]}{postfix}' if self.Фамилия else '' # 22.06.2026
         # ================
         for item in data:
             self.history.append(item)
@@ -704,10 +704,18 @@ def load_place():
     SingletonMeta.clear_instance(Place)
     Config.place = Place(Config.user_config.Organization['Значение'])
 
+def tmp_dir():
+    ima_module = F.name_of_executable_file_c().split('.')[0]
+    if F.existence_file_c(os.sep.join([F.put_po_umolch() ,'mes_tmp'])) == False:
+        F.create_dir_c(os.sep.join([F.put_po_umolch() ,'mes_tmp']))
+    if F.existence_file_c(os.sep.join([F.put_po_umolch() ,'mes_tmp' , ima_module])) == False:
+        F.create_dir_c(os.sep.join([F.put_po_umolch() ,'mes_tmp' , ima_module]))
+    return os.sep.join([F.put_po_umolch() ,'mes_tmp' , ima_module])
+
 
 class System_changes():
     FILE_CHANGE_NAME = 'mes_changes.pickle'
-    DIR = CQT.qt_tmp_dir()
+    DIR = tmp_dir()
     PFILE = DIR + F.sep() + FILE_CHANGE_NAME
 
     B24_FILE_NAME = 'plan_it_form_b24(gen by reiting).pickle'

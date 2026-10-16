@@ -469,7 +469,7 @@ def MES_TREE_CSS(
     MES_TREE_CSS = copy.copy(_MES_TREE_CSS)
 
     def gen_path(name_icon):
-        path_icon = f'{F.path_to_execut_file_c()}{"icons"}{F.sep()}{name_icon}'
+        path_icon = f'{F.path_to_caller_file_c()}{"icons"}{F.sep()}{name_icon}'
         sl = chr(92)
         return  f'"{path_icon.replace(sl, r'/')}"'
 
@@ -1531,9 +1531,6 @@ class Cursor():
         else:
             self.objQt = path_objQt
 
-
-
-
     def get(self)-> QtGui.QCursor:
         if self._cache:
             return self._cache
@@ -1568,6 +1565,63 @@ class Cursors():
     right_click: Cursor = Cursor("pkm")
     double_and_context: Cursor = Cursor("dbl_and_pkm")
     print(f'Cursors imported')
+
+class Font():
+    def __init__(self,name:str):
+        self.name:str = name
+        self._cache = None
+        self._cache_path = None
+        self.load()
+
+    def load(self):
+        if self._cache:
+            return self._cache
+
+        # 1. Загружаем шрифт из файла
+        pathf = F.sep().join([F.path_to_caller_file_c(False), "fonts", self.name])
+        if F.existence_file_c(pathf):
+            self._cache_path = pathf
+
+
+    def get(self)->list[str]:
+        if self._cache:
+            return self._cache# ["Arial"]
+        families = ["Arial"]
+
+        if self._cache_path:
+            # Загружаем шрифт из файла
+            fnt_db = QtGui.QFontDatabase
+            font_id = fnt_db.addApplicationFont(self._cache_path)
+            if font_id == -1:
+                print(f"Не удалось загрузить шрифт {self._cache_path}")
+            else:
+                #  Получаем имя семейства шрифтов
+                families = fnt_db.applicationFontFamilies(font_id)
+        #  Устанавливаем шрифт
+        if not families:
+            raise ValueError(f"Не удалось загрузить шрифт {self._cache_path}")
+        self._cache = families
+        return self._cache
+
+class Fonts():
+    fritz_quadrata_cyri_regular:Font = Font("Fritz Quadrata Cyri Regular")
+
+    @classmethod
+    def set_cust_font(cls,obj, font_o: CQT.Font = None,
+                      bold: bool = True, italic: bool = False, size: int = 10,
+                      letter_spacing: float | int = 0.5):
+        if not font_o:
+            font_o = cls.fritz_quadrata_cyri_regular
+        families = font_o.get()
+
+        if not families:
+            return
+        font = QtGui.QFont(families[0], size)  # семейство, размер
+        font.setBold(bold)
+        font.setItalic(italic)
+        font.setLetterSpacing(QtGui.QFont.AbsoluteSpacing, letter_spacing)
+        obj.setFont(font)
+
 
 class HeaderTypeTableContext():
     def __init__(self,name:str)->None:
@@ -1876,10 +1930,25 @@ class TableContext:
         for k, i in self.nf.items():
             if i == column_index:
                 return k
-            
+
+    def text_by_idx(self, column_index : int ) -> str| None :
+        for k, i in self.nft.items():
+            if i == column_index:
+                return k
+
+    def text_by_name(self,name:str|Any)-> str| None :
+        idx = self.nf.get(name,None)
+        if idx is None:
+            return
+        return self.text_by_idx(idx)
+
     def set_color_font(self,r:int,g:int,b:int,a:int = 255,col_name = ""):
         for row in self.rows():
             row.set_color_font(r, g, b,a,col_name)
+
+    def set_color_background(self,r:int,g:int,b:int,a:int=255,col_name=None):
+        for row in self.rows():
+            row.set_color_background(r, g, b, a,col_name)
 
     def set_font_format(self, col_name, size: int = 14, bold: bool = False,underline: bool = False,italic: bool = False,):
         for row in self.rows():
@@ -1929,6 +1998,12 @@ class TableContext:
     @property
     def count(self)->int:
         return self._row_count
+
+    def set_selection_behavior(self,behavior:SelectionBehavior):
+        self.tbl.setSelectionBehavior(eval(f'QtWidgets.QTableWidget.SelectionBehavior.{str(behavior)}'))
+
+    def set_selection_mode(self,behavior:SelectionBehavior):
+        self.tbl.setSelectionMode(eval(f'QtWidgets.QTableWidget.SelectionMode.{str(behavior)}'))
 
     def set_cursor(self,cur:Cursor):
         self.tbl.setCursor(cur)
@@ -2868,9 +2943,19 @@ class TableRow:
         j = self._col_index(col_name)
         return self.tbl.item(self.i, j)
 
-    def widget(self, col_name: str):
+    def widget(self, col_name: str,type_w=None):
         j = self._col_index(col_name)
-        return get_btn(self.tbl, self.i, j)
+        widg = get_btn(self.tbl, self.i, j)
+        if type_w is None:
+            return widg
+        if isinstance(widg,type_w):
+            return widg
+
+        for child in widg.children():
+            if isinstance(child, type_w):
+                return child
+
+        return
 
 
 
@@ -6665,6 +6750,14 @@ def fill_wtree_unique(tree: QtWidgets.QTreeWidget, list_dicts: list, expand: boo
 
 
 class SelectionModes(enum.Enum):
+    """
+                Число	Константа (SelectionMode)	Описание
+            0	    NoSelection	                Выделение запрещено
+            1	    SingleSelection	            Только один элемент (по умолчанию)
+            2	    MultiSelection	            Множественный выбор (Ctrl+ЛКМ, но без Shift)
+            3	    ExtendedSelection	        Расширенный выбор (как в проводнике — работает Shift и Ctrl)
+            4	    ContiguousSelection	        Только смежные элементы (работает Shift, но не Ctrl)
+    """
     SingleSelection = ('SingleSelection',QTableWidget.SelectionMode.SingleSelection)
     ExtendedSelection = ('ExtendedSelection',QTableWidget.SelectionMode.ExtendedSelection)
     MultiSelection = ('MultiSelection',QTableWidget.SelectionMode.MultiSelection)
@@ -6692,9 +6785,12 @@ class SelectionBehaviors(enum.Enum):
 
 
 class FloatingButtonManager:
-    def __init__(self, discuss_anchor_field_name:str,fnc_on_click:callable,fnc_on_selection_changed:callable,
+    def __init__(self, discuss_anchor_field_name:str,title_ui:str,discuss_user_field_name:str,
+                 fnc_on_click:callable,fnc_on_selection_changed:callable,
                  fnc_oform:callable,addit_data=None):
         self.discuss_anchor_field_name:str = discuss_anchor_field_name
+        self.title_ui:str = title_ui
+        self.discuss_user_field_name:str = discuss_user_field_name
         self.fnc_on_click:callable = fnc_on_click
         self.fnc_on_selection_changed:callable = fnc_on_selection_changed
         self.fnc_oform:callable = fnc_oform
@@ -6756,6 +6852,8 @@ def _attach_floating_button(
     table._float_btn = btn
     table._float_btn_margin = right_margin
     table._discuss_anchor_field_name = floating_btn_mngr.discuss_anchor_field_name
+    table._title_ui = floating_btn_mngr.title_ui
+    table._discuss_user_field_name = floating_btn_mngr.discuss_user_field_name
     table._float_btn_on_click = floating_btn_mngr.fnc_on_click
     table._float_selection_changed = floating_btn_mngr.fnc_on_selection_changed
     table._addit_data = floating_btn_mngr.addit_data
@@ -6837,7 +6935,8 @@ def _attach_floating_button(
             return
         # пытаемся передать номер строки, если функция его принимает
         try:
-            cb(table, table.currentRow(), btn,table._discuss_anchor_field_name,table._addit_data)
+            cb(table, table.currentRow(), btn,table._discuss_anchor_field_name,table._title_ui,
+               table._discuss_user_field_name, table._addit_data)
         except TypeError:
             cb()
 
@@ -7583,6 +7682,10 @@ def restore_tree_state(tree_widget:QtWidgets.QTreeWidget, state_dict:dict):
     for i in range(tree_widget.topLevelItemCount()):
         set_expanded(tree_widget.topLevelItem(i))
 
+def set_btn_icon(btn:QtWidgets.QPushButton ,pathf:str):
+    icon1 = QtGui.QIcon()
+    icon1.addPixmap(QtGui.QPixmap(pathf), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+    btn.setIcon(icon1)
 
 def load_icons(self:object,size:int=32,dir:str|None=None):
     
@@ -7639,9 +7742,8 @@ def load_icons(self:object,size:int=32,dir:str|None=None):
             elif isinstance(item_o,QtWidgets.QPushButton):
                 if item in available_icons:
                     name_img = available_icons[item]
-                    icon1 = QtGui.QIcon()
-                    icon1.addPixmap(QtGui.QPixmap(name_img), QtGui.QIcon.Normal, QtGui.QIcon.Off)
-                    item_o.setIcon(icon1)
+                    set_btn_icon(item_o,name_img)
+
                     item_o.setIconSize(QtCore.QSize(size, size))
                     tooltip = item_o.toolTip().strip()
                     if tooltip:
@@ -8565,7 +8667,8 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
                  aliases_header:dict=None,SelectionMode=None,show_mode=None,fnc_drag_drop=None,max_width_clms=200,
                  fnc_dbl_clck=None,fnc_currentItemChanged=None,auto_type=False,dict_or_list_user_data=None,
                  page_manager: PageManager = None,
-                 decorate_dialog: typing.Callable[["Dialog_tbl"], None] = None
+                 decorate_dialog: typing.Callable[["Dialog_tbl"], None] = None,
+                 floating_btn_mngr:FloatingButtonManager=None
         ):
         """        #SP_MessageBoxCritical
         #SP_MessageBoxInformation
@@ -8607,7 +8710,8 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
         self.selection_mode = SelectionMode
         self.select_rows = selectRows
         self.extended_selection = ExtendedSelection
-
+        self.floating_btn_mngr = floating_btn_mngr
+        self.headers_hash = None
         if page_manager is not None:
             load_icons(
                 self,
@@ -8749,6 +8853,14 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
             #            parent_self=parent_self,sortingEnabled=sortingEnabled, ogr_maxshir_kol=max_width_clms,
             #            save_column_sort_hh=save_column_sort_hh,aliases_header=aliases_header,
             #            dict_or_list_user_data=dict_or_list_user_data)
+
+
+        #===============================resize==================================
+        self.headers_hash = F.hash_data({'headers':self.get_headers()})
+        set_title_for_resize_event(tbl,self.headers_hash)
+
+        connect_to_resize_tablew(parent, tbl, qt_tmp_dir())
+        #===============================resize==================================
 
         if selectRows:
             tbl.setSelectionBehavior(QtWidgets.QTableWidget.SelectionBehavior.SelectRows)
@@ -9173,6 +9285,7 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
                 func_oform_tbl(tbl, parent_self)
             else:
                 func_oform_tbl(tbl)
+        load_column_widths(parent, tbl, qt_tmp_dir())
         if show_filtr:
             hat_c = {tbl.horizontalHeaderItem(col).text(): "" for col in range(tbl.columnCount())}
             fill_wtabl([hat_c], tblf, height_row=25, auto_type=False,
@@ -9190,6 +9303,7 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
         self._setup_selection_status_bar()
         if decorate_dialog is not None and callable(decorate_dialog):
             decorate_dialog(self)
+
         return
 
     def decor_label(self):
@@ -9229,6 +9343,22 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
         self.ui.btn_forward.setEnabled(self.page_manager.can_go_forward)
         self.ui.btn_skip_forward.setEnabled(self.page_manager.can_go_forward)
 
+    def get_headers(self):
+        table: QtWidgets.QTableWidget = self.ui.tbl
+        use_aliases = True if self.aliases_header else False
+        result = []
+        for i in range(table.columnCount()):
+            item = table.horizontalHeaderItem(i)
+            if item is None:
+                result.append(None)
+                continue
+            internal_name = item.data(QtCore.Qt.UserRole)
+            if use_aliases and internal_name is not None:
+                result.append(internal_name)
+            else:
+                result.append(item.text())
+        return result
+
     def fill_dialog_tbl(self, data: typing.Any, user_data: typing.Any = None):
         fill_wtabl(
             data,
@@ -9244,7 +9374,8 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
             ogr_maxshir_kol=self.ogr_maxshir_kol,
             save_column_sort_hh=self.save_column_sort_hh,
             aliases_header=self.aliases_header,
-            dict_or_list_user_data=user_data
+            dict_or_list_user_data=user_data,
+            floating_btn_mngr=self.floating_btn_mngr
         )
 
     def fill_current_page(self):
@@ -10372,7 +10503,8 @@ def msgboxg_get_table(self, msg, dict_or_list, btn0_name="✔ Ввод", btn1_na
                       showMaximized=False,fnc_drag_drop=None,property_in_rez=False,max_width_clms=200,fnc_dbl_clck=None,
                       fnc_currentItemChanged=None,auto_type=False,dict_or_list_user_data=None,func_validate_t=None,
                       page_manager:PageManager=None,
-                      decorate_dialog: typing.Callable[["Dialog_tbl"], None] = None
+                      decorate_dialog: typing.Callable[["Dialog_tbl"], None] = None,
+                      floating_btn_mngr:FloatingButtonManager=None,
                       )->(
         list[dict]|tuple[list[dict],dict[str,str]]|dict[str,str]):
     """
@@ -10417,7 +10549,7 @@ def msgboxg_get_table(self, msg, dict_or_list, btn0_name="✔ Ввод", btn1_na
                             SelectionMode=SelectionMode,show_mode=show_mode,fnc_drag_drop=fnc_drag_drop,
                             max_width_clms=max_width_clms,fnc_dbl_clck=fnc_dbl_clck,fnc_currentItemChanged=fnc_currentItemChanged,
                             auto_type= auto_type,dict_or_list_user_data=dict_or_list_user_data,page_manager=page_manager,
-                            decorate_dialog=decorate_dialog
+                            decorate_dialog=decorate_dialog,floating_btn_mngr=floating_btn_mngr
                             )
 
     def ret(val):
@@ -10457,7 +10589,8 @@ def msgboxg_get_table_ok_inf(self, msg, dict_or_list, btn0_name="OK", btn1_name=
                              selectRows=False,func_oform_filtr=None,load_links=False, conn_func_label_link=None,
                              styleSheet=None,parent_self=None,sortingEnabled=False, save_column_sort_hh: bool = False,
                              aliases_header:dict=None,showFullScreen=False,showMaximized=False,page_manager:PageManager=None,
-                             decorate_dialog: typing.Callable[["Dialog_tbl"], None] = None
+                             decorate_dialog: typing.Callable[["Dialog_tbl"], None] = None,
+                            floating_btn_mngr: FloatingButtonManager=None,
                              ):
     if self:
         self.__ansver_Dialog_tbl = None
@@ -10477,7 +10610,7 @@ def msgboxg_get_table_ok_inf(self, msg, dict_or_list, btn0_name="OK", btn1_name=
                             load_links=load_links, conn_func_label_link=conn_func_label_link,styleSheet=styleSheet,parent_self=parent_self,
                             sortingEnabled=sortingEnabled, save_column_sort_hh=save_column_sort_hh,
                             aliases_header=aliases_header,show_mode=show_mode,page_manager=page_manager,
-                            decorate_dialog=decorate_dialog)
+                            decorate_dialog=decorate_dialog,floating_btn_mngr=floating_btn_mngr)
     returnValue = dialog_tbl.exec()
     return
 
@@ -12213,6 +12346,7 @@ def output_gant(self, fig:go.Figure, obj_browser:QtWebEngineWidgets.QWebEngineVi
     html_plot = fig.to_html(
         full_html=False,
         include_plotlyjs='cdn',
+
         config={'responsive': True}
     )
 
@@ -12258,15 +12392,23 @@ def output_gant(self, fig:go.Figure, obj_browser:QtWebEngineWidgets.QWebEngineVi
     """
 
     putf = F.sep().join((dir, f'{name_f}.html'))
-
+    print(len(html.encode('utf-8')))
     with open(putf, 'w', encoding='utf-8') as f:
+        f.write(html)
+    safe_name = str(int(F.shtamp_from_date(F.now())))
+    safe_pathf = F.sep().join((F.tmp_dir_win(), f'{safe_name}.html'))
+    with open(safe_pathf, 'w', encoding='utf-8') as f:
         f.write(html)
 
     obj_browser.setUrl(
-        QtCore.QUrl.fromLocalFile(putf)
+        QtCore.QUrl.fromLocalFile(safe_pathf)
     )
 
-
+    pass
+    #obj_browser.page().javaScriptConsoleMessage = (
+    #    lambda level, msg, line, src:
+    #    print(f"[JS {level}] {src}:{line} — {msg}")
+    #)
 
 @onerror
 def load_tab_idx(tab:QtWidgets.QTabWidget,tmp_dir,fnc_upd=None):
@@ -12710,7 +12852,7 @@ def on_section_resized_tree(self, header, idx, old, new,*args):
 
 
 @onerror
-def on_section_resized(self, tmp_dir: str, widget_obj=None, *args):#del
+def on_section_resized_del(self, tmp_dir: str, widget_obj=None, *args):#del
     if isinstance(self, str):
         msgbox(f'on_section_resized error: self->str = {self}')
         return

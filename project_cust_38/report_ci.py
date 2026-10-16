@@ -75,6 +75,12 @@ KOEF_NORMIROVSCHICI = 1 / 1.15
 
 
 DICT_VID_OTCH =  {
+    "sequence_steps_order_process": {
+        "": "",
+        "Название": "Этапность протекания заказа",
+        "Группа": "Планирование и KPI",
+        "Примечание": "Серегин 05.10.2026"
+    },
     "monthly_plan_execution": {
         "": "",
         "Название": "Исполнение плана месяца",
@@ -589,6 +595,15 @@ def vibor_sort_c_report_c(self: mywindow, *args):
         podrazdel_none(self)
 
 
+    if name_otch == 'sequence_steps_order_process':
+        self.ui.le_start_of_period.setText("2025-01-01 00:00:01")
+        last_month = F.now("")
+        konec = F.start_end_dates_c(last_month, '', 'm', "%Y-%m-%d %H:%M:%S")[0]
+        self.ui.le_end_of_period.setText(konec)
+        self.ui.cmb_podrazdelenie.clear()
+        self.ui.cmb_podrazdelenie.setDisabled(True)
+        podrazdel_none(self)
+
     if name_otch == 'monthly_plan_execution':
         self.ui.le_start_of_period.setText("2023-01-01 00:00:01")
         self.ui.le_end_of_period.setText("2023-01-01 00:00:01")
@@ -613,6 +628,7 @@ def vibor_sort_c_report_c(self: mywindow, *args):
         self.ui.cmb_podrazdelenie.clear()
         self.ui.cmb_podrazdelenie.setDisabled(True)
         podrazdel_none(self)
+
     if name_otch == 'project_schedule_deviations':
         dat = F.date_add_days(F.datetostr(DT.today()), -31)
         konec = F.start_end_dates_c(date=dat, vid='m')[1]
@@ -646,7 +662,7 @@ def vibor_sort_c_report_c(self: mywindow, *args):
         self.ui.le_end_of_period.setText(konec)
         self.ui.fr_params_plan.setHidden(False)
         self.ui.cmb_podrazdelenie.clear()
-        self.ui.cmb_podrazdelenie.addItems(list(self.DICT_NAPRAVL.keys()))
+        self.ui.cmb_podrazdelenie.addItems([k for k,v in self.DICT_NAPRAVL.items() if v['poki'] == CFG.Config.place.poki])
         self.ui.cmb_podrazdelenie.addItem('Все')
         self.ui.cmb_podrazdelenie.setDisabled(False)
         list_etaps = sorted(list(set([_['этап'] for _ in self.Data.ETAP_BY_FIO.values() if _['этап'] != None])))
@@ -1123,6 +1139,8 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
     if report_name == 'active_projects_execution':
         rez_spis = ispoln_pl_month_all(self, self.db_kplan, self.db_resxml, self.bd_naryad, self.bd_users, self.Data.DICT_PROFESSIONS,
                                    self.Data.DICT_VID_RABOT, podrazd)
+    if report_name == 'sequence_steps_order_process':
+        rez_spis, fnc_oform = sequence_steps_order_process(self, nach, konec)
     if report_name == 'monthly_plan_execution':
         rez_spis = ispoln_pl_month(self.db_kplan, self.db_resxml, self.bd_naryad, self.Data.DICT_PROFESSIONS,
                                    self.Data.DICT_VID_RABOT, podrazd)
@@ -1133,7 +1151,7 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
     if report_name == 'top_output':
         rez_spis = virabotka_top(self, nach, konec, podrazd)
     if report_name == 'assembly_specific_labor_intensity':
-        rez_spis = udel_trud_sort_c(self, nach, konec)
+        rez_spis, fnc_oform = udel_trud_sort_c(self, nach, konec)
         self.ui.btn_save_txt.setDisabled(False)
         self.ui.fr_save_txt.setHidden(False)
     if report_name == 'unplanned_work_by_direction':
@@ -1703,7 +1721,7 @@ def gr_ud_proizv_cexa(self: mywindow, nach, konec, *args):
 
     def add_time(self, item, minut_old):
         def add__(self, fio, minut_old):
-            if fio in self.Data.VID_RABOT_PO_EMPL:
+            if fio and fio in self.Data.VID_RABOT_PO_EMPL:
                 if self.Data.VID_RABOT_PO_EMPL[fio]['Этап'] == 'Сборка+сварка':
                     minut_old += F.valm(item['Твремя'])
             else:
@@ -1718,7 +1736,7 @@ def gr_ud_proizv_cexa(self: mywindow, nach, konec, *args):
 
     def add_time_f(self, item, minut_old):
         def add__(self, fio, minut_old, fact_time):
-            if fio in self.Data.VID_RABOT_PO_EMPL:
+            if fio and fio in self.Data.VID_RABOT_PO_EMPL:
                 if self.Data.VID_RABOT_PO_EMPL[fio]['Этап'] == 'Сборка+сварка':
                     minut_old += F.valm(fact_time)
             else:
@@ -1804,6 +1822,9 @@ def gr_ud_proizv_cexa(self: mywindow, nach, konec, *args):
         else:
             print(f"{item['ФИО']} не учтен в расчтете постов")
     # =====================================================================================
+    # ===================подсчет табеля  ========================================
+    plan_tab_time_req = F.deploy_dict_c(CSQ.custom_request_c(self.db_kplan,f"""SELECT month, SUM(normo_smen)  FROM plan_tabel_workforce 
+     WHERE depatment = 'сборочный цех производства' and poki = {USRCNF.Config.place.poki} GROUP BY month ;""",rez_dict=True),'month')
 
     # ===================подсчет веса по МК,КД,РЕС   ========================================
     custom_request_c = f"""
@@ -1850,9 +1871,12 @@ def gr_ud_proizv_cexa(self: mywindow, nach, konec, *args):
         rez[month]['ves'] += item['Вес']
         # print(f"вес по МК  {item['Вес']}| сумм:{rez[month]['ves']}")
         if item['xml'] == '' and item['Тип'] == 1:
-            list_err.append([f'МК {item["Пномер"]} не загружен вес xml в МК'])
+            print(f'МК {item["Пномер"]} не загружен вес xml в МК')
+            #list_err.append([f'МК {item["Пномер"]} не загружен вес xml в МК'])
+            rez[month]['ves_xml'] += F.valm(item['Вес_по_рес'])
+        else:
 
-        rez[month]['ves_xml'] += F.valm(item['xml'])
+            rez[month]['ves_xml'] += F.valm(item['xml'])
         print(
             f"Номер_заказа {item['Номер_заказа']}   Номер_заказа {item['Номер_заказа']}   Пномер {item['Пномер']}  Вес: {item['Вес']} xml: {F.valm(item['xml'])}")
         print(f"вес ХМЛ  {F.valm(item['xml'])}| сумм:{rez[month]['ves_xml']}")
@@ -1875,10 +1899,17 @@ def gr_ud_proizv_cexa(self: mywindow, nach, konec, *args):
         return
     F.save_file('viv_ves.txt', viv)
 
-    rez_tbl = [['Месяц', 'Постов', 'Выработка, н-недель', 'Присутствие, недель', 'Произв-ть % н-смен/пост',
+    rez_tbl = [['Месяц', 'Чел./смен', 'Выработка, н-недель', 'Доступно табель, н-недель', 'Уровень выполнения норм, %',
+                'Присутствие, недель', 'Выработка, н-смен/чел.',
                 'Вес Рес.ИЗД, т. без скелета', 'Вес Рес.только лист без скелета, т.', 'Вес хмл КО, т.', 'Вес по черт.']]
     list_month = sorted(rez.keys())
     for month in list_month:
+        plan_tab_time = 0
+        if plan_tab_time_req != None and len(plan_tab_time_req):
+            month_wd= f'{month}-01'
+            if month_wd in plan_tab_time_req:
+                plan_tab_time = round(plan_tab_time_req[month_wd], 2)
+
         name_table = F.datetostr(F.strtodate(month, "%Y-%m"), 'mtdz_%Y_%m_01')
         rab_dn_count = 0
         q_days = CSQ.custom_request_c(self.bd_users, f"""SELECT * FROM "{name_table}" WHERE "Пномер" = 1""")
@@ -1888,13 +1919,15 @@ def gr_ud_proizv_cexa(self: mywindow, nach, konec, *args):
         list_count_days = []
         for day in rez[month]['days']:
             list_count_days.append(len(rez[month]['days'][day]))
-        postov = sum(list_count_days) / rab_dn_count / 2
-        virabotka = rez[month]['minut'] / 450 / 2 * KOEF_NORMIROVSCHICI
-        prisutstvie = rez[month]['minut_fact'] / 450 / 2
-        proizv = virabotka / postov / rab_dn_count * 100
+
+        emploee_cnt = plan_tab_time / rab_dn_count
+        virabotka = rez[month]['minut'] / 450
+        prisutstvie = rez[month]['minut_fact'] / 450 / 7
+        proizv = virabotka / emploee_cnt
         virabotka = virabotka / 7
-        prisutstvie = prisutstvie / 7
-        rez_tbl.append([month, round(postov, 1), round(virabotka), round(prisutstvie), round(proizv, 2),
+        rez_tbl.append([month, round(emploee_cnt, 1), round(virabotka,1),
+                        round(plan_tab_time/7, 1), round(rez[month]['minut']/rez[month]['minut_fact']*100,1),
+                        round(prisutstvie,1), round(proizv, 2),
                         round(rez[month]['ves'] / 1000, 2),
                         round(rez[month]['ves_list'] / 1000, 2),
                         round(rez[month]['ves_xml'] / 1000, 2),
@@ -2974,6 +3007,9 @@ def not_upload_erp_nar(self:mywindow, nach_data, kon_data):
     return rez
 
 def dinam_proizv_sotr(self:mywindow, nach_data, kon_data, fio):
+    if not fio:
+        CQT.msgbox(f'Выберите сотрудника!')
+        return []
     nach_data_obj =  F.strtodate(nach_data)
     kon_data_obj = F.strtodate(kon_data)
     custom_request_c = CSQ.SqlQuery(
@@ -6659,18 +6695,13 @@ def divergence_of_date_proj(self: mywindow, data_nach, data_kon, *args):
 
 def udel_trud_sort_c(self: mywindow, data_nach, data_kon, *args):
     shablon_etaps = dict()
-    rez = [
-        ['Код из бд', 'Выборка,шт.', "Направление", 'Наименование (мин/кг)', 'кг/чел/см_факт', 'кг/чел/см_норм',
-         'кг/чел/см_средн', 'кг/чел/см_кпл']]
-    for oper in self.DICT_OPER_FULL.keys():
-        etap = self.DICT_OPER_FULL[oper]['etap']
-        if etap is not  None:
-            shablon_etaps[etap] = 0
-    for etap in shablon_etaps:
-        rez[0].append(etap)
+    rez = []
+    base_fields = ['Код из бд','Утверждено', 'Выборка,шт.', "Направление", 'Наименование (мин/кг)', 'кг/чел/см_факт', 'кг/чел/см_норм',
+         'кг/чел/см_средн', 'кг/чел/см_кпл','внеплан_k']
+    dict_shablon_etaps = {_['etap']:0 for _ in self.DICT_OPER_FULL.values() if _['etap'] is not None}
+    full_fields = copy.copy(base_fields).extend(list(dict_shablon_etaps.keys()))
 
     list_tbls = CSQ.get_list_of_tables_c(self.db_kplan)
-
 
     
     podrs = CSQ.custom_request_c(self.db_kplan,f"""
@@ -6679,7 +6710,7 @@ SELECT "Пномер",
        "Имя_поля",
        "Это_группа_сборки",
        poki
-  FROM podrazdel WHERE poki = {CFG.Config.place.poki};
+  FROM podrazdel WHERE poki = {CFG.Config.place.poki} and synthetic = 0;
 """,rez_dict= True)
 
     inner = "\n".join(
@@ -6740,7 +6771,6 @@ SELECT "Пномер",
         dict_kpl[item['Вид']]['Нчпс'] += npsm
         dict_kpl[item['Вид']]['Кол_во'] += 1
 
-
     for item in dict_kpl:
 
         if dict_kpl[item]['Кол_во']:
@@ -6757,11 +6787,10 @@ SELECT "Пномер",
             for name in dinamic_names_fields:
                 dict_kpl[item][name] = 0
 
-
     query = CSQ.SqlQuery(
         sqlite=f"""SELECT DISTINCT naryad.Номер_мк, naryad.Пномер, naryad.Дата, naryad.Твремя, naryad.Фвремя, naryad.Фвремя2, 
         naryad.ФИО, naryad.ФИО2, napravlenie.name as Направление, naryad.Опер_время, naryad.Операции, mk.Вес, 
-         пл_топ.Вид FROM naryad 
+         пл_топ.Вид , mk.Тип  as "Тип_мк" FROM naryad 
     INNER JOIN mk ON mk.Пномер == naryad.Номер_мк 
     INNER JOIN jurnal ON jurnal.Номер_наряда = naryad.Пномер 
     INNER JOIN plan ON plan.Пномер = mk.НомКплан 
@@ -6774,7 +6803,7 @@ SELECT "Пномер",
         postgres=f"""SELECT DISTINCT 
             naryad."Номер_мк", naryad."Пномер", naryad."Дата", naryad."Твремя", naryad."Фвремя", naryad."Фвремя2", 
             naryad."ФИО", naryad."ФИО2", napravlenie."name" as "Направление", naryad."Опер_время", naryad."Операции", mk."Вес", 
-         пл_топ."Вид" 
+         пл_топ."Вид" , mk."Тип"  as "Тип_мк"
     FROM naryad 
     INNER JOIN mk ON "mk"."Пномер" = "naryad"."Номер_мк" 
     INNER JOIN "jurnal" ON "jurnal"."Номер_наряда" = "naryad"."Пномер" 
@@ -6798,10 +6827,12 @@ SELECT "Пномер",
 
     for napr in list_napr:
         dict_shabl_napr[napr] = dict()
-        dict_shabl_napr[napr]['etap_fakt'] = copy.deepcopy(shablon_etaps)
-        dict_shabl_napr[napr]['etap_norm'] = copy.deepcopy(shablon_etaps)
+        dict_shabl_napr[napr]['etap_fakt'] = copy.deepcopy(dict_shablon_etaps)
+        dict_shabl_napr[napr]['etap_fakt_vneplan'] = copy.deepcopy(dict_shablon_etaps)
+        dict_shabl_napr[napr]['etap_norm'] = copy.deepcopy(dict_shablon_etaps)
         dict_shabl_napr[napr]['Вес'] = 0
         dict_shabl_napr[napr]['Кол'] = 0
+
     tmp_dict_mk = dict()
     for item in responce:
         napr_deyat = item['Направление']
@@ -6822,10 +6853,11 @@ SELECT "Пномер",
         if item['Номер_мк'] not in tmp_dict_mk:
             tmp_dict_mk[item['Номер_мк']] = {'Вес': item['Вес'],
                                              'Вид': item['Вид'],
-                                             'Этапы': copy.deepcopy(shablon_etaps),
-                                             'Этапы_нома': copy.deepcopy(shablon_etaps),
+                                             'Этапы': copy.deepcopy(dict_shablon_etaps),
+                                             'Этапы_нома': copy.deepcopy(dict_shablon_etaps),
                                              'koef_vneplana': koef_vneplana,
-                                             'koef_pogr_norm': koef_pogr_norm}
+                                             'koef_pogr_norm': koef_pogr_norm,
+                                             'vneplan':  item['Тип_мк'] != 1}
         koef = tvrem / fvrem
         list_oper = [_.split("$")[-1] for _ in item['Операции'].split("|")]
         list_time = [F.valm(_) for _ in item['Опер_время'].split("|")]
@@ -6860,6 +6892,7 @@ SELECT "Пномер",
     for mk in tmp_dict_mk.keys():
         ves = tmp_dict_mk[mk]['Вес'] * KOEF_RASKLADKI
         vid = tmp_dict_mk[mk]['Вид']
+        vneplan = tmp_dict_mk[mk]['vneplan']
         try:
             dict_shabl_napr[vid]['Вес'] += ves                
         except:
@@ -6867,10 +6900,13 @@ SELECT "Пномер",
         dict_shabl_napr[vid]['Кол'] += 1
         for etap in tmp_dict_mk[mk]['Этапы'].keys():
             if calc_estimated_etap(etap):
-                dict_shabl_napr[vid]['etap_fakt'][etap] += tmp_dict_mk[mk]['Этапы'][etap] * tmp_dict_mk[mk][
+                add_fact_time = tmp_dict_mk[mk]['Этапы'][etap] * tmp_dict_mk[mk][
                     'koef_pogr_norm'] * tmp_dict_mk[mk]['koef_vneplana']
+                dict_shabl_napr[vid]['etap_fakt'][etap] += add_fact_time
                 dict_shabl_napr[vid]['etap_norm'][etap] += tmp_dict_mk[mk]['Этапы_нома'][etap] * tmp_dict_mk[mk][
                     'koef_pogr_norm'] * tmp_dict_mk[mk]['koef_vneplana']
+                if vneplan:
+                    dict_shabl_napr[vid]['etap_fakt_vneplan'][etap] += add_fact_time
             else:
                 dict_shabl_napr[vid]['etap_fakt'][etap] += tmp_dict_mk[mk]['Этапы'][etap] * tmp_dict_mk[mk][
                     'koef_pogr_norm']
@@ -6879,16 +6915,25 @@ SELECT "Пномер",
     for vid in dict_shabl_napr.keys():
         ves = dict_shabl_napr[vid]['Вес']
         kol_vo = dict_shabl_napr[vid]['Кол']
+        fl_approved = dict_sort_c[vid]['Утверждены_нормы']
+
         if ves == 0:
             continue
-        tmp = [vid, kol_vo, self.Data.NAPRAVL_DEYAT_KOD[dict_sort_c[vid]['Направл']]['Направление'],
-               dict_sort_c[vid]['Имя'], 0, 0, 0, 0]
+        tmp_vals = [vid, fl_approved, kol_vo, self.Data.NAPRAVL_DEYAT_KOD[dict_sort_c[vid]['Направл']]['Направление'],
+               dict_sort_c[vid]['Имя'], 0, 0, 0, 0,0]
+        tmp = {base_fields[i]: tmp_vals[i] for i in range(len(base_fields))}
+
         for etap in dict_shabl_napr[vid]['etap_fakt'].keys():
             if etap in ['Вес', 'Кол']:
                 continue
             dict_shabl_napr[vid]['etap_fakt'][etap] = round(dict_shabl_napr[vid]['etap_fakt'][etap] / ves, 1)
             dict_shabl_napr[vid]['etap_norm'][etap] = round(dict_shabl_napr[vid]['etap_norm'][etap] / ves, 1)
+            dict_shabl_napr[vid]['etap_fakt_vneplan'][etap] = round(dict_shabl_napr[vid]['etap_fakt_vneplan'][etap] / ves, 1)
 
+        summ_estimated_fakt_vneplan = 0
+        for etap,val in dict_shabl_napr[vid]['etap_fakt_vneplan'].items():
+             if calc_estimated_etap(etap):
+                 summ_estimated_fakt_vneplan += val
         summ_estimated_fakt = 0
         for etap,val in dict_shabl_napr[vid]['etap_fakt'].items():
              if calc_estimated_etap(etap):
@@ -6898,52 +6943,51 @@ SELECT "Пномер",
              if calc_estimated_etap(etap):
                  summ_estimated_norm += val
 
-
         if summ_estimated_fakt:
-            tmp[4] = 0
-            tmp[5] = 0
-            tmp[6] = 0
-            tmp[7] = 0
+
+            tmp['кг/чел/см_факт'] = 0
+            tmp['кг/чел/см_норм'] = 0
+            tmp['кг/чел/см_средн'] = 0
+            tmp['кг/чел/см_кпл'] = 0
+            tmp['внеплан_k'] = 0
+            tmp['внеплан_k'] = round(summ_estimated_fakt_vneplan/summ_estimated_fakt,2)
             if vid in dict_kpl:
-                tmp[7] = dict_kpl[vid]['Нчпс']
+                tmp['кг/чел/см_кпл'] = dict_kpl[vid]['Нчпс']
             if summ_estimated_fakt > 0:
-                tmp[4] = round(480 / summ_estimated_fakt)
+                tmp['кг/чел/см_факт'] = round(480 / summ_estimated_fakt)
             if summ_estimated_norm > 0:
-                tmp[5] = round(480 / summ_estimated_norm)
+                tmp['кг/чел/см_норм'] = round(480 / summ_estimated_norm)
 
-            if tmp[4] != 0 and tmp[7] != 0:
-                tmp[6] = round((tmp[4] + tmp[7]) / 2, 1)
+            if tmp['кг/чел/см_факт'] != 0 and tmp["кг/чел/см_кпл"] != 0:
+                tmp['кг/чел/см_средн'] = round((tmp['кг/чел/см_факт'] + tmp["кг/чел/см_кпл"]) / 2, 1)
 
-            if tmp[4] == 0:
-                tmp[6] = tmp[7]
-            if tmp[7] == 0:
-                tmp[6] = tmp[4]
+            if tmp['кг/чел/см_факт'] == 0:
+                tmp['кг/чел/см_средн'] = tmp["кг/чел/см_кпл"]
+            if tmp["кг/чел/см_кпл"] == 0:
+                tmp['кг/чел/см_средн'] = tmp['кг/чел/см_факт']
 
         dict_shabl_napr[vid]['Вес'] = '*'
 
-        for rez_etap in rez[0][8:]:
+        for rez_etap in dict_shablon_etaps.keys():
+            tmp[rez_etap] = 0
             if dict_shabl_napr[vid]['etap_fakt'][rez_etap] == 0 and dict_shabl_napr[vid]['etap_norm'][rez_etap] != 0:
-                tmp.append(
-                    (dict_shabl_napr[vid]['etap_norm'][rez_etap]))
+                tmp[rez_etap] = dict_shabl_napr[vid]['etap_norm'][rez_etap]
             if dict_shabl_napr[vid]['etap_fakt'][rez_etap] != 0 and dict_shabl_napr[vid]['etap_norm'][rez_etap] == 0:
-                tmp.append(
-                    (dict_shabl_napr[vid]['etap_fakt'][rez_etap]))
+                tmp[rez_etap] = dict_shabl_napr[vid]['etap_fakt'][rez_etap]
             if dict_shabl_napr[vid]['etap_fakt'][rez_etap] != 0 and dict_shabl_napr[vid]['etap_norm'][rez_etap] != 0:
-                tmp.append(round(
-                    (dict_shabl_napr[vid]['etap_fakt'][rez_etap] + dict_shabl_napr[vid]['etap_norm'][rez_etap]) / 2, 3))
+                tmp[rez_etap] = round((dict_shabl_napr[vid]['etap_fakt'][rez_etap] + dict_shabl_napr[vid]['etap_norm'][rez_etap]) / 2, 3)
         rez.append(tmp)
-    # rez.append(['' for _ in rez[0]])
-    # rez.append(['' for _ in rez[0]])
+    llist = F.list_of_dicts_to_list_of_lists(rez)
+    for i,it in enumerate(llist[0]):
+        llist[0][i] = llist[0][i]+'_мин/кг' if llist[0][i] in dict_shablon_etaps else llist[0][i]
 
-    max_lenght = max([len(_) for _ in rez])
-    for item in rez:
-        delta = max_lenght - len(item)
-        for i in range(delta):
-            item.append('')
-    for j in range(len(rez[0])):
-        if rez[0][j] in shablon_etaps:
-            rez[0][j] = rez[0][j] + "_мин/кг"
-    return rez
+    def fnc_oform(tbl:CQT.QtWidgets.QTableWidget,*args):
+        t = CQT.TableContext(tbl)
+        t.set_selection_behavior(CQT.SelectionBehaviors.SelectRows)
+        t.set_selection_mode(CQT.SelectionModes.ExtendedSelection)
+
+
+    return llist, fnc_oform
 
 
 @CQT.onerror
@@ -7062,7 +7106,7 @@ def get_plan_vneplan_data(self, data_nach, data_kon, vid='Все', etap='Сбо�
                                                   format_out="%Y-%m-%d %H:%M:%S")
         postfix = ''
         if vid != 'Все':
-            postfix = f'mk.Вид = "{vid}" AND '
+            postfix = f'napravlenie.name = "{vid}" AND '
 
         DICT_VID_NAPR = F.deploy_dict_c(
             CSQ.custom_request_c(self.db_kplan, f"""SELECT "НомПл", "Вид" FROM пл_топ;""", rez_dict=True), 'НомПл')
@@ -7070,7 +7114,7 @@ def get_plan_vneplan_data(self, data_nach, data_kon, vid='Все', etap='Сбо�
         unconfirm_work_code = place.КодыНарядов.НеподтвержденныйВнеплан
         poki = place.poki
         query = CSQ.SqlQuery(
-            sqlite=f"""SELECT DISTINCT
+            sqlite=f"""SELECT DISTINCT napravlenie.name,
                                     naryad.Пномер, naryad.Твремя, naryad.Норма_времени,  naryad.Номер_мк, naryad.Внеплан, 
                         naryad.ФИО  as ФИО , naryad.ФИО2  as ФИО2, 
                                     naryad.Фвремя, naryad.Фвремя2, naryad.Примечание,naryad.ДСЕ,naryad.ДСЕ_ID,naryad.Опер_колво,
@@ -7102,11 +7146,13 @@ def get_plan_vneplan_data(self, data_nach, data_kon, vid='Все', etap='Сбо�
                                     LEFT JOIN plan ON plan.Пномер = mk.НомКплан  
                                     LEFT JOIN пл_оуп ON пл_оуп.НомПл = mk.НомКплан 
                                     LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП 
+                                    left join napravl_deyat on napravl_deyat.Пномер = plan.Направление_деятельности
+                                    left join napravlenie on napravlenie.Пномер = napravl_deyat.Направление
                         WHERE {postfix} naryad.Внеплан != {unconfirm_work_code} AND naryad.Подтвержд_вып == 1 AND naryad.Аутсорсинг == 0 and 
                         jurnal.Статус == "Завершен" and plan.poki == {poki} and datetime(jurnal.Дата) >= datetime("{nach_data}") 
                         and datetime(jurnal.Дата) <= datetime("{kon_data}")
             """,
-            postgres=f"""SELECT DISTINCT
+            postgres=f"""SELECT DISTINCT napravlenie.name,
                                     naryad."Пномер", naryad."Твремя", naryad."Норма_времени",  naryad."Номер_мк", naryad."Внеплан", 
                         naryad."ФИО"  as "ФИО", 
                         naryad."ФИО2" as "ФИО2", 
@@ -7147,6 +7193,8 @@ def get_plan_vneplan_data(self, data_nach, data_kon, vid='Все', etap='Сбо�
                         LEFT JOIN "plan" ON "plan"."Пномер" = "mk"."НомКплан"  
                         LEFT JOIN "пл_оуп" ON "пл_оуп"."НомПл" = "mk"."НомКплан" 
                         LEFT JOIN "знпр" ON "знпр"."s_num" = "пл_оуп"."Пномер_ЗП" 
+                        left join napravl_deyat on napravl_deyat."Пномер" = plan."Направление_деятельности"
+                        left join napravlenie on napravlenie."Пномер" = napravl_deyat."Направление"
                         WHERE {postfix} naryad."Внеплан" != {unconfirm_work_code} AND "naryad"."Подтвержд_вып" = 1 AND naryad."Аутсорсинг" = 0 and 
                             "jurnal"."Статус" = 'Завершен' 
                             and plan.poki = {poki} 
@@ -7208,9 +7256,9 @@ def get_plan_vneplan_data(self, data_nach, data_kon, vid='Все', etap='Сбо�
             if etap_user == None:
                 CQT.msgbox(f'Для {fio_zav} не указан этап в DB dolgn_etap')
                 return None, None
-            if vid != 'Все':
-                if etap_user != etap:
-                    continue
+
+            if etap_user != etap:
+                continue
             try:
                 if item_zav_nar['Тип'] == 'Плановая':  # Плановая
                     if item_zav_nar['Внеплан'] in (0,10):
@@ -7348,8 +7396,13 @@ def weight_by_closed_mk(self, data_nach, data_kon, podrazd='-', *args):
     query = CSQ.SqlQuery(
         sqlite=f"""SELECT 
         
+        mk."НомКплан" as "НомКплан", 
         mk."Пномер" as "Пномер", 
+        Тип_мк."Имя" as "Тип", 
         napravlenie."name" as "Направление", 
+        napravl_deyat."Имя" as "НД", 
+        виды_по_направлению."Имя" as "Техн. вид", 
+        виды_по_направлению."кг_на_пост_см" as "Техн. вид\nкг/пост/см", 
         mk."Вес" as "_Вес",
         mk."Дата_завершения" as "Дата_завершения",
         mk.xml as "_xml", 
@@ -7364,9 +7417,12 @@ def weight_by_closed_mk(self, data_nach, data_kon, podrazd='-', *args):
          FROM mk 
          LEFT JOIN plan ON plan."Пномер" = mk."НомКплан" 
         LEFT JOIN zagot ON zagot."Ном_МК" = mk."Пномер"      
+        LEFT JOIN Тип_мк ON Тип_мк."Пномер" = mk."Тип"      
         LEFT JOIN napravl_deyat ON napravl_deyat."Пномер" = plan."Направление_деятельности"      
         LEFT JOIN napravlenie ON napravlenie."Пномер" = napravl_deyat."Направление"      
         LEFT JOIN пл_оуп ON пл_оуп."НомПл" = mk."НомКплан" 
+        LEFT JOIN пл_топ ON пл_топ."НомПл" = mk."НомКплан" 
+        LEFT JOIN виды_по_направлению ON виды_по_направлению."Пномер" = пл_топ."Вид" 
         LEFT JOIN знпр ON знпр."s_num" = пл_оуп."Пномер_ЗП" 
          
          WHERE  (date(mk."Дата_завершения") BETWEEN 
@@ -8594,11 +8650,10 @@ def raspredelenie_po_naprfvleniam_proc(self, data_nach, data_kon):
     and ("Подтвержд_вып_дата")::timestamp < ('{data_kon}')::timestamp 
         AND "Внеплан" != 1 AND "Подтвержд_вып" = 1; '''
     )
-    if F.existence_file_c('rez_jur_raspredelenie_po_naprfvleniam_proc'):
-        rez_jur = F.load_file_pickle('rez_jur_raspredelenie_po_naprfvleniam_proc')
-    else:
-        rez_jur = CSQ.custom_request_c(self.bd_naryad, query, hat_c=True, rez_dict=True)
-        F.save_file_pickle('rez_jur_raspredelenie_po_naprfvleniam_proc', rez_jur)
+
+
+
+    rez_jur = CSQ.custom_request_c(self.bd_naryad, query, hat_c=True, rez_dict=True)
 
     query_kplan = f"""SELECT plan."МК", napravl_deyat."Имя", пл_ко."Вес_КД" 
 FROM plan
@@ -8606,11 +8661,7 @@ INNER JOIN napravl_deyat ON napravl_deyat."Пномер" = plan."Направл�
 INNER JOIN пл_ко ON пл_ко."НомПл" = plan."Пномер"
 """
 
-    if F.existence_file_c('rez_kplan_raspredelenie_po_naprfvleniam_proc'):
-        rez_kplan = F.load_file_pickle('rez_kplan_raspredelenie_po_naprfvleniam_proc')
-    else:
-        rez_kplan = F.deploy_dict_c(CSQ.custom_request_c(self.db_kplan, query_kplan, hat_c=True, rez_dict=True), 'МК')
-        F.save_file_pickle('rez_kplan_raspredelenie_po_naprfvleniam_proc', rez_kplan)
+    rez_kplan = F.deploy_dict_c(CSQ.custom_request_c(self.db_kplan, query_kplan, hat_c=True, rez_dict=True), 'МК')
 
     rez_jur_2 = []
     dict_mk_summ_tdz = dict()
@@ -8707,6 +8758,82 @@ INNER JOIN пл_ко ON пл_ко."НомПл" = plan."Пномер"
             rez_list_plan.append(tmp)
     rez_list_plan.append(['' for _ in rez_list_plan[0]])
     return rez_list_plan
+
+
+def sequence_steps_order_process(self, data_nach, data_kon):
+    """
+    Дата занесения проекта в МЕС (первое занесение от ПДО),
+    дата изменения в МЕС с присвоением статуса "Подготовка",
+    дата постановки в план со статусом "Производство",
+    дата закрытия МК.
+    Мне даже не сами даты нужны, а количество дней.
+
+    от даты подписания договора до выдачи КД - выдача ТД - Дата постановки в План (статус) - закрытие МК.
++   вид_направления.
+    """
+    req = f"""
+    seleCT
+    
+ plan.Пномер,
+ napravl_deyat.Имя,
+  plan.Дата_внесения,
+  пл_оуп.Дата_заявки_на_произв,
+   пл_оуп.Дата_отгрузки_ПУ,
+   plan.Фдата_получения_КД,
+   plan.Дата_внесения_в_план_месяца,
+   пл_топ.Пдата_нач_ТД,
+   пл_топ.Дата_МК,
+   '' as "Дней на КД",
+   '' as "% на КД",
+   '' as "Дней на подготовку",
+   '' as "% на подготовку",
+   '' as "Дней на производство",
+   '' as "% на производство"
+   
+ from plan 
+ inner join  пл_оуп on пл_оуп.НомПл = plan.Пномер
+ inner join  пл_топ on пл_топ.НомПл = plan.Пномер
+ inner join  napravl_deyat on napravl_deyat.Пномер = plan.Направление_деятельности
+
+WHERE  plan.poki = {self.place.poki} and datetime(plan.Дата_внесения) > datetime("2025-01-01") AND datetime(plan.Дата_внесения) < datetime("2027-01-01")
+"""
+    rez_req = CSQ.custom_request_c(CFG.Config.project.db_kplan, req,rez_dict=True)
+    
+    def is_date(str_date):
+        return F.is_date(str_date, "%Y-%m-%d")
+    
+    def strtodate(str_date):
+        return F.strtodate(str_date, "%Y-%m-%d")
+    
+    rez_spis = []
+    for it in rez_req:
+        days_kd = 0
+        days_podg = 0
+        days_pr = 0
+        days_full = 0
+        
+        if is_date(it['Дата_внесения']) and is_date(it['Дата_отгрузки_ПУ']):
+            days_full = F.delta_days(strtodate(it['Дата_внесения']), strtodate(it['Дата_отгрузки_ПУ'])).days
+            
+        if is_date(it['Дата_внесения']) and is_date(it['Фдата_получения_КД']):
+            days_kd = F.delta_days(strtodate(it['Дата_внесения']), strtodate(it['Фдата_получения_КД'])).days
+        it['Дней на КД'] = days_kd
+        it['% на КД'] = round(days_kd / days_full * 100) if days_full else 0
+        if is_date(it['Фдата_получения_КД']) and is_date(it['Дата_МК']):
+            days_podg = F.delta_days(strtodate(it['Фдата_получения_КД']), strtodate(it['Дата_МК'])).days
+        it['Дней на подготовку'] = days_podg
+        it['% на подготовку'] = round(days_podg / days_full * 100) if days_full else 0
+        if is_date(it['Дата_внесения_в_план_месяца']) and is_date(it['Дата_отгрузки_ПУ']):
+            days_pr = F.delta_days(strtodate(it['Дата_внесения_в_план_месяца']), strtodate(it['Дата_отгрузки_ПУ'])).days
+        it['Дней на производство'] = days_pr
+        it["% на производство"] = round(days_pr / days_full * 100) if days_full else 0
+        rez_spis.append(it)
+        
+
+    def fnc_oform(tbl, *args):
+        return 
+
+    return rez_spis, fnc_oform
 
 
 @CQT.onerror

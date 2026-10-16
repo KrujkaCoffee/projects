@@ -37,7 +37,7 @@ import project_cust_38.api_erp_commands as APIERP
 import project_cust_38.Cust_emoji as CEMOJ
 import project_cust_38.border_painter as BORDERP
 import project_cust_38.sub_mes.access_mngr.main_mngr as ACCSSMNGR
-
+import project_cust_38.sub_mes.discussions.main_discuss as DISCUSS
 from functools import partial
 
 try:
@@ -3832,11 +3832,7 @@ class Techkards():
                     if len(params_db) == len(oper['params']):
                         oper['params_dict'] = F.list_of_lists_to_list_of_dicts([params_db,
                                                                                 oper['params']])[0]
-                    else:
-                        oper['t_sht'] = 0
-                        oper['t_pz'] = 0
-                        oper['params'] = []
-                        oper['params_dict'] = dict()
+
 
                 for pereh in oper['perehs']:
                     pereh_path = self.xl_formulas.get_pereh_txt_path(
@@ -4309,8 +4305,9 @@ class Marshrut_cards(_base_marshrut_cards):
 
 
 class _Naryad_base():
-    def calc_dict_empl(self, db_users: str) -> list[dict]:
-        data = F.deploy_dict_c(CSQ.custom_request_c(db_users, custom_request_c=f"""SELECT * FROM employee WHERE Пномер IN( SELECT Пномер FROM (SELECT
+    @staticmethod
+    def calc_dict_empl(self=None, db_users: str=None) -> list[dict]:
+        data = F.deploy_dict_c(CSQ.custom_request_c(CFG_prj.db_users, custom_request_c=f"""SELECT * FROM employee WHERE Пномер IN( SELECT Пномер FROM (SELECT
             	MAX(Пномер) as Пномер,
             	ФИО
             FROM
@@ -4325,9 +4322,10 @@ class _Naryad_base():
             CSQ.custom_request_c(db_naryad, f"""SELECT * FROM dolgn_etap""", rez_dict=True),
             'Должность')
 
-    def calc_dict_opers(self, db_naryad: str) -> list[dict]:
+    @staticmethod
+    def calc_dict_opers(self=None, db_naryad: str=None) -> list[dict]:
         return F.deploy_dict_c(
-            CSQ.custom_request_c(db_naryad, f"""SELECT * FROM operacii WHERE poki = {CFG.Config.place.poki}""",
+            CSQ.custom_request_c(CFG_prj.db_naryad, f"""SELECT * FROM operacii WHERE poki = {CFG.Config.place.poki}""",
                                  rez_dict=True),
             'name')
 
@@ -4339,14 +4337,16 @@ class Naryad_list(_Naryad_base):
         self._dict_dolgn_etap = self.calc_dict_dolgn_etap(self.db_naryad)
         self._dict_empl = self.calc_dict_empl(self.db_users)
         self._dict_opers = self.calc_dict_opers(self.db_naryad)
+        self._DICT_DATA_DOLGN_ETAP = prepare_dolg_etap_for_calc_pozition_fact_kpl()
 
         data = CSQ.custom_request_c(self.db_naryad, f'''SELECT naryad.*, mk.Дата as ДатаМК FROM naryad JOIN mk ON mk.Пномер = naryad.Номер_мк 
             WHERE naryad.Пномер in ({CSQ.prepare_list_to_tuple(set_nums)});''', rez_dict=True)
 
         self.naryads: list[Naryads] = [
-            Naryads(_, self.db_naryad, self._dict_dolgn_etap, self.db_users, self._dict_dolgn_etap, self._dict_opers)
+            Naryads(_, self.db_naryad, self._dict_dolgn_etap, self.db_users, self._dict_empl, self._dict_opers,
+                    self._DICT_DATA_DOLGN_ETAP)
             for _ in data]
-
+        self.dict_naryads: dict[int, Naryads] = {_.Пномер: _ for _ in self.naryads}
 
 class Naryad_param():
     def __init__(self, parent: Naryads | None,
@@ -4408,9 +4408,9 @@ class Naryad_param():
 class Naryads(_Naryad_base):
     def __init__(self, p_nom_or_row, db_naryad=None, dict_dolgn_etap=None, db_users=None, dict_empl=None,
                  dict_opers=None,
-                 DICT_DATA_DOLGN_ETAP: dict | None = None):
+                 DICT_DATA_DOLGN_ETAP: dict | None = None,calc_etap_by_fio:bool=True):
         self.params = []
-        self.db = db_naryad
+        self.db = CFG_prj.db_naryad
         self.row = []
         self.Пномер = None
         self.Дата = None
@@ -4477,27 +4477,33 @@ class Naryads(_Naryad_base):
         self._recalc_params()
         self.db_users = db_users
 
-        if db_users != None:
-            if dict_dolgn_etap == None:
-                dict_dolgn_etap = self.calc_dict_dolgn_etap(self.db)
-            if dict_empl == None:
-                dict_empl = self.calc_dict_empl(db_users)
-            if dict_opers == None:
-                dict_opers = self.calc_dict_opers(self.db)
 
-            if self.ДатаМК is None:  # 07.07.25
-                print('[Cust_mes.Naryads.__init__] не задано поле ДатаМК')
-                row = CSQ.custom_request_c(db_naryad, f'''SELECT mk.Дата as ДатаМК FROM naryad JOIN mk ON mk.Пномер = naryad.Номер_мк 
-            WHERE mk.Пномер == {self.Номер_мк};''', rez_dict=True, one=True)
-                self.__dict__.update(row)
+        if dict_dolgn_etap == None:
+            dict_dolgn_etap = self.calc_dict_dolgn_etap(self.db)
+        if dict_empl == None:
+            dict_empl = self.calc_dict_empl(CFG_prj.db_users)
+        if dict_opers == None:
+            dict_opers = self.calc_dict_opers(self.db)
+
+        self.dict_dolgn_etap: dict[dict] = dict_dolgn_etap
+        self.dict_empl: dict[dict] = dict_empl
+        self.dict_opers: dict[dict] = dict_opers
+
+        if calc_etap_by_fio:
+            if DICT_DATA_DOLGN_ETAP == None:
+                DICT_DATA_DOLGN_ETAP = prepare_dolg_etap_for_calc_pozition_fact_kpl()
             if self.ФИО != '':
                 self.Этап_фио_1 = self.calc_etap_by_fio(DICT_DATA_DOLGN_ETAP, self.ФИО)
             if self.ФИО2 != '':
                 self.Этап_фио_2 = self.calc_etap_by_fio(DICT_DATA_DOLGN_ETAP, self.ФИО2)  # 07.07.25
 
-        self.dict_dolgn_etap: dict[dict] = dict_dolgn_etap
-        self.dict_empl: dict[dict] = dict_empl
-        self.dict_opers: dict[dict] = dict_opers
+        if self.ДатаМК is None:  # 07.07.25
+            print('[Cust_mes.Naryads.__init__] не задано поле ДатаМК')
+            row = CSQ.custom_request_c(db_naryad, f'''SELECT mk.Дата as ДатаМК FROM naryad JOIN mk ON mk.Пномер = naryad.Номер_мк 
+            WHERE mk.Пномер == {self.Номер_мк};''', rez_dict=True, one=True)
+            self.__dict__.update(row)
+
+
 
     def __repr__(self):
         pref = ''
@@ -5061,14 +5067,20 @@ class Naryads(_Naryad_base):
         else:
             return self.Твремя
 
-    def recalc_tvrem(self):
+    def recalc_tvrem(self,add_msg:str|None = None)->float|None:
         summ = 0
+        old_time = self.Твремя
         for item in self.params:
             summ += item['Опер_время']
         if self.count_users() == 2:
             summ = round(summ / 2, 2)
-        self.Твремя = round(summ, 2)
+        new_time = round(summ, 2)
+        if round(old_time, 1) == round(new_time,1):
+            return None
+        self.Твремя = new_time
+        self.Примечание = add_msg + self.Примечание
         self._save_nar()
+        return new_time
 
     def recalc_astronom_time(self, DICT_OPER_NAME):
         summ = 0
@@ -6163,29 +6175,52 @@ class Jurnal_nar():
             return False
         param = []
         curr_pd = self.rows[self.selected_fragment_start_row_obj_nom]['Подытог']
-        if (curr_pd != poditog and
-                self.rows[self.selected_fragment_start_row_obj_nom]['Подытог_нормы'] != poditog_norm):
-            custom_request_c = f'UPDATE jurnal SET Подытог = ?, Подытог_нормы = ? WHERE Пномер == ?'
-            param = [poditog, poditog_norm, self.selected_fragment_start_s_num]
-            print(f"Наряд: {self.nom_nar} было {curr_pd}", f'стало {poditog}')
-        if (curr_pd != poditog and
-                self.rows[self.selected_fragment_start_row_obj_nom]['Подытог_нормы'] == poditog_norm):
-            custom_request_c = f'UPDATE jurnal SET Подытог = ? WHERE Пномер = ?'
-            param = [poditog, self.selected_fragment_start_s_num]
-            print(f"Наряд: {self.nom_nar} было {curr_pd}", f'стало {poditog}')
-        if (curr_pd == poditog and
-                self.rows[self.selected_fragment_start_row_obj_nom]['Подытог_нормы'] != poditog_norm):
-            custom_request_c = f'UPDATE jurnal SET Подытог_нормы = ? WHERE Пномер = ?'
-            param = [poditog_norm, self.selected_fragment_start_s_num]
-            print(f"Наряд: {self.nom_nar} было {curr_pd}", f'стало {poditog}')
-        if len(param) > 0:
+        curr_pd_norm = self.rows[self.selected_fragment_start_row_obj_nom]['Подытог_нормы']
+
+        set_parts = []
+        param = []
+        msg_parts = []
+        if curr_pd != poditog:
+            set_parts.append('Подытог = ?')
+            param.append(poditog)
+            msg_parts.append(f"{self.selected_fragment_start_date} подытог было {curr_pd} -> стало {poditog}")
+
+        if curr_pd_norm != poditog_norm:
+            set_parts.append('Подытог_нормы = ?')
+            param.append(poditog_norm)
+            msg_parts.append(f"{self.selected_fragment_start_date} Подытог_нормы было {curr_pd_norm} -> стало {poditog_norm}")
+
+        if set_parts:
+            param.append(self.selected_fragment_start_s_num)
+            custom_request_c = f"UPDATE jurnal SET {', '.join(set_parts)} WHERE Пномер = ?"
+
             try:
                 CSQ.custom_request_c(self.db_nar, custom_request_c, list_of_lists_c=param)
                 self.rows[self.selected_fragment_start_row_obj_nom]['Подытог'] = poditog
                 self.rows[self.selected_fragment_start_row_obj_nom]['Подытог_нормы'] = poditog_norm
+                summ_msg = '\n'.join(msg_parts)
+                print(f"Наряд: {self.nom_nar}, {self.user} запись от: {summ_msg}")
             except:
                 CQT.msgbox(f'Ошибка занесения в Журнал')
                 return False
+
+
+        #if (curr_pd != poditog and
+        #        self.rows[self.selected_fragment_start_row_obj_nom]['Подытог_нормы'] != poditog_norm):
+        #    custom_request_c = f'UPDATE jurnal SET Подытог = ?, Подытог_нормы = ? WHERE Пномер == ?'
+        #    param = [poditog, poditog_norm, self.selected_fragment_start_s_num]
+        #    print(f"Наряд: {self.nom_nar}, {self.user} запись от {self.selected_fragment_start_date} подытог было {curr_pd} -> стало {poditog}")
+        #if (curr_pd != poditog and
+        #        self.rows[self.selected_fragment_start_row_obj_nom]['Подытог_нормы'] == poditog_norm):
+        #    custom_request_c = f'UPDATE jurnal SET Подытог = ? WHERE Пномер = ?'
+        #    param = [poditog, self.selected_fragment_start_s_num]
+        #    print(f"Наряд: {self.nom_nar}, {self.user} запись от {self.selected_fragment_start_date} подытог было {curr_pd} -> стало {poditog}")
+        #if (curr_pd == poditog and
+        #        self.rows[self.selected_fragment_start_row_obj_nom]['Подытог_нормы'] != poditog_norm):
+        #    custom_request_c = f'UPDATE jurnal SET Подытог_нормы = ? WHERE Пномер = ?'
+        #    param = [poditog_norm, self.selected_fragment_start_s_num]
+        #    print(f"Наряд: {self.nom_nar}, {self.user} запись от {self.selected_fragment_start_date} подытог было {curr_pd} -> стало {poditog}")
+
         return True
 
     def _calc_poditog(self, state: str, now=None, nar_obj=None):
@@ -6826,7 +6861,7 @@ class Msg_b24():
              ('Количество', self.data_poz.dict_tables['пл_оуп']['Количество'])])
         self.poki: int = self.data_poz.poki
 
-        self.basement_msg = "\n" + r'*схема: https://miro.com/app/board/uXjVKvx6xCU=/?share_link_id=77704755673'
+        self.basement_msg = "\n" + r'*схема: https://pruffme.com/landing/u4339904/786a93205c35098a128e574079cd5059'#https://miro.com/app/board/uXjVKvx6xCU=/?share_link_id=77704755673'
 
         self.fio = F.user_full_namre()
 
@@ -9698,12 +9733,20 @@ class ActionDevMenu:
         self.menubar.addMenu(menu)
         self.add_change_user()
         self.add_reset_user()
+        self.add_permission_mngr()
 
     def add_change_user(self):
         self.add_action('Зайти под юзером', self._tbl_change_user)
 
+    def add_permission_mngr(self):
+        self.add_action('Редактор прав', self._permission_mngr)
+
     def add_reset_user(self):
         self.add_action('Зайти под собой', partial(self._tbl_change_user, True))
+
+    def _permission_mngr(self, app_self):
+        permission_change(app_self)
+
 
     def _tbl_change_user(self, app_self, reset=False):
         if reset:
@@ -15491,8 +15534,11 @@ def load_peresilniy(self, tbl_nar, tbl_viev):
     nk_nom_mk = CQT.num_col_by_name_c(tbl, 'Номер_мк')
     nom_nom_mk = tbl.item(tbl.currentRow(), nk_nom_mk).text()
     data = F.now("%d.%m.%Y %H:%M")
-    custom_request_c = f'''SELECT "Номенклатура","Номер_заказа","Количество" FROM mk WHERE "Пномер" = {int(nom_nom_mk)}'''
-    query = CSQ.custom_request_c(self.db_naryd, custom_request_c)
+    custom_request_c = f'''SELECT mk."Номенклатура",знпр."№ERP",mk."Количество" FROM mk
+                        INNER JOIN пл_оуп ON пл_оуп."НомПл" == mk."НомКплан"
+                        INNER JOIN "знпр" ON "знпр".s_num == "пл_оуп"."Пномер_ЗП"
+                        WHERE mk."Пномер" = {int(nom_nom_mk)}'''
+    query = CSQ.custom_request_c(self.db_naryd, custom_request_c, attach_dbs=(CFG_prj.db_kplan))
     poz = query[-1][0]
     py = query[-1][1]
     count_izd = query[-1][2]
@@ -17971,7 +18017,7 @@ def VID_RABOT_PO_EMPL(bd_users):
     return VID_RABOT_PO_EMPL
 
 
-def ETAP_BY_FIO(bd_users, bd_naryad):
+def ETAP_BY_FIO(bd_users, bd_naryad)->dict[str,dict]:
     first_tbl = CSQ.custom_request_c(bd_users, f"""SELECT employee."ФИО", employee."Должность", employee."Компания", 
         employee."Подразделение", employee."Статус", 
         etaps.name as этап, etaps."ДляЕРП" 
@@ -20137,43 +20183,99 @@ def connect_manuals(self):
                         _add_custom_manual_button(self, obj, i, list_manuals)
                     _set_current_visible(obj)
 
-def register_floadting_btn_threads(discuss_anchor_field_name:str)->CQT.FloatingButtonManager:
+def register_floating_btn_threads(discuss_anchor_field_name:str,
+                                  title_ui:str,
+                                  discuss_user_field_name:list[str])->CQT.FloatingButtonManager:
+    def _make_float_btn_qss(alpha=88):
+        """
+        alpha: 0..255. 88 ≈ 30% непрозрачности.
+        QSS не поддерживает отдельную 'прозрачность' — задаём через rgba.
+        """
+        r, g, b = 71, 85, 105  # slate-600 — нейтральный серо-синий
+        border = "rgba(148, 163, 184, 90)"  # тонкая светлая рамка
+        return f"""
+            QPushButton {{
+                background: rgba({r}, {g}, {b}, {alpha});
+                color: #e2e8f0;
+                border: 1px solid {border};
+                border-radius: 2px;
+                padding: 0;
 
+                font-weight: 500;
+            }}
+            QPushButton:hover {{
+                background: rgba(51, 65, 85, {min(alpha + 40, 255)});
+                border-color: rgba(148, 163, 184, 150);
+            }}
+            QPushButton:pressed {{
+                background: rgba(30, 41, 59, {min(alpha + 60, 255)});
+                border-color: rgba(148, 163, 184, 200);
+            }}
+            QPushButton:focus {{
+                border-color: rgba(96, 165, 250, 200);      /* синий акцент только по фокусу */
+                outline: none;
+            }}
+            QPushButton:disabled {{
+                background: rgba({r}, {g}, {b}, 90);
+                color: rgba(226, 232, 240, 110);
+                border-color: rgba(148, 163, 184, 40);
+            }}
+        """
 
     def fnc_oform(tbl:QtWidgets.QtableWidget,i:int,btn:QtWidgets.QPushButton,discuss_anchor_field_name:str,addit_data,*args):
         btn.setText(CEMOJ.ДокументыДанные.new_thread.symbol)
         btn.setToolTip('Создать тему')
-        btn.setStyleSheet(CFG.Config.window_manager.active.window.styleSheet())
+        btn.setStyleSheet(_make_float_btn_qss())
 
     def fnc_on_selection_changed(tbl:QtWidgets.QtableWidget,i:int,btn:QtWidgets.QPushButton,discuss_anchor_field_name:str,addit_data,*args):
-        print(f'fnc_on_selection_changed {i}')
+        LIM_H = 20
         t = CQT.TableContext(tbl)
         row = t.get_row(i)
-
-        h = tbl.rowHeight(i)-8
+        old_size = btn.height()
+        row_h = tbl.rowHeight(i) if tbl.rowHeight(i) > LIM_H else LIM_H
+        h = row_h-6
         btn.setFixedHeight(h)
         btn.setFixedWidth(h)
         f = btn.font()
-        f.setPixelSize(int(btn.height() * 0.7))
+        f.setPixelSize(int(btn.height() * 0.6))
         btn.setFont(f)
-
+        delta_y = round((old_size - btn.height())/2)
+        if delta_y:
+            btn.move(btn.x() + 2* delta_y, btn.y() + delta_y)
         val = row.value(discuss_anchor_field_name)
-        if DISCUSS.CLSS.Discussion.has_discussion(CFG.Config.window_manager.active.cfg.app,
-                                        tbl.objectName(),id_row=val):
-            btn.setText(CEMOJ.ДокументыДанные.join_thread.symbol)
-            btn.setToolTip('Прочитать') #btn.text()
+        tread_row = DISCUSS.CLSS.Discussion.has_discussion(CFG.Config.window_manager.active.cfg.app,
+                                        tbl.objectName(),id_row=val)
+        if tread_row:
+            if DISCUSS.CLSS.Discussion.is_unread_msges(tread_row['id'],tread_row['last_message_at']):
+                btn.setText(CEMOJ.ОперацииПроизводства.action.symbol)
+                btn.setToolTip('Имеются непрочитанные сообщения')
+            else:
+                btn.setText(CEMOJ.ДокументыДанные.join_thread.symbol)
+                btn.setToolTip('Написать сообщение') #btn.text
+
         else:
             btn.setText(CEMOJ.ДокументыДанные.new_thread.symbol)
             btn.setToolTip('Создать тему')
 
-    def fnc_on_click(tbl:QtWidgets.QtableWidget,i:int,btn:QtWidgets.QPushButton,discuss_anchor_field_name:str,addit_data,*args):
+    def fnc_on_click(tbl:QtWidgets.QtableWidget,i:int,btn:QtWidgets.QPushButton,discuss_anchor_field_name:str,
+                     title_ui:str,discuss_user_field_name:list[str],addit_data,*args):
         print(f'fnc_on_click {i}')
         t = CQT.TableContext(tbl)
         row = t.get_row(i)
         val = row.value(discuss_anchor_field_name)
+        list_pairs = []
+        for field in discuss_user_field_name:
+            if field not in t.nf:
+                raise Exception(f'Field {field} not found in table fields')
+            field_text =F.sanitize_text(t.text_by_name(field),multiline=False)
+            user_val = F.sanitize_text(row.value(field),multiline=False)
+            pair_str = f'{field_text}: {user_val}'
+            list_pairs.append(pair_str)
+        str_list_pairs = ', '.join(list_pairs)
         sub_app = DISCUSS.CentralWindow(CFG.Config.window_manager.active.window,
                                         CFG.Config.window_manager.active.cfg.app,
-                                        tbl.objectName(),id_row=val)
+                                        tbl.objectName(),id_row=val,title_ui=title_ui,user_row=str_list_pairs)
         sub_app.show()
 
-    return CQT.FloatingButtonManager(discuss_anchor_field_name,fnc_on_click,fnc_on_selection_changed,fnc_oform)
+    return CQT.FloatingButtonManager(discuss_anchor_field_name,title_ui,discuss_user_field_name,
+                                     fnc_on_click,fnc_on_selection_changed,fnc_oform)

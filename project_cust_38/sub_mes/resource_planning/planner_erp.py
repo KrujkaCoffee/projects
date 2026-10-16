@@ -223,9 +223,48 @@ class ErpEntityService:
             raise ErpEntityError('Поле относится к другому источнику ERP')
         table = self.__query_table(field.entity_key)
         text = text.strip()
+        condition = 'ИСТИНА'
         if text:
             from project_cust_38 import Cust_Functions as F
+            pattern = text.replace('~', '~~')
             for char in '%_[]^':
                 pattern = pattern.replace(char, '~' + char)
-            pattern =
-            pattern = text.replace('~', '~~')
+            pattern = ('%' + pattern + '%').replace('~', '~~')
+            condition = (
+                f'Источник.{field.field_key} ПОДОБНО "{pattern}" '
+                'СПЕЦСИМВОЛ "~" '
+            )
+        query = f"""
+            ВЫБРАТЬ ПЕРВЫЕ {limit + 1}
+                ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(Источник.Ссылка)) КАК ref_key,
+                ПРЕДСТАВЛЕНИЕ(Источник.Ссылка) КАК display_snapshot
+            ИЗ
+                {table} КАК Источник
+            ГДЕ
+                {condition}
+            УПОРЯДОЧИТЬ ПО
+                Источник.Ссылка
+        """
+        try:
+            code, payload = self.interface.get_wet_request(
+                text=query,
+                lazy_method_huours=0
+            )
+        except Exception as exc:
+            raise ErpEntityError('Не удалось выполнить поиск по ERP') from exc
+        if code != 0:
+            raise ErpEntityError(f'Ошибка поиска ERP: код {code!r}.')
+        if not isinstance(payload, typing.Mapping):
+            raise ErpEntityError('некорректный ответ из erp')
+        if payload.get('ЕстьОшибки'):
+            raise ErpEntityError(f'Ошибка на стороне ERP: {payload.get("Ошибки")}')
+        rows = payload.get('data')
+        if not isinstance(rows, list) or len(rows) > limit + 1:
+            raise ErpEntityError('ERP вернула некорректный результат поиска')
+        items = []
+        for row in rows[:limit]:
+            ref_key = row.get('ref_key')
+            try:
+                ref_uuid = UUID(ref_key)
+            except Exception as exc:
+                raise

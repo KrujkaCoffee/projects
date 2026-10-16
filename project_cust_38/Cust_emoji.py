@@ -20,6 +20,9 @@ class EmojiItem:
 
 class Эмоции:
     """Категория статусов производства"""
+    grinning: ClassVar[EmojiItem] = EmojiItem('😀', 'grinning', 'emoj', 'Широкая улыбка')
+    thumbs_up: ClassVar[EmojiItem] = EmojiItem('👍', 'thumbs_up', 'emoj', 'Одобрение')
+    fire: ClassVar[EmojiItem] = EmojiItem('🔥', 'fire', 'emoj', 'Горячо')
     confused: ClassVar[EmojiItem] = EmojiItem('😕', 'confused', 'emoj', 'Растерянное лицо')
     easemented: ClassVar[EmojiItem] = EmojiItem('😌', 'easemented', 'emoj', 'Облегченное лицо')
 
@@ -109,7 +112,8 @@ class ПерсоналРоли:
     local_machine: ClassVar[EmojiItem] = EmojiItem('🖥️', 'local_machine', 'personnel', 'Рабочая станция')
     active: ClassVar[EmojiItem] = EmojiItem('👷', 'active', 'personnel', 'Работает')
     fired: ClassVar[EmojiItem] = EmojiItem('❌', 'fired', 'personnel', 'Уволен')
-    
+    star: ClassVar[EmojiItem] = EmojiItem('⭐', 'star', 'personnel', 'Звезда')
+
 class ДокументыДанные:
     """Категория документов и данных"""
     new_thread: ClassVar[EmojiItem] = EmojiItem('🗨️', 'new_thread', 'order', 'Новая дискуссия')
@@ -186,6 +190,10 @@ class EmojiMain:
 
     # Словарь для динамического доступа
     _all_emoji: ClassVar[Dict[str, EmojiItem]] = {}
+
+    @classmethod
+    def all_emoj_as_list(cls)->list[str]:
+        return sorted(list(set([_.symbol for _ in cls._all_emoji.values()])))
 
     @classmethod
     def _initialize(cls):

@@ -598,6 +598,7 @@ class Etaps_erp():
                 self.list_etaps = self.get_etaps_by_znpr_nomen_ref_alter_join(self.ref_py, self.nomenclature_ref)
             if self.list_etaps:
                 self.specification_ref = self.list_etaps[0].Спецификация_ref
+                self.production_party_ref = self.list_etaps[0].ПартияПроизводства_ref
                 self.specification_code = self.list_etaps[0].Спецификация_code
                 self.НомПартии_ЗП = self.list_etaps[0].НомерПартииЗапуска   # noqa
         except Exception as e:

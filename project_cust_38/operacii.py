@@ -1778,8 +1778,8 @@ def vremya_tsht(ima_operacii, arr_tmp):
                 vrema = gibka(ima_operacii, arr_tmp)
             # if ima_operacii == 'Сборка общая':
             #     vrema = sbor_obsh(ima_operacii, arr_tmp)
-            if ima_operacii == 'Слесарная(зачистка швов)':
-                vrema = sles_zach_shvov(ima_operacii, arr_tmp)
+            # if ima_operacii == 'Слесарная(зачистка швов)':
+            #     vrema = sles_zach_shvov(ima_operacii, arr_tmp)
             if ima_operacii == 'Сборка под сварку':
                 vrema = sb_pod_sv(ima_operacii, arr_tmp)
             # if ima_operacii == 'Гравировальная':          # 24.07.25 Переход на excel
@@ -1794,22 +1794,22 @@ def vremya_tsht(ima_operacii, arr_tmp):
                 vrema = otrez_lentopil(ima_operacii, arr_tmp)
             if ima_operacii == 'Сварка':
                 vrema = svarka(ima_operacii, arr_tmp)
-            if ima_operacii == 'Сборка линз':
-                vrema = sborka_linz(ima_operacii, arr_tmp)
+            # if ima_operacii == 'Сборка линз':
+            #     vrema = sborka_linz(ima_operacii, arr_tmp)
             if ima_operacii == 'Укладка набивки':
                 vrema = ukladka_nabivki(ima_operacii, arr_tmp)
             if ima_operacii == 'Формовка линз':
                 vrema = formovka_linz(ima_operacii, arr_tmp)
             # if ima_operacii == 'Отрезка слесарная': #25.09.25  переход на excel
             #     vrema = otrez_sles(ima_operacii, arr_tmp)
-            if ima_operacii == 'Дробеструйная':
-                vrema = drobestrui(ima_operacii, arr_tmp)
+            # if ima_operacii == 'Дробеструйная':
+            #     vrema = drobestrui(ima_operacii, arr_tmp)
             # if ima_operacii == 'Слесарная(правка в плоскости)':
             #     vrema = sles_prav(ima_operacii, arr_tmp)
             # if ima_operacii == 'Сверлильная': # 15.09.25 Переход на excel
             #     vrema = sverlil(ima_operacii, arr_tmp)
-            if ima_operacii == 'Слесарная(сверление)':
-                vrema = sles_sverl(ima_operacii, arr_tmp)
+            # if ima_operacii == 'Слесарная(сверление)':
+            #     vrema = sles_sverl(ima_operacii, arr_tmp)
             if ima_operacii == 'Штамповочная(перфорация)':
                 vrema = shtamp_perf(ima_operacii, arr_tmp)
             if ima_operacii == 'Слесарная(нарезка резьбы)':
@@ -1818,30 +1818,30 @@ def vremya_tsht(ima_operacii, arr_tmp):
                 vrema = sles_razd_krom(ima_operacii, arr_tmp)
             # if ima_operacii == 'Слесарная(разметка)': #24.09.25 переход на excel
             #     vrema = sles_razmetka(ima_operacii, arr_tmp)
-            if ima_operacii == 'Кантование':
-                vrema = kantovanie(ima_operacii, arr_tmp)
-            if ima_operacii == 'Резка(ЧПУ)':
-                vrema = lazer(ima_operacii, arr_tmp)
-            if ima_operacii == 'Резка плазма':
-                vrema = rezka_plazma(ima_operacii, arr_tmp)
+            # if ima_operacii == 'Кантование':
+            #     vrema = kantovanie(ima_operacii, arr_tmp)
+            # if ima_operacii == 'Резка(ЧПУ)':
+            #     vrema = lazer(ima_operacii, arr_tmp)
+            # if ima_operacii == 'Резка плазма':
+            #     vrema = rezka_plazma(ima_operacii, arr_tmp)
             if ima_operacii == 'Вальцовка линз':
                 vrema = valtcovka_linz(ima_operacii, arr_tmp)
             if ima_operacii == 'Комплектовочная':
                 vrema = komplektov(ima_operacii, arr_tmp)
-            if ima_operacii == 'Перемещение':
-                vrema = peremeschenie(ima_operacii, arr_tmp)
-            if ima_operacii == 'Контроль(формы и расположения поверхностей)':
-                vrema = kontrol_form_i_raspoloj_poverhn(ima_operacii, arr_tmp)
-            if ima_operacii == 'Контроль(механическая обработка)':
-                vrema = kontrol_mech_obrabot(ima_operacii, arr_tmp)
+            # if ima_operacii == 'Перемещение':
+            #     vrema = peremeschenie(ima_operacii, arr_tmp)
+            # if ima_operacii == 'Контроль(формы и расположения поверхностей)':
+            #     vrema = kontrol_form_i_raspoloj_poverhn(ima_operacii, arr_tmp)
+            # if ima_operacii == 'Контроль(механическая обработка)':
+            #     vrema = kontrol_mech_obrabot(ima_operacii, arr_tmp)
             if ima_operacii == 'Контрольная(цветная дефектоскопия)':
                 vrema = kontrol_tcvet_defekt(ima_operacii, arr_tmp)
             if ima_operacii == 'Рейкодолбежная':
                 vrema = reykodolbejnaya(ima_operacii, arr_tmp)
-            if ima_operacii == 'Слесарная(зачистка поверхности)':
-                vrema = surface_cleaning(arr_tmp)
-            if ima_operacii == 'Слесарная(снятие фасок)':
-                vrema = chamfering(arr_tmp)
+            # if ima_operacii == 'Слесарная(зачистка поверхности)':
+            #     vrema = surface_cleaning(arr_tmp)
+            # if ima_operacii == 'Слесарная(снятие фасок)':
+            #     vrema = chamfering(arr_tmp)
             if isinstance(vrema, tuple) and len(vrema) == 2:
                 sht, pz = vrema
                 result = (result[0] + sht, pz) if isinstance(result, tuple) else (sht, pz)
@@ -1934,12 +1934,12 @@ def materiali(self, ima_operacii, arr_tmp):
         mat = komp_slesarnaya_sverlen(self, ima_operacii, arr_tmp)
     if ima_operacii == 'Слесарная(снять заусенцы)':
         mat = komp_slesarnaya_snyatie_zausentcev(self, ima_operacii, arr_tmp)
-    if ima_operacii == 'Укладка набивки':
-        mat = komp_ukladka_nabivki(self, ima_operacii, arr_tmp)
+    # if ima_operacii == 'Укладка набивки':
+    #     mat = komp_ukladka_nabivki(self, ima_operacii, arr_tmp)
     if ima_operacii == 'Формовка линз':
         mat = komp_formovka_linz(self, ima_operacii, arr_tmp)
-    if ima_operacii == 'Штамповочная(перфорация)':
-        mat = komp_shtampovochnaya(self, ima_operacii, arr_tmp)
+    # if ima_operacii == 'Штамповочная(перфорация)':
+    #     mat = komp_shtampovochnaya(self, ima_operacii, arr_tmp)
     if ima_operacii == 'Слесарная(разделка кромок)':
         mat = komp_slesarnaya_razdelka_kromok(self, ima_operacii, arr_tmp)
     if ima_operacii == 'Кантование':

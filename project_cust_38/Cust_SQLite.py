@@ -5,14 +5,14 @@ import re
 import datetime as DT
 import typing
 import logging
-
+import psycopg
 import project_cust_38.Cust_Functions as F
 import project_cust_38.Cust_client_socket as CSQS
 try:
     from project_cust_38 import Cust_postgresql_executor as CPG
 except Exception:
     CPG = None
-import psycopg
+
 logger = logging.getLogger(__name__)
 
 _PG_CONN = os.environ.get('PG_CONN') == '1'

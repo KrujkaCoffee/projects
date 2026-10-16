@@ -118,6 +118,8 @@ class TFlexHttpClient(HTTPClient):
     _GET_ALL_PROCESS_TKP = '/api/process_tkp/all'
     _GET_ALL_PROCESS_TKP_FOLDERS = '/api/process_tkp/tkp-folders/all'
     _GET_ALL_PROCESS_TKP_SCHEMAS = '/api/process_tkp/stage/all'
+    _GET_ALL_PROCESS_RKD = '/api/process_rkd/all'#Все процессы РКД
+    _GET_ALL_PROCESS_RKD_FOLDERS = '/api/process_rkd/rkd-folders/all'#Все папки процессов РКД
 
     def make_url(self, endpoint: str):
         return f'{self.BASE_URL}{endpoint}'
@@ -157,6 +159,33 @@ class ProcessTkp(typing.NamedTuple):
     статус_proc: int                    #[Процесс ТКП2] Статус процесса
     желаемаяДата_proc: int              #[Процесс ТКП2] Желаемая дата
     кодРС_proc: int                     #[Процесс ТКП2] КОд ресурсной
+    ссылкаДокс_proc: int                #[Процесс ТКП2] Ссылка
+    uuiD_proc: int                      #[Процесс ТКП2] UUID
+
+class ProcessRkd(typing.NamedTuple):
+    iD_card: int | None                 #[Карточка проекта] Id
+    шифрИзделия_card: str | None        #[Карточка проекта] Шифр изделия
+    номерПроекта_card: str | None       #[Карточка проекта] Номер проекта
+    номерПозиции_card: str | None       #[Карточка проекта] Номер позиции
+    наименование_card: str | None       #[Карточка проекта] Наименование
+    датаСоздания_card: str | None       #[Карточка проекта] Дата создания
+    uuiD_card: int                      #[Карточка проекта] UUID
+
+    названиеВарианта_card: str | None   #[Карточка проекта] Название варианта
+    ссылкаДокс_card: str | None         #[Карточка проекта] Ссылка
+    iD_proc: int                        #[Процесс ТКП2] Id
+    ответственный_proc: int             #[Процесс ТКП2] Ответственный
+    комментарий_proc: int               #[Процесс ТКП2] Комментарий
+    наименование_proc: int              #[Процесс ТКП2] Наименование
+    наименование_папки_proc: int        #[Процесс ТКП2] Наименование
+    этап_proc: int                      #[Процесс ТКП2] Этап
+    папка_proc: str                     #[Процесс ТКП2] Этап
+
+    исполнитель_proc: int               #[Процесс ТКП2] Исполнитель
+    датаЗапуска_proc: int               #[Процесс ТКП2] Дата запуска процесса
+    статус_proc: int                    #[Процесс ТКП2] Статус процесса
+
+
     ссылкаДокс_proc: int                #[Процесс ТКП2] Ссылка
     uuiD_proc: int                      #[Процесс ТКП2] UUID
 
@@ -261,7 +290,7 @@ class TFlexTkpProcessClient(TFlexHttpClient):
             return response.status_code, response.json()
         return response.status_code, response
 
-    def get_tkp_folders(self) -> tuple[int, list[FolderTkp] | Response]:
+    def get_tkp_folders(self,ENDPOINT:str|None = None) -> tuple[int, list[FolderTkp] | Response]:
         """
         Возвращает список папок процессов
 
@@ -277,7 +306,9 @@ class TFlexTkpProcessClient(TFlexHttpClient):
             FolderTkp(id=7, uuid='aaa94090-996d-4d9b-91c0-b4e917dfffb9', name='Система золоудаления')
         ]
         """
-        url = self.make_url(self._GET_ALL_PROCESS_TKP_FOLDERS)
+        if ENDPOINT is None:
+            ENDPOINT = self._GET_ALL_PROCESS_TKP_FOLDERS
+        url = self.make_url(ENDPOINT)
         response = self.session.get(url)
         if response.ok:
             return response.status_code, [FolderTkp(**item) for item in response.json()]
@@ -302,6 +333,51 @@ class TFlexTkpProcessClient(TFlexHttpClient):
         if response.ok:
             return response.status_code, [SchemaTkp(**item) for item in response.json()]
         return response.status_code, response
+
+    def get_process_rkd(
+            self,
+            folder_uuid_lst: list[str] = (),
+            schema_uuid_lst: list[str] = (),
+            active_process: bool = None
+    ) -> tuple[int, list[ProcessRkd] | Response]:
+        """
+        Возвращает элементы из справочника "процессы ТКП 2"
+
+        Если без параметров, то вернет все существующие процессы
+
+        Принимает:
+        @folder_uuid_lst: str    Список уникальных идентификаторов папок процессов
+        @schema_uuid_lst: str    Список уникальных идентификаторов схем процессов
+        @active_process: bool
+            Если None = загрузить без фильтра статусов
+            Если True = загрузить с активными статусами (Начат, В работе, В очереди)
+            Если False = Загрузить с неактивными статусами (Завершен, Отклонён)
+
+        Примеры:
+            data = get_process_tkp(folder_uuid_lst=['1b0fa0e6-ac0b-4474-9ba3-d00ddc719b6c'])
+            Получить процессы из папки 'Арматура литая'
+                где: 1b0fa0e6-ac0b-4474-9ba3-d00ddc719b6c - это uuid полученный из метода get_tkp_folders()
+
+        2.
+            Получить процессы из папки 'Система золоудаления' и входящей в неё схемы "СЗУ. Комплекс"
+            with TFlexTkpProcessClient() as client:
+                folder_reference = 'aaa94090-996d-4d9b-91c0-b4e917dfffb9'   # uuid папки полученный из метода get_tkp_folders()
+                schema_reference = 'e5e9df01-4344-46dd-9446-1cc68bfe7f83'   # uuid схемы полученный из метода get_schemas_by_tkp_folder('aaa94090-996d-4d9b-91c0-b4e917dfffb9')
+                data = client.get_process_tkp(
+                    folder_uuid_lst=[folder_reference],
+                    schema_uuid_lst=[schema_reference]
+                )
+        """
+        url = self.make_url(self._GET_ALL_PROCESS_RKD)
+        response = self.session.post(url, json={
+            'folders': list(folder_uuid_lst),
+            'schemas': list(schema_uuid_lst),
+            'procActiveStatus': active_process
+        })
+        if response.ok:
+            return response.status_code, [ProcessRkd(**item) for item in response.json()]
+        return response.status_code, response
+
 
     def get_process_tkp(
             self,
