@@ -82,7 +82,6 @@ def declared_params(window, item):
 
 
 def choices_for_item(window, item):
-    """Use the same answer labels and saved keys as the operation editor."""
     xl = window.xl_formulas
     if item.text(20) == '1':
         name = item.text(0)
@@ -103,7 +102,6 @@ def choices_for_item(window, item):
             continue
         options = {}
         for key, entry in definition.get('vals', {}).items():
-            # Legacy dictionaries can also contain auxiliary coefficient tables.
             if not isinstance(entry, dict) or 'val' not in entry:
                 continue
             show = entry.get('show')
@@ -254,7 +252,6 @@ class BulkParametersDialog(QtWidgets.QDialog):
                     if item is not None:
                         item.setFlags(item.flags() & ~QtCore.Qt.ItemFlag.ItemIsEditable)
                         item.setBackground(QtGui.QColor("#e0e0e0"))
-                        # item.setForeground(QtGui.QColor("#808080"))
         layout.addWidget(self.table)
         layout.addWidget(QtWidgets.QLabel('Места применения выбранного параметра (многозначные параметры недоступны для общей замены):'))
         self.targets = QtWidgets.QTreeWidget(self)
@@ -369,8 +366,6 @@ def params_for_calc(window, item):
             raise ValueError(f'{item_label(item)}: не заполнена переменная «{name}»')
         if value == '+' or value.startswith("f'") or ';' in value:
             continue
-        # A combo box stores its key, which can be text even for an Excel
-        # parameter represented by the generic float metadata type.
         if value in choices.get(name, {}):
             continue
         if numeric_kind(kind):
