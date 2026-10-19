@@ -222,6 +222,21 @@ def group_choices(group):
     return choices
 
 
+def group_display(group, mode, choices):
+    kinds = group.kinds
+    suffix = (' (варианты)' if choices else
+              (f' ({", ".join(sorted(kinds))})' if any(kinds) else ''))
+    if mode == 'symbol' and any(use.symbol for use in group.uses):
+        names = list(dict.fromkeys(use.name or use.names[use.index] for use in group.uses))
+        if names:
+            title = f'{group.name} — {names[0]}'
+            if len(names) > 1:
+                title += f' (+{len(names) - 1})'
+            tooltip = f'Обозначение: {group.name}\nНаименования:\n' + '\n'.join(names)
+            return title + suffix, tooltip
+    return group.name + suffix, ''
+
+
 def display_current(use):
     value = use.value
     if value in ('', '-'):
@@ -269,7 +284,7 @@ class BulkParametersDialog(QtWidgets.QDialog):
         self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
         self.table.horizontalHeader().setSectionResizeMode(4, QtWidgets.QHeaderView.Stretch)
         self.table.setColumnWidth(0, 90)
-        self.table.setColumnWidth(1, 200)
+        self.table.setColumnWidth(1, 290)
         self.table.setColumnWidth(2, 145)
         self.table.setColumnWidth(3, 175)
 
@@ -316,9 +331,11 @@ class BulkParametersDialog(QtWidgets.QDialog):
             toggle.setFlags(QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsUserCheckable)
             toggle.setCheckState(QtCore.Qt.Unchecked if conflict else QtCore.Qt.Checked)
             self.table.setItem(row, 0, toggle)
-            self.table.setItem(row, 1, QtWidgets.QTableWidgetItem(
-                group.name + (' (варианты)' if choices else
-                              (f' ({", ".join(sorted(kinds))})' if any(kinds) else ''))))
+            title, tooltip = group_display(group, self.mode, choices)
+            parameter = QtWidgets.QTableWidgetItem(title)
+            if tooltip:
+                parameter.setToolTip(tooltip)
+            self.table.setItem(row, 1, parameter)
             if choices:
                 selector = QtWidgets.QComboBox(self.table)
                 selector.addItem('Выберите вариант…', None)
