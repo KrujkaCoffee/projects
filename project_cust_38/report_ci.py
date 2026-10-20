@@ -6,7 +6,7 @@ import os
 import pickle
 import pprint
 from collections import defaultdict
-
+from statistics import mean
 import project_cust_38.Cust_Functions as F
 import project_cust_38.Zamechaniya as ZMCH
 from PyQt5 import QtCore
@@ -63,6 +63,9 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from Viewer import mywindow
 
+CFG_o = CFG.Config
+CFG_prj = CFG_o.project
+
 KOEF_NEDEL_OTH = 1 - 0.26
 PROIZVODITELNOST_POST_SM = 121
 KOEF_VNEPLANA = 1  # 0.7
@@ -75,6 +78,12 @@ KOEF_NORMIROVSCHICI = 1 / 1.15
 
 
 DICT_VID_OTCH =  {
+    "analytics_for_all_PGVU_valves": {
+        "": "",
+        "Название": "Аналитика по все клапанам пгву,",
+        "Группа": "Аналитика и спецотчеты",
+        "Примечание": "Муратшин 19.10.2026"
+    },
     "sequence_steps_order_process": {
         "": "",
         "Название": "Этапность протекания заказа",
@@ -464,7 +473,7 @@ def vibor_additional_sort_report(self: mywindow, *args):
             return
         if type_rep == 'by_emploee' :
             self.ui.cmb_addit_sort_c_report.setEnabled(True)
-            MTXCMP.fill_cmb_to_select_dep(self.ui.cmb_addit_sort_c_report,CFG.Config.place.poki)
+            MTXCMP.fill_cmb_to_select_dep(self.ui.cmb_addit_sort_c_report,CFG_o.place.poki)
         elif type_rep == 'by_depatment':
             self.ui.cmb_addit_sort_c_report.setEnabled(False)
 
@@ -595,6 +604,15 @@ def vibor_sort_c_report_c(self: mywindow, *args):
         podrazdel_none(self)
 
 
+    if name_otch == 'analytics_for_all_PGVU_valves':
+        self.ui.le_start_of_period.setText("2023-01-01 00:00:01")
+        last_month = F.now("")
+        konec = F.start_end_dates_c(last_month, '', 'm', "%Y-%m-%d %H:%M:%S")[0]
+        self.ui.le_end_of_period.setText(konec)
+        self.ui.cmb_podrazdelenie.clear()
+        self.ui.cmb_podrazdelenie.setDisabled(True)
+        podrazdel_none(self)
+
     if name_otch == 'sequence_steps_order_process':
         self.ui.le_start_of_period.setText("2025-01-01 00:00:01")
         last_month = F.now("")
@@ -662,7 +680,7 @@ def vibor_sort_c_report_c(self: mywindow, *args):
         self.ui.le_end_of_period.setText(konec)
         self.ui.fr_params_plan.setHidden(False)
         self.ui.cmb_podrazdelenie.clear()
-        self.ui.cmb_podrazdelenie.addItems([k for k,v in self.DICT_NAPRAVL.items() if v['poki'] == CFG.Config.place.poki])
+        self.ui.cmb_podrazdelenie.addItems([k for k,v in self.DICT_NAPRAVL.items() if v['poki'] == CFG_o.place.poki])
         self.ui.cmb_podrazdelenie.addItem('Все')
         self.ui.cmb_podrazdelenie.setDisabled(False)
         list_etaps = sorted(list(set([_['этап'] for _ in self.Data.ETAP_BY_FIO.values() if _['этап'] != None])))
@@ -1102,6 +1120,7 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
         return []
 
     fnc_oform = None
+
     self.DICT_ALIASES_FIELDS_REPORT = None
 
     if report_name == 'weight_by_closed_mk':
@@ -1139,6 +1158,8 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
     if report_name == 'active_projects_execution':
         rez_spis = ispoln_pl_month_all(self, self.db_kplan, self.db_resxml, self.bd_naryad, self.bd_users, self.Data.DICT_PROFESSIONS,
                                    self.Data.DICT_VID_RABOT, podrazd)
+    if report_name == 'analytics_for_all_PGVU_valves':
+        rez_spis, fnc_oform = analytics_for_all_PGVU_valves(self, nach, konec)
     if report_name == 'sequence_steps_order_process':
         rez_spis, fnc_oform = sequence_steps_order_process(self, nach, konec)
     if report_name == 'monthly_plan_execution':
@@ -1280,14 +1301,7 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
     if fnc_oform:
         fnc_oform(tbl)
 
-    # --- только оформление таблицы
-    if report_name in (
-            'labor_costs',
-            'timesheet_labor_deviation_report',
-            'employee_output',
-            'competency_matrix',
-    ):
-        oform_tbl(report_name)
+
 
     # --- apply_summ_с со sredn=True
     if report_name in (
@@ -1333,13 +1347,20 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
             False
         )
 
-
-
-
     CMS.fill_filtr_c(self, self.ui.tbl_report_c_filtr, tbl, hidden_scroll=True)
     CMS.update_width_filtr(tbl, self.ui.tbl_report_c_filtr)
+
+    # --- только оформление таблицы
+    if report_name in (
+            'labor_costs',
+            'timesheet_labor_deviation_report',
+            'employee_output',
+            'competency_matrix',
+    ):
+        oform_tbl(report_name)
     hook_prog_bar.set(100)
     hook_prog_bar.text('')
+
 
 
 
@@ -2288,7 +2309,7 @@ def  report_matrix_competence(self:mywindow, day:str):
     
     def fnc_gen_grafic_user(parent_self:mywindow, user:MTXCMP.User):
 
-        users_map = CSQ.custom_request_c(CFG.Config.project.db_users,
+        users_map = CSQ.custom_request_c(CFG_prj.db_users,
                             f"""SELECT competence_vals.value, 
                             competence_vals.created_at, competence_vals.id_comp
                   FROM competence_vals
@@ -2472,7 +2493,7 @@ def  report_matrix_competence(self:mywindow, day:str):
         CQT.msgbox(f'В разработке')
         return
         parent_self =  self
-        users_map = CSQ.custom_request_c(CFG.Config.project.db_users,
+        users_map = CSQ.custom_request_c(CFG_prj.db_users,
                             f"""SELECT competence_vals.value, 
                             competence_vals.created_at, competence_vals.id_comp
                   FROM competence_vals
@@ -2714,7 +2735,7 @@ def report_by_open_naryads(self:mywindow, nach_data, kon_data):
     dict_de = F.grouping_list_dicts(
             CSQ.custom_request_c(self.bd_users, f"""SELECT rab_c."Код", rab_c."ref_Подразделения"   FROM rab_c
     
-    WHERE rab_c.poki = {CFG.Config.place.poki}
+    WHERE rab_c.poki = {CFG_o.place.poki}
 """, rez_dict=True),
                                                                             'ref_Подразделения')
 
@@ -2722,14 +2743,14 @@ def report_by_open_naryads(self:mywindow, nach_data, kon_data):
             CSQ.custom_request_c(self.bd_users, f"""SELECT "Должности"."Наименование", "Должности"."Подразделение_Key",
             "Подразделения"."Наименование" as "Подразделениe"  FROM "Должности" 
     INNER JOIN "Подразделения" ON "Подразделения"."Подразделение_Key" = "Должности"."Подразделение_Key" 
-    WHERE "Должности"."Организация_Key" = '{CFG.Config.place.Организация_Key}'
+    WHERE "Должности"."Организация_Key" = '{CFG_o.place.Организация_Key}'
 """, rez_dict=True),
                                                                             'Наименование')
 
     dict_rc = F.deploy_dict_c(
         CSQ.custom_request_c(self.bd_users, f"""SELECT rab_c."Код", rab_c."empl_Подразделение" as "Имя", rab_c."Цвет", etaps.name    FROM rab_c
 
-        INNER JOIN etaps ON etaps.s_num = rab_c.etaps_num AND rab_c.poki = {CFG.Config.place.poki}
+        INNER JOIN etaps ON etaps.s_num = rab_c.etaps_num AND rab_c.poki = {CFG_o.place.poki}
     """, rez_dict=True,attach_dbs=self.bd_naryad),
         'Код')
     cuted_dict_rc = {k[:-1]:v for k,v in dict_rc.items()}
@@ -2777,7 +2798,7 @@ SELECT
     INNER JOIN plan ON plan.Пномер = mk.НомКплан 
    where 
   Date(naryad.Дата) BETWEEN "{F.datetostr(dt_nach,"%Y-%m-%d")}" AND "{F.datetostr(dt_kon,"%Y-%m-%d")}"
-  AND plan.poki =  {CFG.Config.place.poki}
+  AND plan.poki =  {CFG_o.place.poki}
   ;
     
     """,
@@ -2822,7 +2843,7 @@ SELECT
     INNER JOIN "plan" ON plan."Пномер" = mk."НомКплан" 
    where 
   Date(naryad."Дата") BETWEEN '{F.datetostr(dt_nach,"%Y-%m-%d")}' AND '{F.datetostr(dt_kon,"%Y-%m-%d")}'
-  AND plan.poki =  {CFG.Config.place.poki}
+  AND plan.poki =  {CFG_o.place.poki}
   ;
     """
     )
@@ -3396,6 +3417,8 @@ def neosv_ves_po_sozd_nar(self, podrazd):
             list_vrem = rez[i]['Опер_время'].split("|")
             summ = 0
             for i in range(len(list_opers)):
+                if not list_opers[i]:
+                    continue
                 num, name = list_opers[i].split('$')
                 if name in self.DICT_OPER_FULL:
                     rc = self.DICT_OPER_FULL[name]['rc'][:4] + '00'
@@ -3565,6 +3588,175 @@ def create_podreport_c(self, *args):
 
 @CQT.onerror
 def create_gant(self, *args):
+
+
+
+
+    def fig_stage_lifecycle_stacked(self, rez_spis,
+                                    group_col='napravl_deyat',
+                                    min_label_pct=4.0):
+
+        def _to_float(v):
+            try:
+                return float(v) if v not in (None, '') else 0.0
+            except (TypeError, ValueError):
+                return 0.0
+
+        def prepare_stage_lifecycle_dataset(rez_spis, group_col='napravl_deyat', mode='mean_prc'):
+            """
+            % этапа к ЖИЗНЕННОМУ ЦИКЛУ (full_days).
+            НЕ нормализует к 100% — этапы параллельны, сумма может быть ≠ 100.
+
+            Отрицательный день или full_days <= 0 → 0% для этого этапа.
+
+            mode:
+              'mean_prc' — средний % этапа по заказам направления
+              'sum_days' — суммарные дни по направлению (для справки, не %)
+
+            Возвращает:
+              {
+                'index':   [направление, ...],
+                'columns': [stage_key, ...],
+                'labels':  [...], 'colors': [...],
+                'data':    {napr: {stage_key: value}},
+                'totals':  {napr: сумма значений по строке},   # ≈ средний % покрытия цикла
+                'stats':   {napr: {'valid': int, 'total': int}},
+              }
+            """
+            STAGE_META = [
+                ('customer_order_processing', 'Проработка ЗК', '#3B75A5'),  # Глубокий синий
+                ('customer_order_approval', 'Согласование ЗК', '#E07B00'),  # Темно-оранжевый
+                ('reserve_stage', 'Стадия резерв', '#D64545'),  # Насыщенный красный
+                ('rkd_development', 'Разработка РКД', '#2E8B89'),  # Темная бирюза (было светло-голубым)
+                ('mk_rs_creation', 'Создание МК/РС', '#4B9B41'),  # Темно-зеленый
+                ('preparation_stage', 'Стадия подготовка', '#D4A017'),  # Золотой (было ядовито-желтым)
+                ('production_stage', 'Стадия производство', '#9A5B88'),  # Темно-пурпурный
+            ]
+            
+            stage_keys = [k for k, _, _ in STAGE_META]
+            labels = [l for _, l, _ in STAGE_META]
+            colors = [c for _, _, c in STAGE_META]
+
+            if not rez_spis:
+                return {'index': [], 'columns': stage_keys, 'labels': labels,
+                        'colors': colors, 'data': {}, 'totals': {}, 'stats': {}}
+
+            grouped = defaultdict(lambda: defaultdict(list))
+            plan_grouped = defaultdict(list)
+            stats = defaultdict(lambda: {'valid': 0, 'total': 0})
+            order, seen = [], set()
+
+            for r in rez_spis:
+                napr = r.get(group_col) or '—'
+                if napr not in seen:
+                    seen.add(napr)
+                    order.append(napr)
+
+                stats[napr]['total'] += 1
+                full = _to_float(r.get('full_days'))
+                if full > 0:
+                    stats[napr]['valid'] += 1
+
+                plan_prc = _to_float(r.get('full_plan_days_prc'))
+                plan_grouped[napr].append(plan_prc)
+
+
+                for k in stage_keys:
+                    if mode == 'mean_prc':
+                        day = _to_float(r.get(k))
+                        pct = (day * 100.0 / full) if (day > 0 and full > 0) else 0.0
+                        grouped[napr][k].append(pct)
+                    else:  # 'sum_days'
+                        grouped[napr][k].append(max(_to_float(r.get(k)), 0.0))
+
+            data, totals, plan_data = {}, {}, {}
+            for napr in order:
+                row = {k: (mean(grouped[napr][k]) if grouped[napr][k] else 0.0)
+                       for k in stage_keys}
+                data[napr] = row
+                totals[napr] = sum(row.values())
+
+                plan_data[napr] = mean(plan_grouped[napr]) if plan_grouped[napr] else 0.0
+
+
+            return {'index': order, 'columns': stage_keys, 'labels': labels,
+                    'colors': colors, 'data': data, 'totals': totals, 'stats': stats, 'plan_data': plan_data}
+
+        lbl_report = CQT.CustLabel(self.ui.lbl_sort_c_report)
+
+        clear_text = lbl_report.get_user_data('clear_text', 'clear_text')
+
+        fig = go.Figure()
+        if not rez_spis:
+            return fig
+
+        ds = prepare_stage_lifecycle_dataset(rez_spis, group_col, mode='mean_prc')
+        if not ds['index']:
+            return fig
+
+        stage_keys, labels, colors = ds['columns'], ds['labels'], ds['colors']
+        data = ds['data']
+
+        # направления, где хоть что-то посчиталось
+        dirs = [d for d in ds['index'] if ds['totals'][d] > 0]
+        if not dirs:
+            return fig
+        dirs.sort(key=lambda d: ds['totals'][d])  # по возрастанию покрытия
+
+        dirs_labels = []
+        for d in dirs:
+            cnt = ds['stats'].get(d, {}).get('total', 0)
+            dirs_labels.append(f"{d} ({cnt})")
+
+        for k, label, color in zip(stage_keys, labels, colors):
+            xs = [data[d][k] for d in dirs]
+            texts = [f'{v:.0f}%' if v >= min_label_pct else '' for v in xs]
+            fig.add_trace(go.Bar(
+                y=dirs_labels, x=xs, name=label, orientation='h',
+                marker=dict(color=color, line=dict(width=0)),
+                text=texts, textposition='inside', insidetextanchor='middle',
+                textfont=dict(color='white', size=11),
+                hovertemplate=f'{label}: %{{x:.1f}}%<extra></extra>',
+            ))
+
+        plan_x = [ds['plan_data'].get(d, 0.0) for d in dirs]
+        fig.add_trace(go.Scatter(
+            x=plan_x,
+            y=dirs_labels,
+            mode='markers',
+            name='Плановая отгрузка',
+            marker=dict(
+                symbol='line-ns',  # вертикальная насечка
+                size=28,  # высота насечки (подбери под толщину бара)
+                color='rgba(0, 0, 0, 0.5)',  # цвет насечки
+                line=dict(width=2, color='black'),
+                opacity=0.5
+                
+            ),
+            hovertemplate='<b>Плановая отгрузка</b>: %{x:.1f}%<extra></extra>',
+            showlegend=True
+        ))
+
+        # 100% — «полный жизненный цикл»
+        fig.add_vline(x=100, line_dash='dash', line_color='black', line_width=2)
+        fig.add_annotation(
+            x=100, y=1.02, xref='x', yref='paper',
+            text='100% цикла', showarrow=False,
+            font=dict(size=11, color='black'),
+        )
+
+        fig.update_layout(
+            barmode='stack',
+            title=f'{clear_text}. Доля этапа в жизненном цикле заказа '
+                  f'(этапы параллельны — сумма может быть ≠ 100%)',
+            xaxis=dict(title='% от жизненного цикла (от Дата ЗК до завершения производства)', ticksuffix='%'),
+            yaxis=dict(title='Направление'),
+            legend=dict(title='Этап', x=1.02, y=1, orientation='v'),
+            plot_bgcolor='white', bargap=0.15,
+        )
+        fig.update_xaxes(showgrid=True, gridcolor='rgba(0,0,0,0.06)', zeroline=False)
+        fig.update_yaxes(showgrid=False)
+        return fig
     def fig_gr_dinam_proizv(self, spis):
         lbl_report = CQT.CustLabel(self.ui.lbl_sort_c_report)
         clear_text = lbl_report.get_user_data('clear_text', 'clear_text')
@@ -3881,6 +4073,14 @@ def create_gant(self, *args):
     lbl_report = CQT.CustLabel(self.ui.lbl_sort_c_report)
     report_name = lbl_report.get_user_data()
     report_clear_text = lbl_report.get_user_data('clear_text','clear_text')
+
+    if report_name == 'sequence_steps_order_process':
+        if args == None or len(args) == 0:
+            return
+        fig = fig_stage_lifecycle_stacked(self, args[0])
+        load_browser(self)
+        CQT.output_gant(self, fig, self.browser, report_clear_text + '_' + self.ui.cmb_addit_sort_c_report.currentText())
+
     if report_name == 'employee_productivity_dynamics':
         if args == None or len(args) == 0:
             return
@@ -4450,7 +4650,7 @@ def analysis_vneplan_by_vid_rab(self: mywindow, nach, konec, podrazd=None, *args
         '18549': 'Слесарно-сборочные работы 3 разряд',
         'Слесарно-сборочные работы': 'Слесарно-сборочные работы 3 разряд',
     }
-    poki = CFG.Config.place.poki
+    poki = CFG_o.place.poki
     DICT_KAT_VNEPL = F.deploy_dict_c(
         CSQ.custom_request_c(self.bd_naryad, f"""SELECT * FROM category_vnepl WHERE kod > 0 and poki = {poki}""",
                              rez_dict=True), 'value')
@@ -5556,7 +5756,7 @@ def upload_kty_into_erp(self:mywindow):
         return
     date_erp_str = F.dateStrToStr(nach,format_out="ДАТАВРЕМЯ(%Y, %m, %d, %H, %M, %S)")
     date_denided = 'ДанныеДляРасчетаЗарплаты.ДатаЗапрета КАК ДатаЗапрета'
-    if CFG.Config.user_config.ERP_base_name['Значение'] == 'ERP_MES1':
+    if CFG_o.user_config.ERP_base_name['Значение'] == 'ERP_MES1':
         date_denided = '"" КАК ДатаЗапрета'
     wet_req_text = f"""ВЫБРАТЬ
                     ДанныеДляРасчетаЗарплаты.ВидДокумента.Наименование КАК Документ,
@@ -5584,7 +5784,7 @@ def upload_kty_into_erp(self:mywindow):
                                     """
 
     refs = APIERP.Refs_wet(wet_req_text)
-    ref_res = APIERP.Ref_wet('Организация', 'Справочники.Организации', CFG.Config.place.Организация_Key)
+    ref_res = APIERP.Ref_wet('Организация', 'Справочники.Организации', CFG_o.place.Организация_Key)
     refs.add_ref(ref_res)
 
     key, data_rez = APIERP.get_wet_request(wet_req_text, refs=refs)
@@ -5596,7 +5796,7 @@ def upload_kty_into_erp(self:mywindow):
 
     def fnc_oform_select_doc(tbl:CQT.QTableWidget, *args):
         t = CQT.TableContext(tbl)
-        t.hide_if_not_dev(CFG.Config.user_config.is_developer)
+        t.hide_if_not_dev(CFG_o.user_config.is_developer)
         for row in t.rows():
             if row.value('_blocked'):
                 row.set_color_font(*CMS.Colors.dull_black.rgb)
@@ -5716,7 +5916,7 @@ def upload_kty_into_erp(self:mywindow):
 
 
         t = CQT.TableContext(tbl)
-        t.hide_if_not_dev(CFG.Config.user_config.is_developer)
+        t.hide_if_not_dev(CFG_o.user_config.is_developer)
         update_clrs(t)
         t.add_column_events('Перенос',on_double_click=fnc_dbl_click,parent_self=self)
         t.set_editable('Стало')
@@ -5772,7 +5972,7 @@ def upload_kty_into_erp(self:mywindow):
     for_exchange ={'ref_doc':ref_doc,
                    'tbl': [{'_ФИО_ref':_['_ФИО_ref'],'Стало':_['Стало'],'Комментарий':f'{_['Комментарий']}{BASE_MSG_COMMENT} {F.now()}'} for _ in accept_edit_kty]}
 
-    result_code, result_data = APIERP.post_kty_json(for_exchange,erp_base_name=CFG.Config.user_config.ERP_base_name['Значение'])
+    result_code, result_data = APIERP.post_kty_json(for_exchange,erp_base_name=CFG_o.user_config.ERP_base_name['Значение'])
     if result_code == 200:
         CQT.msgbox(f'Успешно')
         return
@@ -5907,13 +6107,16 @@ def get_jur_brak(bd_naryad, data_nach, data_kon):
 @CQT.onerror
 def virabotka_sotr(self, data_nach, data_kon, empl, *args, CALC_BASE_ONLY_PREM=True):
     if empl == '':
-        return CQT.msgbox('Сначала выберите сотрудника!') if CFG.Config.app.is_ui else print('report_ci.virabotka_sotr не выбран сотрудник')
+        return CQT.msgbox('Сначала выберите сотрудника!') if CFG_o.app.is_ui else print('report_ci.virabotka_sotr не выбран сотрудник')
     if F.strtodate(data_nach) >= F.strtodate('2024-07-01 00:00:00'):
         CALC_BASE_ONLY_PREM = True
     else:
         CALC_BASE_ONLY_PREM = False
     custom_request_c = CSQ.SqlQuery(
-        sqlite=f"""SELECT mk.Номер_проекта, mk.Номер_заказа, jurnal.Дата, jurnal.ФИО AS "ФИО_журнал", jurnal.Статус, 
+        sqlite=f"""SELECT 
+            "пл_оуп"."№проекта" as "Номер_проекта", 
+            "пл_оуп"."№ERP" as "Номер_заказа", 
+        jurnal.Дата, jurnal.ФИО AS "ФИО_журнал", jurnal.Статус, 
                 jurnal.Подытог, jurnal.Номер_наряда, jurnal.Примечание AS "Примеч_журнал", 
                 naryad.Твремя, 
                 naryad.ФИО, naryad.Фвремя, naryad.ФИО2, 
@@ -5921,14 +6124,16 @@ def virabotka_sotr(self, data_nach, data_kon, empl, *args, CALC_BASE_ONLY_PREM=T
                 "" AS "Подытог Норм", naryad.Внеплан, naryad.Коэфф_сложности, "" AS "Коэфф_вых", "" AS "Коэфф_вых_ставка", naryad.Подтвержд_вып FROM jurnal 
                 INNER JOIN naryad ON jurnal.Номер_наряда == naryad.Пномер 
                 INNER JOIN mk ON naryad.Номер_мк == mk.Пномер 
+                LEFT JOIN "пл_оуп" ON "пл_оуп"."НомПл" = "mk"."НомКплан"
+                
                 WHERE jurnal.ФИО == "{empl}" AND datetime(jurnal.Дата) >= datetime("{data_nach}") 
                 and datetime(jurnal.Дата) <= datetime("{data_kon}") AND 
-                jurnal.Номер_наряда in (SELECT jurnal.Номер_наряда FROM jurnal WHERE jurnal.ФИО == "{empl}" AND datetime(jurnal.Дата) >= datetime("{data_nach}") 
+                jurnal.Номер_наряда in (SELECT jurnal.Номер_наряда FROM jurnal WHERE jurnal.ФИО = "{empl}" AND datetime(jurnal.Дата) >= datetime("{data_nach}") 
                 and datetime(jurnal.Дата) <= datetime("{data_kon}") AND jurnal.Статус == "Завершен")""",
         postgres=f"""
         SELECT 
-            "mk"."Номер_проекта", 
-            "mk"."Номер_заказа", 
+            "пл_оуп"."№проекта" as "Номер_проекта", 
+            "пл_оуп"."№ERP" as "Номер_заказа", 
             "jurnal"."Дата", 
             "jurnal"."ФИО" AS "ФИО_журнал", 
             "jurnal"."Статус", 
@@ -5951,6 +6156,7 @@ def virabotka_sotr(self, data_nach, data_kon, empl, *args, CALC_BASE_ONLY_PREM=T
         FROM jurnal 
         INNER JOIN "naryad" ON "jurnal"."Номер_наряда" = "naryad"."Пномер" 
         INNER JOIN "mk" ON "naryad"."Номер_мк" = "mk"."Пномер" 
+        LEFT JOIN "пл_оуп" ON "пл_оуп"."НомПл" = "mk"."НомКплан"
         WHERE "jurnal"."ФИО" = '{empl}' 
             AND ("jurnal"."Дата")::timestamp >= ('{data_nach}')::timestamp 
             AND ("jurnal"."Дата")::timestamp <= ('{data_kon}')::timestamp 
@@ -5962,7 +6168,8 @@ def virabotka_sotr(self, data_nach, data_kon, empl, *args, CALC_BASE_ONLY_PREM=T
                             AND ("jurnal"."Дата")::TIMESTAMP <= ('{data_kon}')::TIMESTAMP 
                             AND jurnal."Статус" = 'Завершен');"""
     )
-    rez_jur = CSQ.custom_request_c(self.bd_naryad, custom_request_c, hat_c=True, rez_dict=True)
+    rez_jur = CSQ.custom_request_c(self.bd_naryad, custom_request_c, hat_c=True, rez_dict=True,
+                                   attach_dbs=CFG_prj.db_kplan)
 
     custom_request_c = CSQ.SqlQuery(
         sqlite=f"""
@@ -6020,7 +6227,7 @@ WHERE
     )
     rez_jur_nezav = CSQ.custom_request_c(self.bd_naryad, custom_request_c, hat_c=True, rez_dict=True)
     if rez_jur == [] or rez_jur == False:
-        return CQT.msgbox('Внимание! завершенных нарядов у него нет, одни недоделки', icon_str='Warning') if CFG.Config.app.is_ui else print('report_ci.virabotka_sotr пустая выборка rez_jur')
+        return CQT.msgbox('Внимание! завершенных нарядов у него нет, одни недоделки', icon_str='Warning') if CFG_o.app.is_ui else print('report_ci.virabotka_sotr пустая выборка rez_jur')
 
 
     for item in rez_jur_nezav:
@@ -6710,7 +6917,7 @@ SELECT "Пномер",
        "Имя_поля",
        "Это_группа_сборки",
        poki
-  FROM podrazdel WHERE poki = {CFG.Config.place.poki} and synthetic = 0;
+  FROM podrazdel WHERE poki = {CFG_o.place.poki} and synthetic = 0;
 """,rez_dict= True)
 
     inner = "\n".join(
@@ -6876,7 +7083,7 @@ SELECT "Пномер",
 
     estimated_vid_rab_names_fact = {v['Имя'] for k, v in self.Data.DICT_GROUP_PODR_VID_RAB_FOR_PLAN.items()
                                     if
-                                    v['estimated'] and v['poki'] == CFG.Config.place.poki}
+                                    v['estimated'] and v['poki'] == CFG_o.place.poki}
     def calc_estimated_etap(etap):
         estimated = False
         if etap in self.Data.DICT_ETAPI_FULL:
@@ -7369,7 +7576,7 @@ def clear_graf(self):
 
 @CQT.onerror
 def SHABLON_NEW_REPORT(self, data_nach, data_kon, podrazd='-', *args):
-    PRJ = CFG.Config.project
+    PRJ = CFG_prj
     query = CSQ.SqlQuery(
         sqlite=f""" """,
         postgres=f""" """
@@ -7389,7 +7596,7 @@ def SHABLON_NEW_REPORT(self, data_nach, data_kon, podrazd='-', *args):
 
 @CQT.onerror
 def weight_by_closed_mk(self, data_nach, data_kon, podrazd='-', *args):
-    PRJ = CFG.Config.project
+    PRJ = CFG_prj
     dt_nach = F.strtodate(data_nach)
     dt_kon = F.strtodate(data_kon)
     resp = [{'':'Ошибка загрузки данных'}]
@@ -7463,7 +7670,7 @@ def weight_by_closed_mk(self, data_nach, data_kon, podrazd='-', *args):
 
 @CQT.onerror
 def diver_trdz_1c_mes(self, data_nach, data_kon, podrazd='-', *args):
-    PRJ = CFG.Config.project
+    PRJ = CFG_prj
     query = CSQ.SqlQuery(
         sqlite=f"""SELECT знпр.Ref_Key_py as "_ref_zp", jurnal.Пномер as "_id_jur",
      знпр.№ERP as ПУ, знпр.№проекта as "Проект", plan.Пномер as "КПЛ",
@@ -8243,35 +8450,75 @@ def ispoln_pl_month(db_kplan, db_resxml, bd_naryad, DICT_PROFESSIONS, DICT_VID_R
     list_pnums = [_ for _ in plan.data.keys() if
                   'Тип' not in plan.data[_] or ('Тип' in plan.data[_] and plan.data[_]['Тип'] != 'Внеплан')]
     list_pnums_vnepl_pl = [_ for _ in plan.data.keys() if 'Тип' in plan.data[_] and plan.data[_]['Тип'] == 'Внеплан']
-    req = f"""SELECT plan.Пномер,  "План" as Статус, napravl_deyat.Псевдоним as "Направление", пл_оуп.Дата_заявки_на_произв, пл_оуп.№ERP, пл_оуп.№проекта, plan.Позиция, 
-        пл_оуп.Номенклатура_ЕРП, 
-        пл_топ.Спецификация_ЕРП, пл_топ.Спецификация_код_ЕРП, "Штука" as "Ед. изм.",
-        пл_оуп.Количество as "Количество_заказ", "" as "Количество", "" as "Дата", "" as "Статус РС" , 
-        status_poz.Имя as "Статус позиции", "" as "Примечание", пл_сб.Прогноз_дата_зав_сб, пл_сб.Примечание_сб, "" as "Всего н-смен на поз.","" as "Зав_мк из" FROM plan 
-        INNER JOIN пл_оуп ON пл_оуп.НомПл = plan.Пномер, пл_топ ON пл_топ.НомПл = plan.Пномер,  
-        napravl_deyat ON napravl_deyat.Пномер = plan.Направление_деятельности,
-        status_poz ON status_poz.Пномер = plan.Статус, 
-        пл_сб on пл_сб.НомПл = plan.Пномер,
-        napravlenie ON napravlenie.Пномер = napravl_deyat.Направление WHERE plan.Пномер IN 
-             ({CSQ.prepare_list_to_tuple(list_pnums)})"""
+    req = f"""
+SELECT 
+    plan."Пномер", 
+    'План' as "Статус", 
+    napravl_deyat."Псевдоним" as "Направление", 
+    пл_оуп."Дата_заявки_на_произв", 
+    "пл_оуп"."№ERP", 
+    "пл_оуп"."№проекта", 
+    plan."Позиция", 
+    пл_оуп."Номенклатура_ЕРП", 
+    пл_топ."Спецификация_ЕРП", 
+    пл_топ."Спецификация_код_ЕРП", 
+    "Штука" as "Ед. изм.",
+    пл_оуп.Количество as "Количество_заказ", 
+    '' as "Количество", 
+    '' as "Дата", 
+    '' as "Статус РС", 
+    "status_poz"."Имя" as "Статус позиции", 
+    '' as "Примечание", 
+    "пл_сб"."Прогноз_дата_зав_сб", 
+    "пл_сб"."Примечание_сб", 
+    '' as "Всего н-смен на поз.",
+    '' as "Зав_мк из" 
+FROM plan 
+INNER JOIN пл_оуп ON "пл_оуп"."НомПл" = "plan"."Пномер"
+INNER JOIN пл_топ ON "пл_топ"."НомПл" = "plan"."Пномер" 
+INNER JOIN napravl_deyat ON "napravl_deyat"."Пномер" = "plan"."Направление_деятельности"
+INNER JOIN status_poz ON "status_poz"."Пномер" = "plan"."Статус" 
+INNER JOIN пл_сб on "пл_сб"."НомПл" = "plan"."Пномер"
+INNER JOIN napravlenie ON "napravlenie"."Пномер" = "napravl_deyat"."Направление" 
+WHERE plan."Пномер" IN ({CSQ.prepare_list_to_tuple(list_pnums)});"""
     rez = CSQ.custom_request_c(db_kplan, req, rez_dict=True)
     if len(list_pnums_vnepl_pl):
-        req = f"""SELECT plan.Пномер,  "Внеплан" as Статус, napravl_deyat.Псевдоним as "Направление", пл_оуп.Дата_заявки_на_произв, пл_оуп.№ERP, пл_оуп.№проекта, plan.Позиция, 
-            пл_оуп.Номенклатура_ЕРП, 
-            пл_топ.Спецификация_ЕРП, пл_топ.Спецификация_код_ЕРП, "Штука" as "Ед. изм.",
-            пл_оуп.Количество as "Количество_заказ", "" as "Количество", "" as "Дата", "" as "Статус РС" , 
-            status_poz.Имя as "Статус позиции", "" as "Примечание", пл_сб.Прогноз_дата_зав_сб, пл_сб.Примечание_сб, "" as "Всего н-смен на поз.","" as "Зав_мк из" FROM plan 
-            INNER JOIN пл_оуп ON пл_оуп.НомПл = plan.Пномер, пл_топ ON пл_топ.НомПл = plan.Пномер,  
-            napravl_deyat ON napravl_deyat.Пномер = plan.Направление_деятельности,
-            status_poz ON status_poz.Пномер = plan.Статус, 
-            пл_сб on пл_сб.НомПл = plan.Пномер,
-            napravlenie ON napravlenie.Пномер = napravl_deyat.Направление WHERE plan.Пномер IN 
-                 ({CSQ.prepare_list_to_tuple(list_pnums_vnepl_pl)})"""
+        req = f"""
+SELECT 
+    "plan"."Пномер",  
+    "Внеплан" as "Статус", 
+    "napravl_deyat"."Псевдоним" as "Направление", 
+    "пл_оуп"."Дата_заявки_на_произв", 
+    пл_оуп.№ERP, 
+    пл_оуп.№проекта, 
+    "plan"."Позиция", 
+    "пл_оуп"."Номенклатура_ЕРП", 
+    "пл_топ"."Спецификация_ЕРП", 
+    "пл_топ"."Спецификация_код_ЕРП", 
+    "Штука" as "Ед. изм.",
+    "пл_оуп"."Количество" as "Количество_заказ", 
+    '' as "Количество", 
+    '' as "Дата", 
+    '' as "Статус РС" , 
+    status_poz.Имя as "Статус позиции", 
+    '' as "Примечание", 
+    "пл_сб"."Прогноз_дата_зав_сб", 
+    "пл_сб"."Примечание_сб", 
+    '' as "Всего н-смен на поз.",
+    '' as "Зав_мк из" 
+FROM plan 
+INNER JOIN пл_оуп ON "пл_оуп"."НомПл" = "plan"."Пномер" 
+INNER JOIN пл_топ ON "пл_топ"."НомПл" = "plan"."Пномер"  
+INNER JOIN napravl_deyat ON "napravl_deyat"."Пномер" = "plan"."Направление_деятельности"
+INNER JOIN status_poz ON "status_poz"."Пномер" = "plan"."Статус" 
+INNER JOIN пл_сб on "пл_сб"."НомПл" = "plan"."Пномер"
+INNER JOIN napravlenie ON "napravlenie"."Пномер" = "napravl_deyat"."Направление" 
+WHERE plan.Пномер IN ({CSQ.prepare_list_to_tuple(list_pnums_vnepl_pl)});"""
         rez_vnepl_pl = CSQ.custom_request_c(db_kplan, req, rez_dict=True)
         for item in rez_vnepl_pl:
             rez.append(item)
 
-    req_mk = f"""SELECT Пномер, Дата_завершения, НомКплан FROM mk WHERE НомКплан IN ({CSQ.prepare_list_to_tuple(list_pnums)});"""
+    req_mk = f"""SELECT "Пномер", "Дата_завершения", "НомКплан" FROM mk WHERE "НомКплан" IN ({CSQ.prepare_list_to_tuple(list_pnums)});"""
     list_mk_from_plan = CSQ.custom_request_c(bd_naryad, req_mk, rez_dict=True)
     list_vid_rab = CMS.get_shablon_vidov(DICT_PROFESSIONS)
 
@@ -8760,6 +9007,111 @@ INNER JOIN пл_ко ON пл_ко."НомПл" = plan."Пномер"
     return rez_list_plan
 
 
+def analytics_for_all_PGVU_valves(self, data_nach, data_kon):
+    rez_spis = []
+
+    req = f"""
+        select 
+     plan.Пномер as 'kpl',
+     napravl_deyat.Имя as 'napravl_deyat',
+     виды_по_направлению.Имя as 't_type',
+     знпр."№ERP" as 'n_erp',
+     знпр."№проекта" as 'n_proj',
+     plan."Позиция" as 'position',
+     "plan"."МК" as '_mk',
+     mk."Вес" as 'weight',
+     пл_ко."Ссылка_КД" as 'link_docs'
+     from plan 
+     inner join  пл_оуп on пл_оуп."НомПл" = plan."Пномер"
+     inner join  пл_ко on пл_ко."НомПл" = plan."Пномер"
+     inner JOIN mk ON "mk"."Пномер" = "plan"."МК"
+     inner join  пл_топ on пл_топ."НомПл" = plan."Пномер"
+     inner join  знпр on знпр.s_num = пл_оуп."Пномер_ЗП"
+     inner join  napravl_deyat on napravl_deyat."Пномер" = plan."Направление_деятельности"
+     inner join  виды_по_направлению on виды_по_направлению."Пномер" =  пл_топ."Вид"
+     inner join  res on res."Номер_мк" =  "plan"."МК" and
+     plan.Дата_внесения between "{F.dateStrToStr(data_nach,format_out='%Y-%m-%d')}" AND
+      "{F.dateStrToStr(data_kon,format_out='%Y-%m-%d')}"
+
+    WHERE  plan.poki = {self.place.poki}   and пл_топ.Вид 
+     in (
+        25,
+        26,
+        27,
+        28,
+        91,
+        92,
+        93,
+        94,
+        95
+     )
+    ;
+    """
+    rez_req = CSQ.custom_request_c(CFG_prj.db_kplan, req, rez_dict=True, attach_dbs=(CFG_prj.db_naryad,CFG_prj.db_resxml))
+
+    DICT_ALIASES = {
+        'kpl': 'КПЛ',
+        'napravl_deyat': 'Направление',
+        't_type': 'ТВид',
+        'n_erp': 'ПУ',
+        'n_proj': '№ проекта',
+        'position': 'номер позиции',
+        'weight': 'вес клапана',
+        'link_docs': 'ссылка на кд'
+
+    }
+    etaps = CSQ.custom_request_c(CFG_prj.db_users,
+                                 f"""SELECT etaps.name as etaps_name, rab_c."Код" , rab_c."Имя" FROM rab_c 
+                    INNER JOIN etaps ON 
+                    etaps.s_num = rab_c.etaps_num 
+                    WHERE rab_c.poki = {CFG_o.place.poki}""",
+                                 attach_dbs=CFG_prj.db_naryad, rez_dict=True)
+    dict_etaps = F.deploy_dict_c(etaps, 'Код')
+    
+    res_specs_o = CMS.ResSpecs(
+        [_['_mk'] for _ in rez_req]
+    )
+    DICT_ALIASES_FULL = copy.deepcopy(DICT_ALIASES)
+    set_sb_sv_types = set([_['вид_работ'] for _ in res_specs_o.DICT_PROF_BY_COD.values() if _['этап'] in ('Сборка+сварка','Зачистка')])
+    SB_SV_NAME_FIELD = 'Сб+св+зч* (мин./кг.)'
+    set_type_of_works = sorted(list(set([_['вид_работ'] for _ in res_specs_o.DICT_PROF_BY_COD.values() if _['poki'] == 0 and _['Вкл'] == 1])))
+    DICT_ALIASES_FULL.update({_ : _ for _ in set_type_of_works})
+    
+
+    for it in rez_req:
+        item = dict()
+        res:CMS.ResSpec = res_specs_o.dict_res[it['_mk']]
+        if not res:
+            continue
+        dict_norm_by_product = res.get_vids_rab()
+        weight_by_product = res.mk.Вес/res.count
+        specific_norms = {k: round(v/weight_by_product,3) for k, v in dict_norm_by_product.items()}
+
+        it.update(specific_norms)
+        sb_sv_val = 0
+        for name, alias in DICT_ALIASES_FULL.items():
+            val = ''
+            if name in it:
+                val = it[name]
+                if name in set_sb_sv_types:
+                    sb_sv_val += val
+            if name not in DICT_ALIASES:
+                name = f'{name} (мин./кг.)'
+            item[name] = val
+        item[SB_SV_NAME_FIELD] = round(sb_sv_val,2)
+        item['weight'] = round(weight_by_product)
+        rez_spis.append(item)
+
+   
+
+
+
+    def fnc_oform(tbl, *args):
+        t = CQT.TableContext(tbl)
+
+    self.DICT_ALIASES_FIELDS_REPORT = DICT_ALIASES
+    return rez_spis, fnc_oform
+
 def sequence_steps_order_process(self, data_nach, data_kon):
     """
     Дата занесения проекта в МЕС (первое занесение от ПДО),
@@ -8772,67 +9124,168 @@ def sequence_steps_order_process(self, data_nach, data_kon):
 +   вид_направления.
     """
     req = f"""
-    seleCT
-    
- plan.Пномер,
- napravl_deyat.Имя,
-  plan.Дата_внесения,
-  пл_оуп.Дата_заявки_на_произв,
-   пл_оуп.Дата_отгрузки_ПУ,
-   plan.Фдата_получения_КД,
-   plan.Дата_внесения_в_план_месяца,
-   пл_топ.Пдата_нач_ТД,
-   пл_топ.Дата_МК,
-   '' as "Дней на КД",
-   '' as "% на КД",
-   '' as "Дней на подготовку",
-   '' as "% на подготовку",
-   '' as "Дней на производство",
-   '' as "% на производство"
+    select
+ plan.Пномер as 'kpl',
+ napravl_deyat.Имя as 'napravl_deyat',
+ napravl_deyat.Цвет as '_napravl_deyat_clr',
+ виды_по_направлению.Имя as 't_type',
+ знпр."№ERP" as 'n_erp',
+ знпр."№проекта" as 'n_proj',
+ plan."Позиция" as 'position',
+  plan.Дата_внесения as  'date_insertion',
+  знпр.client_order_date as  'date_zk',
+  знпр.Дата_заявки_на_произв as  'date_zp',
+  plan.Фдата_получения_КД as  'date_receipt_kd',
+  пл_топ.Дата_МК as 'date_td',
+  знпр.date_crate_etaps as 'date_state_to_production',
+  пл_оуп.Дата_движение_гп_зав as  'date_transfer_finished_warehouse',
+  plan.Дата_внесения_в_план_месяца as  'date_insertion_monthly_plan',
+  пл_оуп.Дата_отгрузки_ПУ as  'date_plan_finished',
+
+   '' as 'customer_order_processing',
+   '' as 'customer_order_approval',
+   '' as 'reserve_stage',
+   '' as 'rkd_development',
+   '' as 'mk_rs_creation',
+   '' as 'preparation_stage',
+   '' as 'production_stage',
+   '' as 'full_plan_days',
+   
+   '' as 'full_days',
+   '' as 'customer_order_processing_prc',   
+   '' as 'customer_order_approval_prc',   
+   '' as 'reserve_stage_prc',   
+   '' as 'rkd_development_prc',   
+   '' as 'mk_rs_creation_prc',   
+   '' as 'preparation_stage_prc',   
+   '' as 'production_stage_prc',
+   '' as 'full_plan_days_prc'
+   
    
  from plan 
  inner join  пл_оуп on пл_оуп.НомПл = plan.Пномер
  inner join  пл_топ on пл_топ.НомПл = plan.Пномер
+ inner join  знпр on знпр.s_num = пл_оуп.Пномер_ЗП
  inner join  napravl_deyat on napravl_deyat.Пномер = plan.Направление_деятельности
+ inner join  виды_по_направлению on виды_по_направлению.Пномер =  пл_топ.Вид
 
-WHERE  plan.poki = {self.place.poki} and datetime(plan.Дата_внесения) > datetime("2025-01-01") AND datetime(plan.Дата_внесения) < datetime("2027-01-01")
+WHERE  plan.poki = {self.place.poki} 
+and plan.Дата_внесения != '' 
+and знпр.client_order_date != '' 
+and знпр.Дата_заявки_на_произв != '' 
+and  plan.Фдата_получения_КД != '' 
+and  пл_топ.Дата_МК != '' 
+and  знпр.date_crate_etaps != '' 
+and  пл_оуп.Дата_движение_гп_зав != '' 
+and  plan.Дата_внесения_в_план_месяца != '' 
+and знпр.Дата_заявки_на_произв between "{F.dateStrToStr(data_nach, format_out="%Y-%m-%d")}" and "{F.dateStrToStr(data_kon, format_out= "%Y-%m-%d")}"
 """
-    rez_req = CSQ.custom_request_c(CFG.Config.project.db_kplan, req,rez_dict=True)
-    
+    rez_req = CSQ.custom_request_c(CFG_prj.db_kplan, req,rez_dict=True)
+
+    DICT_ALIASES = {
+        'kpl':'КПЛ',
+        'napravl_deyat':'Направление',
+        '_napravl_deyat_clr':'_Направление_цвет',
+        't_type':'ТВид',
+        'n_erp':'ПУ',
+        'n_proj':'Проект',
+        'position':'Позиция',
+        'date_insertion':'Дата занесения в МЕС/\nдата поставновки резерва',
+        'date_zk':'Дата создания\nЗаказа клиента в 1С',
+        'date_zp':'Дата создания\nЗаказа на производство',
+        'date_receipt_kd':'Дата\nполучения РКД',
+        'date_td':'Дата\nвыдачи МК/РС',
+        'date_state_to_production':'Дата Смены статуса\nЗаказа на произвордство\nна "К производству"',
+        'date_transfer_finished_warehouse':'Дата завершения\nпроизводства',
+        'date_insertion_monthly_plan':'Дата постановки\nв план месяца',
+        'date_plan_finished': '_Дата планового завершения по ЗП',
+        'full_days':'_Полных дней',
+         'customer_order_processing': 'Проработка\nЗаказа клиента',#//Дата создания Заказа клиента в 1С - Дата занесения в МЕС/дата поставновки резерва
+          'customer_order_processing_prc':'_Проработка Заказа клиента(%)',
+         'customer_order_approval': 'Согласование\nЗК',#//Дата создания Заказа на производство - Дата создания Заказа клиента в 1С
+          'customer_order_approval_prc':'_Согласование ЗК(%)',
+         'reserve_stage': 'Стадия\nрезерв',#//Дата создания Заказа на производство - Дата занесения в МЕС/дата поставновки резерва
+          'reserve_stage_prc':'_Стадия резерв(%)',
+         'rkd_development': 'Разработка\nРКД',#//Дата получения РКД - Дата создания Заказа клиента в 1С
+          'rkd_development_prc':'_Разработка РКД(%)',
+         'mk_rs_creation': 'Создание\nМК и РС',#//Дата выдачи МК/РС - Дата получения РКД
+          'mk_rs_creation_prc':'_Создание МК и РС(%)',
+         'preparation_stage': 'Стадия\nподготовка',#//Дата Смены статуса Заказа на произвордство на "К производству" - Дата создания Заказа на производство
+          'preparation_stage_prc':'_Стадия подготовка(%)',
+         'production_stage': 'Стадия\nпроизводство',#//Дата завершения производства - Дата постановки в План месяца
+          'production_stage_prc':'_Стадия производство(%)',
+         'full_plan_days': 'Дней\nпо ЗП',#//Дата создания Заказа клиента в 1С - Дата планового завершения по ЗП
+          'full_plan_days_prc':'_Дней по ЗП(%)',
+
+    }
+
     def is_date(str_date):
         return F.is_date(str_date, "%Y-%m-%d")
-    
-    def strtodate(str_date):
-        return F.strtodate(str_date, "%Y-%m-%d")
-    
+
+    def strtodate(str_date)->datetime.datetime|None:
+        if is_date(str_date) and str_date != '0001-01-01':
+            return F.strtodate(str_date, "%Y-%m-%d")
+
+    def delta_days(date1:datetime.datetime|None, date2:datetime.datetime|None)->int:
+        if date1 is None or date2 is None:
+            return ''
+        return F.delta_days(date1, date2).days
+
+    def _prc(day, full):
+        if not day or not full or full <= 0 or day == '0001-01-01':
+            return 0
+        return round(day * 100 / full)
+
+    def _to_float(v):
+        try:
+            return float(v) if v not in (None, '') else 0.0
+        except (TypeError, ValueError):
+            return 0.0
+        
     rez_spis = []
     for it in rez_req:
-        days_kd = 0
-        days_podg = 0
-        days_pr = 0
-        days_full = 0
-        
-        if is_date(it['Дата_внесения']) and is_date(it['Дата_отгрузки_ПУ']):
-            days_full = F.delta_days(strtodate(it['Дата_внесения']), strtodate(it['Дата_отгрузки_ПУ'])).days
-            
-        if is_date(it['Дата_внесения']) and is_date(it['Фдата_получения_КД']):
-            days_kd = F.delta_days(strtodate(it['Дата_внесения']), strtodate(it['Фдата_получения_КД'])).days
-        it['Дней на КД'] = days_kd
-        it['% на КД'] = round(days_kd / days_full * 100) if days_full else 0
-        if is_date(it['Фдата_получения_КД']) and is_date(it['Дата_МК']):
-            days_podg = F.delta_days(strtodate(it['Фдата_получения_КД']), strtodate(it['Дата_МК'])).days
-        it['Дней на подготовку'] = days_podg
-        it['% на подготовку'] = round(days_podg / days_full * 100) if days_full else 0
-        if is_date(it['Дата_внесения_в_план_месяца']) and is_date(it['Дата_отгрузки_ПУ']):
-            days_pr = F.delta_days(strtodate(it['Дата_внесения_в_план_месяца']), strtodate(it['Дата_отгрузки_ПУ'])).days
-        it['Дней на производство'] = days_pr
-        it["% на производство"] = round(days_pr / days_full * 100) if days_full else 0
+
+        it['customer_order_processing'] = delta_days(strtodate(it['date_zk']) , strtodate(it['date_insertion']))
+        it['customer_order_approval'] = delta_days(strtodate(it['date_zk']) , strtodate(it['date_zp']))
+        it['reserve_stage'] = delta_days(strtodate(it['date_zp']) , strtodate(it['date_insertion']))
+        it['rkd_development'] = delta_days(strtodate(it['date_zk']) , strtodate(it['date_receipt_kd']))
+        it['mk_rs_creation'] = delta_days(strtodate(it['date_receipt_kd']) , strtodate(it['date_td']))
+        it['preparation_stage'] = delta_days(strtodate(it['date_zp']) , strtodate(it['date_state_to_production']))
+        it['production_stage'] = delta_days(strtodate(it['date_insertion_monthly_plan']) , strtodate(it['date_transfer_finished_warehouse']))
+        it['full_plan_days'] = delta_days(strtodate(it['date_zk']) , strtodate(it['date_plan_finished']))
+        full_days= delta_days(strtodate(it['date_zk']) , strtodate(it['date_transfer_finished_warehouse']))
+        it['full_days'] = full_days if full_days else 0
+
+
+
+        it['customer_order_processing_prc'] = _prc(it['customer_order_processing'], it['full_days'])
+        it['customer_order_approval_prc'] = _prc(it['customer_order_approval'], it['full_days'])
+        it['reserve_stage_prc'] = _prc(it['reserve_stage'], it['full_days'])
+        it['rkd_development_prc'] = _prc(it['rkd_development'], it['full_days'])
+        it['mk_rs_creation_prc'] = _prc(it['mk_rs_creation'], it['full_days'])
+        it['preparation_stage_prc'] = _prc(it['preparation_stage'], it['full_days'])
+        it['production_stage_prc'] = _prc(it['production_stage'], it['full_days'])
+        it['full_plan_days_prc'] = _prc(it['full_plan_days'], it['full_days'])
+
         rez_spis.append(it)
         
 
     def fnc_oform(tbl, *args):
-        return 
+        t = CQT.TableContext(tbl)
+        t.hide_if_not_dev(CFG_o,   True)
+        for row in t.rows():
+            clr = row.value('_napravl_deyat_clr')
+            if not clr:
+                continue
+            clr_o = CMS.Color(clr)
+            row.set_color_background(*clr_o.rgb,a = 165)
+        t.tbl.setStyleSheet(CQT.MES_EDIT_CSS)
+        
 
+
+    create_gant(self, rez_spis)
+
+    self.DICT_ALIASES_FIELDS_REPORT = DICT_ALIASES
     return rez_spis, fnc_oform
 
 

@@ -8858,8 +8858,8 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
         #===============================resize==================================
         self.headers_hash = F.hash_data({'headers':self.get_headers()})
         set_title_for_resize_event(tbl,self.headers_hash)
-
-        connect_to_resize_tablew(parent, tbl, qt_tmp_dir())
+        if parent is not None:
+            connect_to_resize_tablew(parent, tbl, qt_tmp_dir())
         #===============================resize==================================
 
         if selectRows:
@@ -11134,6 +11134,50 @@ def get_dialog_choose_rich_text(parent,
         config=editor_config,
         expanding=True,
     )
+
+
+    def _can_close_rejected() -> bool:
+        """
+        Вернуть True  — закрытие разрешено.
+        Вернуть False — закрытие блокируется.
+        """
+
+        if not dirty["value"]:
+            return True
+        if not msgboxgYN(f'Имеются несохраненные изменения.\nВы действительно хотите закрыть окно?',
+                             title=f'{CEMOJ.EmojiMain.Эмоции.grinning.symbol} Внимание!'):
+            return False
+        # ===================== TODO: своя проверка =====================
+        # res = QtWidgets.QMessageBox.question(
+        #     dialog, "Несохранённые изменения",
+        #     "В редакторе есть несохранённые изменения. Закрыть без сохранения?",
+        #     QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+        #     QtWidgets.QMessageBox.No,
+        # )
+        # if res != QtWidgets.QMessageBox.Yes:
+        #     return False
+        # ===============================================================
+
+        return True  # заглушка
+
+
+
+    dirty = {"value": False}
+
+    def _mark_dirty(*_a, **_kw):
+        dirty["value"] = True
+
+    # Подписываемся на сигнал изменения текста.
+    _sig = getattr(editor, "htmlChanged", None)
+    if _sig is not None and hasattr(_sig, "connect"):
+        try:
+            _sig.connect(_mark_dirty)
+
+        except Exception:
+            raise SyntaxError("Не удалось подписаться на сигнал изменения текста")
+
+
+
     layout.addWidget(editor, stretch=1)
 
     if auto_maximize_chars is not None and not showFullScreen and not showMaximized:
@@ -11196,9 +11240,21 @@ def get_dialog_choose_rich_text(parent,
                 and e.modifiers() & QtCore.Qt.ControlModifier:
             accept_dialog()
             return
+        if e.key() == QtCore.Qt.Key_Escape:
+            reject_handler()
+            return
         QtWidgets.QDialog.keyPressEvent(dialog, e)
 
     dialog.keyPressEvent = keyPressEvent
+
+
+    def closeEvent(e: QtGui.QCloseEvent):
+        if not _can_close_rejected():
+            e.ignore()
+            return
+        QtWidgets.QDialog.closeEvent(dialog, e)
+
+    dialog.closeEvent = closeEvent
 
     show_mode = None
     if showFullScreen:
@@ -11237,13 +11293,30 @@ def get_dialog_choose_rich_text(parent,
     if show_mode:
         dialog.showEvent = showEvent
 
+
+    def reject_handler():
+        if not _can_close_rejected():
+            return
+        QtWidgets.QDialog.reject(dialog)   # вызываем базовый reject явно
+
     btn_ok.clicked.connect(accept_dialog)
-    btn_cancel.clicked.connect(lambda: dialog.done(0))
+    btn_cancel.clicked.connect(reject_handler )
 
     ret = dialog.exec()
     if ret == 0:
         return False, None
     return data["rez"], data["text"]
+
+    #==========================================================
+
+
+    def reject():
+        if not _can_close_rejected():
+            return
+        QtWidgets.QDialog.reject(dialog)
+
+    dialog.reject = reject
+
 
 
 # 26.01.2026
@@ -11866,6 +11939,9 @@ def fill_filtr_c(self, tblf:QtWidgets.QTableWidget, tbl:QtWidgets.QTableWidget, 
             tbl.horizontalHeaderItem(col).text() : ""
             for col in range(col_count)
         }
+        if len(hat_c) != col_count:
+            print('ERROR: fill_filtr_c Текстовые заголовки не уникальны')
+            return
 
         dict_user_role = dict()
 
@@ -12637,10 +12713,10 @@ def connect_to_resize_tablew(self, table:QtWidgets.QTableWidget,tmp_dir)->Resize
 
     receivers_before = header.receivers(header.sectionResized)
 
-    def make_handler(sel, tgt):
+    def make_handler(self, tgt):
         def handler(*args):
             # print(f'[HANDLER] Вызван с args={args}')
-            return _on_resize_event(sel, tgt)
+            return _on_resize_event(self, tgt)
 
         return handler
 

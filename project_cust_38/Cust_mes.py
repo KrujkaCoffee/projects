@@ -4489,6 +4489,13 @@ class Naryads(_Naryad_base):
         self.dict_empl: dict[dict] = dict_empl
         self.dict_opers: dict[dict] = dict_opers
 
+        if self.ДатаМК is None:  # 07.07.25
+            print('[Cust_mes.Naryads.__init__] не задано поле ДатаМК')
+            row = CSQ.custom_request_c(CFG_prj.db_naryad,
+                                       f'''SELECT mk.Дата as ДатаМК FROM naryad JOIN mk ON mk.Пномер = naryad.Номер_мк 
+                   WHERE mk.Пномер == {self.Номер_мк};''', rez_dict=True, one=True)
+            self.__dict__.update(row)
+
         if calc_etap_by_fio:
             if DICT_DATA_DOLGN_ETAP == None:
                 DICT_DATA_DOLGN_ETAP = prepare_dolg_etap_for_calc_pozition_fact_kpl()
@@ -4497,11 +4504,6 @@ class Naryads(_Naryad_base):
             if self.ФИО2 != '':
                 self.Этап_фио_2 = self.calc_etap_by_fio(DICT_DATA_DOLGN_ETAP, self.ФИО2)  # 07.07.25
 
-        if self.ДатаМК is None:  # 07.07.25
-            print('[Cust_mes.Naryads.__init__] не задано поле ДатаМК')
-            row = CSQ.custom_request_c(db_naryad, f'''SELECT mk.Дата as ДатаМК FROM naryad JOIN mk ON mk.Пномер = naryad.Номер_мк 
-            WHERE mk.Пномер == {self.Номер_мк};''', rez_dict=True, one=True)
-            self.__dict__.update(row)
 
 
 
@@ -4532,8 +4534,8 @@ class Naryads(_Naryad_base):
 
             start_d, end_d = diap
 
-            start_ok = start_d is None or self.ДатаМК >= start_d
-            end_ok = end_d is None or self.ДатаМК < end_d
+            start_ok = start_d is None or start_d == '9999-12-31' or self.ДатаМК >= start_d
+            end_ok = end_d is None or end_d == '9999-12-31' or self.ДатаМК < end_d
 
             if start_ok and end_ok:
                 return data_etap_precalc['этап']
@@ -5067,7 +5069,7 @@ class Naryads(_Naryad_base):
         else:
             return self.Твремя
 
-    def recalc_tvrem(self,add_msg:str|None = None)->float|None:
+    def recalc_tvrem(self, add_msg: str = '') -> float | None:
         summ = 0
         old_time = self.Твремя
         for item in self.params:
@@ -7666,11 +7668,24 @@ class ResSpecs():
     def __init__(self,list_nums:list|set|tuple):
         self._list_nums:list[int] = list(list_nums) if isinstance(list_nums, (set, tuple)) else list_nums
         self.dict_res:[int,ResSpec]=dict()
+        self.DICT_PROF_BY_COD: dict[dict] = dict()
+        self.calc_dict_prof_by_cod()
         suc, msg = self.load_data()
         if not suc:
             raise Exception(msg)
-
+    
+    def calc_dict_prof_by_cod(self):
+        self.DICT_PROF_BY_COD: dict[dict] = F.deploy_dict_c(
+            CSQ.custom_request_c(CFG.Config.project.db_users,
+                                 """SELECT *
+                                    FROM professions
+                                             LEFT JOIN vid_rab_po_dolg
+                                                       ON professions.вид_работ = vid_rab_po_dolg.Вид_работ""",
+                                 rez_dict=True),
+            'код')
+    
     def load_data(self)->tuple[bool,str]:
+        
         self.dict_res = dict()
         suc, dict_res = self._load_datas()
         if not suc:
@@ -7678,7 +7693,7 @@ class ResSpecs():
         mks_o = self._load_mk_os()
         for id_mk, wet_data in dict_res.items():
             mk_o = mks_o.marshrut_cards_dict[id_mk]
-            res_o = ResSpec(wet_data=wet_data, mk_o=mk_o)
+            res_o = ResSpec(wet_data=wet_data, mk_o=mk_o,DICT_PROF_BY_COD = self.DICT_PROF_BY_COD)
             self.dict_res[res_o.mk.Пномер] = res_o
         return True, ''
 
@@ -7738,7 +7753,7 @@ class ResSpecs():
 
 
 class ResSpec():
-    def __init__(self, num_mk: int | None = None, wet_data=None, mk_o: Marshrut_cards = None):
+    def __init__(self, num_mk: int | None = None, wet_data=None, mk_o: Marshrut_cards = None,DICT_PROF_BY_COD=None):
         if num_mk == wet_data == mk_o == None:
             raise ValueError(f'Не указан номер МК')
 
@@ -7746,13 +7761,15 @@ class ResSpec():
             self._wet_data = wet_data
         else:
             self._wet_data = load_res(num_mk, db_resxml=CFG.Config.project.db_resxml)
-
-        self.DICT_PROF_BY_COD: dict[dict] = F.deploy_dict_c(CSQ.custom_request_c(CFG.Config.project.db_users,
-                                                                                 """SELECT * 
-                                                       
-                                                                                FROM professions LEFT JOIN vid_rab_po_dolg ON professions.вид_работ = vid_rab_po_dolg.Вид_работ""",
-                                                                                 rez_dict=True),
-                                                            'код')
+        self.DICT_PROF_BY_COD = DICT_PROF_BY_COD
+        if self.DICT_PROF_BY_COD is None:
+            self.DICT_PROF_BY_COD: dict[dict] = F.deploy_dict_c(
+                CSQ.custom_request_c(CFG.Config.project.db_users,
+                                                             """SELECT * 
+                                                            FROM professions LEFT JOIN vid_rab_po_dolg 
+                                                            ON professions.вид_работ = vid_rab_po_dolg.Вид_работ""",
+                                                             rez_dict=True),
+                                        'код')
         self.data: list[ResDse] = [ResDse(self, _) for _ in self._wet_data]
         self.count = self.data[0].Количество
         if mk_o:
@@ -7774,7 +7791,7 @@ class ResSpec():
     def __repr__(self):
         return f'{self.count} шт. "{self.mk.Номенклатура}"'
 
-    def get_vids_rab(self, key_ref=False) -> dict:
+    def get_vids_rab(self, key_ref=False) -> dict:# на 1 изделие
         dict_res = dict()
         for dse in self.data:
             for oper in dse.Операции:
@@ -9259,8 +9276,9 @@ class Composition_poz(_ImportDb):
                 plan.Позиция, 
                    знпр."№проекта" as proj,
                    знпр."№ERP" as erp,
+                   mk.Дата as ДатаМК,
                    naryad.*
-
+                    
                      FROM знпр 
                      INNER JOIN пл_оуп ON пл_оуп.Пномер_ЗП == знпр.s_num 
                      INNER JOIN plan ON plan.Пномер == пл_оуп.НомПл 
@@ -15010,7 +15028,7 @@ def load_res(nom_mk: int, conn='', cur='', db_resxml='', self=None,
     if db_naryad is None:
         db_naryad = CFG.Config.project.db_naryad
     if db_resxml == '':
-        db_resxml = F.bdcfg('db_resxml')
+        db_resxml = CFG.Config.project.db_resxml
     # query = f'''SELECT data FROM res WHERE Номер_мк == {nom_mk}'''
     # res = CSQ.custom_request_c(db_resxml, query, conn=conn, cur = cur)
     if self == None:
