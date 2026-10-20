@@ -1,4 +1,5 @@
-﻿import logging
+﻿import contextlib
+import logging
 import builtins
 import ipaddress
 import subprocess
@@ -92,16 +93,28 @@ class ErrorRequestHandler(logging.Handler):
 {trace}
             """
             self.sender.send_msg_by_chat_id(
-                'chat77068',
+                # 'chat77068',
+                'chat78766',
                 msg
             )
 
         except Exception:
             self.handleError(record)
 
+
 error_request_handler = ErrorRequestHandler()
 logger.addHandler(console_handler)
 logger.addHandler(error_request_handler)
+
+
+@contextlib.contextmanager
+def decorated_log(action: str):
+    logger.info('\n===' * 30)
+    logger.info(f'{action} старт')
+    yield
+    logger.info(f'{action} финиш')
+    logger.info(('===' * 30) + '\n')
+
 
 def load_ip_hostnames() -> list[dict]:
 
@@ -207,6 +220,7 @@ class DbCacheCleaner:
 
 ## ++ 24.06.2026
 
+@APIERP.ping_http_services_decorator
 def fill_worker_history(full_update: bool = False):
     where = ''
     if not full_update:
@@ -268,6 +282,8 @@ def fill_worker_history(full_update: bool = False):
     )
     logger.info(f'Найдена {len(body)} новых записей. Статус insert: {is_done}')
 
+
+@APIERP.ping_http_services_decorator
 def fill_professions():
     current_date = F.now('ДАТАВРЕМЯ(%Y, %m, %d)') #06.07.2026
     query = f"""
@@ -347,6 +363,22 @@ class AutoBreaks:
         is_idle: bool
         interval: int | float
 
+    def pause_group_naryads(self):
+        dict_employee = CMS.dict_emploee_full(USRCNF.Config.project.db_users)
+        started_journals = CMS.find_not_close_groups()
+        if started_journals is None:
+            raise Exception('Не удалось запросить незаконченные группы. Продолжение невозможно')
+        for group_journal in started_journals:
+            journal_instance = CMS.Jurnal_nar(db_nar=CSQ.DB_NAMES.db_naryad, nom_nar=group_journal.naryad_pk, user=group_journal.fio)
+            journal_instance.set_selected_fragment(group_journal.journa_pk)
+            journal_instance.add_new_row(
+                DICT_EMPL_FULL=dict_employee,
+                lbl_abstract_text='',
+                date_time=F.now(),
+                state='Приостановлен',
+                primech='Автоматическая постановка на паузу'
+            )
+
     def get_dict_worker_breaks_by_worker_ref(self):
         query_schedules = """
                           SELECT employee_phys_ref, period, schedule, error_margin
@@ -412,6 +444,19 @@ class AutoBreaks:
             )
         return naryads
 
+    def is_intersection_date(self, date_str: str, next_segments: list[dict]):
+        date = datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
+
+        for next_segment in next_segments:
+            start_datetime_str = next_segment['start_dt']
+            end_datetime_str = next_segment['end_dt']
+            start_datetime = datetime.strptime(start_datetime_str, '%Y-%m-%d %H:%M:%S')
+
+            end_datetime = datetime.strptime(end_datetime_str, '%Y-%m-%d %H:%M:%S')
+            if start_datetime <= date <= end_datetime:
+                return True
+        return False
+
     def run(self):
         """
         Создание перерывов в нарядах
@@ -450,7 +495,9 @@ class AutoBreaks:
                 start_period_hour, end_period_hour = schedule['schedule'].split('-')
                 error_margin = schedule.get('error_margin') and 0
 
-                for segment_journal in journals:
+                count_segments = len(journals)
+
+                for current_segment, segment_journal in enumerate(journals):
                     end_status = segment_journal['end_status']
                     interval = segment_journal['duration_min']
                     start_datetime_str = segment_journal['start_dt']
@@ -496,6 +543,7 @@ class AutoBreaks:
                         if schedule_end_datetime_str in used_dates:
                             schedule_end_datetime_str = f"{end_date_str} {end_period_hour}:15"
 
+
                         pk_stop_by_scedule = journal.add_new_row(dict_employee, "", schedule_start_datetime_str, state='Приостановлен', primech='Перерыв начало', is_idle=item.is_idle)
                         used_dates.add(schedule_start_datetime_str)
                         journal.refresh()
@@ -520,6 +568,12 @@ class AutoBreaks:
                         new_schedule_start_datetime_str = f"{start_date_str} {end_period_hour}:00"
                         if new_schedule_start_datetime_str in used_dates:
                             new_schedule_start_datetime_str = f"{start_date_str} {end_period_hour}:15"
+
+                        if not self.is_intersection_date(new_schedule_start_datetime_str,
+                                                                  journals[:current_segment]):
+                            logger.info(
+                                f'Наряд {pk_naryad} сдвиг концовки пропущен т.к. дата: {new_schedule_start_datetime_str!r} заходит за пределы следующего сегмента')
+                            continue
                         journal = CMS.Jurnal_nar(USRCNF.Config.project.db_naryad, pk_naryad, user=fio_segment)
                         journal.update_row(
                             dict_employee,
@@ -548,6 +602,15 @@ class AutoBreaks:
                         new_schedule_end_datetime_str = f"{end_date_str} {start_period_hour}:00"
                         if new_schedule_end_datetime_str in used_dates:
                             new_schedule_end_datetime_str = f"{end_date_str} {start_period_hour}:15"
+
+                        if (
+                            current_segment + 1 < count_segments
+                            and not self.is_intersection_date(new_schedule_end_datetime_str, journals[current_segment + 1:])):
+                            logger.info(f'Наряд {pk_naryad} сдвиг концовки пропущен т.к. дата: {new_schedule_end_datetime_str!r} заходит за пределы следующего сегмента')
+                            continue
+
+
+
                         journal.update_row(
                             dict_employee,
                             is_idle=item.is_idle,
@@ -555,6 +618,7 @@ class AutoBreaks:
                             journal_id=end_journal_pk,
                             date_time=new_schedule_end_datetime_str,
                         )
+
                         msg = f'Наряд {pk_naryad} сдвиг концовки было: {end_datetime_str}; стало: {new_schedule_end_datetime_str}'
                         messages.append({**template, 'Инфо': msg})
                         print(msg)
@@ -566,11 +630,6 @@ class AutoBreaks:
                 tbl=messages)
 
 
-# -- 02.02.26
-
-
-
-
 def export_data_for_excel_plan():
     query2 = "SELECT * FROM jurnal;"  # arr = select_SQL(putdb, query2, True)
     F.save_file(r'Z:\Data\for_exel_plan\query2.txt', CSQ.custom_request_c(db_naryad, query2), False)
@@ -580,6 +639,7 @@ def export_data_for_excel_plan():
     F.save_file(r'Z:\Data\for_exel_plan\query4.txt', CSQ.custom_request_c(db_users, query4), False)
     query5 = "SELECT Номер_проекта, Номер_заказа  FROM mk;"  # arr_mk = select_SQL(putdb_mk, query5, True)
     F.save_file(r'Z:\Data\for_exel_plan\query5.txt', CSQ.custom_request_c(db_naryad, query5), False)
+
 
 def update_employee_registr_states_from_1c():
     print(f'======= update_employee_registr_states_from_1c =======')
@@ -612,6 +672,7 @@ def update_employee_registr_states_from_1c():
             print(item)
             CSQ.custom_request_c(db_users, f"""DELETE FROM employee_registr_states WHERE name = '{item}';""",)
     print(f'=======END   update_employee_registr_states_from_1c =======')
+
 
 def plan_it_form_b24():
     SET_UPLOADED_FIELDS = {'НОМЕР',
@@ -668,6 +729,7 @@ def update_dolgn_etap():
                         f"""Обновлено несоответствие этапа dolgn_etap ({item['Пномер']}) для {komp_podr} : {dict_podr_etap[komp_podr]} FROM rab_c """)
                     CSQ.custom_request_c(db_naryad,f"""UPDATE dolgn_etap SET (этап) = ("{dict_podr_etap[komp_podr]}") WHERE Пномер == {item['Пномер']}""")
 
+@APIERP.ping_http_services_decorator
 def update_vid_rab_from_1c():
 
 
@@ -727,6 +789,7 @@ def update_vid_rab_from_1c():
                                                    f' Руб_мин = 0 WHERE ref_Key_erp = "{item["Ref_Key"]}";')
 
 
+@APIERP.ping_http_services_decorator
 def update_emploee_to_db_from_1c(write=False):
 
     print(f'===== {F.now()} UPDATE SPREAD EMPLOYEE========')
@@ -890,28 +953,33 @@ def DEL_update_emploee_to_db(write=False):
 
 
 # =================for db.kplan releases_from_erp=============================
+@APIERP.ping_http_services_decorator
 def upload_two_years_docs_releases(month=False):
     def date_fix(date_erp):
         return F.datetostr(F.strtodate(date_erp, "%Y-%m-%dT%H:%M:%S"))
 
-    def get_list_nomen(step, list_vids):
-        step = 5
+    def get_list_nomen(list_vids):
 
-        rez = []
-        for i in range(0, len(list_vids), step):
-            tmp_list_vids = []
-            for j in range(i, i + step):
-                if j >= len(list_vids):
-                    break
-                tmp_list_vids.append(list_vids[j])
-            list_vids_str = [f"ВидНоменклатуры_Key eq guid'{_}'" for _ in tmp_list_vids]
-            str_vids = " or ".join(list_vids_str)
-            nomen = m.get_response(doc_name='Catalog_Номенклатура',
-                                   wet_filtr=f"?$filter=({str_vids}) &$select=Ref_Key,ВидНоменклатуры_Key,Code,"
-                                             f"Артикул,Description,DeletionMark")
-            for item in nomen:
-                rez.append(item)
-        return rez
+        str_refs_template = ','.join(f'&ref_{num}' for num, ref in enumerate(list_vids))
+        query = f"""
+            ВЫБРАТЬ 
+                ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(Номенклатура.Ссылка)) КАК Ref_Key,
+                ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(Номенклатура.ВидНоменклатуры.Ссылка)) КАК ВидНоменклатуры_Key,
+                Номенклатура.Код КАК Code,
+                Номенклатура.Артикул КАК Артикул,
+                Номенклатура.Наименование КАК Description,
+                Номенклатура.ПометкаУдаления КАК DeletionMark
+            ИЗ Справочник.Номенклатура КАК Номенклатура
+            ГДЕ Номенклатура.ВидНоменклатуры.Ссылка В ({str_refs_template})
+        """
+        refs = APIERP.Refs_wet(query)
+        for num, ref in enumerate(list_vids):
+            refs.add_ref(APIERP.Ref_wet(f'ref_{num}', 'Справочники.ВидыНоменклатуры', ref))
+
+        code, response = APIERP.get_wet_request(query, refs)
+        if code != 200 or not response or response['data'] is None:
+            return None
+        return response['data']
 
     print(f'===== {F.now()} UPDATE RELEASES_FROM_ERP========')
     print(f'\n')
@@ -934,7 +1002,10 @@ def upload_two_years_docs_releases(month=False):
         list_vids_names = m.get_response(doc_name='Catalog_ВидыНоменклатуры',
                                          wet_filtr=f"?$filter=Parent_Key eq guid'f193e0db-9ed7-11e7-80c5-4ccc6a67082d'&$select= "
                                                    f" Description, Ref_Key")
-        ADDITIONAL_VIDS = {'6408f542-48c8-11ee-84b8-00d861dd2b4a',
+        if tmp_is_empty is None:
+            logging.warning('Не удалось обратится к Catalog_ВидыНоменклатуры по ODATA')
+            return
+        ADDITIONAL_VIDS = {'6408f542-48c8-11ee-84b8-00d861dd2b4a', # todo жестко вшитые refs
                            '334d2619-7c39-11ed-8472-00d861dd2b4a',
                            '50089bf2-917d-11ed-8475-00d861dd2b4a',
                            'a515ce0f-72f1-11ec-8464-00d861dd2b4a',
@@ -948,11 +1019,11 @@ def upload_two_years_docs_releases(month=False):
         list_vids_refs = [_['Ref_Key'] for _ in list_vids_names]
         for add_vid in ADDITIONAL_VIDS:
             list_vids_refs.append(add_vid)
-        dict_nomens = F.deploy_dict_c(get_list_nomen(5, list_vids_refs), 'Ref_Key')
+        dict_nomens = F.deploy_dict_c(get_list_nomen(list_vids_refs), 'Ref_Key')
         ref_key_skl = m.get_response(doc_name='Catalog_Склады',
                                      wet_filtr=f"?$filter=DeletionMark eq false and Description eq "
                                                f" 'Склад готовой продукции Пауэрз'&$select= Ref_Key")[0]['Ref_Key']
-        this_year = F.now("%Y") # todo
+        this_year = F.now("%Y")
         if month == False:
 
             begin_year = F.start_end_dates_c(F.date_add_days(F.now(), -365), format_out="%Y-%m-%d 00:00:01")[0]
@@ -1000,7 +1071,7 @@ def upload_two_years_docs_releases(month=False):
             dict_docs_vip[k]['Товары'][i]['Description'] = ''
             if obj['Номенклатура_Key'] not in dict_nomens:
                 print(f"{obj['Номенклатура_Key']} не найден в выборке по видам")
-                print(m.get_response(doc_name='Catalog_Номенклатура',
+                print(m.get_response(doc_name='Catalog_Номенклатура', # todo запрос в цикле
                                      wet_filtr=f"?$filter=Ref_Key eq guid'{obj['Номенклатура_Key']}' &$select=Ref_Key,ВидНоменклатуры_Key,Code,"
                                                f"Артикул,Description,DeletionMark"))
                 continue
@@ -1038,13 +1109,12 @@ def upload_two_years_docs_releases(month=False):
                 CMS.send_info_mk_b24(None, full_msg, 'chat17309')
             if len(msg_add_pw) > 0:
                 full_msg = f"Выпуск готов. Передача продукции из производства {doc['Number']} от {date_fix(doc['Date'])}:\n{str_msg_add_pw}"
-                CMS.send_info_mk_b24(None, full_msg, 'chat21323')
+                #CMS.send_info_mk_b24(None, full_msg, 'chat21323')#отключено по просьбе Нисиной 06.07.2026 из ЛС.
     F.delete_file_c(name_tmp_file_releases)
     F.delete_file_c(name_tmp_file_dict_nomens)
     print(f'==============================')
     print(f'\n')
     print(f'\n')
-
     return
 
 
@@ -1135,6 +1205,49 @@ def calc_fact_naruads_for_kpl():
             F.sleep(0.2)
         F.microseconds_passed(start, len(list_poz))
     print(f'=======  END calc_fact_naruads_for_kpl    =======')
+
+
+@APIERP.ping_http_services_decorator
+def get_znpr_orders(refs_zp: list[str]):
+    code, order_statuses = APIERP.get_enum('СтатусыЗаказовНаПроизводство2_2', 'ERP_MES1')
+    if code != 200 or not order_statuses['data']:
+        return None
+
+    refs_for_template = ','.join(f"&Ref_{num}" for num, cr_ref in enumerate(refs_zp) if cr_ref)
+
+    query = f"""
+    ВЫБРАТЬ 
+        ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЗаказНаПроизводство2_2.Ссылка)) КАК Ref_Key,
+        ЗаказНаПроизводство2_2.Статус КАК Статус,
+        ЗаказНаПроизводство2_2.Дата КАК Date,
+        ПРЕДСТАВЛЕНИЕ(ЗаказНаПроизводство2_2.ДатаПотребности) КАК ДатаПотребности,
+        ЗаказНаПроизводство2_2.Комментарий КАК Комментарий
+    ИЗ Документ.ЗаказНаПроизводство2_2 КАК ЗаказНаПроизводство2_2
+    ГДЕ 
+         ЗаказНаПроизводство2_2.Ссылка В ({refs_for_template})
+         И ЗаказНаПроизводство2_2.ПометкаУдаления = ЛОЖЬ
+         И ЗаказНаПроизводство2_2.Проведен = ИСТИНА
+    """
+    refs = APIERP.Refs_wet(query)
+
+    for num, cr_ref in enumerate(refs_zp):
+        if cr_ref:
+            refs.add_ref(APIERP.Ref_wet(f"Ref_{num}", 'Документы.ЗаказНаПроизводство2_2', cr_ref))
+
+    statuses_by_actual_name = F.deploy_dict_c(order_statuses['data'], 'Ссылка')
+
+    code, orders = APIERP.get_wet_request(query, refs)
+    if code != 200 or not orders['data']:
+        return None
+    response = []
+    for order in orders['data']:
+        if not order or order['Статус'] not in statuses_by_actual_name:
+            continue
+        key_status = statuses_by_actual_name[order['Статус']]['Имя']
+        response.append({**order, 'Статус': key_status})
+    return response
+
+
 # ========================calc обновление статусов КПЛ ТЧ=================
 def check_and_calc_plan_kpl():
     print(f'===== {F.now()} UPDATE КПЛ МЕС И ERP========')
@@ -1255,48 +1368,84 @@ def check_and_calc_plan_kpl():
 
     m = ERP.OrdersComposit()
 
-    def get_list_res(list_kod_res, step=5):
-        rez = dict()
-        for i in range(0, len(list_kod_res), step):
-            tmp_list_kod_res = []
-            for j in range(i, i + step):
-                if j >= len(list_kod_res):
-                    break
-                if list_kod_res[j]['Спецификация_код_ЕРП'] != '':
-                    tmp_list_kod_res.append(list_kod_res[j]['Спецификация_код_ЕРП'])
-            list_kod_res_str = [f"Code eq '{_}'" for _ in tmp_list_kod_res]
-            str_ = " or ".join(list_kod_res_str)
-            resp = m.get_response(doc_name='Catalog_РесурсныеСпецификации',
-                                  wet_filtr=f"?$filter=({str_}) &$select=Статус, Description,Code")
-            for item in resp:
-                key = F.clear_str_ntrs(item['Code'])
-                rez[key] = item
-        return rez
+    @APIERP.ping_http_services_decorator
+    def get_list_res(list_erp_codes: list[str] | set[str]) -> dict[str, dict] | None:
+        code_template = ','.join(f'"{code}"' for code in list_erp_codes if code)
+        query = f"""
+        ВЫБРАТЬ 
+            РесурсныеСпецификации.Статус КАК Статус,
+            РесурсныеСпецификации.Наименование КАК Description,
+            РесурсныеСпецификации.Код КАК Code
+        ИЗ Справочник.РесурсныеСпецификации КАК РесурсныеСпецификации
+        ГДЕ РесурсныеСпецификации.Код В ({code_template})
+            И РесурсныеСпецификации.ПометкаУдаления = ЛОЖЬ
+            И РесурсныеСпецификации.ЭтоГруппа = ЛОЖЬ
+        """
+        code, response = APIERP.get_wet_request(query)
+        if code != 200 or not response['data']:
+            return None
+        result = {}
+        for item in response['data']:
+            key = F.clear_str_ntrs(item['Code'])
+            result[key] = item
+        return result
 
-    # m.get_response(doc_name='Catalog_РесурсныеСпецификации',
-    #               wet_filtr=f"?$filter=Code eq '00-047473' &$select=Статус, Description,Code")
     def get_not_poz_valid(list_kod_res, list_poz_form_erp, s_num_py):
         list_not_valid = []
-        for zp in list_poz_form_erp:
-            for poz in zp['Продукция']:
-                name_poz = m.get_response(doc_name='Catalog_Номенклатура',
-                                          wet_filtr=f"?$filter=Ref_Key eq guid'{poz['Номенклатура_Key']}'&$select=Description")
-                for item in list_kod_res:
-                    if item["Спецификация_ЕРП"] == name_poz and item['Пномер_ЗП'] == s_num_py:
-                        if item['Рес_действует'] == 0:
-                            list_not_valid.append(item['Спецификация_ЕРП'])
+        for prod in list_poz_form_erp:
+            name_poz = prod['Наименование']
+            for item in list_kod_res:
+                if item["Спецификация_ЕРП"] == name_poz and item['Пномер_ЗП'] == s_num_py:
+                    if item['Рес_действует'] == 0:
+                        list_not_valid.append(item['Спецификация_ЕРП'])
         return list_not_valid
 
-    rezult_form_erp = get_list_res(list_kod_res, 10)
+    @APIERP.ping_http_services_decorator
+    def get_position_products(lst_positions: list[dict], dict_py: dict[str, dict]):
+        refs_py = set()
+        for item in lst_positions:
+            if item['Пномер_ЗП'] != 0 and item['Пномер_ЗП'] in dict_py:
+                refs_py.add(dict_py[item['Пномер_ЗП']]['Ref_Key_py'])
+        refs_string = ','.join(f'&ref_{num}' for num, ref in enumerate(refs_py) if ref)
+        query = f"""
+            ВЫБРАТЬ 
+                ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЗаказНаПроизводство2_2Продукция.Ссылка)) КАК Ref_Key_py,
+                ЗаказНаПроизводство2_2Продукция.Номенклатура.Наименование КАК Наименование
+            ИЗ Документ.ЗаказНаПроизводство2_2.Продукция КАК ЗаказНаПроизводство2_2Продукция
+            ГДЕ 
+                ЗаказНаПроизводство2_2Продукция.Номенклатура.ПометкаУдаления = ЛОЖЬ
+                И ЗаказНаПроизводство2_2Продукция.Ссылка.ПометкаУдаления = ЛОЖЬ
+                И ЗаказНаПроизводство2_2Продукция.Ссылка.Проведен = ИСТИНА
+                И ЗаказНаПроизводство2_2Продукция.Ссылка В ({refs_string})
+        """
+        refs = APIERP.Refs_wet(query)
+        for num, ref in enumerate(refs_py):
+            refs.add_ref(APIERP.Ref_wet(f'ref_{num}', 'Документы.ЗаказНаПроизводство2_2', ref))
+        code, response = APIERP.get_wet_request(query, refs)
+        if code != 200 or response is None or response['data'] is None:
+            return None
+        group_by_order_ref = defaultdict(list)
+        for item in response['data']:
+            group_by_order_ref[item['Ref_Key_py']].append(item)
+        return group_by_order_ref
+
+
+    mes_lst_erp_codes = set(
+        str(item['Спецификация_код_ЕРП']).strip() for item in list_kod_res if item['Спецификация_код_ЕРП'])
+    result_from_erp = get_list_res(mes_lst_erp_codes)
+    products_by_order_ref = get_position_products(list_kod_res, dict_py_mes)
+
+    if not result_from_erp:
+        return
     for resoutse_mes_item in list_kod_res:
-        if resoutse_mes_item['Спецификация_код_ЕРП'] in rezult_form_erp:
-            resoutse_mes_item['Description'] = rezult_form_erp[resoutse_mes_item['Спецификация_код_ЕРП']]['Description']
-            state_str = rezult_form_erp[resoutse_mes_item['Спецификация_код_ЕРП']]['Статус']
+        if resoutse_mes_item['Спецификация_код_ЕРП'] in result_from_erp:
+            resoutse_mes_item['Description'] = result_from_erp[resoutse_mes_item['Спецификация_код_ЕРП']]['Description']
+            state_str = result_from_erp[resoutse_mes_item['Спецификация_код_ЕРП']]['Статус']
             resoutse_mes_item['state_str'] = state_str
             if state_str == 'Действует':
                 resoutse_mes_item['Статус_в_ерп'] = 1
             else:
-                resoutse_mes_item['Статус_в_ерп'] = 0 #[_ for _ in rezult_form_erp.values() if '070795' in _['Code']]
+                resoutse_mes_item['Статус_в_ерп'] = 0 #[_ for _ in result_from_erp.values() if '070795' in _['Code']]
             #[_ for _ in list_kod_res if _['НомПл'] == 7228]
     for i, resoutse_mes_item in enumerate(list_kod_res):
         if resoutse_mes_item['Description'] != resoutse_mes_item['Спецификация_ЕРП']:
@@ -1309,8 +1458,8 @@ def check_and_calc_plan_kpl():
             list_kod_res[i]['Спецификация_ЕРП'] = resoutse_mes_item['Description']
 
         if resoutse_mes_item['Рес_действует'] == 1 and resoutse_mes_item['Статус_в_ерп'] ==0:
-            rez = CSQ.custom_request_c(db_kplan, f"""UPDATE пл_топ SET (Рес_действует) 
-                                     = (0) WHERE НомПл = {resoutse_mes_item['НомПл']}""")
+            rez = CSQ.custom_request_c(db_kplan, f"""UPDATE пл_топ SET Рес_действует 
+                                     = 0 WHERE НомПл = {resoutse_mes_item['НомПл']}""")
             print('fix _err')
         if resoutse_mes_item['Статус_в_ерп'] == 1 and  resoutse_mes_item['Рес_действует'] == 0: # resoutse_mes_item['Рес_действует'] = 0
             rez = CSQ.custom_request_c(db_kplan, f"""UPDATE пл_топ SET (Рес_действует) 
@@ -1327,8 +1476,12 @@ def check_and_calc_plan_kpl():
                 obj_msg.send_msg('state_valid_kod_res_recalc')
                 if resoutse_mes_item['Пномер_ЗП'] != 0 and resoutse_mes_item['Пномер_ЗП'] in dict_py_mes:
                     ref_key_pu = dict_py_mes[resoutse_mes_item['Пномер_ЗП']]['Ref_Key_py']
-                    list_poz_form_erp = m.get_response(doc_name='Document_ЗаказНаПроизводство2_2',
-                                                       wet_filtr=f"?$filter= Ref_Key eq guid'{ref_key_pu}'&$select=Продукция/Номенклатура_Key")
+
+
+
+                    list_poz_form_erp = products_by_order_ref[ref_key_pu]
+
+
                     list_not_valid_poz = get_not_poz_valid(list_kod_res, list_poz_form_erp,
                                                            resoutse_mes_item['Пномер_ЗП'])
 
@@ -1343,116 +1496,79 @@ def check_and_calc_plan_kpl():
     # ==================================CHECK_STATE_POZ_ERP==============================
 
     list_proj = list_py_mes
+    projects_1c = get_znpr_orders([item['Ref_Key_py'] for item in list_proj if item['Ref_Key_py']])
+    if not projects_1c:
+        return
+    orders_1c_by_ref_key = F.deploy_dict_c(projects_1c, 'Ref_Key')
     print()
     m = ERP.OrdersComposit()
     for item in list_proj:
-        resp = m.get_response(doc_name='Document_ЗаказНаПроизводство2_2',
-                              wet_filtr=f"?$filter= Ref_Key eq guid'{item['Ref_Key_py']}'&$select=Статус, Date, ДатаПотребности, Комментарий")
-        if len(resp) == 0: # todo
-            print(f"Ошибка загрузки Document_ЗаказНаПроизводство2_2  по Ref_Key eq guid'{item['Ref_Key_py']}")
+        if item['Ref_Key_py'] not in orders_1c_by_ref_key:
+            logger.warning('%s был пропущен не найден в 1с (не проведен/на удалении/)' % item['Ref_Key_py'])
             continue
-        if 'Статус' in resp[0]:
-            state = resp[0]['Статус']
-            if item['Статус_поз_ЕРП'] != state:
-                if state == 'КПроизводству':
-                    list_poz = CSQ.custom_request_c(db_kplan, f"""SELECT plan.Статус, plan.Пномер, places.auto_change_state_kplan  FROM plan 
-                    INNER JOIN пл_оуп ON пл_оуп.НомПл = plan.Пномер
-                    INNER JOIN places ON places.poki = plan.poki
-                    
-                     WHERE пл_оуп.Пномер_ЗП == {item['s_num']}""",
-                                                    rez_dict=True, attach_dbs=db_naryad)
-                    num_kpl_poz = False
-                    for poz in list_poz:
-                        if poz['auto_change_state_kplan'] and poz['Статус'] in (1, 2):
-                            CSQ.custom_request_c(db_kplan,
-                                                 f"""UPDATE plan SET (Статус) = (7) WHERE Пномер = {poz['Пномер']};""")
-                            num_kpl_poz = poz['Пномер']
+        order_1c = orders_1c_by_ref_key[item['Ref_Key_py']]
+        state_1c = order_1c['Статус']
+        date_1c = order_1c['Date']
+        require_date_1c = order_1c['ДатаПотребности']
+        comment_1c = order_1c['Комментарий']
+        if item['Статус_поз_ЕРП'] != state_1c:
+            if state_1c == 'КПроизводству':
+                list_poz = CSQ.custom_request_c(db_kplan, f"""SELECT plan.Статус, plan.Пномер, places.auto_change_state_kplan  FROM plan 
+                INNER JOIN пл_оуп ON пл_оуп.НомПл = plan.Пномер
+                INNER JOIN places ON places.poki = plan.poki
+                
+                 WHERE пл_оуп.Пномер_ЗП == {item['s_num']}""",
+                                                rez_dict=True, attach_dbs=db_naryad)
+                num_kpl_poz = False
+                for poz in list_poz:
+                    if poz['auto_change_state_kplan'] and poz['Статус'] in (1, 2):
+                        CSQ.custom_request_c(db_kplan,
+                                             f"""UPDATE plan SET (Статус) = (7) WHERE Пномер = {poz['Пномер']};""")
+                        num_kpl_poz = poz['Пномер']
 
-                    if num_kpl_poz:
-                        obj_msg = CMS.Msg_b24(db_kplan, db_naryad, db_resxml, db_users, num_kpl_poz)
-                        obj_msg.send_msg('state_poz_for_production')
+                if num_kpl_poz:
+                    obj_msg = CMS.Msg_b24(db_kplan, db_naryad, db_resxml, db_users, num_kpl_poz)
+                    obj_msg.send_msg('state_poz_for_production')
 
-                upd = True
-                if item['s_num'] == 1224: #просьба Козырькова для теста в келаст от 05.09.2025
-                    if F.now('') < F.strtodate('2025-09-12 14:00:20'):
-                        upd = False
-                if upd:
-                    CSQ.custom_request_c(db_kplan,
-                                     f"""UPDATE знпр SET (Статус_поз_ЕРП) = ("{state}") WHERE s_num = {item['s_num']};""")
+            upd = True
+            if item['s_num'] == 1224: #просьба Козырькова для теста в келаст от 05.09.2025
+                if F.now('') < F.strtodate('2025-09-12 14:00:20'):
+                    upd = False
+            if upd:
+                CSQ.custom_request_c(db_kplan,
+                                 f"""UPDATE знпр SET (Статус_поз_ЕРП) = ("{state_1c}") WHERE s_num = {item['s_num']};""")
 
         msg1 = f'В ЗП {item["№ERP"]} от {item["Год"]}г. изменились  данные\n'
         msg2 = f'\nСпециалисту ПДО необходимо провести ревизию'
         id_chat = 'chat48346'
-        date = F.datetostr(F.strtodate(resp[0]['Date'], "%Y-%m-%dT%H:%M:%S"), "%Y-%m-%d")
-        date_otgr = F.datetostr(F.strtodate(resp[0]['ДатаПотребности'], "%Y-%m-%dT%H:%M:%S"), "%Y-%m-%d")
+        date = F.datetostr(F.strtodate(date_1c, "%Y-%m-%dT%H:%M:%S"), "%Y-%m-%d")
+        date_otgr = F.datetostr(F.strtodate(require_date_1c, "%d.%m.%Y %H:%M:%S"), "%Y-%m-%d")
         if item['Дата_заявки_на_произв'] != date:
             CSQ.custom_request_c(db_kplan,
-                                 f"""UPDATE знпр SET (Дата_заявки_на_произв) = ("{date}") WHERE s_num = {item['s_num']};""")
+                                 f"""UPDATE знпр SET Дата_заявки_на_произв = "{date}" WHERE s_num = {item['s_num']};""")
             CSQ.custom_request_c(db_kplan,
-                                 f"""UPDATE пл_оуп SET (Дата_заявки_на_произв) = ("{date}") WHERE Пномер_ЗП = {item['s_num']};""")
+                                 f"""UPDATE пл_оуп SET Дата_заявки_на_произв = "{date}" WHERE Пномер_ЗП = {item['s_num']};""")
 
             # CMS.send_info_mk_b24(None,msg1 + f"Дата_заявки_на_произв\n    было {item['Дата_заявки_на_произв']}\n    стало {date}" + msg2,id_chat)
 
-        if resp[0]['Комментарий'] != item['Комментарий']:
+        if comment_1c != item['Комментарий']:
             CSQ.custom_request_c(db_kplan,
-                                 f"""UPDATE знпр SET (Комментарий) = (?) 
-                                 WHERE s_num = ?;""",list_of_lists_c=[[resp[0]['Комментарий'],item['s_num']]])
+                                 f"""UPDATE знпр SET Комментарий = ?
+                                 WHERE s_num = ?;""",list_of_lists_c=[[comment_1c,item['s_num']]])
             # CMS.send_info_mk_b24(None,
             #                     msg1 + f"Комментарий\n    было {item['Комментарий']}\n    стало {resp[0]['Комментарий']}" + msg2,
             #                     id_chat)
-        # if date_otgr != item['Дата_отгрузки_ПУ']:
-        #     CSQ.custom_request_c(db_kplan,
-        #                          f"""UPDATE знпр SET (Дата_отгрузки_ПУ) = ("{date_otgr}") WHERE s_num = {item['s_num']};""")
-        #     CSQ.custom_request_c(db_kplan,
-        #                          f"""UPDATE пл_оуп SET (Дата_отгрузки_ПУ) = ("{date_otgr}") WHERE Пномер_ЗП = {item['s_num']};""")
-        #     CMS.send_info_mk_b24(None,
-        #                          msg1 + f"Дата_отгрузки_ПУ\n    было {item['Дата_отгрузки_ПУ']}\n    стало {date_otgr}" + msg2,
-        #                          id_chat)
+        if date_otgr and date_otgr != item['Дата_отгрузки_ПУ']:
+            CSQ.custom_request_c(db_kplan,
+                                 f"""UPDATE знпр SET (Дата_отгрузки_ПУ) = ("{date_otgr}") WHERE s_num = {item['s_num']};""")
+            CSQ.custom_request_c(db_kplan,
+                                 f"""UPDATE пл_оуп SET (Дата_отгрузки_ПУ) = ("{date_otgr}") WHERE Пномер_ЗП = {item['s_num']};""")
+            CMS.send_info_mk_b24(None,
+                                 msg1 + f"Дата_отгрузки_ПУ\n    было {item['Дата_отгрузки_ПУ']}\n    стало {date_otgr}" + msg2,
+                                 id_chat)
     # ===================================================================================
 
     # ==================================CHECK_ETAPS_ERP==============================
-    retry_statuses = ', '.join(
-        str(status.value)
-        for status in CMS.ErpStagesLoadResult.AUTO_RETRY_STATUSES
-    )
-    list_proj = CSQ.custom_request_c( # 24.06.2026
-        db_kplan,
-        f"""
-        SELECT 
-            знпр.s_num,
-            знпр.Статус_поз_ЕРП,
-            знпр.№ERP,
-            знпр.Дата_заявки_на_произв,
-            знпр.Ref_Key_py,
-            знпр.Этапы_ЕРП,
-            пл_оуп.НомПл
-        FROM знпр
-        INNER JOIN пл_оуп ON знпр.s_num = пл_оуп.Пномер_ЗП
-        WHERE знпр.s_num > 0
-          AND знпр.Статус_поз_ЕРП != ''
-          AND знпр.№ERP != '-'
-          AND знпр.Этапы_ЕРП IN ({retry_statuses});
-        """,
-        rez_dict=True
-    )
-    # list_proj = CSQ.custom_request_c(db_kplan, f"""SELECT знпр.s_num, знпр.Статус_поз_ЕРП,
-    #   знпр.№ERP, знпр.Дата_заявки_на_произв, знпр.Ref_Key_py , пл_оуп.НомПл
-    #                 FROM знпр
-    #                 inner join пл_оуп ON знпр.s_num = пл_оуп.Пномер_ЗП
-    #            WHERE знпр.s_num > 0 and знпр.Статус_поз_ЕРП != '' and (знпр.Этапы_ЕРП = {1} OR data_etaps_from_erp IN (?, ?))  and  знпр.№ERP != "-";""",
-    #                                  rez_dict=True,
-    #                                  list_of_lists_c=[[F.to_binary_pickle({}), F.to_binary_pickle(None)]])
-
-    #conn_b24 = CMS.Msg_b24.make_conn()
-    m = ERP.OrdersComposit()
-    for item in list_proj:
-        py = item['№ERP']
-        s_num = item['s_num']
-        if py == '-':
-            continue
-        ref_key_py = item['Ref_Key_py']
-        resp = CMS.make_dict_etaps_from_erp(m,ref_key_py)
-        CMS.update_data_etaps_from_erp(db_kplan,resp,s_num)
 
     # ================================================================================
 
@@ -1494,6 +1610,8 @@ def delete_insert_vid_to_month(table_name: str, month: str, vid_rabot: str, depa
         response.add(CSQ.custom_request_c(USRCNF.Config.project.db_kplan, instruction))
     return all(response)
 
+
+@APIERP.ping_http_services_decorator
 def reduce_working_types_time_by_department(
         org_ref_key: str,
         org_poki: int,
@@ -1791,6 +1909,7 @@ def check_plan_fact_workforce_tables():
     print('=' * 26)
 
 
+@APIERP.ping_http_services_decorator
 def update_napravl_deyat():
     print('=' * 26)
     print()
@@ -1885,7 +2004,7 @@ def update_napravl_deyat():
                     И ВременнаяТаблица_соед.Ссылка.Родитель.ПометкаУдаления = ЛОЖЬ
                     И ВременнаяТаблица_соед.Ссылка.ПометкаУдаления = ЛОЖЬ
                     И ВременнаяТаблица_соед.Ссылка.Статус = ЗНАЧЕНИЕ(Перечисление.СтатусыНаправленияДеятельности.Используется)
-                    И ВременнаяТаблица_соед.Ссылка.ТипНаправленияДеятельности = ЗНАЧЕНИЕ(Перечисление.ТипыНаправленийДеятельности.ИнаяДеятельность)
+                    
                 """
 
         key, result_req = APIERP.get_wet_request(text=text)
@@ -1976,6 +2095,7 @@ def update_organization_structure():
     print()
     print('Обновление СтруктураПредприятия из 1С')
 
+    @APIERP.ping_http_services_decorator
     def get_data_from_erp(ref_org:str)->dict[dict]|None:
         text = f"""
             ВЫБРАТЬ
@@ -2072,6 +2192,7 @@ def update_podrazdeleniya():
     print()
     print('Обновление поздразделений из 1С')
 
+    @APIERP.ping_http_services_decorator
     def get_data_from_erp(ref_org:str)->dict[dict]|None:
         text = f"""
         ВЫБРАТЬ
@@ -2216,15 +2337,6 @@ count_reset = 3600 * 0.5  # каждые 0.5 часа обновление
 
 vrem = 600
 
-#update_vid_rab_from_1c()#
-#quit()
-#user_calendar.main()
-#quit()
-#nomen_erp.obn_mat_erp_file(db_mater)
-#check_and_calc_plan_kpl()
-#calc_fact_naruads_for_kpl()
-#quit()
-
 while True:
     counter_timer += vrem
     counter_timer_middle += vrem
@@ -2232,7 +2344,7 @@ while True:
     print(f'{F.now()} counter_mater: {counter_timer_middle}/{count_reset_middle}')
 
     current_hour = datetime.now().hour
-    if counter_timer_middle >= count_reset_middle and current_hour >= 18 and current_hour <= 23: #01.09.25
+    if counter_timer_middle >= count_reset_middle and (current_hour >= 23 or current_hour <= 6): #01.09.25
         counter_timer_middle = 0
 
         try:
@@ -2246,13 +2358,11 @@ while True:
             logger.error('Ошибка обновления таблицы db_users.Должности', exc_info=e)
 
         try:
-            print()  #25.01.2026
-            print('===' * 30)
-            print('Создание перерывов старт')
-            AutoBreaks().run()
-            print()
-            print('===' * 30)
-            print('Создание перерывов финиш')
+            instance = AutoBreaks()
+            with decorated_log('Приостановка групповых нарядов'):
+                instance.pause_group_naryads()
+            with decorated_log('Создание перерывов'):
+                instance.run()
         except Exception as e:
             logger.error('Создание перерывов ошибка', exc_info=e)
         ## обновление update_napravl_deyat
