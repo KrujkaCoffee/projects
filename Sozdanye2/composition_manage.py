@@ -370,7 +370,10 @@ def btn_comp_load_file(id_file:int|None = None,*args):
             if _.id_f not in dict_files:
                 file_for_part = DTCLS.compositions.find(_.id_f)
                 file_for_part.load_pozs(DTCLS.part_manager)
-                file_for_part.load_dict_res_o()
+                suc, err = file_for_part.load_dict_res_o()
+                if not suc:
+                    CQT.msgbox(err)
+                    return
                 file_for_part.recalc_registred_partial(DTCLS.registred_partials)
                 dict_files[_.id_f] = file_for_part
             else:
@@ -480,7 +483,10 @@ def btn_comp_load_file(id_file:int|None = None,*args):
     #    reload_dse_from_comp(comp)
     #    return
     # =========================================================================
-    comp.load_dict_res_o()
+    suc, err = comp.load_dict_res_o()
+    if not suc:
+        CQT.msgbox(err)
+        return
 
     comp.recalc_signed()
     comp.recalc_coupled()

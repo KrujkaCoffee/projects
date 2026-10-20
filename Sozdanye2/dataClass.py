@@ -39,6 +39,13 @@ class data_app(SingletonMeta):
     USER_CONFIG:CFG.User_config = CFG.Config.user_config
     APP:CFG.AppConfig = CFG.Config.app
     APP_ARGS:dict = CFG.Config.app_args
+    #=======MAIN=======================
+    vibr_nar: int = None  # для доступа к пакету нарядов
+    list_accessible_for_raspred_nar: list[int] = []  # для доступа к пакету нарядов
+    list_selected_package_for_raspred_nar: list[dict] = []  # для сопоставления пакета
+    SELECTED_PACKAGE_MARK: str = '...*'  # для сопоставления пакета
+    ispoln1: str = ''
+    ispoln2: str = ''
     #======COMPOZITIONS=============
     compositions: Compositions|None = None
     part_manager: ManagePartialDse|None = None
