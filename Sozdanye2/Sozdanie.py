@@ -4540,6 +4540,7 @@ WHERE plan.poki = {self.place.poki}
         if list_zap == False:
             CQT.msgbox(f'Не удалось выгрузить журнал')
             return
+        list_zap.sort(key=lambda item: F.strtodate(item['Дата']))
         list_zap.insert(0, CPY.deepcopy(list_zap[0]))
         list_zap[0]['Дата'] = '2000-02-03 22:50:32'
         list_zap[0]['Пномер'] = -1
@@ -4549,6 +4550,170 @@ WHERE plan.poki = {self.place.poki}
         list_zap[-1]['Пномер'] = -1
         list_zap[-1]['Статус'] = ''
         return list_zap
+
+    def _journal_sequence_rows_for_day(self, fio, day_start, day_end, exclude_pk=None):
+        exclude_sqlite = ' AND "Пномер" <> ?' if exclude_pk is not None else ''
+        exclude_postgres = ' AND "Пномер" <> %s' if exclude_pk is not None else ''
+
+        query_day = CSQ.SqlQuery(
+            sqlite=f'''SELECT "Пномер", "Номер_наряда", "Дата", "ФИО", "Статус", "Примечание"
+                FROM jurnal
+                WHERE "ФИО" = ? AND datetime("Дата") >= datetime(?) AND datetime("Дата") < datetime(?)
+                    {exclude_sqlite}
+                ORDER BY datetime("Дата"), "Пномер"''',
+            postgres=f'''SELECT "Пномер", "Номер_наряда", "Дата", "ФИО", "Статус", "Примечание"
+                FROM jurnal
+                WHERE "ФИО" = %s AND ("Дата")::timestamp >= %s::timestamp AND ("Дата")::timestamp < %s::timestamp
+                    {exclude_postgres}
+                ORDER BY ("Дата")::timestamp, "Пномер"'''
+        )
+        query_previous = CSQ.SqlQuery(
+            sqlite=f'''SELECT "Пномер", "Номер_наряда", "Дата", "ФИО", "Статус", "Примечание"
+                FROM jurnal
+                WHERE "ФИО" = ? AND datetime("Дата") < datetime(?) {exclude_sqlite}
+                ORDER BY datetime("Дата") DESC, "Пномер" DESC LIMIT 1''',
+            postgres=f'''SELECT "Пномер", "Номер_наряда", "Дата", "ФИО", "Статус", "Примечание"
+                FROM jurnal
+                WHERE "ФИО" = %s AND ("Дата")::timestamp < %s::timestamp {exclude_postgres}
+                ORDER BY ("Дата")::timestamp DESC, "Пномер" DESC LIMIT 1'''
+        )
+        query_next = CSQ.SqlQuery(
+            sqlite=f'''SELECT "Пномер", "Номер_наряда", "Дата", "ФИО", "Статус", "Примечание"
+                FROM jurnal
+                WHERE "ФИО" = ? AND datetime("Дата") >= datetime(?) {exclude_sqlite}
+                ORDER BY datetime("Дата"), "Пномер" LIMIT 1''',
+            postgres=f'''SELECT "Пномер", "Номер_наряда", "Дата", "ФИО", "Статус", "Примечание"
+                FROM jurnal
+                WHERE "ФИО" = %s AND ("Дата")::timestamp >= %s::timestamp {exclude_postgres}
+                ORDER BY ("Дата")::timestamp, "Пномер" LIMIT 1'''
+        )
+
+        params_day = [fio, day_start, day_end]
+        params_previous = [fio, day_start]
+        params_next = [fio, day_end]
+        if exclude_pk is not None:
+            params_day.append(exclude_pk)
+            params_previous.append(exclude_pk)
+            params_next.append(exclude_pk)
+
+        day_rows = CSQ.custom_request_c(
+            self.db_naryd, query_day, rez_dict=True, hat_c=False, list_of_lists_c=[params_day]
+        )
+        previous_row = CSQ.custom_request_c(
+            self.db_naryd, query_previous, rez_dict=True, one=True, hat_c=False,
+            list_of_lists_c=[params_previous]
+        )
+        next_row = CSQ.custom_request_c(
+            self.db_naryd, query_next, rez_dict=True, one=True, hat_c=False,
+            list_of_lists_c=[params_next]
+        )
+        if day_rows is None or day_rows is False or previous_row is None or previous_row is False or \
+                next_row is None or next_row is False:
+            raise RuntimeError('journal query failed')
+        return previous_row or None, day_rows, next_row or None
+
+    @staticmethod
+    def _journal_transition_error(previous_row, current_row):
+        status = current_row.get('Статус')
+        naryad = current_row.get('Номер_наряда')
+        row_date = current_row.get('Дата')
+
+        if status not in ('Начат', 'Приостановлен', 'Завершен'):
+            return None
+
+        if status == 'Начат':
+            if previous_row and previous_row.get('Статус') == 'Начат':
+                return (f'Нельзя начать наряд №{naryad}: начало по наряду №{previous_row["Номер_наряда"]} '
+                        f'от {previous_row["Дата"]} ещё не закрыто. Сначала укажите «Приостановлен» '
+                        f'или «Завершен».')
+            if previous_row and previous_row.get('Статус') in ('Приостановлен', 'Завершен') and \
+                    F.strtodate(row_date) <= F.strtodate(previous_row['Дата']):
+                return (f'Начало наряда №{naryad} должно быть позже последней паузы или завершения '
+                        f'по наряду №{previous_row["Номер_наряда"]} ({previous_row["Дата"]}).')
+            return None
+
+        if not previous_row or previous_row.get('Статус') != 'Начат':
+            return (f'Нельзя указать статус «{status}» по наряду №{naryad}: '
+                    f'перед ним нет незакрытого начала по этому наряду.')
+        if str(previous_row.get('Номер_наряда')) != str(naryad):
+            return (f'Статус «{status}» по наряду №{naryad} не закрывает открытое начало '
+                    f'по наряду №{previous_row["Номер_наряда"]}. Сначала оформите паузу или завершение '
+                    f'по наряду №{previous_row["Номер_наряда"]}.')
+        if F.strtodate(row_date) <= F.strtodate(previous_row['Дата']):
+            return (f'Время статуса «{status}» по наряду №{naryad} должно быть позже начала '
+                    f'({previous_row["Дата"]}).')
+        return None
+
+    def check_journal_day_change(self, candidate, original=None):
+        try:
+            fio = str(candidate.get('ФИО') or '').strip()
+            if not fio:
+                return 'Не удалось определить сотрудника для проверки журнала. Изменение не сохранено.'
+            candidate_date = F.strtodate(candidate['Дата'])
+            candidate_day = F.datetostr(candidate_date, '%Y-%m-%d')
+            candidate_day_start = f'{candidate_day} 00:00:00'
+            candidate_day_end = F.datetostr(candidate_date + datetime.timedelta(days=1), '%Y-%m-%d') + ' 00:00:00'
+
+            exclude_pk = None
+            try:
+                candidate_pk = int(candidate.get('Пномер'))
+                if 0 < candidate_pk < 99999999:
+                    exclude_pk = candidate_pk
+            except (TypeError, ValueError):
+                pass
+
+            days_to_check = [(candidate_day_start, candidate_day_end, True)]
+            if original:
+                original_date = F.strtodate(original['Дата'])
+                original_day = F.datetostr(original_date, '%Y-%m-%d')
+                if original_day != candidate_day:
+                    original_day_start = f'{original_day} 00:00:00'
+                    original_day_end = F.datetostr(original_date + datetime.timedelta(days=1), '%Y-%m-%d') + ' 00:00:00'
+                    days_to_check.append((original_day_start, original_day_end, False))
+
+            for day_start, day_end, include_candidate in days_to_check:
+                previous_row, day_rows, next_row = self._journal_sequence_rows_for_day(
+                    fio, day_start, day_end, exclude_pk=exclude_pk
+                )
+                context_rows = ([previous_row] if previous_row else []) + list(day_rows) + ([next_row] if next_row else [])
+                if include_candidate:
+                    events = context_rows + [candidate]
+                    events.sort(key=lambda row: (
+                        F.strtodate(row['Дата']),
+                        0 if row.get('Статус') in ('Приостановлен', 'Завершен') else 1,
+                        int(row.get('Пномер') or 0) if str(row.get('Пномер') or '').lstrip('-').isdigit() else 0
+                    ))
+                    candidate_index = next(i for i, row in enumerate(events) if row is candidate)
+                    previous_candidate = events[candidate_index - 1] if candidate_index else None
+                    next_candidate = events[candidate_index + 1] if candidate_index + 1 < len(events) else None
+                    error = self._journal_transition_error(previous_candidate, candidate)
+                    if not error:
+                        error = self._journal_transition_error(candidate, next_candidate) if next_candidate else None
+                    if error:
+                        return error
+
+                if original and not include_candidate:
+                    events = context_rows + [original]
+                    events.sort(key=lambda row: (
+                        F.strtodate(row['Дата']),
+                        0 if row.get('Статус') in ('Приостановлен', 'Завершен') else 1,
+                        int(row.get('Пномер') or 0) if str(row.get('Пномер') or '').lstrip('-').isdigit() else 0
+                    ))
+                    original_index = next(i for i, row in enumerate(events) if row is original)
+                    previous_original = events[original_index - 1] if original_index else None
+                    next_original = events[original_index + 1] if original_index + 1 < len(events) else None
+                    if next_original:
+                        error = self._journal_transition_error(previous_original, next_original)
+                        if error:
+                            return error
+                    elif original.get('Статус') in ('Приостановлен', 'Завершен') and \
+                            (not previous_original or previous_original.get('Статус') != 'Начат' or
+                             str(previous_original.get('Номер_наряда')) != str(original.get('Номер_наряда'))):
+                        return (f'Нельзя переместить запись «{original["Статус"]}» по наряду №'
+                                f'{original["Номер_наряда"]}: перед ней нет незакрытого начала по этому наряду.')
+            return None
+        except Exception:
+            return 'Не удалось проверить последовательность журнала. Изменение не сохранено; повторите попытку.'
 
     @CQT.onerror
     def check_hstory_jur(self, list_zap, curren_pnum=None):
@@ -4564,52 +4729,65 @@ WHERE plan.poki = {self.place.poki}
             current_date = F.strtodate(list_zap[i]['Дата'])
             current_status = list_zap[i]['Статус']
             if current_date <= previos_date:
-                CQT.msgbox(f'В строке {list_zap[i]} \n {current_date} не может быть меньше {previos_date}')
+                CQT.msgbox(f'Время записи должно быть позже предыдущей записи журнала ({previos_date}).', icon_str='Warning')
                 return
             if current_date >= next_date:
-                CQT.msgbox(f'В строке {list_zap[i]} \n {current_date} не может быть больше {next_date}')
+                CQT.msgbox(f'Время записи должно быть раньше следующей записи журнала ({next_date}).', icon_str='Warning')
                 return
 
             if current_status == 'Начат':
                 if previos_status == 'Начат':
-                    CQT.msgbox(f'№ {list_zap[i]["Пномер"]} Нельзя начать два раза')
+                    CQT.msgbox(f'Перед новым началом по наряду №{list_zap[i]["Номер_наряда"]} '
+                               f'закройте предыдущую запись статусом «Приостановлен» или «Завершен».', icon_str='Warning')
                     return
                 if previos_status == 'Завершен':
-                    CQT.msgbox(f'№ {list_zap[i]["Пномер"]} Нельзя начать после завершения')
+                    CQT.msgbox(f'После завершения по наряду №{list_zap[i]["Номер_наряда"]} '
+                               f'новое начало не допускается.', icon_str='Warning')
                     return
                 if next_status == 'Начат':
-                    CQT.msgbox(f'№ {list_zap[i]["Пномер"]} Нельзя начать два раза')
+                    CQT.msgbox(f'После начала по наряду №{list_zap[i]["Номер_наряда"]} '
+                               f'нужна запись «Приостановлен» или «Завершен».', icon_str='Warning')
                     return
             if current_status == 'Приостановлен':
-                if list_zap[i]['Примечание'] == '' or len(list_zap[i]['Примечание']) < 4:
-                    CQT.msgbox(f'№ {list_zap[i]["Пномер"]} Не указана причина паузы')
+                if len(str(list_zap[i].get('Примечание') or '').strip()) < 4:
+                    CQT.msgbox('Для статуса «Приостановлен» укажите причину (не менее 4 символов).', icon_str='Warning')
+                    return
                 if previos_status == 'Приостановлен':
-                    CQT.msgbox(f'№ {list_zap[i]["Пномер"]} Нельзя приостановить два раза')
+                    CQT.msgbox(f'Перед повторной паузой по наряду №{list_zap[i]["Номер_наряда"]} '
+                               f'добавьте новое начало.', icon_str='Warning')
                     return
                 if previos_status == 'Завершен':
-                    CQT.msgbox(f'№ {list_zap[i]["Пномер"]} Нельзя приостановить после завершения')
+                    CQT.msgbox(f'После завершения по наряду №{list_zap[i]["Номер_наряда"]} '
+                               f'паузу поставить нельзя.', icon_str='Warning')
                     return
                 if next_status == 'Приостановлен':
-                    CQT.msgbox(f'№ {list_zap[i]["Пномер"]} Нельзя приостановить два раза')
+                    CQT.msgbox(f'Перед повторной паузой по наряду №{list_zap[i]["Номер_наряда"]} '
+                               f'добавьте новое начало.', icon_str='Warning')
                     return
                 if next_status == 'Завершен':
-                    CQT.msgbox(f'№ {list_zap[i]["Пномер"]} Нельзя приостановить до завершения')
+                    CQT.msgbox(f'Перед завершением по наряду №{list_zap[i]["Номер_наряда"]} '
+                               f'добавьте новое начало после паузы.', icon_str='Warning')
                     return
             if current_status == 'Завершен':
                 if previos_status == 'Приостановлен':
-                    CQT.msgbox(f'№ {list_zap[i]["Пномер"]} Нельзя завершить после приостановки')
+                    CQT.msgbox(f'После паузы по наряду №{list_zap[i]["Номер_наряда"]} '
+                               f'сначала добавьте новое начало.', icon_str='Warning')
                     return
                 if previos_status == 'Завершен':
-                    CQT.msgbox(f'№ {list_zap[i]["Пномер"]} Нельзя завершить после завершения')
+                    CQT.msgbox(f'По наряду №{list_zap[i]["Номер_наряда"]} уже есть завершение; '
+                               f'для новой работы требуется начало.', icon_str='Warning')
                     return
                 if next_status == 'Приостановлен':
-                    CQT.msgbox(f'№ {list_zap[i]["Пномер"]} Нельзя завершить до приостановки')
+                    CQT.msgbox(f'Завершение по наряду №{list_zap[i]["Номер_наряда"]} '
+                               f'не может предшествовать более поздней паузе.', icon_str='Warning')
                     return
                 if next_status == 'Завершен':
-                    CQT.msgbox(f'№ {list_zap[i]["Пномер"]} Нельзя завершить до завершения')
+                    CQT.msgbox(f'По наряду №{list_zap[i]["Номер_наряда"]} уже есть завершение; '
+                               f'повторное завершение невозможно.', icon_str='Warning')
                     return
                 if next_status == 'Начат':
-                    CQT.msgbox(f'№ {list_zap[i]["Пномер"]} Нельзя завершить до начала')
+                    CQT.msgbox(f'Новое начало по наряду №{list_zap[i]["Номер_наряда"]} '
+                               f'после завершения не допускается.', icon_str='Warning')
                     return
             if curren_pnum and int(list_zap[i]['Пномер']) == curren_pnum:
                 return True
@@ -4645,16 +4823,52 @@ WHERE plan.poki = {self.place.poki}
     @CQT.onerror
     def apply_deladd_row_jur(self, *args):
         tbl = self.ui.tbl_prosmotr_nar_jurnal
-        nom_nar = int(tbl.item(tbl.currentRow(), CQT.num_col_by_name_c(tbl, 'Номер_наряда')).text())
-        fio = tbl.item(tbl.currentRow(), CQT.num_col_by_name_c(tbl, 'ФИО')).text()
-        list_tbl = self.load_jurnal_by_user(nom_nar, fio)
-        if not self.check_hstory_jur(list_tbl):
+        if tbl.currentRow() == -1:
+            CQT.msgbox('Не выбрана запись журнала.', icon_str='Warning')
             return
+        current_row = CQT.get_dict_line_form_tbl(tbl)
         current_state = EditJournalManager.get_current_state(tbl)
         log_message = None
         if not isinstance(current_state, EditJournalState):
-            CQT.msgbox(f'ОШибка учета данных редактирования')
+            CQT.msgbox('Не найдены данные изменения журнала.', icon_str='Warning')
             return
+
+        nom_nar = int(current_row['Номер_наряда'])
+        fio = current_row['ФИО']
+        candidate = dict(current_row)
+        original = None
+        if current_state.action == EditJournalActions.EDIT_STATUS:
+            if str(current_row['Пномер']) != str(current_state.pk):
+                CQT.msgbox('Выбранная строка изменилась. Выберите строку и повторите действие.', icon_str='Warning')
+                return
+            original = dict(current_row)
+            candidate['Статус'] = current_state.status
+        elif current_state.action == EditJournalActions.ADD:
+            if str(current_row['Пномер']) not in ('', '99999999') or current_row['ФИО'] != current_state.fio:
+                CQT.msgbox('Строка для добавления изменилась. Повторите выбор даты и статуса.', icon_str='Warning')
+                return
+            candidate['Дата'] = current_state.date or current_row['Дата']
+            candidate['Статус'] = current_state.status or current_row['Статус']
+            candidate['ФИО'] = current_state.fio or current_row['ФИО']
+            candidate['Примечание'] = current_state.comment if current_state.comment is not None else current_row['Примечание']
+        else:
+            CQT.msgbox('Неизвестный тип изменения журнала.', icon_str='Warning')
+            return
+
+        validation_error = self.check_journal_day_change(candidate, original=original)
+        if validation_error:
+            CQT.msgbox(validation_error, icon_str='Warning')
+            return
+
+        list_tbl = self.load_jurnal_by_user(nom_nar, fio)
+        if current_state.action == EditJournalActions.EDIT_STATUS:
+            for journal_row in list_tbl:
+                if str(journal_row['Пномер']) == str(current_state.pk):
+                    journal_row['Статус'] = current_state.status
+                    break
+        if not self.check_hstory_jur(list_tbl):
+            return
+
         if current_state.action == EditJournalActions.EDIT_STATUS:
             with CMS.ReportNarChanges(nom_nar=nom_nar, fio=fio, title='[Создание] Изменение статуса журнала'):
                 journal = CMS.Jurnal_nar(self.db_naryd, nom_nar, fio)
@@ -4710,6 +4924,7 @@ WHERE plan.poki = {self.place.poki}
                 status=current_status,
                 comment=comment,
                 fio=fio,
+                date=current_new_date_time,
             )
         )
 
@@ -4795,6 +5010,15 @@ WHERE plan.poki = {self.place.poki}
         if result == False:
             return
         abstr_list, current_new_date_time, current_status = result
+        candidate_row = next((journal_row for journal_row in abstr_list
+                              if int(journal_row['Пномер']) == por_nom), None)
+        if candidate_row is None:
+            CQT.msgbox('Не удалось определить изменяемую запись журнала.', icon_str='Warning')
+            return
+        validation_error = self.check_journal_day_change(candidate_row, original=row)
+        if validation_error:
+            CQT.msgbox(validation_error, icon_str='Warning')
+            return
         if not self.check_hstory_jur(abstr_list, por_nom):
             return
         with CMS.ReportNarChanges(nom_nar=nom_nar, fio=fio, title='[Создание] Вкладка "Просмотр нарядов" корректировка'):  # 30.04.2026
