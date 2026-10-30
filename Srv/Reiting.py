@@ -374,13 +374,65 @@ class AutoBreaks:
         for group_journal in started_journals:
             journal_instance = CMS.Jurnal_nar(db_nar=CSQ.DB_NAMES.db_naryad, nom_nar=group_journal.naryad_pk, user=group_journal.fio)
             journal_instance.set_selected_fragment(group_journal.journa_pk)
-            journal_instance.add_new_row(
+            if not journal_instance.add_new_row(
                 DICT_EMPL_FULL=dict_employee,
                 lbl_abstract_text='',
                 date_time=F.now(),
                 state='Приостановлен',
                 primech='Автоматическая постановка на паузу'
-            )
+            ):
+                raise Exception(f'Не удалось приостановить групповой наряд {group_journal.naryad_pk}')
+
+    def pause_single_naryads(self):
+        dict_employee = CMS.dict_emploee_full(USRCNF.Config.project.db_users)
+        query = """
+WITH ranked AS (
+    SELECT j."ФИО", j."Номер_наряда", j."Дата", j."Пномер", j."Статус",
+        ROW_NUMBER() OVER (
+            PARTITION BY j."ФИО", j."Номер_наряда"
+            ORDER BY DATETIME(j."Дата") DESC, j."Пномер" DESC
+        ) AS rn
+    FROM jurnal j
+)
+SELECT r."Номер_наряда", r."Пномер", r."ФИО",
+    EXISTS (
+        SELECT 1 FROM коды_веплана_для_наряда k
+        WHERE k.code = n."Внеплан" AND k.name = 'Простой'
+    ) AS is_idle
+FROM ranked r
+INNER JOIN naryad n ON n."Пномер" = r."Номер_наряда"
+WHERE r.rn = 1 AND r."Статус" = 'Начат'
+    AND NOT EXISTS (
+        SELECT 1 FROM naryad_groups ng
+        WHERE ng.id_nar = r."Номер_наряда" AND ng.fio = r."ФИО"
+    )
+        """
+        started_journals = CSQ.custom_request_c(
+            CSQ.DB_NAMES.db_naryad,
+            CSQ.SqlQuery(sqlite=query, postgres=query.replace('DATETIME(j."Дата")', 'CAST(j."Дата" AS TIMESTAMP)')),
+            rez_dict=True
+        )
+        if not isinstance(started_journals, list):
+            raise Exception('Не удалось запросить незаконченные одиночные наряды. Продолжение невозможно')
+        for single_journal in started_journals:
+            journal_instance = CMS.Jurnal_nar(db_nar=CSQ.DB_NAMES.db_naryad, nom_nar=single_journal['Номер_наряда'], user=single_journal['ФИО'])
+            journal_instance.rows.sort(key=lambda row: (F.strtodate(row['Дата']), row['Пномер']))
+            if not journal_instance.rows or journal_instance.rows[-1]['Пномер'] != single_journal['Пномер']:
+                continue
+            journal_instance.set_selected_fragment(single_journal['Пномер'])
+            if journal_instance.selected_fragment_start_s_num != single_journal['Пномер']:
+                raise Exception(f'Не удалось выбрать начало наряда {single_journal["Номер_наряда"]}')
+            if journal_instance.selected_fragment_end_s_num is not None:
+                continue
+            if not journal_instance.add_new_row(
+                DICT_EMPL_FULL=dict_employee,
+                lbl_abstract_text='',
+                date_time=F.now(),
+                state='Приостановлен',
+                primech='Автоматическая постановка на паузу',
+                is_idle=single_journal['is_idle']
+            ):
+                raise Exception(f'Не удалось приостановить одиночный наряд {single_journal["Номер_наряда"]}')
 
     def get_dict_worker_breaks_by_worker_ref(self):
         query_schedules = """
@@ -2346,7 +2398,7 @@ vrem = 600
 
 class FinishDay():
     def __init__(self):
-        self.flag_finished:bool = True
+        self.flag_finished:bool = False
 
     def _day_started(self):
         self.flag_finished = False
@@ -2355,11 +2407,11 @@ class FinishDay():
         self.flag_finished = True
     
     def processing(self,current_hour:int):
-        if (current_hour > 6 or current_hour < 0):  # 27.10.2026
+        if (6 < current_hour <= 23):  # 27.10.2026
             print('Заряжено')
             self._day_started()
             return
-        if not self.flag_finished and (current_hour >= 0 or current_hour <= 6):  # 27.10.2026
+        if not self.flag_finished and (0 <= current_hour <= 6):  # 27.10.2026
             print('Обработка')
             if self._day_treatment():
                 self._day_treated()
@@ -2370,6 +2422,8 @@ class FinishDay():
             instance = AutoBreaks()
             with decorated_log('Приостановка групповых нарядов'):
                 instance.pause_group_naryads()
+            with decorated_log('Приостановка одиночных нарядов'):
+                instance.pause_single_naryads()
         except Exception as e:
             logger.error('Создание перерывов ошибка', exc_info=e)
             return False
