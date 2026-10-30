@@ -9,6 +9,7 @@ import sys
 from datetime import datetime, timedelta #28.10.25
 
 
+
 if socket.gethostname() == 'SRV-MES':#"POW-ING22":
     now = datetime.now().strftime('%Y-%m')
     logging.basicConfig(filename=rf'C:\srv_mes\srv_mes\db_logs\Reiting_{now}.log', level=logging.INFO, force=True, encoding='utf-8')
@@ -47,6 +48,9 @@ import project_cust_38.Cust_Excel as CEX
 import project_cust_38.cust_pars_common_exel_b24 as GETPLIT
 from project_cust_38 import Cust_b24 as CB24
 import user_calendar
+
+
+CFG_prj = USRCNF.Config.project
 # pyinstaller.exe --onefile main.py
 
 # m = ERP.OrdersComposit()
@@ -93,8 +97,7 @@ class ErrorRequestHandler(logging.Handler):
 {trace}
             """
             self.sender.send_msg_by_chat_id(
-                # 'chat77068',
-                'chat78766',
+                'chat77068',
                 msg
             )
 
@@ -692,6 +695,7 @@ def plan_it_form_b24():
                            'ПРОЦЕНТ ВЫПОЛНЕНИЯ',
                            'ПРОД-НОСТЬ, РАБ. ДН',
                            }
+
     try:
         bitrix_file_reader = GETPLIT.GetBitrixFiles('34b9c2938b7d2fccaad26e33ac866397')
         data_plan_it = bitrix_file_reader.parse_xlsx_data(sheet_name='Диаграмма Ганта')
@@ -2096,7 +2100,7 @@ def update_organization_structure():
     print('Обновление СтруктураПредприятия из 1С')
 
     @APIERP.ping_http_services_decorator
-    def get_data_from_erp(ref_org:str)->dict[dict]|None:
+    def get_data_from_erp(ref_org:str)->dict[str,dict]|None:
         text = f"""
             ВЫБРАТЬ
                 ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(СтруктураПредприятия.Ссылка)) КАК Ref,
@@ -2118,7 +2122,7 @@ def update_organization_structure():
             return None
 
         return F.deploy_dict_c(data_rez['data'],'Ref')
-    def get_data_from_mes(poki:int)->dict[dict]:
+    def get_data_from_mes(poki:int)->dict[str,dict]:
         data_podrs = CSQ.custom_request_c(USRCNF.Config.project.db_users, f'''SELECT * 
                      FROM СтруктураПредприятия WHERE poki = {poki};''', rez_dict=True)
         return F.deploy_dict_c(data_podrs,'Ref')
@@ -2129,17 +2133,17 @@ def update_organization_structure():
 
         for org_data in data_organizations:
             poki = org_data['poki']
-            data_podrs_mes = get_data_from_mes(poki)
+            data_podrs_mes:dict[str,dict] = get_data_from_mes(poki)
             if data_podrs_mes is None or data_podrs_mes == False:
                 continue
-            data_podrs_1C = get_data_from_erp(org_data['СтруктураПредприятия_Key'])
+            data_podrs_1C:dict[str,dict]|None = get_data_from_erp(org_data['СтруктураПредприятия_Key'])
             if data_podrs_1C is None:
                 continue
 
             set_ref_1c = set(data_podrs_1C.keys())
             set_ref_mes = set(data_podrs_mes.keys())
-            set_delete = set_ref_mes - set_ref_1c
-            set_add = set_ref_1c - set_ref_mes
+            set_delete:set[str] = set_ref_mes - set_ref_1c
+            set_add:set[str] = set_ref_1c - set_ref_mes
             dict_edit = dict()
             #===========DELETE==============================
             for ref in set_delete:
@@ -2154,6 +2158,8 @@ def update_organization_structure():
 
                 for name_field in SET_COMPARE:
                     if item_1c[name_field] != item_mes[name_field]:
+                        if ref not in dict_edit:
+                            dict_edit[ref] = dict()
                         dict_edit[ref][name_field] = item_1c[name_field]
                         print(f'ref {ref} set {name_field} = "{item_1c[name_field]}"')
                 if item_mes['for_deletion']:
@@ -2193,7 +2199,7 @@ def update_podrazdeleniya():
     print('Обновление поздразделений из 1С')
 
     @APIERP.ping_http_services_decorator
-    def get_data_from_erp(ref_org:str)->dict[dict]|None:
+    def get_data_from_erp(ref_org:str)->dict[str,dict]|None:
         text = f"""
         ВЫБРАТЬ
             ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ПодразделенияОрганизаций.Владелец.Ссылка)) КАК Ref_Организация,
@@ -2215,7 +2221,7 @@ def update_podrazdeleniya():
             return None
 
         return F.deploy_dict_c(data_rez['data'],'Ref_Подразделение')
-    def get_data_from_mes(poki:int)->dict[dict]:
+    def get_data_from_mes(poki:int)->dict[str,dict]:
         data_podrs = CSQ.custom_request_c(USRCNF.Config.project.db_users, f'''SELECT * 
                      FROM Подразделения WHERE Организация_poki = {poki};''', rez_dict=True)
         return F.deploy_dict_c(data_podrs,'Подразделение_Key')
@@ -2226,16 +2232,16 @@ def update_podrazdeleniya():
 
         for org_data in data_organizations:
             poki = org_data['poki']
-            data_podrs_mes = get_data_from_mes(poki)
+            data_podrs_mes:dict[str,dict] = get_data_from_mes(poki)
             if data_podrs_mes is None or data_podrs_mes == False:
                 continue
-            data_podrs_1C = get_data_from_erp(org_data['Организация_Key'])
+            data_podrs_1C:dict[str,dict] = get_data_from_erp(org_data['Организация_Key'])
             if data_podrs_1C is None:
                 continue
 
             set_ref_1c = set(data_podrs_1C.keys())
             set_ref_mes = set(data_podrs_mes.keys())
-            set_delete = set_ref_mes - set_ref_1c
+            set_delete:set[str] = set_ref_mes - set_ref_1c
             set_add = set_ref_1c - set_ref_mes
             dict_edit = dict()
             #===========DELETE==============================
@@ -2281,14 +2287,15 @@ def update_podrazdeleniya():
 
 #---23.09.25
 try:
-    db_users = F.bdcfg('BD_users')
-    db_naryad = F.bdcfg('Naryad')
-    db_act = F.bdcfg('BDact')
-    BD_dse = F.scfg('BD_dse')
-    db_mater = F.bdcfg('nomenklatura_erp')
+
+    db_users = CFG_prj.db_users
+    db_naryad = CFG_prj.db_naryad
+    db_act = CFG_prj.db_act
+    BD_dse = CFG_prj.db_dse
+    db_mater = CFG_prj.db_nomen
     spis_empolee = F.load_file(F.tcfg('employee'))
-    db_kplan = F.bdcfg('DB_kplan')
-    db_resxml = F.bdcfg('db_resxml')
+    db_kplan = CFG_prj.db_kplan
+    db_resxml = CFG_prj.db_resxml
     # DICT_EMPLOEE = CMS.dict_emploee(db_users)
     DICT_EMPLOEE = CMS.dict_emploee_full(db_users)
     custom_request_c = f'''SELECT * FROM professions INNER JOIN vid_rab_po_dolg 
@@ -2337,6 +2344,49 @@ count_reset = 3600 * 0.5  # каждые 0.5 часа обновление
 
 vrem = 600
 
+class FinishDay():
+    def __init__(self):
+        self.flag_finished:bool = True
+
+    def _day_started(self):
+        self.flag_finished = False
+
+    def _day_treated(self):
+        self.flag_finished = True
+    
+    def processing(self,current_hour:int):
+        if (current_hour > 6 or current_hour < 0):  # 27.10.2026
+            print('Заряжено')
+            self._day_started()
+            return
+        if not self.flag_finished and (current_hour >= 0 or current_hour <= 6):  # 27.10.2026
+            print('Обработка')
+            if self._day_treatment():
+                self._day_treated()
+            pass
+
+    def _day_treatment(self)->bool:
+        try:
+            instance = AutoBreaks()
+            with decorated_log('Приостановка групповых нарядов'):
+                instance.pause_group_naryads()
+        except Exception as e:
+            logger.error('Создание перерывов ошибка', exc_info=e)
+            return False
+        return True
+
+#update_vid_rab_from_1c()#
+#quit()
+#user_calendar.main()
+#quit()
+#nomen_erp.obn_mat_erp_file(db_mater)
+#check_and_calc_plan_kpl()
+#calc_fact_naruads_for_kpl()
+#update_napravl_deyat()
+#quit()
+#plan_it_form_b24()
+update_organization_structure()
+finish_day_o = FinishDay()
 while True:
     counter_timer += vrem
     counter_timer_middle += vrem
@@ -2344,6 +2394,9 @@ while True:
     print(f'{F.now()} counter_mater: {counter_timer_middle}/{count_reset_middle}')
 
     current_hour = datetime.now().hour
+
+    finish_day_o.processing(current_hour)
+
     if counter_timer_middle >= count_reset_middle and (current_hour >= 23 or current_hour <= 6): #01.09.25
         counter_timer_middle = 0
 

@@ -6,7 +6,7 @@ import datetime
 import pathlib
 import pprint
 import re
-from enum import IntEnum  # 19.06.2026
+from enum import IntEnum, StrEnum  # 19.06.2026
 import random
 import asyncio
 import typing
@@ -54,7 +54,7 @@ except:
     pass
 import project_cust_38.operacii as operacii
 from project_cust_38.sub_mes.manual_mngr.manual_mngr import CentralWindow as MNL
-
+from project_cust_38.Cust_dict_packs import Packs as DPACKS
 # exclude import calculate_vo 11.11.25
 CFG_prj = CFG.Config.project
 FOLDER_CLOSED = f'{CEMOJ.EmojiMain.ДокументыДанные.folder_closed.symbol}{CEMOJ.EmojiMain.ДокументыДанные.plus_circled.symbol}'
@@ -1208,12 +1208,12 @@ class Color:
         return True
 
     @classmethod
-    def random(cls, alpha: int = 255) -> 'Color':
+    def random(cls, alpha: int = 255,r:tuple=(0,255), g:tuple=(0,255), b:tuple=(0,255)) -> 'Color':
         """Создает случайный цвет."""
         return cls((
-            random.randint(0, 255),
-            random.randint(0, 255),
-            random.randint(0, 255),
+            random.randint(r[0], r[1]),
+            random.randint(g[0], g[1]),
+            random.randint(b[0], b[1]),
             alpha
         ))
 
@@ -4331,20 +4331,40 @@ class _Naryad_base():
 
 
 class Naryad_list(_Naryad_base):
-    def __init__(self, set_nums):
+    def __init__(self, set_nums:set=None,
+                 dict_dolgn_etap=None,
+                 dict_empl=None,
+                 dict_opers=None,
+                 PREPARED_DICT_DATA_DOLGN_ETAP=None,
+                 mk_num:int=None
+                 ):
+        if set_nums is None and mk_num is None:
+            raise AttributeError(f'set_nums or mk_num must be not None')
+
         self.db_naryad = CFG.Config.project.db_naryad
         self.db_users = CFG.Config.project.db_users
-        self._dict_dolgn_etap = self.calc_dict_dolgn_etap(self.db_naryad)
-        self._dict_empl = self.calc_dict_empl(self.db_users)
-        self._dict_opers = self.calc_dict_opers(self.db_naryad)
-        self._DICT_DATA_DOLGN_ETAP = prepare_dolg_etap_for_calc_pozition_fact_kpl()
 
-        data = CSQ.custom_request_c(self.db_naryad, f'''SELECT naryad.*, mk.Дата as ДатаМК FROM naryad JOIN mk ON mk.Пномер = naryad.Номер_мк 
+        if DPACKS.DATA_NARYAD_PACK is not None:
+            self._dict_dolgn_etap = DPACKS.DATA_NARYAD_PACK.DICT_DOLGN_ETAP
+            self._dict_empl = DPACKS.DATA_NARYAD_PACK.DICT_EMPL
+            self._dict_opers = DPACKS.DATA_NARYAD_PACK.DICT_OPERS
+            self._PREPARED_DICT_DATA_DOLGN_ETAP = DPACKS.DATA_NARYAD_PACK.DICT_DATA_DOLGN_ETAP
+        else:
+            self._dict_dolgn_etap = self.calc_dict_dolgn_etap(self.db_naryad) if dict_dolgn_etap is None else dict_dolgn_etap
+            self._dict_empl = self.calc_dict_empl(self.db_users) if dict_empl is None else dict_empl
+            self._dict_opers = self.calc_dict_opers(self.db_naryad) if dict_opers is None else dict_opers
+            self._PREPARED_DICT_DATA_DOLGN_ETAP = prepare_dolg_etap_for_calc_pozition_fact_kpl() if PREPARED_DICT_DATA_DOLGN_ETAP is None else PREPARED_DICT_DATA_DOLGN_ETAP
+
+        if mk_num is not None:
+            data = CSQ.custom_request_c(self.db_naryad, f'''SELECT naryad.*, mk.Дата as ДатаМК FROM naryad JOIN mk ON mk.Пномер = naryad.Номер_мк 
+                        WHERE mk.Пномер = {mk_num};''', rez_dict=True)
+        else:
+            data = CSQ.custom_request_c(self.db_naryad, f'''SELECT naryad.*, mk.Дата as ДатаМК FROM naryad JOIN mk ON mk.Пномер = naryad.Номер_мк 
             WHERE naryad.Пномер in ({CSQ.prepare_list_to_tuple(set_nums)});''', rez_dict=True)
 
         self.naryads: list[Naryads] = [
             Naryads(_, self.db_naryad, self._dict_dolgn_etap, self.db_users, self._dict_empl, self._dict_opers,
-                    self._DICT_DATA_DOLGN_ETAP)
+                    self._PREPARED_DICT_DATA_DOLGN_ETAP)
             for _ in data]
         self.dict_naryads: dict[int, Naryads] = {_.Пномер: _ for _ in self.naryads}
 
@@ -4404,11 +4424,75 @@ class Naryad_param():
     def __repr__(self):
         return ';  '.join([f'{k}: "{v}"' for k, v in self.__dict__.items() if k not in ('parent')])
 
+class StateOtk(_ImportDb):
+    def __init__(self, row:dict):
+        self.id:int = None
+        self.name:str = None
+        self.text:str = None
+        self.emoj:str = None
+        self.for_sender:int = None
+        self.for_receiver:int = None
+
+        self.parce_row_dict(row)
+
+
+    def __str__(self):
+        return f'{self.emoj} {self.text}'
+
+class StatesOtk():
+
+    class TypesUser(StrEnum):
+        SENDER = 'Предъявитель'
+        RECEIVER = 'Приемщик'
+
+    empty: StateOtk = None
+    presented: StateOtk = None
+    accepted: StateOtk = None
+    not_accepted: StateOtk = None
+
+    def load(self):
+        data = CSQ.custom_request_c(CFG_prj.db_naryad,f"""SELECT * FROM naryad_state_otk""",rez_dict=True)
+        self._dict_states_id:dict[int,StateOtk] = dict()
+        for it in data:
+            state_o = StateOtk(it)
+            self._dict_states_id[state_o.id] = state_o
+            setattr(self,it['name'],state_o)
+
+    def data_for_cmb(self,type_user:TypeUser|None)-> tuple[list[str],list[int],list[bool]]:
+        list_states_o = F.get_all_class_attrs(self,attr_type=StateOtk).values()
+        sorted_list = sorted(list_states_o,key=lambda x: x.id)
+        lst_text = [str(st) for st in sorted_list ]
+        lst_ids = [st.id for st in sorted_list ]
+        if type_user is self.TypesUser.SENDER:
+            lst_views = [True if not st.for_sender else False for st in sorted_list]
+        elif type_user is self.TypesUser.RECEIVER:
+            lst_views = [True if not st.for_receiver else False for st in sorted_list]
+        else:
+            lst_views = [False for st in sorted_list]
+        return lst_text,lst_ids,lst_views
+
+    def get(self,idx:int)->StateOtk|None:
+        return self._dict_states_id.get(idx,None)
+
+
 
 class Naryads(_Naryad_base):
     def __init__(self, p_nom_or_row, db_naryad=None, dict_dolgn_etap=None, db_users=None, dict_empl=None,
                  dict_opers=None,
                  DICT_DATA_DOLGN_ETAP: dict | None = None,calc_etap_by_fio:bool=True):
+        #DICT_DATA_DOLGN_ETAP - prepare_dolg_etap_for_calc_pozition_fact_kpl()
+        if db_naryad == None:
+            db_naryad = CFG_prj.db_naryad
+        if db_users == None:
+            db_users = CFG_prj.db_users
+
+        if DPACKS.DATA_NARYAD_PACK is not None:
+            dict_dolgn_etap = DPACKS.DATA_NARYAD_PACK.DICT_DOLGN_ETAP
+            dict_empl = DPACKS.DATA_NARYAD_PACK.DICT_EMPL
+            dict_opers = DPACKS.DATA_NARYAD_PACK.DICT_OPERS
+            DICT_DATA_DOLGN_ETAP = DPACKS.DATA_NARYAD_PACK.DICT_DATA_DOLGN_ETAP
+
+
         self.params = []
         self.db = CFG_prj.db_naryad
         self.row = []
@@ -4452,15 +4536,15 @@ class Naryads(_Naryad_base):
         self.Этап_фио_1 = None
         self.Этап_фио_2 = None
         self.ФИО_для_ОТК_от_мастера = None
-        self.Кол_повт_приемок = None
+        self.Кол_повт_приемок:int|None = None
         self.Распред_дата = None
         self.month_closing_block = None
         self.ДатаМК = None
         self.АвтоПодтвержд: int | None = None
+        self.state_otk: int | None = None
         if type(p_nom_or_row) == int:
-            if db_naryad == None:
-                print(f'Не задан db_naryad')
-                return
+
+
             row = CSQ.custom_request_c(db_naryad, f'''SELECT naryad.*, mk.Дата as ДатаМК FROM naryad JOIN mk ON mk.Пномер = naryad.Номер_мк 
             WHERE naryad.Пномер == {p_nom_or_row};''', rez_dict=True)
             if row == None or row == False or row == []:
@@ -4514,6 +4598,31 @@ class Naryads(_Naryad_base):
             pref = '*'
             num = ''
         return f'{pref}{num}, МК {self.Номер_мк}, {self.Норма_времени} мин.: {self.ФИО}-{self.Фвремя}|{self.ФИО2}-{self.Фвремя2}. Вып:{self.Подтвержд_вып_дата}'
+
+    def is_nar_for_otk(self,DICT_OPER_NAME:dict|None = None)->bool:
+        if DICT_OPER_NAME is None:
+            DICT_OPER = CSQ.custom_request_c(self.db_naryd, f"""SELECT * FROM operacii WHERE poki = {self.place.poki}""",
+                                             rez_dict=True)
+            DICT_OPER_NAME = F.deploy_dict_c(DICT_OPER, 'name')
+        for param in self.params_o:
+            if param.Операции_имя in DICT_OPER_NAME and DICT_OPER_NAME[param.Операции_имя]['kontrol_opers']:
+                return True
+        return False
+
+
+    def get_state_otk(self,states_otk_o:StatesOtk)->StateOtk:
+        state_o = states_otk_o.get(self.state_otk)
+        return state_o
+
+
+    def set_state_otk(self,state_o:StateOtk)->bool:
+        if state_o is None:
+            return False
+        self.state_otk = state_o.id
+        rez = CSQ.custom_request_c(CFG_prj.db_naryad, f'''UPDATE naryad SET state_otk = {state_o.id} WHERE Пномер = {self.Пномер};''')
+        if rez:
+            return True
+        return False
 
     def calc_etap_by_fio(self, DICT_DATA_DOLGN_ETAP: dict | None, ФИО: str) -> str | None:
         etap_for_fio = None
@@ -5069,7 +5178,7 @@ class Naryads(_Naryad_base):
         else:
             return self.Твремя
 
-    def recalc_tvrem(self, add_msg: str = '') -> float | None:
+    def recalc_tvrem(self,add_msg:str|None = None)->float|None:
         summ = 0
         old_time = self.Твремя
         for item in self.params:
@@ -5370,7 +5479,7 @@ class Group_nar(_ImportDb):
                                                      'name')
                 glob_otk_kontrol = is_otk_nar(nar.Операции, DICT_OPER_NAME)
 
-                ending_oform_zav_nar(nar_obj, jur_obj, glob_otk_kontrol, fragment.user)
+                ending_oform_zav_nar(nar_obj, glob_otk_kontrol, fragment.user)
 
     def remove_nar(self, list_s_num_nar: list):
         self.parent._dele_nar_gr(list_s_num_nar)
@@ -7809,6 +7918,7 @@ class ResSpec():
                             (oper.Опер_Тпз + oper.Опер_Тшт / oper.Опер_КОИД) / self.count)
 
         dict_res = {k: round(v, 3) for k, v in dict_res.items()}
+        dict_res= F.sort_dict_by_key(dict_res, lambda x: x)
         return dict_res
 
     def compare_vids_rab(self, name_key: str, right: dict[str, float], left_name: str, right_name: str,
@@ -10415,64 +10525,65 @@ def prepare_data_for_jurnal_for_calc_pozition_fact_kpl(list_pnums_kpl: list[int]
     return dict_data_for_jurnal
 
 
-def prepare_dolg_etap_for_calc_pozition_fact_kpl() -> dict:
-    query_dolgn_etap = f"""
-        WITH etap_ranges AS (
-
-        SELECT
-            Должность,
-            Подразделение,
-            Производство,
-            этап,
-
-            LAG(ДействуетДо) OVER (
-                PARTITION BY Должность, Подразделение, Производство
-                ORDER BY ДействуетДо
-            ) as date_from,
-
-            ДействуетДо as date_to
-
-        FROM dolgn_etap
-
-        WHERE Производство = "{CFG.Config.place.Имя}"
-    ),
-
-    employee_actual AS (
-
-        SELECT *
-        FROM employee
-        WHERE Пномер IN (
-            SELECT MAX(Пномер)
+def prepare_dolg_etap_for_calc_pozition_fact_kpl(data_dolgn_etap:dict|None = None) -> dict:
+    if data_dolgn_etap is None:
+        query_dolgn_etap = f"""
+            WITH etap_ranges AS (
+    
+            SELECT
+                Должность,
+                Подразделение,
+                Производство,
+                этап,
+    
+                LAG(ДействуетДо) OVER (
+                    PARTITION BY Должность, Подразделение, Производство
+                    ORDER BY ДействуетДо
+                ) as date_from,
+    
+                ДействуетДо as date_to
+    
+            FROM dolgn_etap
+    
+            WHERE Производство = "{CFG.Config.place.Имя}"
+        ),
+    
+        employee_actual AS (
+    
+            SELECT *
             FROM employee
-            GROUP BY ФИО
+            WHERE Пномер IN (
+                SELECT MAX(Пномер)
+                FROM employee
+                GROUP BY ФИО
+            )
         )
-    )
-
-    SELECT
-        employee_actual.ФИО,
-        employee_actual.Пномер,
-        employee_actual.Должность,
-        employee_actual.Подразделение,
-        employee_actual.Компания,
-
-        etap_ranges.этап,
-        etap_ranges.date_from,
-        etap_ranges.date_to
-
-    FROM employee_actual
-
-    JOIN etap_ranges
-    ON employee_actual.Должность = etap_ranges.Должность
-    AND employee_actual.Подразделение = etap_ranges.Подразделение
-    AND employee_actual.Компания = etap_ranges.Производство
-
-
-    ORDER BY
-        employee_actual.ФИО,
-        etap_ranges.date_to
-    """
-    data_dolgn_etap = CSQ.custom_request_c(CFG.Config.project.db_naryad, query_dolgn_etap, rez_dict=True,
-                                           attach_dbs=CFG.Config.project.db_users)
+    
+        SELECT
+            employee_actual.ФИО,
+            employee_actual.Пномер,
+            employee_actual.Должность,
+            employee_actual.Подразделение,
+            employee_actual.Компания,
+    
+            etap_ranges.этап,
+            etap_ranges.date_from,
+            etap_ranges.date_to
+    
+        FROM employee_actual
+    
+        JOIN etap_ranges
+        ON employee_actual.Должность = etap_ranges.Должность
+        AND employee_actual.Подразделение = etap_ranges.Подразделение
+        AND employee_actual.Компания = etap_ranges.Производство
+    
+    
+        ORDER BY
+            employee_actual.ФИО,
+            etap_ranges.date_to
+        """
+        data_dolgn_etap = CSQ.custom_request_c(CFG.Config.project.db_naryad, query_dolgn_etap, rez_dict=True,
+                                               attach_dbs=CFG.Config.project.db_users)
     DICT_DATA_DOLGN_ETAP = dict()
     for row in data_dolgn_etap:
         fio = row['ФИО']
@@ -18742,7 +18853,7 @@ def is_otk_nar(str_operations: str, DICT_OPER_NAME: dict = None):
     return fl_open_fr_otk
 
 
-def processing_fix_of_brak(jur_obj, zadanie, nom_nar):
+def processing_fix_of_brak(jur_obj, zadanie, nom_nar):#не актуально
     try:
         if "Исправление" in zadanie and 'Акт №' in zadanie:
             fact_vr = jur_obj.get_summ_poditog()
@@ -18779,62 +18890,105 @@ def get_plan_otk_alias_by_poki(poki):
         one_column=True
     )
 
+class FinishOtkInfo:
+    def __init__(self):
+        self.finish_done:bool|None = None
+        self.coating_done:bool|None = None
+        self.msg_coating:list[str] = []
+        self.msg_finish:list[str] = []
 
-def check_otk_after_proizv(nom_mk: int, rc_proizv: str = '', kod_oper: set = ''):
-    list_nar = CSQ.custom_request_c(CFG.Config.project.db_naryad, f"""SELECT * FROM naryad 
-                    WHERE naryad."Номер_мк" = {nom_mk};""", rez_dict=True)
+    @property
+    def is_any_done(self)->bool:
+        if self.coating_done or self.finish_done:
+            return True
+        return False
 
-    res = load_res(nom_mk)
+def check_otk_after_proizv(nom_mk: int,
+                           res_o:ResSpec|None=None,
+                           )->FinishOtkInfo|None:
+    class SimpClsList_opers_otk(F._SimpMeta):
+        dse_id: int
+        dse_name: str
+        count_dse: int
+        close_dse: int
+        nom_op: str
+        name_op: str
+        is_finish_otk: int
+
+
+    if res_o is None:
+        res_o = ResSpec(nom_mk)
+
     oper_by_code, oper_by_name = calc_dicts_opers(CFG.Config.place.poki)
 
-    def get_list_opers_proizv_otk(self, res, *args):
+    def get_list_opers_proizv_otk(self, res:ResSpec, *args)->list[dict]:
         rez = []
-        for dse in res:
-            kolvo = dse['Количество']
-            if len(dse['Операции']) <= 1:
+        for dse in res.data:
+            if len(dse.Операции) <= 1:
                 continue
-            for i, oper in enumerate(dse['Операции']):
+            for i, oper in enumerate(dse.Операции):
                 if i == 0:
                     continue
-                pev_oper = dse["Операции"][i - 1]
+                pev_oper = dse.Операции[i - 1]
 
-                current_oper_credentials = oper_by_code.get(oper.get('Опер_код')) or {}
-                previous_oper_credentials = oper_by_code.get(pev_oper.get('Опер_код')) or {}
-                tmp_dict = {'dse_id': dse['Номерпп'],
-                            'dse_name': f"{dse['Наименование']} {dse['Номенклатурный_номер']}",
-                            'count_dse': kolvo,
-                            'close_dse': 0,
-                            'nom_op': oper['Опер_номер'],
-                            'name_op': oper['Опер_наименование']
-                            }
+                current_oper_credentials = oper_by_code.get(oper.Опер_код) or {}
+                previous_oper_credentials = oper_by_code.get(pev_oper.Опер_код) or {}
+
                 curr_oper_is_otk = current_oper_credentials.get('kontrol_opers')
+                curr_oper_is_finish_otk = current_oper_credentials.get('is_finish_otk')
 
-                if curr_oper_is_otk and previous_oper_credentials.get('is_coating'):
+                if curr_oper_is_otk and (previous_oper_credentials.get('is_coating') or curr_oper_is_finish_otk):#29.10.2026 добавлено поле is_finish_otk для келаста
+                    tmp_dict = {'dse_id': dse.Номерпп,
+                                'dse_name': f"{dse.Наименование} {dse.Номенклатурный_номер}",
+                                'count_dse': dse.Количество,
+                                'close_dse': 0,
+                                'nom_op': oper.Опер_номер,
+                                'name_op': oper.Опер_наименование,
+                                'is_finish_otk': curr_oper_is_finish_otk
+                                }
                     rez.append(tmp_dict)
         return rez
+    finish_otk_info_o = FinishOtkInfo()
 
-    list_opers_otk = get_list_opers_proizv_otk('', res, rc_proizv)
-    for item in list_nar:
-        nar = Naryads(item)
-        for elem in nar.params:
-            for i, line in enumerate(list_opers_otk):
-                if elem['ДСЕ_ID'] == line['dse_id'] and elem['Операции_номер'] == line['nom_op']:
-                    list_opers_otk[i]['close_dse'] += elem['Опер_колво']
 
-    list_untapped_opers = []
+    list_opers_otk = get_list_opers_proizv_otk('', res_o, '')
+    if not list_opers_otk:
+        return finish_otk_info_o
+
+    list_opers_otk = [SimpClsList_opers_otk._from_dict(_) for _ in list_opers_otk]
+
+    nars_o= Naryad_list(mk_num=nom_mk)
+    for nar in nars_o.dict_naryads.values():
+        for elem_o in nar.params_o:
+            for i, line_o in enumerate(list_opers_otk):
+                if elem_o.ДСЕ_ID == line_o.dse_id and elem_o.Операции_номер == line_o.nom_op:
+                    list_opers_otk[i].close_dse += elem_o.Опер_колво
+
+
     for item in list_opers_otk:
-        if item['count_dse'] > item['close_dse']:
-            list_untapped_opers.append(f"{item['dse_name']} {item['count_dse'] - item['close_dse']} из шт."
-                                       f" {item['count_dse']}, операция {item['nom_op']} {item['name_op']}")
-    if len(list_untapped_opers) > 0:
-        return '\n'.join([_ for _ in list_untapped_opers])
-    return False
+        if item.count_dse == item.close_dse:
+            if item.is_finish_otk:
+                finish_otk_info_o.finish_done = True
+            else:
+                finish_otk_info_o.coating_done = True
 
+    for item in list_opers_otk:
+        if item.count_dse > item.close_dse:
+            msg = f"""{item.dse_name}: осталось {item.count_dse - item.close_dse} из {item.count_dse} шт., операция {item.nom_op} {item.name_op}"""
+            if item.is_finish_otk:
+                finish_otk_info_o.finish_done = False
+                finish_otk_info_o.msg_finish.append(msg)
+            else:
+                finish_otk_info_o.coating_done = False
+                finish_otk_info_o.msg_coating.append(msg)
+
+    return finish_otk_info_o
 
 def processing_finish_sign_otk(glob_fio, nom_mk, nom_kpl, nom_nar, nar_obj, poki):
     alias = get_plan_otk_alias_by_poki(poki)  # 08.04.2026
+    finish_otk_info_o = None
+    if nar_obj.Категория_внепл == 18:  # финишный ОТК20.03.2026
 
-    if nar_obj.Категория_внепл == 18:  # 20.03.2026
         messages = []
         is_done = CSQ.custom_request_c(
             CFG.Config.project.db_naryad,
@@ -18843,6 +18997,7 @@ def processing_finish_sign_otk(glob_fio, nom_mk, nom_kpl, nom_nar, nar_obj, poki
         )
         if not is_done:
             messages.append('Не удалось утвердить журнал внеплана')
+            return
         query = f"""
             SELECT "mk"."Пномер", mk."НомКплан",
                 CASE WHEN "знпр"."№ERP" IS NOT NULL 
@@ -18873,16 +19028,23 @@ def processing_finish_sign_otk(glob_fio, nom_mk, nom_kpl, nom_nar, nar_obj, poki
         nom_kpl = kpl_info['НомКплан']
         if not nom_kpl:
             messages.append('Не удалось загрузить номер плана')
-        msg = '\n'.join(messages)
+            return
+
+        if not messages:
+            finish_otk_info_o.finish_done = True
+        finish_otk_info_o.msg_finish = messages
 
     else:
-        msg = check_otk_after_proizv(nom_mk,
-                                     kod_oper={'7135', '6011', '0136'})  # Пассивирование Окрашивание Дробеструйная
+        finish_otk_info_o = check_otk_after_proizv(nom_mk)  # Пассивирование Окрашивание Дробеструйная
         order_num = nar_obj.mk.Номер_заказа
         project_num = nar_obj.mk.Номер_проекта
         num_mk = nar_obj.mk.Пномер
 
-    if not msg:
+    if finish_otk_info_o is None:
+        return
+
+    if finish_otk_info_o.coating_done:
+
         custom_request_c = f'''UPDATE "{alias}"  SET ("Контр_покрытие_ФИО", "Контр_покрытие_дата") = (?,?) 
                     WHERE "НомПл" = ?;'''
         param = [glob_fio, F.now(), nom_kpl]  # 15.07.25
@@ -18890,14 +19052,30 @@ def processing_finish_sign_otk(glob_fio, nom_mk, nom_kpl, nom_nar, nar_obj, poki
 
         try:
             sender = CB24.B24Sender()
-            notify_message = f'По {order_num} {project_num} MK №{num_mk} контроль\n ' \
-                             f'после Пассивирование/Окрашивание/Дробеструйная успешно пройден {glob_fio} по наряду {nom_nar}'
+            notify_message = f'По {order_num} {project_num} MK №{num_mk} контроль покрытий\n ' \
+                             f' успешно пройден {glob_fio} по наряду {nom_nar}'
+            sender.send_msg_by_action('Отгрузка на склад', notify_message, poki=poki)
+        except:
+            pass
+
+    if finish_otk_info_o.finish_done:
+
+        custom_request_c = f'''UPDATE "{alias}"  SET ("Контр_покрытие_ФИО", "Контр_покрытие_дата") = (?,?) 
+                    WHERE "НомПл" = ?;'''
+        param = [glob_fio, F.now(), nom_kpl]  # 15.07.25
+        CSQ.custom_request_c(CFG.Config.project.db_kplan, custom_request_c, list_of_lists_c=param)
+
+        try:
+            sender = CB24.B24Sender()
+            notify_message = f'По {order_num} {project_num} MK №{num_mk} финишный контроль\n ' \
+                             f' успешно пройден {glob_fio} по наряду {nom_nar}'
             sender.send_msg_by_action('Отгрузка на склад', notify_message, poki=poki)
         except:
             pass
 
 
-def ending_oform_zav_nar(nar_obj, jur_obj, glob_otk_kontrol: bool, glob_fio):
+def ending_oform_zav_nar(nar_obj, glob_otk_kontrol: bool, glob_fio):
+
     if nar_obj.АвтоПодтвержд or glob_otk_kontrol:
         auto_podtv(glob_fio, nar_obj)
 
@@ -18912,7 +19090,8 @@ def ending_oform_zav_nar(nar_obj, jur_obj, glob_otk_kontrol: bool, glob_fio):
         if type_mk == 1:  # Тип Плановая
             processing_finish_sign_otk(glob_fio, nom_mk, nom_kpl, nom_nar, nar_obj, poki)
 
-        processing_fix_of_brak(jur_obj, zadanie, nom_nar)
+
+        #processing_fix_of_brak(jur_obj, zadanie, nom_nar)
 
 
 def ____________VIPOLN_END__________________________________():

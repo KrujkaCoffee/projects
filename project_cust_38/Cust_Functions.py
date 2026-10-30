@@ -36,7 +36,7 @@ from types import ModuleType
 import keyword
 import unicodedata
 from operator import itemgetter
-
+from types import SimpleNamespace
 
 try:
     print(f'import config try...')
@@ -1472,7 +1472,7 @@ def is_empty_blob(blob):
 
 def load_file_pickle(putima)->dict:
     try:
-        with open(putima, 'rb') as f:
+        with open(putima, 'rb+') as f:
             return pickle.load(f)
     except pickle.UnpicklingError as e:
         print(f'Ошибка десериализации файла: {putima!r}\n {e}')
@@ -3714,3 +3714,34 @@ def parse_args(argv:list)->dict:
         i += 1
 
     return result
+
+class _SimpMeta(SimpleNamespace):
+    @classmethod
+    def _from_dict(cls, it: dict | None):
+        return None if it is None else cls(**it)
+
+    def to_dict(self) -> dict:
+        return dict(vars(self))
+
+
+def gen_class(sample: dict|list[dict], postfix: str = "dict") -> str:
+    if isinstance(sample, list):
+        if sample:
+            sample = sample[0]
+        else:
+            raise ValueError("Empty list")
+
+    name = f"SimpCls{postfix[:1].upper() + postfix[1:]}"
+    lines = [
+        f"class {name}(F._SimpMeta):",
+    ]
+    for k, v in sample.items():
+        t = type(v).__name__
+        if t == "NoneType":
+            t = "None"
+        lines.append(f"    {k}: {t}")
+    lines += [
+        "",
+
+    ]
+    return "\n".join(lines)

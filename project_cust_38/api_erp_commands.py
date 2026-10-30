@@ -80,8 +80,9 @@ class Refs_wet():
             raise ValueError(f'&{ref_wet.name_var} not in self.text_req')
         
         self.refs[ref_wet.name_var] =  {'путь':ref_wet.path_conf_1c,'уид': ref_wet.ref_key}
-        
-    
+
+
+
 
 def patch_state_doc_znpr(ref_key:str,name_obj:str,dict_data:dict, erp_base_name:str = 'ERP'):
     headers = dict(Accept='application/json')
@@ -214,6 +215,19 @@ def get_meta(erp_base_name: str = 'ERP',path: str = 'Документы.Зака
         return False
     return False
 
+def get_znvps(erp_base_name:str = 'ERP',year:int = 2026,opened:bool = True):#26.10.2026 для обмена докс с 1С
+    headers = dict(Accept='application/json')
+    json = {"opened": opened}
+    url = f'{CFG.Config.project.ERB_BASE_URL}/{erp_base_name}/ru_RU/hs/mes/sysexchange/v1/znvp/{year}'
+    response = requests.get(url, params=json, headers=headers, auth=(USER_ERP, PASS_ERP))
+    return response.status_code, JS.loads(F.convert_binary_to_data(response.content))
+
+def get_deals(erp_base_name:str = 'ERP',year:int = 2026):#26.10.2026 для обмена докс с 1С
+    headers = dict(Accept='application/json')
+
+    url = f'{CFG.Config.project.ERB_BASE_URL}/{erp_base_name}/ru_RU/hs/mes/sysexchange/v1/deals/{year}'
+    response = requests.get(url,  headers=headers, auth=(USER_ERP, PASS_ERP))
+    return response.status_code, JS.loads(F.convert_binary_to_data(response.content))
 
 def ping_http_services(erp_base_name: str = 'ERP') -> bool:
     response = None
