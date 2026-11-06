@@ -1263,7 +1263,7 @@ def _cmd_bootstrap(args: argparse.Namespace) -> int:
             table_names=args.tables,
             db_key=None,
             include_fields=not args.skip_fields,
-            schema_enabled=1 if args.schema_enabled else 0,
+            schema_enabled=args.schema_enabled,
             cache_enabled=1,
             is_enabled=1,
             cache_lifetime_min=args.cache_lifetime_min,
@@ -1296,7 +1296,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p_boot.add_argument('--db-path', required=False, help='Путь к физической sqlite БД (Например SRV:Naryads.db)')
     p_boot.add_argument('--tables', nargs='*', default=None, help='Список таблиц для обновления/создания; если не задан — все')
     p_boot.add_argument('--skip-fields', action='store_true', help='Поля, которые не должны входить в схемы')
-    p_boot.add_argument('--schema-enabled', action='store_true', help='Пометить таблицы schema_enabled = True')
+    p_boot.add_argument(
+        '--schema-enabled',
+        action='store_true',
+        default=None,
+        help='Пометить таблицы schema_enabled = True',
+    )
     p_boot.add_argument('--cache-lifetime-min', type=int, default=120, help='Время жизни кэша в таблицах')
     p_boot.add_argument('--notes', default='', help='Заметка последнего изменения')
     p_boot.add_argument('--skip-tables', nargs='*', default=None, help='Таблицы которые нужно пропустить')
