@@ -165,6 +165,7 @@ def btns(self: mywindow):
     ui.btn_clear_filtr.clicked.connect(lambda: KPL.btn_clear_filtr(self))
     ui.btn_copy_excel.clicked.connect(lambda: KPL.copy_excel_local(self))
     ui.btn_exel_svod.clicked.connect(lambda: KPL.copy_exel_svod(self))
+    ui.btn_save_as_html.clicked.connect(lambda: KPL.save_as_html(self))
     ui.btn_add_rm.clicked.connect(lambda _, x=self: IND.add_rm(x))
 
     ui.btn_obespechenie_spis_po_mk.clicked.connect(lambda _, x=self: OBSP.spis_obesp_po_mk(x))
@@ -258,6 +259,7 @@ def btns(self: mywindow):
     ui.btn_pl_graf_context_as_tbl.clicked.connect(KPL.pl_graf_context_as_tbl)
     ui.btn_pl_tabel.clicked.connect(lambda: KPL.show_tabel(self))
     ui.btn_load_file_mk_founfing.clicked.connect(self.load_file_mk_founfing)
+    ui.btn_show_doc.clicked.connect(self.show_attach_doc_mk)
     ui.btn_select_nom_jur_vneplan.clicked.connect(self.select_nom_jur_vneplan)
     ui.btn_show_file_founding_mk.clicked.connect(self.show_file_founding_mk)
     ui.btn_pl_open_dir.clicked.connect(lambda: KPL.btn_pl_open_dir(self))
@@ -311,6 +313,7 @@ def btns(self: mywindow):
     ui.btn_res_product.clicked.connect(lambda: TTKZ.create_res_product(self))
     ui.btn_apply_next_stage.clicked.connect(lambda: TTKZ.apply_next_stage(self))
     ui.btn_cutting_mngr.clicked.connect(self.open_cutting_mngr)
+    ui.btn_vigruzka_from_constructor.clicked.connect(self.vigruzka_from_constructor_docs)
 
 
 

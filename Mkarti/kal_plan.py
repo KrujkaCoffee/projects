@@ -30,6 +30,7 @@ import project_cust_38.Cust_emoji as CEMOJ
 from data_class import Data_plan as DTCLS
 from functools import partial
 from project_cust_38.sub_mes.kro.manage_kro import Kro_manager as MKRO
+from project_cust_38.Cust_dict_packs import Packs as DPACKS
 if TYPE_CHECKING:
     from MKart import mywindow
 
@@ -628,6 +629,7 @@ def check_edit_poz(old_list:dict,dict_edit_new:dict,poz:CMS.Pozition)->bool:
                                      styleSheet=CQT.MES_CSS)
         return False
     return True
+
 @CQT.onerror
 def fnc_click_load_tbl_edit_poz(ind:QtCore.QModelIndex):
     if DTCLS.app_self.ui.tbl_kal_pl.currentRow() == -1:
@@ -856,6 +858,49 @@ def load_edit_poz(self: mywindow):
     if podr == 'пл_топ':
         for row in t.rows():
             name = row.value("_Name")
+            if name == 'пл_топ.Размерный_ряд':
+                field_o = DICT_FIELDS[name]
+                def fnc_select_measure_type(lbl: CQT.InteractiveLabelInstance, app_self, i, j, tbl: CQT.QtWidgets.QTableWidget):
+                    def fnc_validate(txt)->tuple[bool,str]:
+                        if F.is_numeric(txt):
+                            return True, txt
+                        txt = txt.replace('х', 'x')
+                        if 'x' not in txt:
+                            CQT.msgbox('Параметры должны быть в формате "ДлинаxШирина" латинская "х"')
+                            return False , ''
+                        list_geom = txt.split('x')
+                        if len(list_geom) != 2:
+                            CQT.msgbox('Параметры должны быть в формате "ДлинаxШирина" латинская "х"')
+                            return False, ''
+                        length = list_geom[0]
+                        width = list_geom[1]
+                        if F.is_numeric(length) and F.is_numeric(width):
+                            return True, f'{length}x{width}'
+                        CQT.msgbox('Параметры должны быть в формате "ДлинаxШирина" латинская "х"')
+                        return False, ''
+
+
+                    t = CQT.TableContext(tbl)
+                    row = t.get_row(i)
+
+                    succ, rez = CQT.get_dialog_choose_text(self,
+                                 'Ввести размерный ряд(ДУ)\nПример: для КЛ.2602142.03 Клапан G-DN150(146)-160 это 150',
+                                 func_validate=fnc_validate,
+                                 start_text=row.value('Значение'),placeholderText= '1500x500 или 600')
+
+                    if not succ:
+                        return
+
+                    row.set_value('Значение', rez)
+                    lbl.set_text(rez)
+
+                row.set_editable('Значение',False)
+                widg = CQT.add_interactive_label(t.tbl, row.i, t.nf['Значение'], '',
+                                                 parent_self=self,)
+                widg.add_button(CEMOJ.EmojiMain.Статусы.ellipsis.symbol, 'Выбрать', on_clicked=fnc_select_measure_type,
+                                cell_val=t.tbl, img_path=F.sep().join([F.path_to_execut_file_c(),
+                                                                       'icons', 'btn_select']),)
+
             if name == 'пл_топ.Вид':
                 widget = CMS.TypesWorkingByDirections().change_vid_po_napr(  # 25.08.25
                     self,
@@ -1176,7 +1221,8 @@ def post_edit_handling(delta_dict:dict, old_val_dict:dict, new_val_dict:dict,pno
                 old_pkk = old_val_dict['пл_оуп.ПКК']
                 if F.is_numeric(old_pkk):
                     del_file_pkk(int(old_pkk))
-def load_client_order_num(ref:str)->str|None:
+
+def load_client_order_num(ref:str)->tuple[bool,tuple[str,str]]:
     text = f"""
                     ВЫБРАТЬ
             ЗаказКлиента.Номер КАК Номер,
@@ -1193,15 +1239,17 @@ def load_client_order_num(ref:str)->str|None:
     key, res = APIERP.get_wet_request(text=text, refs=refs)
     if key != 200:
         CQT.msgbox(f'Ошибка получения данных ЗаказКлиента из ЕРП ')
-        return
+        return False, ('','')
     data = res['data'][0]
     year = F.dateStrToStr(data["Дата"],"%Y-%m-%dT%H:%M:%S","%Y")
+    date = F.dateStrToStr(data["Дата"],"%Y-%m-%dT%H:%M:%S","%Y-%m-%d",onerror='')
     num = f'{year} {data["Номер"]}'
-    update_client_order_num(num,ref)
-    return num
-def update_client_order_num(num,ref):
-    CSQ.custom_request_c(DTCLS.db_kplan,f"""UPDATE знпр SET client_order_num = ? 
-            where client_order_Key = ? ;""", list_of_lists_c=[num, ref])
+    update_client_order_num(num,ref,date)
+    return True, ( num, date)
+
+def update_client_order_num(num,ref,date:str):
+    CSQ.custom_request_c(DTCLS.db_kplan,f"""UPDATE знпр SET (client_order_num,client_order_date) = (?,?) 
+            where client_order_Key = ? ;""", list_of_lists_c=[num,date, ref])
     print(f'update_client_order_num: {num}, {ref}')
 
 def btn_pl_ok_add_poz_click(self, *args):
@@ -1507,6 +1555,33 @@ def btn_pl_ok_add_poz_click(self, *args):
 
         if not check_edit_poz(old_val_dict,new_val_dict,poz):
             return False, None
+
+        if podr == 'пл_топ':
+            def is_filled_tech_type(t:CQT.TableContext) -> bool:
+                row_mesured_type = t.find_row({'_Name':'пл_топ.Вид'},True)
+                val = row_mesured_type.value('Значение')
+                if val:
+                    return True
+                return False
+
+            def is_filled_mesured_type(t:CQT.TableContext) -> bool:  # 20.10.2026 должен быть заполнен размерный ряд для КЛ
+                row_mesured_type = t.find_row({'_Name':'пл_топ.Размерный_ряд'},True)
+                val = row_mesured_type.value('Значение')
+                if val:
+                    return True
+                return False
+            def necessary_filling_mesured_type(poz,self) -> bool:
+                nd = self.Data_plan.DICT_NAPR_DEYAT.get(poz.Направление_деятельности,None)
+                if nd is None:
+                    CQT.msgbox(f"Не найдено направление деятельности {poz.Направление_деятельности}")
+                    raise ValueError
+                return bool(nd['necessary_filling_mesured_type_in_plan'])
+
+            # if necessary_filling_mesured_type(poz,self):
+            #     if is_filled_tech_type(t) and not is_filled_mesured_type(t):
+            #         CQT.msgbox(f"Не заполнен размерный ряд")
+            #         return False, None
+
 
         if podr == 'пл_оуп':
             if link:
@@ -2063,10 +2138,61 @@ def load_table_db(self, hook_prog_bar=None):
         # ========================================================
         return data
 
+    def fill_production_order(list_dict_from_db: list[dict]) -> list[dict]:
+        dict_dates_crate_etaps = F.deploy_dict_c(
+            CSQ.custom_request_c(
+                CFG.Config.project.db_kplan,f"""
+                    SELECT s_num,Ref_Key_py, date_crate_etaps FROM plan
+                    INNER JOIN "пл_оуп" ON "пл_оуп"."НомПл" = plan."Пномер" 
+                    INNER JOIN "знпр" ON "пл_оуп"."Пномер_ЗП" = "знпр".s_num 
+                    WHERE "знпр".date_crate_etaps is null and "знпр".s_num >0 and plan."Статус" IN (2,7) 
+                    and plan.poki = {CFG.Config.place.poki}"""
+                        ,rez_dict=True)
+        ,'s_num')
+
+        text = f"""
+            ВЫБРАТЬ ПЕРВЫЕ 1
+                ЭтапПроизводства2_2.Дата КАК Дата
+            ИЗ
+                Документ.ЭтапПроизводства2_2 КАК ЭтапПроизводства2_2
+            ГДЕ
+                ЭтапПроизводства2_2.Распоряжение = &Распоряжение
+                И ЭтапПроизводства2_2.НЭ_НулевойЭтап = ЛОЖЬ
+                И ЭтапПроизводства2_2.ПометкаУдаления = ЛОЖЬ
+                И ЭтапПроизводства2_2.Проведен = ИСТИНА
+            
+            УПОРЯДОЧИТЬ ПО
+                Дата
+            """
+
+        for s_num, it in dict_dates_crate_etaps.items():
+            ref_key_py = it['Ref_Key_py']
+            refs = APIERP.Refs_wet(text)
+
+            ref_obj = APIERP.Ref_wet('Распоряжение', 'Документы.ЗаказНаПроизводство2_2', ref_key_py)
+            refs.add_ref(ref_obj)
+            key, res = APIERP.get_wet_request(text=text, refs=refs,lazy_method_huours=1)
+            if key != 200:
+                CQT.msgbox(f'Ошибка получения данных ЗаказНаПроизводство2_2 из ЕРП ')
+                return
+            date_data = res['data']
+            if not date_data:
+                continue
+            date = date_data[0]['Дата']
+            if not F.is_date(date, "%Y-%m-%dT%H:%M:%S"):
+                continue
+            mes_date = F.dateStrToStr(date, "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d",None)
+            rez =CSQ.custom_request_c(CFG.Config.project.db_kplan, f"""
+                UPDATE знпр SET date_crate_etaps = ? WHERE s_num = ?""", list_of_lists_c=[[mes_date, s_num]])
+            if not rez:
+                CQT.msgbox(f'Ошибка обновления даты создания этапов в kplan')
+        return list_dict_from_db
+
     def fill_client_order(data: list[dict]) -> list[dict] | None:
         list_kpls = [_['plan.Пномер'] for _ in data]
+        recalced_cache = dict()
         list_refs_zc = CSQ.custom_request_c(CFG.Config.project.db_kplan, f"""
-                SELECT DISTINCT "пл_оуп"."НомПл", "знпр"."client_order_Key", "знпр"."client_order_num"
+                SELECT DISTINCT "пл_оуп"."НомПл", "знпр"."client_order_Key", "знпр"."client_order_num", "знпр"."client_order_date"
                   FROM знпр
                        INNER JOIN
                        пл_оуп ON пл_оуп."Пномер_ЗП" = знпр.s_num
@@ -2077,13 +2203,25 @@ def load_table_db(self, hook_prog_bar=None):
             if it["plan.Пномер"] not in dict_refs_zp:
                 continue
             data_zk = dict_refs_zp[it["plan.Пномер"]]
-            if not data_zk['client_order_num']:
-                data_zk['client_order_num'] = load_client_order_num(data_zk['client_order_Key'])
+            if not data_zk['client_order_num'] or not data_zk['client_order_date']:
+                if data_zk['client_order_Key'] in recalced_cache:
+                    data_zk['client_order_num'], data_zk['client_order_date'] = recalced_cache[data_zk['client_order_Key']]
+                else:
+                    suc, rez_load = load_client_order_num(data_zk['client_order_Key'])
+                    if suc:
+                        data_zk['client_order_num'], data_zk['client_order_date'] = rez_load
+                        recalced_cache[data_zk['client_order_Key']] = rez_load
+
             it['cust.client_order'] = data_zk['client_order_Key'] + '|' + data_zk['client_order_num']
         return data
 
     def fill_Дата_прих_ордера_гп(data: list[dict],fl_order,fl_moving) -> list[dict] | None:
         list_kpls = [_['plan.Пномер'] for _ in data]
+        list_not_filled_max_date_moving = CSQ.custom_request_c(CFG.Config.project.db_kplan, f"""
+            SELECT "пл_оуп"."НомПл" FROM "пл_оуп" WHERE  "пл_оуп"."Дата_движение_гп_зав" = "" and "пл_оуп"."НомПл" 
+            IN ({CSQ.prepare_list_to_tuple(list_kpls)});
+            """,one_column=True,hat_c=False)
+        set_not_filled_max_date_moving = set(list_not_filled_max_date_moving)
         list_refs_zp = CSQ.custom_request_c(CFG.Config.project.db_kplan, f"""
                 SELECT DISTINCT "пл_оуп"."НомПл", "знпр"."Ref_Key_py", "знпр"."Год", "знпр"."№ERP"
                 FROM знпр
@@ -2205,6 +2343,12 @@ def load_table_db(self, hook_prog_bar=None):
             if fl_moving and max_date_moving_str:
                 if count_poz == summ_count_moving:
                     emo_moving = '✅ '
+
+                    if kpl in set_not_filled_max_date_moving:
+                        CSQ.custom_request_c(CFG.Config.project.db_kplan,
+                                             f"""UPDATE пл_оуп SET Дата_движение_гп_зав = ? WHERE НомПл = ?;""",
+                                             list_of_lists_c=[[max_date_moving_str, kpl]])
+
                 item['cust.Дата_движение_гп'] = f'{emo_moving}{max_date_moving_str} ({summ_count_moving} шт.)'
 
         return data
@@ -2591,6 +2735,7 @@ def load_table_db(self, hook_prog_bar=None):
         return
     fields_from_db = list(list_dict_from_db[0].keys())
 
+    list_dict_from_db= fill_production_order(list_dict_from_db)
 
     if 'cust.Дата_прих_ордера_гп' in fields_from_db or 'cust.Дата_движение_гп' in fields_from_db:
         rez = fill_Дата_прих_ордера_гп(list_dict_from_db,'cust.Дата_прих_ордера_гп' in fields_from_db,
@@ -2703,7 +2848,12 @@ def load_table_db(self, hook_prog_bar=None):
     CQT.fill_wtabl(list_dict_from_db, self.ui.tbl_kal_pl, auto_type=False, set_editeble_col_nomera=editeble_col_nomera,
                    height_row=20, sortingEnabled=not self.ui.chk_kpl_groups.isChecked(), load_links=False,
                     parent_self=self, aliases_header=DTCLS.FIELDS_DB_INFO.get_aliases(),
-                   styleSheet=CQT.MES_EDIT_CSS,dict_or_list_user_data=list_user_data)
+                   styleSheet=CQT.MES_EDIT_CSS,dict_or_list_user_data=list_user_data,
+                   floating_btn_mngr=
+                   CMS.register_floating_btn_threads(
+                       'plan.Пномер',
+                       'КПЛ',
+                       ['plan.Пномер']))
 
     t = CQT.TableContext(self.ui.tbl_kal_pl)
 
@@ -3298,7 +3448,7 @@ def update_db_info_fields_kpl(*args):
             if CSQ.custom_request_c(self.db_kplan,
                                  f"""INSERT INTO info_fields_kpl (table_kpl,name,nickname,alias_db,alias_usr) 
                                  VALUES (?,?,?,?,?);""",
-                                    list_of_lists_c=[tbl, field, str_name, str_name, field]):
+                                    list_of_lists_c=[[tbl, field, str_name, str_name, field]]):
                 result.append(str_name)
             else:
                 list_err.append(str_name)
@@ -3398,7 +3548,7 @@ def recalc_and_fil_fact(self: mywindow,hook_prog_bar=None, *args):
 
 
 
-        DICT_DATA_DOLGN_ETAP = CMS.prepare_dolg_etap_for_calc_pozition_fact_kpl()
+        DICT_DATA_DOLGN_ETAP = DPACKS.DATA_NARYAD_PACK.DICT_DATA_DOLGN_ETAP
         DICT_DATA_FOR_JURNAL = CMS.prepare_data_for_jurnal_for_calc_pozition_fact_kpl(list_pnums)
         POZ_DICT_MK_DATA = CMS.prepare_pozs_for_calc_pozition_fact_kpl(list_pnums)
         POZ_DICT_LIST_NARS = CMS.prepare_list_nars_for_calc_pozition_fact_kpl(list_pnums)
@@ -4570,8 +4720,6 @@ def dict_norm_from_res(self:mywindow, res, dict_norm='', koef_vneplana=1, koef_p
                 dict_fact[dse][oper]['Всего_шт.'] += count
                 dict_fact[dse][oper]['Нарядов'] += 1
         return dict_fact
-
-
 
     if dict_norm == '':
         dict_norm = generate_dict_norm(self)
@@ -6532,7 +6680,7 @@ def select_poz_after_py(lblself:CQT.InteractiveLabelInstance,self, row, col,ref:
     refs = APIERP.Refs_wet(text)
     ref_obj = APIERP.Ref_wet('Ссылка', 'Документы.ЗаказНаПроизводство2_2', ref)
     refs.add_ref(ref_obj)
-    key, data_rez = APIERP.get_wet_request(text,refs,lazy_method_huours=0.1)
+    key, data_rez = APIERP.get_wet_request(text,refs)
     if key != 200:
         CQT.msgbox(f'Ошибка получения данных код ({key}) из ERP')
         return
@@ -7186,6 +7334,13 @@ def copy_excel_local(self: mywindow):
     file_path = CEX.save_table_colour(tbl, putf, wb_name, ws_name, hat=hat)
     F.run_file_os_c(file_path)
 
+
+@CQT.onerror
+def save_as_html(self: mywindow):
+    if DTCLS.fig is None:
+        CQT.msgbox('Нет данных для сохранения')
+        return
+    CQT.save_fig_as(self,DTCLS.fig)
 
 @CQT.onerror
 def copy_exel_svod(self: mywindow):

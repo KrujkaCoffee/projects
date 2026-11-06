@@ -16,6 +16,8 @@ if TYPE_CHECKING:
     import gui_kal_plan as GPL
     from PyQt5 import QtWebEngineWidgets
     from project_cust_38.sub_mes.kro.manage_kro import Kro_manager as MKRO
+    import plotly.graph_objects as go
+
 class SingletonMeta(type):
     __instances = {}
 
@@ -144,7 +146,7 @@ class Data_plan(SingletonMeta):
     #---------------------------------------
     BROWSER_GR_PAD_MOSH:QtWebEngineWidgets.QWebEngineView|None = None
     BROWSER_DIAGRAM_SUMM:QtWebEngineWidgets.QWebEngineView|None = None
-
+    fig:go.Figure|None = None
     NAPR_DEYAT = CMS.calc_napr_deyat(PLACE.poki)
     DICT_NAPR_DEYAT = F.deploy_dict_c(NAPR_DEYAT, 'Пномер')
     DICT_NAPR_DEYAT_NAME = F.deploy_dict_c(NAPR_DEYAT, 'Имя')

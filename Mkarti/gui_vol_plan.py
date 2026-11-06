@@ -141,21 +141,27 @@ def load_svod(self:mywindow,as_table:bool=False):
 
 
     agr = CMS.Gant_agregator()
-    data = agr.load(min_day,max_day,list_id_pozitions)
+    data_agr = agr.load(min_day,max_day,list_id_pozitions)
     set_dt = set()
     shabl_podrs = {k:0 for k in CLD_DAYS[min_day].dict_podrs.keys()}
     tbl_top = DTCLS.FIELDS_DB_INFO.tables_db.get_table('пл_топ')
-    for it in data:
+    list_err = []
+    data= []
+    for it in data_agr:
         it['day_dt'] = F.strtodate(it['day_dt'],"%Y-%m-%d %H:%M:%S")
         set_dt.add(it['day_dt'])
         it['holyday'] = CLD_DAYS[it['day_dt']].is_holyday
         it['weekend'] = CLD_DAYS[it['day_dt']].day_week == 7
+        if it['etap_podrazdel'] not in DTCLS.DICT_PODR_BY_ID:
+            list_err.append({'KPL': it['id_poz'], 'err':f'Не найден etap_podrazdel {it["etap_podrazdel"]}  для {DTCLS.PLACE.Имя}'})
+            continue
         name_podr = DTCLS.DICT_PODR_BY_ID[it['etap_podrazdel']]['Имя']
         tbl_o = DTCLS.FIELDS_DB_INFO.tables_db.get_table(name_podr)
         it['max_time'] = CLD_DAYS[it['day_dt']].dict_podrs[name_podr]
         it['etap_podrazdel'] = tbl_o.alias
         it['etap_podrazdel_order'] = tbl_o.order
         it['filler'] = False
+        data.append(it)
         #[_ for _ in data if F.datetostr(_['day_dt'],"%d.%m.%Y") == '09.03.2026' ]
     #[_ for _ in data if _['id_poz'] == 7086 and _['etap_podrazdel'] == 'пл_сб']
     #sum([_['val_minutes']/60 for _ in data if _['id_poz'] == 7086 and _['etap_podrazdel'] == 'пл_сб'])
@@ -379,7 +385,11 @@ def load_svod(self:mywindow,as_table:bool=False):
         parent_for_grafic.addWidget(self.Data_plan.BROWSER_DIAGRAM_SUMM)
 
     parent_for_grafic.setProperty("_loaded","true")
+    if list_err:
+        CQT.msgboxg_get_table_ok_inf(self,'Ошибка',list_err,styleSheet=CQT.MES_CSS)
+    DTCLS.fig = fig
     CQT.output_gant(self, fig, self.Data_plan.BROWSER_DIAGRAM_SUMM, 'svod_gr', CMS.tmp_dir())
+
 @CQT.onerror
 def dbl_clk_select_etap(self:mywindow):
 

@@ -947,17 +947,23 @@ def tab_addit_info_poz_gant_click(self:mywindow,ind):
                  'Чек': stage.ref}
                 for stage in stages_from_erp
             ]
-            result_data = [{'Версия':"ERP", "Список": data_for_table_stages}]
+
+            def fnc_add_etap_znpr(*args):
+                CQT.msgbox('В разработке')
+
+            result_data = [{'Версия':"ERP",'_Создать':'', "Список": data_for_table_stages}]
             CQT.fill_wtabl(result_data, tbl, height_row=24, ogr_maxshir_kol=500, selectionBehavior='SelectRows')
             for i in range(tbl.rowCount()):
                 if tbl.item(i,0).text() == "ERP":
-                    if tbl.cellWidget(i,1) == None:
-                        continue
-                    for j in range(tbl.cellWidget(i,1).rowCount()):
-                        CQT.add_btn(tbl.cellWidget(i,1),j,2,'Затраты',
-                                    conn_func_checked_row_col=dbl_click_etap_addit_info_poz_gant,self=self,
-                                    cell_val=tbl.cellWidget(i,1).item(j,2).text())
-
+                    if tbl.cellWidget(i,2) == None:
+                        CQT.add_btn(tbl,i,1,'+',conn_func_checked_row_col=fnc_add_etap_znpr,cell_val=poz.Пномер)
+                    else:
+                        for j in range(tbl.cellWidget(i,2).rowCount()):
+                            CQT.add_btn(tbl.cellWidget(i,2),j,2,'Затраты',
+                                        conn_func_checked_row_col=dbl_click_etap_addit_info_poz_gant,self=self,
+                                        cell_val=tbl.cellWidget(i,2).item(j,2).text())
+            t = CQT.TableContext(tbl)
+            t.hide_if_not_dev(CFG)
 
             # if len(list_etaps_mes) != len(list_etaps_erp):
             #     bad = CMS.Color_tbl(10)
@@ -1392,7 +1398,7 @@ def update_dates_obesp(self:mywindow,*args):
             for mat_etap_etaps in res['data']:
                 data_kpl['dict_mat_etaps'] = add_mat_in_dict_mat_etaps(data_kpl['dict_mat_etaps'], mat_etap_etaps)
 
-        list_refs = F.list_of_lists_to_list_of_dicts(sootv.get_by_kpl(num_kpl))
+        list_refs = F.list_of_lists_to_list_of_dicts(sootv.get_by_kpl(num_kpl))#Соответствие номера КПЛ и абстрактного ЗП
 
         #list_refs = ['85dc77a4-2044-11f0-a3cb-30e1716be59f']
         if not list_refs:
@@ -1521,16 +1527,16 @@ def update_dates_obesp(self:mywindow,*args):
         data_kpl = nums_kpl[num_kpl]
         poz = data_kpl['poz']
         cod = item['НоменклатураКод']
-
+        #=============================IGNOR MANAGE===============================
         dict_etaps_kpl = dict()
         if item['s_num_zp'] in data_kpl['custom_ignore_maters']:
             if num_kpl in data_kpl['custom_ignore_maters'][item['s_num_zp']]:
                 if cod in data_kpl['custom_ignore_maters'][item['s_num_zp']][num_kpl]:
                     add_etap_kpl_in_calc('',poz)
                     item['Игнорировать'] = '1'
+        # ==============
 
-
-
+        # ============================================================ ???? гляну зачем?
         if item['s_num_zp'] in data_kpl['dict_custom_etaps_compliance']:
             if cod in data_kpl['dict_custom_etaps_compliance'][item['s_num_zp']]:
                 etap_kpl = data_kpl['dict_custom_etaps_compliance'][item['s_num_zp']][cod]
@@ -1654,8 +1660,8 @@ def update_dates_obesp(self:mywindow,*args):
         else:
             dialog.reject()
 
-    debug = True #debug = True
-    if CFG.Config.user_config.is_developer and not debug:
+    debug = False #debug = True debug = False
+    if CFG.Config.user_config.is_developer and debug:
         list_not_identity_mats = []
     if list_not_identity_mats:
         if not CQT.msgboxg_get_table(self, f'Не найдено в рес. {Спецификация_код_ЕРП}', list_not_identity_mats, 'Принять',
