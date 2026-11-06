@@ -366,7 +366,11 @@ class AutoBreaks:
         is_idle: bool
         interval: int | float
 
+    def get_end_date_for_pause(self, **kwargs):
+        return datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(seconds=1)
+
     def pause_group_naryads(self):
+        end = self.get_end_date_for_pause()
         dict_employee = CMS.dict_emploee_full(USRCNF.Config.project.db_users)
         started_journals = CMS.find_not_close_groups()
         if started_journals is None:
@@ -374,16 +378,20 @@ class AutoBreaks:
         for group_journal in started_journals:
             journal_instance = CMS.Jurnal_nar(db_nar=CSQ.DB_NAMES.db_naryad, nom_nar=group_journal.naryad_pk, user=group_journal.fio)
             journal_instance.set_selected_fragment(group_journal.journa_pk)
+            if F.strtodate(journal_instance.selected_fragment_start_date) >= end:
+                continue
             if not journal_instance.add_new_row(
                 DICT_EMPL_FULL=dict_employee,
                 lbl_abstract_text='',
-                date_time=F.now(),
+                date_time=end.strftime('%Y-%m-%d %H:%M:%S'),
                 state='Приостановлен',
                 primech='Автоматическая постановка на паузу'
             ):
                 raise Exception(f'Не удалось приостановить групповой наряд {group_journal.naryad_pk}')
 
     def pause_single_naryads(self):
+        end = self.get_end_date_for_pause()
+
         dict_employee = CMS.dict_emploee_full(USRCNF.Config.project.db_users)
         query = """
 WITH ranked AS (
@@ -424,10 +432,12 @@ WHERE r.rn = 1 AND r."Статус" = 'Начат'
                 raise Exception(f'Не удалось выбрать начало наряда {single_journal["Номер_наряда"]}')
             if journal_instance.selected_fragment_end_s_num is not None:
                 continue
+            if F.strtodate(journal_instance.selected_fragment_start_date) >= end:
+                continue
             if not journal_instance.add_new_row(
                 DICT_EMPL_FULL=dict_employee,
                 lbl_abstract_text='',
-                date_time=F.now(),
+                date_time=end.strftime('%Y-%m-%d %H:%M:%S'),
                 state='Приостановлен',
                 primech='Автоматическая постановка на паузу',
                 is_idle=single_journal['is_idle']
