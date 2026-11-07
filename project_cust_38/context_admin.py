@@ -687,6 +687,11 @@ class ContextAdminRepo:
             table_name=table_name,
         )
         existing_row = identity_state.get('row') or {}
+        if schema_enabled is None:
+            if existing_row:
+                schema_enabled = existing_row.get('schema_enabled', 0)
+            else:
+                schema_enabled = 0
         if existing_row:
             db_key = str(existing_row.get('db_key') or identity_state['canonical_db_key'])
             table_key = str(existing_row.get('table_key') or identity_state['canonical_table_key'])

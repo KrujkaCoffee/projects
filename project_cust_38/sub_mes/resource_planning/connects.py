@@ -18,68 +18,35 @@ if TYPE_CHECKING:
     from project_cust_38.sub_mes.resource_planning.manage_res_pl import Plwindow
 
 
+
 def check_mes_erp_link():
-    from dataclasses import replace
-    from uuid import UUID
-    from project_cust_38 import Cust_config as CFG
     from project_cust_38 import api_erp_commands as APIERP
-    from project_cust_38.sub_mes.resource_planning import clses as CLSS
-    from project_cust_38.sub_mes.resource_planning import planner_mes as PMES
+    from project_cust_38 import Cust_config as CFG
     from project_cust_38.sub_mes.resource_planning import planner_erp as PERP
     from project_cust_38.sub_mes.resource_planning import attribute_binding as AB
-    from project_cust_38.sub_mes.resource_planning import catalog_link as CLR
 
-    state = CLSS.DTSUB
-    base_key = f'api_erp:{CFG.Config.user_config.ERP_base.name}'
-    links = [
-        link for link in state.sub_self.catalog_link_manager.all()
-        if link.left.provider == AB.SourceProvider.MES
-        and link.left.entity_key == 'DB_kplan.знпр'
-        and link.left.field_key == 'Ref_Key_py'
-        and link.right.provider == AB.SourceProvider.ERP
-        and link.right.source_key == base_key
-        and link.right.entity_key == 'Документы.ЗаказНаПроизводство2_2'
-        and link.right.field_key == 'Ссылка'
-    ]
-    assert len(links) == 1, 'Для проверки нужно одно правило знпр.Ref_Key_py → ERP.Ссылка.'
-    link = links[0]
+    source_key = f'api_erp:{CFG.Config.user_config.ERP_base.name}'
 
-    state.custom_types.refresh_mes_types()
-    types = state.planner_mes_types
-    source_type = types.type_for_source(link.left.source_key, CLSS.Mes_type)
-    choice = types.choice_for_type(source_type)
-    mes = PMES.MesEntityService.from_type_catalog(types)
-    erp = PERP.ErpEntityService(
+    service = PERP.ErpEntityService(
         APIERP,
         lambda: f'api_erp:{CFG.Config.user_config.ERP_base.name}'
     )
-    selection = PMES.select_mes_entity(state.sub_self, mes, choice)
-    if not selection.accepted or selection.reference is None:
-        print('Проверка отменена.')
-        return
 
-    number = AB.BindingField(
+    field = AB.BindingField(
         provider=AB.SourceProvider.ERP,
-        source_key=link.right.entity_key,
-        entity_key=link.right.entity_key,
+        source_key=source_key,
+        entity_key='Документы.ЗаказНаПроизводство2_2',
         field_key='Номер',
-        presentation_key='Номер',
+        presentation_key='Номер'
     )
-    date = replace(number, field_key='Дата', presentation_key='Дата')
-    binding = AB.AttributeBindingManager().concat(number, date, separator=' от ')
 
-    result = CLR.resolve_mes_to_erp(
-        link, choice, selection.reference,
-        mes_service=mes, erp_service=erp, binding=binding
-    )
-    assert result is not None, 'Поле UUID пустое либо запись не найдена в ERP.'
-    source_uuid = mes.read_field(choice, selection.reference, link.left.field_key)
-    print(result.ref_key == str(UUID(str(source_uuid).strip())))
-    print(result.source_key == link.right.source_key)
-    print(result.entity_key == link.right.entity_key)
-    print(PERP.ErpEntityRef.deserialize(result.serialize()) == result)
-    print(result)
-    return result
+    result = service.search_text(field, limit=5)
+
+    print(len(result.items) <= 5)
+    print(result.has_more)
+
+    for ref in result.items:
+        print(ref.ref_key, str(ref))
 
 
 def toggle_focus(new_focus):

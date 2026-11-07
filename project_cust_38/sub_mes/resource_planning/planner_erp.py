@@ -56,6 +56,8 @@ class ErpEntityRow:
     values: dict[str, object]
     presentations: dict[str, str]
 
+
+@dataclass(frozen=True)
 class ErpSearchResult:
     items: tuple[ErpEntityRef, ...]
     has_more: bool
@@ -197,10 +199,10 @@ class ErpEntityService:
             presentations=presentations
         )
 
-    def search_test(
+    def search_text(
             self,
             field: AB.BindingField | dict,
-            text: str,
+            text: str = '',
             *,
             limit: int = 100
     ) -> ErpSearchResult:
@@ -252,7 +254,7 @@ class ErpEntityService:
             )
         except Exception as exc:
             raise ErpEntityError('Не удалось выполнить поиск по ERP') from exc
-        if code != 0:
+        if code != 200:
             raise ErpEntityError(f'Ошибка поиска ERP: код {code!r}.')
         if not isinstance(payload, typing.Mapping):
             raise ErpEntityError('некорректный ответ из erp')
@@ -267,4 +269,14 @@ class ErpEntityService:
             try:
                 ref_uuid = UUID(ref_key)
             except Exception as exc:
-                raise
+                raise ErpEntityError('В результате поиска некорректный UUID,') from exc
+            items.append(ErpEntityRef(
+                source_key=source_key,
+                entity_key=field.entity_key,
+                ref_key=str(ref_uuid),
+                display_snapshot=str(row['display_snapshot'] or ''),
+            ))
+        return ErpSearchResult(
+            items=tuple(items),
+            has_more=len(rows) > limit
+        )

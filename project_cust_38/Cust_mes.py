@@ -4762,12 +4762,14 @@ class Naryads(_Naryad_base):
                 name_oper = list_opers[i][1]
             else:
                 raise IndexError(f'Наряд {self.Пномер}, ошибка в номере операци {list_opers[i]}')
-
-            param_o = Naryad_param(self, list_dse[i], int(list_dse_id[i]),
-                                   num_oper, name_oper,
-                                   int(list_kol[i]), F.valm(list_time_minutes[i]),
-                                   list_prof[i], list_vid_r[i]
-                                   )
+            try:
+                param_o = Naryad_param(self, list_dse[i], int(list_dse_id[i]),
+                                       num_oper, name_oper,
+                                       int(list_kol[i]), F.valm(list_time_minutes[i]),
+                                       list_prof[i], list_vid_r[i]
+                                       )
+            except Exception as e:
+                print(e)
             self.params_o.append(param_o)
         self._recalc_time_norma()
         return
@@ -6306,13 +6308,14 @@ class Jurnal_nar():
             custom_request_c = f"UPDATE jurnal SET {', '.join(set_parts)} WHERE Пномер = ?"
 
             try:
-                CSQ.custom_request_c(self.db_nar, custom_request_c, list_of_lists_c=param)
+                # CSQ.custom_request_c(self.db_nar, custom_request_c, list_of_lists_c=param)
                 self.rows[self.selected_fragment_start_row_obj_nom]['Подытог'] = poditog
                 self.rows[self.selected_fragment_start_row_obj_nom]['Подытог_нормы'] = poditog_norm
                 summ_msg = '\n'.join(msg_parts)
                 print(f"Наряд: {self.nom_nar}, {self.user} запись от: {summ_msg}")
             except:
-                CQT.msgbox(f'Ошибка занесения в Журнал')
+                output_def = CQT.msgbox if CFG.AppConfig.is_ui else print
+                output_def(f'Ошибка занесения в Журнал')
                 return False
 
 
@@ -18953,6 +18956,7 @@ def check_otk_after_proizv(nom_mk: int,
 
     list_opers_otk = get_list_opers_proizv_otk('', res_o, '')
     if not list_opers_otk:
+        finish_otk_info_o.coating_done = True
         return finish_otk_info_o
 
     list_opers_otk = [SimpClsList_opers_otk._from_dict(_) for _ in list_opers_otk]
