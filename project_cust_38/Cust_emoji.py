@@ -67,6 +67,7 @@ class ОперацииПроизводства:
     trd: ClassVar[EmojiItem] = EmojiItem('⏱️', 'trd', 'operations', 'Трудозатраты')
     purchased: ClassVar[EmojiItem] = EmojiItem('🛒', 'purchased', 'operations', 'Покупнина')
     calculated: ClassVar[EmojiItem] = EmojiItem('🧮', 'calculated', 'operations', 'Автокалькулируемая')
+    furnace: ClassVar[EmojiItem] = EmojiItem('♨️', 'furnace', 'operations', 'Печь')
 
 
 class ПоказателиМетрики:

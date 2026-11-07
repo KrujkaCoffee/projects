@@ -78,6 +78,18 @@ KOEF_NORMIROVSCHICI = 1 / 1.15
 
 
 DICT_VID_OTCH =  {
+    "bonds_zp_kpl": {
+        "": "",
+        "Название": "Миграция ЗК из 1с в КПЛ",
+        "Группа": "Аналитика и спецотчеты",
+        "Примечание": "Муратшин 27.10.2026"
+    },
+    "analytics_otk": {
+        "": "",
+        "Название": "Аналитика по нарядам ОТК",
+        "Группа": "Аналитика и спецотчеты",
+        "Примечание": "Муратшин 27.10.2026"
+    },
     "analytics_for_all_PGVU_valves": {
         "": "",
         "Название": "Аналитика по все клапанам пгву,",
@@ -604,8 +616,26 @@ def vibor_sort_c_report_c(self: mywindow, *args):
         podrazdel_none(self)
 
 
+    if name_otch == 'bonds_zp_kpl':
+        self.ui.le_start_of_period.setText("2026-09-01 00:00:01")
+        last_month = F.now("")
+        konec = F.start_end_dates_c(last_month, '', 'm', "%Y-%m-%d %H:%M:%S")[0]
+        self.ui.le_end_of_period.setText(konec)
+        self.ui.cmb_podrazdelenie.clear()
+        self.ui.cmb_podrazdelenie.setDisabled(True)
+        podrazdel_none(self)
+
+    if name_otch == 'analytics_otk':
+        self.ui.le_start_of_period.setText("2026-09-01 00:00:01")
+        last_month = F.now("")
+        konec = F.start_end_dates_c(last_month, '', 'm', "%Y-%m-%d %H:%M:%S")[0]
+        self.ui.le_end_of_period.setText(konec)
+        self.ui.cmb_podrazdelenie.clear()
+        self.ui.cmb_podrazdelenie.setDisabled(True)
+
+        podrazdel_none(self)
     if name_otch == 'analytics_for_all_PGVU_valves':
-        self.ui.le_start_of_period.setText("2023-01-01 00:00:01")
+        self.ui.le_start_of_period.setText("2026-01-01 00:00:01")
         last_month = F.now("")
         konec = F.start_end_dates_c(last_month, '', 'm', "%Y-%m-%d %H:%M:%S")[0]
         self.ui.le_end_of_period.setText(konec)
@@ -1090,6 +1120,9 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
     if podrazd == '':
         CQT.msgbox('Не выбрано подразделение')
         return
+    nach_dt = F.strtodate(nach)
+    konec_dt = F.strtodate(konec)
+
     hook_prog_bar.open()
     hook_prog_bar.set(0)
     hook_prog_bar.text('Очистка таблиц')
@@ -1158,6 +1191,11 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
     if report_name == 'active_projects_execution':
         rez_spis = ispoln_pl_month_all(self, self.db_kplan, self.db_resxml, self.bd_naryad, self.bd_users, self.Data.DICT_PROFESSIONS,
                                    self.Data.DICT_VID_RABOT, podrazd)
+    if report_name == 'bonds_zp_kpl':
+        rez_spis, fnc_oform = bonds_zp_kpl(self, nach, konec)
+
+    if report_name == 'analytics_otk':
+        rez_spis, fnc_oform = analytics_otk(self, nach, konec)
     if report_name == 'analytics_for_all_PGVU_valves':
         rez_spis, fnc_oform = analytics_for_all_PGVU_valves(self, nach, konec)
     if report_name == 'sequence_steps_order_process':
@@ -3682,6 +3720,18 @@ def create_gant(self, *args):
             return {'index': order, 'columns': stage_keys, 'labels': labels,
                     'colors': colors, 'data': data, 'totals': totals, 'stats': stats, 'plan_data': plan_data}
 
+        legend_text = (
+            "<b>Границы этапов:</b><br>"
+            "• <b>Проработка:</b> Создание Заказа клиента в 1С → Занесение в МЕС/дата поставновки резерва<br>"
+            "• <b>Согласование:</b> Создание Заказа клиента в 1С → Создание Заказа на производство<br>"
+            "• <b>Резерв:</b> Создание Заказа на производство → Занесение в МЕС/дата поставновки резерва<br>"
+            "• <b>Разработка РКД:</b> Создание Заказа клиента в 1С → Получение РКД<br>"
+            "• <b>Создание МК/РС:</b> Получение РКД → Выдача МК/РС<br>"
+            "• <b>Подготовка:</b> Создание Заказа на производство → Статус 'К производству'<br>"
+            "• <b>Производство:</b> Постановка в План месяца → Звершение производства"
+        )
+
+
         lbl_report = CQT.CustLabel(self.ui.lbl_sort_c_report)
 
         clear_text = lbl_report.get_user_data('clear_text', 'clear_text')
@@ -3756,7 +3806,23 @@ def create_gant(self, *args):
         )
         fig.update_xaxes(showgrid=True, gridcolor='rgba(0,0,0,0.06)', zeroline=False)
         fig.update_yaxes(showgrid=False)
+
+        fig.add_annotation(
+            x=1.02,
+            y=0.45,  # Позиция чуть ниже легенды (подбери под свой размер экрана)
+            xref="paper",
+            yref="paper",
+            text=legend_text,
+            showarrow=False,
+            align="left",  # Выравнивание текста по левому краю
+            font=dict(size=11, color="#2a3f5f"),  # Цвет как у шрифта графика
+            bgcolor="rgba(245, 245, 245, 0.8)",  # Легкий серый фон, чтобы выделить блок
+            bordercolor="lightgray",
+            borderwidth=1,
+            borderpad=10
+        )
         return fig
+
     def fig_gr_dinam_proizv(self, spis):
         lbl_report = CQT.CustLabel(self.ui.lbl_sort_c_report)
         clear_text = lbl_report.get_user_data('clear_text', 'clear_text')
@@ -9007,7 +9073,220 @@ INNER JOIN пл_ко ON пл_ко."НомПл" = plan."Пномер"
     return rez_list_plan
 
 
+def bonds_zp_kpl(self, data_nach, data_kon):
+
+    rez_spis = CMS.BondsZpKpl(F.strtodate(data_nach)).load()
+
+    DICT_ALIASES = {
+        "ЗаказКлиента": "Заказ клиента",
+        "ЗаказКлиентаДата": "ЗК Дата",
+        "ЗаказКлиентаСтатус": "ЗК Статус",
+        "ЗаказКлиента_ref": "_ЗаказКлиента_ref",
+        "ЗаказНаПроизводство": "Заказ на производство",
+        "ЗаказНаПроизводствоДата": "ЗП Дата",
+        "ЗаказНаПроизводствоСтатус": "ЗП Статус",
+        "ЗаказНаПроизводство_ref": "_ЗаказНаПроизводство_ref",
+        "Номенклатура": "Номенклатура",
+        "Номенклатура_ref": "_Номенклатура_ref",
+        "КПЛ": "№ КПЛ"
+    }
+    def fnc_oform(tbl, *args):
+        t = CQT.TableContext(tbl)
+        t.tbl.setStyleSheet(CQT.MES_EDIT_CSS)
+        t.hide_if_not_dev(CFG,True)
+        for name_field in t.nf.keys():
+            if t.width(name_field) > 500:
+                t.set_width(name_field,500)
+            if 'ЗаказКлиента' in name_field:
+                t.set_color_background( *CMS.Colors.accent_orange_l90.rgb,col_name= name_field)
+            if 'ЗаказНаПроизводство' in name_field:
+                t.set_color_background(*CMS.Colors.accent_blue_l95.rgb,col_name= name_field)
+        for row in t.rows():
+            if not row.value('КПЛ'):
+                row.set_color_background(*CMS.Color_tbl(10).rgb)
+
+
+    self.DICT_ALIASES_FIELDS_REPORT = DICT_ALIASES
+    return rez_spis, fnc_oform
+
+
+class SimpClsEmpty_code(F._SimpMeta):
+    НомПл: int
+    code_predv: str
+
+
+
+def analytics_otk(self, data_nach, data_kon):
+    class SimpClsNaryad_jurnal(F._SimpMeta):
+        jurnal_Пномер: int
+        jurnal_Дата: str
+        jurnal_ФИО: str
+        jurnal_Подытог: float
+        jurnal_Подытог_нормы: float
+        jurnal_Статус: str
+        jurnal_Примечание: str
+        naryad_Пномер: int
+        naryad_Дата: str
+        naryad_Автор: str
+        naryad_Номер_мк: int
+        naryad_Внеплан: int
+        naryad_Задание: str
+        naryad_Распред_ФИО: str
+        naryad_Распред_дата: str
+        naryad_ФИО: str
+        naryad_Фвремя: float
+        naryad_ФИО2: str
+        naryad_Фвремя2: str
+        naryad_Твремя: float
+        naryad_Норма_времени: float
+        naryad_Примечание: str
+        naryad_Номер_замечания_журнал: str
+        naryad_РЦ_наряд: str
+        naryad_ФИО_для_ОТК: str
+        naryad_ФИО_для_ОТК_от_мастера: str
+        naryad_Заводской_комплект: str
+        naryad_Кол_повт_приемок: int
+        brak_msg: None
+        list_brak_group_1: None
+        list_brak_group_2: None
+        list_brak_group_3: None
+        list_brak_neisprav: None
+        list_brak_count_dse: None
+
+    rez_spis = []
+    list_kontrol_opers = {k for k,v in self.DICT_OPER_FULL.items() if v['kontrol_opers']}
+    postfix_where = ' OR '.join([f'naryad."Операции" LIKE  "%{_}%"' for _ in list_kontrol_opers])
+
+    text = f""" 
+    SELECT
+    jurnal.Пномер as jurnal_Пномер,
+    jurnal.Дата as jurnal_Дата,
+    jurnal.ФИО as jurnal_ФИО,
+    jurnal.Подытог as jurnal_Подытог,
+    jurnal.Подытог_нормы as jurnal_Подытог_нормы,
+    jurnal.Статус as jurnal_Статус,
+    jurnal.Примечание as jurnal_Примечание,
+    naryad.Пномер as naryad_Пномер,
+    naryad.Дата as naryad_Дата,
+    naryad.Автор as naryad_Автор,
+    naryad.Номер_мк as naryad_Номер_мк,
+    naryad.Внеплан as naryad_Внеплан,
+    naryad.Задание as naryad_Задание,
+    naryad.Распред_ФИО as naryad_Распред_ФИО,
+    naryad.Распред_дата as naryad_Распред_дата,
+    naryad.ФИО as naryad_ФИО,
+    naryad.Фвремя as naryad_Фвремя,
+    naryad.ФИО2 as naryad_ФИО2,
+    naryad.Фвремя2 as naryad_Фвремя2,
+    naryad.Твремя as naryad_Твремя,
+    naryad.Норма_времени as naryad_Норма_времени,
+    naryad.Примечание as naryad_Примечание,
+
+    naryad.Номер_замечания_журнал as naryad_Номер_замечания_журнал,
+    naryad.РЦ_наряд as naryad_РЦ_наряд,
+    naryad.ФИО_для_ОТК as naryad_ФИО_для_ОТК,
+    naryad.ФИО_для_ОТК_от_мастера as naryad_ФИО_для_ОТК_от_мастера,
+    naryad.Заводской_комплект as naryad_Заводской_комплект,
+    naryad.Кол_повт_приемок as naryad_Кол_повт_приемок,
+    brak.msg as brak_msg,
+    list_brak.group_1 as list_brak_group_1,
+    list_brak.group_2 as list_brak_group_2,
+    list_brak.group_3 as list_brak_group_3,
+    list_brak.neisprav as list_brak_neisprav,
+    list_brak.count_dse as list_brak_count_dse
+    
+    
+    FROM jurnal
+    INNER join naryad ON naryad.Пномер = jurnal.Номер_наряда   
+    LEFT JOIN brak ON brak.nom_nar = naryad.Пномер
+    LEFT JOIN list_brak ON list_brak.num_list_brak = brak.s_num
+    
+     WHERE  jurnal.Дата BETWEEN '{F.dateStrToStr(data_nach,format_out='%Y-%m-%d')}' 
+    and '{F.dateStrToStr(data_kon,format_out='%Y-%m-%d')}' and ({postfix_where} )
+    
+"""
+
+    rez_spis = CSQ.custom_request_c(CFG_prj.db_naryad,f"""{text}""",rez_dict=True,lazy_method_hours=1)
+    F.gen_class(rez_spis,'naryad_jurnal')
+    for i, it in enumerate(rez_spis):
+        ob = SimpClsNaryad_jurnal._from_dict(it)
+        ob.naryad_Задание = ob.naryad_Задание.replace('LF','\n')
+        rez_spis[i] = ob.to_dict()
+        
+
+
+    DICT_ALIASES = {
+
+    'jurnal_Пномер':'№ действия',
+    'jurnal_Дата':'Дата\nдействия',
+    'jurnal_ФИО':'ФИО',
+    'jurnal_Подытог':'Подытог\nдействия',
+    'jurnal_Подытог_нормы':'Подытог действия\nот нормы',
+    'jurnal_Статус':'Статус',
+    'jurnal_Примечание':'Примечание',
+    'naryad_Пномер':'№ наряда',
+    'naryad_Дата':'Дата\nнаряда',
+    'naryad_Автор':'Автор\nнаряда',
+    'naryad_Номер_мк':'№ МК',
+    'naryad_Внеплан':'Внеплан',
+    'naryad_Задание':'Задание',
+    'naryad_Распред_ФИО':'Распределил\nФИО',
+    'naryad_Распред_дата':'Распределил\nдата',
+    'naryad_ФИО':'Исполнитель\nФИО',
+    'naryad_Фвремя':'Факт. время\nисполнения',
+    'naryad_ФИО2':'Исполнитель 2\nФИО',
+    'naryad_Фвремя2':'Факт. время\nисполнения 2',
+    'naryad_Твремя':'Т\nвремя',
+    'naryad_Норма_времени':'Норма\nвремени',
+    'naryad_Примечание':'Примечание наряда',
+
+    'naryad_Номер_замечания_журнал':'№ замечания\nжурнал',
+    'naryad_РЦ_наряд':'РЦ наряд',
+    'naryad_ФИО_для_ОТК':'Проверяемый\nнаряд',
+    'naryad_ФИО_для_ОТК_от_мастера':'Проверяемый\nФИО',
+    'naryad_Заводской_комплект':'Заводской\nкомплект',
+    'naryad_Кол_повт_приемок':'Кол.повт.\nприемок',
+    'brak_msg':'Описание\nбрака',
+    'list_brak_group_1':'Категория\nбрака 1',
+    'list_brak_group_2':'Категория\nбрака 2',
+    'list_brak_group_3':'Категория\nбрака 3',
+    'list_brak_neisprav':'Неисправность\nбрака',
+    'list_brak_count_dse':'Кол-во\nДСЕ',
+    }
+    def fnc_oform(tbl, *args):
+        t = CQT.TableContext(tbl)
+        t.tbl.setStyleSheet(CQT.MES_EDIT_CSS)
+        t.hide_if_not_dev(CFG)
+        for name_field in t.nf.keys():
+            if t.width(name_field) > 500:
+                t.set_width(name_field,500)
+    self.DICT_ALIASES_FIELDS_REPORT = DICT_ALIASES
+    return rez_spis, fnc_oform
+
+
 def analytics_for_all_PGVU_valves(self, data_nach, data_kon):
+    # data_tkp = CSQ.custom_request_c(CFG_prj.db_kplan,"""
+    # select
+    #
+    #  пл_топ."НомПл" as 'НомПл',
+    #  пл_топ."Предв_спецификация_ЕРП" as 'code_predv'
+    #     FROM пл_топ WHERE
+    #     пл_топ."Предв_спецификация_ЕРП" != "" and пл_топ."Предв_спецификация_ЕРП" not like "00-%"
+    #     and пл_топ."Предв_спецификация_ЕРП" like "0%"
+    #
+    # """,rez_dict=True)
+    # data_tkp = [SimpClsEmpty_code._from_dict(_) for _ in data_tkp]
+    # for it in data_tkp: #F.gen_class(data_tkp,'empty_code')
+    #
+    #     code_erp = f'00-{it.code_predv.strip()}'
+    #     rez =CSQ.custom_request_c(CFG_prj.db_kplan,f"""
+    #     update пл_топ set "Предв_спецификация_ЕРП" = "{code_erp}" where "НомПл" = {it.НомПл};""")
+    #     if not rez:
+    #         raise
+    # else:
+    #     pass
+    #
+    # return
     rez_spis = []
 
     req = f"""
@@ -9015,11 +9294,15 @@ def analytics_for_all_PGVU_valves(self, data_nach, data_kon):
      plan.Пномер as 'kpl',
      napravl_deyat.Имя as 'napravl_deyat',
      виды_по_направлению.Имя as 't_type',
+     пл_топ."Размерный_ряд" as 'diametr',
+     пл_топ."Предв_спецификация_ЕРП" as 'code_predv',
+     "" as 'date_res',
      знпр."№ERP" as 'n_erp',
      знпр."№проекта" as 'n_proj',
      plan."Позиция" as 'position',
      "plan"."МК" as '_mk',
      mk."Вес" as 'weight',
+     mk."Номенклатура" as 'nomen',
      пл_ко."Ссылка_КД" as 'link_docs'
      from plan 
      inner join  пл_оуп on пл_оуп."НомПл" = plan."Пномер"
@@ -9029,11 +9312,11 @@ def analytics_for_all_PGVU_valves(self, data_nach, data_kon):
      inner join  знпр on знпр.s_num = пл_оуп."Пномер_ЗП"
      inner join  napravl_deyat on napravl_deyat."Пномер" = plan."Направление_деятельности"
      inner join  виды_по_направлению on виды_по_направлению."Пномер" =  пл_топ."Вид"
-     inner join  res on res."Номер_мк" =  "plan"."МК" and
-     plan.Дата_внесения between "{F.dateStrToStr(data_nach,format_out='%Y-%m-%d')}" AND
-      "{F.dateStrToStr(data_kon,format_out='%Y-%m-%d')}"
+     inner join  res on res."Номер_мк" =  "plan"."МК" 
 
-    WHERE  plan.poki = {self.place.poki}   and пл_топ.Вид 
+    WHERE  plan.poki = {self.place.poki}  and
+     plan.Дата_внесения between "{F.dateStrToStr(data_nach,format_out='%Y-%m-%d')}" AND
+      "{F.dateStrToStr(data_kon,format_out='%Y-%m-%d')}" and пл_топ.Вид 
      in (
         25,
         26,
@@ -9053,13 +9336,20 @@ def analytics_for_all_PGVU_valves(self, data_nach, data_kon):
         'kpl': 'КПЛ',
         'napravl_deyat': 'Направление',
         't_type': 'ТВид',
+        'diametr': 'Ду',
+        'nomen': 'Номенклатура',
         'n_erp': 'ПУ',
         'n_proj': '№ проекта',
         'position': 'номер позиции',
         'weight': 'вес клапана',
-        'link_docs': 'ссылка на кд'
+        'code_predv': 'Код предв.спец.',
+        'date_res': 'Начало действия',
+        'link_docs': 'ссылка на кд',
+        'delta': 'откл. Сб+св+зч ткп, %'
 
     }
+    MESURING_POINTS_STR = f' (мин./кг.)'
+    MARK_TKP_STR = f'_ткп'
     etaps = CSQ.custom_request_c(CFG_prj.db_users,
                                  f"""SELECT etaps.name as etaps_name, rab_c."Код" , rab_c."Имя" FROM rab_c 
                     INNER JOIN etaps ON 
@@ -9072,34 +9362,200 @@ def analytics_for_all_PGVU_valves(self, data_nach, data_kon):
         [_['_mk'] for _ in rez_req]
     )
     DICT_ALIASES_FULL = copy.deepcopy(DICT_ALIASES)
+    
     set_sb_sv_types = set([_['вид_работ'] for _ in res_specs_o.DICT_PROF_BY_COD.values() if _['этап'] in ('Сборка+сварка','Зачистка')])
-    SB_SV_NAME_FIELD = 'Сб+св+зч* (мин./кг.)'
+    set_sb_sv_tkp_types = set([f"{_['вид_работ']}{MARK_TKP_STR}" for _ in res_specs_o.DICT_PROF_BY_COD.values() if _['этап'] in ('Сборка+сварка','Зачистка')])
+    SB_SV_NAME_FIELD = f'Сб+св+зч*{MESURING_POINTS_STR}'
+    SB_SV_NAME_TKP_FIELD = f'Сб+св+зч*{MARK_TKP_STR}{MESURING_POINTS_STR}'
+    
     set_type_of_works = sorted(list(set([_['вид_работ'] for _ in res_specs_o.DICT_PROF_BY_COD.values() if _['poki'] == 0 and _['Вкл'] == 1])))
     DICT_ALIASES_FULL.update({_ : _ for _ in set_type_of_works})
     
+    DIAMETER_MARKS = {' ду',' dn','-dn',' (уг)', ' пгву' }
+    DIMENSIONS_MARKS = {'x','х'}
+
+    def search_dimensions_into_name_dse(res:CMS.ResSpec)->str|None:
+        def sanitize(row:str)->str:
+            if not row:
+                return ''
+
+            row = row.replace('-',' ')
+            row = row.strip()
+            return row
+
+        def fishing_diam(row:str)->str:
+            list_separs = ['-','(',' ']
+            for sep in list_separs:
+                if sep in row:
+                    row_parts = row.split(sep)
+                    row = row_parts[0]
+            return row
+
+        def is_dimensions_like(row_str:str)->bool:
+            row = sanitize(row_str.lower())
+            list_parts = row.split(' ')
+            for part in list_parts:
+                for mark in DIMENSIONS_MARKS:
+                    if mark not in part:
+                        continue
+                    list_splited = part.split(mark)
+                    if len(list_splited) != 2:
+                        continue
+                    lenght_str, width_str = list_splited
+                    if F.is_numeric_positive_integer(lenght_str) and F.is_numeric_positive_integer(width_str):
+                        lenght, width = int(lenght_str), int(width_str)
+                        if lenght > width:
+                            return f'{lenght}x{width}'
+                        else:
+                            return f'{width}x{lenght}'
+            return False
+
+        dimensions_of_product = None
+        for dse in res.data:
+            dimensions = is_dimensions_like(dse.full_name)
+            if dimensions:
+                dimensions_of_product = dimensions
+                break
+            dimensions = is_dimensions_like(dse.Наименование)
+            if dimensions:
+                dimensions_of_product = dimensions
+                break
+        return dimensions_of_product
+
+    def search_diam_into_name_dse(res:CMS.ResSpec)->str|None:
+        def sanitize(row:str)->str:
+            if not row:
+                return ''
+            row = row.strip()
+            if row[0] == '-':
+                row = row[1:]
+            return row
+
+        def fishing_diam(row:str)->str:
+            list_separs = ['-','(',' ']
+            for sep in list_separs:
+                if sep in row:
+                    row_parts = row.split(sep)
+                    row = row_parts[0]
+            return row
+
+        def is_diam_like(row_str:str)->bool:
+            row = row_str.lower()
+            for mark in DIAMETER_MARKS:
+                if mark in row:
+                    list_splited = row.split(mark)
+                    right_part = sanitize(list_splited[1])
+                    str_diam = fishing_diam(right_part)
+                    if F.is_numeric(str_diam):
+                        return str_diam
+
+            return False
+
+        diameter_of_product = None
+        for dse in res.data:
+            diam = is_diam_like(dse.full_name)
+            if diam:
+                diameter_of_product = diam
+                break
+            diam = is_diam_like(dse.Наименование)
+            if diam:
+                diameter_of_product = diam
+                break
+        return diameter_of_product
+
+    def fill_diameter_of_product_into_plan(kpl:int, diameter_of_product:str):
+        rez = CSQ.custom_request_c(CFG_prj.db_kplan,f"""
+        UPDATE "пл_топ" SET "Размерный_ряд" = '{diameter_of_product}' WHERE пл_топ."НомПл" == {kpl};""")
+        if not rez:
+            CQT.msgbox(f"Не удалось обновить диаметр в план {kpl} ")
+            return False
+        return True
+
+    @CQT.onerror
+    def calc_res_data_1c(code_predv_res:list[str], err_view=False):
+        str_in = ', '.join([f'"{x}"' for x in code_predv_res if x])
+        wet_req_text = f"""ВЫБРАТЬ
+                                    РесурсныеСпецификацииТрудозатраты.Количество КАК Количество,
+                                    РесурсныеСпецификацииТрудозатраты.Этап.Наименование КАК ЭтапНаименование,
+                                    РесурсныеСпецификацииТрудозатраты.ВидРабот.Наименование КАК ВидРабот,
+                                    РесурсныеСпецификацииТрудозатраты.Ссылка.ОсновноеИзделиеНоменклатура.Наименование КАК ОсновноеИзделиеНоменклатураНаименование,
+                                    РесурсныеСпецификацииТрудозатраты.Ссылка.Код КАК Код,
+                                    РесурсныеСпецификацииТрудозатраты.Ссылка.НачалоДействия КАК Дата
+                                ИЗ
+                                    Справочник.РесурсныеСпецификации.Трудозатраты КАК РесурсныеСпецификацииТрудозатраты
+                                ГДЕ
+                                    РесурсныеСпецификацииТрудозатраты.Ссылка.Код В ({str_in});"""
+        key, data_rez = APIERP.get_wet_request(wet_req_text,lazy_method_huours=1)
+        if key != 200:
+            if err_view:
+                CQT.msgbox(f'Ошибка получения данных код ({key}) из ERP')
+            return
+        rezult = []
+        for it in data_rez['data']:
+            it['Код'] = it['Код'].strip()
+            rezult.append(it)
+        
+        return rezult
+
+
+
+    list_codes = [_['code_predv'] if '-' in _['code_predv'] else "00-" + _['code_predv'] for _ in rez_req if _['code_predv']]
+    data_trdz_1c = calc_res_data_1c(list_codes)
+    gr_code_data_trdz_1c = F.grouping_list_dicts(data_trdz_1c, 'Код')
+    set_vid_rac_1c = set()
+    [[set_vid_rac_1c.update({f"{_['ВидРабот']}{MARK_TKP_STR}"}) for _ in gr] for gr in gr_code_data_trdz_1c.values()]
+    list_vid_rac_1c = sorted(list(set_vid_rac_1c))
+    DICT_ALIASES_FULL.update({_: _ for _ in list_vid_rac_1c})
+
 
     for it in rez_req:
+        diameter_of_product = it['diametr']
         item = dict()
         res:CMS.ResSpec = res_specs_o.dict_res[it['_mk']]
         if not res:
             continue
+        if not diameter_of_product:
+            diameter_of_product = search_diam_into_name_dse(res)
+            if not diameter_of_product:
+                diameter_of_product = search_dimensions_into_name_dse(res)
+
+        if diameter_of_product and not it['diametr']:
+            if not fill_diameter_of_product_into_plan(it['kpl'], diameter_of_product):
+                return
+
         dict_norm_by_product = res.get_vids_rab()
         weight_by_product = res.mk.Вес/res.count
         specific_norms = {k: round(v/weight_by_product,3) for k, v in dict_norm_by_product.items()}
 
         it.update(specific_norms)
+        
+        if it['code_predv'] and it['code_predv'] in gr_code_data_trdz_1c:
+            norms_tkp = {f"{_['ВидРабот']}{MARK_TKP_STR}": _['Количество'] for _ in gr_code_data_trdz_1c[it['code_predv']]}
+            specific_norms_tkp = {k: round(v / weight_by_product, 3) for k, v in norms_tkp.items()}
+            it.update(specific_norms_tkp)
+            if gr_code_data_trdz_1c[it['code_predv']]:
+                date_res = gr_code_data_trdz_1c[it['code_predv']][0]['Дата']
+                if F.is_date(date_res,"%Y-%m-%dT%H:%M:%S"):
+                    it['date_res'] = F.dateStrToStr(date_res,"%Y-%m-%dT%H:%M:%S","%d.%m.%Y","")
+                    
         sb_sv_val = 0
+        sb_sv_tkp_val = 0
         for name, alias in DICT_ALIASES_FULL.items():
             val = ''
             if name in it:
                 val = it[name]
                 if name in set_sb_sv_types:
                     sb_sv_val += val
+                if name in set_sb_sv_tkp_types:
+                    sb_sv_tkp_val += val
             if name not in DICT_ALIASES:
-                name = f'{name} (мин./кг.)'
+                name = f'{name}{MESURING_POINTS_STR}'
             item[name] = val
         item[SB_SV_NAME_FIELD] = round(sb_sv_val,2)
+        item[SB_SV_NAME_TKP_FIELD] = round(sb_sv_tkp_val,2)
+        item['delta'] = 0 if item[SB_SV_NAME_TKP_FIELD]==0 else round(100-item[SB_SV_NAME_FIELD]*100/item[SB_SV_NAME_TKP_FIELD])
         item['weight'] = round(weight_by_product)
+        item['diametr'] = diameter_of_product if diameter_of_product else ''
         rez_spis.append(item)
 
    
@@ -9108,6 +9564,12 @@ def analytics_for_all_PGVU_valves(self, data_nach, data_kon):
 
     def fnc_oform(tbl, *args):
         t = CQT.TableContext(tbl)
+        t.tbl.setStyleSheet(CQT.MES_EDIT_CSS)
+        for row in t.rows():
+            delta = F.valm(row.value('delta'))
+            
+            clr = CMS.Color_tbl(abs(delta),True)
+            row.set_color_background(*clr.rgb,col_name='delta')
 
     self.DICT_ALIASES_FIELDS_REPORT = DICT_ALIASES
     return rez_spis, fnc_oform

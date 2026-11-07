@@ -291,7 +291,104 @@ class _DbTable:
                 self.rows.remove(row)
                 return True
         return False
+#======================================Заводские комплекты======================================================
 
+
+
+class FactorySet:
+    id_dse: int = None
+    id_oper: str = None
+    id_naryad: int = None
+    id_factory_set: int = None
+    
+
+    
+class FactorySets:
+    DICT_ALIASES = {'id_dse':'_id_dse',
+                    'name_dse':"ДСЕ",
+                    'id_oper':'№ Операции',
+                    'oper_name':'Название операции',
+                    'to_select_fsets':'К выбору к-т',
+
+                    }
+
+    def __init__(self,id_mk:int):
+        self.id_mk:int=id_mk
+        
+        if not self.id_mk:
+            raise ValueError(f'id_mk is None')
+        
+        
+        self.dict_sets:dict[tuple[int,str],dict[int,FactorySet]]=dict()
+        self.res:ResSpec = None
+        self.load()
+
+    
+    def dse_per_izd(self,id_dse:int)->int:
+        return self.res.get_dse(id_dse).Количество_ед
+    
+    def get_factorySets_by_dse_oper(self,id_dse:int,id_oper:str)->dict[int,FactorySet]:
+        if (id_dse,id_oper) in self.dict_sets:
+            return self.dict_sets[(id_dse,id_oper)]
+        return dict()
+            
+
+    def reload_sets(self):
+        self.dict_sets = dict()
+
+    
+    def _load_res(self):
+        self.res = ResSpec(self.id_mk)
+
+    def load(self):
+        self.reload_sets()
+        self._load_res()
+        pass
+
+    def get_naryad(self,id_dse:int,id_oper:str,id_set:int)->int|None:
+        if (id_dse,id_oper) not in self.dict_sets:
+            return
+        factory_set_o = self.dict_sets[(id_dse,id_oper)].get(id_set,None)
+        if factory_set_o is None:
+            return
+        return factory_set_o.id_naryad
+     
+
+    def get_factory_name(self,id_set:int)->str:
+        return f'ЗК № {id_set}'
+
+    def template(self)->tuple[list[dict],dict]:
+        DICT_ALIASES = copy.deepcopy(self.DICT_ALIASES)
+        list_rezult = []
+        for dse in self.res.data:
+            id_dse = dse.Номерпп
+            name_dse = dse.full_name
+            for oper in dse.Операции:
+                id_oper = oper.Опер_номер
+                oper_name = oper.Опер_наименование
+                
+                to_select = self.res.count
+                tmp_row = {'id_dse':id_dse,'name_dse':name_dse,'id_oper':id_oper,'oper_name':oper_name,
+                           'to_select_fsets':None,}
+                
+                for i in range(self.res.count):
+                    naryad_id = self.get_naryad(id_dse,id_oper,i)
+                    tmp_row[i] = naryad_id if naryad_id else ''
+                    to_select -= 1 if naryad_id else 0
+                    DICT_ALIASES[i] = self.get_factory_name(i+1)
+                tmp_row['to_select_fsets'] = to_select
+                list_rezult.append(tmp_row)
+        
+        return list_rezult,DICT_ALIASES
+  
+
+    def new(self,set_new_sets:set[NewFactorySet])->bool:
+        pass
+
+    def save(self):
+        pass
+
+#======================================Заводские комплекты======================================================
 
 class Manual(_ImportDb):
     ALIASES = {
@@ -1532,6 +1629,88 @@ class Colors():
     red_blinking: Color = Color((248, 105, 107))
     uneditable: Color = Color((240, 240, 240))
     editable: Color = Color((250, 250, 250))
+
+    # --- Excel: строка "Стандартные цвета" ---
+    dark_red: Color = Color((192, 0, 0))
+    red: Color = Color((255, 0, 0))
+    orange: Color = Color((255, 192, 0))
+    yellow: Color = Color((255, 255, 0))
+    light_green: Color = Color((146, 208, 80))
+    green: Color = Color((0, 176, 80))
+    light_blue: Color = Color((0, 176, 240))
+    blue: Color = Color((0, 112, 192))
+    dark_blue: Color = Color((0, 32, 96))
+    purple: Color = Color((112, 48, 160))
+
+    # --- Excel: цвета темы (Office) — базовые акценты ---
+    accent_blue: Color = Color((68, 114, 196))
+    accent_orange: Color = Color((237, 125, 49))
+    accent_grey: Color = Color((165, 165, 165))
+    accent_gold: Color = Color((255, 192, 0))
+    accent_light_blue: Color = Color((91, 155, 213))
+    accent_green: Color = Color((112, 173, 71))
+
+    # --- Excel: фон/текст темы ---
+    white: Color = Color((255, 255, 255))
+    tan: Color = Color((238, 236, 225))       # Background 2
+    theme_dark_blue: Color = Color((31, 73, 125))  # Text 2
+
+    # --- Excel: светлые тона (Lighter 80 / 60 / 40 %) — как раз "не яркие" ---
+    # ============ Акцент 1: Синий ============
+    accent_blue_l40: Color = Color((142, 170, 219))
+    accent_blue_l60: Color = Color((180, 199, 231))
+    accent_blue_l80: Color = Color((217, 226, 243))
+    accent_blue_l90: Color = Color((236, 241, 249))
+    accent_blue_l95: Color = Color((246, 248, 252))
+
+    # ============ Акцент 2: Оранжевый ============
+    accent_orange_l40: Color = Color((244, 177, 131))
+    accent_orange_l60: Color = Color((248, 203, 173))
+    accent_orange_l80: Color = Color((252, 228, 214))
+    accent_orange_l90: Color = Color((253, 242, 234))
+    accent_orange_l95: Color = Color((254, 249, 245))
+
+    # ============ Акцент 3: Серый ============
+    accent_grey_l40: Color = Color((201, 201, 201))
+    accent_grey_l60: Color = Color((219, 219, 219))
+    accent_grey_l80: Color = Color((237, 237, 237))
+    accent_grey_l90: Color = Color((246, 246, 246))
+    accent_grey_l95: Color = Color((251, 251, 251))
+
+    # ============ Акцент 4: Золотой ============
+    accent_gold_l40: Color = Color((255, 217, 102))
+    accent_gold_l60: Color = Color((255, 230, 153))
+    accent_gold_l80: Color = Color((255, 242, 204))
+    accent_gold_l90: Color = Color((255, 249, 230))
+    accent_gold_l95: Color = Color((255, 252, 242))
+
+    # ============ Акцент 5: Голубой ============
+    accent_light_blue_l40: Color = Color((155, 194, 230))
+    accent_light_blue_l60: Color = Color((189, 215, 238))
+    accent_light_blue_l80: Color = Color((222, 235, 247))
+    accent_light_blue_l90: Color = Color((239, 245, 251))
+    accent_light_blue_l95: Color = Color((247, 250, 253))
+
+    # ============ Акцент 6: Зелёный ============
+    accent_green_l40: Color = Color((168, 208, 141))
+    accent_green_l60: Color = Color((196, 224, 178))
+    accent_green_l80: Color = Color((226, 239, 218))
+    accent_green_l90: Color = Color((241, 247, 237))
+    accent_green_l95: Color = Color((248, 251, 246))
+
+    # --- Excel: тёмные тона (Darker 25 / 50 %) ---
+    accent_blue_d25: Color = Color((47, 84, 150))
+    accent_blue_d50: Color = Color((32, 56, 100))
+    accent_orange_d25: Color = Color((198, 89, 17))
+    accent_orange_d50: Color = Color((132, 60, 11))
+    accent_grey_d25: Color = Color((123, 123, 123))
+    accent_grey_d50: Color = Color((83, 83, 83))
+    accent_gold_d25: Color = Color((191, 143, 0))
+    accent_gold_d50: Color = Color((127, 96, 0))
+    accent_light_blue_d25: Color = Color((46, 117, 182))
+    accent_light_blue_d50: Color = Color((31, 78, 121))
+    accent_green_d25: Color = Color((84, 130, 53))
+    accent_green_d50: Color = Color((56, 87, 35))
 
 
 class Emploee_usr(CFG.User_emploee):
@@ -3978,8 +4157,10 @@ class _base_marshrut_cards(_ImportDb):
 
 class Marshrut_cards_list(_base_marshrut_cards):
     def __init__(self, set_nums: set[int] | list[int] | tuple[int], load_resource: bool = True):
-
-        self.DICT_RC = self._calc_dict_rc()
+        if DPACKS.DATA_MK_PACK is not None:
+            self.DICT_RC = DPACKS.DATA_MK_PACK.DICT_RC_BY_CODE
+        else:
+            self.DICT_RC = self._calc_dict_rc()
 
         str_select = self.get_str_select()
         postfix = 'NULL as res,'
@@ -4055,7 +4236,8 @@ class Marshrut_cards(_base_marshrut_cards):
 
                  DICT_RC_BY_CODE=None,
                  list_nars: list[dict] = None,
-                 dict_etaps: dict = None
+                 dict_etaps: dict = None,
+                 res_spec:ResSpec = None,
                  ):
 
         if row_from_db:
@@ -4144,16 +4326,26 @@ class Marshrut_cards(_base_marshrut_cards):
 
         self.DICT_RC = DICT_RC_BY_CODE
         if self.DICT_RC is None:
-            self.DICT_RC = self._calc_dict_rc()
+            if DPACKS.DATA_MK_PACK is not None:
+                self.DICT_RC = DPACKS.DATA_MK_PACK.DICT_ETAPS_RC_BY_CODE
+            else:
+                self.DICT_RC = self._calc_dict_rc()
+
         self.parce_row_dict(row)
 
         nom_mk = self.Пномер
         if self.Пномер != None:
             if load_resource:
-                self.res = Marshrut_cards._load_res(self.Пномер, db_resxml=self.db_resxml,
-                                                    byte_data_res_from_db=byte_data_res_from_db, list_nars=list_nars,
-                                                    dict_etaps=self.DICT_RC)
-                self.res_o = ResSpec(wet_data=self.res, mk_o=self)
+                if res_spec:
+                    self.res_o = res_spec
+                    self.res_o.mk_o = self
+                    self.res = self.res_o._wet_data
+                else:
+                    self.res = Marshrut_cards._load_res(self.Пномер, db_resxml=self.db_resxml,
+                                                        byte_data_res_from_db=byte_data_res_from_db,
+                                                        list_nars=list_nars,
+                                                        dict_etaps=self.DICT_RC)
+                    self.res_o = ResSpec(wet_data=self.res, mk_o=self)
 
     def get_poz(self) -> Pozition:
         self.poz: Pozition = Pozition(self.НомКплан)
@@ -4269,9 +4461,9 @@ class Marshrut_cards(_base_marshrut_cards):
 
     @staticmethod
     def _load_res(nom_mk: int, db_resxml='', byte_data_res_from_db=None, list_nars: list[dict] = None,
-                  dict_etaps: dict = None):
+                  dict_etaps: dict = None)->list[dict]:
         if db_resxml == '':
-            db_resxml = F.bdcfg('db_resxml')
+            db_resxml = CFG_prj.db_resxml
         if byte_data_res_from_db:
             res = load_res(nom_mk=[nom_mk, [byte_data_res_from_db]], list_nars=list_nars, dict_etaps=dict_etaps)
         else:
@@ -4282,7 +4474,7 @@ class Marshrut_cards(_base_marshrut_cards):
 
     def save_res(self, db_resxml=''):
         if db_resxml == '':
-            db_resxml = F.bdcfg('db_resxml')
+            db_resxml = CFG_prj.db_resxml
         if 'res' not in self.__dict__:
             return False
         blob1 = F.to_binary_pickle(self.res)
@@ -4589,7 +4781,8 @@ class Naryads(_Naryad_base):
                 self.Этап_фио_2 = self.calc_etap_by_fio(DICT_DATA_DOLGN_ETAP, self.ФИО2)  # 07.07.25
 
 
-
+    def __str__(self)->str:
+        return f'''{self.Пномер} от {self.Дата}'''
 
     def __repr__(self):
         pref = ''
@@ -4762,14 +4955,12 @@ class Naryads(_Naryad_base):
                 name_oper = list_opers[i][1]
             else:
                 raise IndexError(f'Наряд {self.Пномер}, ошибка в номере операци {list_opers[i]}')
-            try:
-                param_o = Naryad_param(self, list_dse[i], int(list_dse_id[i]),
-                                       num_oper, name_oper,
-                                       int(list_kol[i]), F.valm(list_time_minutes[i]),
-                                       list_prof[i], list_vid_r[i]
-                                       )
-            except Exception as e:
-                print(e)
+
+            param_o = Naryad_param(self, list_dse[i], int(list_dse_id[i]),
+                                   num_oper, name_oper,
+                                   int(list_kol[i]), F.valm(list_time_minutes[i]),
+                                   list_prof[i], list_vid_r[i]
+                                   )
             self.params_o.append(param_o)
         self._recalc_time_norma()
         return
@@ -5191,7 +5382,8 @@ class Naryads(_Naryad_base):
         if round(old_time, 1) == round(new_time,1):
             return None
         self.Твремя = new_time
-        self.Примечание = add_msg + self.Примечание
+        if add_msg:
+            self.Примечание = f'{add_msg} {self.Примечание}'
         self._save_nar()
         return new_time
 
@@ -6308,7 +6500,7 @@ class Jurnal_nar():
             custom_request_c = f"UPDATE jurnal SET {', '.join(set_parts)} WHERE Пномер = ?"
 
             try:
-                # CSQ.custom_request_c(self.db_nar, custom_request_c, list_of_lists_c=param)
+                CSQ.custom_request_c(self.db_nar, custom_request_c, list_of_lists_c=param)
                 self.rows[self.selected_fragment_start_row_obj_nom]['Подытог'] = poditog
                 self.rows[self.selected_fragment_start_row_obj_nom]['Подытог_нормы'] = poditog_norm
                 summ_msg = '\n'.join(msg_parts)
@@ -7773,6 +7965,7 @@ class ResDse():
             if it.Опер_номер == num:
                 return it
 
+    
     def __str__(self):
         return f'N {self.Номерпп}, {self.Наименование} {self.Номенклатурный_номер} - {self.Количество} шт.'
 
@@ -7787,6 +7980,9 @@ class ResSpecs():
             raise Exception(msg)
     
     def calc_dict_prof_by_cod(self):
+        if DPACKS.DATA_MK_PACK is not None:
+            self.DICT_PROF_BY_COD = DPACKS.DATA_RS_PACK.DICT_PROF_BY_CODE
+            return
         self.DICT_PROF_BY_COD: dict[dict] = F.deploy_dict_c(
             CSQ.custom_request_c(CFG.Config.project.db_users,
                                  """SELECT *
@@ -7808,8 +8004,9 @@ class ResSpecs():
             res_o = ResSpec(wet_data=wet_data, mk_o=mk_o,DICT_PROF_BY_COD = self.DICT_PROF_BY_COD)
             self.dict_res[res_o.mk.Пномер] = res_o
         return True, ''
-
-    def _calc_dict_etaps(self)->dict:
+    
+    @staticmethod
+    def _calc_dict_etaps()->dict:
         etaps = CSQ.custom_request_c(CFG_prj.db_users,
                                      f"""SELECT etaps.name as etaps_name, rab_c."Код" , rab_c."Имя" FROM rab_c 
                         INNER JOIN etaps ON 
@@ -7831,8 +8028,10 @@ class ResSpecs():
         db_resxml = CFG_prj.db_resxml
 
         rez_dict = dict()
-
-        dict_etaps = self._calc_dict_etaps()
+        if DPACKS.DATA_RS_PACK is not None:
+            dict_etaps = DPACKS.DATA_RS_PACK.DICT_ETAPS_RC_BY_CODE
+        else:
+            dict_etaps = self._calc_dict_etaps()
         list_nars = CSQ.custom_request_c(db_naryad, f"""SELECT "Номер_мк", "ФИО", "ФИО2", "Фвремя", "Фвремя2", 
        "ДСЕ_ID", "Операции", "Опер_колво"
             FROM naryad WHERE "Номер_мк" in ({CSQ.prepare_list_to_tuple(self._list_nums)})
@@ -7873,9 +8072,12 @@ class ResSpec():
             self._wet_data = wet_data
         else:
             self._wet_data = load_res(num_mk, db_resxml=CFG.Config.project.db_resxml)
-        self.DICT_PROF_BY_COD = DICT_PROF_BY_COD
+        self.DICT_PROF_BY_COD: dict[dict] = DICT_PROF_BY_COD
         if self.DICT_PROF_BY_COD is None:
-            self.DICT_PROF_BY_COD: dict[dict] = F.deploy_dict_c(
+            if DPACKS.DATA_MK_PACK is not None:
+                self.DICT_PROF_BY_COD = DPACKS.DATA_RS_PACK.DICT_PROF_BY_CODE
+            else:
+                self.DICT_PROF_BY_COD = F.deploy_dict_c(
                 CSQ.custom_request_c(CFG.Config.project.db_users,
                                                              """SELECT * 
                                                             FROM professions LEFT JOIN vid_rab_po_dolg 
@@ -9922,6 +10124,117 @@ class ActionDevMenu:
         """Добавляет разделитель в меню."""
         menu = self.ui.__getattribute__(self.menu_name)
         menu.addSeparator()
+
+class SimpClsErpZP(F._SimpMeta):
+    ЗаказКлиента: str
+    ЗаказКлиентаДата: str
+    ЗаказКлиентаСтатус: str
+    ЗаказКлиента_ref: str
+    ЗаказНаПроизводство: str
+    ЗаказНаПроизводствоДата: str
+    ЗаказНаПроизводствоСтатус: str
+    ЗаказНаПроизводство_ref: str
+    Номенклатура: str
+    Номенклатура_ref: str
+    КПЛ: str
+
+    @staticmethod
+    def prepare(it:dict)->dict:
+        for k,v in it.items():
+            if F.is_date(v,"%Y-%m-%dT%H:%M:%S"):
+                it[k] = F.dateStrToStr(v,"%Y-%m-%dT%H:%M:%S","%d.%m.%Y %H:%M:%S")
+        return it
+
+class BondsZpKpl():
+
+    def __init__(self,date_start:datetime.datetime):
+        self._date_start:datetime.datetime = date_start
+        self.erp_data:list[SimpClsErpZP] = []
+        self.err:bool = False
+
+    class SimpClsMesZpNomenRef(F._SimpMeta):
+        НомПл: int
+        Номенклатура_ЕРП: str
+        Номенклатура_ЕРП_ref: str
+        Ref_Key_py: str
+
+    def template(self)->list[dict]:
+        return [_.to_dict() for _ in self.erp_data]
+
+
+    def load(self):
+        self._load_from_1C()
+        if self.err:
+            return
+        self.сompare_with_mes()
+
+        return self.template()
+
+    def сompare_with_mes(self):
+        data = CSQ.custom_request_c(CFG_prj.db_kplan, f"""
+        SELECT 
+        пл_оуп.НомПл,
+        пл_оуп.Номенклатура_ЕРП,
+        пл_оуп.Номенклатура_ЕРП_ref,
+        знпр.Ref_Key_py
+        from пл_оуп 
+        INNER JOIN знпр ON знпр.s_num == пл_оуп.Пномер_ЗП
+""",rez_dict=True)
+        dict_data_mes = F.grouping_list_dicts(data,"Ref_Key_py")
+        dict_data_mes_o = {k : [BondsZpKpl.SimpClsMesZpNomenRef._from_dict(_) for _ in v] for k,v in dict_data_mes.items()}
+
+        pass
+        for it in self.erp_data:
+            if it.ЗаказНаПроизводство_ref not in dict_data_mes_o:
+                continue
+            mes_o:list[BondsZpKpl.SimpClsMesZpNomenRef] = dict_data_mes_o[it.ЗаказНаПроизводство_ref]
+
+            for poz in mes_o:
+                if it.Номенклатура_ref == poz.Номенклатура_ЕРП_ref:
+                    it.КПЛ = poz.НомПл
+                    break
+
+
+    def _load_from_1C(self):
+        self.err: bool = False
+        key_org = CFG.Config.place.Организация_Key
+
+        wet_req_text = f"""ВЫБРАТЬ
+                ЗаказКлиента.Ссылка.Номер КАК ЗаказКлиента,
+                ЗаказКлиента.Ссылка.Дата КАК ЗаказКлиентаДата,
+                ПРЕДСТАВЛЕНИЕ(ЗаказКлиента.Статус) КАК ЗаказКлиентаСтатус,
+                ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЗаказКлиента.Ссылка)) КАК ЗаказКлиента_ref,
+                ЗаказНаПроизводство2_2Продукция.Ссылка.Ссылка.Номер КАК ЗаказНаПроизводство,
+                ЗаказНаПроизводство2_2Продукция.Ссылка.Дата КАК ЗаказНаПроизводствоДата,
+                ПРЕДСТАВЛЕНИЕ(ЗаказНаПроизводство2_2Продукция.Ссылка.Статус) КАК ЗаказНаПроизводствоСтатус,
+                ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЗаказНаПроизводство2_2Продукция.Ссылка.Ссылка)) КАК ЗаказНаПроизводство_ref,
+                ПРЕДСТАВЛЕНИЕ(ЗаказНаПроизводство2_2Продукция.Номенклатура) КАК Номенклатура,
+                ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЗаказНаПроизводство2_2Продукция.Номенклатура.Ссылка)) КАК Номенклатура_ref,
+                "" as КПЛ
+            ИЗ
+                Документ.ЗаказКлиента КАК ЗаказКлиента
+                    ЛЕВОЕ СОЕДИНЕНИЕ Документ.ЗаказНаПроизводство2_2.Продукция КАК ЗаказНаПроизводство2_2Продукция
+                    ПО (ЗаказНаПроизводство2_2Продукция.Ссылка.ДокументОснование = ЗаказКлиента.Ссылка)
+            ГДЕ
+                ЗаказКлиента.ПометкаУдаления = ЛОЖЬ
+                И ЗаказКлиента.Проведен = ИСТИНА
+                И ЗаказКлиента.Организация = &Организация
+                И ЗаказКлиента.Дата >= {F.datetostr(self._date_start,"ДАТАВРЕМЯ(%Y, %m, %d, %H, %M, %S)")}
+                И НЕ
+                (ЗаказКлиента.Статус = ЗНАЧЕНИЕ(Перечисление.СтатусыЗаказовКлиентов.Закрыт) 
+                ИЛИ ЗаказКлиента.Статус = ЗНАЧЕНИЕ(Перечисление.СтатусыЗаказовКлиентов.НеСогласован))
+                                    """
+        refs = APIERP.Refs_wet(wet_req_text)
+        ref_res = APIERP.Ref_wet('Организация', 'Справочники.Организации', key_org)
+        refs.add_ref(ref_res)
+
+        key, data_rez = APIERP.get_wet_request(wet_req_text, refs=refs)
+
+        if key == 200:
+            self.erp_data = [SimpClsErpZP._from_dict(_) for _ in data_rez['data']]
+        else:
+            self.err = key
+
 
 
 if __name__ == "__main__":
@@ -15133,7 +15446,7 @@ def _update_name_rc_and_etaps(res, dict_etaps: dict = None):
 def load_res(nom_mk: int, conn='', cur='', db_resxml='', self=None,
              from_xml=False, tkp=False, db_users=None, poki=None, db_naryad=None,
              list_nars: list[dict] = None,
-             dict_etaps: dict = None):
+             dict_etaps: dict = None)->list[dict]:
 
     if db_users is None:
         db_users = CFG.Config.project.db_users
@@ -15147,8 +15460,12 @@ def load_res(nom_mk: int, conn='', cur='', db_resxml='', self=None,
     # res = CSQ.custom_request_c(db_resxml, query, conn=conn, cur = cur)
     if self == None:
         from_xml = False
-
-
+    
+    if dict_etaps is None:
+        if DPACKS.DATA_RS_PACK is not None:
+            dict_etaps = DPACKS.DATA_RS_PACK.DICT_ETAPS_RC_BY_CODE
+    
+    
     def fix_old_custom_res(rez_spis):
 
         for i in range(len(rez_spis)):
@@ -15220,6 +15537,9 @@ def load_res(nom_mk: int, conn='', cur='', db_resxml='', self=None,
             rez_spis = resource_from_xml_c(self, spis_xml, kol_vo_izdeliy, nom_mk)
 
     res = add_to_res_detail_counts(rez_spis)
+    
+
+    
     res = _update_name_rc_and_etaps(res, dict_etaps=dict_etaps)
     if isinstance(nom_mk, list):
         s_nom_mk = nom_mk[0]
@@ -18924,7 +19244,7 @@ def check_otk_after_proizv(nom_mk: int,
 
     oper_by_code, oper_by_name = calc_dicts_opers(CFG.Config.place.poki)
 
-    def get_list_opers_proizv_otk(self, res:ResSpec, *args)->list[dict]:
+    def get_list_opers_proizv_otk(res:ResSpec, *args)->list[dict]:
         rez = []
         for dse in res.data:
             if len(dse.Операции) <= 1:
@@ -18951,13 +19271,17 @@ def check_otk_after_proizv(nom_mk: int,
                                 }
                     rez.append(tmp_dict)
         return rez
+
+
+
+    list_opers_otk = get_list_opers_proizv_otk(res = res_o)
     finish_otk_info_o = FinishOtkInfo()
 
-
-    list_opers_otk = get_list_opers_proizv_otk('', res_o, '')
     if not list_opers_otk:
         finish_otk_info_o.coating_done = True
         return finish_otk_info_o
+
+
 
     list_opers_otk = [SimpClsList_opers_otk._from_dict(_) for _ in list_opers_otk]
 
@@ -18992,7 +19316,7 @@ def processing_finish_sign_otk(glob_fio, nom_mk, nom_kpl, nom_nar, nar_obj, poki
     alias = get_plan_otk_alias_by_poki(poki)  # 08.04.2026
     finish_otk_info_o = None
     if nar_obj.Категория_внепл == 18:  # финишный ОТК20.03.2026
-
+        finish_otk_info_o = FinishOtkInfo()
         messages = []
         is_done = CSQ.custom_request_c(
             CFG.Config.project.db_naryad,

@@ -1989,7 +1989,7 @@ class TableContext:
         table.setMaximumHeight(height)
 
     def _load(self):
-        self.nf:dict[str, int] = nums_col_by_name_dict(self.tbl)
+        self.nf:dict[object, int] = nums_col_by_name_dict(self.tbl)
         self.nft:dict[str, int] = nums_col_by_name_dict(self.tbl,forced_text=True)
         self._row_count:int = self.tbl.rowCount()
         self._previous_row:int|None = None
@@ -2862,6 +2862,9 @@ class TableRow:
         vals = [f"{col}={self.value(col)}" for col in first_cols]
         return f"Row {self.row_number}: " + ", ".join(vals)
 
+    def gen_instance(self,cls:F._SimpMeta)->cls:
+        return cls._from_dict(self.get_dict_vals(False))
+
     @property
     def no_selection(self)->bool:
         return self.i == -1
@@ -3581,13 +3584,17 @@ def select_cmb_by_data(cmb:QtWidgets.QComboBox,data):
 
     index = find_index_by_user_data(cmb, data)
     if index >= 0:
+        cmb.blockSignals(True)
         cmb.setCurrentIndex(index)
+        cmb.blockSignals(False)
         
-def fill_list_combobx(self,cmb:QtWidgets.QComboBox,list_rows,list_colors=[],list_tooltip=[], sep_col = ';',first_void = False,list_bold=[],list_data=[],current_text=None):
+def fill_list_combobx(self,cmb:QtWidgets.QComboBox,list_rows,list_colors=[],list_tooltip=[], sep_col = ';',
+                      first_void = False,list_bold=[],list_data=[],current_text=None,list_user_hidden:list[bool]=[]):
     with block_signals_keep_state(cmb):
         cmb.clear()
         model = cmb.model()
-
+        lv = cmb.view()
+        
         for i in range(len(list_rows)):
             entry = QtGui.QStandardItem(list_rows[i])
             if list_colors:
@@ -3604,7 +3611,11 @@ def fill_list_combobx(self,cmb:QtWidgets.QComboBox,list_rows,list_colors=[],list
                 entry.setFont(font)
                 if list_colors:
                     entry.setForeground(color)
+            
             model.appendRow(entry)
+            if list_user_hidden and len(list_user_hidden) == len(list_rows):
+                lv.setRowHidden(i, list_user_hidden[i])
+            
         for i in range(cmb.count()):
             if len(list_tooltip) == len(list_rows):
                 cmb.setItemData(i, list_tooltip[i], QtCore.Qt.ToolTipRole)
@@ -4284,7 +4295,7 @@ def nums_col_by_name_dict(table: QtWidgets.QTableWidget,
             name = item.text()
         else:
             name = item.data(QtCore.Qt.UserRole)
-            if not name:
+            if name is None:
                 name = item.text()
         #if not data:
         #    name = _to_plain_text(name)
@@ -6028,6 +6039,9 @@ def add_btn(item:QTableWidget, i, j, text='', val=True, conn_func_checked_row_co
         icon = QtGui.QIcon(img_path)
     elif img_path not in ('', None):
         icon_path = str(img_path)
+        if not F.existence_file_c(icon_path):
+            icon_path = F.sep().join(('icons', icon_path))
+
         icon = QtGui.QIcon(icon_path)
         if icon.isNull():
             icon = QtGui.QIcon.fromTheme(icon_path)
@@ -7743,8 +7757,9 @@ def load_icons(self:object,size:int=32,dir:str|None=None):
                 if item in available_icons:
                     name_img = available_icons[item]
                     set_btn_icon(item_o,name_img)
-
-                    item_o.setIconSize(QtCore.QSize(size, size))
+                    size_h = item_o.maximumHeight() if size > item_o.maximumHeight() else size
+                    size_w = item_o.maximumWidth() if size > item_o.maximumWidth() else size
+                    item_o.setIconSize(QtCore.QSize(size_h, size_w))
                     tooltip = item_o.toolTip().strip()
                     if tooltip:
                         item_o.setToolTip(tooltip)
@@ -8664,11 +8679,11 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
                  func_btn0=None, selection_from_tbl=False, ExtendedSelection=True, selectRows=False,
                  func_oform_filtr=None, load_links=False, conn_func_label_link=None, styleSheet=None, parent_self=None,
                  sortingEnabled=False, not_standart_close=False, save_column_sort_hh: bool = False,
-                 aliases_header:dict=None,SelectionMode=None,show_mode=None,fnc_drag_drop=None,max_width_clms=200,
+                 aliases_header:dict=None,SelectionMode:SelectionModes|None=None,show_mode=None,fnc_drag_drop=None,max_width_clms=200,
                  fnc_dbl_clck=None,fnc_currentItemChanged=None,auto_type=False,dict_or_list_user_data=None,
                  page_manager: PageManager = None,
                  decorate_dialog: typing.Callable[["Dialog_tbl"], None] = None,
-                 floating_btn_mngr:FloatingButtonManager=None
+                 floating_btn_mngr:FloatingButtonManager=None,selectionBehavior:SelectionBehaviors|None=None
         ):
         """        #SP_MessageBoxCritical
         #SP_MessageBoxInformation
@@ -8711,6 +8726,7 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
         self.select_rows = selectRows
         self.extended_selection = ExtendedSelection
         self.floating_btn_mngr = floating_btn_mngr
+        self.selection_behavior = selectionBehavior
         self.headers_hash = None
         if page_manager is not None:
             load_icons(
@@ -8866,12 +8882,17 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
             tbl.setSelectionBehavior(QtWidgets.QTableWidget.SelectionBehavior.SelectRows)
         else:
             tbl.setSelectionBehavior(QtWidgets.QTableWidget.SelectionBehavior.SelectItems)
+
         if ExtendedSelection:
             tbl.setSelectionMode(QtWidgets.QTableWidget.SelectionMode.ExtendedSelection)
         else:
             tbl.setSelectionMode(QtWidgets.QTableWidget.SelectionMode.SingleSelection)
+
         if SelectionMode:
             tbl.setSelectionMode(eval(f'QtWidgets.QTableWidget.SelectionMode.{SelectionMode}'))
+
+        if selectionBehavior:
+            tbl.setSelectionBehavior(eval(f'QtWidgets.QTableWidget.SelectionBehavior.{self.selection_behavior}'))
 
         tbl.setProperty('_drdr', 'False')
         #==============drdr===========
@@ -9415,6 +9436,9 @@ class Dialog_tbl(QtWidgets.QDialog):  # диалоговое окно
 
         if self.selection_mode:
             table_widget.setSelectionMode(getattr(QtWidgets.QTableWidget.SelectionMode, self.selection_mode))
+
+        if self.selection_behavior:
+            table_widget.setSelectionBehavior(getattr(QtWidgets.QTableWidget.SelectionBehavior, self.selection_behavior))
 
         self.set_page()
 
@@ -10499,12 +10523,13 @@ def msgboxg_get_table(self, msg, dict_or_list, btn0_name="✔ Ввод", btn1_na
                       print_hat=True,func_btn0=None,selection_from_tbl=False,ExtendedSelection=True,
                       selectRows=False,func_oform_filtr=None,load_links=False, conn_func_label_link=None,
                       styleSheet=None,parent_self=None,sortingEnabled=False,yesNoMode=False,not_standart_close=False,
-                      save_column_sort_hh: bool = False,aliases_header=None,SelectionMode=None,showFullScreen=False,
+                      save_column_sort_hh: bool = False,aliases_header=None,SelectionMode:SelectionModes|None=None,
+                      showFullScreen=False,
                       showMaximized=False,fnc_drag_drop=None,property_in_rez=False,max_width_clms=200,fnc_dbl_clck=None,
                       fnc_currentItemChanged=None,auto_type=False,dict_or_list_user_data=None,func_validate_t=None,
                       page_manager:PageManager=None,
                       decorate_dialog: typing.Callable[["Dialog_tbl"], None] = None,
-                      floating_btn_mngr:FloatingButtonManager=None,
+                      floating_btn_mngr:FloatingButtonManager=None,selectionBehavior:SelectionBehaviors|None=None,
                       )->(
         list[dict]|tuple[list[dict],dict[str,str]]|dict[str,str]):
     """
@@ -10549,7 +10574,7 @@ def msgboxg_get_table(self, msg, dict_or_list, btn0_name="✔ Ввод", btn1_na
                             SelectionMode=SelectionMode,show_mode=show_mode,fnc_drag_drop=fnc_drag_drop,
                             max_width_clms=max_width_clms,fnc_dbl_clck=fnc_dbl_clck,fnc_currentItemChanged=fnc_currentItemChanged,
                             auto_type= auto_type,dict_or_list_user_data=dict_or_list_user_data,page_manager=page_manager,
-                            decorate_dialog=decorate_dialog,floating_btn_mngr=floating_btn_mngr
+                            decorate_dialog=decorate_dialog,floating_btn_mngr=floating_btn_mngr,selectionBehavior=selectionBehavior
                             )
 
     def ret(val):
@@ -10928,7 +10953,7 @@ def get_dialog_choose_text(parent,
                                 info_point_size: int = 12,
                                 on_confirm: callable = None,
                                 dialog_width: int = 400
-                                ):
+                                )->tuple[bool, str]:
     """
 
     :param parent:
@@ -12130,7 +12155,6 @@ def fill_filtr_c(self, tblf:QtWidgets.QTableWidget, tbl:QtWidgets.QTableWidget, 
 
         if check_box_dict is not None:
 
-
             for col_name, list_text in check_box_dict.items():
                 dict_count = dict()
                 col_index = num_col_by_name_c(tblf,col_name)
@@ -12187,11 +12211,13 @@ def fill_filtr_c(self, tblf:QtWidgets.QTableWidget, tbl:QtWidgets.QTableWidget, 
                     list_text.insert(0,'Сброс')
                 list_data = []
                 for _ in list_text:
-                    val = _
+                    
                     if _ == '':
                         val = '!*'
-                    if _ == 'Сброс':
+                    elif _ == 'Сброс':
                         val = ''
+                    else:
+                        val = f'={_}'
                     list_data.append(val)
                 add_combobox(self,tblf,0,col_index, list_data=list_data, first_void=False,
                              conn_func= fnc_combo_select,list = list_text,return_data=True)
@@ -12415,10 +12441,18 @@ def put_value_in_filtr(new_elem, tblf:QtWidgets.QTableWidget,tbl:QtWidgets.QTabl
 
 
 @onerror
-def output_gant(self, fig:go.Figure, obj_browser:QtWebEngineWidgets.QWebEngineView, name_f='text', dir=None, *args):
-    if dir is None:
-        dir = F.sep().join((F.scfg('files_tmp'), 'charts'))
+def save_fig_as(self, fig:go.Figure,  *args):
+    dir = F.dir_workdesc_c()
+    pathf = f_dialog_save(self,'Сохранить график как...',dir, '*.html')
+    if pathf == '.':
+        return
+    html = _generate_html(fig)
+    with open(pathf, 'w', encoding='utf-8') as f:
+        f.write(html)
+    msgbox('График сохранен',time_life=0.5,app_self=self)
+    
 
+def _generate_html(fig:go.Figure):
     html_plot = fig.to_html(
         full_html=False,
         include_plotlyjs='cdn',
@@ -12427,46 +12461,53 @@ def output_gant(self, fig:go.Figure, obj_browser:QtWebEngineWidgets.QWebEngineVi
     )
 
     html = f"""<!DOCTYPE html>
-    <html lang="ru">
-    <head>
-    <meta charset="utf-8">
-    <style>
-    html, body {{
-        margin: 0;
-        padding: 0;
-        width: 100%;
-        height: 100%;
-        overflow: hidden;
-    }}
+       <html lang="ru">
+       <head>
+       <meta charset="utf-8">
+       <style>
+       html, body {{
+           margin: 0;
+           padding: 0;
+           width: 100%;
+           height: 100%;
+           overflow: hidden;
+       }}
 
-    #plot {{
-        width: 100%;
-        height: 100%;
-    }}
-    </style>
-    </head>
-    <body>
-    <div id="plot">
-    {html_plot}
-    </div>
+       #plot {{
+           width: 100%;
+           height: 100%;
+       }}
+       </style>
+       </head>
+       <body>
+       <div id="plot">
+       {html_plot}
+       </div>
 
-    <script>
-    function resizePlot() {{
-        const plot = document.querySelector('.js-plotly-plot');
-        if (!plot) return;
+       <script>
+       function resizePlot() {{
+           const plot = document.querySelector('.js-plotly-plot');
+           if (!plot) return;
 
-        const h = window.innerHeight;
-        plot.style.height = h + 'px';
-        Plotly.Plots.resize(plot);
-    }}
+           const h = window.innerHeight;
+           plot.style.height = h + 'px';
+           Plotly.Plots.resize(plot);
+       }}
 
-    window.addEventListener('load', resizePlot);
-    window.addEventListener('resize', resizePlot);
-    </script>
-    </body>
-    </html>
-    """
+       window.addEventListener('load', resizePlot);
+       window.addEventListener('resize', resizePlot);
+       </script>
+       </body>
+       </html>
+       """
+    return html
 
+@onerror
+def output_gant(self, fig:go.Figure, obj_browser:QtWebEngineWidgets.QWebEngineView, name_f='text', dir=None, *args):
+    if dir is None:
+        dir = F.sep().join((F.scfg('files_tmp'), 'charts'))
+
+    html = _generate_html(fig)
     putf = F.sep().join((dir, f'{name_f}.html'))
     print(len(html.encode('utf-8')))
     with open(putf, 'w', encoding='utf-8') as f:
@@ -13164,8 +13205,11 @@ def load_column_widths(self='',
                                     width = LIMIT_WIDTH
                                 tbl.setColumnWidth(i,width )
                             else:
-                                print(f'{tbl.horizontalHeaderItem(i).text()} скрыта')
-                                
+                                if isinstance(tbl, QtWidgets.QTableWidget):
+                                    print(f'{tbl.horizontalHeaderItem(i).text()} скрыта')
+                                if isinstance(tbl, QtWidgets.QTreeWidget):
+                                    print(f'{tbl.headerItem().text(i)} скрыта')
+
                 if is_table_widget and adjust_last_column:
                     adjust_last_column_width(tbl)
 

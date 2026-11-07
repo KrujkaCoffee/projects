@@ -488,7 +488,7 @@ class SubscriptionRepo:
         subscribers_chats = self._get_subscribers_chats(subscribers)
         # 3. Рассылка
         for ref_user, id_chat_str in subscribers_chats.items():
-            if ref_user == CFG.user_config.User.ID_ФизЛица:
+            if ref_user == CFG.user_config.User.ID_ФизЛица and False:
                 continue  # не спамим автора
             try:
                 self._send_notification(id_chat_str)

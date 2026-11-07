@@ -47,6 +47,8 @@ class ReferenceStore():
         pass
 
 class data_app(SingletonMeta):
+    if CFG.Config.place.poki == None:
+        raise ImportError(f'CFG.Config.place not init')
     CONFIG: CFG.Config = CFG.Config
     sub_self: CentralWindown = None
     app_self = None

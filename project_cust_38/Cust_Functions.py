@@ -502,6 +502,18 @@ F = typing.TypeVar('F')
 
 if typing.TYPE_CHECKING:
     from project_cust_38.Cust_config import Config
+
+class _SimpMeta(SimpleNamespace):
+    @classmethod
+    def _from_dict(cls, it: dict | None):
+        return None if it is None else cls(**cls.prepare(it))
+
+    @staticmethod
+    def prepare(it:dict)->dict:
+        return it
+
+    def to_dict(self) -> dict:
+        return dict(vars(self))
 #18.08.25
 class StatisticDecorator:
     config: "Config" = None
@@ -844,19 +856,22 @@ def load_cfg(log=True): #21.11.25
             msg = f'Файл настроек не найден по {put_conf}'
             return
         else:
-            try:
-                cfg = config.Config(put_conf)
-                print(f'    {put_conf}', end='\n') if log else None  # файл конфига, находится п папке конфиг
-            except:
-                print(f'    Не корректный файл {put_conf} формат должен быть без спецификации') if log else None
-                msg = f"Ошибка инициализации объекта локальной конфигурации {put_conf}"
-                win_msgbox(
-                    title="Ошибка",
-                    message=msg
-                )
-                quit(1)
+            # try:
+            #     cfg = config.Config(put_conf)
+            #     print(f'    {put_conf}', end='\n') if log else None  # файл конфига, находится п папке конфиг
+            # except:
+            #     print(f'    Не корректный файл {put_conf} формат должен быть без спецификации') if log else None
+            #     msg = f"Ошибка инициализации объекта локальной конфигурации {put_conf}"
+            #     win_msgbox(
+            #         title="Ошибка",
+            #         message=msg
+            #     )
+            #     quit(1)
             tmp_dict = dict()
-            cfg_dict = cfg.as_dict()
+            # cfg_dict = cfg.as_dict()
+            from project_cust_38.Constants import CFG
+            from dataclasses import asdict
+            cfg_dict = asdict(CFG)
             for key in cfg_dict.keys():
                 list_path = cfg_dict[key].split(';')
                 if len(list_path) > 1:
@@ -1428,7 +1443,7 @@ def create_label_c(file, dir, ima_yar, put_ico=''):
 
 
 def save_file_pickle(putima, obj):
-    with open(putima, 'wb+') as f:
+    with open(putima, 'wb') as f:
         pickle.dump(obj, f)
 
 
@@ -1472,7 +1487,7 @@ def is_empty_blob(blob):
 
 def load_file_pickle(putima)->dict:
     try:
-        with open(putima, 'rb+') as f:
+        with open(putima, 'rb') as f:
             return pickle.load(f)
     except pickle.UnpicklingError as e:
         print(f'Ошибка десериализации файла: {putima!r}\n {e}')
@@ -2339,7 +2354,7 @@ def deploy_dict_old(list_dicts: list, name_key_column: str):
 
 
 
-def grouping_list_dicts(data: list[dict], keys:str|list[str], remove_duplicates: bool = False) -> dict:
+def grouping_list_dicts(data: list[dict]|list[_SimpMeta], keys:str|list[str], remove_duplicates: bool = False) -> dict[list[dict|_SimpMeta]]:
     """
     Группирует список словарей по значению(ям) заданных ключей.
 
@@ -2351,14 +2366,23 @@ def grouping_list_dicts(data: list[dict], keys:str|list[str], remove_duplicates:
     """
     is_single = isinstance(keys, str)
     key_list = [keys] if is_single else list(keys)
-
+    
+    fl_dict = True
+    if data:
+        if isinstance(data[0], _SimpMeta):
+            fl_dict = False
+    
     result: dict = {}
+    
     for item in data:
+       
+        item_tmp = item.to_dict() if not fl_dict else item
+       
         try:
-            group_key = item[key_list[0]] if is_single else tuple(item[k] for k in key_list)
+            group_key = item_tmp[key_list[0]] if is_single else tuple(item_tmp[k] for k in key_list)
         except KeyError as e:
             raise ValueError(f"grouping_list_dicts error: Количество аргументов должно совпадать со количеством полей."
-                             f"\nОшибка при обработке элемента:\n {e.args[0]} {str(item)}" )
+                             f"\nОшибка при обработке элемента:\n {e.args[0]} {str(item_tmp)}" )
 
         result.setdefault(group_key, []).append(item)
 
@@ -2367,7 +2391,8 @@ def grouping_list_dicts(data: list[dict], keys:str|list[str], remove_duplicates:
             seen = set()
             deduped = []
             for it in items:
-                fingerprint = frozenset(it.items())  # все значения хэшируемые
+                it_tmp = it.to_dict() if not fl_dict else it
+                fingerprint = frozenset(it_tmp.items())  # все значения хэшируемые
                 if fingerprint not in seen:
                     seen.add(fingerprint)
                     deduped.append(it)
@@ -3676,6 +3701,53 @@ def get_all_attrs(obj, include_private: bool = False, attr_type: type | tuple[ty
     }
 
 
+
+def get_all_class_attrs(
+    obj_or_cls,
+    include_private: bool = False,
+    attr_type: type | tuple[type, ...] | None = None,
+) -> dict:
+    """
+    Возвращает {имя: значение} для data-атрибутов, объявленных в классах
+    (по всему MRO), видимых через экземпляр или класс.
+
+    - property / методы / classmethod / staticmethod / dunder — пропускаются;
+    - значения читаются через экземпляр, чтобы дескрипторы (слоты) вернули
+      реальное значение, а не member_descriptor.
+    """
+    cls = obj_or_cls if isinstance(obj_or_cls, type) else type(obj_or_cls)
+    result: dict = {}
+    seen: set[str] = set()
+
+    for c in cls.__mro__:
+        if c is object:
+            continue
+        for name, raw in c.__dict__.items():
+            if name in seen:
+                continue
+            seen.add(name)
+
+            if name.startswith("__"):
+                continue
+            if not include_private and name.startswith("_"):
+                continue
+            if isinstance(raw, (property, classmethod, staticmethod)):
+                continue
+            if inspect.isroutine(raw):
+                continue
+
+            try:
+                value = getattr(obj_or_cls, name)
+            except Exception:
+                continue
+
+            if callable(value) and not isinstance(value, type):
+                continue
+            if attr_type is None or isinstance(value, attr_type):
+                result[name] = value
+
+    return result
+
 def parse_args(argv:list)->dict:
     result = {}
     i = 0
@@ -3715,22 +3787,16 @@ def parse_args(argv:list)->dict:
 
     return result
 
-class _SimpMeta(SimpleNamespace):
-    @classmethod
-    def _from_dict(cls, it: dict | None):
-        return None if it is None else cls(**it)
 
-    def to_dict(self) -> dict:
-        return dict(vars(self))
-
-
+    
+    
 def gen_class(sample: dict|list[dict], postfix: str = "dict") -> str:
     if isinstance(sample, list):
         if sample:
             sample = sample[0]
         else:
             raise ValueError("Empty list")
-
+    
     name = f"SimpCls{postfix[:1].upper() + postfix[1:]}"
     lines = [
         f"class {name}(F._SimpMeta):",
@@ -3742,6 +3808,15 @@ def gen_class(sample: dict|list[dict], postfix: str = "dict") -> str:
         lines.append(f"    {k}: {t}")
     lines += [
         "",
-
+        
     ]
     return "\n".join(lines)
+
+
+def gen_aliases(sample: dict|list[dict]|_SimpMeta):
+    if isinstance(sample, list):
+        sample = sample[0]
+    if isinstance(sample, _SimpMeta):
+        sample = sample.to_dict()
+    lines = [f'"{k}" : "{k}"' for k in sample.keys()]
+    return "DICT_ALIASES = {\n" +  ",\n".join(lines) + "\n}"

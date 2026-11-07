@@ -467,8 +467,6 @@ class XlFormula:
         struct = self.xl_srv_data[action][key_oper]
         xl_params = {}
         for desc in struct['desc']:
-            if not desc.strip():
-                continue
             vals = {}
             if desc in struct['default']:
                 defaults = struct['default'][desc].split('|')

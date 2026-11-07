@@ -64,6 +64,9 @@ class CentralWindow(CQT.QtWidgets.QMainWindow):
         self.setWindowModality(CQT.Qt.ApplicationModal)
         self.apply_subj()
 
+        self._dirty:bool = False
+
+
         _con.load_connects(self)
 
     def _____________service_______________(self):pass
@@ -99,10 +102,19 @@ class CentralWindow(CQT.QtWidgets.QMainWindow):
                     CQT._on_resize_event(self, target)
         return super().eventFilter(obj, event)
 
-    def closeEvent(self, event):
+    def closeEvent(self, event:CQT.QtGui.QCloseEvent):
         #before_close(self)
+
         CFG.BaseSubWindow.close_in_event(self)
+
         event.accept()
+
+    def set_dirty(self):
+        self._dirty = True
+
+    @property
+    def is_dirty(self):
+        return self._dirty
 
     @classmethod
     def start_sub_app(cls,app_self,tabs:CQT.QtWidgets.QTabWidget,index:int,name_point)->'CentralWindow':
@@ -160,7 +172,7 @@ class CentralWindow(CQT.QtWidgets.QMainWindow):
                 return True, None
             return True, text_html
 
-
+        self.set_dirty()
         #print(f"Нажата кнопка ({tabs.objectName()}) на вкладке {tab.objectName()}")
         initial_view = CQT.RichTextViewMode.EDIT
         placeholder_text = "Опишите принцип работы с интерфейсом..."

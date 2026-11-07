@@ -132,11 +132,11 @@ class OrdersComposit():
             else:
                 if new_hash == file_hash:
                     CSQ.custom_request_c(db_files,
-                    f"""UPDATE odata_lazy_resps set (resp_date ) = (?) WHERE s_num == {fl_naid_lazy};""",
+                    f"""UPDATE odata_lazy_resps set resp_date = ? WHERE s_num = {fl_naid_lazy};""",
                     list_of_lists_c=[[F.now()]])
                 else:
                     CSQ.custom_request_c(db_files,
-                    f"""UPDATE odata_lazy_resps set (resp_date, file, file_size, hash_file ) = (?,?,?,?) WHERE s_num == {fl_naid_lazy};""",
+                    f"""UPDATE odata_lazy_resps set (resp_date, file, file_size, hash_file ) = (?,?,?,?) WHERE s_num = {fl_naid_lazy};""",
                     list_of_lists_c=[[F.now(), F.to_binary_pickle(file),size,new_hash]])
         
         headers = self.headers
@@ -148,14 +148,25 @@ class OrdersComposit():
         if lazy_method_huours > 0 and db_files != None:
             now_date = F.now('')
             date_limit = F.date_add_time(now_date,hours=-lazy_method_huours)
-            data = CSQ.custom_request_c(db_files,f"""SELECT s_num, resp_date,
+            query = CSQ.SqlQuery(
+                sqlite=f"""SELECT s_num, resp_date,
             CASE WHEN datetime(resp_date) >= datetime('{date_limit}')  
         THEN file 
         ELSE null  
         END AS file, 
              
               hash_file FROM odata_lazy_resps 
-            where resp = '{url_hash}' limit 1""",rez_dict=True)
+            where resp = '{url_hash}' limit 1""",
+                postgres=f"""SELECT s_num, resp_date,
+            CASE WHEN CAST(resp_date AS TIMESTAMP) >= CAST('{date_limit}' AS TIMESTAMP)  
+        THEN file 
+        ELSE null  
+        END AS file, 
+             
+              hash_file FROM odata_lazy_resps 
+            where resp = '{url_hash}' limit 1"""
+            )
+            data = CSQ.custom_request_c(db_files,query,rez_dict=True)
             if len(data):
                 fl_naid_lazy = data[0]['s_num']
                 file_hash_lazy = data[0]['hash_file']

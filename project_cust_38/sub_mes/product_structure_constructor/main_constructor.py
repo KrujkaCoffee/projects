@@ -94,7 +94,7 @@ class CentralWindow(CQT.QtWidgets.QMainWindow):
 
 
     #=============signal====================
-    to_mk_ready: CQT.QtCore.pyqtSignal = CQT.QtCore.pyqtSignal(CQT.QtWidgets.QMainWindow,list)
+    to_mk_ready: CQT.QtCore.pyqtSignal = CQT.QtCore.pyqtSignal(CQT.QtWidgets.QMainWindow,list,str,int)
     #def on_data_from_child(sub_app,data, *args):
     #    print('Получены данные')
     #sub_window = CentralWindow(None)
@@ -139,8 +139,6 @@ class CentralWindow(CQT.QtWidgets.QMainWindow):
 
     def _____________service_______________(self):pass
 
-    def some_action(self):
-        self.data_ready.emit({"result": 42})
     def keyReleaseEvent(self, e):
         key = e.key()
         mod = e.modifiers()
@@ -219,7 +217,7 @@ class CentralWindow(CQT.QtWidgets.QMainWindow):
 
 
         self.init_data()
-        
+
         #self.test_fill_tbl()
 
     def update_table(self):
@@ -254,6 +252,14 @@ class CentralWindow(CQT.QtWidgets.QMainWindow):
 
     # ---------------- recalc: weights ----------------
 
+    def _calc_total_mass(self) -> float:
+        tree = DTCLS.spec_schema.tree
+        total_mass = 0.0
+        for i in range(tree.topLevelItemCount()):
+            d = CLSS.Dse_row(tree.topLevelItem(i))
+            total_mass += self._parse_num(d.values.get("mass_total", ""))
+        return total_mass
+
     def _recalc_mass_item(self, tree) -> None:
         def rec(item,parent_qty: float = 1.0) -> None:
             d = CLSS.Dse_row(item)
@@ -275,7 +281,7 @@ class CentralWindow(CQT.QtWidgets.QMainWindow):
 
         for i in range(tree.topLevelItemCount()):
             d = CLSS.Dse_row(tree.topLevelItem(i))
-            qty = self._parse_num(d.values.get("qty", ""))
+            qty = 1
             rec(tree.topLevelItem(i),qty)
 
     def _recalc_weights(self, tree) -> None:
@@ -375,12 +381,20 @@ class CentralWindow(CQT.QtWidgets.QMainWindow):
             if F.boolm(val_str_pki):
                 item.set_value_by_field('ПКИ', CLSS.Nomenclature.EMO_PKI, '')
 
+    def fill_total_mass(self,total_mass:float=0):
+        if total_mass:
+            self.ui.lbl_total_mass.setText(f"{round(total_mass, 3)}")
+        else:
+            self.ui.lbl_total_mass.setText("")
+
     def recalc_tree(self):
+        self.fill_total_mass()
         DTCLS.spec_schema.oform_tree(self.fnc_oform_tree)
         self._recalc_weights(self.ui.tree_of_product)
         self._recalc_mass_item(self.ui.tree_of_product)
         self._recalc_qty_on_struct(self.ui.tree_of_product)
         self.refresh_pos_user_idx()
+        self.fill_total_mass(self._calc_total_mass())
 
     def refresh_pos_user_idx(self) -> None:
         """
@@ -577,8 +591,8 @@ class CentralWindow(CQT.QtWidgets.QMainWindow):
         return self.save_struct_f(DTCLS.opened_file_path.pathf)
 
     @marks_dirty(False)
-    def save_struct_f(self,pathf:str|None|CLSS.CardDocs=None,*args)->bool:
-
+    def save_struct_f(self,pathf:str|None|CLSS.CardDocs=None,*args)->bool|None:
+        #NOne - err, False - cancel, True - ok
         if pathf is None:
             base_path = CMS.load_tmp_path('ps_constructor_tree')
             pathf = CQT.f_dialog_save(self, "Сохранить структуру", base_path, "*.pickle")
@@ -593,8 +607,11 @@ class CentralWindow(CQT.QtWidgets.QMainWindow):
             succ, comment_rez = CQT.get_dialog_choose_text(self,'Комментарий',start_text='')
             if succ:
                 comment= comment_rez
-            return pathf.save_structure(data,CFGo.user_config.User.ID_ФизЛица,comment)
-
+            else:
+                return False
+            if not pathf.save_structure(data,CFGo.user_config.User.ID_ФизЛица,comment):
+                return None
+            return True
 
         if isinstance(pathf,str):
             CMS.save_tmp_path('ps_constructor_tree',pathf,True)
@@ -696,6 +713,8 @@ class CentralWindow(CQT.QtWidgets.QMainWindow):
 
             if name_row == 'pki_ui' and DTCLS.mode.editable:
                 val_pki = t.find_row({'_name': '_pki'}, True).value('Значение')
+                if val_pki == '':
+                    val_pki = '0'
                 CQT.add_check_box_switcher(t.tbl, row.i, t.nf['Значение'], int(val_pki), fnc_switch_pki)
 
             if name_row == 'nomenclature' and DTCLS.mode.editable:
@@ -705,11 +724,11 @@ class CentralWindow(CQT.QtWidgets.QMainWindow):
 
                 widg.add_button('', 'Выбор',
                                 fnc_select_nomenclature,
-                                cell_val=(row,t), img_path=F.sep().join([F.path_to_execut_file_c(),
+                                cell_val=(row,t), img_path=F.sep().join([F.path_to_caller_file_c(),
                                                                       'icons', 'select_from']))
                 widg.add_button('', 'Очистить',
                                 fnc_clear_nomenclature,
-                                cell_val=(row,t), img_path=F.sep().join([F.path_to_execut_file_c(),
+                                cell_val=(row,t), img_path=F.sep().join([F.path_to_caller_file_c(),
                                                                       'icons', 'close']))
 
 
@@ -753,9 +772,11 @@ class CentralWindow(CQT.QtWidgets.QMainWindow):
             return
         uuid_card = row.value('uuiD_card')
         card_o = DTCLS.orders_docs.get_card(uuid_card)
-
-        if not self.save_struct_f(card_o):
+        rez = self.save_struct_f(card_o)
+        if rez is None:
             CQT.msgbox(f'Ошибка сохранения структуры в карточку {card_o}')
+        if not rez:
+            return
         CQT.msgbox(f'Структура сохранена в карточку {card_o}',time_life=0.5)
 
 
@@ -799,9 +820,16 @@ class CentralWindow(CQT.QtWidgets.QMainWindow):
     def ________________ui_________________(self):pass
 
     def btn_get_to_mk(self):
-
+        if DTCLS.mode is not StartModes.readonly:
+            CQT.msgbox(f'В режиме {DTCLS.mode} нельзя получить структуру для МК!')
+            return
+        if not DTCLS.opened_file_path.is_docs_origin:
+            CQT.msgbox(f'Для получения структуры для МК необходимо использовать данные из карточки проекта!')
+            return
+        card_uuid =DTCLS.opened_file_path.card.uuiD_card
+        rev_id =DTCLS.opened_file_path.card.current_rev.rev_file
         self.data_for_mk = DTCLS.spec_schema.dump_tree()
-        self.to_mk_ready.emit(self ,self.data_for_mk)
+        self.to_mk_ready.emit(self ,self.data_for_mk,card_uuid,rev_id)
         self.close()
 
 
@@ -842,7 +870,7 @@ class CentralWindow(CQT.QtWidgets.QMainWindow):
 
 if __name__ == "__main__":
 
-    def on_data_from_child(data,*args):
+    def on_data_from_child(sub_app,data_schema,uuid_card,id_rev,*args):
         print('Получены данные')
 
     from project_cust_38.Cust_application import install_crash_guard, SafeApplication
@@ -851,7 +879,7 @@ if __name__ == "__main__":
         f'Powerz.BAG.SustControlWork.0.0.0 {F.name_of_caller_file()}')
     app.setWindowIcon(CQT.QtGui.QIcon(os.path.join(F.path_to_caller_file_c(False), "icons", "icon.png")))
     install_crash_guard(app, app_name='',user_name='', log_qt_warnings=False,log_qt_debug_info=False, enable_native_fault_handler=False)
-    sub_window = CentralWindow(None,StartModes.editabele)
+    sub_window = CentralWindow(None,StartModes.readonly)
     sub_window.to_mk_ready.connect(on_data_from_child)
     sub_window.showMaximized()
 

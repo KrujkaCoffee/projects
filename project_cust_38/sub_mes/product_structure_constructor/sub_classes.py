@@ -67,6 +67,10 @@ class CardDocs():
         self._current_rev:CardRevDocs = None
         self._dict_revs:dict[int,CardRevDocs] = None
 
+    @property
+    def current_rev(self)->CardRevDocs:
+        return self._current_rev
+
     def set_current_rev(self,id_rev:int):
         self._current_rev  = self._dict_revs[id_rev]
 
@@ -247,8 +251,6 @@ class OrdersDocs:
         card_o = self._dict_cards[uuid_card]
         card_o.get_list_versions()
         return card_o
-
-
 
 
 class SpecSchema:
@@ -730,6 +732,9 @@ class Dse_row:
         if with_values:
             self._load_values()
 
+    def __repr__(self):
+        return (f"Dse_row(uuid={self.uuid}, pos='{self._calc_pos()}', "
+                f"level={self.level}, cols={len(self.cols)})")
     # ---------------- служебное ----------------
     def apply_template(self, tpl: list[dict]) -> list[str]:
         """
@@ -1040,6 +1045,13 @@ class OpenedFile():
         self._dirty:bool = False
         self._card:CardDocs = None
 
+    @property
+    def is_docs_origin(self)->bool:
+        if self._card is None:
+            return False
+        return True
+
+
     def set(self, pathf:str|None|CardDocs):
 
         if pathf is None:
@@ -1071,7 +1083,15 @@ class OpenedFile():
 
     @property
     def pathf(self)->str:
-        return str(self._pathf.path)
+        if self._pathf:
+            return str(self._pathf.path)
+        return ''
+
+    @property
+    def card(self)->CardDocs|None:
+        if self._card:
+            return self._card
+        return None
 
     @property
     def is_opened(self)->bool:
