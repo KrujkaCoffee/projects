@@ -80,6 +80,22 @@ def check_mes_erp_link():
     print(len(session.items))
     print(session.items == first.items)
 
+    from project_cust_38.sub_mes.resource_planning import planner_erp as PERPD
+
+    result = PERPD.select_erp_entity(
+        DTSUB.sub_self,
+        service,
+        field,
+        limit=5
+    )
+
+    print(result.accepted)
+    print(result.reference)
+
+    if result.reference is not None:
+        print(result.reference.ref_key)
+
+
 
 def toggle_focus(new_focus):
     check_mes_erp_link()
