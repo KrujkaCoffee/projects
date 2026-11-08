@@ -454,7 +454,7 @@ class ErpTablePageManager:
 
 
 class ErpEntityTablePicker:
-    """Настройка общего табличного диалога; отдельного QDialog здесь нет."""
+    """ERP-подбор со штатной таблицей и фильтром CQT."""
 
     def __init__(self, service, field, *, current=None, limit=100):
         self.field = AB.BindingField.from_dict(field) if isinstance(field, dict) else field
@@ -465,6 +465,7 @@ class ErpEntityTablePicker:
     def decorate(self, dialog):
         self.dialog = dialog
         self.table = dialog.ui.tbl
+        self.filter_table = dialog.ui.tbl_filtr
         self.table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         dialog.resize(1000, 560)
         dialog.ui.cmb_action.setVisible(False)
@@ -474,20 +475,14 @@ class ErpEntityTablePicker:
         )
         current_label.setTextFormat(QtCore.Qt.PlainText)
         current_label.setWordWrap(True)
-        self.search_edit = QtWidgets.QLineEdit()
-        self.search_edit.setMaxLength(200)
-        self.search_edit.setPlaceholderText(f'Поиск по полю: {self.field.display_name}')
-        self.search_button = QtWidgets.QPushButton('Найти')
-        search_layout = QtWidgets.QHBoxLayout()
-        search_layout.addWidget(self.search_edit, 1)
-        search_layout.addWidget(self.search_button)
         self.status_label = QtWidgets.QLabel()
         dialog.ui.verticalLayout_5.insertWidget(0, current_label)
-        dialog.ui.verticalLayout_5.insertLayout(1, search_layout)
-        dialog.ui.verticalLayout_5.insertWidget(2, self.status_label)
-        self.clear_button = dialog.ui.buttonBox.addButton('Очистить', QtWidgets.QDialogButtonBox.ResetRole)
+        dialog.ui.verticalLayout_5.insertWidget(1, self.status_label)
 
-        # Сохраняем кнопки CQT, запросы оборачиваем обработкой ошибок и busy.
+        CQT.ConnectFilterKeyEvents(dialog, self.table, self.filter_table)
+        self.native_filter_key_release = self.filter_table.keyReleaseEvent
+        self.filter_table.keyReleaseEvent = self._filter_key_release
+
         for button, action in (
             (dialog.ui.btn_skip_back, self.page_manager.first),
             (dialog.ui.btn_back, self.page_manager.previous),
@@ -496,48 +491,69 @@ class ErpEntityTablePicker:
         ):
             button.clicked.disconnect()
             button.clicked.connect(lambda checked=False, action=action: self._change_page(action))
+        self.first_page_tooltip = dialog.ui.btn_skip_back.toolTip()
         for button in dialog.findChildren(QtWidgets.QPushButton):
             button.setAutoDefault(False)
             button.setDefault(False)
 
-        self.search_button.clicked.connect(self._search)
-        self.search_edit.returnPressed.connect(self._search)
-        self.search_edit.textChanged.connect(self._update_buttons)
         self.table.itemSelectionChanged.connect(self._update_buttons)
         self._update_buttons()
-        self.search_edit.setFocus()
+        self.filter_table.setFocus()
         self.initial_load = QtCore.QTimer(dialog)
         self.initial_load.setSingleShot(True)
-        self.initial_load.timeout.connect(self._search)
+        self.initial_load.timeout.connect(lambda: self._run(self.page_manager.start))
         dialog.finished.connect(self.initial_load.stop)
         self.initial_load.start(0)
 
-    def _matches_query(self):
-        return self.page_manager.loaded and self.search_edit.text().strip() == self.page_manager.text.strip()
-
     def _reference(self):
         rows = self.table.selectionModel().selectedRows(0)
-        if len(rows) != 1:
+        if len(rows) != 1 or self.table.isRowHidden(rows[0].row()):
             return None
         reference = CQT.getCustData(self.table, rows[0].row(), 0, modifier=101)
         return reference if isinstance(reference, ErpEntityRef) else None
 
+    def _ensure_visible_selection(self):
+        if self._reference() is not None:
+            return
+        self.table.clearSelection()
+        self.table.setCurrentCell(-1, -1)
+        for row in range(self.table.rowCount()):
+            if not self.table.isRowHidden(row):
+                self.table.selectRow(row)
+                break
+
+    def _filter_key_release(self, event):
+        self.native_filter_key_release(event)
+        if event.key() in (QtCore.Qt.Key_Return, QtCore.Qt.Key_Enter) or (
+            event.key() == QtCore.Qt.Key_Delete and event.modifiers() == QtCore.Qt.ShiftModifier
+        ):
+            self._ensure_visible_selection()
+            self._update_buttons()
+
     def _update_buttons(self, *args):
-        ready = not self.busy and self._matches_query()
-        self.search_edit.setEnabled(not self.busy)
-        self.search_button.setEnabled(not self.busy)
-        self.clear_button.setEnabled(not self.busy)
+        ready = not self.busy and self.page_manager.loaded
+        self.filter_table.setEnabled(not self.busy)
         self.dialog.yes_btn.setEnabled(ready and self._reference() is not None)
         self.dialog.set_page()
-        for button in (self.dialog.ui.btn_skip_back, self.dialog.ui.btn_back,
-                       self.dialog.ui.btn_forward, self.dialog.ui.btn_skip_forward):
-            button.setEnabled(ready and button.isEnabled())
+        if self.page_manager.count_pages is None:
+            label = self.dialog.ui.lbl_page
+            label.setText(label.text().replace('/None', '/?'))
+            label.setToolTip(f'Страница {self.page_manager.shown_page}. Общее число страниц пока неизвестно')
+        self.dialog.ui.btn_skip_back.setEnabled(
+            not self.busy and (self.page_manager.can_go_back or not self.page_manager.loaded)
+        )
+        self.dialog.ui.btn_skip_back.setToolTip(
+            self.first_page_tooltip if self.page_manager.loaded else 'Повторить загрузку первой страницы'
+        )
+        self.dialog.ui.btn_back.setEnabled(ready and self.page_manager.can_go_back)
+        self.dialog.ui.btn_forward.setEnabled(ready and self.page_manager.can_go_forward)
+        self.dialog.ui.btn_skip_forward.setEnabled(ready and self.page_manager.can_go_last)
         if self.busy:
             text = 'Загрузка…'
-        elif not self._matches_query():
-            text = 'Нажмите «Найти»'
+        elif not self.page_manager.loaded:
+            text = 'Для повтора загрузки нажмите переход на первую страницу'
         else:
-            text = f'Загружено: {len(self.page_manager.session.items)}'
+            text = f'Загружено: {len(self.page_manager.session.items)}. Фильтр действует на текущую страницу'
         self.status_label.setText(text)
 
     def _run(self, action):
@@ -553,31 +569,21 @@ class ErpEntityTablePicker:
                 header.setStretchLastSection(False)
                 header.setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
                 header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
-                self.table.clearSelection()
-                self.table.setCurrentCell(-1, -1)
-                if self.table.rowCount():
-                    self.table.selectRow(0)
+                CQT.apply_filtr_c(self.dialog, self.filter_table, self.table, save_data=False)
+                self._ensure_visible_selection()
         except Exception as exc:
-            QtWidgets.QMessageBox.critical(self.dialog, 'Ошибка поиска ERP', str(exc))
+            QtWidgets.QMessageBox.critical(self.dialog, 'Ошибка загрузки ERP', str(exc))
         finally:
             QtWidgets.QApplication.restoreOverrideCursor()
             self.busy = False
             self._update_buttons()
 
-    def _search(self):
-        self._run(lambda: self.page_manager.start(self.search_edit.text().strip()))
-
     def _change_page(self, action):
-        if self._matches_query():
-            self._run(action)
+        self._run(action if self.page_manager.loaded else self.page_manager.start)
 
     def on_button(self, button, dialog, table):
-        if button is self.clear_button:
-            if not self.busy:
-                self.selected_reference = None
-                dialog.accept()
-        elif button is dialog.yes_btn:
-            if not self.busy and self._matches_query():
+        if button is dialog.yes_btn:
+            if not self.busy and self.page_manager.loaded:
                 reference = self._reference()
                 if reference is not None:
                     self.selected_reference = reference
@@ -591,7 +597,7 @@ def select_erp_entity(parent, service, field, *, current=None, limit=100):
     accepted = CQT.msgboxg_get_table(
         parent, 'Выбор записи ERP', [['Представление', 'UUID']],
         btn0_name='Выбрать', btn1_name='Отмена', WindowTitle='Выбор записи ERP',
-        show_filtr=False, selection_from_tbl=True, selectRows=True, ExtendedSelection=False,
+        show_filtr=True, selection_from_tbl=True, selectRows=True, ExtendedSelection=False,
         sortingEnabled=False, yesNoMode=True, not_standart_close=True,
         page_manager=picker.page_manager, decorate_dialog=picker.decorate, func_btn0=picker.on_button
     ) == QtWidgets.QDialog.Accepted
