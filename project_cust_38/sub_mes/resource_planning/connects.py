@@ -48,6 +48,27 @@ def check_mes_erp_link():
     for ref in result.items:
         print(ref.ref_key, str(ref))
 
+    first = service.search_text(field, limit=5)
+    assert first.has_more
+
+    second = service.search_text(
+        field,
+        limit=5,
+        after=first.next_after
+    )
+
+    control = service.search_text(field, limit=10)
+
+    received = tuple(
+        item.identity_key
+        for item in first.items + second.items
+    )
+    expected = tuple(item.identity_key for item in control.items)
+
+    print(len(first.items), len(second.items))
+    print(len(received) == len(set(received)))
+    print(received == expected)
+
 
 def toggle_focus(new_focus):
     check_mes_erp_link()

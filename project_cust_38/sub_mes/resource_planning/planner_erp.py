@@ -62,6 +62,12 @@ class ErpSearchResult:
     items: tuple[ErpEntityRef, ...]
     has_more: bool
 
+    @property
+    def next_after(self) -> ErpEntityRef | None:
+        if self.has_more and self.items:
+            return self.items[-1]
+        return None
+
 
 class ErpEntityService:
     def __init__(self, interface, source_key_getter):
@@ -204,7 +210,8 @@ class ErpEntityService:
             field: AB.BindingField | dict,
             text: str = '',
             *,
-            limit: int = 100
+            limit: int = 100,
+            after: ErpEntityRef | None = None,
     ) -> ErpSearchResult:
         """Поиск значения по одному строковому полю ERP"""
         if isinstance(field, dict):
@@ -223,6 +230,12 @@ class ErpEntityService:
         source_key = self.__source_key_getter()
         if field.source_key not in (source_key, field.entity_key):
             raise ErpEntityError('Поле относится к другому источнику ERP')
+
+        if after is not None:
+            after = ErpEntityRef.deserialize(after)
+            if (after.source_key, after.entity_key) != (source_key, field.entity_key):
+                raise ErpEntityError('Некорректный источник для поиска')
+
         table = self.__query_table(field.entity_key)
         text = text.strip()
         condition = 'ИСТИНА'
@@ -231,11 +244,14 @@ class ErpEntityService:
             pattern = text.replace('~', '~~')
             for char in '%_[]^':
                 pattern = pattern.replace(char, '~' + char)
-            pattern = ('%' + pattern + '%').replace('~', '~~')
+            pattern = ('%' + pattern + '%').replace('"', '""')
             condition = (
                 f'Источник.{field.field_key} ПОДОБНО "{pattern}" '
                 'СПЕЦСИМВОЛ "~" '
             )
+        if after is not None:
+            condition = f'({condition}) И Источник.Ссылка > &PlannerAfter'
+
         query = f"""
             ВЫБРАТЬ ПЕРВЫЕ {limit + 1}
                 ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(Источник.Ссылка)) КАК ref_key,
@@ -247,10 +263,19 @@ class ErpEntityService:
             УПОРЯДОЧИТЬ ПО
                 Источник.Ссылка
         """
+        refs = None
+        if after is not None:
+            refs = self.interface.Refs_wet(query)
+            refs.add_ref(self.interface.Ref_wet(
+                'PlannerAfter',
+                after.entity_key,
+                after.ref_key
+            ))
         try:
             code, payload = self.interface.get_wet_request(
                 text=query,
-                lazy_method_huours=0
+                lazy_method_huours=0,
+                refs=refs
             )
         except Exception as exc:
             raise ErpEntityError('Не удалось выполнить поиск по ERP') from exc
