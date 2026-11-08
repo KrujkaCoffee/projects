@@ -68,6 +68,17 @@ def check_mes_erp_link():
     print(len(first.items), len(second.items))
     print(len(received) == len(set(received)))
     print(received == expected)
+    #
+    print('проверка сессии +++++')
+    session = PERP.ErpSearchSession(service, field, limit=5)
+    first = session.start()
+    second = session.load_more()
+
+    print(len(first.items), len(second.items), len(session.items))
+    print(session.items == first.items + second.items)
+    session.start()
+    print(len(session.items))
+    print(session.items == first.items)
 
 
 def toggle_focus(new_focus):

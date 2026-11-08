@@ -305,3 +305,51 @@ class ErpEntityService:
             items=tuple(items),
             has_more=len(rows) > limit
         )
+
+
+class ErpSearchSession:
+    def __init__(self, service: ErpEntityService, field: AB.BindingField | dict, *, limit: int = 100):
+        self.__service = service
+        self.__field = field
+        self.__text = ''
+        self.__limit = limit
+        self.__items: tuple[ErpEntityRef, ...] = ()
+        self.__page: ErpSearchResult | None = None
+
+    @property
+    def text(self) -> str:
+        return self.__text
+
+    @property
+    def items(self) -> tuple[ErpEntityRef, ...]:
+        return self.__items
+
+    @property
+    def has_more(self) -> bool:
+        return self.__page is not None and self.__page.has_more
+
+    def start(self, text: str = '') -> ErpSearchResult:
+        page = self.__service.search_text(
+            self.__field,
+            text,
+            limit=self.__limit
+        )
+        self.__text = text
+        self.__items = page.items
+        self.__page = page
+        return page
+
+    def load_more(self) -> ErpSearchResult:
+        if self.__page is None:
+            raise ErpEntityError('Объект поиска не инициализирован')
+        if not self.__page.has_more:
+            return ErpSearchResult(items=(), has_more=False)
+        page = self.__service.search_text(
+            self.__field,
+            self.__text,
+            limit=self.__limit,
+            after=self.__page.next_after
+        )
+        self.__items = self.__items + page.items
+        self.__page = page
+        return page
