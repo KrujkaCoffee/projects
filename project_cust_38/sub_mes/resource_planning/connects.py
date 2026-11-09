@@ -167,6 +167,8 @@ def _on_focus_changed(self:Plwindow, old_widget, new_widget, *args):
     # Проверяем, что новый виджет находится внутри нашего фрейма
     if new_widget and new_widget.parent().__class__ == CQT.QtWidgets.QFrame:
         new_fr = new_widget.parent()
+        if new_fr not in (DTSUB.fr_ev, DTSUB.fr_res):
+            return
         if new_fr == DTCLS.curren_frame:
             return
         DTCLS.curren_frame = new_fr

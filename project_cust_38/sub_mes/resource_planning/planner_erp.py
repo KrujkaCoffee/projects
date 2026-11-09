@@ -78,6 +78,14 @@ class ErpEntitySelection:
     accepted: bool
     reference: ErpEntityRef | None = None
 
+@dataclass(frozen=True)
+class ErpSearchPage:
+    items: tuple[ErpEntityRow, ...]
+    total_count: int
+    page_number: int
+
+
+
 class ErpEntityService:
     def __init__(self, interface, source_key_getter):
         self.interface: APIERP = interface
@@ -315,6 +323,224 @@ class ErpEntityService:
             has_more=len(rows) > limit
         )
 
+    @staticmethod
+    def __page_literal(value):
+        if not isinstance(value, str) or len(value) > 200 or any(char in value for char in '\x00\r\n'):
+            raise ErpEntityError('Условие ERP должно быть строкой до 200 символов без переноса строк')
+        return '"' + value.replace('"', '""') + '"'
+
+    def __page_where(self, field, conditions):
+        if conditions is None:
+            conditions = {}
+        if not isinstance(conditions, typing.Mapping):
+            raise ErpEntityError('Условия ERP должны быть словарём')
+        parts = []
+        references = []
+
+        def literal(column, value):
+            if column == 'value':
+                return self.__page_literal(value)
+            try:
+                reference = str(UUID(value))
+            except (ValueError, TypeError, AttributeError) as exc:
+                raise ErpEntityError('Фильтр UUID требует полный корректный UUID') from exc
+            name = f'PlannerFilter{len(references)}'
+            references.append((name, reference))
+            return '&' + name
+
+        def empty_condition(column, expression, is_empty):
+            if column == 'value':
+                if is_empty:
+                    return f'({expression} ЕСТЬ NULL ИЛИ {expression} = "" ИЛИ {expression} = "0")'
+                return f'({expression} ЕСТЬ НЕ NULL И {expression} <> "" И {expression} <> "0")'
+            empty_reference = literal(column, '00000000-0000-0000-0000-000000000000')
+            if is_empty:
+                return f'({expression} ЕСТЬ NULL ИЛИ {expression} = {empty_reference})'
+            return f'({expression} ЕСТЬ НЕ NULL И {expression} <> {empty_reference})'
+
+        for key, value in conditions.items():
+            if not isinstance(key, str):
+                raise ErpEntityError('Имя условия ERP должно быть строкой')
+            column, separator, lookup = key.partition('__')
+            lookup = lookup if separator else 'exact'
+            allowed = ('exact', 'ne', 'contains', 'gt', 'gte', 'lt', 'lte', 'in', 'isnull') if column == 'value' else ('exact', 'ne', 'in', 'isnull')
+            if column not in ('value', 'ref_key') or lookup not in allowed:
+                raise ErpEntityError(f'Неподдерживаемое условие ERP: {key}')
+            expression = f'Источник.{field.field_key}' if column == 'value' else 'Источник.Ссылка'
+            if lookup == 'isnull':
+                if type(value) is not bool:
+                    raise ErpEntityError('Условие isnull принимает только True или False')
+                parts.append(empty_condition(column, expression, value))
+            elif lookup in ('exact', 'ne') and value is None:
+                parts.append(empty_condition(column, expression, lookup == 'exact'))
+            elif lookup == 'in':
+                if not isinstance(value, (list, tuple, set, frozenset)) or len(value) > 500:
+                    raise ErpEntityError('Условие in требует коллекцию не более 500 значений')
+                values = [literal(column, item) for item in value if item is not None]
+                choices = []
+                if values:
+                    choices.append(f'{expression} В ({", ".join(values)})')
+                if None in value:
+                    choices.append(f'{expression} ЕСТЬ NULL')
+                parts.append('(' + ' ИЛИ '.join(choices) + ')' if choices else 'ЛОЖЬ')
+            elif lookup == 'contains':
+                self.__page_literal(value)
+                pattern = value.replace('~', '~~')
+                for char in '%_[]^':
+                    pattern = pattern.replace(char, '~' + char)
+                pattern = '"%' + pattern.replace('"', '""') + '%"'
+                parts.append(f'{expression} ПОДОБНО {pattern} СПЕЦСИМВОЛ "~"')
+            else:
+                sign = {'exact': '=', 'ne': '<>', 'gt': '>', 'gte': '>=', 'lt': '<', 'lte': '<='}[lookup]
+                parts.append(f'{expression} {sign} {literal(column, value)}')
+        return ' И '.join('(' + part + ')' for part in parts) or 'ИСТИНА', references
+
+    @staticmethod
+    def __page_count(value):
+        from decimal import Decimal, InvalidOperation
+
+        if isinstance(value, bool) or not isinstance(value, (int, float, str, Decimal)):
+            raise ErpEntityError('ERP вернула некорректное количество записей')
+        try:
+            number = Decimal(str(value))
+            if not number.is_finite() or number < 0 or number != number.to_integral_value():
+                raise ValueError()
+            return int(number)
+        except (InvalidOperation, ValueError, OverflowError) as exc:
+            raise ErpEntityError('ERP вернула некорректное количество записей') from exc
+
+    def search_page(self, field: AB.BindingField | dict, *, conditions=None,
+                    page: int = 1, limit: int = 100, last: bool = False) -> ErpSearchPage:
+        if isinstance(field, dict):
+            field = AB.BindingField.from_dict(field)
+        if not isinstance(field, AB.BindingField):
+            raise ErpEntityError('field должен быть типа BindingField или dict')
+        if field.provider != AB.SourceProvider.ERP or field.relation_steps:
+            raise ErpEntityError('Поддерживается только прямое поле ERP')
+        if not isinstance(field.field_key, str) or not field.field_key.isidentifier():
+            raise ErpEntityError('Некорректное имя поля ERP')
+        if not isinstance(field.entity_key, str):
+            raise ErpEntityError('Некорректный путь объекта ERP')
+        if type(limit) is not int or not 1 <= limit <= 500:
+            raise ErpEntityError('Размер страницы должен быть целым числом от 1 до 500')
+        if type(page) is not int or page < 1:
+            raise ErpEntityError('Номер страницы должен быть положительным целым числом')
+        if type(last) is not bool:
+            raise ErpEntityError('Параметр last должен быть True или False')
+        source_key = self.__source_key_getter()
+        if not isinstance(source_key, str) or not source_key:
+            raise ErpEntityError('Не задан источник ERP')
+        if field.source_key not in (source_key, field.entity_key):
+            raise ErpEntityError('Поле относится к другому источнику ERP')
+        table = self.__query_table(field.entity_key)
+        condition, references = self.__page_where(field, conditions)
+
+        for attempt in range(2):
+            descending = last or page > 1
+            if last or page == 1:
+                window = f'''
+                    ВЫБРАТЬ ПЕРВЫЕ {limit}
+                        Источник.Ссылка КАК Ссылка,
+                        Источник.{field.field_key} КАК field_value
+                    ИЗ {table} КАК Источник
+                    ГДЕ {condition}
+                    УПОРЯДОЧИТЬ ПО Источник.Ссылка {"УБЫВ" if last else ""}
+                '''
+            else:
+                window = f'''
+                    ВЫБРАТЬ ПЕРВЫЕ {limit}
+                        Окно.Ссылка КАК Ссылка,
+                        Окно.field_value КАК field_value
+                    ИЗ (
+                        ВЫБРАТЬ ПЕРВЫЕ {page * limit}
+                            Источник.Ссылка КАК Ссылка,
+                            Источник.{field.field_key} КАК field_value
+                        ИЗ {table} КАК Источник
+                        ГДЕ {condition}
+                        УПОРЯДОЧИТЬ ПО Источник.Ссылка
+                    ) КАК Окно
+                    УПОРЯДОЧИТЬ ПО Окно.Ссылка УБЫВ
+                '''
+            safe_reference = f'ЕСТЬNULL(Страница.Ссылка, ЗНАЧЕНИЕ({table}.ПустаяСсылка))'
+            query = f'''
+                ВЫБРАТЬ
+                    Счетчик.total_count КАК total_count,
+                    ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР({safe_reference})) КАК ref_key,
+                    ПРЕДСТАВЛЕНИЕ({safe_reference}) КАК display_snapshot,
+                    Страница.field_value КАК field_value
+                ИЗ (
+                    ВЫБРАТЬ КОЛИЧЕСТВО(*) КАК total_count
+                    ИЗ {table} КАК Источник
+                    ГДЕ {condition}
+                ) КАК Счетчик
+                ЛЕВОЕ СОЕДИНЕНИЕ ({window}) КАК Страница
+                ПО ИСТИНА
+                УПОРЯДОЧИТЬ ПО Страница.Ссылка {"УБЫВ" if descending else ""}
+            '''
+            refs = None
+            if references:
+                refs = self.interface.Refs_wet(query)
+                for name, reference in references:
+                    refs.add_ref(self.interface.Ref_wet(name, field.entity_key, reference))
+            try:
+                code, payload = self.interface.get_wet_request(text=query, lazy_method_huours=0, refs=refs)
+            except Exception as exc:
+                raise ErpEntityError('Не удалось загрузить страницу ERP') from exc
+            if code != 200:
+                raise ErpEntityError(f'Ошибка загрузки ERP: код {code!r}')
+            if not isinstance(payload, typing.Mapping):
+                raise ErpEntityError('Некорректный ответ ERP')
+            if payload.get('ЕстьОшибки'):
+                raise ErpEntityError(f'Ошибка на стороне ERP: {payload.get("Ошибки")}')
+            rows = payload.get('data')
+            if not isinstance(rows, list) or not rows or len(rows) > limit:
+                raise ErpEntityError('ERP вернула некорректный размер страницы')
+            if any(not isinstance(row, typing.Mapping) or 'total_count' not in row for row in rows):
+                raise ErpEntityError('В ответе ERP отсутствует количество записей')
+            total_count = self.__page_count(rows[0]['total_count'])
+            if any(self.__page_count(row['total_count']) != total_count for row in rows):
+                raise ErpEntityError('ERP вернула несовпадающие счётчики страницы')
+            if total_count == 0:
+                if len(rows) != 1:
+                    raise ErpEntityError('ERP вернула некорректную пустую страницу')
+                return ErpSearchPage(items=(), total_count=0, page_number=1)
+            count_pages = (total_count + limit - 1) // limit
+            if not last and page > count_pages:
+                last = True
+                continue
+            if len(rows) != min(limit, total_count):
+                raise ErpEntityError('Данные ERP изменились во время загрузки; повторите обновление')
+            page_number = count_pages if last else page
+            actual_size = min(limit, total_count - (page_number - 1) * limit)
+            items = []
+            identities = set()
+            for row in rows:
+                if any(key not in row for key in ('ref_key', 'display_snapshot', 'field_value')):
+                    raise ErpEntityError('В ответе ERP отсутствуют поля записи')
+                try:
+                    reference_uuid = UUID(row['ref_key'])
+                    if not reference_uuid.int or reference_uuid in identities:
+                        raise ValueError()
+                except (ValueError, TypeError, AttributeError) as exc:
+                    raise ErpEntityError('ERP вернула пустой, повторный или некорректный UUID') from exc
+                identities.add(reference_uuid)
+                value = row['field_value']
+                display = row['display_snapshot']
+                if value is not None and not isinstance(value, str):
+                    raise ErpEntityError('Фильтруемое поле ERP должно быть строковым')
+                if display is not None and not isinstance(display, str):
+                    raise ErpEntityError('ERP вернула некорректное представление записи')
+                reference = ErpEntityRef(source_key=source_key, entity_key=field.entity_key,
+                                         ref_key=str(reference_uuid), display_snapshot=display or '')
+                items.append(ErpEntityRow(reference=reference,
+                                          values={field.field_key: value},
+                                          presentations={field.field_key: value or ''}))
+            items = items[:actual_size]
+            if descending:
+                items.reverse()
+            return ErpSearchPage(items=tuple(items), total_count=total_count, page_number=page_number)
+        raise ErpEntityError('Не удалось определить актуальную страницу ERP')
+
 
 class ErpSearchSession:
     def __init__(self, service: ErpEntityService, field: AB.BindingField | dict, *, limit: int = 100):
@@ -365,136 +591,191 @@ class ErpSearchSession:
 
 ## === UI
 
-class ErpTablePageManager:
+from project_cust_38 import Cust_page_manager as CPM
 
-    def __init__(self, session: ErpSearchSession):
-        self.session = session
-        self.__pages: list[ErpSearchResult] = []
-        self.__index = 0
 
-    @property
-    def loaded(self):
-        return bool(self.__pages)
+class ErpTablePageManager(CPM.SqlPageManager):
+    """ERP-источник с интерфейсом серверного менеджера страниц CQT."""
 
-    @property
-    def text(self):
-        return self.session.text
+    def __init__(self, service, field, *, page_size=100):
+        self.service = service
+        self.field = AB.BindingField.from_dict(field) if isinstance(field, dict) else field
+        if not isinstance(self.field, AB.BindingField):
+            raise ErpEntityError('Ожидается поле BindingField')
+        self.value_column = self.field.field_key
+        if self.value_column in ('Представление', 'UUID'):
+            raise ErpEntityError('Имя поля совпадает со служебной колонкой подбора')
+        self._seek_last = False
+        columns = (self.value_column, 'Представление', 'UUID')
+        super().__init__(
+            bd=None, query=self.field.entity_key, columns=columns,
+            key_column='UUID', order_by=('UUID',), page_size=page_size,
+            column_types={column: str for column in columns}
+        )
 
-    @property
-    def count_pages(self):
-        if self.session.has_more:
-            return None
-        if not self.__pages or not self.__pages[0].items:
-            return 0
-        return len(self.__pages)
+    @staticmethod
+    def _positive_int(value):
+        value = CPM.SqlPageManager._positive_int(value)
+        if value > 500:
+            raise ErpEntityError('Размер страницы ERP должен быть от 1 до 500')
+        return value
 
-    @property
-    def shown_page(self):
-        return self.__index + 1 if self.count_pages != 0 else 0
+    @classmethod
+    def _normalize_query(cls, query):
+        if not isinstance(query, str):
+            raise ErpEntityError('Источник ERP должен быть строкой')
+        group, separator, name = query.partition('.')
+        if group not in ('Документы', 'Справочники') or not separator or not name.isidentifier():
+            raise ErpEntityError('Некорректный источник ERP')
+        return query
 
-    @property
-    def can_go_back(self):
-        return self.__index > 0
+    def _normalize_order(self, fields):
+        if isinstance(fields, str) or tuple(fields) not in ((), ('UUID',)):
+            raise ErpEntityError('В ERP-подборе используется порядок по ссылке 1С')
+        return ('UUID',)
 
-    @property
-    def can_go_forward(self):
-        return self.__index + 1 < len(self.__pages) or self.session.has_more
+    def _normalize_filters(self, conditions):
+        result = {}
+        for key, value in super()._normalize_filters(conditions).items():
+            column, lookup = self._split_filter(key)
+            if column == 'Представление':
+                raise ErpEntityError('Представление доступно только для просмотра; используйте колонку реквизита')
+            if column == 'UUID':
+                if lookup == 'contains':
+                    lookup = 'exact'
+                if lookup not in ('exact', 'ne', 'in', 'isnull'):
+                    raise ErpEntityError('Для UUID поддерживаются точное сравнение и проверка пустого значения')
+                if lookup != 'isnull' and value is not None:
+                    try:
+                        value = tuple(str(UUID(item)) for item in value) if lookup == 'in' else str(UUID(value))
+                    except (ValueError, TypeError, AttributeError) as exc:
+                        raise ErpEntityError('Введите UUID полностью; поиск по части UUID не поддерживается') from exc
+            normalized_key = column + '__' + lookup
+            if normalized_key in result:
+                raise ErpEntityError('Условие фильтра задано дважды')
+            result[normalized_key] = value
+        return result
 
-    @property
-    def can_go_last(self):
-        return self.count_pages is not None and self.can_go_forward
-
-    def set_data(self, data, user_data=None):
-        pass
+    def _load(self, recount=False):
+        use_last = self._seek_last and self._committed is not None and self._state()[:3] == self._committed[:3]
+        try:
+            conditions = {}
+            for key, value in self._filters.items():
+                column, lookup = self._split_filter(key)
+                name = 'ref_key' if column == 'UUID' else 'value'
+                conditions[name + '__' + lookup] = value
+            page = self.service.search_page(
+                self.field, conditions=conditions, page=self.current_page,
+                limit=self.page_size, last=use_last
+            )
+            rows = [
+                {
+                    self.value_column: item.values[self.field.field_key],
+                    'Представление': str(item.reference),
+                    'UUID': item.reference.ref_key,
+                    '_reference': item.reference
+                }
+                for item in page.items
+            ]
+        except Exception as exc:
+            self._restore()
+            self.last_error = exc
+            raise
+        finally:
+            self._seek_last = False
+        self.total_count = page.total_count
+        self.current_page = page.page_number
+        self._rows = rows
+        self._loaded = True
+        self._committed = self._state()
+        self.last_error = None
 
     def page_data(self):
-        data = [['Представление', 'UUID']]
-        user_data = [[None, None]]
-        if self.loaded:
-            for reference in self.__pages[self.__index].items:
-                data.append([str(reference), reference.ref_key])
-                user_data.append([reference, None])
+        data, _ = super().page_data()
+        user_data = [[None] * len(self.columns)]
+        user_data.extend([row['_reference'], None, None] for row in self._rows)
         return data, user_data
 
-    def start(self, text=''):
-        page = self.session.start(text)
-        self.__pages = [page]
-        self.__index = 0
-        return page
-
     def first(self):
-        if not self.can_go_back:
-            return False
-        self.__index = 0
-        return True
+        self._seek_last = False
+        return super().first()
 
     def previous(self):
-        if not self.can_go_back:
-            return False
-        self.__index -= 1
-        return True
+        self._seek_last = False
+        return super().previous()
 
     def next(self):
-        if self.__index + 1 < len(self.__pages):
-            self.__index += 1
-            return True
-        if not self.session.has_more:
-            return False
-        page = self.session.load_more()
-        if page.items:
-            self.__pages.append(page)
-            self.__index += 1
-        return True
+        self._seek_last = False
+        return super().next()
 
     def last(self):
-        if not self.can_go_last:
-            return False
-        self.__index = len(self.__pages) - 1
-        return True
+        changed = super().last()
+        self._seek_last = changed
+        return changed
 
 
 class ErpEntityTablePicker:
-    """ERP-подбор со штатной таблицей и фильтром CQT."""
+    """Подбор ERP в общем диалоге с серверным фильтром по колонкам."""
 
     def __init__(self, service, field, *, current=None, limit=100):
-        self.field = AB.BindingField.from_dict(field) if isinstance(field, dict) else field
-        self.page_manager = ErpTablePageManager(ErpSearchSession(service, self.field, limit=limit))
+        self.page_manager = ErpTablePageManager(service, field, page_size=limit)
         self.selected_reference = current
-        self.busy = False
+        self.committed_filter_texts = None
 
     def decorate(self, dialog):
         self.dialog = dialog
         self.table = dialog.ui.tbl
-        self.filter_table = dialog.ui.tbl_filtr
-        self.table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
-        dialog.resize(1000, 560)
+        dialog.resize(1100, 560)
         dialog.ui.cmb_action.setVisible(False)
-
-        CQT.ConnectFilterKeyEvents(dialog, self.table, self.filter_table)
-        self.native_filter_key_release = self.filter_table.keyReleaseEvent
-        self.filter_table.keyReleaseEvent = self._filter_key_release
-
-        for button, action in (
-            (dialog.ui.btn_skip_back, self.page_manager.first),
-            (dialog.ui.btn_back, self.page_manager.previous),
-            (dialog.ui.btn_forward, self.page_manager.next),
-            (dialog.ui.btn_skip_forward, self.page_manager.last)
-        ):
-            button.clicked.disconnect()
-            button.clicked.connect(lambda checked=False, action=action: self._change_page(action))
-        self.first_page_tooltip = dialog.ui.btn_skip_back.toolTip()
+        self.table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        current_label = QtWidgets.QLabel(
+            f'Сейчас: {self.selected_reference if self.selected_reference is not None else "не выбрано"}'
+        )
+        current_label.setTextFormat(QtCore.Qt.PlainText)
+        current_label.setWordWrap(True)
+        self.status_label = QtWidgets.QLabel()
+        dialog.ui.verticalLayout_5.insertWidget(0, current_label)
+        dialog.ui.verticalLayout_5.insertWidget(1, self.status_label)
         for button in dialog.findChildren(QtWidgets.QPushButton):
             button.setAutoDefault(False)
             button.setDefault(False)
-
         self.table.itemSelectionChanged.connect(self._update_buttons)
+        self.page_manager.bind_dialog(dialog, after_page=self._after_page, on_error=self._on_error)
+
+    def _lock_presentation_filter(self):
+        column = self.page_manager.columns.index('Представление')
+        item = self.dialog.ui.tbl_filtr.item(0, column)
+        item.setFlags(item.flags() & ~QtCore.Qt.ItemIsEditable)
+        item.setToolTip('Представление 1С доступно для просмотра. Фильтруйте по реквизиту или полному UUID')
+        self.page_manager._locked_filter_columns.add('Представление')
+
+    def _after_page(self, dialog, manager):
+        self._lock_presentation_filter()
+        header = self.table.horizontalHeader()
+        header.setStretchLastSection(False)
+        header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(1, QtWidgets.QHeaderView.Stretch)
+        header.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeToContents)
+        self.table.clearSelection()
+        self.table.setCurrentCell(-1, -1)
+        if self.table.rowCount():
+            self.table.selectRow(0)
+        self.status_label.setText(f'Записей: {manager.total_count}. Фильтр по всей ERP-выборке')
+        self.committed_filter_texts = [
+            dialog.ui.tbl_filtr.item(0, column).text()
+            for column in range(len(manager.columns))
+        ]
         self._update_buttons()
-        self.filter_table.setFocus()
-        self.initial_load = QtCore.QTimer(dialog)
-        self.initial_load.setSingleShot(True)
-        self.initial_load.timeout.connect(lambda: self._run(self.page_manager.start))
-        dialog.finished.connect(self.initial_load.stop)
-        self.initial_load.start(0)
+
+    def _on_error(self, dialog, error):
+        if self.committed_filter_texts is not None:
+            blocker = QtCore.QSignalBlocker(dialog.ui.tbl_filtr)
+            for column, value in enumerate(self.committed_filter_texts):
+                dialog.ui.tbl_filtr.item(0, column).setText(value)
+            del blocker
+        self._lock_presentation_filter()
+        self._update_buttons()
+        QtWidgets.QMessageBox.critical(dialog, 'Ошибка загрузки ERP', str(error))
 
     def _reference(self):
         rows = self.table.selectionModel().selectedRows(0)
@@ -503,88 +784,32 @@ class ErpEntityTablePicker:
         reference = CQT.getCustData(self.table, rows[0].row(), 0, modifier=101)
         return reference if isinstance(reference, ErpEntityRef) else None
 
-    def _ensure_visible_selection(self):
-        if self._reference() is not None:
-            return
-        self.table.clearSelection()
-        self.table.setCurrentCell(-1, -1)
-        for row in range(self.table.rowCount()):
-            if not self.table.isRowHidden(row):
-                self.table.selectRow(row)
-                break
-
-    def _filter_key_release(self, event):
-        self.native_filter_key_release(event)
-        if event.key() in (QtCore.Qt.Key_Return, QtCore.Qt.Key_Enter) or (
-            event.key() == QtCore.Qt.Key_Delete and event.modifiers() == QtCore.Qt.ShiftModifier
-        ):
-            self._ensure_visible_selection()
-            self._update_buttons()
-
     def _update_buttons(self, *args):
-        ready = not self.busy and self.page_manager.loaded
-        self.filter_table.setEnabled(not self.busy)
-        self.dialog.yes_btn.setEnabled(ready and self._reference() is not None)
-        self.dialog.set_page()
-        if self.page_manager.count_pages is None:
-            label = self.dialog.ui.lbl_page
-            label.setText(label.text().replace('/None', '/?'))
-            label.setToolTip(f'Страница {self.page_manager.shown_page}. Общее число страниц пока неизвестно')
-        self.dialog.ui.btn_skip_back.setEnabled(
-            not self.busy and (self.page_manager.can_go_back or not self.page_manager.loaded)
-        )
-        self.dialog.ui.btn_skip_back.setToolTip(
-            self.first_page_tooltip if self.page_manager.loaded else 'Повторить загрузку первой страницы'
-        )
-        self.dialog.ui.btn_back.setEnabled(ready and self.page_manager.can_go_back)
-        self.dialog.ui.btn_forward.setEnabled(ready and self.page_manager.can_go_forward)
-        self.dialog.ui.btn_skip_forward.setEnabled(ready and self.page_manager.can_go_last)
-
-    def _run(self, action):
-        if self.busy:
-            return
-        self.busy = True
-        self._update_buttons()
-        QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
-        try:
-            if action():
-                self.dialog.fill_current_page()
-                header = self.table.horizontalHeader()
-                header.setStretchLastSection(False)
-                header.setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
-                header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
-                CQT.apply_filtr_c(self.dialog, self.filter_table, self.table, save_data=False)
-                self._ensure_visible_selection()
-        except Exception as exc:
-            QtWidgets.QMessageBox.critical(self.dialog, 'Ошибка загрузки ERP', str(exc))
-        finally:
-            QtWidgets.QApplication.restoreOverrideCursor()
-            self.busy = False
-            self._update_buttons()
-
-    def _change_page(self, action):
-        self._run(action if self.page_manager.loaded else self.page_manager.start)
+        self.dialog.yes_btn.setEnabled(self._reference() is not None)
 
     def on_button(self, button, dialog, table):
         if button is dialog.yes_btn:
-            if not self.busy and self.page_manager.loaded:
-                reference = self._reference()
-                if reference is not None:
-                    self.selected_reference = reference
-                    dialog.accept()
+            reference = self._reference()
+            if reference is not None:
+                self.selected_reference = reference
+                dialog.accept()
         else:
             dialog.reject()
 
 
 def select_erp_entity(parent, service, field, *, current=None, limit=100):
-    picker = ErpEntityTablePicker(service, field, current=current, limit=limit)
-    accepted = CQT.msgboxg_get_table(
-        parent, 'Выбор записи ERP', [['Представление', 'UUID']],
-        btn0_name='Выбрать', btn1_name='Отмена', WindowTitle='Выбор записи ERP',
-        show_filtr=True, selection_from_tbl=True, selectRows=True, ExtendedSelection=False,
-        sortingEnabled=False, yesNoMode=True, not_standart_close=True,
-        page_manager=picker.page_manager, decorate_dialog=picker.decorate, func_btn0=picker.on_button
-    ) == QtWidgets.QDialog.Accepted
+    try:
+        picker = ErpEntityTablePicker(service, field, current=current, limit=limit)
+        accepted = CQT.msgboxg_get_table(
+            parent, 'Выбор записи ERP', None,
+            btn0_name='Выбрать', btn1_name='Отмена', WindowTitle='Выбор записи ERP',
+            show_filtr=True, selection_from_tbl=True, selectRows=True, ExtendedSelection=False,
+            sortingEnabled=False, yesNoMode=True, not_standart_close=True,
+            page_manager=picker.page_manager, decorate_dialog=picker.decorate, func_btn0=picker.on_button
+        ) == QtWidgets.QDialog.Accepted
+    except Exception as exc:
+        QtWidgets.QMessageBox.critical(parent, 'Ошибка загрузки ERP', str(exc))
+        return ErpEntitySelection(accepted=False, reference=current)
     return ErpEntitySelection(
         accepted=accepted,
         reference=picker.selected_reference if accepted else current
