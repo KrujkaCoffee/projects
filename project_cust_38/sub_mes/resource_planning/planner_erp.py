@@ -1,5 +1,4 @@
 import dataclasses
-import sys
 import typing
 from dataclasses import dataclass, replace
 
@@ -8,12 +7,18 @@ from PyQt5 import QtCore, QtWidgets
 from project_cust_38 import Cust_Qt as CQT
 from project_cust_38 import api_erp_commands as APIERP
 from project_cust_38.sub_mes.resource_planning import attribute_binding as AB
+from project_cust_38 import Cust_page_manager as CPM
+from project_cust_38 import Cust_Functions as F
+
 from uuid import UUID
 
 ERP_ENTITY_REF_VERSION = 1
 
 
-class ErpEntityError(ValueError): ...
+class ErpEntityError(ValueError):
+    def __init__(self, message: str, *, humanized: bool = False) -> None:
+        super().__init__(message)
+        self.humanized = humanized
 
 
 @dataclass(frozen=True)
@@ -326,14 +331,14 @@ class ErpEntityService:
     @staticmethod
     def __page_literal(value):
         if not isinstance(value, str) or len(value) > 200 or any(char in value for char in '\x00\r\n'):
-            raise ErpEntityError('Условие ERP должно быть строкой до 200 символов без переноса строк')
+            raise ErpEntityError('Некорректное условие')
         return '"' + value.replace('"', '""') + '"'
 
     def __page_where(self, field, conditions):
         if conditions is None:
             conditions = {}
         if not isinstance(conditions, typing.Mapping):
-            raise ErpEntityError('Условия ERP должны быть словарём')
+            raise ErpEntityError('Некорректное условие')
         parts = []
         references = []
 
@@ -343,7 +348,7 @@ class ErpEntityService:
             try:
                 reference = str(UUID(value))
             except (ValueError, TypeError, AttributeError) as exc:
-                raise ErpEntityError('Фильтр UUID требует полный корректный UUID') from exc
+                raise ErpEntityError('не удалось конвертировать uuid') from exc
             name = f'PlannerFilter{len(references)}'
             references.append((name, reference))
             return '&' + name
@@ -360,22 +365,21 @@ class ErpEntityService:
 
         for key, value in conditions.items():
             if not isinstance(key, str):
-                raise ErpEntityError('Имя условия ERP должно быть строкой')
+                raise ErpEntityError('Имя условия должно быть строкой')
             column, separator, lookup = key.partition('__')
             lookup = lookup if separator else 'exact'
             allowed = ('exact', 'ne', 'contains', 'gt', 'gte', 'lt', 'lte', 'in', 'isnull') if column == 'value' else ('exact', 'ne', 'in', 'isnull')
-            if column not in ('value', 'ref_key') or lookup not in allowed:
-                raise ErpEntityError(f'Неподдерживаемое условие ERP: {key}')
+            if column not in ('value',) or lookup not in allowed:
+                raise ErpEntityError(f'Неподдерживаемое условие: {key}')
             expression = f'Источник.{field.field_key}' if column == 'value' else 'Источник.Ссылка'
             if lookup == 'isnull':
-                if type(value) is not bool:
-                    raise ErpEntityError('Условие isnull принимает только True или False')
+                value = F.boolm(value)
                 parts.append(empty_condition(column, expression, value))
             elif lookup in ('exact', 'ne') and value is None:
                 parts.append(empty_condition(column, expression, lookup == 'exact'))
             elif lookup == 'in':
                 if not isinstance(value, (list, tuple, set, frozenset)) or len(value) > 500:
-                    raise ErpEntityError('Условие in требует коллекцию не более 500 значений')
+                    raise ErpEntityError('Условие превышает лимиты')
                 values = [literal(column, item) for item in value if item is not None]
                 choices = []
                 if values:
@@ -426,12 +430,12 @@ class ErpEntityService:
         if type(page) is not int or page < 1:
             raise ErpEntityError('Номер страницы должен быть положительным целым числом')
         if type(last) is not bool:
-            raise ErpEntityError('Параметр last должен быть True или False')
+            raise ErpEntityError('Параметр last должен быть типа bool')
         source_key = self.__source_key_getter()
         if not isinstance(source_key, str) or not source_key:
-            raise ErpEntityError('Не задан источник ERP')
+            raise ErpEntityError('Не задан источник')
         if field.source_key not in (source_key, field.entity_key):
-            raise ErpEntityError('Поле относится к другому источнику ERP')
+            raise ErpEntityError('Поле относится к другому источнику')
         table = self.__query_table(field.entity_key)
         condition, references = self.__page_where(field, conditions)
 
@@ -485,9 +489,9 @@ class ErpEntityService:
             try:
                 code, payload = self.interface.get_wet_request(text=query, lazy_method_huours=0, refs=refs)
             except Exception as exc:
-                raise ErpEntityError('Не удалось загрузить страницу ERP') from exc
+                raise ErpEntityError('Не удалось загрузить страницу') from exc
             if code != 200:
-                raise ErpEntityError(f'Ошибка загрузки ERP: код {code!r}')
+                raise ErpEntityError(f'Ошибка загрузки: код {code!r}')
             if not isinstance(payload, typing.Mapping):
                 raise ErpEntityError('Некорректный ответ ERP')
             if payload.get('ЕстьОшибки'):
@@ -591,11 +595,9 @@ class ErpSearchSession:
 
 ## === UI
 
-from project_cust_38 import Cust_page_manager as CPM
 
 
 class ErpTablePageManager(CPM.SqlPageManager):
-    """ERP-источник с интерфейсом серверного менеджера страниц CQT."""
 
     def __init__(self, service, field, *, page_size=100):
         self.service = service
@@ -643,13 +645,11 @@ class ErpTablePageManager(CPM.SqlPageManager):
             if column == 'UUID':
                 if lookup == 'contains':
                     lookup = 'exact'
-                if lookup not in ('exact', 'ne', 'in', 'isnull'):
-                    raise ErpEntityError('Для UUID поддерживаются точное сравнение и проверка пустого значения')
                 if lookup != 'isnull' and value is not None:
                     try:
                         value = tuple(str(UUID(item)) for item in value) if lookup == 'in' else str(UUID(value))
                     except (ValueError, TypeError, AttributeError) as exc:
-                        raise ErpEntityError('Введите UUID полностью; поиск по части UUID не поддерживается') from exc
+                        raise ErpEntityError('некорректный uuid', humanized=True) from exc
             normalized_key = column + '__' + lookup
             if normalized_key in result:
                 raise ErpEntityError('Условие фильтра задано дважды')
@@ -728,14 +728,6 @@ class ErpEntityTablePicker:
         dialog.resize(1100, 560)
         dialog.ui.cmb_action.setVisible(False)
         self.table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
-        current_label = QtWidgets.QLabel(
-            f'Сейчас: {self.selected_reference if self.selected_reference is not None else "не выбрано"}'
-        )
-        current_label.setTextFormat(QtCore.Qt.PlainText)
-        current_label.setWordWrap(True)
-        self.status_label = QtWidgets.QLabel()
-        dialog.ui.verticalLayout_5.insertWidget(0, current_label)
-        dialog.ui.verticalLayout_5.insertWidget(1, self.status_label)
         for button in dialog.findChildren(QtWidgets.QPushButton):
             button.setAutoDefault(False)
             button.setDefault(False)
@@ -760,7 +752,6 @@ class ErpEntityTablePicker:
         self.table.setCurrentCell(-1, -1)
         if self.table.rowCount():
             self.table.selectRow(0)
-        self.status_label.setText(f'Записей: {manager.total_count}. Фильтр по всей ERP-выборке')
         self.committed_filter_texts = [
             dialog.ui.tbl_filtr.item(0, column).text()
             for column in range(len(manager.columns))
@@ -775,7 +766,10 @@ class ErpEntityTablePicker:
             del blocker
         self._lock_presentation_filter()
         self._update_buttons()
-        QtWidgets.QMessageBox.critical(dialog, 'Ошибка загрузки ERP', str(error))
+        text = 'Ошибка загрузки ERP'
+        if isinstance(error, ErpEntityError) and error.humanized:
+            text = '\n'.join(error.args)
+        CQT.msgbox(text)
 
     def _reference(self):
         rows = self.table.selectionModel().selectedRows(0)
@@ -808,7 +802,7 @@ def select_erp_entity(parent, service, field, *, current=None, limit=100):
             page_manager=picker.page_manager, decorate_dialog=picker.decorate, func_btn0=picker.on_button
         ) == QtWidgets.QDialog.Accepted
     except Exception as exc:
-        QtWidgets.QMessageBox.critical(parent, 'Ошибка загрузки ERP', str(exc))
+        CQT.msgbox('Ошибка загрузки ERP')
         return ErpEntitySelection(accepted=False, reference=current)
     return ErpEntitySelection(
         accepted=accepted,
