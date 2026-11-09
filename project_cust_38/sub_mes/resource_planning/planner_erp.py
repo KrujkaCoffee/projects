@@ -720,7 +720,6 @@ class ErpEntityTablePicker:
     def __init__(self, service, field, *, current=None, limit=100):
         self.page_manager = ErpTablePageManager(service, field, page_size=limit)
         self.selected_reference = current
-        self.committed_filter_texts = None
 
     def decorate(self, dialog):
         self.dialog = dialog
@@ -752,18 +751,9 @@ class ErpEntityTablePicker:
         self.table.setCurrentCell(-1, -1)
         if self.table.rowCount():
             self.table.selectRow(0)
-        self.committed_filter_texts = [
-            dialog.ui.tbl_filtr.item(0, column).text()
-            for column in range(len(manager.columns))
-        ]
         self._update_buttons()
 
     def _on_error(self, dialog, error):
-        if self.committed_filter_texts is not None:
-            blocker = QtCore.QSignalBlocker(dialog.ui.tbl_filtr)
-            for column, value in enumerate(self.committed_filter_texts):
-                dialog.ui.tbl_filtr.item(0, column).setText(value)
-            del blocker
         self._lock_presentation_filter()
         self._update_buttons()
         text = 'Ошибка загрузки ERP'

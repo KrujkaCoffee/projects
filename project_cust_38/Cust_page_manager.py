@@ -60,6 +60,9 @@ class SqlPageManager(CQT.PageManager):
                for t in self.column_types.values()):
             raise TypeError("Неподдерживаемый тип колонки")
         self._filters = {}
+        # Введённый текст отделён от нормализованных условий фильтра.
+        self._filter_cell_states = {}
+        self._filter_input_texts = None
         self._order = self._normalize_order(order_by)
         self._rows = []
         self._loaded = False
@@ -482,34 +485,25 @@ class SqlPageManager(CQT.PageManager):
             return column + '__contains', text
         return column + '__exact', self.__convert_value(column, text)
 
+    def __column_filters(self, column):
+        return {key: value for key, value in self._filters.items()
+                if self._split_filter(key)[0] == column}
+
     def __filter_cell_text(self, column):
-        conditions = [(key, value) for key, value in self._filters.items()
-                      if self._split_filter(key)[0] == column]
+        conditions = list(self.__column_filters(column).items())
         if not conditions:
             return ''
         if len(conditions) != 1:
             return None
         key, value = conditions[0]
         lookup = self._split_filter(key)[1]
-        if lookup == 'isnull':
-            return '!*' if value else '*'
-        if value is None:
-            if lookup == 'exact':
-                return '!*'
-            if lookup == 'ne':
-                return '*'
-            return None
-        if lookup == 'contains':
-            if (self.column_types.get(column) or str) is not str:
-                return None
-            return '~' + str(value)
+        if lookup == 'isnull' or value is None:
+            return ''
         if isinstance(value, (dict, list, tuple, set, frozenset, bytes, bytearray, memoryview)):
             return None
-        prefixes = {'exact': '=', 'ne': '!=', 'gt': '>', 'gte': '>=', 'lt': '<', 'lte': '<='}
-        if lookup not in prefixes:
+        if lookup not in ('exact', 'ne', 'contains', 'gt', 'gte', 'lt', 'lte'):
             return None
-        text = ('1' if value else '0') if isinstance(value, bool) else str(value)
-        return prefixes[lookup] + text
+        return ('1' if value else '0') if isinstance(value, bool) else str(value)
 
     def __sync_filter_cells(self):
         dialog = self._dialog()
@@ -521,6 +515,7 @@ class SqlPageManager(CQT.PageManager):
         self._locked_filter_columns = set()
         blocker = CQT.QtCore.QSignalBlocker(table)
         for index, column in enumerate(self.columns):
+            conditions = self.__column_filters(column)
             text = self.__filter_cell_text(column)
             item = table.item(0, index)
             if item is None:
@@ -530,29 +525,42 @@ class SqlPageManager(CQT.PageManager):
             if text is None:
                 self._locked_filter_columns.add(column)
                 item.setFlags(flags & ~CQT.QtCore.Qt.ItemIsEditable)
-                item.setText('-')
-                conditions = {key: value for key, value in self._filters.items()
-                              if self._split_filter(key)[0] == column}
+                item.setText('')
                 item.setToolTip('Условие сохраняется при фильтрации и очистке строки: ' + repr(conditions))
             else:
+                previous = self._filter_cell_states.get(column)
+                if self._filter_input_texts is not None and column in self._filter_input_texts:
+                    text = self._filter_input_texts[column]
+                elif previous is not None and previous['conditions'] == conditions:
+                    text = previous['text']
                 item.setFlags(flags | CQT.QtCore.Qt.ItemIsEditable)
                 item.setText(text)
                 item.setToolTip(table.toolTip())
+            self._filter_cell_states[column] = {
+                'text': item.text(), 'conditions': copy.deepcopy(conditions)
+            }
         del blocker
 
-    def __filters_from_table(self, table):
+    def __filters_from_table(self, table, clear=False):
         if table.rowCount() != 1 or table.columnCount() != len(self.columns):
             raise ValueError('Серверный фильтр требует одну строку и исходный порядок колонок')
         locked = self._locked_filter_columns
         filters = {key: value for key, value in self._filters.items()
                    if self._split_filter(key)[0] in locked}
+        if clear:
+            return filters
         for index, column in enumerate(self.columns):
             if column in locked:
                 continue
             if table.cellWidget(0, index) is not None:
                 raise ValueError('Серверный фильтр поддерживает только текстовые ячейки')
             item = table.item(0, index)
-            condition = self.__parse_filter_cell(column, item.text() if item else '')
+            text = item.text() if item else ''
+            previous = self._filter_cell_states.get(column)
+            if previous is not None and previous['text'] == text and previous['conditions'] == self.__column_filters(column):
+                filters.update(copy.deepcopy(previous['conditions']))
+                continue
+            condition = self.__parse_filter_cell(column, text)
             if condition is not None:
                 filters[condition[0]] = condition[1]
         return filters
@@ -589,15 +597,28 @@ class SqlPageManager(CQT.PageManager):
                     if item is not None and column not in self._locked_filter_columns:
                         item.setText('')
                 del blocker
-            conditions = self.__filters_from_table(table)
-        except Exception as error:
-            self.__show_dialog_error(error)
-            return
-        try:
-            self.set_filter(**conditions)
+            conditions = self.__filters_from_table(table, clear=mode == 'clear')
         except Exception as error:
             self.__sync_filter_cells()
             self.__show_dialog_error(error)
+            return
+        self._filter_input_texts = {
+            column: table.item(0, index).text() if table.item(0, index) else ''
+            for index, column in enumerate(self.columns)
+        }
+        try:
+            if not self.set_filter(**conditions):
+                for column, text in self._filter_input_texts.items():
+                    if column not in self._locked_filter_columns:
+                        self._filter_cell_states[column] = {
+                            'text': text, 'conditions': copy.deepcopy(self.__column_filters(column))
+                        }
+        except Exception as error:
+            self._filter_input_texts = None
+            self.__sync_filter_cells()
+            self.__show_dialog_error(error)
+        finally:
+            self._filter_input_texts = None
 
     def bind_dialog(self, dialog, after_page=None, on_error=None):
         import weakref
@@ -632,6 +653,7 @@ class SqlPageManager(CQT.PageManager):
             try:
                 original_fill()
             except Exception as error:
+                self.__sync_filter_cells()
                 dialog.set_page()
                 self.__show_dialog_error(error)
                 return False
