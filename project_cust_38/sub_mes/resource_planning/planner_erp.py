@@ -470,15 +470,6 @@ class ErpEntityTablePicker:
         dialog.resize(1000, 560)
         dialog.ui.cmb_action.setVisible(False)
 
-        current_label = QtWidgets.QLabel(
-            f'Сейчас: {self.selected_reference if self.selected_reference is not None else "не выбрано"}'
-        )
-        current_label.setTextFormat(QtCore.Qt.PlainText)
-        current_label.setWordWrap(True)
-        self.status_label = QtWidgets.QLabel()
-        dialog.ui.verticalLayout_5.insertWidget(0, current_label)
-        dialog.ui.verticalLayout_5.insertWidget(1, self.status_label)
-
         CQT.ConnectFilterKeyEvents(dialog, self.table, self.filter_table)
         self.native_filter_key_release = self.filter_table.keyReleaseEvent
         self.filter_table.keyReleaseEvent = self._filter_key_release
@@ -548,13 +539,6 @@ class ErpEntityTablePicker:
         self.dialog.ui.btn_back.setEnabled(ready and self.page_manager.can_go_back)
         self.dialog.ui.btn_forward.setEnabled(ready and self.page_manager.can_go_forward)
         self.dialog.ui.btn_skip_forward.setEnabled(ready and self.page_manager.can_go_last)
-        if self.busy:
-            text = 'Загрузка…'
-        elif not self.page_manager.loaded:
-            text = 'Для повтора загрузки нажмите переход на первую страницу'
-        else:
-            text = f'Загружено: {len(self.page_manager.session.items)}. Фильтр действует на текущую страницу'
-        self.status_label.setText(text)
 
     def _run(self, action):
         if self.busy:
