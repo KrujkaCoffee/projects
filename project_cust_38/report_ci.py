@@ -78,6 +78,12 @@ KOEF_NORMIROVSCHICI = 1 / 1.15
 
 
 DICT_VID_OTCH =  {
+    "product_acceptance": {
+        "": "",
+        "Название": "Приемка продукции",
+        "Группа": "Контроль учета и выгрузки",
+        "Примечание": "Переход от эксель ведомости 09.11.2026"
+    },
     "bonds_zp_kpl": {
         "": "",
         "Название": "Миграция ЗК из 1с в КПЛ",
@@ -617,6 +623,15 @@ def vibor_sort_c_report_c(self: mywindow, *args):
 
 
     if name_otch == 'bonds_zp_kpl':
+        self.ui.le_start_of_period.setText("2026-09-01 00:00:01")
+        last_month = F.now("")
+        konec = F.start_end_dates_c(last_month, '', 'm', "%Y-%m-%d %H:%M:%S")[0]
+        self.ui.le_end_of_period.setText(konec)
+        self.ui.cmb_podrazdelenie.clear()
+        self.ui.cmb_podrazdelenie.setDisabled(True)
+        podrazdel_none(self)
+
+    if name_otch == 'product_acceptance':
         self.ui.le_start_of_period.setText("2026-09-01 00:00:01")
         last_month = F.now("")
         konec = F.start_end_dates_c(last_month, '', 'm', "%Y-%m-%d %H:%M:%S")[0]
@@ -1193,6 +1208,8 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
                                    self.Data.DICT_VID_RABOT, podrazd)
     if report_name == 'bonds_zp_kpl':
         rez_spis, fnc_oform = bonds_zp_kpl(self, nach, konec)
+    if report_name == 'product_acceptance':
+        rez_spis, fnc_oform = product_acceptance(self, nach, konec)
 
     if report_name == 'analytics_otk':
         rez_spis, fnc_oform = analytics_otk(self, nach, konec)
@@ -9071,6 +9088,89 @@ INNER JOIN пл_ко ON пл_ко."НомПл" = plan."Пномер"
             rez_list_plan.append(tmp)
     rez_list_plan.append(['' for _ in rez_list_plan[0]])
     return rez_list_plan
+
+
+def product_acceptance(self, data_nach, data_kon):
+    class SimpClsRows_acceptance(F._SimpMeta):
+        Пномер: int
+        Номер_наряда: int
+        Номер_журнала: int
+        Дата: str
+        Примечание: str
+        Операции: str
+        Контр_покрытие_дата: str
+        Контр_покрытие_ФИО: str
+        Контр_покрытие_журнал: None
+        финиш_в_операции: str
+
+
+    rez_spis = []
+
+    def get_plan_otk_alias_by_poki(poki):
+        return CSQ.custom_request_c(
+            CFG.Config.project.db_kplan,
+            f'SELECT "Имя" FROM podrazdel WHERE is_control = 1 AND poki = {poki} LIMIT 1',
+            hat_c=False,
+            one=True,
+            one_column=True
+        )
+
+    name_tbl_otk = get_plan_otk_alias_by_poki(CFG_o.place.poki)
+    list_kontrol_opers = {k for k,v in self.DICT_OPER_FULL.items() if v['kontrol_opers']}
+    postfix_where = ' OR '.join([f'naryad."Операции" LIKE  "%{_}%"' for _ in list_kontrol_opers])
+
+    text_request = f""" 
+        SELECT plan."Пномер", jurnal."Номер_наряда" , jurnal."Пномер" as "Номер_журнала", jurnal."Дата", jurnal."Примечание", naryad."Операции", 
+          "{name_tbl_otk}"."Контр_покрытие_дата", 
+            "{name_tbl_otk}"."Контр_покрытие_ФИО", 
+            "{name_tbl_otk}"."Контр_покрытие_журнал", 
+            '' as "финиш_в_операции"
+          FROM jurnal 
+        INNER JOIN naryad ON naryad."Пномер" = jurnal."Номер_наряда" 
+        INNER JOIN mk ON mk."Пномер" = naryad."Номер_мк"
+        inner JOIN plan ON plan."Пномер" = mk."НомКплан" 
+        inner JOIN "{name_tbl_otk}" ON "{name_tbl_otk}"."НомПл" = plan."Пномер"
+
+        WHERE jurnal.Статус = "Завершен" AND ({postfix_where}) AND
+         jurnal.Дата BETWEEN '{F.dateStrToStr(data_nach,format_out='%Y-%m-%d')}' and '{F.dateStrToStr(data_kon,format_out='%Y-%m-%d')}'
+"""
+    data_acceptance = CSQ.custom_request_c(self.bd_naryad, text_request,rez_dict=True,attach_dbs=(self.db_kplan))
+    data_acceptance_o = [SimpClsRows_acceptance._from_dict(_) for _ in data_acceptance]
+    F.gen_aliases(data_acceptance_o)
+    for row in data_acceptance_o:
+        if 'иниш' in row.Операции:
+            row.финиш_в_операции = 'Да'
+        if 'инальное' in row.Примечание:
+            row.финиш_в_операции = 'Прим.'
+            
+    rez_spis = [ _.to_dict() for _ in data_acceptance_o ]
+
+    DICT_ALIASES = {
+        "Пномер": "Пномер",
+        "Номер_наряда": "Номер наряда",
+        "Номер_журнала": "Номер журнала",
+        "Дата": "Дата",
+        "Примечание": "Примечание",
+        "Операции": "_Операции",
+        "Контр_покрытие_дата": "Контр_покрытие_дата",
+        "Контр_покрытие_ФИО": "Контр_покрытие_ФИО",
+        "Контр_покрытие_журнал": "Контр_покрытие_журнал",
+        "финиш_в_операции": "_финиш_в_операции"
+    }
+    def fnc_oform(tbl, *args):
+        t = CQT.TableContext(tbl)
+        t.tbl.setStyleSheet(CQT.MES_EDIT_CSS)
+        t.hide_if_not_dev(CFG,True)
+        for name_field in t.nf.keys():
+            if t.width(name_field) > 500:
+                t.set_width(name_field,500)
+
+        for row in t.rows():
+            pass
+
+
+    self.DICT_ALIASES_FIELDS_REPORT = DICT_ALIASES
+    return rez_spis, fnc_oform
 
 
 def bonds_zp_kpl(self, data_nach, data_kon):

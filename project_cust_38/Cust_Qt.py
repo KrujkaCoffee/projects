@@ -2946,18 +2946,16 @@ class TableRow:
         j = self._col_index(col_name)
         return self.tbl.item(self.i, j)
 
-    def widget(self, col_name: str,type_w=None):
+    def widget(self, col_name: object,type_w=None):
         j = self._col_index(col_name)
         widg = get_btn(self.tbl, self.i, j)
-        if type_w is None:
+        if type_w is None or widg is None:
             return widg
         if isinstance(widg,type_w):
             return widg
-
         for child in widg.children():
             if isinstance(child, type_w):
                 return child
-
         return
 
 

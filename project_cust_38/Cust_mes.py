@@ -306,10 +306,10 @@ class FactorySet:
 class FactorySets:
     DICT_ALIASES = {'id_dse':'_id_dse',
                     'name_dse':"ДСЕ",
-                    'id_oper':'№ Операции',
-                    'oper_name':'Название операции',
-                    'to_select_fsets':'К выбору к-т',
-
+                    'id_oper':'Номер\nоперации',
+                    'oper_name':'Название\nоперации',
+                    'to_select_fsets':'К выбору\nк-тов, шт.',
+                    'select_all':'Все',
                     }
 
     def __init__(self,id_mk:int):
@@ -327,7 +327,7 @@ class FactorySets:
     def dse_per_izd(self,id_dse:int)->int:
         return self.res.get_dse(id_dse).Количество_ед
     
-    def get_factorySets_by_dse_oper(self,id_dse:int,id_oper:str)->dict[int,FactorySet]:
+    def get_factory_sets_by_dse_oper(self,id_dse:int,id_oper:str)->dict[int,FactorySet]:
         if (id_dse,id_oper) in self.dict_sets:
             return self.dict_sets[(id_dse,id_oper)]
         return dict()
@@ -357,7 +357,7 @@ class FactorySets:
     def get_factory_name(self,id_set:int)->str:
         return f'ЗК № {id_set}'
 
-    def template(self)->tuple[list[dict],dict]:
+    def template_select(self)->tuple[list[dict],dict]:
         DICT_ALIASES = copy.deepcopy(self.DICT_ALIASES)
         list_rezult = []
         for dse in self.res.data:
@@ -369,7 +369,7 @@ class FactorySets:
                 
                 to_select = self.res.count
                 tmp_row = {'id_dse':id_dse,'name_dse':name_dse,'id_oper':id_oper,'oper_name':oper_name,
-                           'to_select_fsets':None,}
+                           'to_select_fsets':None,'select_all':CEMOJ.ДокументыДанные.revers.symbol}
                 
                 for i in range(self.res.count):
                     naryad_id = self.get_naryad(id_dse,id_oper,i)
@@ -4157,10 +4157,10 @@ class _base_marshrut_cards(_ImportDb):
 
 class Marshrut_cards_list(_base_marshrut_cards):
     def __init__(self, set_nums: set[int] | list[int] | tuple[int], load_resource: bool = True):
-        if DPACKS.DATA_MK_PACK is not None:
-            self.DICT_RC = DPACKS.DATA_MK_PACK.DICT_RC_BY_CODE
-        else:
-            self.DICT_RC = self._calc_dict_rc()
+        # if DPACKS.DATA_MK_PACK is not None:
+        #     self.DICT_RC = DPACKS.DATA_MK_PACK.DICT_RC_BY_CODE
+        # else:
+        self.DICT_RC = self._calc_dict_rc()
 
         str_select = self.get_str_select()
         postfix = 'NULL as res,'
@@ -5654,9 +5654,10 @@ class Group_nar(_ImportDb):
             jur_obj.refresh()
             jur_obj.set_selected_fragment(start_row_num)
             is_idle = nar_obj.Задание == 'ПРОСТОЙ'
-            if not jur_obj.add_new_row(_dict_emploee_full, '', new_end, end_status,  # 27.04.2026
+            jurnal_id = jur_obj.add_new_row(_dict_emploee_full, '', new_end, end_status,  # 27.04.2026
                                        msg_jur,
-                                       is_idle):
+                                       is_idle)
+            if not jurnal_id:
                 return
             previous_start = new_start
             previous_end = new_end
@@ -5673,7 +5674,7 @@ class Group_nar(_ImportDb):
                                                      'name')
                 glob_otk_kontrol = is_otk_nar(nar.Операции, DICT_OPER_NAME)
 
-                ending_oform_zav_nar(nar_obj, glob_otk_kontrol, fragment.user)
+                ending_oform_zav_nar(nar_obj, glob_otk_kontrol, fragment.user,jurnal_id)
 
     def remove_nar(self, list_s_num_nar: list):
         self.parent._dele_nar_gr(list_s_num_nar)
@@ -19278,7 +19279,8 @@ def check_otk_after_proizv(nom_mk: int,
     finish_otk_info_o = FinishOtkInfo()
 
     if not list_opers_otk:
-        finish_otk_info_o.coating_done = True
+        finish_otk_info_o.coating_done = False
+        finish_otk_info_o.finish_done = False
         return finish_otk_info_o
 
 
@@ -19312,7 +19314,7 @@ def check_otk_after_proizv(nom_mk: int,
 
     return finish_otk_info_o
 
-def processing_finish_sign_otk(glob_fio, nom_mk, nom_kpl, nom_nar, nar_obj, poki):
+def processing_finish_sign_otk(glob_fio, nom_mk, nom_kpl, nom_nar, nar_obj, poki,jurnal_id:int):
     alias = get_plan_otk_alias_by_poki(poki)  # 08.04.2026
     finish_otk_info_o = None
     if nar_obj.Категория_внепл == 18:  # финишный ОТК20.03.2026
@@ -19372,7 +19374,6 @@ def processing_finish_sign_otk(glob_fio, nom_mk, nom_kpl, nom_nar, nar_obj, poki
         return
 
     if finish_otk_info_o.coating_done:
-
         custom_request_c = f'''UPDATE "{alias}"  SET ("Контр_покрытие_ФИО", "Контр_покрытие_дата") = (?,?) 
                     WHERE "НомПл" = ?;'''
         param = [glob_fio, F.now(), nom_kpl]  # 15.07.25
@@ -19387,10 +19388,12 @@ def processing_finish_sign_otk(glob_fio, nom_mk, nom_kpl, nom_nar, nar_obj, poki
             pass
 
     if finish_otk_info_o.finish_done:
-
-        custom_request_c = f'''UPDATE "{alias}"  SET ("Контр_покрытие_ФИО", "Контр_покрытие_дата") = (?,?) 
+        custom_request_c = f'''UPDATE "{alias}"  SET ("Контр_покрытие_ФИО", "Контр_покрытие_дата","Контр_покрытие_журнал") = (?,?,?) 
                     WHERE "НомПл" = ?;'''
-        param = [glob_fio, F.now(), nom_kpl]  # 15.07.25
+        date = CSQ.custom_request_c(CFG.Config.project.db_naryad,
+                                    f"""SELECT Дата FROM jurnal where Пномер = {jurnal_id}""",
+                                    one=True,one_column=True,hat_c=False)
+        param = [glob_fio, date if date else F.now(), jurnal_id ,nom_kpl]  # 15.07.25
         CSQ.custom_request_c(CFG.Config.project.db_kplan, custom_request_c, list_of_lists_c=param)
 
         try:
@@ -19402,10 +19405,11 @@ def processing_finish_sign_otk(glob_fio, nom_mk, nom_kpl, nom_nar, nar_obj, poki
             pass
 
 
-def ending_oform_zav_nar(nar_obj, glob_otk_kontrol: bool, glob_fio):
+def ending_oform_zav_nar(nar_obj, glob_otk_kontrol: bool, glob_fio,jurnal_id:int):
 
-    if nar_obj.АвтоПодтвержд or glob_otk_kontrol:
-        auto_podtv(glob_fio, nar_obj)
+    if not CFG.Config.user_config.is_developer:
+        if nar_obj.АвтоПодтвержд or glob_otk_kontrol:
+            auto_podtv(glob_fio, nar_obj)
 
     if glob_otk_kontrol:
         nar_obj.get_mk()
@@ -19416,11 +19420,10 @@ def ending_oform_zav_nar(nar_obj, glob_otk_kontrol: bool, glob_fio):
         zadanie = nar_obj.Задание
         poki = nar_obj.mk.calc_poki()
         if type_mk == 1:  # Тип Плановая
-            processing_finish_sign_otk(glob_fio, nom_mk, nom_kpl, nom_nar, nar_obj, poki)
+            processing_finish_sign_otk(glob_fio, nom_mk, nom_kpl, nom_nar, nar_obj, poki,jurnal_id)
 
 
         #processing_fix_of_brak(jur_obj, zadanie, nom_nar)
-
 
 def ____________VIPOLN_END__________________________________():
     pass
