@@ -2830,7 +2830,7 @@ class TableRow:
     def __init__(self, ctx: TableContext, row_index: int):
         self.ctx:TableContext = ctx
         self.tbl:QtWidgets.QTableWidget = ctx.tbl
-        self.nf:dict[str,int] = ctx.nf
+        self.nf:dict[object,int] = ctx.nf
         self.nft:dict[str,int] = ctx.nft
         self.i:int = row_index
 

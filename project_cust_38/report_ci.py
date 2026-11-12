@@ -4856,9 +4856,9 @@ def analysis_vneplan_by_vid_rab(self: mywindow, nach, konec, podrazd=None, *args
         res_list.append(tmp_dict)
     self.analysis_vneplan_by_vid_rab_tmp_res_list = res_list
 
-
+    mk_o = CMS.Marshrut_cards_list(set_mk,True)
     for mk in set_mk:
-        mk = CMS.Marshrut_cards(mk, self.bd_naryad, self.db_resxml, True)
+        mk = mk_o.marshrut_cards_dict[mk]
         if mk.res == None:
             continue
         kat = ''
@@ -7426,7 +7426,8 @@ def get_plan_vneplan_data(self, data_nach, data_kon, vid='Все', etap='Сбо�
                         "" as Дата_выгрузки_ЕРП, "" as ФИО_выгрузки_ЕРП, 0 as Минут_выгружено_ЕРП, "" as base_ERP, 
                         category_vnepl.value as Категория_внепл , 
                         naryad.Подтвержд_вып_дата as Подтвержд_вып_дата ,
-                        mk.Дата as Дата_мк
+                        mk.Дата as Дата_мк,
+                        mk.Дата as ДатаМК
                         FROM jurnal 
                                     INNER JOIN naryad ON jurnal.Номер_наряда = naryad.Пномер  
                                     INNER JOIN mk ON mk.Пномер = naryad.Номер_мк  
@@ -7472,7 +7473,8 @@ def get_plan_vneplan_data(self, data_nach, data_kon, vid='Все', etap='Сбо�
                         '' as "base_ERP", 
                         category_vnepl.value as "Категория_внепл" , 
                         naryad."Подтвержд_вып_дата" as "Подтвержд_вып_дата" ,
-                        mk."Дата" as "Дата_мк"
+                        mk."Дата" as "Дата_мк",
+                        mk."Дата" as "ДатаМК",
                         FROM jurnal 
                         INNER JOIN "naryad" ON "jurnal"."Номер_наряда" = "naryad"."Пномер"  
                         INNER JOIN "mk" ON "mk"."Пномер" = "naryad"."Номер_мк"  
@@ -7547,7 +7549,7 @@ def get_plan_vneplan_data(self, data_nach, data_kon, vid='Все', etap='Сбо�
                 CQT.msgbox(f'Для {fio_zav} не указан этап в DB dolgn_etap')
                 return None, None
 
-            if etap_user != etap:
+            if etap_user != etap and etap != 'Все':
                 continue
             try:
                 if item_zav_nar['Тип'] == 'Плановая':  # Плановая
@@ -9144,7 +9146,7 @@ def product_acceptance(self, data_nach, data_kon):
             row.финиш_в_операции = 'Прим.'
             
     rez_spis = [ _.to_dict() for _ in data_acceptance_o ]
-
+    #TODO удалить записи из КПЛ.ОТКК и проставить только те где есть финиш.
     DICT_ALIASES = {
         "Пномер": "Пномер",
         "Номер_наряда": "Номер наряда",
@@ -9600,8 +9602,10 @@ def analytics_for_all_PGVU_valves(self, data_nach, data_kon):
 
 
     list_codes = [_['code_predv'] if '-' in _['code_predv'] else "00-" + _['code_predv'] for _ in rez_req if _['code_predv']]
-    data_trdz_1c = calc_res_data_1c(list_codes)
-    gr_code_data_trdz_1c = F.grouping_list_dicts(data_trdz_1c, 'Код')
+    gr_code_data_trdz_1c = dict()
+    if list_codes:
+        data_trdz_1c = calc_res_data_1c(list_codes)
+        gr_code_data_trdz_1c = F.grouping_list_dicts(data_trdz_1c, 'Код')
     set_vid_rac_1c = set()
     [[set_vid_rac_1c.update({f"{_['ВидРабот']}{MARK_TKP_STR}"}) for _ in gr] for gr in gr_code_data_trdz_1c.values()]
     list_vid_rac_1c = sorted(list(set_vid_rac_1c))

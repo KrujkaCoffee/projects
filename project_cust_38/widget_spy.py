@@ -44,8 +44,8 @@ class PyQtEventHook(QObject):
     def get_employee(self, login):
         query = f"""
             SELECT 
-                login, Должность, Подразделение 
-            FROM employee WHERE Статус != "Увольнение" AND login = {login!r}
+                "login", "Должность", "Подразделение" 
+            FROM employee WHERE "Статус" != 'Увольнение' AND "login" = {login!r}
         """
         profile = CSQ.custom_request_c(
             CFG.Config.project.db_users,

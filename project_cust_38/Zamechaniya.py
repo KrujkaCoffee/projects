@@ -45,26 +45,26 @@ def load_zamech_to_edit(self,*args):
 def load_table(self):
     tbl = self.ui.tbl_zamech
     custom_request_c = f"""SELECT 
-       z.Пномер,
-       z.Дата_создания,
-       z.МК,
-       z.Инициатор,
-       z.Содержание,
-       Подразделения.Наименование as Виновное_подразделение,
-       z.Фсмещение_дней,
-       z.Фпотери_времени_час,
-       z.Фпотери_материала_марка,
-       z.Артикул_ЕРП,
-       z.Фпотери_материала_вес,
-       z.Код,
-       z.Примечание,
-       z.Пояснение_вп,
-       z.Код_вп,
-       z.Ответственный,
-       z.ФИО_виновный
+       "z"."Пномер",
+       "z"."Дата_создания",
+       "z"."МК",
+       "z"."Инициатор",
+       "z"."Содержание",
+       "Подразделения"."Наименование" as "Виновное_подразделение",
+       "z"."Фсмещение_дней",
+       "z"."Фпотери_времени_час",
+       "z"."Фпотери_материала_марка",
+       "z"."Артикул_ЕРП",
+       "z"."Фпотери_материала_вес",
+       "z"."Код",
+       "z"."Примечание",
+       "z"."Пояснение_вп",
+       "z"."Код_вп",
+       "z"."Ответственный",
+       "z"."ФИО_виновный"
                               FROM zamech as z
-                              LEFT JOIN rab_c ON rab_c.Код = z.Виновное_подразделение
-                              INNER JOIN Подразделения ON Подразделения.Подразделение_Key = rab_c.ref_Подразделения
+                              LEFT JOIN rab_c ON "rab_c"."Код" = "z"."Виновное_подразделение"
+                              INNER JOIN "Подразделения" ON "Подразделения"."Подразделение_Key" = "rab_c"."ref_Подразделения"
                              ORDER BY Пномер DESC;
                              """
     db_users = CFG.Config.project.db_users # (По задаче 100054795 ) 28.05.2025
@@ -147,8 +147,13 @@ def select_kod_mat(self, text, row, col):
     return
 
 def get_main_work_centers() -> list[dict]:
-    query = """        SELECT Код, Имя, Сокр_наим_СТО, Наим_СТО FROM rab_c
-            WHERE SUBSTR(Код, -4) = '0000' AND Код != '070000'"""
+    query = CSQ.SqlQuery(
+        sqlite="""SELECT "Код", "Имя", "Сокр_наим_СТО", "Наим_СТО" FROM rab_c
+            WHERE SUBSTR(Код, -4) = '0000' AND "Код" != '070000'""",
+        postgres="""SELECT "Код", "Имя", "Сокр_наим_СТО", "Наим_СТО" FROM rab_c
+            WHERE RIGHT(Код, 4) = '0000' AND "Код" != '070000'"""
+    )
+
     return CSQ.custom_request_c(CFG.Config.project.db_users, query, rez_dict=True)
 
 @CQT.onerror
@@ -214,7 +219,7 @@ def check_add_zamech(self):
         if F.is_numeric(spis[-1][nk_mk]) == False:
             spis_err.append(f'МК {spis[-1][nk_mk]} не число')
         else:
-            rez = CSQ.custom_request_c(self.bd_naryad,f'''SELECT Пномер FROM mk WHERE Пномер == {int(spis[-1][nk_mk])}''')
+            rez = CSQ.custom_request_c(self.bd_naryad,f'''SELECT "Пномер" FROM mk WHERE "Пномер" = {int(spis[-1][nk_mk])}''')
             if len(rez) == 1:
                 spis_err.append(f'МК {spis[-1][nk_mk]} не существет')
 
@@ -274,13 +279,13 @@ def add_zamech(self):
     nk_kod = F.num_col_by_name_in_hat_c(spis, 'Код')
     nk_poteri_art = F.num_col_by_name_in_hat_c(spis, 'Артикул_ЕРП')
     if spis[-1][nk_nom] != "":
-        rez = CSQ.custom_request_c(self.bd_naryad, f'''SELECT Пномер FROM zamech WHERE Пномер == {int(spis[-1][nk_nom])}''')
+        rez = CSQ.custom_request_c(self.bd_naryad, f'''SELECT "Пномер" FROM zamech WHERE "Пномер" = {int(spis[-1][nk_nom])}''')
         if len(rez) == 2:
-            custom_request_c = f'''UPDATE zamech SET МК = ?, Содержание = ?, 
-                            Виновное_подразделение = ?, Фсмещение_дней = ?,
-                                  Фпотери_времени_час = ?, Фпотери_материала_марка = ?,
-                        Фпотери_материала_вес = ?, Код = ?, Примечание = ?
-                                  WHERE Пномер == {int(spis[-1][nk_nom])}'''
+            custom_request_c = f'''UPDATE zamech SET МК = ?, "Содержание" = ?, 
+                            "Виновное_подразделение" = ?, "Фсмещение_дней" = ?,
+                                  "Фпотери_времени_час" = ?, "Фпотери_материала_марка" = ?,
+                        "Фпотери_материала_вес" = ?, "Код" = ?, "Примечание" = ?
+                                  WHERE "Пномер" = {int(spis[-1][nk_nom])}'''
             CSQ.custom_request_c(self.bd_naryad, custom_request_c,list_of_lists_c=[spis[-1][nk_mk],
                     self.ui.pte_zamechnie.toPlainText(),spis[-1][nk_vinov],spis[-1][nk_smesh],spis[-1][nk_poteri_vrem],
                         spis[-1][nk_poteri_mat],spis[-1][nk_poteri_ves],spis[-1][nk_kod],self.ui.pte_primechanie.toPlainText()
@@ -313,10 +318,10 @@ def add_zamech(self):
             pk_remark = result['Пномер']
             if code_remark == 10:
                 query = """
-                    SELECT employee.ФИО
+                    SELECT employee."ФИО"
                     FROM podrazdel
-                    LEFT JOIN employee on employee.Подразделение = podrazdel.Наименование_ЕРП
-                    WHERE podrazdel.Имя = 'пл_отк' AND employee.Режим = 'Абстракт'
+                    LEFT JOIN employee on employee."Подразделение" = podrazdel."Наименование_ЕРП"
+                    WHERE podrazdel."Имя" = 'пл_отк' AND employee."Режим" = 'Абстракт'
                     LIMIT 1
                 """
                 abstract_name = CSQ.custom_request_c(CFG.Config.project.db_kplan,
@@ -326,7 +331,7 @@ def add_zamech(self):
                     pk = int(result['Пномер'])
                     CSQ.custom_request_c(
                         CFG.Config.project.db_naryad,
-                        f'DELETE FROM zamech WHERE Пномер = {pk}')
+                        f'DELETE FROM zamech WHERE "Пномер" = {pk}')
                     return CQT.msgbox('Не удалось создать замечание')
                 category_vnepl = CSQ.custom_request_c(CFG.Config.project.db_naryad,
                                      f'SELECT * FROM category_vnepl WHERE kod = 18 and poki = {CFG.Config.place.poki}', #21.05.2026

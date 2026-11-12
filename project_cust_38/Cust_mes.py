@@ -295,12 +295,13 @@ class _DbTable:
 
 
 
-class FactorySet:
-    id_dse: int = None
-    id_oper: str = None
-    id_naryad: int = None
-    id_factory_set: int = None
-    
+class FactorySet(_ImportDb):
+    def __init__(self,it:dict):
+        self.id_dse: int = None
+        self.id_oper: str = None
+        self.id_naryad: int = None
+        self.id_factory_set: int = None
+        self.parce_row_dict(it,declared_only=True)
 
     
 class FactorySets:
@@ -310,7 +311,11 @@ class FactorySets:
                     'oper_name':'Название\nоперации',
                     'to_select_fsets':'К выбору\nк-тов, шт.',
                     'select_all':'Все',
+                    'id_factory_set':'Номер\nкомплекта',
+                    'alias':'Пользовательское\nимя'
                     }
+
+    NEW_NARYAD_ID = -1
 
     def __init__(self,id_mk:int):
         self.id_mk:int=id_mk
@@ -320,7 +325,10 @@ class FactorySets:
         
         
         self.dict_sets:dict[tuple[int,str],dict[int,FactorySet]]=dict()
+        self.dict_sets_reserve:dict[tuple[int,str],dict[int,FactorySet]]=dict()
+        self.factory_user_aliases:dict[int,str] = dict()
         self.res:ResSpec = None
+        self._to_add:set[FactorySet] = set()
         self.load()
 
     
@@ -331,11 +339,28 @@ class FactorySets:
         if (id_dse,id_oper) in self.dict_sets:
             return self.dict_sets[(id_dse,id_oper)]
         return dict()
-            
+
 
     def reload_sets(self):
         self.dict_sets = dict()
-
+        data = CSQ.custom_request_c(CFG_prj.db_naryad,f"""SELECT factory_sets.*, factory_sets_user_aliases.user_factory_set FROM factory_sets 
+        LEFT JOIN factory_sets_user_aliases 
+            ON factory_sets_user_aliases.mk = factory_sets.mk AND 
+                factory_sets_user_aliases.id_factory_set = factory_sets.id_factory_set
+        WHERE factory_sets.mk = {self.id_mk};""",
+                                    rez_dict=True)
+        self.factory_user_aliases = dict()
+        
+        for it in data:
+            set_o = FactorySet(it)
+            key = (set_o.id_dse,set_o.id_oper)
+            if key not in self.dict_sets:
+                self.dict_sets[(set_o.id_dse,set_o.id_oper)] = dict()
+            self.dict_sets[key][set_o.id_factory_set] = set_o
+            self.factory_user_aliases[it['id_factory_set']] = it['user_factory_set']
+        
+        
+       
     
     def _load_res(self):
         self.res = ResSpec(self.id_mk)
@@ -344,6 +369,14 @@ class FactorySets:
         self.reload_sets()
         self._load_res()
         pass
+
+    def get_naryad_reserve(self,id_dse:int,id_oper:str,id_set:int)->int|None:
+        if (id_dse,id_oper) not in self.dict_sets_reserve:
+            return
+        factory_set_o = self.dict_sets_reserve[(id_dse,id_oper)].get(id_set,None)
+        if factory_set_o is None:
+            return
+        return factory_set_o.id_naryad
 
     def get_naryad(self,id_dse:int,id_oper:str,id_set:int)->int|None:
         if (id_dse,id_oper) not in self.dict_sets:
@@ -355,7 +388,81 @@ class FactorySets:
      
 
     def get_factory_name(self,id_set:int)->str:
-        return f'ЗК № {id_set}'
+        user_alias = self.factory_user_aliases.get(id_set,None)
+        if user_alias is None or user_alias == '':
+            return  f'ЗК № {id_set}'
+        return f'ЗК № {id_set}\n({user_alias})'
+
+    def template_select_aliases(self)->tuple[list[dict],dict]:
+        DICT_ALIASES = copy.deepcopy(self.DICT_ALIASES)
+        list_tbl = [{'id_factory_set':k,'alias':v if v else ''} for k,v in self.factory_user_aliases.items()]
+        return list_tbl,DICT_ALIASES
+    
+    def set_new_factory_set_user_aliases(self,dict_zk_alias:dict[int,str])->bool:
+        for k,v in dict_zk_alias.items():
+            v = CSQ.sanitize_sql_input(v)
+            rez =CSQ.custom_request_c(CFG_prj.db_naryad,
+                f"""INSERT INTO factory_sets_user_aliases (mk, id_factory_set, user_factory_set)
+                VALUES (?, ?, ?)
+                ON CONFLICT(mk, id_factory_set) DO UPDATE SET
+                    mk = excluded.mk,
+                    id_factory_set = excluded.id_factory_set,
+                    user_factory_set = excluded.user_factory_set;""",list_of_lists_c=[[self.id_mk,k,v]])
+            if not rez:
+                return False
+        return True
+
+        
+    def template_technical(self)->list[dict]:
+
+        list_rezult = []
+        for dse in self.res.data:
+            id_dse = dse.Номерпп
+
+            for oper in dse.Операции:
+                id_oper = oper.Опер_номер
+                oper_name = oper.Опер_наименование
+                
+                to_select = self.res.count
+                tmp_row = {'id_dse':id_dse,'id_oper':id_oper,'oper_name':oper_name,
+                           'to_select_fsets':None}
+                
+                for i in range(self.res.count):
+                    id_set = i+1
+                    naryad_id = self.get_naryad(id_dse,id_oper,id_set)
+                    if not naryad_id:
+                        naryad_id = self.get_naryad_reserve(id_dse,id_oper,id_set)
+                    tmp_row[str(id_set)] = naryad_id if naryad_id else ''
+                    to_select -= 1 if naryad_id else 0
+
+                tmp_row['to_select_fsets'] = to_select
+                list_rezult.append(tmp_row)
+        return list_rezult
+
+
+    def template_show(self)->tuple[list[dict],dict]:
+        DICT_ALIASES = copy.deepcopy(self.DICT_ALIASES)
+        list_rezult = []
+        for dse in self.res.data:
+            id_dse = dse.Номерпп
+            name_dse = dse.full_name
+            for oper in dse.Операции:
+                id_oper = oper.Опер_номер
+                oper_name = oper.Опер_наименование
+
+                to_select = self.res.count
+                tmp_row = {'id_dse':id_dse,'name_dse':name_dse,'id_oper':id_oper,'oper_name':oper_name,
+                           'to_select_fsets':None}
+
+                for i in range(self.res.count):
+                    id_set = i+1
+                    naryad_id = self.get_naryad(id_dse,id_oper,id_set)
+                    tmp_row[str(id_set)] = naryad_id if naryad_id else ''
+                    to_select -= 1 if naryad_id else 0
+                    DICT_ALIASES[str(id_set)] = self.get_factory_name(id_set)
+                tmp_row['to_select_fsets'] = to_select
+                list_rezult.append(tmp_row)
+        return list_rezult,DICT_ALIASES
 
     def template_select(self)->tuple[list[dict],dict]:
         DICT_ALIASES = copy.deepcopy(self.DICT_ALIASES)
@@ -366,27 +473,104 @@ class FactorySets:
             for oper in dse.Операции:
                 id_oper = oper.Опер_номер
                 oper_name = oper.Опер_наименование
-                
+
                 to_select = self.res.count
                 tmp_row = {'id_dse':id_dse,'name_dse':name_dse,'id_oper':id_oper,'oper_name':oper_name,
                            'to_select_fsets':None,'select_all':CEMOJ.ДокументыДанные.revers.symbol}
-                
+
                 for i in range(self.res.count):
-                    naryad_id = self.get_naryad(id_dse,id_oper,i)
-                    tmp_row[i] = naryad_id if naryad_id else ''
+                    id_set = i+1
+                    naryad_id = self.get_naryad(id_dse,id_oper,id_set)
+                    tmp_row[str(id_set)] = naryad_id if naryad_id else ''
                     to_select -= 1 if naryad_id else 0
-                    DICT_ALIASES[i] = self.get_factory_name(i+1)
+                    DICT_ALIASES[str(id_set)] = self.get_factory_name(id_set)
                 tmp_row['to_select_fsets'] = to_select
                 list_rezult.append(tmp_row)
-        
+
         return list_rezult,DICT_ALIASES
-  
 
-    def new(self,set_new_sets:set[NewFactorySet])->bool:
-        pass
+    def _is_extists(self,set_o:FactorySet)->bool|FactorySet:
+        dict_sets=self.get_factory_sets_by_dse_oper(set_o.id_dse,set_o.id_oper)
+        if not dict_sets:
+            return False
+        if not set_o.id_factory_set in dict_sets:
+            return False
+        return dict_sets[set_o.id_factory_set]
 
-    def save(self):
-        pass
+
+    def add_new(self,id_dse: int,
+                    id_oper: str,
+                    id_naryad: int,
+                    id_factory_set: int,):
+        set_o = FactorySet(
+            dict()
+        )
+        set_o.id_dse = id_dse
+        set_o.id_oper = id_oper
+        set_o.id_naryad = id_naryad
+        set_o.id_factory_set = id_factory_set
+        if not self._is_extists(set_o):
+            self._to_add.add(set_o)
+
+    def _reserve_free_set(self,id_dse, id_oper, id_factory_set:int):#резервируем номер ЗК чтобы не посчитать его в свободных больше одного раза
+        if (id_dse,id_oper) not in self.dict_sets_reserve:
+
+            self.dict_sets_reserve[(id_dse,id_oper)] = dict()
+        reserve_set = FactorySet(dict())
+        reserve_set.id_dse = id_dse
+        reserve_set.id_oper = id_oper
+        reserve_set.id_naryad = -1
+        reserve_set.id_factory_set = id_factory_set
+
+        self.dict_sets_reserve[(id_dse, id_oper)][id_factory_set] = reserve_set
+
+    def _get_and_reserve_free_set(self,id_dse: int, id_oper: str)->int|None:
+
+        class SimpClsTechnical(F._SimpMeta):
+            id_dse: int
+            id_oper: str
+            oper_name: str
+            to_select_fsets: int
+
+
+        table = [SimpClsTechnical._from_dict(_) for _ in self.template_technical()]
+        for row in table:
+            if row.id_dse == id_dse and row.id_oper == id_oper:
+                for k in row.__dict__.keys():
+                    if not F.is_numeric(k):
+                        continue
+                    v = getattr(row,k)
+                    if v == '':
+                        self._reserve_free_set(id_dse, id_oper, int(k))
+                        return int(k)
+
+
+    def add_new_by_step(self,id_dse: int,
+                    id_oper: str,
+                    id_naryad: int,)->bool:
+        free_set_id = self._get_and_reserve_free_set(id_dse,id_oper)
+        if free_set_id is None:
+            return False
+
+        self.add_new(id_dse, id_oper, id_naryad, free_set_id)
+        return True
+
+
+
+    def save_new(self)->bool:
+        data_add = []
+        if not self._to_add:
+            return True
+        for set_o in self._to_add:
+            data_add.append([self.id_mk, set_o.id_dse, set_o.id_oper, set_o.id_naryad, set_o.id_factory_set])
+        text = f"""
+        INSERT INTO factory_sets (mk, id_dse, id_oper, id_naryad, id_factory_set)
+                          VALUES ({CSQ.questions_for_mask(data_add[0])})
+        """
+        CSQ.custom_request_c(CFG_prj.db_naryad,text,list_of_lists_c=data_add)
+        self._to_add = set()
+        self.dict_sets_reserve = dict()
+        return True
 
 #======================================Заводские комплекты======================================================
 
@@ -4157,10 +4341,10 @@ class _base_marshrut_cards(_ImportDb):
 
 class Marshrut_cards_list(_base_marshrut_cards):
     def __init__(self, set_nums: set[int] | list[int] | tuple[int], load_resource: bool = True):
-        # if DPACKS.DATA_MK_PACK is not None:
-        #     self.DICT_RC = DPACKS.DATA_MK_PACK.DICT_RC_BY_CODE
-        # else:
-        self.DICT_RC = self._calc_dict_rc()
+        if DPACKS.DATA_MK_PACK is not None:
+            self.DICT_RC = DPACKS.DATA_MK_PACK.DICT_ETAPS_RC_BY_CODE
+        else:
+            self.DICT_RC = self._calc_dict_rc()
 
         str_select = self.get_str_select()
         postfix = 'NULL as res,'
@@ -4688,7 +4872,7 @@ class Naryads(_Naryad_base):
         self.params = []
         self.db = CFG_prj.db_naryad
         self.row = []
-        self.Пномер = None
+        self.Пномер:int = None
         self.Дата = None
         self.Автор = None
         self.Номер_мк = None
@@ -8105,6 +8289,11 @@ class ResSpec():
 
     def __repr__(self):
         return f'{self.count} шт. "{self.mk.Номенклатура}"'
+
+    @property
+    def res_wet(self)->list[dict]:
+        """load_res"""
+        return self._wet_data
 
     def get_vids_rab(self, key_ref=False) -> dict:# на 1 изделие
         dict_res = dict()
@@ -19216,14 +19405,30 @@ def get_plan_otk_alias_by_poki(poki):
 
 class FinishOtkInfo:
     def __init__(self):
-        self.finish_done:bool|None = None
-        self.coating_done:bool|None = None
+        self.finish_exists:bool|None = False
+        self.coating_exists:bool|None = False
+        self.finish_done:bool|None = False
+        self.coating_done:bool|None = False
         self.msg_coating:list[str] = []
         self.msg_finish:list[str] = []
 
     @property
+    def is_сhecked(self)->bool:
+        if not self.is_any_exists:#если нет ни финиша ни покрытия пропускаем проверку
+            return True
+        if self.is_any_done:# если есть выполненные то пропускаем проверку
+            return True
+        return False
+
+    @property
     def is_any_done(self)->bool:
         if self.coating_done or self.finish_done:
+            return True
+        return False
+
+    @property
+    def is_any_exists(self)->bool:
+        if self.finish_exists or self.coating_exists:
             return True
         return False
 
@@ -19273,22 +19478,19 @@ def check_otk_after_proizv(nom_mk: int,
                     rez.append(tmp_dict)
         return rez
 
-
-
     list_opers_otk = get_list_opers_proizv_otk(res = res_o)
     finish_otk_info_o = FinishOtkInfo()
 
     if not list_opers_otk:
-        finish_otk_info_o.coating_done = False
-        finish_otk_info_o.finish_done = False
         return finish_otk_info_o
-
-
 
     list_opers_otk = [SimpClsList_opers_otk._from_dict(_) for _ in list_opers_otk]
 
+
     nars_o= Naryad_list(mk_num=nom_mk)
     for nar in nars_o.dict_naryads.values():
+        if not nar.is_confirmed():
+            continue
         for elem_o in nar.params_o:
             for i, line_o in enumerate(list_opers_otk):
                 if elem_o.ДСЕ_ID == line_o.dse_id and elem_o.Операции_номер == line_o.nom_op:
@@ -19296,10 +19498,13 @@ def check_otk_after_proizv(nom_mk: int,
 
 
     for item in list_opers_otk:
-        if item.count_dse == item.close_dse:
-            if item.is_finish_otk:
+        if item.is_finish_otk:
+            finish_otk_info_o.finish_exists = True
+            if item.count_dse == item.close_dse:
                 finish_otk_info_o.finish_done = True
-            else:
+        else:
+            finish_otk_info_o.coating_exists_exists = True
+            if item.count_dse == item.close_dse:
                 finish_otk_info_o.coating_done = True
 
     for item in list_opers_otk:
@@ -19311,7 +19516,6 @@ def check_otk_after_proizv(nom_mk: int,
             else:
                 finish_otk_info_o.coating_done = False
                 finish_otk_info_o.msg_coating.append(msg)
-
     return finish_otk_info_o
 
 def processing_finish_sign_otk(glob_fio, nom_mk, nom_kpl, nom_nar, nar_obj, poki,jurnal_id:int):
@@ -19361,6 +19565,7 @@ def processing_finish_sign_otk(glob_fio, nom_mk, nom_kpl, nom_nar, nar_obj, poki
             return
 
         if not messages:
+            finish_otk_info_o.finish_exists = True
             finish_otk_info_o.finish_done = True
         finish_otk_info_o.msg_finish = messages
 
@@ -19371,6 +19576,8 @@ def processing_finish_sign_otk(glob_fio, nom_mk, nom_kpl, nom_nar, nar_obj, poki
         num_mk = nar_obj.mk.Пномер
 
     if finish_otk_info_o is None:
+        return
+    if not finish_otk_info_o.is_any_exists:#если не заложено ни одного ОТК
         return
 
     if finish_otk_info_o.coating_done:
