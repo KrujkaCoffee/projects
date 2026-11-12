@@ -6,10 +6,11 @@ from project_cust_38 import Cust_config as CFG
 from typing import  TYPE_CHECKING
 from project_cust_38 import dynamic_db_models as DDM
 from project_cust_38.dynamic_db_models.orm_models import Подразделения as Подразделения_orm
+
 if TYPE_CHECKING:
     from Sozdanie import mywindow
     from project_cust_38.competence_matrix import Competencies
-    from project_cust_38.Cust_mes import Emploee_usr
+    from project_cust_38.Cust_mes import Emploee_usr, StatesOtk, Naryads, FactorySets
     from project_cust_38.Cust_mes import Compositions, ManagePartialDse, RegistredPartials
 
 class SingletonMeta(type):
@@ -24,6 +25,10 @@ class SingletonMeta(type):
 
 class Main_module():
     DICT_Подразделения_by_ref:dict[int,Подразделения_orm]|None = None
+
+class SimpleDicts():
+    pass
+
 class data_app(SingletonMeta):
 
 
@@ -33,6 +38,7 @@ class data_app(SingletonMeta):
     _old_val_cell = None
     obj_Competencies:Competencies|None = None
     main_module:Main_module|None = Main_module()
+    simple_dicts:SimpleDicts|None = SimpleDicts()
     empl_obj:Emploee_usr|None = None
     PLACE:CFG.Place = CFG.Config.place
     PROJECT:CFG.ProjectConfig = CFG.Config.project
@@ -40,12 +46,18 @@ class data_app(SingletonMeta):
     APP:CFG.AppConfig = CFG.Config.app
     APP_ARGS:dict = CFG.Config.app_args
     #=======MAIN=======================
-    vibr_nar: int = None  # для доступа к пакету нарядов
+    vibr_nar: int|None = None  # для доступа к пакету нарядов
+    vibr_nar_o: Naryads|None = None  # для доступа к пакету нарядов
     list_accessible_for_raspred_nar: list[int] = []  # для доступа к пакету нарядов
     list_selected_package_for_raspred_nar: list[dict] = []  # для сопоставления пакета
     SELECTED_PACKAGE_MARK: str = '...*'  # для сопоставления пакета
     ispoln1: str = ''
     ispoln2: str = ''
+    current_factory_sets:FactorySets|None = None
+    selected_factory_sets:list[dict]|None = None
+    #======STORES=============
+    states_otk: StatesOtk | None = None
+
     #======COMPOZITIONS=============
     compositions: Compositions|None = None
     part_manager: ManagePartialDse|None = None
@@ -58,5 +70,10 @@ class data_app(SingletonMeta):
         pass
 
     @classmethod
+    def load_simple_dicts(cls):
+        pass
+
+    @classmethod
     def init_data(cls):
         cls.load_data_main()
+        cls.load_simple_dicts()

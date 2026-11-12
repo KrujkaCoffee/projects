@@ -885,6 +885,9 @@ def btn_comp_dse_cr_nar(app_self,*args):
         new_nar.add_param(param_o)
     new_nar.ФИО = 'Работник Заготовительного Цеха'
     new_nar.save()
+
+    factory_set_o = CMS.FactorySets(poz.mk)#Заполнение заводских комплектов
+
     for param_o in new_nar.params_o:
         snum_nar = param_o.parent.Пномер
         id_dse = int(param_o.ДСЕ_ID)
@@ -892,10 +895,21 @@ def btn_comp_dse_cr_nar(app_self,*args):
         n_oper = param_o.Операции_номер
         c_oper = param_o.code_oper
 
+        if not factory_set_o.add_new_by_step(id_dse,n_oper,new_nar.Пномер):#Забираем номер свободного комплекта по порядку
+            CMS.send_err_msg_dev_chat(f'Ошибка при создании наряда из раскроев. Регистрация ЗК не прошла add_new_by_step',
+                                      [
+                                          {'Параметр': 'mk', 'Значение': poz.mk},
+                                          {'Параметр': 'id_dse', 'Значение': id_dse},
+                                          {'Параметр': 'n_oper', 'Значение': n_oper},
+                                          {'Параметр': 'new_nar.Пномер', 'Значение': new_nar.Пномер},
+                                      ])
 
         if not poz.add_associated_dse(snum_nar, id_dse, count_nar,n_oper,c_oper,id_reg_part):
             CQT.msgbox(f'Ошибка связывания при создании наряда')
             continue
+
+    factory_set_o.save_new()#Сохраняем заводские комплекты и очищаем временные данные dict_sets_reserve
+
 
     btn_comp_load_file( poz.parent.id)
     tbl_comp_dse(poz.id)

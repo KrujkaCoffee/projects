@@ -14,6 +14,8 @@ from project_cust_38 import user_mange as userm
 import project_cust_38.Cust_Qt as CQT
 import copy as CPY
 
+from project_cust_38.report_ci import CFG_prj
+
 CQT.convert_UI_into_PY_c()
 from mydesign import Ui_MainWindow  # импорт нашего сгенерированного файла
 # import config
@@ -37,7 +39,14 @@ import project_cust_38.Cust_emoji as CEMOJ
 import project_cust_38.api_erp_commands as APIERP
 from project_cust_38.sub_mes.kro.manage_kro import Kro_manager as MKRO
 from project_cust_38.sub_mes.cutting_segment_manager.main_cutting_mngr import CentralWindow as CUTMNGR
+import clses as CLSS
+from project_cust_38.Cust_dict_packs import (Packs as DPACKS,
+                                             DictForNaryad as _DictForNaryad,
+                                             DictForMarshrutCard as _DictForMarshrutCard,
+                                             DictForResource as _DictForResource)
+import factory_sets as FSETS
 cfg = F.load_cfg(False)  # файл конфига, находится в папке конфиг
+CFG_prj = CFG.Config.project
 
 
 class EditJournalActions(enum.Enum):
@@ -165,10 +174,12 @@ class mywindow(QtWidgets.QMainWindow):
             self.ui.btn_peresilniy.clicked.connect(self.create_peresilniy)
             self.ui.btn_cutting_mngr.clicked.connect(self.open_cutting_mngr)
             self.ui.btn_select_list_nars_vibr.clicked.connect(self.select_list_nars_vibr)
+            self.ui.btn_show_knots.clicked.connect(self.show_knots)
         # ==================lines
         if 'le':
             self.ui.le_Nparol.setVisible(False)
             self.ui.le_Nparol2.setVisible(False)
+            self.ui.le_poz_kol.textChanged.connect(self.le_poz_kol_textChanged)
         # ==================TABLES
         if 'tbl':
             self.ui.tbl_comp_dse.itemSelectionChanged.connect(CMPM.tbl_comp_dse)
@@ -271,7 +282,7 @@ class mywindow(QtWidgets.QMainWindow):
         self.glob_ref_user:None|str = None
         self.glob_ima = ''
         self.glob_nom_mk = 0
-        self.glob_res = []
+        self.glob_res:CMS.ResSpec|None = None
         self.glob_etap = set()
         self.set_rc_check_dse = set()
         self.metka_resize = ''
@@ -290,6 +301,7 @@ class mywindow(QtWidgets.QMainWindow):
         self.LIST_DOLGN_ETAP = CSQ.custom_request_c(self.db_naryd, f"""SELECT * FROM dolgn_etap WHERE "Производство" = '{self.place.Имя}' or multi_auth = 1;""", rez_dict=True) #09.09.25
         self.DICT_DOLGN_ETAP = F.deploy_dict_c(
             self.LIST_DOLGN_ETAP, 'Должность')
+
         self.DICT_NOMEN = F.deploy_dict_c(
             CSQ.custom_request_c(self.db_nomen, f"""SELECT * FROM nomen;""", rez_dict=True), 'Код')
 
@@ -311,9 +323,15 @@ class mywindow(QtWidgets.QMainWindow):
         # self.ui.action_peresilniy.triggered.connect(self.create_peresilniy)
         self.ui.action_open_zayavky.triggered.connect(self.open_zayavk)
         self.ui.action_reset_pass.triggered.connect(lambda _, x=self: self.auth_manager.reset_user_pass())
+        self.ui.action_to_distribute.triggered.connect(self.go_to_distribute)
 
         # =======loads
 
+        DTCLS.states_otk = CMS.StatesOtk()
+        DTCLS.states_otk.load()
+        self.fill_cmb_state_otk()
+        self.ui.cmb_state_otk.currentIndexChanged.connect(lambda: self.change_state_otk(self.ui.cmb_state_otk))
+        self.ui.cmb_state_otk_kompl.currentIndexChanged.connect(lambda: self.change_state_otk(self.ui.cmb_state_otk_kompl))
         self.DICT_EMPLOEE_FULL = dict()
         self.DICT_EMPLOEE_FULL_WITH_DEL = dict()
         CMS.dict_emploee_full(self.bd_users, self=self)
@@ -390,6 +408,15 @@ class mywindow(QtWidgets.QMainWindow):
             LIST_KATEG_VNEPLAN, 'kod')
         self.DICT_PROFESSIONS = dict()
         CMS.dict_professions(self, self.bd_users)
+
+        DPACKS.DATA_RS_PACK = _DictForResource(CMS.ResSpecs._calc_dict_etaps(),self.DICT_PROFESSIONS)
+        DPACKS.DATA_MK_PACK = _DictForMarshrutCard(DPACKS.DATA_RS_PACK.DICT_ETAPS_RC_BY_CODE)
+        DPACKS.DATA_NARYAD_PACK = _DictForNaryad(
+            self.DICT_DOLGN_ETAP,
+            self.DICT_OPER_NAME,
+            self.DICT_EMPLOEE_FULL,
+            CMS.prepare_dolg_etap_for_calc_pozition_fact_kpl()
+        )
 
         self.ui.cmb_kat_vnepl.addItems(list(self.DICT_KATEG_VNEPLAN.keys()))
         self.ui.cmb_prof_vnepl.addItem('')
@@ -1015,6 +1042,39 @@ where naryad."Пномер" = {pnom};"""
                 self.DICT_ACCESS_PROJ_MONTH[month] = set()
             self.DICT_ACCESS_PROJ_MONTH[month].add(item['ПУ'])
 
+    def liad_tab_distribute_nars(self,select_nar_id:int|None=None)->bool:
+
+        def select_nar_into_tbl(select_nar_id:int)->bool|None:
+            if select_nar_id is None:
+                return
+            t = CQT.TableContext(self.ui.tbl_vibor_nar_rasp)
+            if not t.count:
+                return
+            row_o = t.find_row({'Пномер':f'{select_nar_id}'},True)
+            if row_o is None:
+                return
+            t.set_selected_cell(row_o,'Пномер')
+
+            return True
+
+        self.get_plan_proj()
+
+        rez = self.check_vnesenie_trudozatrat() if self.place.ИспПроверкуВнесенияТрудозатрат else True
+        if rez:
+            load_tbl_rez =self.load_table_projects_for_raspred_nar(select_nar_id=select_nar_id)
+            if not load_tbl_rez:
+                return False
+            if select_nar_id:
+                if not select_nar_into_tbl(select_nar_id):
+                    return False
+                self.tbl_nar_raspr_click()
+            # self.load_table_raspred_nar()
+            self.ui.fr_vibor_assoc_prost.setVisible(False)
+            return True
+        else:
+            self.ui.tabWidget.setCurrentIndex(CQT.number_table_by_name_c(self.ui.tabWidget, 'Просмотр нарядов'))
+            return False
+
     @CQT.onerror
     @CQT.progress_decorator
     def tab_clcik(self, nom, hook_prog_bar, *args):
@@ -1028,22 +1088,14 @@ where naryad."Пномер" = {pnom};"""
         name = self.ui.tabWidget.tabText(nom)
         if name == 'Комплектование':
             self.load_table_komplekt()
+            DTCLS.vibr_nar_o = None
+            DTCLS.vibr_nar = None
         if name == 'Оповещение':
             pass
         if name == 'Просмотр нарядов':
             self.load_table_prosm_nar()
         if name == 'Распределение нарядов':
-            self.get_plan_proj()
-            rez = True
-            if self.place.ИспПроверкуВнесенияТрудозатрат:
-                rez = self.check_vnesenie_trudozatrat()
-            if rez:
-                self.load_table_projects_for_raspred_nar()
-
-                #self.load_table_raspred_nar()
-                self.ui.fr_vibor_assoc_prost.setVisible(False)
-            else:
-                self.ui.tabWidget.setCurrentIndex(CQT.number_table_by_name_c(self.ui.tabWidget, 'Просмотр нарядов'))
+            self.liad_tab_distribute_nars()
         if name == 'Корректировка':
             #self.load_table_korr_naruad_by_rc()
             self.ui.cmb_select_rc_nar_korr.blockSignals(True)
@@ -1076,13 +1128,18 @@ where naryad."Пномер" = {pnom};"""
             #    self.ui.tabWidget_2.setCurrentIndex(CQT.number_table_by_name_c(self.ui.tabWidget_2, 'Брак'))
             # else:
             #    self.load_mk()
-
+            DTCLS.current_factory_sets = None
+            DTCLS.selected_factory_sets = None
             if self.ui.tabWidget_2.tabText(self.tab2_clcik_old_index) == 'МК':
                 self.load_mk()
                 self.raschet_naruada_time_tmp()
 
 
         if name == 'Наряд':
+
+            if not self.glob_nom_mk:
+                return
+
             self.ui.cmb_kat_vnepl.setCurrentText('')
             self.ui.cmb_prof_vnepl.setCurrentText('')
             self.un_block_nar_tbl()
@@ -1098,6 +1155,31 @@ where naryad."Пномер" = {pnom};"""
                     self.ui.tabWidget_2.setCurrentIndex(CQT.number_table_by_name_c(self.ui.tabWidget_2, 'ДСЕ'))
                     return CQT.blink_obj_c(self, 2, tbl,
                                     msg='Для продолжения необходимо исправить ошибки')
+
+            if CFG.Config.user_config.is_developer:
+                #==============================добавление задним чиcлом из строк============================
+                factory_sets = CMS.FactorySets(DTCLS.app_self.glob_nom_mk)
+                if not factory_sets.dict_sets:
+                    data = CMS.Naryad_list(mk_num=self.glob_nom_mk)
+                    for it in data.dict_naryads.values():
+                        if not it.Заводской_комплект:
+                            continue
+                        list_complect = it.Заводской_комплект.split(',')
+                        for complect_str in list_complect:
+                            if not F.is_numeric(complect_str):
+                                continue
+                            id_factory_set = int(complect_str)
+                            if id_factory_set>factory_sets.res.count:
+                                continue
+                            for param in it.params_o:
+                                factory_sets.add_new(param.ДСЕ_ID,param.Операции_номер,it.Пномер,id_factory_set)
+                    factory_sets.save_new()
+                    factory_sets.load()
+
+                #============================добавление задним чиcлом из строк============================
+
+            DTCLS.selected_factory_sets = FSETS.filling_factory_sets()
+
             self.raschet_naruada()
         if name == 'Брак':
             self.load_brak()
@@ -1107,49 +1189,127 @@ where naryad."Пномер" = {pnom};"""
 
         self.tab2_clcik_old_index = nom
 
-    def tab_prosm_nar(self, nom, *args):
+    def select_nar_into_distribute(self,nar:CMS.Naryads):
+
+        if nar.ФИО == '' and nar.ФИО2 == '':
+            if nar.Распред_дата:
+                CQT.msgbox(f'Наряд {str(nar)} уже распределен {nar.Распред_дата}')
+                return
+            tabw = self.ui.tabWidget
+
+
+            if not self.liad_tab_distribute_nars(nar.Пномер):
+                return
+
+            tabw.blockSignals(True)
+            tabw.setCurrentIndex(CQT.number_tab_by_object_name(tabw, 'tab_distribute_nars'))
+            tabw.blockSignals(False)
+        else:
+            CQT.msgbox(f'Наряд {str(nar)} уже распределен')
+
+
+
+    @CQT.onerror
+    def go_to_distribute(self):
+        def get_nar_id(tbl:CQT.QtWidgets.QTableWidget)->int|None:
+            t = CQT.TableContext(tbl)
+            row = t.current_row()
+            if row.no_selection:
+                CQT.msgbox('Не выбрана строка')
+                return
+            return int(row.value('Пномер'))
+
+        tabw = self.ui.tabWidget
+        current_name = CQT.object_name_by_index_tab(tabw,tabw.currentIndex())
+        if current_name == 'tab_watch_nars':
+            nar_id = get_nar_id(self.ui.tbl_prosmotr_nar)
+            if nar_id is None:
+                return
+            self.select_nar_into_distribute(CMS.Naryads(nar_id))
+            return
+        if current_name == 'tab_edit_nar':
+            nar_id = get_nar_id(self.ui.tbl_red_zhur)
+            if nar_id is None:
+                return
+            self.select_nar_into_distribute(CMS.Naryads(nar_id))
+            return
+
+        CQT.msgbox('Не реализовано')
+
+    def tab_prosm_nar(self, *args):
+        tab = self.ui.tab_prosm_nar
+        nom = tab.currentIndex()
         name = self.ui.tab_prosm_nar.tabText(nom)
+        tab_name = CQT.object_name_by_index_tab(self.ui.tab_prosm_nar,nom)
         if name == 'Материалы':
             self.load_mats_prosmotr(self)
+        if tab_name == 'tab_prosm_nar_for_otk':
+            self.load_for_otk_info_prosmotr(self)
+        if tab_name == 'tab_prosm_nar_oper':
+            self.load_opers_info_prosmotr(self)
+        if tab_name == 'tab_prosm_nar_zadan':
+            self.load_opers_info_zadanie(self)
+
 
     @CQT.onerror
     def order_recheck_otk(self, *args):
         tbl = self.ui.tbl_brak
-        row = CQT.get_dict_line_form_tbl(tbl)
-        if len(row) == 0:
+        t  = CQT.TableContext(tbl)
+        row_o = t.current_row()
+        if row_o.no_selection:
             CQT.msgbox(f'Не выбрана строка')
             return
-        if row['неисправимый'] == '1':
+        brak_row_o:CLSS.SimpClsBrak = row_o.gen_instance(CLSS.SimpClsBrak)
+
+        if brak_row_o.neisprav:
             CQT.msgbox(f'Брак НЕИСПРАВИМЫЙ')
             return
-        if self.ui.le_order_recheck_otk.text().strip() == "" or len(self.ui.le_order_recheck_otk.text().strip()) < 4:
+        fix_comment = self.ui.le_order_recheck_otk.text().strip()
+        if fix_comment == "" or len(fix_comment) < 4:
             CQT.msgbox(f'Не указано примечание')
             return
         # obj = B24.B24('chat17679')
-        nar = CMS.Naryads(int(row["Наряд"]), self.db_naryd, self.DICT_DOLGN_ETAP, self.bd_users,
-                          self.DICT_EMPLOEE_FULL_WITH_DEL)
+
+        id_brak = int(brak_row_o.s_num)
+        list_points = CSQ.custom_request_c(CFG_prj.db_naryad, f"""
+        SELECT * FROM list_brak WHERE num_list_brak = {id_brak}""",rez_dict=True)
+        if not list_points:
+            CQT.msgbox(f'Ошибка получения данных брака')
+            return
+        list_points_o = [CLSS.SimpClsPoint_brak._from_dict(_) for _ in list_points]
+
+        nar = CMS.Naryads(int(brak_row_o.nom_nar), self.db_naryd, self.DICT_DOLGN_ETAP, self.bd_users,
+                    self.DICT_EMPLOEE_FULL_WITH_DEL)
         nar.get_mk(self.db_resxml)
-        count_pr = int(row["Кол-во повт. приемок"]) + 1
-        msg_rows = (f'Мастер {F.user_full_namre()}, вызывает на повторную приемку:\n'
-                    f'наряд №{row["Наряд"]}\n'
-                    f'    (Номер_проекта:{nar.mk.Номер_проекта} {nar.mk.Номер_заказа} {nar.mk.Номенклатура})\n'
-                    f'Описание исправления: {self.ui.le_order_recheck_otk.text()}\n'
-                    f'Описание брака:\n    Проверил:{row["Контролёр"]}\n    Примечание:{row["Примечание"]}\n    Категория:{row["group_3"]}\n    Повторная сдача№ {count_pr}')
-        old_prim = copy.deepcopy(nar.Примечание)
-        old_count_order = copy.deepcopy(nar.Кол_повт_приемок)
+        count_pr = int(nar.Кол_повт_приемок) + 1
+
         nar.Примечание = f'(Повт.Приёмка {F.now("%Y-%m-%d %H:%M")})' + nar.Примечание
         nar.Кол_повт_приемок += 1
+        tbl_msg =[
+            {'Параметр': 'Наряд №', 'Значение': brak_row_o.nom_nar},
+            {'Параметр': 'Проект', 'Значение': f'{nar.mk.Номер_проекта} {nar.mk.Номер_заказа} {nar.mk.Номенклатура}'},
+            {'Параметр': 'Категория', 'Значение': f'{brak_row_o.group_3}'},
+            {'Параметр': 'Контролёр', 'Значение': f'{brak_row_o.inspector}'},
+            {'Параметр': 'Повторная сдача №', 'Значение': f'{count_pr}'},
+            {'Параметр': 'Доработка', 'Значение': f'{fix_comment}'},
+                  ]
+        for i, point_o in enumerate(list_points_o):
+            tbl_msg.append({'Параметр': f'Несо-вие{i+1}', 'Значение': f'{point_o.group_3}'})
+
         try:
-            CMS.send_info_mk_b24_by_action(msg_rows, 'Только брак')
-            # obj.msg(msg_rows)
+            CMS.send_tbl_b24_by_action(f'Мастер {F.user_full_namre()}, вызывает на повторную приемку:\n',
+                                       'Только брак', tbl_msg)
+        except:
+            CQT.msgbox(f'Ошибка оповещения')
+            return
+
+        try:
             nar._save_nar()
+            nar.set_state_otk(DTCLS.states_otk.presented)
             CQT.msgbox(f'Успешно')
             self.ui.le_order_recheck_otk.setText('')
             return
         except:
-            nar.Примечание = old_prim
-            nar.Кол_повт_приемок = old_count_order
-            nar._save_nar()
             CQT.msgbox(f'Ошибка')
             return
 
@@ -1284,9 +1444,7 @@ where naryad."Пномер" = {pnom};"""
             CQT.msgbox('Необходимо войти')
             return
         try:
-            custom_request_c = f'''SELECT "Количество" FROM mk WHERE "Пномер" = {self.glob_nom_mk}'''
-            rez = CSQ.custom_request_c(self.db_naryd, custom_request_c)
-            kol_izd = int(rez[-1][0])
+            kol_izd = self.glob_res.count
         except:
             CQT.msgbox('Ошибка загрузки количества')
             return
@@ -1306,14 +1464,46 @@ where naryad."Пномер" = {pnom};"""
                     tbl.item(i, nk_vrab).setText(str(int(vrab + kol_ed)))
 
     @CQT.onerror
+    def le_poz_kol_textChanged(self, *args):
+        if self.glob_login == "":
+            CQT.msgbox('Необходимо войти')
+            return
+
+        selected_cnt_raw = self.ui.le_poz_kol.text().strip()
+        if F.is_numeric_positive_integer(selected_cnt_raw):
+            selected_cnt = int(selected_cnt_raw)
+            if selected_cnt > self.glob_res.count:
+                selected_cnt = self.glob_res.count
+                self.ui.le_poz_kol.blockSignals(True)
+                self.ui.le_poz_kol.setText(str(selected_cnt))
+                self.ui.le_poz_kol.blockSignals(False)
+        else:
+            return
+
+
+        tbl = self.ui.tbl_dse
+        t = CQT.TableContext(tbl)
+        with CQT.table_updating(t):
+            for row in t.rows():
+                id_dse = int(row.value('ID'))
+                dse_mastered = int(row.value('Освоено,шт.'))
+                dse_max = int(row.value('Количество,шт.'))
+                dse_acesseble = dse_max - dse_mastered
+
+                count_new = self.glob_res.get_dse(id_dse).Количество_ед * selected_cnt
+                if count_new > dse_acesseble:
+                    count_new = dse_acesseble
+                row.set_value('В работу,шт.', str(count_new))
+
+
+
+    @CQT.onerror
     def poz_kol_minus(self, *args):
         if self.glob_login == "":
             CQT.msgbox('Необходимо войти')
             return
         try:
-            custom_request_c = f'''SELECT "Количество" FROM mk WHERE "Пномер" = {self.glob_nom_mk}'''
-            rez = CSQ.custom_request_c(self.db_naryd, custom_request_c)
-            kol_izd = int(rez[-1][0])
+            kol_izd = self.glob_res.count
         except:
             CQT.msgbox('Ошибка загрузки количества')
             return
@@ -1394,42 +1584,133 @@ where naryad."Пномер" = {pnom};"""
             self.zapoln_tabl_mk()
 
     @CQT.onerror
+    def load_opers_info_zadanie(self):
+        tblp = self.ui.tbl_prosmotr_nar
+        CQT.soft_clear_tbl(self.ui.tbl_prosm_nar_oper)
+        t = CQT.TableContext(tblp)
+        row_o = t.current_row()
+        if row_o.no_selection:
+            return
+        num_nar = int(row_o.value('Пномер'))
+        zad_data = CSQ.custom_request_c(CFG_prj.db_naryad,f"""SELECT Задание FROM naryad WHERE Пномер = {num_nar}""",
+                                        one_column=True,one=True,hat_c=False)
+        if not zad_data:
+            return
+        zad_list_rows = zad_data.split('LF')
+        zad = [[_] for _ in zad_list_rows]
+        zad.insert(0, ['Задание'])
+        CQT.fill_wtabl(zad,self.ui.tbl_prosm_nar_zadan,styleSheet=CQT.MES_CSS )
+        CMS.fill_filtr_c(self, self.ui.tbl_prosm_nar_zadan_filtr, self.ui.tbl_prosm_nar_zadan)
+
+
+    @CQT.onerror
+    def load_opers_info_prosmotr(self):
+        tblp = self.ui.tbl_prosmotr_nar
+        CQT.soft_clear_tbl(self.ui.tbl_prosm_nar_oper)
+        t = CQT.TableContext(tblp)
+        row_o = t.current_row()
+        if row_o.no_selection:
+            return
+
+        oper = row_o.value('Операции').split('|')
+        vrem = row_o.value('Опер_время').split('|')
+        kol = row_o.value('Опер_колво').split('|')
+
+        spis_oper = []
+
+        for i in range(len(oper)):
+            spis_oper.append({'Операция':oper[i].replace('$', ' '), 'шт.':kol[i],'мин.': vrem[i]})
+
+        CQT.fill_wtabl(spis_oper,self.ui.tbl_prosm_nar_oper,styleSheet=CQT.MES_CSS)
+        CMS.fill_filtr_c(self, self.ui.tbl_prosm_nar_oper_filtr, self.ui.tbl_prosm_nar_oper)
+
+    @CQT.onerror
+    def load_for_otk_info_prosmotr(self, *args):
+        tblp = self.ui.tbl_prosmotr_nar
+        t = CQT.TableContext(tblp)
+        t_par = CQT.TableContext(self.ui.tbl_prosm_for_otk_params)
+        t_prnts = CQT.TableContext(self.ui.tbl_prosm_for_otk_parents)
+        CQT.soft_clear_tbl(t_par.tbl)
+        CQT.soft_clear_tbl(t_prnts.tbl)
+
+        row_o = t.current_row()
+        if row_o.no_selection:
+            return
+
+        num_nar = int(row_o.value('Пномер'))
+        nar_o = CMS.Naryads(num_nar)
+        if not nar_o.is_nar_for_otk(self.DICT_OPER_NAME):
+            return
+        state_otk_o = nar_o.get_state_otk(DTCLS.states_otk)
+        list_params = []
+        list_params.append({'Параметр': 'Распределил', 'Значение': nar_o.Распред_ФИО})
+        list_params.append({'Параметр': 'Распределил дата', 'Значение': nar_o.Распред_дата})
+        list_params.append({'Параметр': 'Проверяемый', 'Значение': nar_o.ФИО_для_ОТК_от_мастера})
+        list_params.append({'Параметр': 'Контролер', 'Значение': nar_o.ФИО})
+        list_params.append({'Параметр': 'Статус ОТК', 'Значение': state_otk_o})
+
+        CQT.fill_wtabl(list_params, t_par.tbl, styleSheet=CQT.MES_CSS)
+
+        list_prnts = []
+        list_prnts_nars = nar_o.ФИО_для_ОТК.split(', ') if ',' in nar_o.ФИО_для_ОТК else []
+        if list_prnts_nars:
+            nars_prnts_o = CMS.Naryad_list(set([int(_) for _ in list_prnts_nars]))
+            for nar_prnt_o in nars_prnts_o.dict_naryads.values():
+                list_prnts.append({
+                    'Наряд': nar_prnt_o.Пномер,
+                    'Распределил': nar_prnt_o.Распред_ФИО,
+                    'Исполнитель': nar_prnt_o.ФИО,
+                    'Исполнитель 2': nar_prnt_o.ФИО2,
+                    'Примечание': nar_prnt_o.Примечание,
+                                   })
+
+        CQT.fill_wtabl(list_prnts, t_prnts.tbl, styleSheet=CQT.MES_CSS)
+
+    @CQT.onerror
     def load_mats_prosmotr(self, *args):
         tblp = self.ui.tbl_prosmotr_nar
-        row = CQT.get_dict_line_form_tbl(tblp)
-        CQT.clear_tbl(self.ui.tbl_prosm_nar_mater)
-        res = CMS.load_res(int(row['Номер_мк']), db_resxml=self.db_resxml)
+        t = CQT.TableContext(tblp)
+        CQT.soft_clear_tbl(self.ui.tbl_prosm_nar_mater)
+        row_o = t.current_row()
+        if row_o.no_selection:
+            return
 
-        list_dse_id = row['ДСЕ_ID'].split('|')
-        list_oper = row['Операции'].split('|')
-        list_oper_kol = row['Опер_колво'].split('|')
+        CQT.clear_tbl(self.ui.tbl_prosm_nar_mater)
+        num_mk = int(row_o.value('Номер_мк'))
+        list_dse_id = row_o.value('ДСЕ_ID').split('|')
+        list_oper = row_o.value('Операции').split('|')
+        list_oper_kol = row_o.value('Опер_колво').split('|')
+
+        res = CMS.ResSpec(num_mk,DICT_PROF_BY_COD= self.DICT_PROFESSIONS)
+
         dict_mats = dict()
         for i in range(len(list_dse_id)):
-            dse = list_dse_id[i]
+            dse_id = list_dse_id[i]
             oper_nom = list_oper[i].split('$')[0]
-            oper_kol = list_oper_kol[i]
-            for dse_res in res:
-                if dse_res['Номерпп'] == int(dse):
-                    for oper in dse_res['Операции']:
-                        if oper['Опер_номер'] == oper_nom:
-                            for mat in oper['Материалы']:
-                                norma_nar = mat['Мат_норма_ед'] * F.valm(oper_kol)
-                                if mat['Мат_код'] not in dict_mats:
-                                    dict_mats[mat['Мат_код']] = {'Мат_наименование': mat['Мат_наименование'],
-                                                                 'Мат_норма': 0,
-                                                                 'Мат_ед_изм': mat['Мат_ед_изм'],
-                                                                 'Материалы_Статья_калькуляции': mat[
-                                                                     'Материалы_Статья_калькуляции'],
-                                                                 'Способы_получения_материала': mat[
-                                                                     'Способы_получения_материала']
-                                                                 }
-                                dict_mats[mat['Мат_код']]['Мат_норма'] += norma_nar
-                                dict_mats[mat['Мат_код']]['Мат_норма'] = round(dict_mats[mat['Мат_код']]['Мат_норма'],
-                                                                               6)
+            oper_kol = F.valm(list_oper_kol[i])
+
+            dse_res = res.get_dse(int(dse_id))
+            oper_res = dse_res.get_oper(oper_nom)
+
+            for mat in oper_res.Материалы:
+                norma_nar = mat['Мат_норма_ед'] * oper_kol
+                if mat['Мат_код'] not in dict_mats:
+                    dict_mats[mat['Мат_код']] = {'Мат_наименование': mat['Мат_наименование'],
+                                                 'Мат_норма': 0,
+                                                 'Мат_ед_изм': mat['Мат_ед_изм'],
+                                                 'Материалы_Статья_калькуляции': mat[
+                                                     'Материалы_Статья_калькуляции'],
+                                                 'Способы_получения_материала': mat[
+                                                     'Способы_получения_материала']
+                                                 }
+                dict_mats[mat['Мат_код']]['Мат_норма'] += norma_nar
+
+        for code in dict_mats.keys():
+            dict_mats[code]['Мат_норма'] = round(dict_mats[code]['Мат_норма'],
+                                                           6)
 
         list_mats = F.dict_of_dicts_to_list_of_lists(dict_mats, 'Код')
-        CQT.fill_wtabl(list_mats, self.ui.tbl_prosm_nar_mater,
-                       list_column_widths=CMS.load_column_widths(self, self.ui.tbl_prosm_nar_mater))
+        CQT.fill_wtabl(list_mats, self.ui.tbl_prosm_nar_mater,styleSheet=CQT.MES_CSS)
 
     @CQT.onerror
     def tbl_prosmotr_nar_jurnal_cellChanged(self, row, column, *args):
@@ -1454,9 +1735,15 @@ where naryad."Пномер" = {pnom};"""
     def tbl_prosmotr_nar_click(self, *args):
         tblp = self.ui.tbl_prosmotr_nar
         tblj = self.ui.tbl_prosmotr_nar_jurnal
+        t = CQT.TableContext(tblp)
+        row_o = t.current_row()
+        if row_o.no_selection:
+            return
+
         nk_nom_nar = CQT.num_col_by_name_c(tblp, 'Пномер')
-        nom_nar = int(tblp.item(tblp.currentRow(), nk_nom_nar).text()) #02.02.2026
-        custom_request_c = CSQ.SqlQuery(
+        nom_nar = int(row_o.value('Пномер')) #02.02.2026
+
+        text_req = CSQ.SqlQuery(
             sqlite=f'''SELECT  
             Пномер, Номер_наряда, Дата, ФИО, Статус, Подытог, Примечание 
             FROM jurnal 
@@ -1470,55 +1757,31 @@ where naryad."Пномер" = {pnom};"""
             ORDER BY "Дата"::timestamp
         '''
         )
-        rez = CSQ.custom_request_c(self.db_naryd, custom_request_c)
+        rez = CSQ.custom_request_c(self.db_naryd, text_req)
+
         tblp.setProperty('nom_nar', nom_nar) # 30.04.2026
-        zad = CSQ.custom_request_c(self.db_naryd, f"""
-        SELECT 
-            mk."Дата_завершения",
-            naryad."Пномер", 
-            naryad."Задание" 
-         FROM naryad 
-         INNER JOIN mk ON mk."Пномер" = naryad."Номер_мк" 
-         WHERE naryad."Пномер" = {nom_nar}""",
-                                   rez_dict=True)
-        CQT.fill_wtabl_old_c(self, rez, tblj, isp_hat_c=True, separ='',
-                             set_editeble_col_nomera={CQT.num_col_by_name_c(tblj, 'Примечание')})
-        CMS.load_column_widths(self, tblj)
+        CQT.fill_wtabl(rez, tblj, styleSheet=CQT.MES_CSS,set_editeble_col_nomera={'Примечание'}
+                       )
         CMS.fill_filtr_c(self, self.ui.tbl_prosmotr_nar_jurnal_filtr, self.ui.tbl_prosmotr_nar_jurnal)
         CMS.apply_filtr_c(self, self.ui.tbl_prosmotr_nar_jurnal_filtr, self.ui.tbl_prosmotr_nar_jurnal)
 
-        nk_zad = CQT.num_col_by_name_c(tblp, 'Задание')
-        nk_oper = CQT.num_col_by_name_c(tblp, 'Операции')
-        nk_vrem = CQT.num_col_by_name_c(tblp, 'Опер_время')
-        nk_kol = CQT.num_col_by_name_c(tblp, 'Опер_колво')
 
-        nar = CMS.Naryads(nom_nar, self.db_naryd, self.DICT_DOLGN_ETAP, self.bd_users,
-                          self.DICT_EMPLOEE_FULL_WITH_DEL)
-
-        if nar.is_month_closing_block() or zad[0]['Дата_завершения'] != '':
+        nar = CMS.Naryads(nom_nar)
+        nar.get_mk()
+        if nar.is_month_closing_block() or nar.mk.Дата_завершения != '':
             self.btns_edit_jur_in_prosmtr_nar_enabled(False)
         else:
             self.btns_edit_jur_in_prosmtr_nar_enabled(True)
 
-        zad = zad[0]['Задание'].split('LF')
-        zad = [[_] for _ in zad]
-        zad.insert(0, ['Задание'])
-        oper = tblp.item(tblp.currentRow(), nk_oper).text().split('|')
-        vrem = tblp.item(tblp.currentRow(), nk_vrem).text().split('|')
-        kol = tblp.item(tblp.currentRow(), nk_kol).text().split('|')
-        spis_oper = [['Операция', 'шт.', 'мин.']]
-        for i in range(len(oper)):
-            spis_oper.append([oper[i].replace('$', ' '), kol[i], vrem[i]])
-        CQT.fill_wtabl_old_c(self, zad, self.ui.tbl_prosm_nar_zadan, separ='', isp_hat_c=True)
-        CMS.load_column_widths(self, self.ui.tbl_prosm_nar_zadan)
-        CMS.fill_filtr_c(self, self.ui.tbl_prosm_nar_zadan_filtr, self.ui.tbl_prosm_nar_zadan)
-
-        CQT.fill_wtabl_old_c(self, spis_oper, self.ui.tbl_prosm_nar_oper, separ='', isp_hat_c=True)
-        CMS.load_column_widths(self, self.ui.tbl_prosm_nar_oper)
-        CMS.fill_filtr_c(self, self.ui.tbl_prosm_nar_oper_filtr, self.ui.tbl_prosm_nar_oper)
-
         self.ui.btn_apply_deladd_row_jur.setText('Применить')
-        self.load_mats_prosmotr()
+
+        #=========================================
+
+
+        #=========tabs============================
+        self.tab_prosm_nar()
+
+
 
     @CQT.onerror
     def tbl_komplektovka_view_click(self, *args):
@@ -1532,6 +1795,20 @@ where naryad."Пномер" = {pnom};"""
         tblk = self.ui.tbl_komplektovka
         tblv = self.ui.tbl_komplektovka_view
         CMS.specification_task_c(self, tblk, tblv)
+        t = CQT.TableContext(tblk)
+        row = t.current_row()
+        if row.no_selection:
+            return
+
+        DTCLS.vibr_nar = int(row.value('Пномер'))
+        nar_o = CMS.Naryads(DTCLS.vibr_nar)
+        if not nar_o.is_nar_for_otk(self.DICT_OPER_NAME):
+            self.ui.fr_state_otk_kompl.setVisible(False)
+            return
+        self.ui.fr_state_otk_kompl.setVisible(True)
+        DTCLS.vibr_nar_o = nar_o
+        self.fill_state_otk(self.ui.cmb_state_otk_kompl)
+
 
     @CQT.onerror
     def otmeka_komplekt(self, *args):
@@ -1668,7 +1945,7 @@ where naryad."Пномер" = {pnom};"""
         tbl.setProperty('selected_row', tbl.currentRow())
         self.raschet_naruada_time_tmp()
 
-    def fill_state_tables(self, data_rc: list[str], data_prof: dict[tuple, int], data_time: list[dict]):
+    def fill_state_tables(self, data_rc: list[str], data_prof: dict[tuple, dict], data_time: list[dict]):
         sorted_time_data = list(sorted(data_time, key=lambda x: x['Сумма минут'], reverse=True))
         bad_state = '🔴'
         success_state = '🟢'
@@ -1690,7 +1967,7 @@ where naryad."Пномер" = {pnom};"""
              'label': self.ui.lbl_dse_check_prof, 'postfix': 'Допустимые профессии', 'out_validate': False, 'validate_field': 'Лишние\nпрофессии'},
             {'field': 'Строка', 'table': self.ui.tbl_dse_check_time, 'data': sorted_time_data,
              'filter_field': 'Строка',
-             'label': self.ui.lbl_dse_check_time, 'postfix': 'Выделенные строки', 'out_validate': True, 'validate_field': None},
+             'label': self.ui.lbl_dse_check_time, 'postfix': 'Выделенные строки', 'out_validate': False, 'validate_field': 'Лишние,шт.'},
         ]
         bad_rgb = 255, 148, 148
         success_rgb = 204, 255, 204
@@ -1710,7 +1987,7 @@ where naryad."Пномер" = {pnom};"""
                         tbl.setProperty('mutable', True)
                         tbl.setProperty('field', field)
                     if data:
-                        CQT.fill_wtabl(data, tbl, hide_head_rows=True, auto_type=False, ogr_maxshir_kol=170, height_row=45)
+                        CQT.fill_wtabl(data, tbl, hide_head_rows=True, auto_type=False, ogr_maxshir_kol=170, height_row=45,styleSheet=CQT.MES_EDIT_CSS)
                         nk_field = CQT.num_col_by_name_c(tbl, field) #09.09.25
                         tbl.setFont(base_font)
                         tbl.horizontalHeader().setFont(base_font)
@@ -1727,6 +2004,7 @@ where naryad."Пномер" = {pnom};"""
                                 rgb = success_rgb
                                 if txt:
                                     rgb = bad_rgb
+                                    bad_rows.add(row)
                             else:
                                 value = tbl.item(row, nk_field).text()
                                 split_val = set(value.split(';'))#09.09.25
@@ -1779,7 +2057,7 @@ where naryad."Пномер" = {pnom};"""
         if "МК " + str(self.glob_nom_mk) != lbl.text().split(' - ')[0]:
             CQT.msgbox('Не выбрана МК')
             return
-        self.glob_res = CMS.load_res(self.glob_nom_mk)
+        self.glob_res = CMS.ResSpec(self.glob_nom_mk)
         return True
 
     @CQT.onerror
@@ -1816,7 +2094,9 @@ where naryad."Пномер" = {pnom};"""
                 return
             if self.check_sootv_res_nommk() != True:
                 return
-
+            if DTCLS.selected_factory_sets is None or not DTCLS.selected_factory_sets:
+                CQT.msgbox('Не распределены заводские комплекты')
+                return
             kat_vnepl = 0
         else:  # Внеплан
             if self.spis_dse != []:
@@ -1902,7 +2182,25 @@ where naryad."Пномер" = {pnom};"""
             return
 
         nom_nar = new_nar.Пномер
+        try:
+            for it in DTCLS.selected_factory_sets:
+                DTCLS.current_factory_sets.add_new(it['dse_id'],it['oper_id'],nom_nar,it['id_factory'])#result.append({'dse_id': dse_id, 'oper_id': oper_id, 'id_factory': id_factory_set})
+            DTCLS.current_factory_sets.save_new()
+        except:
+            CMS.send_err_msg_dev_chat(f'{F.now()} у {CFG.Config.user_config.User.ФИОк} Ошибка при регистрации комплектов Наряда',
+                                      [
+                                          {'Парметр': 'dse_id','Значение': it['dse_id']},
+                                          {'Парметр': 'dse_id','Значение': it['dse_id']},
+                                          {'Парметр': 'oper_id','Значение': it['oper_id']},
+                                          {'Парметр': 'nom_nar','Значение': nom_nar},
+                                          {'Парметр': 'id_factory','Значение': it['id_factory']},
+
+                                      ])
+
+
         CQT.msgbox(f'Наряд № {nom_nar} создан')
+        DTCLS.current_factory_sets = None
+        DTCLS.selected_factory_sets = None
         self.ui.plainTextEdit_zadanie.setPlainText('')
         self.ui.plainTextEdit_primechanie.setPlainText('')
         self.ui.lineEdit_cr_nar_norma.setText('')
@@ -1921,7 +2219,7 @@ where naryad."Пномер" = {pnom};"""
                 return False
             return True
 
-        def check_reg_nar(nom_nar:int,nums_compl:str,data_nar:dict)->tuple[list[dict],dict]:
+        def check_reg_nar(nom_nar:int,data_nar:dict)->tuple[list[dict],dict]:
             self:mywindow = DTCLS.app_self
             _errs = []
 
@@ -1937,23 +2235,6 @@ where naryad."Пномер" = {pnom};"""
 
             if not CMS.check_execution_previous_operations(self, nom_nar, check_by_vip=False):
                 _errs.append({'Ошибка': f'по наряду {nom_nar} не выполнены требования маршрута, работа ЗАБЛОКИРОВАНА'})
-
-
-            if nums_compl == '':
-                _errs.append({'Ошибка': f'по наряду {nom_nar} Не введены номера комплектов'})
-
-            try:
-                list_compl = nums_compl.split(',')
-                nums_compl = [int(_) for _ in list_compl]
-                for num_k in nums_compl:
-                    if num_k > int(data_nar["Кол. изделий"]):
-
-                        _errs.append({'Ошибка': f'по наряду {nom_nar} Не корректно введены номера комплектов'})
-
-                list_compl = ','.join([str(_) for _ in nums_compl])
-            except:
-
-                _errs.append({'Ошибка': f'по наряду {nom_nar} Не корректно введены номера комплектов'})
 
             if self.is_nar_for_otk(data_nar['Операции']) and not data_nar['Аутсорсинг']:
                 if self.ui.lbl_nnar_for_control.text() == '':
@@ -1987,8 +2268,7 @@ where naryad."Пномер" = {pnom};"""
                     fl_check_max_time = True
 
             if fl_check_max_time:
-                nar = CMS.Naryads(nom_nar, self.db_naryd, self.DICT_DOLGN_ETAP, self.bd_users,
-                                  self.DICT_EMPLOEE_FULL_WITH_DEL)
+                nar = CMS.Naryads(nom_nar)
                 if fio2 != '' and fio != '':
                     norma = norma / 2
                 if not (len(nar.params) == 1 and nar.params[0]['Опер_колво'] == 1):
@@ -1999,20 +2279,8 @@ where naryad."Пномер" = {pnom};"""
 
             return _errs
 
-        def reg_nar(nom_nar:int,nums_compl:str,data_nar:dict):
+        def reg_nar(nom_nar:int,data_nar:dict):
             self: mywindow = DTCLS.app_self
-
-            try:
-                list_compl = nums_compl.split(',')
-                nums_compl = [int(_) for _ in list_compl]
-                for num_k in nums_compl:
-                    if num_k > int(data_nar["Кол. изделий"]):
-                        CQT.msgbox(f'Не корректно введены номера комплектов')
-                        return
-                list_compl = ','.join([str(_) for _ in nums_compl])
-            except:
-                CQT.msgbox(f'Не корректно введены номера комплектов')
-                return
 
             fio_for_otk = ''
             str_fio_otk_from_master = ''
@@ -2033,6 +2301,8 @@ where naryad."Пномер" = {pnom};"""
                     CQT.blink_obj_c(self, 2, self.ui.tbl_list_empl_for_kontr, f'Не более 2 исполнителей под контроль ОТК')
                     return
                 str_fio_otk_from_master = ';'.join(users_for_otk)
+
+
 
             fio = DTCLS.ispoln1
             fio2 = DTCLS.ispoln2
@@ -2055,10 +2325,10 @@ where naryad."Пномер" = {pnom};"""
                             "ФИО_для_ОТК_от_мастера" = ?, "Обособленная_расценка" = ?, "Коэфф_сложности" = ? , "Аутсорсинг" = ?
                               WHERE "Пномер" = ?'''
             else:
-                params = [F.now(), self.glob_ima, fio, fio2, norma_per_ispoln, fio_for_otk, str_fio_otk_from_master, list_compl, is_outsource,
+                params = [F.now(), self.glob_ima, fio, fio2, norma_per_ispoln, fio_for_otk, str_fio_otk_from_master, is_outsource,
                           nom_nar]
                 custom_request_c = f'''  UPDATE naryad SET "Распред_дата" = ?, "Распред_ФИО" = ?, "ФИО" = ?, "ФИО2" = ?, "Твремя" = ?, "ФИО_для_ОТК" = ?, 
-                 "ФИО_для_ОТК_от_мастера" = ?, "Заводской_комплект" = ? , "Аутсорсинг" = ?
+                 "ФИО_для_ОТК_от_мастера" = ?,  "Аутсорсинг" = ?
                   WHERE "Пномер" = ?'''
             rez = True
             rez = CSQ.custom_request_c(self.db_naryd, custom_request_c, list_of_lists_c=params)
@@ -2066,7 +2336,7 @@ where naryad."Пномер" = {pnom};"""
                 CQT.msgbox(f'Ошибка занесения наряда №{nom_nar} ', time_life=3)
                 return
 
-            nar = CMS.Naryads(nom_nar, self.db_naryd)
+            nar = CMS.Naryads(nom_nar)
             nar.recalc_astronom_time(self.DICT_OPER_NAME)
             # =============ДОБАВЛЕНИЕ Внеплановых этапов======================
             self.add_vnepl_nars(nar.Пномер, nar.ФИО, nar.ФИО2)
@@ -2074,15 +2344,14 @@ where naryad."Пномер" = {pnom};"""
 
 
         dict_reg_nars = dict()
+
         if DTCLS.list_selected_package_for_raspred_nar and self.ui.lbl_vibr_nar.text() == DTCLS.SELECTED_PACKAGE_MARK:
             for select_nar in DTCLS.list_selected_package_for_raspred_nar:
                 nom_nar = select_nar['Номер наряда']
-                nums_compl = select_nar['Номерa комплектов']
-                dict_reg_nars[nom_nar] = {'nums_compl':nums_compl}
+                dict_reg_nars[nom_nar] = ''
         else:
             nom_nar = DTCLS.vibr_nar
-            nums_compl = self.ui.le_nom_compl.text().strip().replace(';', ',')
-            dict_reg_nars[nom_nar] = {'nums_compl':nums_compl}
+            dict_reg_nars[nom_nar] = ''
 
         dict_data_nars =F.deploy_dict_c( CSQ.custom_request_c(
             self.db_naryd,
@@ -2104,24 +2373,23 @@ where naryad."Пномер" = {pnom};"""
                                                               rez_dict=True,attach_dbs=(self.db_kplan)), 'Пномер')
 
         list_errs = []
-        for nom_nar, data_nar in dict_reg_nars.items():
-            nums_compl = data_nar['nums_compl']
+        for nom_nar in dict_reg_nars.keys():
             dict_data_nar = dict_data_nars[nom_nar]
-            nar_errs = check_reg_nar(nom_nar, nums_compl,dict_data_nar)
+            nar_errs = check_reg_nar(nom_nar,dict_data_nar)
             list_errs.extend(nar_errs)
 
         if list_errs:
             CQT.msgboxg_get_table_ok_inf(self, 'Ошибки', list_errs, styleSheet=CQT.MES_CSS)
             return
 
-        for nom_nar, data_nar in dict_reg_nars.items():
-            nums_compl = data_nar['nums_compl']
+        for nom_nar in dict_reg_nars.keys():
             dict_data_nar = dict_data_nars[nom_nar]
-            reg_nar(nom_nar,nums_compl,dict_data_nar)
+            reg_nar(nom_nar,dict_data_nar)
 
 
         self.ui.lbl_vibr_nar.clear()
         DTCLS.vibr_nar = None
+        DTCLS.vibr_nar_o = None
         self.clear_radio_isp()
         self.clear = self.ui.cmb_prof_rasp.clear()
         self.select_tbl_projs_raspred()
@@ -2288,6 +2556,16 @@ where naryad."Пномер" = {pnom};"""
 
     @CQT.onerror
     def zapoln_table_rabont_po_prof(self, prof):
+
+        class SimpClsNaryadsByEmpl(F._SimpMeta):
+            Пномер: int
+            ФИО_: str
+            Твремя: float
+            Норма_времени: float
+            Подытог: None|float
+            Подытог_нормы: None|float
+
+
         chk_filtr_usr_by_rc: QtWidgets.QCheckBox = self.ui.chk_filtr_usr_by_rc
         fio_by_rc = True
         if chk_filtr_usr_by_rc.checkState() == QtCore.Qt.CheckState.Unchecked:
@@ -2334,9 +2612,9 @@ where naryad."Пномер" = {pnom};"""
                     SUM(jurnal."Подытог") as "Подытог"
                 FROM naryad  
                 INNER JOIN mk ON mk."Пномер" = naryad."Номер_мк" 
-                INNER JOIN jurnal ON jurnal."Номер_наряда" = naryad."Пномер" 
+                LEFT JOIN jurnal ON jurnal."Номер_наряда" = naryad."Пномер" 
                     AND jurnal."ФИО" = "ФИО_"  
-                    AND jurnal."Подытог_нормы" != ''
+                    AND jurnal."Подытог" != ''
                 WHERE "ФИО_" in ({CSQ.prepare_list_to_tuple(list_users)}) 
                     AND ((mk."Статус" != 'Закрыта' 
                         AND mk."Дата_завершения" = '') 
@@ -2348,33 +2626,44 @@ where naryad."Пномер" = {pnom};"""
             list_template_req.append(template_req)
         custom_request_c = ' UNION '.join(list_template_req) + ' ORDER BY naryad."Пномер";'
 
-        spis_nezav_nar = CSQ.custom_request_c(self.db_naryd, custom_request_c, rez_dict=True)
-        if spis_nezav_nar == False:
+        spis_nar = CSQ.custom_request_c(self.db_naryd, custom_request_c, rez_dict=True)
+        if spis_nar == False:
             CQT.msgbox('БД занята, пробуй позже')
             return
-        catched_empls = sorted(list({_['ФИО_'] for _ in spis_nezav_nar}))
-        set_catched_empls = set(catched_empls)
+        spis_nar= [SimpClsNaryadsByEmpl._from_dict(_) for _ in spis_nar]
+        group_nar = F.grouping_list_dicts(spis_nar,'ФИО_',  True)
         for empl in list_users:
             remain_summ = 0
             norma_summ = 0
             count_nar = 0
             poditog_summ = 0
-            for nar in spis_nezav_nar:
-                if not nar['ФИО_'] == empl:
-                    continue
-                delta = nar['Норма_времени'] - nar['Подытог']
-                if delta < 0:
-                    delta = 0
-                remain_summ += delta
-                poditog_summ += nar['Подытог']
-                norma_summ += nar['Норма_времени']
+
+            if empl not in group_nar:
+                spis_sotr.append([count_nar, empl,
+                                  f'{remain_summ}({round(remain_summ / 450, 1)} смен) по {count_nar} нарядам',
+                                  f'{norma_summ}|{poditog_summ}'])
+                continue
+
+            list_nars:list[SimpClsNaryadsByEmpl] = group_nar[empl]
+            for nar in list_nars:
+                norma_summ += nar.Норма_времени
                 count_nar += 1
-            spis_sotr.append([count_nar, empl, f'{round(remain_summ)} из {round(norma_summ)} по {count_nar} открытым',
-                              f'{norma_summ}|{poditog_summ}'])
+                if nar.Подытог:
+                    poditog_summ+= nar.Подытог if nar.Подытог < nar.Норма_времени else nar.Норма_времени
+
+            remain_summ = round(norma_summ -poditog_summ)
+            spis_sotr.append([count_nar, empl,
+                  f'{remain_summ}({round(remain_summ/450,1)} смен) по {count_nar} нарядам',
+                  f'{norma_summ}|{poditog_summ}'])
 
         CQT.fill_wtabl(spis_sotr, tbl, height_row=24, auto_type=False, hide_head_rows=True,
                        list_column_widths=CMS.load_column_widths(self, tbl), StretchLastRow=False)
         CQT.fill_progress_c(self, tbl, 3, True, True, True)
+
+        if len(spis_sotr) == 2:#шапка + 1 строка
+            CQT.select_cell(tbl,0,0)
+            self.tbl_rabotn_raspr_click()
+
 
         def show_nars(self, r, c):
             tbl: QtWidgets.QTableWidget = self.ui.tbl_vibor_rabotn_rasp
@@ -2387,10 +2676,24 @@ where naryad."Пномер" = {pnom};"""
             for f in tup_fileds:
                 template_req = f'''
                 SELECT 
+                CASE WHEN знпр."№проекта" IS NOT NULL 
+                        THEN знпр."№проекта" 
+                        ELSE mk."Номер_проекта" 
+                    END AS "Номер_проекта", 
+                        
+                    CASE WHEN знпр."№ERP" IS NOT NULL 
+                       THEN знпр."№ERP" 
+                       ELSE mk."Номер_заказа" 
+                    END AS "Номер_заказа", 
+                
+                    CASE WHEN plan."Приоритет" IS NOT NULL 
+                       THEN plan."Приоритет" 
+                       ELSE mk."Приоритет" 
+                    END AS "Приоритет", 
                     "naryad"."Пномер", 
                     "naryad"."Дата", 
                     "naryad"."Номер_мк", 
-                    "naryad"."Задание", 
+                    naryad."Распред_ФИО", 
                     "naryad"."ФИО", 
                     "naryad"."ФИО2", 
                     "naryad"."Твремя", 
@@ -2406,40 +2709,20 @@ where naryad."Пномер" = {pnom};"""
                     naryad."Компл_адрес", 
                     naryad."Примечание", 
                     naryad."Внеплан",
-                         
-                    CASE WHEN знпр."№проекта" IS NOT NULL 
-                        THEN знпр."№проекта" 
-                        ELSE mk."Номер_проекта" 
-                    END AS "Номер_проекта", 
-                        
-                    CASE WHEN знпр."№ERP" IS NOT NULL 
-                       THEN знпр."№ERP" 
-                       ELSE mk."Номер_заказа" 
-                    END AS "Номер_заказа", 
-                
-                    CASE WHEN plan."Приоритет" IS NOT NULL 
-                       THEN plan."Приоритет" 
-                       ELSE mk."Приоритет" 
-                    END AS "Приоритет", 
-                        
                     naryad."Коэфф_сложности", 
-                    naryad."Виды_работ", 
-                    naryad."Опер_время", 
                     mk."Статус_ЧПУ", 
                     zagot."Прим_резка", 
                     naryad."ФИО_для_ОТК", 
-                    naryad."Операции", 
-                    naryad."Распред_ФИО", 
-                    naryad."Кол_повт_приемок" AS "Кол_во повт. приёмок" 
+                    naryad."Кол_повт_приемок" AS "Кол_во повт. приёмок",
+                    "naryad"."Задание"
                 FROM naryad  
                 INNER JOIN mk ON "mk"."Пномер" = "naryad"."Номер_мк" 
                 INNER JOIN zagot ON "zagot"."Ном_МК" = "naryad"."Номер_мк" 
                 LEFT JOIN "пл_оуп" ON "пл_оуп"."НомПл" = "mk"."НомКплан" 
                 LEFT JOIN "plan" ON "plan"."Пномер" = "mk"."НомКплан"  
                 LEFT JOIN "знпр" ON "знпр"."s_num" = "пл_оуп"."Пномер_ЗП" 
-                INNER JOIN jurnal ON jurnal."Номер_наряда" = naryad."Пномер" 
+                LEFT JOIN jurnal ON jurnal."Номер_наряда" = naryad."Пномер" 
                     AND jurnal."ФИО" = naryad."{f}"  
-                    AND jurnal."Подытог_нормы" != ''
                 WHERE naryad."{f}" = '{fio}' 
                     AND ((mk."Статус" != 'Закрыта' AND mk."Дата_завершения" = '') 
                         OR (naryad."Внеплан" = {self.place.КодыНарядов.Простой})) 
@@ -2449,8 +2732,14 @@ where naryad."Пномер" = {pnom};"""
             custom_request_c = ' UNION '.join(list_template_req) + ' ORDER BY naryad."Пномер";'
             spis_nezav_nar = CSQ.custom_request_c(self.db_naryd, custom_request_c, rez_dict=True,
                                                   attach_dbs=(self.db_kplan))
+            for it in spis_nezav_nar:
+                it['Задание'] = it['Задание'].replace('LF', '\n')
+
             CQT.msgboxg_get_table(self, 'Данные по нарядам для ' + fio, spis_nezav_nar, btn1_name='OK',
                                   disable_btn0=True, load_summ=True, WindowTitle='Список данных по нарядам')
+
+
+
 
         nf_nar = CQT.num_col_by_name_c(tbl, 'Наряды')
         for i in range(tbl.rowCount()):
@@ -2458,7 +2747,7 @@ where naryad."Пномер" = {pnom};"""
                 tbl.item(i, nf_nar).setText('')
                 continue
             CQT.add_btn(tbl, i, 0, 'Наряды сотрудника', conn_func_checked_row_col=show_nars, self=self,
-                        img_path=r'C:\Python\Terminal_sozd_new\icons\cust_btn_show_nar')
+                        img_path=r'cust_btn_show_nar')
 
     @CQT.onerror
     def select_prof_raspr(self, nom, *args):
@@ -2643,7 +2932,7 @@ where naryad."Пномер" = {pnom};"""
         if isinstance(pk_nar, CMS.Naryads):
             nar = pk_nar
         else:
-            nar = CMS.Naryads(int(pk_nar), db_naryad=CFG.Config.project.db_naryad)
+            nar = CMS.Naryads(int(pk_nar))
         resource = CMS.ResSpec(num_mk=nar.Номер_мк)
         dse_ids = {param.ДСЕ_ID for param in nar.params_o}
         coords_dse_op = [(param.ДСЕ_ID, param.Операции_номер) for param in nar.params_o]
@@ -2710,6 +2999,63 @@ where naryad."Пномер" = {pnom};"""
         return spis_prof
 
     @CQT.onerror
+    def fill_cmb_state_otk(self, *args):
+        text, data, views_vals = DTCLS.states_otk.data_for_cmb(DTCLS.states_otk.TypesUser.SENDER)
+        cmb: CQT.QtWidgets.QCheckBox = self.ui.cmb_state_otk
+        CQT.fill_list_combobx(self,cmb,text,first_void=False,list_data=data,list_user_hidden=views_vals)
+        cmb: CQT.QtWidgets.QCheckBox = self.ui.cmb_state_otk_kompl
+        CQT.fill_list_combobx(self,cmb,text,first_void=False,list_data=data,list_user_hidden=views_vals)
+
+
+
+    @CQT.onerror
+    def change_state_otk(self, cmb: CQT.QtWidgets.QCheckBox, *args):
+        idx = CQT.get_cmb_current_data(cmb)
+        state_otk_o = DTCLS.states_otk.get(idx)
+        if state_otk_o is None:
+            CQT.msgbox(f'Ошибка получения статуса ОТК')
+            self.fill_state_otk(cmb)
+            return
+
+        if DTCLS.vibr_nar_o is None:
+            CQT.msgbox(f'Не выбран наряд')
+            self.fill_state_otk(cmb)
+            return
+
+        nar:CMS.Naryads = DTCLS.vibr_nar_o
+
+        if state_otk_o.for_receiver:
+            CQT.msgbox(f'Статус не может быть изменен, статус для приемщика')
+            self.fill_state_otk(cmb)
+            return
+
+        old_state_otk_o = nar.get_state_otk(DTCLS.states_otk)
+        if old_state_otk_o in (DTCLS.states_otk.accepted,DTCLS.states_otk.not_accepted):
+            self.fill_state_otk(cmb)
+            CQT.msgbox(f'Статус не может быть изменен, наряд уже обработан')
+            return
+        if nar.Кол_повт_приемок>0:
+            CQT.msgbox(f'Наряд уже был обработан ранее забракован, повторное предъявление через вкладку "Брак"')
+            self.fill_state_otk(cmb)
+            return
+        if not nar.set_state_otk(state_otk_o):
+            CQT.msgbox(f'Ошибка установки статуса ОТК')
+            self.fill_state_otk(cmb)
+            return
+        CQT.msgbox(f'Успешно',time_life=0.5,app_self=self)
+
+    @CQT.onerror
+    def fill_state_otk(self, cmb: CQT.QtWidgets.QCheckBox, *args):
+        nar: CMS.Naryads = DTCLS.vibr_nar_o
+        if nar is None:
+            CQT.msgbox(f'Ошибка получения наряда')
+            return
+        CQT.select_cmb_by_data(cmb, nar.state_otk)
+        state_otk_o = nar.get_state_otk(DTCLS.states_otk)
+        cmb.setEnabled(state_otk_o.for_sender)
+
+
+    @CQT.onerror
     def tbl_nar_raspr_click(self, *args):
 
         def get_lust_empl_from_mk(self, nom_mk):
@@ -2749,13 +3095,17 @@ where naryad."Пномер" = {pnom};"""
         nk_nom_nar = CQT.num_col_by_name_c(tbl, 'Пномер')
         nk_vneplan = CQT.num_col_by_name_c(tbl, 'Внеплан')
         nom_nar = tbl.item(tbl.currentRow(), nk_nom_nar).text()
+
+
         self.ui.lbl_vibr_nar.setText(nom_nar)
         DTCLS.vibr_nar = int(nom_nar)
-        nom_mk = int(tbl.item(tbl.currentRow(), nk_nom_mar).text())
-        vneplan = int(tbl.item(tbl.currentRow(), nk_vneplan).text())
-        line = CQT.get_dict_line_form_tbl(tbl, tbl.currentRow())
+        nar_o = CMS.Naryads(DTCLS.vibr_nar)
+        DTCLS.vibr_nar_o = nar_o
+        nom_mk = DTCLS.vibr_nar_o.Номер_мк
+        vneplan = DTCLS.vibr_nar_o.Внеплан
+
         self.ui.lbl_nnar_for_control.setText("")
-        autsource = int(line['Аутсорсинг'])
+        autsource = DTCLS.vibr_nar_o.Аутсорсинг
         self.ui.chk_outsource_nar.blockSignals(True)
         self.ui.chk_outsource_nar.setChecked(bool(autsource))
         self.ui.chk_outsource_nar.blockSignals(False)
@@ -2798,15 +3148,17 @@ where naryad."Пномер" = {pnom};"""
         # -- 06.08.25
         for prof in spis_prof:
             self.ui.cmb_prof_rasp.addItem(prof)
+        if len(spis_prof) == 1:
+            self.ui.cmb_prof_rasp.setCurrentIndex(1)
+            self.zapoln_table_rabont_po_prof(spis_prof[0])
 
         if self.is_nar_for_otk(dict_row['Операции']) and autsource == 0:
             list_nar = self.get_list_last_base_nar(dict_row['Номер_мк'], dict_row['Пномер'])
             self.ui.lbl_nnar_for_control.setText(', '.join([str(_) for _ in list_nar]))
             set_users = set()
+            list_nars_o = CMS.Naryad_list(set(list_nar))
+            for nom_nar_empl,empl_nar in list_nars_o.dict_naryads.items():
 
-            for nom_nar_empl in list_nar:
-                empl_nar = CMS.Naryads(nom_nar_empl, self.db_naryd, self.DICT_DOLGN_ETAP, self.bd_users,
-                                       self.DICT_EMPLOEE_FULL_WITH_DEL)
                 fl_not_chek = True
                 for oper in empl_nar.params:
                     if oper['Операции_имя'] not in self.DICT_OPER_NAME:
@@ -2825,8 +3177,9 @@ where naryad."Пномер" = {pnom};"""
                 CQT.add_check_box(self.ui.tbl_list_empl_for_kontr, i, 0,
                                   conn_func_checked_row_col=self.select_empl_for_kontr)
             self.ui.fr_otk.setHidden(False)
+            self.fill_state_otk(self.ui.cmb_state_otk)
             # fill_cmb_empl_for_otk(self,get_lust_empl_from_mk(self,nom_mk))
-        self.ui.le_nom_compl.setText('')
+
 
     @CQT.onerror
     def select_empl_for_kontr(self, checked, row, col, *args):
@@ -3000,8 +3353,7 @@ where naryad."Пномер" = {pnom};"""
         if not CMS.user_access(self.db_naryd, 'создание_корректировка_удаление_начатых_нарядов', self.glob_ima):
             return
         s_num_nar = int(row['Пномер'])
-        nar = CMS.Naryads(s_num_nar, self.db_naryd, self.DICT_DOLGN_ETAP, self.bd_users,
-                          self.DICT_EMPLOEE_FULL_WITH_DEL)
+        nar = CMS.Naryads(s_num_nar)
         if nar.is_month_closing_block():
             CQT.msgbox(f'Наряд был зафиксирован в предыдущем отчетном периоде. Корректировка не возможна')
             return
@@ -3086,8 +3438,7 @@ where naryad."Пномер" = {pnom};"""
         if not CMS.user_access(self.db_naryd, 'создание_корректировка_удаление_начатых_нарядов', self.glob_ima):
             return
         s_num_nar = int(row['Пномер'])
-        nar = CMS.Naryads(s_num_nar, self.db_naryd, self.DICT_DOLGN_ETAP, self.bd_users,
-                          self.DICT_EMPLOEE_FULL_WITH_DEL)
+        nar = CMS.Naryads(s_num_nar)
         fl = False
         list_msgs = []
 
@@ -3179,7 +3530,7 @@ where naryad."Пномер" = {pnom};"""
 
         CSQ.custom_request_c(self.db_naryd, custom_request_c)
         CQT.msgbox(f'Наряд №{nom_nar} успешно очищен')
-        nar = CMS.Naryads(int(nom_nar), self.db_naryd)
+        nar = CMS.Naryads(int(nom_nar))
         nar.recalc_astronom_time(self.DICT_OPER_NAME)
         self.load_table_korr_naruad()
 
@@ -3366,22 +3717,25 @@ where naryad."Пномер" = {pnom};"""
                ELSE mk.Номер_заказа 
                END AS Номер_заказа, 
                 naryad.Пномер, naryad.Дата, naryad.Автор, naryad.Номер_мк, naryad.Внеплан, naryad.Коэфф_сложности,
-                naryad.Компл_ФИО, naryad.Задание, naryad.Примечание, naryad.Опер_колво, naryad.Компл_Дата, 
+                naryad.Компл_ФИО, naryad.Задание, naryad.Примечание,  naryad.Компл_Дата, 
                 naryad.Компл_номер_тара, naryad.Компл_адрес,
                  naryad.ФИО, naryad.Фвремя, naryad.ФИО2, naryad.Фвремя2, naryad.Твремя, naryad.Подтвержд_вып, 
-                 naryad.Подтвержд_вып_дата , naryad.Подтвержд_вып_фио, naryad.month_closing_block as "Блок по периоду"  
+                 naryad.Подтвержд_вып_дата , naryad.Подтвержд_вып_фио,
+                  naryad_state_otk.text as "Статус ОТК", naryad.month_closing_block as "Блок по периоду",
+                  naryad.Опер_колво
                   FROM naryad 
                    INNER JOIN mk ON mk.Пномер = naryad.Номер_мк 
                    LEFT JOIN пл_оуп ON пл_оуп.НомПл = mk.НомКплан 
                    LEFT JOIN plan ON plan.Пномер = mk.НомКплан 
-                LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП  '''
+                LEFT JOIN знпр ON знпр.s_num = пл_оуп.Пномер_ЗП
+            LEFT JOIN naryad_state_otk ON naryad_state_otk.id = naryad.state_otk '''
         is_access = CMS.user_access(db=self.db_naryd, rule='создание_корректировка_подтвердить_внеплан',
                                     fio=self.glob_ima,
                                     msg=False) # 05.05.2026
         if list_rc is None and is_access:
             close_mk = False
         if close_mk:
-            where = f''' plan.poki = {self.place.poki}  AND mk.Статус != "Закрыта" {by_rc} '''
+            where = f''' plan.poki = {self.place.poki}  AND mk.Статус != "Закрыта" {by_rc} AND plan."Статус" NOT IN (4, 6) '''
             if only_prost:
                 where = f''' naryad."Внеплан" = {self.place.КодыНарядов.Простой} and
                  datetime(naryad.Дата) >= datetime("{F.date_add_days(F.now(), -60)}") '''
@@ -3416,12 +3770,12 @@ where naryad."Пномер" = {pnom};"""
         rez = CSQ.custom_request_c(self.db_naryd, custom_request_c, attach_dbs=self.db_kplan)
         hook_prog_bar.set(30)
         hook_prog_bar.text('Заполняем таблицу')
-        edit_columns = {F.num_col_by_name_in_hat_c(rez, 'Коэфф_сложности'), F.num_col_by_name_in_hat_c(rez, 'Твремя'),
+        edit_columns = {#F.num_col_by_name_in_hat_c(rez, 'Коэфф_сложности'), #F.num_col_by_name_in_hat_c(rez, 'Твремя'), 02.11.2026
                         F.num_col_by_name_in_hat_c(rez, 'Примечание')}
         CQT.fill_wtabl( rez, self.ui.tbl_red_zhur, select_last_row=False,
                              set_editeble_col_nomera=edit_columns,styleSheet=CQT.MES_EDIT_CSS)
         CMS.load_column_widths(self, self.ui.tbl_red_zhur)
-        CMS.fill_filtr_c(self, self.ui.tbl_red_zhur_filtr, self.ui.tbl_red_zhur, hidden_scroll=True)
+        CMS.fill_filtr_c(self, self.ui.tbl_red_zhur_filtr, self.ui.tbl_red_zhur, hidden_scroll=True,combo_dict={'Статус ОТК': None})
         hook_prog_bar.set(70)
         hook_prog_bar.text('Оформляем таблицу')
         CQT.color_cell_wtable_c(self.ui.tbl_red_zhur, 'Внеплан', '', '2', 200, 240, 200)
@@ -3644,8 +3998,8 @@ WHERE "naryad"."Подтвержд_вып_дата" != ''
         if row_nar_old == dict() or row_nar_new == dict():
             CQT.msgbox(f'Не выбраны наряды')
             return
-        obj_nar_new = CMS.Naryads(int(row_nar_new['Пномер']), self.db_naryd)
-        obj_nar_old = CMS.Naryads(int(row_nar_old['Пномер']), self.db_naryd)
+        obj_nar_new = CMS.Naryads(int(row_nar_new['Пномер']))
+        obj_nar_old = CMS.Naryads(int(row_nar_old['Пномер']))
         if not check_vibor_assoc_prost(obj_nar_new, obj_nar_old):
             return
 
@@ -3709,10 +4063,10 @@ WHERE "naryad"."Подтвержд_вып_дата" != ''
         dict_nar_prost = dict()
         if self.ui.lbl_nom_nar_assoc_prost_1.text() != '':
             nom_nar_prost = int(self.ui.lbl_nom_nar_assoc_prost_1.text())
-            dict_nar_prost[nom_nar_prost] = CMS.Naryads(nom_nar_prost, self.db_naryd)
+            dict_nar_prost[nom_nar_prost] = CMS.Naryads(nom_nar_prost)
         if self.ui.lbl_nom_nar_assoc_prost_2.text() != '':
             nom_nar_prost = int(self.ui.lbl_nom_nar_assoc_prost_2.text())
-            dict_nar_prost[nom_nar_prost] = CMS.Naryads(nom_nar_prost, self.db_naryd)
+            dict_nar_prost[nom_nar_prost] = CMS.Naryads(nom_nar_prost)
 
         if len(dict_nar_prost) == 0:
             CQT.msgbox(f'Не выбран наряд/ы простоя')
@@ -3828,9 +4182,9 @@ WHERE "naryad"."Подтвержд_вып_дата" != ''
 
 
     @CQT.onerror
-    def load_table_projects_for_raspred_nar(self):
+    def load_table_projects_for_raspred_nar(self,select_nar_id:int|None=None):
         if self.glob_login == '':
-            return
+            return False
         tbl_rasp = self.ui.tbl_vibor_nar_rasp
         self.ui.fr_additions_raspr.setHidden(True)
         CQT.clear_tbl(tbl_rasp)
@@ -3839,46 +4193,46 @@ WHERE "naryad"."Подтвержд_вып_дата" != ''
             check_erp_zp_state = f""" AND знпр."Статус_поз_ЕРП" != 'Закрыт' """
         tbl = self.ui.tbl_projs_raspred
         custom_request_c = f'''
-SELECT DISTINCT
-    знпр."s_num",
-    знпр."Год",
-    plan."Направление_деятельности",
-    napravl_deyat."Псевдоним" as "Направление",
-    знпр."№ERP",
-    знпр."№проекта",
-    знпр."Статус_поз_ЕРП",
-    знпр."Дата_отгрузки_ПУ",
-    COUNT(*) as "Нарядов",
-    GROUP_CONCAT(naryad."Пномер", ';') as "Номера_нарядов",
-    знпр."Комментарий"
-FROM naryad
-LEFT JOIN mk ON mk."Пномер" = naryad."Номер_мк" 
-LEFT JOIN plan ON plan."Пномер" = mk."НомКплан" 
-LEFT JOIN пл_оуп ON plan."Пномер" = пл_оуп."НомПл"  
-LEFT JOIN знпр ON знпр."s_num" = пл_оуп."Пномер_ЗП" 
-LEFT JOIN napravl_deyat ON napravl_deyat."Пномер" = plan."Направление_деятельности" 
-WHERE plan.poki = {self.place.poki} {check_erp_zp_state} 
-    and mk."Статус" = 'Открыта' 
-    and naryad."Компл_ФИО" != '' 
-    and naryad."Компл_Дата" != '' 
-    and naryad."ФИО" = '' 
-    and naryad."ФИО2" = '' 
-GROUP BY
-    знпр."s_num",
-    знпр."Год",
-    знпр."№ERP",
-    знпр."№проекта",
-    знпр."Статус_поз_ЕРП",
-    знпр."Дата_отгрузки_ПУ",
-    знпр."Комментарий" 
-HAVING COUNT(*) > 0 
-order BY знпр."Дата_отгрузки_ПУ";'''
+            SELECT DISTINCT
+                знпр."s_num",
+                знпр."Год",
+                plan."Направление_деятельности",
+                napravl_deyat."Псевдоним" as "Направление",
+                знпр."№ERP",
+                знпр."№проекта",
+                знпр."Статус_поз_ЕРП",
+                знпр."Дата_отгрузки_ПУ",
+                COUNT(*) as "Нарядов",
+                GROUP_CONCAT(naryad."Пномер", ';') as "Номера_нарядов",
+                знпр."Комментарий"
+            FROM naryad
+            LEFT JOIN mk ON mk."Пномер" = naryad."Номер_мк" 
+            LEFT JOIN plan ON plan."Пномер" = mk."НомКплан" 
+            LEFT JOIN пл_оуп ON plan."Пномер" = пл_оуп."НомПл"  
+            LEFT JOIN знпр ON знпр."s_num" = пл_оуп."Пномер_ЗП" 
+            LEFT JOIN napravl_deyat ON napravl_deyat."Пномер" = plan."Направление_деятельности" 
+            WHERE plan.poki = {self.place.poki} {check_erp_zp_state} 
+                and mk."Статус" = 'Открыта' 
+                and naryad."Компл_ФИО" != '' 
+                and naryad."Компл_Дата" != '' 
+                and naryad."ФИО" = '' 
+                and naryad."ФИО2" = '' 
+            GROUP BY
+                знпр."s_num",
+                знпр."Год",
+                знпр."№ERP",
+                знпр."№проекта",
+                знпр."Статус_поз_ЕРП",
+                знпр."Дата_отгрузки_ПУ",
+                знпр."Комментарий" 
+            HAVING COUNT(*) > 0 
+            order BY знпр."Дата_отгрузки_ПУ";'''
         rez = CSQ.custom_request_c(self.db_naryd, custom_request_c,  rez_dict=True, attach_dbs=(self.db_kplan))
         print('RESULT: ', len(rez))
-        CQT.fill_wtabl(rez,tbl,sortingEnabled=True)
+        CQT.fill_wtabl(rez,tbl,sortingEnabled=True,styleSheet=CQT.MES_EDIT_CSS, height_row=22)
         tbl.setColumnHidden(CQT.num_col_by_name_c(tbl,'s_num'),True)
         tbl.setColumnHidden(CQT.num_col_by_name_c(tbl, 'Направление_деятельности'), True)
-        CMS.fill_filtr_c(self,self.ui.tbl_filtr_projs_raspred,tbl)
+        CMS.fill_filtr_c(self,self.ui.tbl_filtr_projs_raspred,tbl,show_header=False)
         nf_Дата_отгрузки_ПУ = CQT.num_col_by_name_c(tbl, 'Дата_отгрузки_ПУ')
         nf_Статус_поз_ЕРП = CQT.num_col_by_name_c(tbl, 'Статус_поз_ЕРП')
         nf_Направление = CQT.num_col_by_name_c(tbl, 'Направление')
@@ -3888,6 +4242,7 @@ order BY знпр."Дата_отгрузки_ПУ";'''
 
         DTCLS.list_accessible_for_raspred_nar:list[int] = [] # для доступа к наяnaryads
 
+        select_row_id = None
         for i, item in  enumerate(rez):
             if F.strtodate(item['Дата_отгрузки_ПУ'],"%Y-%m-%d") <= F.now(''):
                 r,g,b = clrs_10.rgb
@@ -3900,7 +4255,38 @@ order BY знпр."Дата_отгрузки_ПУ";'''
 
             r, g, b = self.DICT_NAPR_DEYAT[item['Направление_деятельности']]['Цвет'].split(';')
             CQT.set_color_wtab_c(tbl, i, nf_Направление, r, g, b)
-            DTCLS.list_accessible_for_raspred_nar.extend([int(_) for _ in item['Номера_нарядов'].split(';')])
+            inner_naryads = [int(_) for _ in item['Номера_нарядов'].split(';')]
+            if select_nar_id in inner_naryads:
+                select_row_id = i
+            DTCLS.list_accessible_for_raspred_nar.extend(inner_naryads)
+
+        if select_nar_id is not None:
+            if select_row_id is None:
+                CQT.msgbox(f'Проект наряда {select_nar_id} не доступен для распределения!')
+                return False
+            t = CQT.TableContext(tbl)
+            row_o = t.get_row(select_row_id)
+            if row_o:
+                t.set_selected_cell(row_o,'Номера_нарядов')
+                return True
+            return False
+        return True
+
+
+    def show_knots(self,*args):
+        t = CQT.TableContext(self.ui.tableWidget_vibor_mk)
+        row = t.current_row()
+        if row.no_selection:
+            return
+        id_mk = int(row.value('Пномер'))
+        fsets_o = CMS.FactorySets(id_mk)
+        data_fsets , aliases =fsets_o.template_show()
+
+        def fnc_oform_tbl(tbl :CQT.QTableWidget ,*args):
+            t = CQT.TableContext(tbl)
+            t.hide_if_not_dev(CMS.CFG.Config, forced_text=True)
+
+        rez = CQT.msgboxg_get_table_ok_inf(self,'Состояние по узлам',data_fsets,aliases_header=aliases,func_oform_tbl=fnc_oform_tbl)
 
 
     def select_list_nars_vibr(self):
@@ -3935,7 +4321,6 @@ order BY знпр."Дата_отгрузки_ПУ";'''
     mk."Количество" AS "Кол.\nизделий",
     mk."Номенклатура",
     plan."Позиция" as "Поз.",
-    '' as "№ Комплекта",
     naryad."Пномер" as "Наряд", 
     naryad."Дата", 
     naryad."Автор",  
@@ -3977,7 +4362,7 @@ WHERE naryad."Пномер" in ({CSQ.prepare_list_to_tuple(DTCLS.list_accessible
 
         def fnc_oform(tbl: QtWidgets.QTableWidget, parent_self,*args):
             t = CQT.TableContext(tbl)
-            t.set_editable('№ Комплекта')
+
             t.hide_if_not_dev(CFG)
 
         def fnc_check_select(btn: QtWidgets.QPushButton, dialog: CQT.Dialog_tbl, tbl: QtWidgets.QTableWidget,
@@ -3986,11 +4371,10 @@ WHERE naryad."Пномер" in ({CSQ.prepare_list_to_tuple(DTCLS.list_accessible
             if dialog.is_btn_yes_role(btn):
                 t = CQT.TableContext(tbl)
                 selected_rows = t.get_selected_rows()
-                for row in selected_rows:
-                    complect = row.value('№ Комплекта').strip()
-                    if not complect:
-                        CQT.msgbox(f"Для наряда {row.value('Наряд')} не указан комплект")
-                        return
+                if not selected_rows:
+                    CQT.msgbox('Не выбраны наряды')
+                    return
+
 
 
                 dialog.accept()
@@ -4003,7 +4387,7 @@ WHERE naryad."Пномер" in ({CSQ.prepare_list_to_tuple(DTCLS.list_accessible
         if not rez:
             return
 
-        self._set_new_package_for_raspred_nar([{'Номер наряда':int(_['Наряд']),'Номерa комплектов':_['№ Комплекта']} for _ in rez])
+        self._set_new_package_for_raspred_nar([{'Номер наряда':int(_['Наряд'])} for _ in rez])
 
     def _set_new_package_for_raspred_nar(self,list_nars:list|None=None):
         if list_nars is None:
@@ -4023,45 +4407,45 @@ WHERE naryad."Пномер" in ({CSQ.prepare_list_to_tuple(DTCLS.list_accessible
         CQT.clear_tbl(tbl)
         self.ui.radioButton_ispoln1.setChecked(True)
         custom_request_c = f'''
-SELECT  
-    CASE WHEN знпр."№проекта" IS NOT NULL 
-        THEN знпр."№проекта" 
-        ELSE mk."Номер_проекта" 
-    END AS "Номер_проекта", 
-    CASE WHEN знпр."№ERP" IS NOT NULL 
-        THEN знпр."№ERP" 
-        ELSE mk."Номер_заказа" 
-    END AS "Номер_заказа", 
-    naryad."Пномер", 
-    naryad."Дата", 
-    naryad."Автор", 
-    '' as "Этап", 
-    '' as "РЦ", 
-    naryad."Номер_мк", 
-    '' as "КРО",
-    naryad."Внеплан", 
-    naryad."Компл_ФИО", 
-    naryad."Задание", 
-    naryad."Примечание", 
-    naryad."Твремя", 
-    naryad."Операции", 
-    naryad."ДСЕ_ID" , 
-    naryad."Профессии", 
-    naryad."Аутсорсинг" , 
-    mk."Количество" AS "Кол. изделий"
-FROM naryad 
-INNER JOIN mk ON naryad."Номер_мк" = mk."Пномер" 
-LEFT JOIN plan ON plan."Пномер" = mk."НомКплан" 
-LEFT JOIN пл_оуп ON пл_оуп."НомПл" = mk."НомКплан" 
-LEFT JOIN знпр ON знпр."s_num" = пл_оуп."Пномер_ЗП" 
-WHERE plan.poki = {self.place.poki} 
-    AND naryad."Компл_ФИО" != '' 
-    AND naryad."Компл_Дата" != '' 
-    AND naryad."ФИО" = '' 
-    AND naryad."ФИО2" = ''  
-    AND mk."Статус" = 'Открыта' 
-    AND знпр."s_num" = {s_num_znpr}
-'''
+            SELECT  
+            CASE WHEN знпр."№проекта" IS NOT NULL 
+                THEN знпр."№проекта" 
+                ELSE mk."Номер_проекта" 
+            END AS "Номер_проекта", 
+            CASE WHEN знпр."№ERP" IS NOT NULL 
+                THEN знпр."№ERP" 
+                ELSE mk."Номер_заказа" 
+            END AS "Номер_заказа", 
+            naryad."Пномер", 
+            naryad."Дата", 
+            naryad."Автор", 
+            '' as "Этап", 
+            '' as "РЦ", 
+            naryad."Номер_мк", 
+            '' as "КРО",
+            naryad."Внеплан", 
+            naryad."Компл_ФИО", 
+            naryad."Задание", 
+            naryad."Примечание", 
+            naryad."Твремя", 
+            naryad."Операции", 
+            naryad."ДСЕ_ID" , 
+            naryad."Профессии", 
+            naryad."Аутсорсинг" , 
+            mk."Количество" AS "Кол. изделий"
+        FROM naryad 
+        INNER JOIN mk ON naryad."Номер_мк" = mk."Пномер" 
+        LEFT JOIN plan ON plan."Пномер" = mk."НомКплан" 
+        LEFT JOIN пл_оуп ON пл_оуп."НомПл" = mk."НомКплан" 
+        LEFT JOIN знпр ON знпр."s_num" = пл_оуп."Пномер_ЗП" 
+        WHERE plan.poki = {self.place.poki} 
+            AND naryad."Компл_ФИО" != '' 
+            AND naryad."Компл_Дата" != '' 
+            AND naryad."ФИО" = '' 
+            AND naryad."ФИО2" = ''  
+            AND mk."Статус" = 'Открыта' 
+            AND знпр."s_num" = {s_num_znpr}
+        '''
         rez = CSQ.custom_request_c(self.db_naryd, custom_request_c,  rez_dict=True,
                                    attach_dbs=self.db_kplan)
         mk_noms = {naryad['Номер_мк'] for naryad in rez}
@@ -4112,7 +4496,7 @@ WHERE plan.poki = {self.place.poki}
             item['Этап'] = ','.join(etaps)
             item['РЦ'] = ','.join(rcs)
         self.ui.te_comment.setText('')
-        CQT.fill_wtabl(rez, tbl, auto_type=False, list_column_widths=CMS.load_column_widths(self, tbl))
+        CQT.fill_wtabl(rez, tbl, auto_type=False,styleSheet=CQT.MES_EDIT_CSS, list_column_widths=CMS.load_column_widths(self, tbl),height_row=22)
 
         def fnc_open_kro(t: CQT.TableContext, i: int, name_clm: str, self: mywindow, *args):
             mk = int(t.get_row(i).value('Номер_мк'))
@@ -4139,9 +4523,9 @@ WHERE plan.poki = {self.place.poki}
 
         t.add_column_events('КРО', on_double_click=fnc_open_kro, parent_self=self)
 
-        CMS.fill_filtr_c(self, self.ui.tbl_filtr_vibor_nar_rasp, tbl, hidden_scroll=True)
+        CMS.fill_filtr_c(self, self.ui.tbl_filtr_vibor_nar_rasp, tbl, hidden_scroll=True,show_header=False)
         CMS.load_column_widths(self, tbl)
-        self.ui.splitter_4.setSizes([385, 1180])
+
 
     def dblclick_tbl_prosmotr_nar(self, *args):
         if self.ui.tbl_prosmotr_nar.currentColumn() == CQT.num_col_by_name_c(self.ui.tbl_prosmotr_nar,
@@ -4209,7 +4593,7 @@ WHERE plan.poki = {self.place.poki}
         colorfull = True
 
         select = f"""
-SELECT      
+    SELECT      
     CASE WHEN знпр."№проекта" IS NOT NULL 
         THEN знпр."№проекта" 
         ELSE mk."Номер_проекта" 
@@ -4238,6 +4622,9 @@ SELECT
     '' AS "Смена_", 
     naryad."Твремя", 
     naryad."Норма_времени", 
+    naryad_state_otk.text as "Статус ОТК",
+    naryad."ФИО_для_ОТК", 
+    naryad."month_closing_block" as "Блок по периоду", 
     naryad."Операции", 
     naryad."Опер_колво", 
     naryad."Опер_время", 
@@ -4247,16 +4634,17 @@ SELECT
     naryad."Подтвержд_вып",
     naryad."Подтвержд_вып_дата", 
     naryad."Подтвержд_вып_фио", 
-    naryad."Обособленная_расценка", 
-    naryad."ФИО_для_ОТК", 
-    naryad."month_closing_block" as "Блок по периоду" 
-FROM naryad 
-LEFT JOIN mk ON "naryad"."Номер_мк" = "mk"."Пномер"
-LEFT JOIN plan ON "plan"."Пномер" = "mk"."НомКплан" 
-LEFT JOIN пл_оуп ON "пл_оуп"."НомПл" = "mk"."НомКплан" 
-LEFT JOIN знпр ON "знпр"."s_num" = "пл_оуп"."Пномер_ЗП" 
-INNER JOIN коды_веплана_для_наряда ON коды_веплана_для_наряда.code = naryad."Внеплан"
-"""
+    naryad."Обособленная_расценка"
+
+    FROM naryad 
+    LEFT JOIN mk ON "naryad"."Номер_мк" = "mk"."Пномер"
+    LEFT JOIN plan ON "plan"."Пномер" = "mk"."НомКплан" 
+    LEFT JOIN пл_оуп ON "пл_оуп"."НомПл" = "mk"."НомКплан" 
+    LEFT JOIN знпр ON "знпр"."s_num" = "пл_оуп"."Пномер_ЗП" 
+    LEFT JOIN naryad_state_otk ON naryad_state_otk.id = naryad.state_otk 
+    INNER JOIN коды_веплана_для_наряда ON коды_веплана_для_наряда.code = naryad."Внеплан"
+    
+    """
         date_hide_prost = F.date_add_days(F.now(),-45) #03.02.2026
         if num_mk != None:
             custom_request_c = f'''{select} WHERE plan.poki = {self.place.poki} AND naryad."Номер_мк" = {num_mk}'''
@@ -4264,18 +4652,18 @@ INNER JOIN коды_веплана_для_наряда ON коды_веплан�
             if year == None:
                 custom_request_c = CSQ.SqlQuery(
                     sqlite=f'''
-{select} 
-WHERE plan.poki = {self.place.poki} 
-    AND mk."Статус" = 'Открыта' 
-    OR ("naryad"."Внеплан" = {self.place.КодыНарядов.Простой} 
-    AND datetime(naryad.Дата) >= datetime("{date_hide_prost}"))''',
-                    postgres=f'''
-{select} 
-WHERE plan.poki = {self.place.poki} 
-    AND mk."Статус" = 'Открыта' 
-    OR ("naryad"."Внеплан" = {self.place.КодыНарядов.Простой} 
-    AND NULLIF(naryad."Дата", '')::TIMESTAMP >= '{date_hide_prost}'::timestamp)'''
-                )
+                        {select} 
+                        WHERE plan.poki = {self.place.poki} AND plan."Статус" NOT IN (4, 6) 
+                            AND mk."Статус" = 'Открыта' 
+                            OR ("naryad"."Внеплан" = {self.place.КодыНарядов.Простой} 
+                            AND datetime(naryad.Дата) >= datetime("{date_hide_prost}"))''',
+                                            postgres=f'''
+                        {select} 
+                        WHERE plan.poki = {self.place.poki} AND plan."Статус" NOT IN (4, 6) 
+                            AND mk."Статус" = 'Открыта' 
+                            OR ("naryad"."Внеплан" = {self.place.КодыНарядов.Простой} 
+                            AND NULLIF(naryad."Дата", '')::TIMESTAMP >= '{date_hide_prost}'::timestamp)'''
+                                        )
             else:
                 colorfull = False
 
@@ -4283,8 +4671,8 @@ WHERE plan.poki = {self.place.poki}
                     sqlite=f''' {select}  WHERE коды_веплана_для_наряда.poki = {self.place.poki} AND datetime(naryad.Дата) >= datetime("{year}-01-01 03:00:00") AND 
                                                                datetime(naryad.Дата) <= datetime("{year}-12-31 02:59:59") ''',
                     postgres=f''' 
-{select}  
-WHERE коды_веплана_для_наряда.poki = {self.place.poki} 
+                        {select}  
+                        WHERE коды_веплана_для_наряда.poki = {self.place.poki} 
 	AND NULLIF(naryad."Дата"::TEXT, '')::timestamp BETWEEN TIMESTAMP '2026-01-01 03:00:00' AND TIMESTAMP '2026-12-31 02:59:59' ;''')
         hook_prog_bar.set(0)
         hook_prog_bar.text('Получение данных')
@@ -4358,7 +4746,8 @@ WHERE коды_веплана_для_наряда.poki = {self.place.poki}
                         rez[i]['Смена_'] = self.DICT_EMPLOEE_FULL_WITH_DEL[rez[i]['ФИО2']]['Режим']
         hook_prog_bar.set(70)
         hook_prog_bar.text('Заполнение таблицы')
-        CQT.fill_wtabl(rez, tbl, set_edit, 200, 18, 25, select_last_row=True, colorful_edit=colorfull,
+        CQT.fill_wtabl(rez, tbl, set_edit, 200, 18, 25, select_last_row=True,
+                       colorful_edit=colorfull, styleSheet=CQT.MES_EDIT_CSS,
                        list_column_widths=CMS.load_column_widths(self, tbl))
         hook_prog_bar.set(80)
         nf_delta = CQT.num_col_by_name_c(tbl, 'Дельта')
@@ -4389,7 +4778,7 @@ WHERE коды_веплана_для_наряда.poki = {self.place.poki}
         # tbl.hideColumn(CQT.num_col_by_name_c(tbl, 'Опер_колво'))
         # tbl.hideColumn(CQT.num_col_by_name_c(tbl, 'Опер_время'))
 
-        CMS.fill_filtr_c(self, self.ui.tbl_filtr_prosmotr_nar, tbl, hidden_scroll=True)
+        CMS.fill_filtr_c(self, self.ui.tbl_filtr_prosmotr_nar, tbl, hidden_scroll=True,combo_dict={'Статус ОТК':None,'Статус':None})
         CMS.load_column_widths(self, tbl)
 
         # self.ui.tbl_filtr_prosmotr_nar.setColumnWidth(CQT.num_col_by_name_c(tbl, 'Задание'),220)
@@ -4472,7 +4861,7 @@ LEFT JOIN plan ON plan."Пномер" = mk."НомКплан"
 LEFT JOIN знпр ON знпр.s_num = пл_оуп."Пномер_ЗП" 
 WHERE plan.poki = {self.place.poki} 
     AND naryad."Подтвержд_вып_дата" = '' 
-    AND mk."Статус" != 'Закрыта';'''
+    AND mk."Статус" != 'Закрыта' AND plan."Статус" NOT IN (4, 6) ;'''
         rez = CSQ.custom_request_c(self.db_naryd, custom_request_c, attach_dbs=self.db_kplan)
         if rez == False:
             CQT.msgbox(f'Не удалось загрузить данные попробуй еще раз')
@@ -4487,6 +4876,7 @@ WHERE plan.poki = {self.place.poki}
 
         CQT.clear_tbl(self.ui.tbl_komplektovka_view)
         self.ui.lbl_kompl_info.clear()
+        self.ui.fr_state_otk_kompl.setHidden(True)
 
     @CQT.onerror
     def btn_prosm_edit_time_clear_fio(self, field_name, *args):
@@ -4527,7 +4917,7 @@ WHERE plan.poki = {self.place.poki}
             rez = CSQ.custom_request_c(self.db_naryd,
                                        f"""UPDATE naryad SET "{field_name}" = '' WHERE "Пномер" = {nom_nar} """)
         tbl.item(tbl.currentRow(), CQT.num_col_by_name_c(tbl, field_name)).setText('')
-        nar = CMS.Naryads(nom_nar, self.db_naryd)
+        nar = CMS.Naryads(nom_nar)
         nar.recalc_astronom_time(self.DICT_OPER_NAME)
 
         CQT.msgbox(f'Удачно удален {fio} из {field_name}')
@@ -4540,7 +4930,6 @@ WHERE plan.poki = {self.place.poki}
         if list_zap == False:
             CQT.msgbox(f'Не удалось выгрузить журнал')
             return
-        list_zap.sort(key=lambda item: F.strtodate(item['Дата']))
         list_zap.insert(0, CPY.deepcopy(list_zap[0]))
         list_zap[0]['Дата'] = '2000-02-03 22:50:32'
         list_zap[0]['Пномер'] = -1
@@ -4550,170 +4939,6 @@ WHERE plan.poki = {self.place.poki}
         list_zap[-1]['Пномер'] = -1
         list_zap[-1]['Статус'] = ''
         return list_zap
-
-    def _journal_sequence_rows_for_day(self, fio, day_start, day_end, exclude_pk=None):
-        exclude_sqlite = ' AND "Пномер" <> ?' if exclude_pk is not None else ''
-        exclude_postgres = ' AND "Пномер" <> %s' if exclude_pk is not None else ''
-
-        query_day = CSQ.SqlQuery(
-            sqlite=f'''SELECT "Пномер", "Номер_наряда", "Дата", "ФИО", "Статус", "Примечание"
-                FROM jurnal
-                WHERE "ФИО" = ? AND datetime("Дата") >= datetime(?) AND datetime("Дата") < datetime(?)
-                    {exclude_sqlite}
-                ORDER BY datetime("Дата"), "Пномер"''',
-            postgres=f'''SELECT "Пномер", "Номер_наряда", "Дата", "ФИО", "Статус", "Примечание"
-                FROM jurnal
-                WHERE "ФИО" = %s AND ("Дата")::timestamp >= %s::timestamp AND ("Дата")::timestamp < %s::timestamp
-                    {exclude_postgres}
-                ORDER BY ("Дата")::timestamp, "Пномер"'''
-        )
-        query_previous = CSQ.SqlQuery(
-            sqlite=f'''SELECT "Пномер", "Номер_наряда", "Дата", "ФИО", "Статус", "Примечание"
-                FROM jurnal
-                WHERE "ФИО" = ? AND datetime("Дата") < datetime(?) {exclude_sqlite}
-                ORDER BY datetime("Дата") DESC, "Пномер" DESC LIMIT 1''',
-            postgres=f'''SELECT "Пномер", "Номер_наряда", "Дата", "ФИО", "Статус", "Примечание"
-                FROM jurnal
-                WHERE "ФИО" = %s AND ("Дата")::timestamp < %s::timestamp {exclude_postgres}
-                ORDER BY ("Дата")::timestamp DESC, "Пномер" DESC LIMIT 1'''
-        )
-        query_next = CSQ.SqlQuery(
-            sqlite=f'''SELECT "Пномер", "Номер_наряда", "Дата", "ФИО", "Статус", "Примечание"
-                FROM jurnal
-                WHERE "ФИО" = ? AND datetime("Дата") >= datetime(?) {exclude_sqlite}
-                ORDER BY datetime("Дата"), "Пномер" LIMIT 1''',
-            postgres=f'''SELECT "Пномер", "Номер_наряда", "Дата", "ФИО", "Статус", "Примечание"
-                FROM jurnal
-                WHERE "ФИО" = %s AND ("Дата")::timestamp >= %s::timestamp {exclude_postgres}
-                ORDER BY ("Дата")::timestamp, "Пномер" LIMIT 1'''
-        )
-
-        params_day = [fio, day_start, day_end]
-        params_previous = [fio, day_start]
-        params_next = [fio, day_end]
-        if exclude_pk is not None:
-            params_day.append(exclude_pk)
-            params_previous.append(exclude_pk)
-            params_next.append(exclude_pk)
-
-        day_rows = CSQ.custom_request_c(
-            self.db_naryd, query_day, rez_dict=True, hat_c=False, list_of_lists_c=[params_day]
-        )
-        previous_row = CSQ.custom_request_c(
-            self.db_naryd, query_previous, rez_dict=True, one=True, hat_c=False,
-            list_of_lists_c=[params_previous]
-        )
-        next_row = CSQ.custom_request_c(
-            self.db_naryd, query_next, rez_dict=True, one=True, hat_c=False,
-            list_of_lists_c=[params_next]
-        )
-        if day_rows is None or day_rows is False or previous_row is None or previous_row is False or \
-                next_row is None or next_row is False:
-            raise RuntimeError('journal query failed')
-        return previous_row or None, day_rows, next_row or None
-
-    @staticmethod
-    def _journal_transition_error(previous_row, current_row):
-        status = current_row.get('Статус')
-        naryad = current_row.get('Номер_наряда')
-        row_date = current_row.get('Дата')
-
-        if status not in ('Начат', 'Приостановлен', 'Завершен'):
-            return None
-
-        if status == 'Начат':
-            if previous_row and previous_row.get('Статус') == 'Начат':
-                return (f'Нельзя начать наряд №{naryad}: начало по наряду №{previous_row["Номер_наряда"]} '
-                        f'от {previous_row["Дата"]} ещё не закрыто. Сначала укажите «Приостановлен» '
-                        f'или «Завершен».')
-            if previous_row and previous_row.get('Статус') in ('Приостановлен', 'Завершен') and \
-                    F.strtodate(row_date) <= F.strtodate(previous_row['Дата']):
-                return (f'Начало наряда №{naryad} должно быть позже последней паузы или завершения '
-                        f'по наряду №{previous_row["Номер_наряда"]} ({previous_row["Дата"]}).')
-            return None
-
-        if not previous_row or previous_row.get('Статус') != 'Начат':
-            return (f'Нельзя указать статус «{status}» по наряду №{naryad}: '
-                    f'перед ним нет незакрытого начала по этому наряду.')
-        if str(previous_row.get('Номер_наряда')) != str(naryad):
-            return (f'Статус «{status}» по наряду №{naryad} не закрывает открытое начало '
-                    f'по наряду №{previous_row["Номер_наряда"]}. Сначала оформите паузу или завершение '
-                    f'по наряду №{previous_row["Номер_наряда"]}.')
-        if F.strtodate(row_date) <= F.strtodate(previous_row['Дата']):
-            return (f'Время статуса «{status}» по наряду №{naryad} должно быть позже начала '
-                    f'({previous_row["Дата"]}).')
-        return None
-
-    def check_journal_day_change(self, candidate, original=None):
-        try:
-            fio = str(candidate.get('ФИО') or '').strip()
-            if not fio:
-                return 'Не удалось определить сотрудника для проверки журнала. Изменение не сохранено.'
-            candidate_date = F.strtodate(candidate['Дата'])
-            candidate_day = F.datetostr(candidate_date, '%Y-%m-%d')
-            candidate_day_start = f'{candidate_day} 00:00:00'
-            candidate_day_end = F.datetostr(candidate_date + datetime.timedelta(days=1), '%Y-%m-%d') + ' 00:00:00'
-
-            exclude_pk = None
-            try:
-                candidate_pk = int(candidate.get('Пномер'))
-                if 0 < candidate_pk < 99999999:
-                    exclude_pk = candidate_pk
-            except (TypeError, ValueError):
-                pass
-
-            days_to_check = [(candidate_day_start, candidate_day_end, True)]
-            if original:
-                original_date = F.strtodate(original['Дата'])
-                original_day = F.datetostr(original_date, '%Y-%m-%d')
-                if original_day != candidate_day:
-                    original_day_start = f'{original_day} 00:00:00'
-                    original_day_end = F.datetostr(original_date + datetime.timedelta(days=1), '%Y-%m-%d') + ' 00:00:00'
-                    days_to_check.append((original_day_start, original_day_end, False))
-
-            for day_start, day_end, include_candidate in days_to_check:
-                previous_row, day_rows, next_row = self._journal_sequence_rows_for_day(
-                    fio, day_start, day_end, exclude_pk=exclude_pk
-                )
-                context_rows = ([previous_row] if previous_row else []) + list(day_rows) + ([next_row] if next_row else [])
-                if include_candidate:
-                    events = context_rows + [candidate]
-                    events.sort(key=lambda row: (
-                        F.strtodate(row['Дата']),
-                        0 if row.get('Статус') in ('Приостановлен', 'Завершен') else 1,
-                        int(row.get('Пномер') or 0) if str(row.get('Пномер') or '').lstrip('-').isdigit() else 0
-                    ))
-                    candidate_index = next(i for i, row in enumerate(events) if row is candidate)
-                    previous_candidate = events[candidate_index - 1] if candidate_index else None
-                    next_candidate = events[candidate_index + 1] if candidate_index + 1 < len(events) else None
-                    error = self._journal_transition_error(previous_candidate, candidate)
-                    if not error:
-                        error = self._journal_transition_error(candidate, next_candidate) if next_candidate else None
-                    if error:
-                        return error
-
-                if original and not include_candidate:
-                    events = context_rows + [original]
-                    events.sort(key=lambda row: (
-                        F.strtodate(row['Дата']),
-                        0 if row.get('Статус') in ('Приостановлен', 'Завершен') else 1,
-                        int(row.get('Пномер') or 0) if str(row.get('Пномер') or '').lstrip('-').isdigit() else 0
-                    ))
-                    original_index = next(i for i, row in enumerate(events) if row is original)
-                    previous_original = events[original_index - 1] if original_index else None
-                    next_original = events[original_index + 1] if original_index + 1 < len(events) else None
-                    if next_original:
-                        error = self._journal_transition_error(previous_original, next_original)
-                        if error:
-                            return error
-                    elif original.get('Статус') in ('Приостановлен', 'Завершен') and \
-                            (not previous_original or previous_original.get('Статус') != 'Начат' or
-                             str(previous_original.get('Номер_наряда')) != str(original.get('Номер_наряда'))):
-                        return (f'Нельзя переместить запись «{original["Статус"]}» по наряду №'
-                                f'{original["Номер_наряда"]}: перед ней нет незакрытого начала по этому наряду.')
-            return None
-        except Exception:
-            return 'Не удалось проверить последовательность журнала. Изменение не сохранено; повторите попытку.'
 
     @CQT.onerror
     def check_hstory_jur(self, list_zap, curren_pnum=None):
@@ -4729,65 +4954,52 @@ WHERE plan.poki = {self.place.poki}
             current_date = F.strtodate(list_zap[i]['Дата'])
             current_status = list_zap[i]['Статус']
             if current_date <= previos_date:
-                CQT.msgbox(f'Время записи должно быть позже предыдущей записи журнала ({previos_date}).', icon_str='Warning')
+                CQT.msgbox(f'В строке {list_zap[i]} \n {current_date} не может быть меньше {previos_date}')
                 return
             if current_date >= next_date:
-                CQT.msgbox(f'Время записи должно быть раньше следующей записи журнала ({next_date}).', icon_str='Warning')
+                CQT.msgbox(f'В строке {list_zap[i]} \n {current_date} не может быть больше {next_date}')
                 return
 
             if current_status == 'Начат':
                 if previos_status == 'Начат':
-                    CQT.msgbox(f'Перед новым началом по наряду №{list_zap[i]["Номер_наряда"]} '
-                               f'закройте предыдущую запись статусом «Приостановлен» или «Завершен».', icon_str='Warning')
+                    CQT.msgbox(f'№ {list_zap[i]["Пномер"]} Нельзя начать два раза')
                     return
                 if previos_status == 'Завершен':
-                    CQT.msgbox(f'После завершения по наряду №{list_zap[i]["Номер_наряда"]} '
-                               f'новое начало не допускается.', icon_str='Warning')
+                    CQT.msgbox(f'№ {list_zap[i]["Пномер"]} Нельзя начать после завершения')
                     return
                 if next_status == 'Начат':
-                    CQT.msgbox(f'После начала по наряду №{list_zap[i]["Номер_наряда"]} '
-                               f'нужна запись «Приостановлен» или «Завершен».', icon_str='Warning')
+                    CQT.msgbox(f'№ {list_zap[i]["Пномер"]} Нельзя начать два раза')
                     return
             if current_status == 'Приостановлен':
-                if len(str(list_zap[i].get('Примечание') or '').strip()) < 4:
-                    CQT.msgbox('Для статуса «Приостановлен» укажите причину (не менее 4 символов).', icon_str='Warning')
-                    return
+                if list_zap[i]['Примечание'] == '' or len(list_zap[i]['Примечание']) < 4:
+                    CQT.msgbox(f'№ {list_zap[i]["Пномер"]} Не указана причина паузы')
                 if previos_status == 'Приостановлен':
-                    CQT.msgbox(f'Перед повторной паузой по наряду №{list_zap[i]["Номер_наряда"]} '
-                               f'добавьте новое начало.', icon_str='Warning')
+                    CQT.msgbox(f'№ {list_zap[i]["Пномер"]} Нельзя приостановить два раза')
                     return
                 if previos_status == 'Завершен':
-                    CQT.msgbox(f'После завершения по наряду №{list_zap[i]["Номер_наряда"]} '
-                               f'паузу поставить нельзя.', icon_str='Warning')
+                    CQT.msgbox(f'№ {list_zap[i]["Пномер"]} Нельзя приостановить после завершения')
                     return
                 if next_status == 'Приостановлен':
-                    CQT.msgbox(f'Перед повторной паузой по наряду №{list_zap[i]["Номер_наряда"]} '
-                               f'добавьте новое начало.', icon_str='Warning')
+                    CQT.msgbox(f'№ {list_zap[i]["Пномер"]} Нельзя приостановить два раза')
                     return
                 if next_status == 'Завершен':
-                    CQT.msgbox(f'Перед завершением по наряду №{list_zap[i]["Номер_наряда"]} '
-                               f'добавьте новое начало после паузы.', icon_str='Warning')
+                    CQT.msgbox(f'№ {list_zap[i]["Пномер"]} Нельзя приостановить до завершения')
                     return
             if current_status == 'Завершен':
                 if previos_status == 'Приостановлен':
-                    CQT.msgbox(f'После паузы по наряду №{list_zap[i]["Номер_наряда"]} '
-                               f'сначала добавьте новое начало.', icon_str='Warning')
+                    CQT.msgbox(f'№ {list_zap[i]["Пномер"]} Нельзя завершить после приостановки')
                     return
                 if previos_status == 'Завершен':
-                    CQT.msgbox(f'По наряду №{list_zap[i]["Номер_наряда"]} уже есть завершение; '
-                               f'для новой работы требуется начало.', icon_str='Warning')
+                    CQT.msgbox(f'№ {list_zap[i]["Пномер"]} Нельзя завершить после завершения')
                     return
                 if next_status == 'Приостановлен':
-                    CQT.msgbox(f'Завершение по наряду №{list_zap[i]["Номер_наряда"]} '
-                               f'не может предшествовать более поздней паузе.', icon_str='Warning')
+                    CQT.msgbox(f'№ {list_zap[i]["Пномер"]} Нельзя завершить до приостановки')
                     return
                 if next_status == 'Завершен':
-                    CQT.msgbox(f'По наряду №{list_zap[i]["Номер_наряда"]} уже есть завершение; '
-                               f'повторное завершение невозможно.', icon_str='Warning')
+                    CQT.msgbox(f'№ {list_zap[i]["Пномер"]} Нельзя завершить до завершения')
                     return
                 if next_status == 'Начат':
-                    CQT.msgbox(f'Новое начало по наряду №{list_zap[i]["Номер_наряда"]} '
-                               f'после завершения не допускается.', icon_str='Warning')
+                    CQT.msgbox(f'№ {list_zap[i]["Пномер"]} Нельзя завершить до начала')
                     return
             if curren_pnum and int(list_zap[i]['Пномер']) == curren_pnum:
                 return True
@@ -4823,52 +5035,16 @@ WHERE plan.poki = {self.place.poki}
     @CQT.onerror
     def apply_deladd_row_jur(self, *args):
         tbl = self.ui.tbl_prosmotr_nar_jurnal
-        if tbl.currentRow() == -1:
-            CQT.msgbox('Не выбрана запись журнала.', icon_str='Warning')
+        nom_nar = int(tbl.item(tbl.currentRow(), CQT.num_col_by_name_c(tbl, 'Номер_наряда')).text())
+        fio = tbl.item(tbl.currentRow(), CQT.num_col_by_name_c(tbl, 'ФИО')).text()
+        list_tbl = self.load_jurnal_by_user(nom_nar, fio)
+        if not self.check_hstory_jur(list_tbl):
             return
-        current_row = CQT.get_dict_line_form_tbl(tbl)
         current_state = EditJournalManager.get_current_state(tbl)
         log_message = None
         if not isinstance(current_state, EditJournalState):
-            CQT.msgbox('Не найдены данные изменения журнала.', icon_str='Warning')
+            CQT.msgbox(f'ОШибка учета данных редактирования')
             return
-
-        nom_nar = int(current_row['Номер_наряда'])
-        fio = current_row['ФИО']
-        candidate = dict(current_row)
-        original = None
-        if current_state.action == EditJournalActions.EDIT_STATUS:
-            if str(current_row['Пномер']) != str(current_state.pk):
-                CQT.msgbox('Выбранная строка изменилась. Выберите строку и повторите действие.', icon_str='Warning')
-                return
-            original = dict(current_row)
-            candidate['Статус'] = current_state.status
-        elif current_state.action == EditJournalActions.ADD:
-            if str(current_row['Пномер']) not in ('', '99999999') or current_row['ФИО'] != current_state.fio:
-                CQT.msgbox('Строка для добавления изменилась. Повторите выбор даты и статуса.', icon_str='Warning')
-                return
-            candidate['Дата'] = current_state.date or current_row['Дата']
-            candidate['Статус'] = current_state.status or current_row['Статус']
-            candidate['ФИО'] = current_state.fio or current_row['ФИО']
-            candidate['Примечание'] = current_state.comment if current_state.comment is not None else current_row['Примечание']
-        else:
-            CQT.msgbox('Неизвестный тип изменения журнала.', icon_str='Warning')
-            return
-
-        validation_error = self.check_journal_day_change(candidate, original=original)
-        if validation_error:
-            CQT.msgbox(validation_error, icon_str='Warning')
-            return
-
-        list_tbl = self.load_jurnal_by_user(nom_nar, fio)
-        if current_state.action == EditJournalActions.EDIT_STATUS:
-            for journal_row in list_tbl:
-                if str(journal_row['Пномер']) == str(current_state.pk):
-                    journal_row['Статус'] = current_state.status
-                    break
-        if not self.check_hstory_jur(list_tbl):
-            return
-
         if current_state.action == EditJournalActions.EDIT_STATUS:
             with CMS.ReportNarChanges(nom_nar=nom_nar, fio=fio, title='[Создание] Изменение статуса журнала'):
                 journal = CMS.Jurnal_nar(self.db_naryd, nom_nar, fio)
@@ -4924,7 +5100,6 @@ WHERE plan.poki = {self.place.poki}
                 status=current_status,
                 comment=comment,
                 fio=fio,
-                date=current_new_date_time,
             )
         )
 
@@ -5010,15 +5185,6 @@ WHERE plan.poki = {self.place.poki}
         if result == False:
             return
         abstr_list, current_new_date_time, current_status = result
-        candidate_row = next((journal_row for journal_row in abstr_list
-                              if int(journal_row['Пномер']) == por_nom), None)
-        if candidate_row is None:
-            CQT.msgbox('Не удалось определить изменяемую запись журнала.', icon_str='Warning')
-            return
-        validation_error = self.check_journal_day_change(candidate_row, original=row)
-        if validation_error:
-            CQT.msgbox(validation_error, icon_str='Warning')
-            return
         if not self.check_hstory_jur(abstr_list, por_nom):
             return
         with CMS.ReportNarChanges(nom_nar=nom_nar, fio=fio, title='[Создание] Вкладка "Просмотр нарядов" корректировка'):  # 30.04.2026
@@ -5202,83 +5368,104 @@ WHERE plan.poki = {self.place.poki}
             self.ui.lineEdit_cr_nar_nom_proect.setReadOnly(True)
             self.ui.lineEdit_cr_nar_nomerPU.setReadOnly(True)
 
+
+
+
+
     @CQT.onerror
     def load_brak(self):
+
         if self.glob_login == '':
             return
-        # ==========================OLD vers====================================================
-        # if self.glob_nom_mk == 0:
-        #    return
-        # custom_request_c = f'''SELECT Пномер,Инициатор,
-        # Дата,Номер_наряда,Фото,Вид_брака,Категория_брака,
-        # Примечание,Количество FROM act WHERE Наряд_исправления == "" AND Номер_наряда != ""'''
-        # rez = CSQ.custom_request_c(self.db_act, custom_request_c)
-        # nk_nom_nar = F.num_col_by_name_in_hat_c(rez, 'Номер_наряда')
-        # spis = [rez[0]]
-        ## custom_request_c = F'''SELECT Номер_мк FROM naryad WHERE Пномер == {int(rez[i][nk_nom_nar])}'''
-        ## sp_nom_mk = CSQ.custom_request_c(self.db_naryd, custom_request_c, conn)
-        # custom_request_c = F'''SELECT Номер_мк, Пномер FROM naryad'''
-        # sp_nom_mk = CSQ.custom_request_c(self.db_naryd, custom_request_c, rez_dict=True)
-        # if sp_nom_mk == False:
-        #    CQT.msgbox(f'Не найдено')
-        #    return
-        # dict_mk = F.deploy_dict_c(sp_nom_mk, 'Пномер')
-        # for i in range(1, len(rez)):
-        #    if rez[i][nk_nom_nar] in dict_mk:
-        #        nom_mk = dict_mk[rez[i][nk_nom_nar]]
-        #        if self.glob_nom_mk == nom_mk:
-        #            spis.append(rez[i])
-        # CQT.fill_wtabl_old_c(self, spis, self.ui.tbl_brak, isp_hat_c=True, separ='', ogr_maxshir_kol=600)
-        # =====================================================================================
+
 
         query = f"""
-SELECT 
-    "list_brak"."s_num", 
-    "brak"."date", 
-    "brak_price"."Код",
-    "list_brak"."group_1", 
-    "list_brak"."group_2", 
-    "list_brak"."group_3", 
-    "list_brak"."neisprav" as "неисправимый", 
-    "list_brak"."count_dse" as "число ДСЕ", 
-    "brak"."nom_nar" as "Наряд", 
-    "brak"."msg" as "Примечание", 
-    "brak"."usr_1", 
-    "brak"."usr_2",
-    "naryad"."ФИО",
-    "naryad"."Фвремя",
-    "naryad"."Кол_повт_приемок" as "Кол-во повт. приемок",
-    "naryad"."Подтвержд_вып_дата",
-    "brak_price"."Исправимый",
-    "brak_price"."Неисправимый",
-    brak.empl  as "Контролёр"
-FROM list_brak 
-INNER JOIN brak ON brak."s_num" = list_brak."num_list_brak"
-INNER JOIN naryad ON naryad."Пномер" = brak."nom_nar"
-INNER JOIN mk ON mk."Пномер" = naryad."Номер_мк"
-INNER JOIN plan ON plan."Пномер" = mk."НомКплан"  
-INNER JOIN brak_price ON brak_price."Имя" = list_brak."group_1" || '$' || list_brak.group_2 || '$' || list_brak.group_3 
-WHERE mk."Статус" not in ('НаУдаление') and plan.poki = {self.place.poki}"""
+            SELECT 
+            naryad."Номер_мк" as "s_num_mk",
+            mk."Номенклатура" as "nomen_mk",
+            "list_brak"."s_num" as "s_num_point",
+            "brak"."date", 
+            "brak_price"."Код" as "code",
+            "list_brak"."group_1", 
+            "list_brak"."group_2", 
+            "list_brak"."group_3", 
+            "list_brak"."neisprav", 
+            "list_brak"."count_dse", 
+            "brak"."s_num",
+            "brak"."nom_nar", 
+            "brak"."msg", 
+            "brak"."usr_1", 
+            "brak"."usr_2",
+            "naryad"."ФИО" as "fio_nar", 
+            "naryad"."Фвремя" as "ftime_nar", 
+            "naryad"."Кол_повт_приемок" as "count_extra_presents_nar",
+            "naryad"."Распред_ФИО" as "fio_rasp",
+            "naryad"."state_otk" as "state_otk",
+            "brak_price"."Исправимый" as "_fixable_price",
+            "brak_price"."Неисправимый" as "_unfixable_price",
+            "" as "price",
+             brak.empl  as "inspector"
+            FROM list_brak 
+            INNER JOIN brak ON brak."s_num" = list_brak."num_list_brak"
+            INNER JOIN naryad ON naryad."Пномер" = brak."nom_nar"
+            INNER JOIN mk ON mk."Пномер" = naryad."Номер_мк"
+            INNER JOIN plan ON plan."Пномер" = mk."НомКплан"  
+            INNER JOIN brak_price ON brak_price."Имя" = list_brak."group_1" || '$' || list_brak.group_2 || '$' || list_brak.group_3 
+            WHERE mk."Статус" not in ('НаУдаление') and plan.poki = {self.place.poki}"""
         resp = CSQ.custom_request_c(self.db_naryd, query, rez_dict=True,attach_dbs=(self.db_kplan))
-        for i in range(len(resp)):
-            if resp[i]['неисправимый'] == 1:
-                resp[i]['Исправимый'] = ""
-            else:
-                resp[i]['Неисправимый'] = ""
-            resp[i]["Примечание"] = resp[i]["Примечание"].replace("LF", " ")
-        tbl = self.ui.tbl_brak
-        CQT.fill_wtabl(resp, tbl, auto_type=False, height_row=24, list_column_widths=CMS.load_column_widths(self, tbl))
-        CMS.fill_filtr_c(self, self.ui.tbl_brak_filtr, tbl, hidden_scroll=True)
 
-        clr_bad = CMS.Color_tbl(10)
-        clr_good = CMS.Color_tbl(90)
-        nf_ispr = CQT.num_col_by_name_c(tbl, 'неисправимый')
-        nf_podtv = CQT.num_col_by_name_c(tbl, 'Подтвержд_вып_дата')
-        for i in range(tbl.rowCount()):
-            if tbl.item(i, nf_ispr).text() == '1':
-                CQT.set_color_wtab_c(tbl, i, nf_ispr, clr_bad.r, clr_bad.g, clr_bad.b)
-            if tbl.item(i, nf_podtv).text() != '':
-                CQT.set_color_wtab_c(tbl, i, nf_podtv, clr_good.r, clr_good.g, clr_good.b)
+        dict_clrs_groups = dict()
+
+        for i in range(len(resp)):
+            row_o = CLSS.SimpClsBrak._from_dict(resp[i])
+            #resp[i]["Примечание"] = resp[i]["Примечание"].replace("LF", " ")
+            row_o.neisprav = CEMOJ.СтатусыПроизводства.alert.symbol if row_o.neisprav else ''
+            row_o.msg = row_o.msg.replace("LF", "\n")
+            row_o.price = row_o._unfixable_price if row_o.neisprav else row_o._fixable_price
+            row_o.state_otk = DTCLS.states_otk.get(row_o.state_otk)
+            if row_o.s_num not in dict_clrs_groups:
+                dict_clrs_groups[row_o.s_num] = CMS.Color.random(30,(50,150),(50,150),(50,150))
+            resp[i] = row_o.to_dict()
+
+        DICT_ALIASES = {
+            's_num_mk' : '№ МК',
+            'nomen_mk' : 'Номенклатура\nМК',
+            's_num_point' : '№ Пункта\nБрак',
+            'date' : 'Дата',
+            'code' : 'Код',
+            'group_1' : 'Группа 1',
+            'group_2' : 'Группа 2',
+            'group_3' : 'Группа 3',
+            'neisprav' : 'Неис-\nмый',
+            'count_dse' : 'Кол-во\nДСЕ',
+            's_num' : '№ Брако-\nчной',
+            'nom_nar' : 'Номер\nнаряда',
+            'state_otk' : 'Статус\nОТК',
+            'msg' : 'Примечание',
+            'fio_rasp' : 'Распределил',
+            'usr_1' : 'Проверяемый',
+            'usr_2' : 'Проверяемый2',
+            'fio_nar' : 'Контролер\nпо наряду',
+            'ftime_nar' : 'Фвремя\nконтроля',
+            'count_extra_presents_nar' : 'Кол.повт.\nприемок',
+            'price' : 'Стоимость,\n% премии',
+            'inspector' : 'Контролер\nфакт.',
+        }
+
+        tbl = self.ui.tbl_brak
+        CQT.fill_wtabl(resp, tbl, auto_type=False, list_column_widths=CMS.load_column_widths(self, tbl),
+                       aliases_header=DICT_ALIASES,styleSheet=CQT.MES_EDIT_CSS,
+                       selectionBehavior=CQT.SelectionBehaviors.SelectRows,
+                       selectionMode=CQT.SelectionModes.SingleSelection)
+        CMS.fill_filtr_c(self, self.ui.tbl_brak_filtr, tbl, hidden_scroll=True)
+        t = CQT.TableContext(tbl)
+        t.hide_if_not_dev(CFG)
+        for row in t.rows():
+            s_num_brak = int(row.value('s_num'))
+            if s_num_brak in dict_clrs_groups:
+                clr = dict_clrs_groups[s_num_brak]
+                row.set_color_background(*clr.rgba)
+
 
     @CQT.onerror
     def min_rejim(self, val, *args):
@@ -5508,8 +5695,13 @@ WHERE mk."Статус" not in ('НаУдаление') and plan.poki = {self.pl
             nom_mk = self.glob_nom_mk
         if nom_mk == 0:
             return
-        if res == '':
-            res = CMS.load_res(nom_mk)
+
+        self.glob_res = CMS.ResSpec(int(nom_mk))
+        res = self.glob_res.res_wet
+
+        self.ui.le_poz_kol.blockSignals(True)
+        self.ui.le_poz_kol.setText(str(self.glob_res.count))
+        self.ui.le_poz_kol.blockSignals(False)
 
         filtr = self.ui.checkBox_full_dse.isChecked()
         # print(filtr)
@@ -5689,7 +5881,7 @@ WHERE mk."Статус" not in ('НаУдаление') and plan.poki = {self.pl
             set_prof.add('|'.join(self.DICT_ETAPI[prof]))
         for prof in set_prof:
             self.ui.cmb_prof.addItem(prof)
-        self.glob_res = res
+
         t.add_column_events("Масса/М1,М2,М3",on_double_click=fnc_dbl_click,parent_self=self)
         if not CMS.user_access(self.db_naryd, 'создание_создание_наряда_аутсорс', self.glob_ima, False):
             self.ui.chkb_autcourse.setEnabled(False)
@@ -5740,7 +5932,7 @@ WHERE mk."Статус" not in ('НаУдаление') and plan.poki = {self.pl
             self.ui.tabWidget_2.setCurrentIndex(CQT.number_table_by_name_c(self.ui.tabWidget_2, 'МК'))
             self.ui.tabWidget_2.blockSignals(False)
             return
-        count_izd = self.glob_res[0]['Количество']
+        count_izd = self.glob_res.count
 
         if nk_check is None:
             self.ui.tabWidget_2.setCurrentIndex(CQT.number_table_by_name_c(self.ui.tabWidget_2,'ДСЕ'))
@@ -5769,6 +5961,9 @@ WHERE mk."Статус" not in ('НаУдаление') and plan.poki = {self.pl
         tsht_potenc = 0
         work_count_potenc = 0
         kolvo_check_dse = 0
+        multiplicity_potenc = copy.copy(count_izd)#Кратность к количеству на 1 изделие
+
+
         if clear_prof_state:
             self.glob_etap = set()
             self.set_rc_check_dse = set()
@@ -5778,22 +5973,32 @@ WHERE mk."Статус" not in ('НаУдаление') and plan.poki = {self.pl
         for i in range(tbl.rowCount()):
             if tbl.cellWidget(i, nk_check).isChecked():
                 row = CQT.get_dict_line_form_tbl(tbl, i)
-                time_tmp =      F.valm(row['Тпз']) + F.valm(row['Тшт']) * F.valm(row['В работу,шт.']) / F.valm(row['КОИД'])
-                time_tmp_max = F.valm(row['Тпз']) + F.valm(row['Тшт']) * F.valm(row['Количество,шт.']) / F.valm(row['КОИД'])
-                time_tmp_max_one_izd  = (F.valm(row['Тпз']) + F.valm(row['Тшт']) *  F.valm(row['Количество,шт.']) / F.valm(row['КОИД'])) / count_izd
+                count_dse = F.valm(row['Количество,шт.'])
+                selected_count_dse = F.valm(row['В работу,шт.'])
+                count_dse_per_izd = count_dse / count_izd
 
-                if F.valm(row['В работу,шт.']) != 0:
+                multiplicity = selected_count_dse/count_dse_per_izd
+                ceil_multiplicity = F.round_down(multiplicity)
+                excess = selected_count_dse -count_dse_per_izd*ceil_multiplicity
+                time_tmp =      F.valm(row['Тпз']) + F.valm(row['Тшт']) * selected_count_dse / F.valm(row['КОИД'])
+                time_tmp_max = F.valm(row['Тпз']) + F.valm(row['Тшт']) * count_dse / F.valm(row['КОИД'])
+                time_tmp_max_one_izd  = (F.valm(row['Тпз']) + F.valm(row['Тшт']) *  count_dse / F.valm(row['КОИД'])) / count_izd
+
+                if selected_count_dse != 0:
                     tpz_potenc += F.valm(row['Тпз'])
-                    work_count_potenc += F.valm(row['В работу,шт.'])
+                    work_count_potenc += selected_count_dse
                     tsht_potenc += F.valm(row['Тшт'])
+                    multiplicity_potenc = min(multiplicity_potenc, ceil_multiplicity)
                 else:
                     time_tmp = 0
                 data_time.append({
                     'Строка': i + 1,
                     'Тпз': round(F.valm(row['Тпз']), 2),
                     'Тшт': round(F.valm(row['Тшт']), 2),
-                    'В работу,шт.': F.valm(row['В работу,шт.']),
+                    'В работу,шт.': selected_count_dse,
                     'Сумма минут': round(time_tmp, 2),
+                    'Кратность,шт.': round(multiplicity, 2),
+                    'Лишние,шт.': "" if not excess else excess,
                 })
 
                 time_tmp_per_one_dse = (F.valm(row['Тпз']) + F.valm(row['Тшт'])) / F.valm(row['КОИД'])
@@ -5806,8 +6011,8 @@ WHERE mk."Статус" not in ('НаУдаление') and plan.poki = {self.pl
                 data_rc.append(row['РЦ'][:5])
 
                 self.set_rc_check_dse.add(row['РЦ'][:5])
-                kolvo_check_dse += int(row['Количество,шт.'])
-                if not F.valm(row['В работу,шт.']) > F.valm(row['Количество,шт.']) - \
+                kolvo_check_dse += count_dse
+                if not F.valm(selected_count_dse) > count_dse - \
                         F.valm(row['Освоено,шт.']):
                     time += time_tmp
                 time_max += time_tmp_max
@@ -5837,7 +6042,11 @@ WHERE mk."Статус" not in ('НаУдаление') and plan.poki = {self.pl
             if '21629.1' in self.DICT_PROFESSIONS:
                 prof_name = self.DICT_PROFESSIONS['21629.1']['имя']
 
-            counter_prof[(prof_name,)] = len(data_time)
+            counter_prof[(prof_name,)] = {
+                    'Операция': cur_oper,
+                    'Количество': len(data_time),
+                    'Невошедшие': set()
+                }
             data_rc = ['020201'] * len(data_time)
         # -- 25.06.25
         self.ui.tbl_dse_check_time.setProperty('validate', time_is_valid)
@@ -5847,6 +6056,8 @@ WHERE mk."Статус" not in ('НаУдаление') and plan.poki = {self.pl
             'Тшт': round(tsht_potenc, 2),
             'В работу,шт.': work_count_potenc,
             'Сумма минут': round(time_potenc, 2),
+            'Кратность,шт.': F.round_down(multiplicity_potenc),
+            'Лишние,шт.': '',
         })
         self.fill_state_tables(data_rc, counter_prof, data_time)
 
@@ -5935,7 +6146,7 @@ WHERE mk."Статус" not in ('НаУдаление') and plan.poki = {self.pl
                     oper_code = tbl.item(i, nk_oper_code).text()
                     oper_db_info = self.DICT_OPER[oper_code]
                     auto_destination = TASK_PRINTER.automatic_destination_text(
-                        route=self.glob_res,
+                        route=self.glob_res.res_wet,
                         dse_id=tbl.item(i, nk_id).text(),
                         oper_num=oper_num,
                         oper_name=oper_name,
@@ -6093,42 +6304,9 @@ WHERE mk."Статус" not in ('НаУдаление') and plan.poki = {self.pl
 
     @CQT.onerror
     def tbl_dse_select(self, *args):
-        # self.calc_time_for_selection_rows()
-        tbl = self.ui.tbl_dse
-        # lbl = self.ui.lbl_ima_rc
-
-        nk_rc = CQT.num_col_by_name_c(tbl, 'РЦ')
-        nk_nn = CQT.num_col_by_name_c(tbl, 'Обозначение')
-        nk_naim = CQT.num_col_by_name_c(tbl, 'Наименование')
-        nk_nom_op = CQT.num_col_by_name_c(tbl, 'Ном_оп')
-        if tbl.currentRow() == -1 or nk_nn == None:
-            return
-        if tbl.item(tbl.currentRow(), nk_nn) == None:
-            return
-        nn = tbl.item(tbl.currentRow(), nk_nn).text().strip()
-        naim = tbl.item(tbl.currentRow(), nk_naim).text().strip()
-        nom_oper = tbl.item(tbl.currentRow(), nk_nom_op).text()
-        # lbl.setText(
-        #     f'РЦ {tbl.item(tbl.currentRow(), nk_rc).text()} - {self.DICT_RC[tbl.item(tbl.currentRow(), nk_rc).text()]}')
+        #все было закомментировано(пропись маршрута)
         return
-        marsh = []
-        if self.glob_res == False:
-            CQT.msgbox(f'Не загружена ресурсная попробуй позже')
-            return
-        for dse in self.glob_res:
-            if dse['Номенклатурный_номер'] == nn and dse['Наименование'] == naim:
-                for oper in dse['Операции']:
-                    ima_rc = 'Не известен'
-                    if oper["Опер_РЦ_код"] in self.DICT_RC:
-                        ima_rc = self.DICT_RC[oper["Опер_РЦ_код"]]
-                    if nom_oper == oper["Опер_номер"]:
-                        marsh.append(f' ___***{ima_rc} ({oper["Опер_РЦ_код"]})***___ ')
-                    else:
 
-                        marsh.append(f'{ima_rc} ({oper["Опер_РЦ_код"]})')
-                break
-
-        lbl_info.setText('-->'.join(marsh))
 
     @CQT.onerror
     def tbl_mk_click(self, *args):
@@ -6358,12 +6536,19 @@ WHERE mk."Статус" not in ('НаУдаление') and plan.poki = {self.pl
 
         CMS.fill_filtr_c(self, self.ui.tbl_filtr_mk, self.ui.tableWidget_vibor_mk, hidden_scroll=True)
 
-    def get_list_brak_mk(self):
-        list_brak_mk = CSQ.custom_request_c(self.db_naryd, f"""SELECT DISTINCT naryad."Номер_мк"
+    def get_list_brak_mk(self)->set[int]:
+        list_brak_mk = CSQ.custom_request_c(self.db_naryd, f"""SELECT DISTINCT naryad."Номер_мк",naryad."Пномер", brak.s_num
                 FROM "list_brak" 
                 INNER JOIN "brak" ON brak.s_num = list_brak.num_list_brak
-                INNER JOIN "naryad" ON naryad."Пномер" = brak.nom_nar and naryad."Фвремя" = '' ;""", one_column=True, hat_c=False)
-        return list_brak_mk
+                INNER JOIN "naryad" ON naryad."Пномер" = brak.nom_nar  
+                INNER JOIN mk ON mk."Пномер" = naryad."Номер_мк" 
+                   LEFT JOIN plan ON plan."Пномер" = mk."НомКплан" WHERE plan.poki = {CFG.Config.place.poki}
+                   AND (naryad."Фвремя" = '' OR naryad.state_otk = {DTCLS.states_otk.not_accepted.id})
+                   
+                   ;""",rez_dict=True,attach_dbs=CFG_prj.db_kplan)
+        if list_brak_mk:
+            return set([_['Номер_мк'] for _ in list_brak_mk])
+        return set()
 
     def is_brak_mk(self, nom_mk: int):
         if nom_mk in self.get_list_brak_mk():
