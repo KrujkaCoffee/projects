@@ -298,11 +298,52 @@ class _DbTable:
 class FactorySet(_ImportDb):
     def __init__(self,it:dict):
         self.id_dse: int = None
+        self.dse_count: int = None
         self.id_oper: str = None
         self.id_naryad: int = None
         self.id_factory_set: int = None
         self.parce_row_dict(it,declared_only=True)
 
+class FactoryNaryadsInfo():
+    def __init__(self):
+        self.dict_naryads:dict[int,FactorySet]=dict()
+        self.dict_naryads_reserve:dict[int,FactorySet]=dict()
+        self.dse_per_izd: int = 0
+
+        self.free:int=0
+        self.sended:int=0
+        self.full:bool=False
+        self.free_reserve:int=0
+        self.sended_reserve:int=0
+        self.full_reserve:bool=False
+
+    def recalc(self,dse_per_izd:int):
+        self.dse_per_izd = dse_per_izd
+
+        self.sended = sum([_.dse_count for _ in self.dict_naryads.values()])
+        self.sended_reserve = sum([_.dse_count for _ in self.dict_naryads_reserve.values()])
+
+        if self.sended == self.dse_per_izd:
+            self.full=True
+            self.free=0
+        else:
+            self.full=False
+            self.free=self.dse_per_izd-self.sended
+
+        if self.sended_reserve == self.dse_per_izd:
+            self.full_reserve=True
+            self.free_reserve=0
+        else:
+            self.full_reserve=False
+            self.free_reserve=self.dse_per_izd-self.sended_reserve
+
+    def for_ui(self):
+        return '; '.join([f'{x.id_naryad}({x.dse_count})' for x in self.dict_naryads.values()])
+
+    def __repr__(self):
+        return (f"FactoryNaryadsInfo(naryads={len(self.dict_naryads)}, "
+                f"sended={self.sended}/{self.dse_per_izd}, "
+                f"free={self.free}, full={self.full})")
     
 class FactorySets:
     DICT_ALIASES = {'id_dse':'_id_dse',
@@ -312,10 +353,12 @@ class FactorySets:
                     'to_select_fsets':'К выбору\nк-тов, шт.',
                     'select_all':'Все',
                     'id_factory_set':'Номер\nкомплекта',
+                    'to_select_dse':'Число\nДСЕ',
+                    'dse_per_izd':'_dse_per_izd',
                     'alias':'Пользовательское\nимя'
                     }
 
-    NEW_NARYAD_ID = -1
+
 
     def __init__(self,id_mk:int):
         self.id_mk:int=id_mk
@@ -324,67 +367,105 @@ class FactorySets:
             raise ValueError(f'id_mk is None')
         
         
-        self.dict_sets:dict[tuple[int,str],dict[int,FactorySet]]=dict()
-        self.dict_sets_reserve:dict[tuple[int,str],dict[int,FactorySet]]=dict()
+        self.dict_sets:dict[tuple[int,str],dict[int,dict[int,FactorySet]]]=dict()
+        self.dict_sets_reserve:dict[tuple[int,str],dict[int,dict[int,FactorySet]]]=dict()
+        self.reserve_cnter:int = 0
         self.factory_user_aliases:dict[int,str] = dict()
         self.res:ResSpec = None
         self._to_add:set[FactorySet] = set()
         self.load()
 
-    
+    def new_reserve_nar_id(self)->int:
+        self.reserve_cnter-=1
+        if not self.dict_sets_reserve:
+            self.dict_sets_reserve = copy.deepcopy(self.dict_sets)
+        return self.reserve_cnter
+
+    @property
+    def reserve_nar_id(self):
+        return self.reserve_cnter
+
     def dse_per_izd(self,id_dse:int)->int:
-        return self.res.get_dse(id_dse).Количество_ед
+        return self.res.get_dse(id_dse).кол_во_инф['кол_во_1_изд_по_структуре']
     
-    def get_factory_sets_by_dse_oper(self,id_dse:int,id_oper:str)->dict[int,FactorySet]:
+    def get_factory_sets_by_dse_oper(self,id_dse:int,id_oper:str)->dict[int,dict[int,FactorySet]]:
         if (id_dse,id_oper) in self.dict_sets:
             return self.dict_sets[(id_dse,id_oper)]
         return dict()
-
-
+    
+    def reload_user_aliases(self):
+        data = CSQ.custom_request_c(CFG_prj.db_naryad, f"""SELECT 
+                    * FROM factory_sets_user_aliases 
+          
+               WHERE factory_sets_user_aliases.mk = {self.id_mk};""",
+                                    rez_dict=True)
+        self.factory_user_aliases = {k + 1: '' for k in range(self.res.count)}
+        for it in data:
+            self.factory_user_aliases[it['id_factory_set']] = it['user_factory_set']
+            
     def reload_sets(self):
         self.dict_sets = dict()
-        data = CSQ.custom_request_c(CFG_prj.db_naryad,f"""SELECT factory_sets.*, factory_sets_user_aliases.user_factory_set FROM factory_sets 
-        LEFT JOIN factory_sets_user_aliases 
-            ON factory_sets_user_aliases.mk = factory_sets.mk AND 
-                factory_sets_user_aliases.id_factory_set = factory_sets.id_factory_set
+        data = CSQ.custom_request_c(CFG_prj.db_naryad,f"""SELECT 
+            factory_sets.*, naryad."Пномер" as "exist_naryad" FROM factory_sets 
+        
+        LEFT JOIN naryad ON naryad."Пномер" = factory_sets.id_naryad
         WHERE factory_sets.mk = {self.id_mk};""",
                                     rez_dict=True)
-        self.factory_user_aliases = dict()
         
+        set_to_clear_naryads = set()
         for it in data:
+            if it['exist_naryad'] is None:
+                set_to_clear_naryads.add(it['id_naryad'])
+                continue
             set_o = FactorySet(it)
             key = (set_o.id_dse,set_o.id_oper)
             if key not in self.dict_sets:
                 self.dict_sets[(set_o.id_dse,set_o.id_oper)] = dict()
-            self.dict_sets[key][set_o.id_factory_set] = set_o
-            self.factory_user_aliases[it['id_factory_set']] = it['user_factory_set']
+            if set_o.id_factory_set not in self.dict_sets[(set_o.id_dse,set_o.id_oper)]:
+                self.dict_sets[(set_o.id_dse,set_o.id_oper)][set_o.id_factory_set] = dict()
+            self.dict_sets[key][set_o.id_factory_set][set_o.id_naryad] = set_o
+            
         
-        
-       
+        if set_to_clear_naryads:
+            str_naryads = ', '.join([str(x) for x in set_to_clear_naryads])
+            CSQ.custom_request_c(CFG_prj.db_naryad,f"""DELETE FROM factory_sets WHERE id_naryad IN ({str_naryads});""")
+            print(f'Удалены не найденные наряды: {str_naryads}')
     
     def _load_res(self):
         self.res = ResSpec(self.id_mk)
 
     def load(self):
-        self.reload_sets()
         self._load_res()
+        self.reload_user_aliases()
+        self.reload_sets()
         pass
 
-    def get_naryad_reserve(self,id_dse:int,id_oper:str,id_set:int)->int|None:
-        if (id_dse,id_oper) not in self.dict_sets_reserve:
-            return
-        factory_set_o = self.dict_sets_reserve[(id_dse,id_oper)].get(id_set,None)
-        if factory_set_o is None:
-            return
-        return factory_set_o.id_naryad
 
-    def get_naryad(self,id_dse:int,id_oper:str,id_set:int)->int|None:
+    def get_naryad_str(self,id_dse:int,id_oper:str,id_set:int)->int|None:
         if (id_dse,id_oper) not in self.dict_sets:
             return
-        factory_set_o = self.dict_sets[(id_dse,id_oper)].get(id_set,None)
-        if factory_set_o is None:
+        naryads = self.dict_sets[(id_dse,id_oper)].get(id_set,None)
+        if naryads is None:
             return
-        return factory_set_o.id_naryad
+        return ';'.join([f'{x.id_naryad}({x.dse_count})' for x in naryads.values()])
+
+    def _get_naryads_data(self,id_dse:int,id_oper:str,id_set:int,reserve:bool=False)->dict[int,FactorySet]|None:
+        dict_naryads = self.dict_sets_reserve if reserve else self.dict_sets
+        if (id_dse, id_oper) not in dict_naryads:
+            return
+        naryads = dict_naryads[(id_dse, id_oper)].get(id_set, None)
+        return naryads
+
+    def get_naryad(self,id_dse:int,id_oper:str,id_set:int)->FactoryNaryadsInfo:
+        naryads = self._get_naryads_data(id_dse,id_oper,id_set)
+        naryads_reserve = self._get_naryads_data(id_dse,id_oper,id_set,True)
+        naryads_info_o = FactoryNaryadsInfo()
+        if naryads:
+            naryads_info_o.dict_naryads = naryads
+        if naryads_reserve:
+            naryads_info_o.dict_naryads_reserve = naryads_reserve
+        naryads_info_o.recalc(self.dse_per_izd(id_dse))
+        return naryads_info_o
      
 
     def get_factory_name(self,id_set:int)->str:
@@ -414,35 +495,23 @@ class FactorySets:
 
         
     def template_technical(self)->list[dict]:
+        list_rezult,list_data,DICT_ALIASES = self._template_base(include_reserve=True)
 
-        list_rezult = []
-        for dse in self.res.data:
-            id_dse = dse.Номерпп
-
-            for oper in dse.Операции:
-                id_oper = oper.Опер_номер
-                oper_name = oper.Опер_наименование
-                
-                to_select = self.res.count
-                tmp_row = {'id_dse':id_dse,'id_oper':id_oper,'oper_name':oper_name,
-                           'to_select_fsets':None}
-                
-                for i in range(self.res.count):
-                    id_set = i+1
-                    naryad_id = self.get_naryad(id_dse,id_oper,id_set)
-                    if not naryad_id:
-                        naryad_id = self.get_naryad_reserve(id_dse,id_oper,id_set)
-                    tmp_row[str(id_set)] = naryad_id if naryad_id else ''
-                    to_select -= 1 if naryad_id else 0
-
-                tmp_row['to_select_fsets'] = to_select
-                list_rezult.append(tmp_row)
-        return list_rezult
+        return list_data
 
 
-    def template_show(self)->tuple[list[dict],dict]:
+    def template_show(self)->tuple[list[dict],list[dict],dict]:
+        to_remove_fields = {'select_all','to_select_dse'}
+        list_rezult, list_data, DICT_ALIASES = self._template_base(include_reserve=True)
+        [[_.pop(f) for f in to_remove_fields] for _ in list_rezult]
+        [[_.pop(f) for f in to_remove_fields] for _ in list_data]
+        
+        return list_rezult, list_data, DICT_ALIASES
+
+    def _template_base(self,include_reserve:bool=False):
         DICT_ALIASES = copy.deepcopy(self.DICT_ALIASES)
         list_rezult = []
+        list_data = []
         for dse in self.res.data:
             id_dse = dse.Номерпп
             name_dse = dse.full_name
@@ -450,56 +519,44 @@ class FactorySets:
                 id_oper = oper.Опер_номер
                 oper_name = oper.Опер_наименование
 
-                to_select = self.res.count
-                tmp_row = {'id_dse':id_dse,'name_dse':name_dse,'id_oper':id_oper,'oper_name':oper_name,
-                           'to_select_fsets':None}
 
+                tmp_row = {'id_dse': id_dse, 'name_dse': name_dse, 'id_oper': id_oper, 'oper_name': oper_name,
+                           'to_select_fsets': None, 'to_select_dse': None,
+                           'select_all': CEMOJ.ДокументыДанные.revers.symbol}
+                tmp_row_data = {'id_dse': id_dse, 'name_dse': name_dse, 'id_oper': id_oper, 'oper_name': oper_name,
+                                'to_select_fsets': None, 'to_select_dse': None,
+                                'select_all': CEMOJ.ДокументыДанные.revers.symbol}
+                to_select = copy.copy(self.res.count)
                 for i in range(self.res.count):
-                    id_set = i+1
-                    naryad_id = self.get_naryad(id_dse,id_oper,id_set)
-                    tmp_row[str(id_set)] = naryad_id if naryad_id else ''
-                    to_select -= 1 if naryad_id else 0
+                    id_set = i + 1
+                    naryad_info = self.get_naryad(id_dse, id_oper, id_set)
+                    naryad_str = naryad_info.for_ui()
+                    tmp_row[str(id_set)] = naryad_str if naryad_info.dict_naryads else ''
+                    tmp_row_data[str(id_set)] = naryad_info
+                    to_select -= 1 if naryad_info.full else 0
                     DICT_ALIASES[str(id_set)] = self.get_factory_name(id_set)
                 tmp_row['to_select_fsets'] = to_select
+                tmp_row_data['to_select_fsets'] = to_select
                 list_rezult.append(tmp_row)
-        return list_rezult,DICT_ALIASES
+                list_data.append(tmp_row_data)
+        return list_rezult,list_data,DICT_ALIASES
 
-    def template_select(self)->tuple[list[dict],dict]:
-        DICT_ALIASES = copy.deepcopy(self.DICT_ALIASES)
-        list_rezult = []
-        for dse in self.res.data:
-            id_dse = dse.Номерпп
-            name_dse = dse.full_name
-            for oper in dse.Операции:
-                id_oper = oper.Опер_номер
-                oper_name = oper.Опер_наименование
 
-                to_select = self.res.count
-                tmp_row = {'id_dse':id_dse,'name_dse':name_dse,'id_oper':id_oper,'oper_name':oper_name,
-                           'to_select_fsets':None,'select_all':CEMOJ.ДокументыДанные.revers.symbol}
-
-                for i in range(self.res.count):
-                    id_set = i+1
-                    naryad_id = self.get_naryad(id_dse,id_oper,id_set)
-                    tmp_row[str(id_set)] = naryad_id if naryad_id else ''
-                    to_select -= 1 if naryad_id else 0
-                    DICT_ALIASES[str(id_set)] = self.get_factory_name(id_set)
-                tmp_row['to_select_fsets'] = to_select
-                list_rezult.append(tmp_row)
-
-        return list_rezult,DICT_ALIASES
+    def template_select(self)->tuple[list[dict],list[dict],dict]:
+        return self._template_base()
 
     def _is_extists(self,set_o:FactorySet)->bool|FactorySet:
-        dict_sets=self.get_factory_sets_by_dse_oper(set_o.id_dse,set_o.id_oper)
-        if not dict_sets:
+        dict_naryads =self.get_factory_sets_by_dse_oper(set_o.id_dse,set_o.id_oper)
+        if not dict_naryads:
             return False
-        if not set_o.id_factory_set in dict_sets:
+        if not set_o.id_naryad in dict_naryads:
             return False
-        return dict_sets[set_o.id_factory_set]
+        return dict_naryads[set_o.id_naryad]
 
 
     def add_new(self,id_dse: int,
                     id_oper: str,
+                    dse_count: int,
                     id_naryad: int,
                     id_factory_set: int,):
         set_o = FactorySet(
@@ -507,52 +564,64 @@ class FactorySets:
         )
         set_o.id_dse = id_dse
         set_o.id_oper = id_oper
+        set_o.dse_count = dse_count
         set_o.id_naryad = id_naryad
         set_o.id_factory_set = id_factory_set
         if not self._is_extists(set_o):
             self._to_add.add(set_o)
 
-    def _reserve_free_set(self,id_dse, id_oper, id_factory_set:int):#резервируем номер ЗК чтобы не посчитать его в свободных больше одного раза
+    def _reserve_free_set(self,id_dse, id_oper, id_factory_set:int,count_dse:int):#резервируем номер ЗК чтобы не посчитать его в свободных больше одного раза
+        
+        
         if (id_dse,id_oper) not in self.dict_sets_reserve:
-
             self.dict_sets_reserve[(id_dse,id_oper)] = dict()
+        if id_factory_set not in self.dict_sets_reserve[(id_dse,id_oper)]:
+            self.dict_sets_reserve[(id_dse,id_oper)][id_factory_set] = dict()
+
         reserve_set = FactorySet(dict())
         reserve_set.id_dse = id_dse
         reserve_set.id_oper = id_oper
-        reserve_set.id_naryad = -1
+        reserve_set.id_naryad = self.reserve_nar_id
+        reserve_set.dse_count = count_dse
         reserve_set.id_factory_set = id_factory_set
 
-        self.dict_sets_reserve[(id_dse, id_oper)][id_factory_set] = reserve_set
+        self.dict_sets_reserve[(id_dse, id_oper)][id_factory_set][self.reserve_nar_id] = reserve_set
 
-    def _get_and_reserve_free_set(self,id_dse: int, id_oper: str)->int|None:
+    def _get_and_reserve_free_set(self,id_dse: int, id_oper: str,dse_count:int)->list[dict]:
 
         class SimpClsTechnical(F._SimpMeta):
             id_dse: int
             id_oper: str
             oper_name: str
             to_select_fsets: int
-
-
+        list_reserved = []
         table = [SimpClsTechnical._from_dict(_) for _ in self.template_technical()]
+        dse_counter = copy.copy(dse_count)
         for row in table:
             if row.id_dse == id_dse and row.id_oper == id_oper:
                 for k in row.__dict__.keys():
+                    if dse_counter == 0:
+                        return list_reserved
                     if not F.is_numeric(k):
                         continue
-                    v = getattr(row,k)
-                    if v == '':
-                        self._reserve_free_set(id_dse, id_oper, int(k))
-                        return int(k)
-
+                    v:FactoryNaryadsInfo = getattr(row,k)
+                    id_set = int(k)
+                    if not v.full_reserve:
+                        to_reserve = v.free_reserve if v.free_reserve < dse_counter else dse_counter
+                        self._reserve_free_set(id_dse, id_oper, id_set,to_reserve)
+                        dict_free_set = {'id_set':id_set,'count':to_reserve}
+                        list_reserved.append(dict_free_set)
+                        dse_counter-=to_reserve
+                return list_reserved
 
     def add_new_by_step(self,id_dse: int,
                     id_oper: str,
+                    dse_count: str,
                     id_naryad: int,)->bool:
-        free_set_id = self._get_and_reserve_free_set(id_dse,id_oper)
-        if free_set_id is None:
-            return False
-
-        self.add_new(id_dse, id_oper, id_naryad, free_set_id)
+        self.new_reserve_nar_id()
+        list_free_sets_id = self._get_and_reserve_free_set(id_dse,id_oper,dse_count)
+        for dict_free_set in list_free_sets_id:
+            self.add_new(id_dse, id_oper, dict_free_set['count'], id_naryad, dict_free_set['id_set'])#TODO
         return True
 
 
@@ -562,14 +631,15 @@ class FactorySets:
         if not self._to_add:
             return True
         for set_o in self._to_add:
-            data_add.append([self.id_mk, set_o.id_dse, set_o.id_oper, set_o.id_naryad, set_o.id_factory_set])
+            data_add.append([self.id_mk, set_o.id_dse, set_o.id_oper,  set_o.id_naryad, set_o.dse_count, set_o.id_factory_set])
         text = f"""
-        INSERT INTO factory_sets (mk, id_dse, id_oper, id_naryad, id_factory_set)
+        INSERT INTO factory_sets (mk, id_dse, id_oper, id_naryad, dse_count, id_factory_set)
                           VALUES ({CSQ.questions_for_mask(data_add[0])})
         """
         CSQ.custom_request_c(CFG_prj.db_naryad,text,list_of_lists_c=data_add)
         self._to_add = set()
         self.dict_sets_reserve = dict()
+        self.reserve_cnter = 0
         return True
 
 #======================================Заводские комплекты======================================================
@@ -5266,6 +5336,7 @@ class Naryads(_Naryad_base):
             'Распред_дата': '',
             'month_closing_block': '',
             'АвтоПодтвержд': auto_confirm,
+            'state_otk':1
         }
         new_nar = Naryads(dict_data, db_naryd, db_users=db_users)
         new_nar._recalc_time_norma()
@@ -10317,15 +10388,19 @@ class ActionDevMenu:
 
 class SimpClsErpZP(F._SimpMeta):
     ЗаказКлиента: str
+    АвторНаименование: str
     ЗаказКлиентаДата: str
     ЗаказКлиентаСтатус: str
+    Состояние: str
     ЗаказКлиента_ref: str
-    ЗаказНаПроизводство: str
-    ЗаказНаПроизводствоДата: str
-    ЗаказНаПроизводствоСтатус: str
-    ЗаказНаПроизводство_ref: str
-    Номенклатура: str
-    Номенклатура_ref: str
+    ЗаказНаСборку: str
+    ЗаказНаПроизводство: None
+    ЗаказНаПроизводствоДата: None
+    ЗаказНаПроизводствоСтатус: None
+    ЗаказНаПроизводство_ref: None
+    Номенклатура: None
+    Спецификация: None
+    Номенклатура_ref: None
     КПЛ: str
 
     @staticmethod
@@ -10388,38 +10463,135 @@ class BondsZpKpl():
     def _load_from_1C(self):
         self.err: bool = False
         key_org = CFG.Config.place.Организация_Key
-
-        wet_req_text = f"""ВЫБРАТЬ
-                ЗаказКлиента.Ссылка.Номер КАК ЗаказКлиента,
-                ЗаказКлиента.Ссылка.Дата КАК ЗаказКлиентаДата,
-                ПРЕДСТАВЛЕНИЕ(ЗаказКлиента.Статус) КАК ЗаказКлиентаСтатус,
-                ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЗаказКлиента.Ссылка)) КАК ЗаказКлиента_ref,
-                ЗаказНаПроизводство2_2Продукция.Ссылка.Ссылка.Номер КАК ЗаказНаПроизводство,
-                ЗаказНаПроизводство2_2Продукция.Ссылка.Дата КАК ЗаказНаПроизводствоДата,
-                ПРЕДСТАВЛЕНИЕ(ЗаказНаПроизводство2_2Продукция.Ссылка.Статус) КАК ЗаказНаПроизводствоСтатус,
-                ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЗаказНаПроизводство2_2Продукция.Ссылка.Ссылка)) КАК ЗаказНаПроизводство_ref,
-                ПРЕДСТАВЛЕНИЕ(ЗаказНаПроизводство2_2Продукция.Номенклатура) КАК Номенклатура,
-                ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЗаказНаПроизводство2_2Продукция.Номенклатура.Ссылка)) КАК Номенклатура_ref,
-                "" as КПЛ
-            ИЗ
-                Документ.ЗаказКлиента КАК ЗаказКлиента
-                    ЛЕВОЕ СОЕДИНЕНИЕ Документ.ЗаказНаПроизводство2_2.Продукция КАК ЗаказНаПроизводство2_2Продукция
-                    ПО (ЗаказНаПроизводство2_2Продукция.Ссылка.ДокументОснование = ЗаказКлиента.Ссылка)
-            ГДЕ
-                ЗаказКлиента.ПометкаУдаления = ЛОЖЬ
-                И ЗаказКлиента.Проведен = ИСТИНА
-                И ЗаказКлиента.Организация = &Организация
-                И ЗаказКлиента.Дата >= {F.datetostr(self._date_start,"ДАТАВРЕМЯ(%Y, %m, %d, %H, %M, %S)")}
-                И НЕ
-                (ЗаказКлиента.Статус = ЗНАЧЕНИЕ(Перечисление.СтатусыЗаказовКлиентов.Закрыт) 
-                ИЛИ ЗаказКлиента.Статус = ЗНАЧЕНИЕ(Перечисление.СтатусыЗаказовКлиентов.НеСогласован))
+        #ЗаказКлиентаАвтор
+        wet_req_text = f"""
+                
+                ВЫБРАТЬ
+                    ЗаказКлиента.Ссылка.Номер КАК ЗаказКлиента,
+                    ЗаказКлиента.Автор.Наименование КАК АвторНаименование,
+                    ЗаказКлиента.Ссылка.Дата КАК ЗаказКлиентаДата,
+                    ПРЕДСТАВЛЕНИЕ(ЗаказКлиента.Статус) КАК ЗаказКлиентаСтатус,
+                    ВЫБОР
+                        КОГДА НЕ ЗаказКлиента.Ссылка.Проведен
+                            ТОГДА ПРЕДСТАВЛЕНИЕ(ЗНАЧЕНИЕ(Перечисление.СостоянияЗаказовКлиентов.ПустаяСсылка))
+                        ИНАЧЕ ЕСТЬNULL(ПРЕДСТАВЛЕНИЕ(СостоянияЗаказовКлиентов.Состояние), ПРЕДСТАВЛЕНИЕ(ЗНАЧЕНИЕ(Перечисление.СостоянияЗаказовКлиентов.Закрыт)))
+                    КОНЕЦ КАК Состояние,
+                    ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЗаказКлиента.Ссылка)) КАК ЗаказКлиента_ref,
+                    ЗаказНаПроизводство2_2Продукция.Ссылка.Ссылка.Номер КАК ЗаказНаПроизводство,
+                    ЗаказНаПроизводство2_2Продукция.Ссылка.Дата КАК ЗаказНаПроизводствоДата,
+                    ПРЕДСТАВЛЕНИЕ(ЗаказНаПроизводство2_2Продукция.Ссылка.Статус) КАК ЗаказНаПроизводствоСтатус,
+                    ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЗаказНаПроизводство2_2Продукция.Ссылка.Ссылка)) КАК ЗаказНаПроизводство_ref,
+                    ПРЕДСТАВЛЕНИЕ(ЗаказНаПроизводство2_2Продукция.Номенклатура) КАК Номенклатура,
+                    ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЗаказНаПроизводство2_2Продукция.Номенклатура.Ссылка)) КАК Номенклатура_ref,
+                    "" КАК КПЛ,
+                    ПРЕДСТАВЛЕНИЕ(ЗаказНаПроизводство2_2Продукция.Спецификация) КАК Спецификация
+                ПОМЕСТИТЬ ВТ_по_ЗП
+                ИЗ
+                    Документ.ЗаказКлиента КАК ЗаказКлиента
+                        ЛЕВОЕ СОЕДИНЕНИЕ Документ.ЗаказНаПроизводство2_2.Продукция КАК ЗаказНаПроизводство2_2Продукция
+                        ПО (ЗаказНаПроизводство2_2Продукция.Ссылка.ДокументОснование = ЗаказКлиента.Ссылка)
+                        ЛЕВОЕ СОЕДИНЕНИЕ РегистрСведений.СостоянияЗаказовКлиентов КАК СостоянияЗаказовКлиентов
+                        ПО (СостоянияЗаказовКлиентов.Заказ = ЗаказКлиента.Ссылка)
+                ГДЕ
+                    ЗаказКлиента.ПометкаУдаления = ЛОЖЬ
+                    И ЗаказКлиента.Проведен = ИСТИНА
+                    И ЗаказКлиента.Организация = &Организация
+                    И ЗаказКлиента.Дата >= {F.datetostr(self._date_start,"ДАТАВРЕМЯ(%Y, %m, %d, %H, %M, %S)")}
+                    И НЕ(ЗаказКлиента.Статус = ЗНАЧЕНИЕ(Перечисление.СтатусыЗаказовКлиентов.Закрыт)
+                                ИЛИ ЗаказКлиента.Статус = ЗНАЧЕНИЕ(Перечисление.СтатусыЗаказовКлиентов.НеСогласован))
+                ;
+                
+                ////////////////////////////////////////////////////////////////////////////////
+                ВЫБРАТЬ
+                    ЗаказКлиента.Ссылка.Номер КАК ЗаказКлиента,
+                    ЗаказКлиента.Автор.Наименование КАК АвторНаименование,
+                    ЗаказКлиента.Ссылка.Дата КАК ЗаказКлиентаДата,
+                    ПРЕДСТАВЛЕНИЕ(ЗаказКлиента.Статус) КАК ЗаказКлиентаСтатус,
+                    ВЫБОР
+                        КОГДА НЕ ЗаказКлиента.Ссылка.Проведен
+                            ТОГДА ПРЕДСТАВЛЕНИЕ(ЗНАЧЕНИЕ(Перечисление.СостоянияЗаказовКлиентов.ПустаяСсылка))
+                        ИНАЧЕ ЕСТЬNULL(ПРЕДСТАВЛЕНИЕ(СостоянияЗаказовКлиентов.Состояние), ПРЕДСТАВЛЕНИЕ(ЗНАЧЕНИЕ(Перечисление.СостоянияЗаказовКлиентов.Закрыт)))
+                    КОНЕЦ КАК Состояние,
+                    ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЗаказКлиента.Ссылка)) КАК ЗаказКлиента_ref,
+                    ЗаказНаПроизводство2_2Продукция.Ссылка.Ссылка.Номер КАК ЗаказНаПроизводство,
+                    ЗаказНаПроизводство2_2Продукция.Ссылка.Дата КАК ЗаказНаПроизводствоДата,
+                    ПРЕДСТАВЛЕНИЕ(ЗаказНаПроизводство2_2Продукция.Ссылка.Статус) КАК ЗаказНаПроизводствоСтатус,
+                    ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЗаказНаПроизводство2_2Продукция.Ссылка.Ссылка)) КАК ЗаказНаПроизводство_ref,
+                    ПРЕДСТАВЛЕНИЕ(ЗаказНаПроизводство2_2Продукция.Номенклатура) КАК Номенклатура,
+                    ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЗаказНаПроизводство2_2Продукция.Номенклатура.Ссылка)) КАК Номенклатура_ref,
+                    "" КАК КПЛ,
+                    ПРЕДСТАВЛЕНИЕ(ЗаказНаСборку.Ссылка) КАК Ссылка,
+                    ПРЕДСТАВЛЕНИЕ(ЗаказНаПроизводство2_2Продукция.Спецификация) КАК Спецификация
+                ПОМЕСТИТЬ ВТ_по_ЗСБ
+                ИЗ
+                    Документ.ЗаказКлиента КАК ЗаказКлиента
+                        ЛЕВОЕ СОЕДИНЕНИЕ РегистрСведений.СостоянияЗаказовКлиентов КАК СостоянияЗаказовКлиентов
+                        ПО (СостоянияЗаказовКлиентов.Заказ = ЗаказКлиента.Ссылка)
+                        ЛЕВОЕ СОЕДИНЕНИЕ Документ.ЗаказНаСборку КАК ЗаказНаСборку
+                            ЛЕВОЕ СОЕДИНЕНИЕ Документ.ЗаказНаПроизводство2_2.Продукция КАК ЗаказНаПроизводство2_2Продукция
+                            ПО (ЗаказНаПроизводство2_2Продукция.Ссылка.ДокументОснование = ЗаказНаСборку.Ссылка)
+                        ПО (ЗаказНаСборку.ДокументОснование = ЗаказКлиента.Ссылка)
+                ГДЕ
+                    ЗаказКлиента.ПометкаУдаления = ЛОЖЬ
+                    И ЗаказКлиента.Проведен = ИСТИНА
+                    И ЗаказКлиента.Организация = &Организация
+                    И ЗаказКлиента.Дата >= {F.datetostr(self._date_start,"ДАТАВРЕМЯ(%Y, %m, %d, %H, %M, %S)")}
+                    И НЕ(ЗаказКлиента.Статус = ЗНАЧЕНИЕ(Перечисление.СтатусыЗаказовКлиентов.Закрыт)
+                                ИЛИ ЗаказКлиента.Статус = ЗНАЧЕНИЕ(Перечисление.СтатусыЗаказовКлиентов.НеСогласован))
+                ;
+                
+                ////////////////////////////////////////////////////////////////////////////////
+                ВЫБРАТЬ
+                    ВТ_по_ЗП.ЗаказКлиента КАК ЗаказКлиента,
+                    ВТ_по_ЗП.АвторНаименование КАК АвторНаименование,
+                    ВТ_по_ЗП.ЗаказКлиентаДата КАК ЗаказКлиентаДата,
+                    ВТ_по_ЗП.ЗаказКлиентаСтатус КАК ЗаказКлиентаСтатус,
+                    ВТ_по_ЗП.Состояние КАК Состояние,
+                    ВТ_по_ЗП.ЗаказКлиента_ref КАК ЗаказКлиента_ref,
+                    "" КАК ЗаказНаСборку,
+                    ВТ_по_ЗП.ЗаказНаПроизводство КАК ЗаказНаПроизводство,
+                    ВТ_по_ЗП.ЗаказНаПроизводствоДата КАК ЗаказНаПроизводствоДата,
+                    ВТ_по_ЗП.ЗаказНаПроизводствоСтатус КАК ЗаказНаПроизводствоСтатус,
+                    ВТ_по_ЗП.ЗаказНаПроизводство_ref КАК ЗаказНаПроизводство_ref,
+                    ВТ_по_ЗП.Номенклатура КАК Номенклатура,
+                    ВТ_по_ЗП.Спецификация КАК Спецификация,
+                    ВТ_по_ЗП.Номенклатура_ref КАК Номенклатура_ref,
+                    ВТ_по_ЗП.КПЛ КАК КПЛ
+                ИЗ
+                    ВТ_по_ЗП КАК ВТ_по_ЗП
+                
+                ОБЪЕДИНИТЬ ВСЕ
+                
+                ВЫБРАТЬ
+                    ВТ_по_ЗСБ.ЗаказКлиента,
+                    ВТ_по_ЗСБ.АвторНаименование,
+                    ВТ_по_ЗСБ.ЗаказКлиентаДата,
+                    ВТ_по_ЗСБ.ЗаказКлиентаСтатус,
+                    ВТ_по_ЗСБ.Состояние,
+                    ВТ_по_ЗСБ.ЗаказКлиента_ref,
+                    ВТ_по_ЗСБ.Ссылка,
+                    ВТ_по_ЗСБ.ЗаказНаПроизводство,
+                    ВТ_по_ЗСБ.ЗаказНаПроизводствоДата,
+                    ВТ_по_ЗСБ.ЗаказНаПроизводствоСтатус,
+                    ВТ_по_ЗСБ.ЗаказНаПроизводство_ref,
+                    ВТ_по_ЗСБ.Номенклатура,
+                    ВТ_по_ЗСБ.Спецификация,
+                    ВТ_по_ЗСБ.Номенклатура_ref,
+                    ВТ_по_ЗСБ.КПЛ
+                ИЗ
+                    ВТ_по_ЗСБ КАК ВТ_по_ЗСБ
+                
+                УПОРЯДОЧИТЬ ПО
+                    КПЛ,
+                    ЗаказНаПроизводствоДата,
+                    ЗаказКлиентаДата
                                     """
         refs = APIERP.Refs_wet(wet_req_text)
         ref_res = APIERP.Ref_wet('Организация', 'Справочники.Организации', key_org)
         refs.add_ref(ref_res)
 
         key, data_rez = APIERP.get_wet_request(wet_req_text, refs=refs)
-
+        F.gen_class(data_rez['data'],'SimpClsErpZP')
         if key == 200:
             self.erp_data = [SimpClsErpZP._from_dict(_) for _ in data_rez['data']]
         else:

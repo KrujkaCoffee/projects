@@ -9182,6 +9182,7 @@ def bonds_zp_kpl(self, data_nach, data_kon):
     DICT_ALIASES = {
         "ЗаказКлиента": "Заказ клиента",
         "ЗаказКлиентаДата": "ЗК Дата",
+        "ЗаказКлиентаАвтор": "ЗК Автор",
         "ЗаказКлиентаСтатус": "ЗК Статус",
         "ЗаказКлиента_ref": "_ЗаказКлиента_ref",
         "ЗаказНаПроизводство": "Заказ на производство",
@@ -9192,10 +9193,40 @@ def bonds_zp_kpl(self, data_nach, data_kon):
         "Номенклатура_ref": "_Номенклатура_ref",
         "КПЛ": "№ КПЛ"
     }
+
+    def fnc_dbl_click(t:CQT.TableContext,i:int,name_clmn:str,*args):
+        row = t.get_row(i)
+        ref = None
+        doc_name = None
+        if name_clmn == 'ЗаказКлиента':
+            ref = row.value('ЗаказКлиента_ref')
+            doc_name = 'Документ.ЗаказКлиента'
+        if name_clmn == 'ЗаказНаПроизводство':
+            ref = row.value('ЗаказНаПроизводство_ref')
+            doc_name = 'Документ.ЗаказНаПроизводство2_2'
+        if name_clmn == 'Номенклатура':
+             ref = row.value('Номенклатура_ref')
+             doc_name = 'Справочник.Номенклатура'
+        if not ref:
+            CQT.msgbox('Не найден документ')
+            return
+        APIERP.open_in_1c(ref,doc_name)
+        
+        pass
+
     def fnc_oform(tbl, *args):
         t = CQT.TableContext(tbl)
         t.tbl.setStyleSheet(CQT.MES_EDIT_CSS)
         t.hide_if_not_dev(CFG,True)
+        t.add_column_events('ЗаказКлиента',on_double_click=fnc_dbl_click)
+        t.set_color_font(*CMS.Colors.link_blue.rgb,col_name= 'ЗаказКлиента')
+        t.set_font_format('ЗаказКлиента',underline=True)
+        t.add_column_events('ЗаказНаПроизводство',on_double_click=fnc_dbl_click)
+        t.set_color_font(*CMS.Colors.link_blue.rgb, col_name= 'ЗаказНаПроизводство')
+        t.set_font_format('ЗаказНаПроизводство', underline=True)
+        t.add_column_events('Номенклатура',on_double_click=fnc_dbl_click)
+        t.set_color_font(*CMS.Colors.link_blue.rgb,col_name=  'Номенклатура')
+        t.set_font_format('Номенклатура', underline=True)
         for name_field in t.nf.keys():
             if t.width(name_field) > 500:
                 t.set_width(name_field,500)

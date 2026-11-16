@@ -1950,7 +1950,7 @@ class TableContext:
         for row in self.rows():
             row.set_color_background(r, g, b, a,col_name)
 
-    def set_font_format(self, col_name, size: int = 14, bold: bool = False,underline: bool = False,italic: bool = False,):
+    def set_font_format(self, col_name, size: int = 0, bold: bool = False,underline: bool = False,italic: bool = False,):
         for row in self.rows():
             row.set_font_format(size =size,bold=bold,underline=underline,italic=italic,col_name=col_name)
 
@@ -5378,6 +5378,7 @@ def add_check_box_switcher(table, i, j, val=False, conn_func_checked_row_col=Non
 
 
 def add_check_box(table, i, j, trisate=False, val=False, conn_func_checked_row_col='', self_obj=None, enabled=True,
+                  text:str= '',
                   **kwargs
                   ):
     if 'self' in kwargs:# 12.02.2026 Обратная совместимость / self=self_obj переименование
@@ -5386,7 +5387,8 @@ def add_check_box(table, i, j, trisate=False, val=False, conn_func_checked_row_c
     check.setTristate(trisate)
     check.setChecked(val)
     check.setEnabled(enabled)
-
+    if text:
+        check.setText(text)
     if conn_func_checked_row_col:
         if self_obj is None:
             check.clicked.connect(lambda checked, row=i, col=j: conn_func_checked_row_col(checked,row,col))

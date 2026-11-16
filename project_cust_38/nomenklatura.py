@@ -10,7 +10,6 @@ import project_cust_38.Cust_Qt as CQT
 import project_cust_38.Erp_connector_plan as ERP
 import project_cust_38.Cust_mes as CMS
 from project_cust_38 import Cust_emoji as CEMOJ
-import project_cust_38.api_erp_commands as APIERP
 import re
 
 db_mater = CMS.CFG_prj.db_nomen
@@ -48,27 +47,28 @@ class ExpensiveChecker(metaclass=SingletonMeta):
         'X': 'Х', 'Y': 'У',
     }
 
+    # Исходный перечень
+    EXPENSIVE_RAW = [
+        "10Х17Н13М2Т",
+        "AISI 316Ti",
+        "12Х18Н10Т",
+        "AISI 321",
+        "20Х23Н18",
+        "AISI 310S",
+        "03Х17Н14М3",
+        "AISI 316L",
+        "08Х17",
+        "AISI 430",
+        "БраЖ9-4",
+        "20Х20Н14С2",
+        "AISI 314",
+    ]
 
     # Пробелы, подчёркивания и все виды дефисов/тире/минусов
     _SEP_RE = re.compile(r'[\s_\-\u2010\u2011\u2012\u2013\u2014\u2015\u2212]+')
 
     def __init__(self):
-        text = f"""
-        ВЫБРАТЬ
-            MES_ПодстрокиПодбораДорогойНоменклатуры.Подстрока КАК Подстрока
-        ИЗ
-            Справочник.MES_ПодстрокиПодбораДорогойНоменклатуры КАК MES_ПодстрокиПодбораДорогойНоменклатуры
-        ГДЕ
-            MES_ПодстрокиПодбораДорогойНоменклатуры.ПометкаУдаления = ЛОЖЬ
-            """
-        code, data = APIERP.get_wet_request(text=text)
-        list_nomen = []
-        if code != 200:
-            CQT.msgbox(f'Запрос get_wet_request ExpensiveChecker в 1С ошибка {code}')
-            self.close()
-            return
-
-        self._expensive = set([_["Подстрока"] for _ in data['data']])
+        self._expensive = {self._normalize(x) for x in self.EXPENSIVE_RAW}
         pass
 
     @classmethod
@@ -100,7 +100,6 @@ class ExpensiveChecker(metaclass=SingletonMeta):
     def reclalc_db(self):
         data = CSQ.custom_request_c(db_mater,f"""SELECT Пномер, Наименование, expensive 
                     FROM nomen;""",rez_dict=True)
-        rezult_msg = []
         delta_exp = []
         delta_not_exp = []
         for it in data:
@@ -114,13 +113,13 @@ class ExpensiveChecker(metaclass=SingletonMeta):
             if CSQ.custom_request_c(db_mater,f"""UPDATE nomen 
             SET expensive = 1 where 
                 Пномер in ({CSQ.prepare_list_to_tuple(delta_exp)});"""):
-                rezult_msg.append({'#':1,'msg':f'Обновлено как дорогие {len(delta_exp)} номенклатур'})
+                print(f'Обновлено как дорогие {len(delta_exp)} номенклатур')
         if delta_not_exp:
             if CSQ.custom_request_c(db_mater,f"""UPDATE nomen 
             SET expensive = 0 where
                 Пномер in ({CSQ.prepare_list_to_tuple(delta_not_exp)});"""):
-                rezult_msg.append({'#':2,'msg':f'Обновлено как недорогие {len(delta_not_exp)} номенклатур'})
-        return rezult_msg
+                print(f'Обновлено как недорогие {len(delta_not_exp)} номенклатур')
+        return
 
 
 
