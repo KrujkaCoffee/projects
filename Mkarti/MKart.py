@@ -1780,10 +1780,9 @@ class mywindow(QtWidgets.QMainWindow):
         list_mk = CSQ.custom_request_c(self.bd_naryad, custom_request_c, rez_dict=True)
 
         for mk in list_mk:
-
             if mk['Тип'] == 1 and F.strtodate(mk['Дата'], "%y-%m-%d") > F.strtodate('2024-02-01'):
                 finish_otk_info_o = CMS.check_otk_after_proizv(mk['Пномер'])
-                if not finish_otk_info_o.is_any_done: # 14.04.2026 Если все операции текущего poki с пометкой is_coating покрыты ОТК
+                if not finish_otk_info_o.is_сhecked: # 14.04.2026 Если все операции текущего poki с пометкой is_coating покрыты ОТК
                     list_err.append([f'Не проведены финишный ОТК (Контр_покрытие_ФИО)',
                                      f'МК № {mk}, финишный контроль (обычно после покрытия, пассивирования, пескоструйной обработки)'])
                     set_not_ready_mk.add(int(mk['Пномер']))
@@ -6736,6 +6735,54 @@ SELECT
         sub_window = STRUCTCONSTR(self)
         sub_window.to_mk_ready.connect(on_data_from_child)
         sub_window.showMaximized()
+
+
+    def set_aliases_factory_sets(self):
+        t = CQT.TableContext(self.ui.table_spis_MK)
+        row = t.current_row()
+        if row.no_selection:
+            return
+        id_mk = int(row.value('Пномер'))
+        factory_set = CMS.FactorySets(id_mk)
+        tbl_aliases, aliases = factory_set.template_select_aliases()
+
+        def fnc_oform_tbl(tbl:CQT.QtWidgets.QTableWidget):
+            t_aliases = CQT.TableContext(tbl)
+            t_aliases.set_editable('alias')
+
+        def fnc_validate(t:CQT.TableContext):
+            dict_rez = dict()
+            for row in t.rows():
+                id_factory_set = int(row.value('id_factory_set'))
+                user_alias = row.value('alias')
+                dict_rez[id_factory_set] = user_alias
+            return dict_rez
+
+        rez = CQT.msgboxg_get_table(self,'Имена заводских комплектов',tbl_aliases,styleSheet=CQT.MES_EDIT_CSS,aliases_header=aliases,
+                                    func_oform_tbl=fnc_oform_tbl,show_filtr=False,func_validate_t=fnc_validate)
+        if not rez:
+            return
+        if factory_set.set_new_factory_set_user_aliases(rez):
+            CQT.msgbox('Имена заводских комплектов сохранены')
+            return
+        CQT.msgbox('Ошибка сохранения')
+
+    def show_knots(self,*args):
+        t = CQT.TableContext(self.ui.table_spis_MK)
+        row = t.current_row()
+        if row.no_selection:
+            return
+        id_mk = int(row.value('Пномер'))
+        fsets_o = CMS.FactorySets(id_mk)
+        data_fsets, data_info, aliases = fsets_o.template_show()
+
+        def fnc_oform_tbl(tbl: CQT.QTableWidget, *args):
+            t = CQT.TableContext(tbl)
+            t.hide_if_not_dev(CMS.CFG.Config, forced_text=True)
+
+        rez = CQT.msgboxg_get_table(self, 'Состояние по узлам', data_fsets, aliases_header=aliases,
+                                    func_oform_tbl=fnc_oform_tbl, dict_or_list_user_data=data_info,
+                                    styleSheet=CQT.MES_CSS)
 
 sys.argv += ['--no-sandbox']
 #app = QtWidgets.QApplication(sys.argv)

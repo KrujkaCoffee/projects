@@ -314,7 +314,8 @@ def btns(self: mywindow):
     ui.btn_apply_next_stage.clicked.connect(lambda: TTKZ.apply_next_stage(self))
     ui.btn_cutting_mngr.clicked.connect(self.open_cutting_mngr)
     ui.btn_vigruzka_from_constructor.clicked.connect(self.vigruzka_from_constructor_docs)
-
+    ui.btn_set_aliases_factory_sets.clicked.connect(self.set_aliases_factory_sets)
+    ui.btn_show_knots.clicked.connect(self.show_knots)
 
 
 def tabs(self: mywindow):
