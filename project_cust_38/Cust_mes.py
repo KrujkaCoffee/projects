@@ -3864,7 +3864,7 @@ class Techkards():
                 if path_docs == "":
                     path_docs = CFG.Config.project.mk_temp_folder  # 31.07.25
                 putf = path_docs + os.sep + nom_mk + os.sep + self.dse['Номер_техкарты'] + '_' + self.nn + '.pickle'
-            self.putf = putf
+            self.putf = self.resolve_path(putf)
             self.nom_mk = nom_mk
             self.path_docs = path_docs
             self.xl_formulas = CXLF.XlFormula()
@@ -4000,6 +4000,23 @@ class Techkards():
 
     def __repr__(self):
         return f'{str(self.dse)}, {len(self.active_tk.opers)} opers'
+
+    @staticmethod
+    def resolve_path(putf):
+        path = pathlib.Path(putf)
+        if path.is_file() or not path.parent.is_dir():
+            return putf
+        key = path.name.replace(' ', '_')
+        matches = [
+            p for p in path.parent.iterdir()
+            if p.name.replace(' ', '_') == key and p.is_file()
+        ]
+        if len(matches) > 1:
+            raise ValueError(
+                'Неоднозначное имя файла техкарты:\n' +
+                '\n'.join(p.name for p in matches)
+            )
+        return str(matches[0]) if matches else putf
 
     def get_dict_params(self) -> dict:
         rez = dict()
@@ -15097,6 +15114,7 @@ def resursnaya_from_cust_struktura(self, spis_dse, kol_vo_izdeliy=None, ruchnoi=
                 CQT.msgbox(f'Номер техкарты для {nn} {naim} не найден')
                 return
             putf = F.scfg('add_docs') + os.sep + nom_tk + "_" + nn + '.pickle'
+            putf = Techkards.resolve_path(putf)
             if F.existence_file_c(putf):
                 rez_tmp = dse_for_res(self, putf, kolvo_summ, npp, naim, nn, level_c_dse, pki, mat, ssil, prim,
                                       dreva_kod,

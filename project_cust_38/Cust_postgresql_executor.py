@@ -13,6 +13,7 @@ import os
 import pathlib
 import queue
 import random
+import logging
 import re
 import socket
 import sys
@@ -50,6 +51,8 @@ __all__ = [
     "shutdown_default_runtime",
 ]
 
+logger = logging.getLogger('PG_EXECUTOR')
+logger.setLevel(logging.DEBUG)
 
 RUNTIME_VERSION = "0.1.0-stage2"
 PROBE_SQL = "SELECT 123 AS mes_connection_probe"
@@ -61,6 +64,14 @@ _WRITE_STATEMENTS = frozenset(
 _SAFE_ISOLATION_LEVELS = frozenset({"READ COMMITTED", "REPEATABLE READ", "SERIALIZABLE"})
 _RTT_BUCKETS_MS = (5, 10, 25, 50, 100, 250, 500, 1000)
 
+_default_schemas = {
+    'DB_users': 'users',
+    'BD_users': 'users',
+    'BD_files': 'files',
+    'files': 'files'
+}
+
+os.environ['MES_PG_SCHEMA_MAP_JSON'] = json.dumps(_default_schemas)
 
 class PostgresRuntimeError(RuntimeError):
     """Базовая ошибка PostgreSQL runtime."""
@@ -508,13 +519,9 @@ class SchemaRegistry:
 
     def resolve(self, db_alias: Any) -> str:
         normalized = _normalize_db_alias(db_alias).casefold()
-        # schema = self._mapping.get(normalized)
-        # todo тестовый режим одной схемы
-        schema = "files_stage"
+        schema = self._mapping.get(normalized)
         if not schema:
-            raise SchemaResolutionError(
-                f"Для alias '{_normalize_db_alias(db_alias)}' не задана PostgreSQL-схема"
-            )
+            schema = 'public'
         return schema
 
     def resolve_many(self, main: Any, attached: tuple[Any, ...] | list[Any] | Any = ()) -> tuple[str, ...]:

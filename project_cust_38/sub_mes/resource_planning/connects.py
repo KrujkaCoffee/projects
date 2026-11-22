@@ -98,7 +98,6 @@ def check_mes_erp_link():
 
 
 def toggle_focus(new_focus):
-    check_mes_erp_link()
     DTSUB.sub_self.ui.fr_cont_event.setVisible(False)
     DTSUB.sub_self.ui.fr_cont_res.setVisible(False)
     if DTSUB.info_o:

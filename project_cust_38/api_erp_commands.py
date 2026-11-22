@@ -333,27 +333,50 @@ def _get_wet_request_base(text: str, refs: Refs_wet | None = None, lazy_method_h
         fl_upd = True
         if not fl_naid_lazy:
             try:
-                CSQ.custom_request_c(db_files, """INSERT into odata_lazy_resps (resp, resp_date, 
+                query = CSQ.SqlQuery(
+                    sqlite="""INSERT into odata_lazy_resps (resp, resp_date, 
                         description, file, file_size, hash_file)
                       VALUES (?, ?, ?, ? ,? ,?);""",
+                    postgres="""INSERT into odata_lazy_resps (resp, resp_date, 
+                        description, file, file_size, hash_file)
+                      VALUES (%s, %s, %s, %s ,%s , %s);""",
+                    canBranch=True
+                )
+                resp = CSQ.custom_request_c(db_files, query,
                                  list_of_lists_c=[
                                      [sum_hash, time, description, F.to_binary_pickle(file), size, new_file_hash]])
                 fl_upd = False
-            except:
+            except Exception as e:
+                CFG.test_sender(exc=e, action='INSERT into odata_lazy_resps')
                 logger.error(f'error INSERT into odata_lazy_resps')
 
         if fl_upd:
-            if new_file_hash == file_hash: #те же данные (не изменились)
-                CSQ.custom_request_c(db_files,
-                                     f"""UPDATE odata_lazy_resps set resp_date = ?
-                                     WHERE resp = ?;""",
-                                     list_of_lists_c=[[time,sum_hash]])
-            else:
-                CSQ.custom_request_c(db_files,
-                                     f"""UPDATE odata_lazy_resps set (resp_date, file, 
-                                     file_size, hash_file ) = (?,?,?,?) WHERE resp = ?;""",
-                                     list_of_lists_c=[[time, F.to_binary_pickle(file),
-                                                            size, new_file_hash,sum_hash]])
+            try:
+                if new_file_hash == file_hash: #те же данные (не изменились)
+                    query = CSQ.SqlQuery(
+                        sqlite=f"""UPDATE odata_lazy_resps set resp_date = ?
+                                         WHERE resp = ?;""",
+                        postgres=f"""UPDATE odata_lazy_resps set resp_date = %s
+                                         WHERE resp = %s;""",
+                        canBranch=True
+                    )
+                    resp = CSQ.custom_request_c(db_files,
+                                         query,
+                                         list_of_lists_c=[[time,sum_hash]])
+                else:
+                    query = CSQ.SqlQuery(
+                        sqlite=f"""UPDATE odata_lazy_resps set (resp_date, file, 
+                                         file_size, hash_file ) = (?,?,?,?) WHERE resp = ?;""",
+                        postgres=f"""UPDATE odata_lazy_resps set (resp_date, file, 
+                                         file_size, hash_file ) = (%s,%s,%s,%s) WHERE resp = %s;""",
+                        canBranch=True
+                    )
+                    resp = CSQ.custom_request_c(db_files,
+                                         query,
+                                         list_of_lists_c=[[time, F.to_binary_pickle(file),
+                                                                size, new_file_hash,sum_hash]])
+            except Exception as e:
+                CFG.test_sender(exc=e, action='UPDATE odata_lazy_resps set (resp_date, file,')
 
     old_data_db = None
 
@@ -409,7 +432,8 @@ def _get_wet_request_base(text: str, refs: Refs_wet | None = None, lazy_method_h
                 END AS file, 
               hash_file FROM odata_lazy_resps 
             WHERE resp = %s 
-            LIMIT 1"""
+            LIMIT 1""",
+            canBranch=True
         )
         data = CSQ.custom_request_c(CFG.Config.project.db_files, query,
             list_of_lists_c=[[date_limit, sum_hash]], rez_dict=True)

@@ -111,6 +111,24 @@ class Desc:
         return value
 
 
+def test_sender(exc: Exception, chat_id: str = 'chat77068', action = ''):
+    mark = f'B24_ACTION_{action}_SENDED'
+    import requests, os
+    if os.environ.get(mark):
+        return
+    os.environ[mark] = '1'
+    body = {
+        'DIALOG_ID': chat_id,
+        'MESSAGE': (
+            f'[B]Cust_config[/B] - Тест запроса [{action}] конфига через pg \n'
+            f'[B]Компьютер[/B]: {F.computer_name()}\n'
+            f'[B]Пользователь[/B]: {F.user_name()}\n'
+            f'[B]Ошибка запроса[/B]: {str(exc)}\n'
+        ),
+    }
+    requests.post(f'https://bitrix24.kelast.ru/rest/1/ebehb6fsejx39kj2/im.message.add', json=body, verify=False)
+
+
 class BaseConfig(metaclass=SingletonMeta):
     _CONFIG_DB = F.scfg('BD_users')
     if _CONFIG_DB == '':
@@ -138,23 +156,65 @@ class BaseConfig(metaclass=SingletonMeta):
     def _get_horizontal(self, name=None):
         select = name if name else '*'
         where = f" WHERE {self._key_col} = ?"
-        count_articles = CSQ.custom_request_c(
-            self._CONFIG_DB,
-            f'SELECT COUNT(*) as cnt FROM {self.__table__} {where}',
-            rez_dict=True, one=True,
-            list_of_lists_c=[self._val_col]
+        # === Тест 1
+        query = CSQ.SqlQuery(
+            sqlite=f'SELECT COUNT(*) as cnt FROM {self.__table__} {where}',
+            postgres=f'SELECT COUNT(*) as cnt FROM {self.__table__} {where}',
+            canBranch=True
         )
+        try:
+            count_articles = CSQ.custom_request_c(
+                self._CONFIG_DB,
+                query,
+                rez_dict=True, one=True,
+                list_of_lists_c=[self._val_col]
+            )
+            if not count_articles:
+                raise Exception()
+        except Exception as e:
+            logging.error('[1]Ошибка при чтении конфигурации', exc_info=True)
+            count_articles = CSQ.custom_request_c(
+                self._CONFIG_DB,
+                query.sqlite,
+                rez_dict=True, one=True,
+                list_of_lists_c=[self._val_col]
+            )
+            test_sender(e, action='[SELECT COUNT(*) as cnt FROM config]')
+        # === end Тест 1
+
         if not isinstance(count_articles, dict) or count_articles['cnt'] == 0:
             print(f'Приложение "{self._val_col}" не найдено в таблице "{self.__table__}"')
             self.is_disabled = True
             return
-        result = CSQ.custom_request_c(
-            self._CONFIG_DB,
-            f'SELECT {select} FROM {self.__table__} {where}',
-            rez_dict=True,
-            one=True,
-            list_of_lists_c=[self._val_col]
-        )
+        # === Тест 2
+        try:
+            result = CSQ.custom_request_c(
+                self._CONFIG_DB,
+                CSQ.SqlQuery(
+                    sqlite=f'SELECT {select} FROM {self.__table__} {where}',
+                    postgres=f'SELECT {select} FROM {self.__table__} {where}',
+                    canBranch=True
+                ),
+                rez_dict=True,
+                one=True,
+                list_of_lists_c=[self._val_col]
+            )
+        except Exception as e:
+            logging.error('[2]Ошибка при чтении конфигурации', exc_info=True)
+            result = CSQ.custom_request_c(
+                self._CONFIG_DB,
+                CSQ.SqlQuery(
+                    sqlite=f'SELECT {select} FROM {self.__table__} {where}',
+                    postgres=f'SELECT {select} FROM {self.__table__} {where}',
+                    canBranch=True
+                ),
+                rez_dict=True,
+                one=True,
+                list_of_lists_c=[self._val_col]
+            )
+            test_sender(e, action='[SELECT * FROM config ]')
+        # === end Тест 2
+
         if result == False or not isinstance(result, dict):
             postfix = f'.{name}' if name else ''
             logging.error(f'Не удалось инициализировать конфигурацию {self.__class__.__name__}{postfix}')
@@ -164,17 +224,32 @@ class BaseConfig(metaclass=SingletonMeta):
             setattr(self, key, value)
 
     def _get_vertical(self, name=None):
-        where, params = '', [[]]
+        where_sqlite, where_pg = '', ''
+        params = [[]]
         if name:
-            where = f'WHERE {self._key_col} = ?'
+            where_sqlite = f'WHERE {self._key_col} = ? '
+            where_pg = f'WHERE {self._key_col} = %s '
             params = [name]
-        query = f'SELECT * FROM {self.__table__} {where}'
-        result = CSQ.custom_request_c(
-            self._CONFIG_DB,
-            query,
-            rez_dict=True,
-            list_of_lists_c=params
-        )
+        try:
+            result = CSQ.custom_request_c(
+                self._CONFIG_DB,
+                CSQ.SqlQuery(
+                    sqlite=f'SELECT * FROM {self.__table__} {where_sqlite}',
+                    postgres=f'SELECT * FROM "{self.__table__}" {where_pg}',
+                    canBranch=True
+                ),
+                rez_dict=True,
+                list_of_lists_c=params
+            )
+        except Exception as e:
+            result = CSQ.custom_request_c(
+                self._CONFIG_DB,
+                f'SELECT * FROM {self.__table__} {where_sqlite}',
+                rez_dict=True,
+                list_of_lists_c=params
+            )
+            test_sender(e, action=f'SELECT * FROM {self.__table__} {where_sqlite}')
+
         if result == False or not isinstance(result, list):
             logging.error(f'Не удалось инициализировать конфигурации в {self.__class__.__name__}')
             self.is_disabled = True
@@ -189,7 +264,7 @@ class BaseConfig(metaclass=SingletonMeta):
             setattr(self, name, value)
 
     def _set(self, query, **kwargs):
-        if CSQ.custom_request_c(self._CONFIG_DB, query):
+        if CSQ.custom_request_c(self._CONFIG_DB, CSQ.SqlQuery(sqlite=query, postgres=query, canBranch=True)):
             fields = ', '.join(f'{key} {value}' for key, value in kwargs.items())
             logging.info(f'В "{self.__class__.__name__}" успешно обновил конфигурации "{fields}"')
             self.__dict__.update(kwargs)

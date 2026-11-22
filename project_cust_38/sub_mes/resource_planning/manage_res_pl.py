@@ -617,6 +617,57 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
                             row.set_value('Значение',text_value)
                             lbl.set_text(text_value)
 
+                    def fnc_select_erp_entity(lbl:CQT.InteractiveLabelInstance,sub_self,i,j,row:CQT.TableRow,
+                                              target_attr:CLSS._Attribute=attr):
+                        try:
+                            if target_attr.info.protected:
+                                CQT.msgbox('Поле защищено от изменения')
+                                return
+                            target_type = target_attr.info.type
+                            entity_key = DTSUB.custom_types.get_full_type_name(target_type, drop_base=True)
+                            if not entity_key.startswith('Документы.'):
+                                CQT.msgbox('Ручной выбор пока поддерживается для документов ERP')
+                                return
+                            binding = AB.AttributeBindingManager().get_binding(target_attr.info)
+                            source_key = f'api_erp:{CFG.Config.user_config.ERP_base.name}'
+                            field = AB.BindingField(
+                                provider=AB.SourceProvider.ERP,
+                                source_key=source_key,
+                                entity_key=entity_key,
+                                field_key='Номер',
+                                presentation_key='Номер'
+                            )
+                            from project_cust_38 import api_erp_commands as APIERP
+                            service = PERP.ErpEntityService(
+                                APIERP, lambda: f'api_erp:{CFG.Config.user_config.ERP_base.name}'
+                            )
+                            current_value = row.value('Значение', get_cust_content=True)
+                            current_ref = getattr(current_value, 'reference', None)
+                            result = PERP.select_erp_entity(
+                                DTSUB.sub_self, service, field, current=current_ref
+                            )
+                            if not result.accepted:
+                                return
+                            if result.reference is None:
+                                CQT.msgbox('Запись ERP не выбрана. Значение поля сохранено')
+                                return
+                            reference = (
+                                service.read(result.reference) if binding is None
+                                else service.read_bound(result.reference, binding)
+                            )
+                            if reference is None:
+                                CQT.msgbox('Выбранная запись ERP не найдена. Значение поля сохранено')
+                                return
+                            new_value = target_type(reference)
+                            text_value = str(new_value)
+                        except Exception as exc:
+                            CQT.msgbox(f'Не удалось выбрать запись ERP: {exc}')
+                            return
+                        with CQT.table_updating(t, hide_table=False):
+                            row.set_value('Значение', new_value, set_cust_content=True)
+                            row.set_value('Значение', text_value)
+                            lbl.set_text(text_value)
+
                     def fnc_fill_by_link(
                             lbl: CQT.InteractiveLabelInstance, sub_self, i, j,
                             row: CQT.TableRow, target_attr: CLSS._Attribute=attr):
@@ -697,6 +748,11 @@ class Plwindow(CQT.QtWidgets.QMainWindow):
                     if issubclass(type_attr, CLSS.Mes_type):
                         widg.add_button(
                             '...','Выбрать сущность МЕС', fnc_select_mes_entity, cell_val=row_mes,
+                            img_path=F.sep().join([F.path_to_caller_file_c(),'icons','btn_select'])
+                        )
+                    if issubclass(type_attr, CLSS.Erp_type) and not attr.info.protected:
+                        widg.add_button(
+                            '...','Выбрать запись ERP', fnc_select_erp_entity, cell_val=row_mes,
                             img_path=F.sep().join([F.path_to_caller_file_c(),'icons','btn_select'])
                         )
                     if getattr(attr.info, 'catalog_link_spec', None) and not attr.info.protected:

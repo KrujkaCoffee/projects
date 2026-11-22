@@ -126,18 +126,55 @@ class OrdersComposit():
             size = sys.getsizeof(file)
             new_hash  = hashlib.md5(F.to_binary_pickle(file)).hexdigest()
             if fl_naid_lazy == None:
-                CSQ.custom_request_c(db_files, """INSERT into odata_lazy_resps (resp, resp_date, description, file, file_size, hash_file)
+                query = CSQ.SqlQuery(
+                    sqlite="""INSERT into odata_lazy_resps (resp, resp_date, description, file, file_size, hash_file)
                           VALUES (?, ?, ?, ? ,? ,?);""",
-                                     list_of_lists_c=[[url_hash, F.now(), description, F.to_binary_pickle(file), size, new_hash]])
+                    postgres="""INSERT OR UPDATE odata_lazy_resps (resp, resp_date, description, file, file_size, hash_file)
+                          VALUES (%s, %s, %s, %s ,%s ,%s);""",
+                    canBranch=True
+                )
+                try:
+                    resp = CSQ.custom_request_c(
+                        db_files,
+                        query,
+                        list_of_lists_c=[[url_hash, F.now(), description, F.to_binary_pickle(file), size, new_hash]]
+                    )
+                except Exception as e:
+                    CFG.test_sender(exc=e, action='UPDATE odata_lazy_resps set (resp_date, file, file_size, hash_file ) = (?,?,?,?)')
             else:
                 if new_hash == file_hash:
-                    CSQ.custom_request_c(db_files,
-                    f"""UPDATE odata_lazy_resps set (resp_date ) = (?) WHERE s_num == {fl_naid_lazy};""",
-                    list_of_lists_c=[[F.now()]])
+                    query = CSQ.SqlQuery(
+                        sqlite=f"""UPDATE odata_lazy_resps set (resp_date ) = (?) WHERE s_num == {fl_naid_lazy};""",
+                        postgres=f"""UPDATE odata_lazy_resps SET resp_date = %s WHERE s_num = {fl_naid_lazy};""",
+                        canBranch=True
+                    )
+                    try:
+                        resp = CSQ.custom_request_c(
+                            db_files,
+                            query,
+                            list_of_lists_c=[[F.now()]]
+                        )
+                    except Exception as e:
+                        CFG.test_sender(exc=e, action='UPDATE odata_lazy_resps set (resp_date ) = (?)')
                 else:
-                    CSQ.custom_request_c(db_files,
-                    f"""UPDATE odata_lazy_resps set (resp_date, file, file_size, hash_file ) = (?,?,?,?) WHERE s_num == {fl_naid_lazy};""",
-                    list_of_lists_c=[[F.now(), F.to_binary_pickle(file),size,new_hash]])
+                    query = CSQ.SqlQuery(
+                        sqlite=f"""UPDATE odata_lazy_resps set (resp_date, file, file_size, hash_file ) = (?,?,?,?) WHERE s_num == {fl_naid_lazy};""",
+                        postgres=f"""
+                            UPDATE odata_lazy_resps 
+                            SET 
+                                resp_date = %s, 
+                                file = %s, 
+                                file_size = %s, 
+                                hash_file = %s
+                            WHERE s_num = {fl_naid_lazy};""",
+                        canBranch=True
+                    )
+                    try:
+                        resp = CSQ.custom_request_c(db_files,
+                        query,
+                        list_of_lists_c=[[F.now(), F.to_binary_pickle(file),size,new_hash]])
+                    except Exception as e:
+                        CFG.test_sender(exc=e, action='UPDATE odata_lazy_resps set (resp_date, file, file_size, hash_file ) = (?,?,?,?)')
         
         headers = self.headers
         params = self.params
@@ -148,14 +185,32 @@ class OrdersComposit():
         if lazy_method_huours > 0 and db_files != None:
             now_date = F.now('')
             date_limit = F.date_add_time(now_date,hours=-lazy_method_huours)
-            data = CSQ.custom_request_c(db_files,f"""SELECT s_num, resp_date,
+            query = CSQ.SqlQuery(
+                sqlite=f"""SELECT s_num, resp_date,
             CASE WHEN datetime(resp_date) >= datetime('{date_limit}')  
         THEN file 
         ELSE null  
         END AS file, 
              
               hash_file FROM odata_lazy_resps 
-            where resp = '{url_hash}' limit 1""",rez_dict=True)
+            where resp = '{url_hash}' limit 1""",
+                postgres=f"""
+                SELECT 
+                    s_num, 
+                    resp_date,
+                    CASE WHEN resp_date::timestamp >= '{date_limit}'::timestamp  
+        THEN file 
+        ELSE null  
+        END AS file, 
+             
+              hash_file FROM odata_lazy_resps 
+            where resp = '{url_hash}' limit 1""",
+                canBranch=True
+            )
+            try:
+                data = CSQ.custom_request_c(db_files,query,rez_dict=True)
+            except Exception as e:
+                CFG.test_sender(exc=e, action='select hash_file FROM odata_lazy_resps ')
             if len(data):
                 fl_naid_lazy = data[0]['s_num']
                 file_hash_lazy = data[0]['hash_file']

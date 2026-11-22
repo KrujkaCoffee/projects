@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'C:\Python\cust_modules\project_cust_38\sub_mes\product_structure_constructor\constructor_ui.ui'
+# Form implementation generated from reading ui file 'C:\Users\A.A.Fedorov\MES\ideal_context\project_cust_38\sub_mes\product_structure_constructor\constructor_ui.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.11
 #
