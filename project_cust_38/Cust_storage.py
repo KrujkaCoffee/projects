@@ -45,21 +45,32 @@ class BaseStorage:
             print(e)
 
     def _get_file_by_hash(self, hash_hex: str, size: int):
-        custom_request_c = f"""
+        query = CSQ.SqlQuery(
+            sqlite=f"""
             SELECT * 
             FROM reestr 
-            WHERE size = {size} and hesh = ? ;"""
-        query = CSQ.custom_request_c(
+            WHERE size = {size} and hesh = ? ;""",
+            postgres=f"""
+            SELECT * 
+            FROM "reestr" 
+            WHERE "size" = %s and "hesh" = %s ;""",
+            canBranch=True
+        )
+        return CSQ.custom_request_c(
             self.db_files,
-            custom_request_c,
+            query,
             rez_dict=True,
             one=True,
-            list_of_lists_c=[hash_hex]
+            list_of_lists_c=[size, hash_hex]
         )
-        return query
 
     def _get_file_info(self, by_value: str, by_attr: str = 'name', many: bool = False):
-        custom_request_c = f"""SELECT * FROM names WHERE {by_attr} = ?"""
+        custom_request_c = f"""SELECT * FROM "names" WHERE {by_attr} = ?"""
+        CSQ.SqlQuery(
+            sqlite=f"""SELECT * FROM "names" WHERE {by_attr} = ?""",
+            postgres=f"""SELECT * FROM "names" WHERE {by_attr} = %s;""",
+            canBranch=True
+        )
         return CSQ.custom_request_c(self.db_files, custom_request_c,
                                     rez_dict=True, one=not many,
                                     list_of_lists_c=[by_value])

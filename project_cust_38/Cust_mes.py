@@ -643,6 +643,331 @@ class FactorySets:
         return True
 
 #======================================Заводские комплекты======================================================
+#========================================RELATIONS===============================================================
+
+class SimpClsRelation_kpl(F._SimpMeta):
+    id: int
+    parent_kpl: int
+    child_kpl: int
+    client_order_child_ref:str
+    etap_id:int
+
+class SimpClsRelations_zk(F._SimpMeta):
+    id: int
+    parent_ref: str
+    child_ref: str
+    parent_name: str
+    child_name: str
+
+
+class ZkRelations():
+    EMO_CHILD = '└─'
+    EMO_PARENT = '⊞┐'
+    EMO_CURRENT = '🔹'
+    EMO_NOT_SELECTED = CEMOJ.СтатусыПроизводства.alert.symbol
+    EMO_TAB = '    '
+
+    DICT_ALIASES = {
+        "parent_name": "ЗаказКлиентаЗаказчика",
+        "parent_ref": "_parent_ref",
+        "СделкаЗаказчика": "СделкаЗаказчика",
+        "child_name": "ЗаказКлиента",
+        "child_ref": "_child_ref",
+        "Сделка": "Сделка",
+        "relate_kpl": "Cвязанный КПЛ",
+        "etap": "Процесс в этап",
+        "client_order_ref": "_client_order_ref",
+        
+    }
+    
+    def __init__(self):
+        self.dict_zk_parents:dict[int,list[SimpClsRelation_row]] = dict()
+        self.dict_zk_childs:dict[int,SimpClsRelation_row] = dict()
+        self.dict_kpl_parents:dict[int,list[SimpClsRelation_kpl]] = dict()
+        self.dict_kpl_childs:dict[int,SimpClsRelation_kpl] = dict()
+        self.current_kpl:int|None = None
+        self.current_zk_ref:str|None = None
+
+    @property
+    def has_zk(self)->bool:
+        if self.current_zk_ref is not None:
+            return True
+        return False
+
+    def set_current_kpl(self,curent_kpl:int|None=None):
+        self.current_kpl = curent_kpl
+        self.current_zk_ref = None
+        if self.current_kpl is not None:
+            self.current_zk_ref = CSQ.custom_request_c(CFG_prj.db_kplan,
+                                                       f"""SELECT знпр.client_order_Key FROM знпр
+            INNER JOIN "пл_оуп" ON "знпр".s_num == "пл_оуп"."Пномер_ЗП" WHERE "пл_оуп".НомПл = {self.current_kpl}""",
+                                 one_column=True,one=True,hat_c=False)
+
+    def ______________KPL_MANAGE_______________(self):pass
+
+    def set_child_etap(self, child_kpl:int,etap:int)->bool:
+
+        if self.current_kpl in self.dict_kpl_parents and child_kpl in self.dict_kpl_childs:
+            rez = CSQ.custom_request_c(CFG_prj.db_kplan, f"""UPDATE kpl_relations SET etap_id = ? 
+            WHERE parent_kpl = ? AND child_kpl = ?""", list_of_lists_c=[[etap,self.current_kpl,child_kpl]])
+        else:
+            rez =CSQ.custom_request_c(CFG_prj.db_kplan,
+               f"""INSERT INTO kpl_relations (parent_kpl,child_kpl,etap_id) VALUES (?,?,?)
+                """,list_of_lists_c=[[self.current_kpl,child_kpl,etap]])
+        if not rez:
+            return False
+        self._reload_kpl_relations()
+        return True
+
+    def set_child_kpl(self,child_kpl:int)->bool:
+        rez =CSQ.custom_request_c(CFG_prj.db_kplan,
+           f"INSERT INTO kpl_relations (parent_kpl,child_kpl) VALUES (?,?)",list_of_lists_c=[[self.current_kpl,child_kpl]])
+        if not rez:
+            return False
+        self._reload_kpl_relations()
+        return True
+
+
+    def template_not_selected_relate_kpl(self,ref_zk_child:str)->tuple[list[dict],list[dict],dict]:
+        data_child_kpl = CSQ.custom_request_c(CFG_prj.db_kplan,f"""
+                SELECT "пл_оуп"."НомПл" as "КПЛ", "знпр"."№ERP" as  "ЗП","знпр"."№проекта" as  "Проект",  
+                "пл_оуп"."Номенклатура_ЕРП", 
+                plan."Позиция", 
+                "пл_оуп"."Количество", "пл_оуп"."Примечание"  FROM "пл_оуп" 
+                 INNER JOIN plan ON plan."Пномер" == "пл_оуп"."НомПл"
+                 INNER JOIN "знпр" ON "знпр".s_num == "пл_оуп"."Пномер_ЗП"
+                 WHERE "знпр".client_order_Key == '{ref_zk_child}'
+                """,rez_dict=True)
+        data_free_child_kpl = [_ for _ in data_child_kpl if _["КПЛ"] not in self.dict_kpl_childs.keys()]
+
+        return data_free_child_kpl,data_free_child_kpl,self.DICT_ALIASES
+
+    def ______________LOAD_MANAGE_______________(self):pass
+
+
+    def _sync(self):
+        wet_req_text = f"""
+                            ВЫБРАТЬ
+                                ПРЕДСТАВЛЕНИЕ(ЗаказКлиентаЗаказчика.Ссылка) КАК parent_name,
+                                ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЗаказКлиентаЗаказчика.Ссылка)) КАК parent_ref,
+                                ПРЕДСТАВЛЕНИЕ(ЗаказКлиента.Ссылка) КАК child_name,
+                                ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЗаказКлиента.Ссылка)) КАК child_ref
+                            ИЗ
+                                Документ.ЗаказКлиента КАК ЗаказКлиентаЗаказчика
+                                    ВНУТРЕННЕЕ СОЕДИНЕНИЕ Документ.ЗаказКлиента КАК ЗаказКлиента
+                                    ПО (ЗаказКлиента.MES_СделкаЗаказчика = ЗаказКлиентаЗаказчика.Сделка)
+                            ГДЕ
+                                НЕ ЗаказКлиентаЗаказчика.Статус = ЗНАЧЕНИЕ(Перечисление.СтатусыЗаказовКлиентов.Закрыт) и
+                                НЕ ЗаказКлиента.MES_СделкаЗаказчика = ЗНАЧЕНИЕ(Справочник.СделкиСКлиентами.ПустаяСсылка)
+                        """
+        key, data_rez = APIERP.get_wet_request(wet_req_text, lazy_method_huours=1)
+        if key != 200:
+            CQT.msgbox(f'Ошибка получения данных fill_relations код ({key}) из ERP')
+            return
+
+        self._check_upd_db(data_rez['data'])
+
+
+    def get_data_mes(self,set_parents:None|set[str]=None):
+        where = ''
+        lazy_method_hours = 0.5
+        if set_parents:
+            where = f""" WHERE parent_ref in ({CSQ.prepare_list_to_tuple(set_parents)})"""
+            lazy_method_hours = 0
+        data_mes = CSQ.custom_request_c(CFG_prj.db_kplan, f"""SELECT 
+                            id,
+                    parent_ref,
+                    child_ref,
+                    parent_name,
+                    child_name
+                    FROM zk_relations{where};
+                    """, rez_dict=True,lazy_method_hours=lazy_method_hours)
+        return data_mes
+
+    def _reload_kpl_relations(self):
+        data_rel = CSQ.custom_request_c(CFG_prj.db_kplan, f"""SELECT 
+        kpl_relations.*, "знпр".client_order_Key as client_order_child_ref FROM kpl_relations
+        INNER JOIN "пл_оуп" ON "пл_оуп"."НомПл" = kpl_relations.child_kpl
+        INNER JOIN "знпр" ON "знпр".s_num = "пл_оуп"."Пномер_ЗП"
+        ;""",rez_dict=True)
+        data_rel_o = [SimpClsRelation_kpl._from_dict(_) for _ in data_rel]
+        self.dict_kpl_parents = F.grouping_list_dicts(data_rel_o, 'parent_kpl')
+        self.dict_kpl_childs = F.deploy_dict_c(data_rel_o, 'child_kpl')
+        pass
+
+
+    def load_mes(self):
+        self._reload_kpl_relations()
+        data_mes = self.get_data_mes()
+        data_mes_o = [SimpClsRelations_zk._from_dict(_) for _ in data_mes]
+        self.dict_zk_parents = F.grouping_list_dicts(data_mes_o, 'parent_ref')
+        self.dict_zk_childs = F.deploy_dict_c(data_mes_o, 'child_ref')
+        pass
+
+    def load(self,sync:bool = False):
+        if sync:
+            self._sync()
+        self.load_mes()
+
+
+    def _check_upd_db(self,_raw_zk_erp:list[dict]):
+
+        set_parents = set([_['parent_ref'] for _ in _raw_zk_erp])
+        data_mes = self.get_data_mes(set_parents)
+
+        if len(_raw_zk_erp) == len(data_mes):
+            return
+
+        CSQ.custom_request_c(CFG_prj.db_kplan, f"""DELETE FROM zk_relations WHERE 
+            parent_ref in ({CSQ.prepare_list_to_tuple(set_parents)});"""
+                    )
+
+        data_to_add = [[_['parent_ref'],
+                        _['child_ref'],
+                        _['parent_name'],
+                        _['child_name']] for _ in  _raw_zk_erp]
+        if data_to_add:
+            CSQ.custom_request_c(CFG_prj.db_kplan, f"""INSERT INTO zk_relations (parent_ref,
+                child_ref,
+                parent_name,
+                child_name) VALUES ({CSQ.questions_for_mask(data_to_add[0])});""",
+                        list_of_lists_c=data_to_add)
+
+
+    def is_parent(self,ref:str)->bool:
+        return ref in self.dict_zk_parents.keys()
+
+    def is_child(self,ref:str)->bool:
+        return ref in self.dict_zk_childs.keys()
+
+    def get_childs_kpl(self,kpl)->list[SimpClsRelation_kpl]|None:
+        if kpl in self.dict_kpl_parents:
+            return self.dict_kpl_parents[kpl]
+
+    def get_parent_kpl(self,kpl)->SimpClsRelation_kpl|None:
+        if kpl in self.dict_kpl_childs:
+            return self.dict_kpl_childs[kpl]
+
+
+    def ui_str(self,ref:str,kpl:int):
+        fl_parent = self.is_parent(ref)
+        fl_child = self.is_child(ref)
+        fl_not_selected = False
+        if fl_parent:
+            childs = self.get_childs_kpl(kpl)
+            childs_refs = self.dict_zk_parents[ref]
+
+            if childs is None or len(childs) != len(childs_refs):
+                fl_not_selected = True
+            else:
+                for child in childs:
+                    if child.etap_id is None:
+                        fl_not_selected = True
+                        break
+
+
+        result = ''
+
+        if fl_parent and fl_child:
+            result = f'{self.EMO_CHILD}{self.EMO_CURRENT}{self.EMO_PARENT}'
+        if fl_child:
+            result = f'{self.EMO_CHILD}{self.EMO_CURRENT}'
+        if fl_parent:
+            result = f'{self.EMO_CURRENT}{self.EMO_PARENT}'
+        return result + self.EMO_NOT_SELECTED if fl_not_selected else result
+    
+    def template(self)->tuple[list[dict],list[dict],dict]:
+
+        client_order_ref = self.current_zk_ref
+        kpl = self.current_kpl
+
+        data_results_parents = []
+        data_results_current = []
+        data_results_childs = []
+        results_parents = []
+        results_current = []
+        results_childs = []
+        name_current = ''
+
+        class TypeRow(str):
+            parent = 'parent'
+            child = 'child'
+            current = 'current'
+
+        def add_row(results:list[dict],data_results:list[dict] ,
+                    type_row:TypeRow,client_order_ref:str,child_name:str,
+                    relate_kpl:int|None=None,etap:int|None=None)->tuple[list[dict],list[dict]]:
+
+            if type_row == TypeRow.parent:
+                str_type =   self.EMO_PARENT+ self.EMO_TAB*2
+                pref_name = ''
+            if type_row == TypeRow.child:
+                str_type =   self.EMO_TAB*2 + self.EMO_CHILD
+                pref_name = self.EMO_TAB*2
+            if type_row == TypeRow.current:
+                str_type =   self.EMO_TAB+self.EMO_CURRENT
+                pref_name = self.EMO_TAB
+            results.append({'': str_type,
+                                    'client_order_ref': client_order_ref,
+                                    'child_name': pref_name + child_name,
+                                    'relate_kpl': "" if relate_kpl is None else str(relate_kpl),
+                                    'etap': "" if etap is None else str(etap),
+                                    })
+
+            data_results.append({'': type_row,
+                                    'client_order_ref': client_order_ref,
+                                    'child_name': child_name,
+                                    'relate_kpl': relate_kpl,
+                                    'etap': etap,
+                                    })
+
+
+            return results, data_results
+
+        if self.is_child(client_order_ref):
+
+            parent = self.dict_zk_childs.get(client_order_ref)
+            if parent:
+                if not name_current:
+                    name_current=parent.child_name
+
+                parent_kpl_val = None
+                etap_kpl_val = None
+                parent_kpl = self.get_parent_kpl(kpl)
+                if parent_kpl:
+                    parent_kpl_val = parent_kpl.parent_kpl
+                    etap_kpl_val = parent_kpl.etap_id
+
+                results_parents,data_results_parents = add_row(results_parents,data_results_parents,TypeRow.parent,
+                                                               parent.parent_ref,parent.parent_name,
+                                                               parent_kpl_val,etap_kpl_val)
+
+
+        if self.is_parent(client_order_ref):
+            childs = self.dict_zk_parents[client_order_ref]
+            for child in childs:
+                if not name_current:
+                    name_current=child.parent_name
+                child_kpl_val = None
+                etap_kpl_val = None
+                childs_kpl = self.get_childs_kpl(kpl)
+                if childs_kpl:
+                    for child_kpl_o in childs_kpl:
+                        if child_kpl_o.client_order_child_ref == child.child_ref:
+                            child_kpl_val = child_kpl_o.child_kpl
+                            etap_kpl_val = child_kpl_o.etap_id
+                            break
+                results_childs, data_results_childs = add_row(results_childs, data_results_childs, TypeRow.child,
+                                                              child.child_ref, child.child_name,
+                                                                child_kpl_val, etap_kpl_val)
+
+        results_current, data_results_current = add_row(results_current, data_results_current,TypeRow.current,
+                                                        client_order_ref, name_current)
+
+        results = results_parents + results_current + results_childs
+        data_results = data_results_parents + data_results_current + data_results_childs
+        return results,data_results,self.DICT_ALIASES
+
 
 class Manual(_ImportDb):
     ALIASES = {
@@ -2012,7 +2337,7 @@ class Emploee_spread_db_user(_ImportDb):
 
 
 class Employee_spread_select():
-    ФизическиеЛица: list[str]
+    ФизическиеЛица: list[str]#{'Наименование': 'Подразделениe', 'id': 'id_Подразделениe'}  # k:v - name:alias
     Подразделения: list[str]
     Должности: list[str]
 
@@ -3864,7 +4189,8 @@ class Techkards():
                 if path_docs == "":
                     path_docs = CFG.Config.project.mk_temp_folder  # 31.07.25
                 putf = path_docs + os.sep + nom_mk + os.sep + self.dse['Номер_техкарты'] + '_' + self.nn + '.pickle'
-            self.putf = self.resolve_path(putf)
+            putf = self.resolve_path(putf)
+            self.putf = putf
             self.nom_mk = nom_mk
             self.path_docs = path_docs
             self.xl_formulas = CXLF.XlFormula()
@@ -4806,6 +5132,7 @@ class Naryad_list(_Naryad_base):
 
         self.db_naryad = CFG.Config.project.db_naryad
         self.db_users = CFG.Config.project.db_users
+        self.error: bool = False
 
         if DPACKS.DATA_NARYAD_PACK is not None:
             self._dict_dolgn_etap = DPACKS.DATA_NARYAD_PACK.DICT_DOLGN_ETAP
@@ -4826,9 +5153,21 @@ class Naryad_list(_Naryad_base):
             WHERE naryad.Пномер in ({CSQ.prepare_list_to_tuple(set_nums)});''', rez_dict=True)
 
         self.naryads: list[Naryads] = [
-            Naryads(_, self.db_naryad, self._dict_dolgn_etap, self.db_users, self._dict_empl, self._dict_opers,
+
+            ]
+
+        for _ in data:
+            try:
+                nar_o = Naryads(_, self.db_naryad, self._dict_dolgn_etap, self.db_users, self._dict_empl, self._dict_opers,
                     self._PREPARED_DICT_DATA_DOLGN_ETAP)
-            for _ in data]
+            except:
+                print(f'Naryad_list error: init naryad {_["Пномер"]}')
+                self.naryads = []
+                self.error = True
+                return
+
+            self.naryads.append(nar_o)
+
         self.dict_naryads: dict[int, Naryads] = {_.Пномер: _ for _ in self.naryads}
 
 class Naryad_param():
@@ -4955,6 +5294,7 @@ class Naryads(_Naryad_base):
             dict_opers = DPACKS.DATA_NARYAD_PACK.DICT_OPERS
             DICT_DATA_DOLGN_ETAP = DPACKS.DATA_NARYAD_PACK.DICT_DATA_DOLGN_ETAP
 
+        self._fl_save_after_fix = False
 
         self.params = []
         self.db = CFG_prj.db_naryad
@@ -5051,6 +5391,8 @@ class Naryads(_Naryad_base):
             if self.ФИО2 != '':
                 self.Этап_фио_2 = self.calc_etap_by_fio(DICT_DATA_DOLGN_ETAP, self.ФИО2)  # 07.07.25
 
+        if self._fl_save_after_fix:
+            self.save()
 
     def __str__(self)->str:
         return f'''{self.Пномер} от {self.Дата}'''
@@ -5219,6 +5561,28 @@ class Naryads(_Naryad_base):
         list_prof = _list_prof(self, len(list_dse))
         list_vid_r = _list_vid_r(self, len(list_dse))
 
+        def load_vid_r(self)->dict[str,str]:
+             return F.deploy_dict_c(CSQ.custom_request_c(CFG_prj.db_users,
+              f"""SELECT код, вид_работ FROM professions""",rez_dict=True), 'код')
+        res_o = None
+        DICT_VID_R = None
+        if not list_prof and list_dse_id:
+            res_o = ResSpec(self.Номер_мк) if res_o is None else res_o
+            DICT_VID_R = load_vid_r(self) if DICT_VID_R is None else DICT_VID_R
+            for i, dse_id in enumerate(list_dse_id):
+                dse_o = res_o.get_dse(dse_id)
+                oper_o = dse_o.get_oper(list_opers[i][0])
+                list_prof.append(oper_o.Опер_профессия_наименование)
+                self._fl_save_after_fix = True
+        if not list_vid_r and list_dse_id:
+            res_o = ResSpec(self.Номер_мк) if res_o is None else res_o
+            DICT_VID_R = load_vid_r(self) if DICT_VID_R is None else DICT_VID_R
+            for i, dse_id in enumerate(list_dse_id):
+                dse_o = res_o.get_dse(dse_id)
+                oper_o = dse_o.get_oper(list_opers[i][0])
+                list_vid_r.append(DICT_VID_R.get(oper_o.Опер_профессия_код, ''))
+                self._fl_save_after_fix = True
+
         self.params_o = []
         for i in range(len(list_dse_id)):
             if len(list_opers[i]) == 2:
@@ -5226,6 +5590,7 @@ class Naryads(_Naryad_base):
                 name_oper = list_opers[i][1]
             else:
                 raise IndexError(f'Наряд {self.Пномер}, ошибка в номере операци {list_opers[i]}')
+
 
             param_o = Naryad_param(self, list_dse[i], int(list_dse_id[i]),
                                    num_oper, name_oper,
@@ -8383,7 +8748,10 @@ class ResSpec():
         """load_res"""
         return self._wet_data
 
-    def get_vids_rab(self, key_ref=False) -> dict:# на 1 изделие
+    def get_vids_rab(self, key_ref=False,by_one_izd=True) -> dict:# на 1 изделие
+        count= self.count
+        if not by_one_izd:
+            count = 1
         dict_res = dict()
         for dse in self.data:
             for oper in dse.Операции:
@@ -8398,7 +8766,7 @@ class ResSpec():
                     if vid_rab not in dict_res:
                         dict_res[vid_rab] = 0
                     dict_res[vid_rab] += (
-                            (oper.Опер_Тпз + oper.Опер_Тшт / oper.Опер_КОИД) / self.count)
+                            (oper.Опер_Тпз + oper.Опер_Тшт / oper.Опер_КОИД) / count)
 
         dict_res = {k: round(v, 3) for k, v in dict_res.items()}
         dict_res= F.sort_dict_by_key(dict_res, lambda x: x)
@@ -10408,6 +10776,7 @@ class SimpClsErpZP(F._SimpMeta):
     АвторНаименование: str
     ЗаказКлиентаДата: str
     ЗаказКлиентаСтатус: str
+    ЗаказКлиентаДопКоммент: str
     Состояние: str
     ЗаказКлиента_ref: str
     ЗаказНаСборку: str
@@ -10419,6 +10788,7 @@ class SimpClsErpZP(F._SimpMeta):
     Спецификация: None
     Номенклатура_ref: None
     КПЛ: str
+    passed: bool
 
     @staticmethod
     def prepare(it:dict)->dict:
@@ -10461,12 +10831,23 @@ class BondsZpKpl():
         знпр.Ref_Key_py
         from пл_оуп 
         INNER JOIN знпр ON знпр.s_num == пл_оуп.Пномер_ЗП
-""",rez_dict=True)
+        """,rez_dict=True)
         dict_data_mes = F.grouping_list_dicts(data,"Ref_Key_py")
         dict_data_mes_o = {k : [BondsZpKpl.SimpClsMesZpNomenRef._from_dict(_) for _ in v] for k,v in dict_data_mes.items()}
+        report_info = CSQ.custom_request_c(CFG_prj.db_kplan, f"""SELECT 
+                                client_order_Key,
+                                pass,
+                                comment_pdo
+                        FROM zk_report_info
+                        """, rez_dict=True)
+        dict_report_info = F.deploy_dict_c(report_info, 'client_order_Key')
 
-        pass
+
         for it in self.erp_data:
+            if it.ЗаказКлиента_ref in dict_report_info:
+                it.passed = dict_report_info[it.ЗаказКлиента_ref]['pass']
+                it.ЗаказКлиентаДопКоммент = dict_report_info[it.ЗаказКлиента_ref]['comment_pdo']
+
             if it.ЗаказНаПроизводство_ref not in dict_data_mes_o:
                 continue
             mes_o:list[BondsZpKpl.SimpClsMesZpNomenRef] = dict_data_mes_o[it.ЗаказНаПроизводство_ref]
@@ -10483,138 +10864,155 @@ class BondsZpKpl():
         #ЗаказКлиентаАвтор
         wet_req_text = f"""
                 
+                
+                    
                 ВЫБРАТЬ
-                    ЗаказКлиента.Ссылка.Номер КАК ЗаказКлиента,
-                    ЗаказКлиента.Автор.Наименование КАК АвторНаименование,
-                    ЗаказКлиента.Ссылка.Дата КАК ЗаказКлиентаДата,
-                    ПРЕДСТАВЛЕНИЕ(ЗаказКлиента.Статус) КАК ЗаказКлиентаСтатус,
-                    ВЫБОР
-                        КОГДА НЕ ЗаказКлиента.Ссылка.Проведен
-                            ТОГДА ПРЕДСТАВЛЕНИЕ(ЗНАЧЕНИЕ(Перечисление.СостоянияЗаказовКлиентов.ПустаяСсылка))
-                        ИНАЧЕ ЕСТЬNULL(ПРЕДСТАВЛЕНИЕ(СостоянияЗаказовКлиентов.Состояние), ПРЕДСТАВЛЕНИЕ(ЗНАЧЕНИЕ(Перечисление.СостоянияЗаказовКлиентов.Закрыт)))
-                    КОНЕЦ КАК Состояние,
-                    ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЗаказКлиента.Ссылка)) КАК ЗаказКлиента_ref,
-                    ЗаказНаПроизводство2_2Продукция.Ссылка.Ссылка.Номер КАК ЗаказНаПроизводство,
-                    ЗаказНаПроизводство2_2Продукция.Ссылка.Дата КАК ЗаказНаПроизводствоДата,
-                    ПРЕДСТАВЛЕНИЕ(ЗаказНаПроизводство2_2Продукция.Ссылка.Статус) КАК ЗаказНаПроизводствоСтатус,
-                    ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЗаказНаПроизводство2_2Продукция.Ссылка.Ссылка)) КАК ЗаказНаПроизводство_ref,
-                    ПРЕДСТАВЛЕНИЕ(ЗаказНаПроизводство2_2Продукция.Номенклатура) КАК Номенклатура,
-                    ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЗаказНаПроизводство2_2Продукция.Номенклатура.Ссылка)) КАК Номенклатура_ref,
-                    "" КАК КПЛ,
-                    ПРЕДСТАВЛЕНИЕ(ЗаказНаПроизводство2_2Продукция.Спецификация) КАК Спецификация
-                ПОМЕСТИТЬ ВТ_по_ЗП
+    ЗаказКлиента.Ссылка КАК Ссылка
+ПОМЕСТИТЬ ВТ_отбор
+ИЗ
+    Документ.ЗаказКлиента КАК ЗаказКлиента
+ГДЕ
+    ЗаказКлиента.ПометкаУдаления = ЛОЖЬ
+    И ЗаказКлиента.Проведен = ИСТИНА
+    И ЗаказКлиента.Организация = &Организация
+    И ЗаказКлиента.Дата >= {F.datetostr(self._date_start,"ДАТАВРЕМЯ(%Y, %m, %d, %H, %M, %S)")}
+    И НЕ(ЗаказКлиента.Статус = ЗНАЧЕНИЕ(Перечисление.СтатусыЗаказовКлиентов.Закрыт)
+                ИЛИ ЗаказКлиента.Статус = ЗНАЧЕНИЕ(Перечисление.СтатусыЗаказовКлиентов.НеСогласован))
+;
+
+////////////////////////////////////////////////////////////////////////////////
+ВЫБРАТЬ
+    ВТ_отбор.Ссылка КАК ЗаказКлиента,
+    ЗаказНаПроизводство2_2Продукция.Ссылка КАК ЗаказНаПроизводствоПродукция,
+    ЗаказНаПроизводство2_2Продукция.Номенклатура КАК ЗаказНаПроизводствоПродукцияНоменклатура,
+    ЗаказНаПроизводство2_2Продукция.Спецификация КАК ЗаказНаПроизводствоПродукцияСпецификация,
+    ЗаказНаСборку.Ссылка КАК ЗаказНаСборку,
+    "по_ЗСБ" КАК Тип_в
+ПОМЕСТИТЬ ВТ_по_ЗСБ
+ИЗ
+    ВТ_отбор КАК ВТ_отбор
+        ВНУТРЕННЕЕ СОЕДИНЕНИЕ Документ.ЗаказНаСборку КАК ЗаказНаСборку
+        ПО (ЗаказНаСборку.ДокументОснование = ВТ_отбор.Ссылка)
+            И (ЗаказНаСборку.ПометкаУдаления = ЛОЖЬ)
+        ЛЕВОЕ СОЕДИНЕНИЕ Документ.ЗаказНаПроизводство2_2.Продукция КАК ЗаказНаПроизводство2_2Продукция
+        ПО (ЗаказНаПроизводство2_2Продукция.Ссылка.ДокументОснование = ЗаказНаСборку.Ссылка)
+            И (ЗаказНаПроизводство2_2Продукция.Ссылка.ПометкаУдаления = ЛОЖЬ)
+;
+
+////////////////////////////////////////////////////////////////////////////////
+ВЫБРАТЬ
+    ВТ_отбор.Ссылка КАК ЗаказКлиента,
+    ЗаказНаПроизводство2_2Продукция.Ссылка КАК ЗаказНаПроизводствоПродукция,
+    ЗаказНаПроизводство2_2Продукция.Номенклатура КАК ЗаказНаПроизводствоПродукцияНоменклатура,
+    ЗаказНаПроизводство2_2Продукция.Спецификация КАК ЗаказНаПроизводствоПродукцияСпецификация,
+    "" КАК ЗаказНаСборку,
+    "по_ЗП" КАК Тип_в
+ПОМЕСТИТЬ ВТ_по_ЗП
+ИЗ
+    ВТ_отбор КАК ВТ_отбор
+        ЛЕВОЕ СОЕДИНЕНИЕ Документ.ЗаказНаПроизводство2_2.Продукция КАК ЗаказНаПроизводство2_2Продукция
+        ПО (ЗаказНаПроизводство2_2Продукция.Ссылка.ДокументОснование = ВТ_отбор.Ссылка)
+            И (ЗаказНаПроизводство2_2Продукция.Ссылка.ПометкаУдаления = ЛОЖЬ)
+ГДЕ
+    НЕ ВТ_отбор.Ссылка В
+                (ВЫБРАТЬ
+                    ЗП.ЗаказКлиента
                 ИЗ
-                    Документ.ЗаказКлиента КАК ЗаказКлиента
-                        ЛЕВОЕ СОЕДИНЕНИЕ Документ.ЗаказНаПроизводство2_2.Продукция КАК ЗаказНаПроизводство2_2Продукция
-                        ПО (ЗаказНаПроизводство2_2Продукция.Ссылка.ДокументОснование = ЗаказКлиента.Ссылка)
-                        ЛЕВОЕ СОЕДИНЕНИЕ РегистрСведений.СостоянияЗаказовКлиентов КАК СостоянияЗаказовКлиентов
-                        ПО (СостоянияЗаказовКлиентов.Заказ = ЗаказКлиента.Ссылка)
-                ГДЕ
-                    ЗаказКлиента.ПометкаУдаления = ЛОЖЬ
-                    И ЗаказКлиента.Проведен = ИСТИНА
-                    И ЗаказКлиента.Организация = &Организация
-                    И ЗаказКлиента.Дата >= {F.datetostr(self._date_start,"ДАТАВРЕМЯ(%Y, %m, %d, %H, %M, %S)")}
-                    И НЕ(ЗаказКлиента.Статус = ЗНАЧЕНИЕ(Перечисление.СтатусыЗаказовКлиентов.Закрыт)
-                                ИЛИ ЗаказКлиента.Статус = ЗНАЧЕНИЕ(Перечисление.СтатусыЗаказовКлиентов.НеСогласован))
-                ;
-                
-                ////////////////////////////////////////////////////////////////////////////////
-                ВЫБРАТЬ
-                    ЗаказКлиента.Ссылка.Номер КАК ЗаказКлиента,
-                    ЗаказКлиента.Автор.Наименование КАК АвторНаименование,
-                    ЗаказКлиента.Ссылка.Дата КАК ЗаказКлиентаДата,
-                    ПРЕДСТАВЛЕНИЕ(ЗаказКлиента.Статус) КАК ЗаказКлиентаСтатус,
-                    ВЫБОР
-                        КОГДА НЕ ЗаказКлиента.Ссылка.Проведен
-                            ТОГДА ПРЕДСТАВЛЕНИЕ(ЗНАЧЕНИЕ(Перечисление.СостоянияЗаказовКлиентов.ПустаяСсылка))
-                        ИНАЧЕ ЕСТЬNULL(ПРЕДСТАВЛЕНИЕ(СостоянияЗаказовКлиентов.Состояние), ПРЕДСТАВЛЕНИЕ(ЗНАЧЕНИЕ(Перечисление.СостоянияЗаказовКлиентов.Закрыт)))
-                    КОНЕЦ КАК Состояние,
-                    ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЗаказКлиента.Ссылка)) КАК ЗаказКлиента_ref,
-                    ЗаказНаПроизводство2_2Продукция.Ссылка.Ссылка.Номер КАК ЗаказНаПроизводство,
-                    ЗаказНаПроизводство2_2Продукция.Ссылка.Дата КАК ЗаказНаПроизводствоДата,
-                    ПРЕДСТАВЛЕНИЕ(ЗаказНаПроизводство2_2Продукция.Ссылка.Статус) КАК ЗаказНаПроизводствоСтатус,
-                    ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЗаказНаПроизводство2_2Продукция.Ссылка.Ссылка)) КАК ЗаказНаПроизводство_ref,
-                    ПРЕДСТАВЛЕНИЕ(ЗаказНаПроизводство2_2Продукция.Номенклатура) КАК Номенклатура,
-                    ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ЗаказНаПроизводство2_2Продукция.Номенклатура.Ссылка)) КАК Номенклатура_ref,
-                    "" КАК КПЛ,
-                    ПРЕДСТАВЛЕНИЕ(ЗаказНаСборку.Ссылка) КАК Ссылка,
-                    ПРЕДСТАВЛЕНИЕ(ЗаказНаПроизводство2_2Продукция.Спецификация) КАК Спецификация
-                ПОМЕСТИТЬ ВТ_по_ЗСБ
-                ИЗ
-                    Документ.ЗаказКлиента КАК ЗаказКлиента
-                        ЛЕВОЕ СОЕДИНЕНИЕ РегистрСведений.СостоянияЗаказовКлиентов КАК СостоянияЗаказовКлиентов
-                        ПО (СостоянияЗаказовКлиентов.Заказ = ЗаказКлиента.Ссылка)
-                        ЛЕВОЕ СОЕДИНЕНИЕ Документ.ЗаказНаСборку КАК ЗаказНаСборку
-                            ЛЕВОЕ СОЕДИНЕНИЕ Документ.ЗаказНаПроизводство2_2.Продукция КАК ЗаказНаПроизводство2_2Продукция
-                            ПО (ЗаказНаПроизводство2_2Продукция.Ссылка.ДокументОснование = ЗаказНаСборку.Ссылка)
-                        ПО (ЗаказНаСборку.ДокументОснование = ЗаказКлиента.Ссылка)
-                ГДЕ
-                    ЗаказКлиента.ПометкаУдаления = ЛОЖЬ
-                    И ЗаказКлиента.Проведен = ИСТИНА
-                    И ЗаказКлиента.Организация = &Организация
-                    И ЗаказКлиента.Дата >= {F.datetostr(self._date_start,"ДАТАВРЕМЯ(%Y, %m, %d, %H, %M, %S)")}
-                    И НЕ(ЗаказКлиента.Статус = ЗНАЧЕНИЕ(Перечисление.СтатусыЗаказовКлиентов.Закрыт)
-                                ИЛИ ЗаказКлиента.Статус = ЗНАЧЕНИЕ(Перечисление.СтатусыЗаказовКлиентов.НеСогласован))
-                ;
-                
-                ////////////////////////////////////////////////////////////////////////////////
-                ВЫБРАТЬ
-                    ВТ_по_ЗП.ЗаказКлиента КАК ЗаказКлиента,
-                    ВТ_по_ЗП.АвторНаименование КАК АвторНаименование,
-                    ВТ_по_ЗП.ЗаказКлиентаДата КАК ЗаказКлиентаДата,
-                    ВТ_по_ЗП.ЗаказКлиентаСтатус КАК ЗаказКлиентаСтатус,
-                    ВТ_по_ЗП.Состояние КАК Состояние,
-                    ВТ_по_ЗП.ЗаказКлиента_ref КАК ЗаказКлиента_ref,
-                    "" КАК ЗаказНаСборку,
-                    ВТ_по_ЗП.ЗаказНаПроизводство КАК ЗаказНаПроизводство,
-                    ВТ_по_ЗП.ЗаказНаПроизводствоДата КАК ЗаказНаПроизводствоДата,
-                    ВТ_по_ЗП.ЗаказНаПроизводствоСтатус КАК ЗаказНаПроизводствоСтатус,
-                    ВТ_по_ЗП.ЗаказНаПроизводство_ref КАК ЗаказНаПроизводство_ref,
-                    ВТ_по_ЗП.Номенклатура КАК Номенклатура,
-                    ВТ_по_ЗП.Спецификация КАК Спецификация,
-                    ВТ_по_ЗП.Номенклатура_ref КАК Номенклатура_ref,
-                    ВТ_по_ЗП.КПЛ КАК КПЛ
-                ИЗ
-                    ВТ_по_ЗП КАК ВТ_по_ЗП
-                
-                ОБЪЕДИНИТЬ ВСЕ
-                
-                ВЫБРАТЬ
-                    ВТ_по_ЗСБ.ЗаказКлиента,
-                    ВТ_по_ЗСБ.АвторНаименование,
-                    ВТ_по_ЗСБ.ЗаказКлиентаДата,
-                    ВТ_по_ЗСБ.ЗаказКлиентаСтатус,
-                    ВТ_по_ЗСБ.Состояние,
-                    ВТ_по_ЗСБ.ЗаказКлиента_ref,
-                    ВТ_по_ЗСБ.Ссылка,
-                    ВТ_по_ЗСБ.ЗаказНаПроизводство,
-                    ВТ_по_ЗСБ.ЗаказНаПроизводствоДата,
-                    ВТ_по_ЗСБ.ЗаказНаПроизводствоСтатус,
-                    ВТ_по_ЗСБ.ЗаказНаПроизводство_ref,
-                    ВТ_по_ЗСБ.Номенклатура,
-                    ВТ_по_ЗСБ.Спецификация,
-                    ВТ_по_ЗСБ.Номенклатура_ref,
-                    ВТ_по_ЗСБ.КПЛ
-                ИЗ
-                    ВТ_по_ЗСБ КАК ВТ_по_ЗСБ
-                
-                УПОРЯДОЧИТЬ ПО
-                    КПЛ,
-                    ЗаказНаПроизводствоДата,
-                    ЗаказКлиентаДата
+                    ВТ_по_ЗСБ КАК ЗП)
+;
+
+////////////////////////////////////////////////////////////////////////////////
+ВЫБРАТЬ
+    ВТ_по_ЗП.ЗаказКлиента КАК ЗаказКлиента,
+    ВТ_по_ЗП.ЗаказНаПроизводствоПродукция КАК ЗаказНаПроизводствоПродукция,
+    ВТ_по_ЗП.ЗаказНаПроизводствоПродукцияНоменклатура КАК ЗаказНаПроизводствоПродукцияНоменклатура,
+    ВТ_по_ЗП.ЗаказНаПроизводствоПродукцияСпецификация КАК ЗаказНаПроизводствоПродукцияСпецификация,
+    ВТ_по_ЗП.ЗаказНаСборку КАК ЗаказНаСборку,
+    ВТ_по_ЗП.Тип_в КАК Тип_в
+ПОМЕСТИТЬ ВТ_итоги
+ИЗ
+    ВТ_по_ЗП КАК ВТ_по_ЗП
+
+ОБЪЕДИНИТЬ ВСЕ
+
+ВЫБРАТЬ
+    ВТ_по_ЗСБ.ЗаказКлиента,
+    ВТ_по_ЗСБ.ЗаказНаПроизводствоПродукция,
+    ВТ_по_ЗСБ.ЗаказНаПроизводствоПродукцияНоменклатура,
+    ВТ_по_ЗСБ.ЗаказНаПроизводствоПродукцияСпецификация,
+    ВТ_по_ЗСБ.ЗаказНаСборку,
+    ВТ_по_ЗСБ.Тип_в
+ИЗ
+    ВТ_по_ЗСБ КАК ВТ_по_ЗСБ
+;
+
+////////////////////////////////////////////////////////////////////////////////
+ВЫБРАТЬ
+    ВТ_итоги.ЗаказКлиента.Номер КАК ЗаказКлиента,
+    ВТ_итоги.ЗаказКлиента.Автор.Наименование КАК АвторНаименование,
+    ВТ_итоги.ЗаказКлиента.Ссылка.Дата КАК ЗаказКлиентаДата,
+    ПРЕДСТАВЛЕНИЕ(ВТ_итоги.ЗаказКлиента.Статус) КАК ЗаказКлиентаСтатус,
+    ВЫБОР
+        КОГДА НЕ ВТ_итоги.ЗаказКлиента.Ссылка.Проведен
+            ТОГДА ПРЕДСТАВЛЕНИЕ(ЗНАЧЕНИЕ(Перечисление.СостоянияЗаказовКлиентов.ПустаяСсылка))
+        ИНАЧЕ ЕСТЬNULL(ПРЕДСТАВЛЕНИЕ(СостоянияЗаказовКлиентов.Состояние), ПРЕДСТАВЛЕНИЕ(ЗНАЧЕНИЕ(Перечисление.СостоянияЗаказовКлиентов.Закрыт)))
+    КОНЕЦ КАК Состояние,
+    "" КАК ЗаказКлиентаДопКоммент,
+    ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ВТ_итоги.ЗаказКлиента.Ссылка)) КАК ЗаказКлиента_ref,
+    ПРЕДСТАВЛЕНИЕ(ВТ_итоги.ЗаказНаСборку) КАК ЗаказНаСборку,
+    ВТ_итоги.ЗаказНаПроизводствоПродукция.Ссылка.Ссылка.Номер КАК ЗаказНаПроизводство,
+    ВТ_итоги.ЗаказНаПроизводствоПродукция.Ссылка.Дата КАК ЗаказНаПроизводствоДата,
+    ПРЕДСТАВЛЕНИЕ(ВТ_итоги.ЗаказНаПроизводствоПродукция.Ссылка.Статус) КАК ЗаказНаПроизводствоСтатус,
+    ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ВТ_итоги.ЗаказНаПроизводствоПродукция.Ссылка.Ссылка)) КАК ЗаказНаПроизводство_ref,
+    ПРЕДСТАВЛЕНИЕ(ВТ_итоги.ЗаказНаПроизводствоПродукцияНоменклатура) КАК Номенклатура,
+    ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(ВТ_итоги.ЗаказНаПроизводствоПродукцияНоменклатура)) КАК Номенклатура_ref,
+    "" КАК КПЛ,
+    ПРЕДСТАВЛЕНИЕ(ВТ_итоги.ЗаказНаПроизводствоПродукцияСпецификация) КАК Спецификация,
+    0 КАК passed
+ИЗ
+    ВТ_итоги КАК ВТ_итоги
+        ЛЕВОЕ СОЕДИНЕНИЕ РегистрСведений.СостоянияЗаказовКлиентов КАК СостоянияЗаказовКлиентов
+        ПО (СостоянияЗаказовКлиентов.Заказ = ВТ_итоги.ЗаказКлиента)
+
+УПОРЯДОЧИТЬ ПО
+    ЗаказКлиентаДата
                                     """
         refs = APIERP.Refs_wet(wet_req_text)
         ref_res = APIERP.Ref_wet('Организация', 'Справочники.Организации', key_org)
         refs.add_ref(ref_res)
 
         key, data_rez = APIERP.get_wet_request(wet_req_text, refs=refs)
-        F.gen_class(data_rez['data'],'SimpClsErpZP')
+
         if key == 200:
             self.erp_data = [SimpClsErpZP._from_dict(_) for _ in data_rez['data']]
         else:
             self.err = key
 
+    @staticmethod
+    def set_zk_passed(ref_zk,val:bool)->bool:
+        return CSQ.custom_request_c(CFG_prj.db_kplan,
+                 f"""
+            INSERT INTO zk_report_info (client_order_Key, pass)
+        VALUES (?, ?)
+        ON CONFLICT(client_order_Key) DO UPDATE SET
+            client_order_Key = excluded.client_order_Key,
+            pass = excluded.pass;
+        
+        """,list_of_lists_c=[[ref_zk,F.valm(val)]]
+                             )
 
+    @staticmethod
+    def set_zk_comment(ref_zk,val:str)->bool:
+        return CSQ.custom_request_c(CFG_prj.db_kplan,
+                 f"""
+            INSERT INTO zk_report_info (client_order_Key, comment_pdo)
+        VALUES (?, ?)
+        ON CONFLICT(client_order_Key) DO UPDATE SET
+            client_order_Key = excluded.client_order_Key,
+            comment_pdo = excluded.comment_pdo;
+        
+        """,list_of_lists_c=[[ref_zk,F.sanitize_text(val)]]
+                             )
 
 if __name__ == "__main__":
     pass
@@ -15409,7 +15807,7 @@ def dse_for_res(self, putf, kolvo_summ, npp, naim, nn, level_c_dse, pki, mat, ss
     tk_obj = Techkards(nn, self.db_dse, db_nomen=self.bd_nomen, fix_mat=True, DICT_OP_NAME=self.DICT_OP_NAME)
     try:
         tk_docs = tk_obj.sp_tk[10][nk_doc_tk].split('$')
-    except:
+    except Exception as e:
         CQT.msgbox(f'Что-то не так в тк {putf.split(F.sep())[-1]} проверь ее!')
         return
     # ====================================================UPDATE NORM TIME========================================
