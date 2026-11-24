@@ -22,6 +22,11 @@ import project_cust_38.Cust_odata_erp as ODAT
 import arm_pr_oper as ARMOPER
 import reports_of_personal as RPTP
 from dataClass import data_app as DTCLS
+import project_cust_38.api_erp_commands as APIERP
+from project_cust_38.Cust_dict_packs import (Packs as DPACKS,
+                                             DictForNaryad as _DictForNaryad,
+                                             DictForMarshrutCard as _DictForMarshrutCard,
+                                             DictForResource as _DictForResource)
 cfg = config.Config(r'Config\CFG.cfg')  # файл конфига, находится в папке конфиг
 import json as JS
 F.test_path()
@@ -48,7 +53,9 @@ class Data:
     if SPIS_OP != False:
         for i in range(len(SPIS_OP)):
             DICT_ETAPI[SPIS_OP[i]['name']] = SPIS_OP[i]['etap']
-    DICT_ETAPI_FULL = F.deploy_dict_c(CSQ.custom_request_c(bd_naryad, f'''SELECT * FROM etaps''', rez_dict=True),'name')
+    _list_etaps = CSQ.custom_request_c(bd_naryad, f'''SELECT * FROM etaps''', rez_dict=True)
+    DICT_ETAPI_FULL = F.deploy_dict_c(_list_etaps,'name')
+    DICT_ETAPI_FULL_BY_ID = F.deploy_dict_c(_list_etaps,'s_num')
     VID_RABOT_PO_EMPL = CMS.VID_RABOT_PO_EMPL(bd_users)
     VID_RABOT_PO_DOLGN = CMS.VID_RABOT_PO_DOLGN(bd_users)
     ETAP_BY_FIO = CMS.ETAP_BY_FIO(bd_users,bd_naryad)
@@ -106,6 +113,9 @@ class Data:
 
     DICT_DOLGN_ETAP = F.deploy_dict_c(CSQ.custom_request_c(bd_naryad, f"""SELECT * FROM dolgn_etap""", rez_dict=True),
                                       'Должность')
+
+    DICT_OPER_NAME = F.deploy_dict_c(CSQ.custom_request_c(bd_naryad, f"""SELECT * FROM operacii WHERE poki = {USRCNF.Config.place.poki}""",
+                                     rez_dict=True), 'name')
     m = ODAT.OrdersComposit()
     type_workers = m.get_response('Catalog_ВидыРаботСотрудников',
                                                f"""?$filter=DeletionMark eq false &$select=Ref_Key, Description""")
@@ -115,7 +125,18 @@ class Data:
         DICT_TRDZ = F.deploy_dict_c(type_workers, "Ref_Key")
 
 
+class SimpClsReports(F._SimpMeta):
+    _name: str
+    Название: str
+    Группа: OTCH.GroupReport
+    Примечание: str
 
+    _DICT_ALIASES = {
+        "_name" : "_name",
+        "Название" : "Название",
+        "Группа" : "Группа",
+        "Примечание" : "Примечание",
+        }
 
 class mywindow(QtWidgets.QMainWindow):
     def __init__(self):
@@ -243,12 +264,17 @@ class mywindow(QtWidgets.QMainWindow):
         self.DICT_KOD_ZAM = F.deploy_dict_c(
             CSQ.custom_request_c(self.bd_naryad, f"""SELECT * FROM kod_zamech""", rez_dict=True),
             'Имя')
+
+
+
         # ==== GLOBALS
         self.plan_for_gant = ''
         self.global_arm_oper_user_fio = None
         self.current_podr_text: str|None = None
         self.current_podr_data = None
         self.DICT_ALIASES_FIELDS_REPORT:dict|None = None
+        self.autotype_report_table:bool = False
+        self.fnc_oform_after_filter:object|None = None
         # =======loads
         self.Data = Data
         self.ui.rbut_start_of_per.setChecked(True)
@@ -286,10 +312,18 @@ class mywindow(QtWidgets.QMainWindow):
         self.ui.chk_autohide.setChecked(self.chk_autohide)
         self.ui.chk_autohide.blockSignals(False)
 
+        sorted_data_sort_reports = sorted(F.undeploy_dict_c(OTCH.DICT_VID_OTCH, '_name'), key=lambda x: x['Группа'])
 
-        self.data_sort_reports = sorted(F.undeploy_dict_c(OTCH.DICT_VID_OTCH, '_name'),key=lambda x:x['Группа'])
+        self.data_sort_reports: list[SimpClsReports] = [SimpClsReports._from_dict(_) for _ in sorted_data_sort_reports]
 
-
+        DPACKS.DATA_RS_PACK = _DictForResource(CMS.ResSpecs._calc_dict_etaps(),self.DICT_PROFESSIONS)
+        DPACKS.DATA_MK_PACK = _DictForMarshrutCard(DPACKS.DATA_RS_PACK.DICT_ETAPS_RC_BY_CODE)
+        DPACKS.DATA_NARYAD_PACK = _DictForNaryad(
+            self.Data.DICT_DOLGN_ETAP,
+            self.Data.DICT_OPER_NAME,
+            self.DICT_EMPLOEE_FULL,
+            CMS.prepare_dolg_etap_for_calc_pozition_fact_kpl()
+        )
 
 
         spis_napravl = list(self.DICT_NAPRAVL.keys())
@@ -324,26 +358,96 @@ class mywindow(QtWidgets.QMainWindow):
 
     @CQT.onerror
     def action_tmp(self,*args):
-        CQT.load_css(self)
+        #self.tmp_func()
         return
-
 
     @CQT.onerror
     def tmp_func(self,*args):
 
-        def get_id(item_row,dict_id):
-            for item in item_row:
-                dict_id[item['name']] = item['id']
-                if  'children' in item:
-                    dict_id = get_id(item['children'], dict_id)
-            return dict_id
+        def drop_point(s):
+            s = s.strip()
+            if s[-1] == '.':
+                s = s[:-1]
+            return s
 
-        path = fr'C:\Users\a.belyakov\Downloads\division.json'
-        data = '\n'.join(F.load_file(path,'||'))
-        json_file  = JS.loads(data)
-        dict_id = dict()
-        dict_id = get_id(json_file,dict_id)
-        print()
+        all_sd = F.load_file_pickle('all_sd')
+        if not all_sd:
+            type_sd = '93bbabd3-354d-11e7-80c0-4ccc6a67082d'
+
+
+
+            wet_req_text = f"""ВЫБРАТЬ
+                СделкиСКлиентами.Ссылка КАК Ссылка,
+                ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(СделкиСКлиентами.Ссылка)) КАК Ссылка_ref,
+                СделкиСКлиентами.Код КАК Код
+            ИЗ
+                Справочник.СделкиСКлиентами КАК СделкиСКлиентами
+            ГДЕ 
+                СделкиСКлиентами.ВидСделки = &Ссылка
+                                                    """
+            refs = APIERP.Refs_wet(wet_req_text)
+            ref_res = APIERP.Ref_wet('Ссылка', 'Справочники.ВидыСделокСКлиентами', type_sd)
+            refs.add_ref(ref_res)
+
+            key, data_rez = APIERP.get_wet_request(wet_req_text, refs=refs)
+
+            if key != 200:
+                return
+            all_sd =data_rez['data']
+            F.save_file_pickle('all_sd',all_sd)
+        for it in all_sd:
+            it['Ссылка'] = drop_point(it['Ссылка'])
+
+
+        def add_row(tbl_rez,it_current,name_wet):
+            new_sd_data = dict_all_sd[name_wet]
+            tmp_row = {
+                "Сделка заказчика код": new_sd_data['Код'], "Сделка заказчика": new_sd_data["Ссылка"],
+                "_ref": new_sd_data["Ссылка_ref"],
+                "ЗаказКлиента": it_current["ЗаказКлиента"], "Сделка": it_current["СделкаНаименование"],
+            }
+            tbl_rez.append(tmp_row)
+
+
+        dict_all_sd = F.deploy_dict_c(all_sd,'Ссылка',keep_key=True)
+        SET_MUTATE = { 'ПЗ','КЕ','КЭ','ТЗ','Таткуз','Пауэрз','Келаст','ТК','ПУ'}
+        date = F.dateStrToStr('01.01.2025',format_out='ДАТАВРЕМЯ(%Y, %m, %d, %H, %M, %S)')
+        wet_req_text = f"""
+                ВЫБРАТЬ
+
+            ЗаказКлиента.Сделка.Наименование КАК СделкаНаименование,
+            ЗаказКлиента.Ссылка КАК ЗаказКлиента,
+            ЗаказКлиента.Статус КАК Статус
+        ИЗ
+            Документ.ЗаказКлиента КАК ЗаказКлиента
+        ГДЕ 
+            НЕ ЗаказКлиента.Статус = ЗНАЧЕНИЕ(Перечисление.СтатусыЗаказовКлиентов.Закрыт)
+            и ЗаказКлиента.Дата > {date} """
+        key, data_rez = APIERP.get_wet_request(wet_req_text)
+
+        if key == 200:
+            data = data_rez['data']
+        tbl_rez = []
+        for it in data:
+            name_sd = it['СделкаНаименование']
+            if name_sd is None:
+                continue
+            for postf in SET_MUTATE:
+                if not name_sd.endswith(postf):
+                    continue
+                name_wet = name_sd.split(postf)[0]
+                if not name_wet:
+                    continue
+                name_wet =  drop_point(name_wet)
+
+                if name_wet in dict_all_sd:
+                    add_row(tbl_rez,it,name_wet)
+
+                break
+
+
+
+        CQT.msgboxg_get_table_ok_inf(self,'d',tbl_rez)
 
 
 
@@ -382,20 +486,22 @@ class mywindow(QtWidgets.QMainWindow):
         name_last = CMS.load_tmp_stukt('last_used_report')
         if not name_last:
             return
-        report = [_ for _ in self.data_sort_reports if _['_name'] == name_last]
+        report = [_ for _ in self.data_sort_reports if _._name== name_last]
         if not report:
             return
         report = report[0]
 
         lbl_report = self.init_lbl_report()
-        lbl_report.set_data(f'{report['']} {report['Название']}', report['_name'],
-                            report['Примечание'])
-        lbl_report.set_user_data(report['Название'], 'clear_text')
+        lbl_report.set_data(f'{report.Группа.emo} {report.Название}', report._name,
+                            report.Примечание)
+        lbl_report.set_user_data(report.Название, 'clear_text')
         OTCH.vibor_sort_c_report_c(self)
 
     @CQT.onerror
     def select_report(self,*args):
-        template = self.data_sort_reports[:]
+
+
+        template = []
         def fnc_oform(tbl:CQT.QtWidgets.QTableWidget):
             t = CQT.TableContext(tbl)
             t.hide_if_not_dev(DTCLS.CONFIG)
@@ -403,8 +509,10 @@ class mywindow(QtWidgets.QMainWindow):
             row = t.find_row({'_name':name_last},True)
             if row:
                 t.set_selected_cell(row,'Название')
-        for i, it in enumerate(template):
-            template[i]  = F.sort_dict_by_sample(it,("","Группа", "Название","Примечание"))
+        for it in self.data_sort_reports:
+            template.append(
+                {"":it.Группа.emo,"Группа":str(it.Группа),"Название":it.Название,"Примечание":it.Примечание,"_name":it._name}
+            )
         rez = CQT.msgboxg_get_table(self,"Выбор отчета",template,ExtendedSelection=False,selectRows=True,
                               styleSheet=CQT.MES_CSS,selection_from_tbl=True,showMaximized=True,
                               func_oform_tbl=fnc_oform)
@@ -646,30 +754,63 @@ class mywindow(QtWidgets.QMainWindow):
                                  f"""UPDATE {name_book} SET {date_name_per} = 1 WHERE РЦ == "{rab_centr}" """)
 
         if report_name == 'assembly_specific_labor_intensity':
+            if not CMS.user_access_ext('просмотрщик_обновить_усредненную_трудоемкость_по_техн_видам'):
+                return
+            if not CQT.msgboxgYN(f'Обновить трудоемкость по выбранным тех видам (не утвержденные)?'):
+                return
             tbl = self.ui.tbl_report_c
-            list = CQT.list_from_wtabl_c(tbl, hat_c=True, only_visible=True, rez_dict=True)
-            for item in list:
+            t = CQT.TableContext(tbl)
+            rows_selected = t.selected_rows()
 
-                list_of_lists = [[int(item['Выборка,шт.']),
-                                  F.valm(item['кг_на_пост_см_средн']),
-                                  F.valm(item['Лазерная резка']),
-                                  F.valm(item['Сборка+сварка']),
-                                  F.valm(item['Покраска']),
-                                  F.valm(item['Токарка+фрезеровка']),
-                                  F.valm(item['Зачистка']),
-                                  F.valm(item['Вспомогательная']),
-                                  F.valm(item['Термическая']),
-                                  F.valm(item['Подготовка монтажного комплекта']),
-                                  F.valm(item['Упаковка и комплектование ЗИП']),
+            dict_etaps_aliases = {
+            1:'Лазерная резка_мин/кг',
+            3:'Сборка+сварка_мин/кг',
+            6:'Покраска_мин/кг',
+            2:'Токарка+фрезеровка_мин/кг',
+            4:'Зачистка_мин/кг',
+            5:'Вспомогательная_мин/кг',
+            27:'Термическая_мин/кг',
+            7:'Подготовка монтажного комплекта_мин/кг',
+            8:'Упаковка и комплектование ЗИП_мин/кг',
+            }
+
+
+            for row in rows_selected:
+                if int(row.value('Утверждено')):
+                    continue
+
+                list_of_lists = [[int(row.value('Выборка,шт.')),
+                                  F.valm(row.value('кг/чел/см_средн')),
+                                  F.valm(row.value('внеплан_k'))
+
                                   ]]
-                kod = int(item['Код из бд'])
-                rez = CSQ.custom_request_c(self.db_kplan, f'''UPDATE виды_по_напр SET (Выборка, 
-                кг_на_пост_см
-               ) = ({'?,'.join(['' for _ in list_of_lists[0]]) + '?'}) 
+                kod = int(row.value('Код из бд'))
+                rez = CSQ.custom_request_c(self.db_kplan, f'''UPDATE виды_по_направлению SET (Выборка, 
+                кг_на_пост_см, vneplan_percent
+               ) = ({CSQ.questions_for_mask(list_of_lists[0])}) 
                 WHERE  Пномер = {kod}''', list_of_lists_c=list_of_lists)
                 if rez == False:
-                    CQT.msgbox(f'Ошибка')
+                    CQT.msgbox(f'Ошибка в виды_по_напр для kod= {kod}')
                     return
+                for id_etap_db, alias in dict_etaps_aliases.items():
+
+                    val = round(F.valm(row.value(alias)), 2)
+                    row_etab_db =self.Data.DICT_ETAPI_FULL_BY_ID[id_etap_db]
+                    row_isert = [id_etap_db, kod,val, row_etab_db['имя_в_виды_по_напр']]
+                    rez = CSQ.custom_request_c(self.db_kplan, f'''
+                    INSERT INTO коэфф_норм_этапов_по_видам_направлений 
+                            (etaps_id, виды_по_напр_id, ratio, группа_этапа_для_видов)
+                    VALUES  ({CSQ.questions_for_mask(row_isert)})
+                    ON CONFLICT( etaps_id, виды_по_напр_id) DO UPDATE SET
+                        ratio = excluded.ratio
+                    WHERE etaps_id = {id_etap_db} AND виды_по_напр_id = {kod}
+                    
+                    ''',list_of_lists_c=[row_isert])
+                    if rez == False:
+                        CQT.msgbox(f'Ошибка в коэфф_норм_этапов_по_видам_направлений для kod= {kod}, etaps_id = {id_etap_db}')
+                        return
+
+
             CQT.msgbox(f'Успешно обновлено')
 
         if report_name == 'employees_output':
@@ -1175,6 +1316,7 @@ class mywindow(QtWidgets.QMainWindow):
 
 
 from project_cust_38.Cust_application import SafeApplication, install_crash_guard
+
 app = SafeApplication(sys.argv)
 install_crash_guard(
     app,

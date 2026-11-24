@@ -32,6 +32,7 @@ import project_cust_38.Cust_config as USRCNF
 import project_cust_38.competence_matrix as MTXCMP
 import project_cust_38.Cust_emoji as CEMOJ
 from functools import partial
+from dataclasses import dataclass
 import project_cust_38.api_erp_commands as APIERP
 try:
     import reports_of_personal as RPTP
@@ -75,310 +76,300 @@ KOEF_EFF_VREM = 0.8
 KOEF_NORMIROVSCHICI = 1 / 1.15
 
 
+@dataclass
+class GroupReport:
+    name:str
+    text:str
+    descr:str
+    emo:str
+    
+    def __str__(self):
+        return self.text
+
+    def __eq__(self, value):
+        if isinstance(value, GroupReport):
+            if self.text == value.text:
+                return True
+        return False
+
+    def __lt__(self, other):
+        return self.text < other.text
+
+    def __repr__(self):
+        return f"""{self.emo}{self.text}"""
+
+class GroupsReport(str):
+    PLANNING = GroupReport("PLANNING","Планирование и KPI","","🎯")
+    ACCOUNTING = GroupReport("ACCOUNTING","Контроль учета и выгрузки","","🧾")
+    OPERATIONS = GroupReport("OPERATIONS","Оперативный контроль и персонал","","🛠️")
+    ANALYTICS = GroupReport("ANALYTICS","Аналитика и спецотчеты","","📊")
+    ADVANCED_ANALYTICS = GroupReport("ADVANCED_ANALYTICS","Расширенная аналитика","","⚙️")
 
 
 DICT_VID_OTCH =  {
+    "statistics_frequency_nomenclature": {
+        "Название": 'Статистика повторяемости номенклатуры',
+        "Группа": GroupsReport.OPERATIONS,
+        "Примечание": "Статистика по частоте/повторяемости номенклатуры"
+    },
+    "backlog_workshop": {
+        "Название": '"задел" цеха',
+        "Группа": GroupsReport.OPERATIONS,
+        "Примечание": "вес по освоенным нарядам сборочного цеха, по НЕ закрытым МК"
+    },
     "product_acceptance": {
-        "": "",
         "Название": "Приемка продукции",
-        "Группа": "Контроль учета и выгрузки",
+        "Группа": GroupsReport.ACCOUNTING,
         "Примечание": "Переход от эксель ведомости 09.11.2026"
     },
     "bonds_zp_kpl": {
-        "": "",
         "Название": "Миграция ЗК из 1с в КПЛ",
-        "Группа": "Аналитика и спецотчеты",
+        "Группа": GroupsReport.ANALYTICS,
         "Примечание": "Муратшин 27.10.2026"
     },
     "analytics_otk": {
-        "": "",
         "Название": "Аналитика по нарядам ОТК",
-        "Группа": "Аналитика и спецотчеты",
+        "Группа": GroupsReport.ANALYTICS,
         "Примечание": "Муратшин 27.10.2026"
     },
     "analytics_for_all_PGVU_valves": {
-        "": "",
         "Название": "Аналитика по все клапанам пгву,",
-        "Группа": "Аналитика и спецотчеты",
+        "Группа": GroupsReport.ANALYTICS,
         "Примечание": "Муратшин 19.10.2026"
     },
     "sequence_steps_order_process": {
-        "": "",
         "Название": "Этапность протекания заказа",
-        "Группа": "Планирование и KPI",
+        "Группа": GroupsReport.PLANNING,
         "Примечание": "Серегин 05.10.2026"
     },
     "monthly_plan_execution": {
-        "": "",
         "Название": "Исполнение плана месяца",
-        "Группа": "Планирование и KPI",
+        "Группа": GroupsReport.PLANNING,
         "Примечание": ""
     },
     "active_projects_execution": {
-        "": "",
         "Название": "Выполнение проектов находящихся в производстве без привязке к периоду",
-        "Группа": "Планирование и KPI",
+        "Группа": GroupsReport.PLANNING,
         "Примечание": "Задача № 100046611 Моренко"
     },
     "work_distribution_by_direction": {
-        "": "",
         "Название": "Распределение работ по направлениям",
-        "Группа": "Планирование и KPI",
+        "Группа": GroupsReport.PLANNING,
         "Примечание": "Для МХ"
     },
     "project_schedule_deviations": {
-        "": "",
         "Название": "Отклонения от плановых дат по проектам",
-        "Группа": "Планирование и KPI",
+        "Группа": GroupsReport.PLANNING,
         "Примечание": "Для совещания"
     },
     "assembly_specific_labor_intensity": {
-        "": "",
         "Название": "Усредненная удельная трудоемкость сборки по видам",
-        "Группа": "Планирование и KPI",
+        "Группа": GroupsReport.PLANNING,
         "Примечание": "Для совещания"
     },
     "unplanned_work_by_direction": {
-        "": "",
         "Название": "Внеплановые работы по направлениям",
-        "Группа": "Планирование и KPI",
+        "Группа": GroupsReport.PLANNING,
         "Примечание": "Для совещания"
     },
     "monthly_plan_fact_schedule": {
-        "": "",
         "Название": "План-фактный график по месяцам",
-        "Группа": "Планирование и KPI",
+        "Группа": GroupsReport.PLANNING,
         "Примечание": "Для совещания"
     },
     "assembly_productivity_schedule": {
-        "": "",
         "Название": "График удельной производительности сборочного цеха",
-        "Группа": "Планирование и KPI",
+        "Группа": GroupsReport.PLANNING,
         "Примечание": "Для совещания"
     },
 
     "not_exported_work_orders": {
-        "": "",
         "Название": "Не выгруженные в 1С наряды",
-        "Группа": "Контроль учета и выгрузки",
+        "Группа": GroupsReport.ACCOUNTING,
         "Примечание": "для сборочного к примеру..."
     },
     "labor_costs": {
-        "": "",
         "Название": "Трудозатраты",
-        "Группа": "Контроль учета и выгрузки",
+        "Группа": GroupsReport.ACCOUNTING,
         "Примечание": "Сверка для выгрузки трудозатрат в ЕРП"
     },
     "timesheet_labor_deviation_report": {
-        "": "",
         "Название": "Отчет по отклонениям табеля и трудозатрат",
-        "Группа": "Контроль учета и выгрузки",
+        "Группа": GroupsReport.ACCOUNTING,
         "Примечание": "Для оператора производственного учета"
     },
 
     "work_log": {
-        "": "",
         "Название": "Журнал работ",
-        "Группа": "Оперативный контроль и персонал",
+        "Группа": GroupsReport.OPERATIONS,
         "Примечание": ""
     },
     "current_work": {
-        "": "",
         "Название": "Текущие работы",
-        "Группа": "Оперативный контроль и персонал",
+        "Группа": GroupsReport.OPERATIONS,
         "Примечание": ""
     },
     "employee_output": {
-        "": "",
         "Название": "Выработка сотрудника",
-        "Группа": "Оперативный контроль и персонал",
+        "Группа": GroupsReport.OPERATIONS,
         "Примечание": ""
     },
     "employees_output": {
-        "": "",
         "Название": "Выработка сотрудников",
-        "Группа": "Оперативный контроль и персонал",
+        "Группа": GroupsReport.OPERATIONS,
         "Примечание": ""
     },
     "personnel_reporting": {
-        "": "",
         "Название": "Отчетность персонала",
-        "Группа": "Оперативный контроль и персонал",
+        "Группа": GroupsReport.OPERATIONS,
         "Примечание": ""
     },
     "by_open_naryads": {
-        "": "",
         "Название": "По открытым нарядам",
-        "Группа": "Оперативный контроль и персонал",
+        "Группа": GroupsReport.OPERATIONS,
         "Примечание": "Задача № 100066910 16.02.2026"
     },
 
     "employee_productivity_dynamics": {
-        "": "",
         "Название": "Динамика производительности сотрудников",
-        "Группа": "Аналитика и спецотчеты",
+        "Группа": GroupsReport.ANALYTICS,
         "Примечание": "Задача № 100045854 от 13.11.2024 13:06"
     },
     "weekly_output_shipping_schedule": {
-        "": "",
         "Название": "Понедельный график выработки и отгрузок",
-        "Группа": "Аналитика и спецотчеты",
+        "Группа": GroupsReport.ANALYTICS,
         "Примечание": ""
     },
     "shop_output_by_work_order": {
-        "": "",
         "Название": "Выработка цеха понарядно",
-        "Группа": "Аналитика и спецотчеты",
+        "Группа": GroupsReport.ANALYTICS,
         "Примечание": ""
     },
     "mk_weight_statistics": {
-        "": "",
         "Название": "Статистика нормо-весовых харктеристик МК",
-        "Группа": "Аналитика и спецотчеты",
+        "Группа": GroupsReport.ANALYTICS,
         "Примечание": ""
     },
     "selector_report": {
-        "": "",
         "Название": "Селекторное",
-        "Группа": "Аналитика и спецотчеты",
+        "Группа": GroupsReport.ANALYTICS,
         "Примечание": ""
     },
     "selector_detailed_report": {
-        "": "",
         "Название": "Отчет для селектора",
-        "Группа": "Аналитика и спецотчеты",
+        "Группа": GroupsReport.ANALYTICS,
         "Примечание": "по ТЗ Моренко от 03.03.2025"
     },
 
     "created_work_orders_unprocessed_weight": {
-        "": "",
         "Название": "Неосвоенный_вес_по_созданным_нарядам",
-        "Группа": "Расширенная аналитика",
+        "Группа": GroupsReport.ADVANCED_ANALYTICS,
         "Примечание": ""
     },
     "material_norms_completed_orders": {
-        "": "",
         "Название": "Норматив материалов по завершенным нарядам",
-        "Группа": "Расширенная аналитика",
+        "Группа": GroupsReport.ADVANCED_ANALYTICS,
         "Примечание": ""
     },
     "time_norm_comparison_by_direction": {
-        "": "",
         "Название": "Сравнение норм времени по направлениям",
-        "Группа": "Расширенная аналитика",
+        "Группа": GroupsReport.ADVANCED_ANALYTICS,
         "Примечание": ""
     },
     "tech_card_log": {
-        "": "",
         "Название": "Журнал_техкарт",
-        "Группа": "Расширенная аналитика",
+        "Группа": GroupsReport.ADVANCED_ANALYTICS,
         "Примечание": ""
     },
     "top_output": {
-        "": "",
         "Название": "Выработка_ТОП",
-        "Группа": "Расширенная аналитика",
+        "Группа": GroupsReport.ADVANCED_ANALYTICS,
         "Примечание": ""
     },
     "remarks_log": {
-        "": "",
         "Название": "Журнал_замечаний",
-        "Группа": "Расширенная аналитика",
+        "Группа": GroupsReport.ADVANCED_ANALYTICS,
         "Примечание": ""
     },
     "remarks_dynamics": {
-        "": "",
         "Название": "Журнал замечаний динамика",
-        "Группа": "Расширенная аналитика",
+        "Группа": GroupsReport.ADVANCED_ANALYTICS,
         "Примечание": "Для совещания"
     },
     "projects_in_progress_registry": {
-        "": "",
         "Название": "Реестр проектов в работе",
-        "Группа": "Расширенная аналитика",
+        "Группа": GroupsReport.ADVANCED_ANALYTICS,
         "Примечание": "по ТЗ от ГД 25.01.2024"
     },
     "work_efficiency_per_minute": {
-        "": "",
         "Название": "Анализ эффективности работ на минуту",
-        "Группа": "Расширенная аналитика",
+        "Группа": GroupsReport.ADVANCED_ANALYTICS,
         "Примечание": "по ТЗ от ГД 30.05.2024"
     },
     "unplanned_work_analysis": {
-        "": "",
         "Название": "Анализ внеплана по видам работ",
-        "Группа": "Расширенная аналитика",
+        "Группа": GroupsReport.ADVANCED_ANALYTICS,
         "Примечание": "по ТЗ от ГД 04.06.2024"
     },
     "plan_fact_orders_with_unplanned": {
-        "": "",
         "Название": "ПланФакт наряды с внепланом",
-        "Группа": "Расширенная аналитика",
+        "Группа": GroupsReport.ADVANCED_ANALYTICS,
         "Примечание": "по ТЗ от Р 06.06.2024"
     },
     "monthly_employee_output_report": {
-        "": "",
         "Название": "О выработке сотрудников за месяц",
-        "Группа": "Расширенная аналитика",
+        "Группа": GroupsReport.ADVANCED_ANALYTICS,
         "Примечание": "Отчет для ФЭО"
     },
     "equipment_load_report": {
-        "": "",
         "Название": "Отчет по загрузке оборудования",
-        "Группа": "Расширенная аналитика",
+        "Группа": GroupsReport.ADVANCED_ANALYTICS,
         "Примечание": "по ТЗ от П 09.2024"
     },
     "project_report": {
-        "": "",
         "Название": "Отчет по проекту",
-        "Группа": "Расширенная аналитика",
+        "Группа": GroupsReport.ADVANCED_ANALYTICS,
         "Примечание": "по ТЗ от CC 13.02.2025"
     },
     "report_builder": {
-        "": "",
         "Название": "Компоновщик",
-        "Группа": "Расширенная аналитика",
+        "Группа": GroupsReport.ADVANCED_ANALYTICS,
         "Примечание": ""
     },
     "shop_output_by_direction": {
-        "": "",
         "Название": "Выработка цеха по направлению",
-        "Группа": "Аналитика и спецотчеты",
+        "Группа": GroupsReport.ANALYTICS,
         "Примечание": ""
     },
 
     "unplanned_work": {
-        "": "",
         "Название": "Внеплановые работы",
-        "Группа": "Аналитика и спецотчеты",
+        "Группа": GroupsReport.ANALYTICS,
         "Примечание": ""
     },
 
     "competency_matrix": {
-        "": "",
         "Название": "Матрицы компетенций",
-        "Группа": "Аналитика и спецотчеты",
+        "Группа": GroupsReport.ANALYTICS,
         "Примечание": "по ТЗ 100060096 от 24.11.2025"
     },
     "manage_kro": {
-        "": "",
         "Название": "Управление КРО",
-        "Группа": "Аналитика и спецотчеты",
+        "Группа": GroupsReport.ANALYTICS,
         "Примечание": "по задаче 100059628 от 02.09.2025"
     },
     "diver_trdz_1c_mes": {
-        "": "",
         "Название": "Расхождение трудозатрат 1С и МЕС",
-        "Группа": "Контроль учета и выгрузки",
+        "Группа": GroupsReport.ACCOUNTING,
         "Примечание": "по задаче 100074067 от 29.07.2026"
     },
     "weight_by_closed_mk": {
-        "": "",
         "Название": "Вес по закрытым МК",
-        "Группа": "Аналитика и спецотчеты",
+        "Группа": GroupsReport.ANALYTICS,
         "Примечание": "по задаче 100075917 от 03.09.2026"
     },
 }
+
 GROUP_ICONS = {
     "Планирование и KPI": "🎯",
     "Контроль учета и выгрузки": "🧾",
@@ -386,10 +377,8 @@ GROUP_ICONS = {
     "Аналитика и спецотчеты": "📊",
     "Расширенная аналитика": "⚙️",
 }
-for k,_ in DICT_VID_OTCH.items():
-    if _['Группа'] in GROUP_ICONS:
-        DICT_VID_OTCH[k][''] = GROUP_ICONS[_['Группа']]
-pass
+
+
 
 
 
@@ -415,7 +404,7 @@ def _______SELECT_SUB_TYPE_REPORT_____________():
 
 @CQT.onerror
 def vibor_additional_sort_report(self: mywindow, *args):
-    def fill_cmb_addit_sort_c_report_by_podr(self,podr):
+    def fill_cmb_addit_sort_c_report_by_podr(self: mywindow,podr):
         set_users_empl_all = {_ for _ in self.DICT_EMPLOEE_FULL_WITH_DEL if
                      self.DICT_EMPLOEE_FULL_WITH_DEL[_]['Подразделение'] == podr and
                               self.DICT_EMPLOEE_FULL_WITH_DEL[_]['Компания'] == USRCNF.Config.place.Имя} #28.01.2026
@@ -507,8 +496,9 @@ def vibor_sort_c_report_c(self: mywindow, *args):
     slug = F.clear_row_for_file_name_c(F.transliteration(clear_text))
     # from PyQt5 import QtWidgets
     # self.ui.tbl_report_c: QtWidgets.QTableWidget
-    self.ui.tbl_report_c.setObjectName(f'tbl_report_c_{slug}')
-    self.ui.tbl_report_c_filtr.setObjectName(f'tbl_report_c_filtr_{slug}')
+
+    CQT.setCustData(self.ui.tbl_report_c, f'tbl_report_c_{slug}','report_name')
+    CQT.setCustData(self.ui.tbl_report_c_filtr, f'tbl_report_c_filtr_{slug}', 'report_filtr_name')
     self.ui.fr_params_plan.setHidden(True)
     self.ui.le_end_of_period.setEnabled(True)
     self.ui.le_start_of_period.setEnabled(True)
@@ -630,6 +620,18 @@ def vibor_sort_c_report_c(self: mywindow, *args):
         self.ui.cmb_podrazdelenie.clear()
         self.ui.cmb_podrazdelenie.setDisabled(True)
         podrazdel_none(self)
+
+    if name_otch == 'statistics_frequency_nomenclature':
+
+        last_year = F.date_add_period(vid='y',count = -1)
+        start = F.start_end_dates_c(last_year, vid='y')[0]
+        self.ui.le_start_of_period.setText(start)
+        self.ui.le_end_of_period.setText(F.start_end_dates_c( vid='d')[0])
+        podrazdel_none(self)
+
+    if name_otch == 'backlog_workshop':
+        fill_podrazd_by_empl_full(self)
+        date_none(self)
 
     if name_otch == 'product_acceptance':
         self.ui.le_start_of_period.setText("2026-09-01 00:00:01")
@@ -951,7 +953,7 @@ def get_list_py_by_year(self:mywindow,years:list):
 
 
 @CQT.onerror
-def nach_kon_mes(self, kon="today", *args):
+def nach_kon_mes(self: mywindow, kon="today", *args):
     # dat = F.datetostr(DT.today())
     dat = F.datetostr(QtCore.QDate.toPyDate(self.ui.calendarWidget.selectedDate()))
     konec = F.start_end_dates_c(date=dat, vid='m')[1]
@@ -1120,23 +1122,24 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
     self.ui.fr_mk_zamech.setHidden(True)
     self.ui.frame.setHidden(True)
     self.ui.fr_personal.setHidden(True)
-    if not check_interval(report_name, nach, konec):
-        return
+    if self.ui.le_start_of_period.isEnabled() and self.ui.le_end_of_period.isEnabled():
+        if not check_interval(report_name, nach, konec):
+            return
+        if nach == '' or F.is_date(nach) == False:
+            CQT.msgbox('Не корректная дата начала')
+            return
+        if konec == '' or F.is_date(konec) == False:
+            CQT.msgbox('Не корректная дата конца')
+            return
+        nach_dt = F.strtodate(nach)
+        konec_dt = F.strtodate(konec)
 
-    if nach == '' or F.is_date(nach) == False:
-        CQT.msgbox('Не корректная дата начала')
-        return
-    if konec == '' or F.is_date(konec) == False:
-        CQT.msgbox('Не корректная дата конца')
-        return
     if clear_text == '':
         CQT.msgbox('Не выбран вид отчета')
         return
     if podrazd == '':
         CQT.msgbox('Не выбрано подразделение')
         return
-    nach_dt = F.strtodate(nach)
-    konec_dt = F.strtodate(konec)
 
     hook_prog_bar.open()
     hook_prog_bar.set(0)
@@ -1170,6 +1173,7 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
     fnc_oform = None
 
     self.DICT_ALIASES_FIELDS_REPORT = None
+    self.autotype_report_table = False
 
     if report_name == 'weight_by_closed_mk':
         rez_spis, fnc_oform = weight_by_closed_mk(self,nach,konec)
@@ -1210,6 +1214,12 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
         rez_spis, fnc_oform = bonds_zp_kpl(self, nach, konec)
     if report_name == 'product_acceptance':
         rez_spis, fnc_oform = product_acceptance(self, nach, konec)
+
+    if report_name == 'statistics_frequency_nomenclature':
+        rez_spis, fnc_oform = statistics_frequency_nomenclature(self, nach_dt, konec_dt)
+
+    if report_name == 'backlog_workshop':
+        rez_spis, fnc_oform = backlog_workshop(self,podrazd_data)
 
     if report_name == 'analytics_otk':
         rez_spis, fnc_oform = analytics_otk(self, nach, konec)
@@ -1344,18 +1354,16 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
     hook_prog_bar.set(80)
     hook_prog_bar.text('Заполение таблиц')
 
-    #CQT.fill_wtabl_old_c(self, rez_spis, tbl, separ='', isp_hat_c=True, max_vis_row=500)
-    CQT.fill_wtabl(rez_spis,tbl,auto_type=False,height_row=24,sortingEnabled=True,
-                   list_column_widths=CMS.load_column_widths(self, tbl),
+    CQT.fill_wtabl(rez_spis,tbl,auto_type=self.autotype_report_table,height_row=24,sortingEnabled=True,
                    aliases_header=self.DICT_ALIASES_FIELDS_REPORT)
-
+    t = CQT.TableContext(tbl)
+    t.reload()
 
     hook_prog_bar.set(90)
     hook_prog_bar.text('Оформление таблиц')
 
     if fnc_oform:
         fnc_oform(tbl)
-
 
 
     # --- apply_summ_с со sredn=True
@@ -1382,7 +1390,8 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
     if report_name in ('work_distribution_by_direction',
                'employees_output',
                'work_log',
-               'employee_output'
+               'employee_output',
+
                ):
         CMS.apply_summ_с(self, tbl, sredn=False)
 
@@ -1405,6 +1414,10 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
     CMS.fill_filtr_c(self, self.ui.tbl_report_c_filtr, tbl, hidden_scroll=True)
     CMS.update_width_filtr(tbl, self.ui.tbl_report_c_filtr)
 
+    if self.fnc_oform_after_filter:
+        self.fnc_oform_after_filter(tbl)
+
+
     # --- только оформление таблицы
     if report_name in (
             'labor_costs',
@@ -1424,7 +1437,7 @@ def report_c(self: mywindow,hook_prog_bar=None,  *args):
         self.up_down()
 
 
-def report_by_proj(self, nach, konec, podrazd=None, *args):
+def report_by_proj(self:mywindow,  nach, konec, podrazd=None, *args):
     if podrazd == None or podrazd.count(' | ') != 5:
         return
     py,proj,napravl_deyat,poz, kpl, ves = podrazd.split(' | ')
@@ -4536,6 +4549,7 @@ def fill_podrazd_by_empl_full(self):
     list_podr.sort()
     list_colors = []
     list_tooltip = []
+    list_data = []
     for podr in list_podr:
         clr = ''
         tooltip = ''
@@ -4544,14 +4558,23 @@ def fill_podrazd_by_empl_full(self):
             tooltip = self.DICT_PODR_RC[podr]['Код']
         list_colors.append(F.align_colors(clr,',',sep_out=','))
         list_tooltip.append(tooltip)
+        list_data.append(tooltip)
     CQT.fill_list_combobx(self, self.ui.cmb_podrazdelenie, list_podr, list_colors, list_tooltip, ',',
-                          first_void=True)
+                          first_void=True,list_data=list_data)
 
 @CQT.onerror
 def podrazdel_none(self, *args):
     self.ui.cmb_podrazdelenie.clear()
     self.ui.cmb_podrazdelenie.addItem('-')
     self.ui.cmb_podrazdelenie.setDisabled(True)
+
+@CQT.onerror
+def date_none(self, *args):
+    self.ui.le_end_of_period.clear()
+
+    self.ui.le_end_of_period.setDisabled(True)
+    self.ui.le_start_of_period.clear()
+    self.ui.le_start_of_period.setDisabled(True)
 
 
 @CQT.onerror
@@ -9092,6 +9115,224 @@ INNER JOIN пл_ко ON пл_ко."НомПл" = plan."Пномер"
     return rez_list_plan
 
 
+def statistics_frequency_nomenclature(self, nach:datetime.datetime, konec:datetime.datetime):
+    class SimpClsErp(F._SimpMeta):
+        НоменклатураКод: str
+        НоменклатураНаименование: str
+        НоменклатураВидНоменклатурыНаименование: str
+        НачалоДействия: str
+        ref: str
+
+        _DICT_ALIASES = {
+            "НоменклатураКод": "НоменклатураКод",
+            "НоменклатураНаименование": "НоменклатураНаименование",
+            "НоменклатураВидНоменклатурыНаименование": "НоменклатураВидНоменклатурыНаименование",
+            "НачалоДействия": "НачалоДействия",
+            "ref": "ref",
+        }
+    class StatNomen():
+        def __init__(self):
+            self.years = set()
+            self.resources = set()
+
+        def reg(self, date:str, ref:str):
+            year = F.dateStrToStr(date, "%Y-%m-%dT%H:%M:%S", '%Y',"")
+            self.years.add(year)
+            self.resources.add(ref)
+
+        @property
+        def years_str(self)->str:
+            return '; '.join(list(self.years))
+
+        @property
+        def count_rs(self)->int:
+            return len(self.resources)
+
+    rez_spis = []
+    СтруктураПредприятияНаименование = CFG.Config.place.Имя
+    postfix = f'И СтруктураПредприятия.Наименование = "{СтруктураПредприятияНаименование}"'
+    wet_req_text = f"""ВЫБРАТЬ
+    РесурсныеСпецификацииМатериалыИУслуги.Номенклатура.Код КАК НоменклатураКод,
+    РесурсныеСпецификацииМатериалыИУслуги.Номенклатура.Наименование КАК НоменклатураНаименование,
+    РесурсныеСпецификацииМатериалыИУслуги.Номенклатура.ВидНоменклатуры.Наименование КАК НоменклатураВидНоменклатурыНаименование,
+    РесурсныеСпецификацииМатериалыИУслуги.Ссылка.НачалоДействия КАК НачалоДействия,
+    ПРЕДСТАВЛЕНИЕ(УНИКАЛЬНЫЙИДЕНТИФИКАТОР(РесурсныеСпецификацииМатериалыИУслуги.Ссылка.Ссылка)) КАК ref
+ИЗ
+    Справочник.РесурсныеСпецификации.МатериалыИУслуги КАК РесурсныеСпецификацииМатериалыИУслуги
+ГДЕ
+    РесурсныеСпецификацииМатериалыИУслуги.Ссылка.ПометкаУдаления = ЛОЖЬ 
+    И РесурсныеСпецификацииМатериалыИУслуги.Ссылка.НачалоДействия >= {F.datetostr(nach,"ДАТАВРЕМЯ(%Y, %m, %d, %H, %M, %S)")}
+    И РесурсныеСпецификацииМатериалыИУслуги.Ссылка.НачалоДействия <= {F.datetostr(konec,"ДАТАВРЕМЯ(%Y, %m, %d, %H, %M, %S)")}
+    И РесурсныеСпецификацииМатериалыИУслуги.Ссылка.Ответственный.Подразделение.Ссылка В ИЕРАРХИИ            (ВЫБРАТЬ ПЕРВЫЕ 1
+                СтруктураПредприятия.Ссылка КАК Ссылка
+            ИЗ
+                Справочник.СтруктураПредприятия КАК СтруктураПредприятия
+            ГДЕ
+                СтруктураПредприятия.ПометкаУдаления = ЛОЖЬ {postfix}) """
+    key, data_rez = APIERP.get_wet_request(wet_req_text, lazy_method_huours=1)
+    if key != 200:
+        CQT.msgbox(f'Ошибка получения данных код ({key}) из ERP')
+        return
+    data_erp = [SimpClsErp._from_dict(_) for _ in data_rez['data']]
+    statistic_nomen:dict[str,StatNomen] = dict()
+
+    for it in data_erp:
+        if it.НоменклатураКод not in statistic_nomen:
+            statistic_nomen[it.НоменклатураКод] ={'Код':it.НоменклатураКод, 'Номенклатура':it.НоменклатураНаименование,
+                   'Вид номенклатуры':it.НоменклатураВидНоменклатурыНаименование, 'stat': StatNomen()}
+        statistic_nomen[it.НоменклатураКод]['stat'].reg(it.НачалоДействия,it.ref)
+
+    rezult = []
+
+    for code, it in statistic_nomen.items():
+
+        tmp_row = {'Код':code, 'Номенклатура':it['Номенклатура'],
+                   'Вид номенклатуры':it['Вид номенклатуры'],
+                   'Количество РС(ТКПа\n+ боевых), где\nвстречается':it['stat'].count_rs,
+                    'Год':it['stat'].years_str
+        }
+        rezult.append(tmp_row)
+
+
+
+    def fnc_oform(tbl, *args):
+        t = CQT.TableContext(tbl)
+        t.tbl.setStyleSheet(CQT.MES_EDIT_CSS)
+        t.hide_if_not_dev(CFG, True)
+        for name_field in t.nf.keys():
+            if t.width(name_field) > 500:
+                t.set_width(name_field, 500)
+
+        for row in t.rows():
+            pass
+    self.autotype_report_table = True
+    self.DICT_ALIASES_FIELDS_REPORT = dict()
+    return rezult, fnc_oform
+
+def backlog_workshop(self,selected_podr_code):
+    rez_spis = []
+
+    data_rc = self.DICT_RC[selected_podr_code]
+    ref_rc = data_rc['Подразделение_Key']
+    select_o = CMS.Employee_spread_select()
+    select_o.ФизическиеЛица = {'Наименование':'ФИО'}
+    select_o.Подразделения = {'Наименование':'Подразделения','Подразделение_Key':'Подразделение_Key'}
+    users = CMS.Emploee_spread_db().get_list_active_users(select_o)
+    set_filtered_fio = set([_['ФИО'] for _ in users if _['Подразделение_Key'] == ref_rc])
+
+    list_naryads =CSQ.custom_request_c(CFG_prj.db_naryad,f"""
+    SELECT naryad."Пномер"  as "naryad_id", mk."Пномер" as "mk_id" from naryad
+     INNER JOIN mk ON  mk."Пномер" = naryad."Номер_мк"
+          INNER JOIN plan 
+             ON plan."Пномер" = mk."НомКплан" 
+      WHERE mk."Статус" = "Открыта" and plan.poki = {self.place.poki}
+     
+""",rez_dict=True, attach_dbs=(CFG_prj.db_kplan))
+
+    set_mk = set([_["mk_id"] for _ in list_naryads])
+    set_naryads = set([_["naryad_id"] for _ in list_naryads])
+
+
+    naryads_o = CMS.Naryad_list(set_naryads)
+    if naryads_o.error:
+        return
+    filtered_naryads = {k:v for k,v in naryads_o.dict_naryads.items() if (v.ФИО and v.ФИО in set_filtered_fio) or (v.ФИО2 and v.ФИО2 in set_filtered_fio)}
+
+    naryads_mastered_dict = {mk:[] for mk in set_mk}
+    for naryad in filtered_naryads.values():
+        naryads_mastered_dict[naryad.Номер_мк].append(naryad)
+
+
+
+
+    list_res_o = CMS.ResSpecs(set_mk)
+
+    for res_o in list_res_o.dict_res.values():
+        res_o:CMS.ResSpec
+        weight = res_o.mk.Вес
+        dict_vid_r = res_o.get_vids_rab(by_one_izd=False)
+        summ_trdz = sum([v for v in dict_vid_r.values()])
+        koef = 0
+        if summ_trdz:
+            koef = weight/summ_trdz
+
+        def add_row(
+                mk: CMS.Marshrut_cards,
+                vid_rab: str,
+                trdz_base: float,
+                trdz_mastered: float,
+                trdz_finished: float,
+
+        ):
+
+            row = {
+                'mk': mk.Пномер,
+                'Номенклатура': mk.Номенклатура,
+                'Направление': mk.Направление,
+                'count': mk.Количество,
+                'Дата': f'20{mk.Дата}',
+                   'vid_rab': vid_rab,
+                   'trdz_base': round(trdz_base,1),
+                   'trdz_mastered': round(trdz_mastered,1),
+                   'trdz_finished': round(trdz_finished,1),
+                   'mass_base': round(trdz_base * koef),
+                   'mass_mastered': round(trdz_mastered * koef),
+                   'mass_finished': round(trdz_finished * koef),
+                   }
+
+            rez_spis.append(row)
+
+        dict_trdz_base = {k:{'base':v,'mastered':0,'finished':0} for k,v in dict_vid_r.items()}
+
+        naryads_mastered = naryads_mastered_dict[res_o.mk.Пномер]
+
+        for naryad in naryads_mastered:
+            naryad:CMS.Naryads
+            fl_finished =  naryad.is_closed()
+            for params_o in naryad.params_o:
+                vid_rab = params_o.Виды_работ
+                trdz = params_o.Опер_время
+                if vid_rab not in dict_trdz_base:
+                    dict_trdz_base[vid_rab] = {'base':0,'mastered':0,'finished':0}
+
+                dict_trdz_base[vid_rab]['mastered'] += trdz
+                if fl_finished:
+                    dict_trdz_base[vid_rab]['finished'] += trdz
+        DICT_ALIASES = {
+        "mk": "№ МК",
+        "Номенклатура": "Номенклатура",
+        "Направление": "Направление",
+        "Дата": "Дата",
+        "count": "Кол-во",
+        "vid_rab": "Вид работ",
+        "trdz_base": "Заложено, мин.",
+        "trdz_mastered": "Освоено, мин.",
+        "trdz_finished": "Завершено, мин.",
+        "mass_base": "Заложено,кг.",
+        "mass_mastered": "Освоено,кг.",
+        "mass_finished": "Завершено,кг.",
+        }
+        for vid_rab, info_time in dict_trdz_base.items():
+
+            add_row(res_o.mk,vid_rab,info_time['base'],info_time['mastered'],info_time['finished'])
+
+    def fnc_oform(tbl, *args):
+        t = CQT.TableContext(tbl)
+        t.tbl.setStyleSheet(CQT.MES_EDIT_CSS)
+        t.hide_if_not_dev(CFG,True)
+        for name_field in t.nf.keys():
+            if t.width(name_field) > 500:
+                t.set_width(name_field,500)
+
+        for row in t.rows():
+            pass
+
+
+    self.DICT_ALIASES_FIELDS_REPORT = DICT_ALIASES
+    return rez_spis, fnc_oform
+
+
+
 def product_acceptance(self, data_nach, data_kon):
     class SimpClsRows_acceptance(F._SimpMeta):
         Пномер: int
@@ -9138,13 +9379,13 @@ def product_acceptance(self, data_nach, data_kon):
 """
     data_acceptance = CSQ.custom_request_c(self.bd_naryad, text_request,rez_dict=True,attach_dbs=(self.db_kplan))
     data_acceptance_o = [SimpClsRows_acceptance._from_dict(_) for _ in data_acceptance]
-    F.gen_aliases(data_acceptance_o)
+
     for row in data_acceptance_o:
         if 'иниш' in row.Операции:
             row.финиш_в_операции = 'Да'
         if 'инальное' in row.Примечание:
             row.финиш_в_операции = 'Прим.'
-            
+
     rez_spis = [ _.to_dict() for _ in data_acceptance_o ]
     #TODO удалить записи из КПЛ.ОТКК и проставить только те где есть финиш.
     DICT_ALIASES = {
@@ -9175,9 +9416,9 @@ def product_acceptance(self, data_nach, data_kon):
     return rez_spis, fnc_oform
 
 
-def bonds_zp_kpl(self, data_nach, data_kon):
-
-    rez_spis = CMS.BondsZpKpl(F.strtodate(data_nach)).load()
+def bonds_zp_kpl(self:mywindow, data_nach, data_kon):
+    bonds_zp_kpl = CMS.BondsZpKpl(F.strtodate(data_nach))
+    rez_spis = bonds_zp_kpl.load()
 
     DICT_ALIASES = {
         "ЗаказКлиента": "Заказ клиента",
@@ -9191,7 +9432,9 @@ def bonds_zp_kpl(self, data_nach, data_kon):
         "ЗаказНаПроизводство_ref": "_ЗаказНаПроизводство_ref",
         "Номенклатура": "Номенклатура",
         "Номенклатура_ref": "_Номенклатура_ref",
-        "КПЛ": "№ КПЛ"
+        "КПЛ": "№ КПЛ",
+        "passed": "Проверено",
+        "ЗаказКлиентаДопКоммент": "Примечаниие",
     }
 
     def fnc_dbl_click(t:CQT.TableContext,i:int,name_clmn:str,*args):
@@ -9214,10 +9457,27 @@ def bonds_zp_kpl(self, data_nach, data_kon):
         
         pass
 
+    def fnc_oform_after_filter(tbl, *args):
+        pass
+
+
+    self.fnc_oform_after_filter = fnc_oform_after_filter
+
     def fnc_oform(tbl, *args):
         t = CQT.TableContext(tbl)
+        def fnc_to_passed(row:CQT.TableRow,val:bool,i,j,*args):
+            row.set_value('passed',str(int(val)))
+            bonds_zp_kpl.set_zk_passed(row.value('ЗаказКлиента_ref'),val)
+
+        def fnc_edit_check(t:CQT.TableContext,row_o:CQT.TableRow,name_field:str,new_val:str,old_val:str,addit_data,*args)->bool:
+            bonds_zp_kpl.set_zk_comment(row_o.value('ЗаказКлиента_ref'),new_val)
+            return True
+
+        t.connect_cell_edit(fnc_edit_check)
+        t.set_fields_movable(tbl_f=self.ui.tbl_report_c_filtr)
         t.tbl.setStyleSheet(CQT.MES_EDIT_CSS)
         t.hide_if_not_dev(CFG,True)
+        t.set_editable('ЗаказКлиентаДопКоммент')
         t.add_column_events('ЗаказКлиента',on_double_click=fnc_dbl_click)
         t.set_color_font(*CMS.Colors.link_blue.rgb,col_name= 'ЗаказКлиента')
         t.set_font_format('ЗаказКлиента',underline=True)
@@ -9227,16 +9487,24 @@ def bonds_zp_kpl(self, data_nach, data_kon):
         t.add_column_events('Номенклатура',on_double_click=fnc_dbl_click)
         t.set_color_font(*CMS.Colors.link_blue.rgb,col_name=  'Номенклатура')
         t.set_font_format('Номенклатура', underline=True)
+
+
+
         for name_field in t.nf.keys():
             if t.width(name_field) > 500:
                 t.set_width(name_field,500)
-            if 'ЗаказКлиента' in name_field:
+            if 'ЗаказКлиента' in name_field or name_field in ('АвторНаименование','Состояние'):
                 t.set_color_background( *CMS.Colors.accent_orange_l90.rgb,col_name= name_field)
             if 'ЗаказНаПроизводство' in name_field:
                 t.set_color_background(*CMS.Colors.accent_blue_l95.rgb,col_name= name_field)
+
+        t.set_color_background(*CMS.Colors.editable.rgb, col_name='ЗаказКлиентаДопКоммент')
+
         for row in t.rows():
-            if not row.value('КПЛ'):
+            if not row.value('КПЛ') and not int(row.value('passed')):
                 row.set_color_background(*CMS.Color_tbl(10).rgb)
+            row.add_check_box('passed',F.boolm(row.value('passed')),fnc_to_passed,addit_data=row)
+
 
 
     self.DICT_ALIASES_FIELDS_REPORT = DICT_ALIASES
