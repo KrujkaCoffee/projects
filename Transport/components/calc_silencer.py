@@ -399,12 +399,6 @@ async def gen_page(page):
             param_name = row_data.get_cell_unique().val
             new_val = e.data
             new_val = cell.description.cast_type(new_val)
-            if (
-                new_val == ''
-                and cell.description.is_numeric
-                and param_name in calc_silencer_back.BLANK_ZERO_INPUT_NAMES
-            ):
-                new_val = cell.description.data_type(0)
             cell.val = new_val
 
             if param_name == 'kolichestvo_kasset' and cell.params_field.name == 'val':

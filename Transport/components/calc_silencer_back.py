@@ -133,7 +133,7 @@ def calc_new_tbl_input():
             row.append(name, CMF.Cell_description())
             row.append(header, CMF.Cell_description())
             row.append(dimension, CMF.Cell_description())
-            row.append(val, CMF.Cell_description(min_max_list, comment=comment, data_type=data_type, accuracy=accuracy, default_val=default_val))
+            row.append(val, CMF.Cell_description(min_max_list, comment=comment, data_type=data_type, accuracy=accuracy, default_val=default_val, blank_as_zero=name in BLANK_ZERO_INPUT_NAMES))
             new_tbl_input_copy.add_row(row)
     return new_tbl_input_copy
 
@@ -379,6 +379,7 @@ def table_data_to_payload(table_data: CMF.Table_data) -> dict:
                             'comment': _json_safe(cell.description.comment),
                             'data_type': getattr(cell.description.data_type, '__name__', 'str'),
                             'default_val': _json_safe(cell.description.default_val),
+                            'blank_as_zero': getattr(cell.description, 'blank_as_zero', False),
                         },
                     }
                     for cell in row.cells
@@ -429,6 +430,7 @@ def table_data_from_payload(payload: dict) -> CMF.Table_data:
                 comment=desc_payload.get('comment'),
                 data_type=str(desc_payload.get('data_type') or 'str'),
                 default_val=desc_payload.get('default_val'),
+                blank_as_zero=bool(desc_payload.get('blank_as_zero', False)),
             )
             row.append(cell_payload.get('value'), description)
         table_data.add_row(row)

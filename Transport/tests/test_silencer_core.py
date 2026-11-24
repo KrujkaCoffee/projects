@@ -11,6 +11,7 @@ from components.calc_silencer_functions_M5_M400 import (
 from components.excel_compat import excel_round
 from components.silencer_calculation_core import (
     GROUPS,
+    INPUT_PARAMS,
     OUTPUT_PARAMS,
     calc_new_data,
     default_input_data,
@@ -172,12 +173,67 @@ class SilencerCoreTests(unittest.TestCase):
         self.assertEqual(normalized["temperatura_sredy_s"], 320.5)
         self.assertEqual(normalized["nazvanie_proekta"], "")
 
-    def test_required_blank_numeric_is_rejected_instead_of_hidden_as_zero(self):
+    def test_blank_numeric_matches_explicit_zero_including_limits(self):
+        for meta in INPUT_PARAMS:
+            if not meta.get("visible", True):
+                continue
+            if meta.get("data_type") not in (int, float, "int", "float"):
+                continue
+            if isinstance(meta.get("min_max_list"), list):
+                continue
+            values = default_input_data()
+            values[meta["name"]] = 0
+            expected = normalize_input_data(values)
+            for blank in (None, "", " \t "):
+                with self.subTest(name=meta["name"], blank=blank):
+                    values[meta["name"]] = blank
+                    self.assertEqual(normalize_input_data(values), expected)
+
+    def test_blank_numeric_keeps_full_calculation_equivalent_to_zero(self):
+        names = (
+            "temperatura_sredy_s",
+            "t2_tolschina_2_kassety_mm",
+            "dlina_oblicovannyh_kanalov_m",
+        )
+        for name in names:
+            values = default_input_data()
+            values[name] = 0
+            expected = calc_new_data(values)
+            self.assertTrue(expected[2], expected[1])
+            for blank in (None, "", " \t "):
+                with self.subTest(name=name, blank=blank):
+                    values[name] = blank
+                    self.assertEqual(calc_new_data(values), expected)
+
+    def test_blank_flow_preserves_existing_zero_calculation_errors(self):
         values = default_input_data()
+        values["rashod"] = 0
+        expected = calc_new_data(values)
+        self.assertFalse(expected[2])
+        self.assertTrue(expected[1])
         values["rashod"] = ""
-        normalized, errors = normalize_input_data(values)
-        self.assertNotIn("rashod", normalized)
-        self.assertTrue(any(error["header"] == "Расход" for error in errors))
+        self.assertEqual(calc_new_data(values), expected)
+
+    def test_blank_choices_still_require_selection(self):
+        for name in ("sreda", "kolichestvo_kasset", "kolichestvo_stupenej_drosselirovaniya_sht"):
+            for blank in (None, "", " \t "):
+                with self.subTest(name=name, blank=blank):
+                    values = default_input_data()
+                    values[name] = blank
+                    normalized, errors = normalize_input_data(values)
+                    self.assertNotIn(name, normalized)
+                    self.assertEqual(len(errors), 1)
+                    self.assertEqual(errors[0]["Exception"], "Обязательное поле не заполнено")
+
+    def test_invalid_numeric_text_is_not_replaced_with_zero(self):
+        for value in ("ошибка", "none", "null"):
+            with self.subTest(value=value):
+                values = default_input_data()
+                values["temperatura_sredy_s"] = value
+                normalized, errors = normalize_input_data(values)
+                self.assertNotIn("temperatura_sredy_s", normalized)
+                self.assertEqual(len(errors), 1)
+                self.assertIn("Некорректное значение", errors[0]["Exception"])
 
     def test_out_of_range_and_unknown_choice_are_rejected(self):
         values = default_input_data()
