@@ -63,25 +63,6 @@ OPERATORS = {
 
 _OPTIONAL_TEXT_INPUTS = {"nazvanie_proekta", "nomer_proekta"}
 
-# Ноль допустим только для полей, которые действительно могут отсутствовать
-# в выбранной геометрии. Для расхода, давления, диаметра и прочих обязательных
-# физических параметров молчаливая подстановка нуля скрывала бы ошибку ввода и
-# приводила к делению на ноль дальше по графу формул.
-BLANK_ZERO_INPUT_NAMES = frozenset({
-    "pozicii",
-    "r1_vnutrennij_radius_1_kassety_mm",
-    "t1_tolschina_1_kassety_mm",
-    "r3_rasstoyanie_m_u_2_kassetoj_i_oblicovkoj_mm",
-    "t3_tolschina_oblicovki_mm",
-    "r4_rasstoyanie_m_u_2_kassetoj_i_oblicovkoj_mm",
-    "t4_tolschina_oblicovki_mm",
-    "r5_rasstoyanie_m_u_2_kassetoj_i_oblicovkoj_mm",
-    "t5_tolschina_oblicovki_mm",
-    "r6_rasstoyanie_m_u_2_kassetoj_i_oblicovkoj_mm",
-    "t6_tolschina_oblicovki_mm",
-})
-
-
 def _is_blank(value: Any) -> bool:
     return value is None or (isinstance(value, str) and not value.strip())
 
@@ -101,9 +82,17 @@ def _empty_policy(meta: dict[str, Any]) -> str:
     if meta.get("name") in _OPTIONAL_TEXT_INPUTS:
         return "empty"
 
-    if meta.get("name") in BLANK_ZERO_INPUT_NAMES:
+    if _data_type(meta) in (int, float) and not isinstance(meta.get("min_max_list"), list):
         return "zero"
     return "error"
+
+
+# Пустой числовой ввод равен явному нулю. Выпадающие списки сохраняют
+# обязательный выбор, а диапазоны проверяются после подстановки нуля.
+BLANK_ZERO_INPUT_NAMES = frozenset(
+    meta["name"] for meta in INPUT_PARAMS
+    if meta.get("visible", True) and _empty_policy(meta) == "zero"
+)
 
 
 def _coerce_value(value: Any, data_type: type) -> Any:
@@ -152,20 +141,20 @@ def normalize_input_data(input_data: dict[str, Any]) -> tuple[dict[str, Any], li
         if _is_blank(raw_value):
             policy = _empty_policy(meta)
             if policy == "zero":
-                normalized[name] = data_type(0)
-                continue
-            if policy == "default":
+                raw_value = 0
+            elif policy == "default":
                 normalized[name] = meta.get("default_val", meta.get("val"))
                 continue
-            if policy == "empty":
+            elif policy == "empty":
                 normalized[name] = ""
                 continue
-            errors.append({
-                "header": header,
-                "val": raw_value,
-                "Exception": "Обязательное поле не заполнено",
-            })
-            continue
+            else:
+                errors.append({
+                    "header": header,
+                    "val": raw_value,
+                    "Exception": "Обязательное поле не заполнено",
+                })
+                continue
 
         try:
             value = _coerce_value(raw_value, data_type)

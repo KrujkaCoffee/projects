@@ -27,7 +27,7 @@ class Field_params():
 
 class Cell_description():
     def __init__(self, min_max_list: tuple | list | None = None,
-                 accuracy: int = 3, comment: str | None = None, data_type: type|str = str, default_val= None):
+                 accuracy: int = 3, comment: str | None = None, data_type: type|str = str, default_val= None, blank_as_zero: bool = False):
         if isinstance(data_type, str):
             data_type = self.str_to_type(data_type)
         if isinstance(min_max_list, tuple):
@@ -45,6 +45,7 @@ class Cell_description():
         self.data_type = data_type
         self.default_val = default_val
         self.is_numeric = self.data_type in (float,int)
+        self.blank_as_zero = blank_as_zero
 
     def cast_type(self, val: str):
 
@@ -64,7 +65,10 @@ class Cell_description():
 
         type_val = self.data_type
 
-        if val is None or (isinstance(val, str) and val.lower() in ('none', 'null', '')):
+        if self.is_numeric and getattr(self, 'blank_as_zero', False):
+            if val is None or (isinstance(val, str) and not val.strip()):
+                return type_val(0)
+        elif val is None or (isinstance(val, str) and val.lower() in ('none', 'null', '')):
             return ''
 
         try:
