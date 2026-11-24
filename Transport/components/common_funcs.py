@@ -1,4 +1,5 @@
 import copy
+import inspect
 import os
 from typing import Self  # Только в Python 3.11+
 import flet as ft
@@ -183,8 +184,9 @@ class _Cell_data():
         self.parent_row.current_cell = self
 
     def setFocus(self):
-        self.control_ref.current.focus()
+        focus_result = self.control_ref.current.focus()
         self.parent_row.current_cell = self
+        return focus_result
 
     # --- Методы управления ячейкой ---
     def set_value_view(self, new_val):
@@ -274,7 +276,7 @@ class Row_data():
     def setFocus(self,name_field):
         for cell in self.cells:
             if cell.params_field.name == name_field:
-                cell.setFocus()
+                return cell.setFocus()
 
 
     def set_visible(self, visible: bool =True):
@@ -452,37 +454,32 @@ class   Table_data():
             return True
         return False
 
-    def _focus_first_editable(self) -> None:
+    def _focus_first_editable(self):
         for row in self.rows:
             for cell in row.cells:
                 field = cell.params_field
                 if not field or not field.editable:
                     continue
                 if self._can_focus(row, field.name):
-                    row.setFocus(field.name)
-                    return
+                    return row.setFocus(field.name)
 
     def set_focus_next_row(self):
         if self.current_row is None or self.current_row.current_cell is None:
-            self._focus_first_editable()
-            return
+            return self._focus_first_editable()
         name_field = self.current_row.current_cell.params_field.name
         current_index = self.rows.index(self.current_row)
         for row in self.rows[current_index + 1:]:
             if self._can_focus(row, name_field):
-                row.setFocus(name_field)
-                return
+                return row.setFocus(name_field)
 
     def set_focus_previous_row(self):
         if self.current_row is None or self.current_row.current_cell is None:
-            self._focus_first_editable()
-            return
+            return self._focus_first_editable()
         name_field = self.current_row.current_cell.params_field.name
         current_index = self.rows.index(self.current_row)
         for row in reversed(self.rows[:current_index]):
             if self._can_focus(row, name_field):
-                row.setFocus(name_field)
-                return
+                return row.setFocus(name_field)
 
     def hide_group(self,name:str|None=None,hide=True):
 
@@ -1253,13 +1250,18 @@ class Table_view(ft.DataTable):
             page.on_keyboard_event = self.on_key
 
 
-    def on_key(self, e: ft.KeyboardEvent):
+    async def on_key(self, e: ft.KeyboardEvent):
         if not self.keyboard_navigation:
             return
         if e.key == 'Arrow Down':
-            self.table_data.set_focus_next_row()
-        if e.key == 'Arrow Up':
-            self.table_data.set_focus_previous_row()
+            focus_result = self.table_data.set_focus_next_row()
+        elif e.key == 'Arrow Up':
+            focus_result = self.table_data.set_focus_previous_row()
+        else:
+            return
+        # В новом Flet focus() асинхронный; старый синхронный вызов тоже поддерживается.
+        if inspect.isawaitable(focus_result):
+            await focus_result
 
 
 
