@@ -132,6 +132,7 @@ class Data_plan(SingletonMeta):
     FNC_RECALC_GANT_BY_LOCAL_LIMIT_TABLE:Callable|None = None#GPL.recalc_gant_by_local_limit_table
     KRO_MANAGER:MKRO|None = None
     DICT_Дата_прих_ордера_гп : dict[tuple[str, str], list[dict]]|None = None
+    zk_relations:CMS.ZkRelations|None = CMS.ZkRelations()
     #---------------gant_borders-------------
     tbl_gant_local_border:BORDERP.BorderPainter = BORDERP.BorderPainter(
                             left_top=(0, 0), right_bottom=(0, 0),
@@ -175,6 +176,7 @@ class Data_plan(SingletonMeta):
     LIST_PODR = CMS.calc_dict_podr()
     DICT_PODR = F.deploy_dict_c(LIST_PODR, 'Имя')
     DICT_PODR_BY_ID = F.deploy_dict_c(LIST_PODR, 'Пномер')
+    DICT_PODR_BY_ID_FULL = F.deploy_dict_c(CMS.calc_dict_podr(False), 'Пномер')
     DICT_PODR_POKI = {k:v for k,v in  DICT_PODR.items() if (v['poki'] is None or USRCNF.Config.place.poki == v['poki'] )}
     STATUS_NORM = CSQ.custom_request_c(db_kplan, f"""SELECT * FROM status_norm""", rez_dict=True)
     DICT_STATUS_NORM = F.deploy_dict_c(STATUS_NORM, 'Код')

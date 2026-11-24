@@ -1577,10 +1577,10 @@ def btn_pl_ok_add_poz_click(self, *args):
                     raise ValueError
                 return bool(nd['necessary_filling_mesured_type_in_plan'])
 
-            # if necessary_filling_mesured_type(poz,self):
-            #     if is_filled_tech_type(t) and not is_filled_mesured_type(t):
-            #         CQT.msgbox(f"Не заполнен размерный ряд")
-            #         return False, None
+            if necessary_filling_mesured_type(poz,self):
+                if is_filled_tech_type(t) and not is_filled_mesured_type(t):
+                    CQT.msgbox(f"Не заполнен размерный ряд")
+                    return False, None
 
 
         if podr == 'пл_оуп':
@@ -1990,6 +1990,8 @@ def oforml_row_plan_tbl(row: CQT.TableRow, *args):
         if state_ref in DTCLS.DICT_STATUSES_RES_ERP:
             val_ui = f'{DTCLS.DICT_STATUSES_RES_ERP[state_ref]["emo"]} {val_data}'
             row.set_value(name_field, val_ui)
+
+
     if 'cust.client_order' in row.nf:
         ref_zk = row.value("cust.client_order")
         if ref_zk and '|' in ref_zk:
@@ -1999,6 +2001,13 @@ def oforml_row_plan_tbl(row: CQT.TableRow, *args):
 
     if 'пл_оуп.№проекта' in row.nf:
         CQT.font_cell_size_format(row.tbl, row.i, row.nf['пл_оуп.№проекта'], underline=True)
+    if 'cust.relations' in row.nf:
+        if 'cust.client_order' in row.nf:
+            ref_zk = row.value("cust.client_order", get_cust_content=True)
+            if ref_zk is not None:
+                row.set_value('cust.relations', DTCLS.zk_relations.ui_str(ref_zk,int(row.value('plan.Пномер'))))
+        if row.value('cust.relations'):
+            CQT.font_cell_size_format(row.tbl, row.i, row.nf['cust.relations'], 12, bold=True)
 
     if 'plan.Направление_деятельности' in row.nf:
 
@@ -2114,6 +2123,30 @@ def oforml_row_plan_tbl(row: CQT.TableRow, *args):
 def load_table_db(self, hook_prog_bar=None):
     if 'shift' in CQT.get_key_modifiers(self):
         DTCLS.FIELDS_DB_INFO = CMS.Fields_db_info(DTCLS.CHECK_FIELD_RULES)
+
+    def fill_relations(data: list[dict]) -> list[dict] | None:
+
+        DTCLS.zk_relations.load(True)
+
+        list_kpls = [_['plan.Пномер'] for _ in data]
+
+        list_refs_zc = CSQ.custom_request_c(CFG.Config.project.db_kplan, f"""
+                        SELECT DISTINCT "пл_оуп"."НомПл", "знпр"."client_order_Key", "знпр"."client_order_num", "знпр"."client_order_date"
+                          FROM знпр
+                               INNER JOIN
+                               пл_оуп ON пл_оуп."Пномер_ЗП" = знпр.s_num
+                         WHERE "client_order_Key" != '' and пл_оуп."НомПл" IN ({CSQ.prepare_list_to_tuple(list_kpls)});
+                """, rez_dict=True)
+        dict_refs_zp = F.deploy_dict_c(list_refs_zc, 'НомПл')
+        for it in data:
+
+            kpl = it['plan.Пномер']
+            if kpl not in dict_refs_zp:
+                continue
+            zp_ref = dict_refs_zp[kpl]['client_order_Key']
+            it['cust.relations'] = DTCLS.zk_relations.ui_str(zp_ref,kpl)
+        return data
+
 
     def fill_kro(data: list[dict]) -> list[dict] | None:
 
@@ -2540,6 +2573,181 @@ def load_table_db(self, hook_prog_bar=None):
                     } for _ in DTCLS.DICT_Дата_прих_ордера_гп[key] if _['ДвижениеПродукцииИМатериаловТовары']]
             CQT.msgboxg_get_table_ok_inf(self,'Движение ГП',tmplate,styleSheet=CQT.MES_CSS)
 
+        def fnc_details_relations(t: CQT.TableContext, i: int, name_clm: str, self: mywindow, *args):
+            row = t.current_row()
+            if row.no_selection:
+                return
+            kpl = int(row.value('plan.Пномер'))
+
+            DTCLS.zk_relations.set_current_kpl(kpl)
+            if not DTCLS.zk_relations.has_zk:
+                CQT.msgboxg('Не выбран ЗК')
+                return
+            text_row, data_row,  aliases = DTCLS.zk_relations.template()
+            #replace_etap_name
+            for it in text_row:
+                if it['etap'] and F.is_numeric(it['etap']):
+                    etap_d = DTCLS.DICT_PODR_BY_ID_FULL.get(int(it['etap']))
+                    if etap_d:
+                        it['etap'] = etap_d['alias']
+
+
+            def func_oform(tbl:CQT.QTableWidget, *args):
+                t = CQT.TableContext(tbl)
+
+                def fnc_select_relate_kpl(lbl_o:CQT.InteractiveLabelInstance,self,i,j,kpl:int,*args):
+                    row = t.get_row(i)
+
+                    def func_oform_select_relate_kpl(*args):
+                        pass
+
+                    ref_zk_child = row.value('client_order_ref')
+                    rows_text, rows_data, aliases = DTCLS.zk_relations.template_not_selected_relate_kpl(ref_zk_child)
+                    rez =CQT.msgboxg_get_table(self, 'Выбор Позиции', rows_text, selection_from_tbl=True,
+                                          styleSheet=CQT.MES_CSS, selectionBehavior=CQT.SelectionBehaviors.SelectRows,
+                                          SelectionMode=CQT.SelectionModes.SingleSelection,
+                                          func_oform_tbl=func_oform_select_relate_kpl)
+                    if not rez:
+                        return
+                    selected_kpl = int(rez[0]['КПЛ'])
+                    row.set_value('relate_kpl',str(selected_kpl))
+                    lbl_o.set_text(str(selected_kpl))
+                    DTCLS.zk_relations.set_child_kpl(selected_kpl)
+
+                def fnc_select_etap(lbl_o:CQT.InteractiveLabelInstance,self,i,j,kpl:int,*args):
+                    class SimpClsEtap_for_relate_kpl(F._SimpMeta):
+                        Пномер: int
+                        Имя_поля: str
+                        Имя_первичного_поля: str
+                        Источник_первичного_поля_info_fields_kpl: int
+                        Источник_ссылки_поля_info_fields_kpl: int
+                        Источник_для_join_поля_info_fields_kpl: int
+                        join_order: int
+                        Имя_начала_этапа: str
+                        Имя_конца_этапа: str
+                        Порядок: int
+                        Группа_для_расч_норм_и_ганта: int
+                        Это_группа_сборки: int
+                        Цвет: str
+                        Наименование: str
+                        mnts_plan_names: str
+                        icon_flet: str
+                        Наименование_СТО: None
+                        Сокращ_наименование: None
+                        Наименование_ЕРП: str
+                        Наименование_rab_c: str
+                        Имя_начала_этапа_факт: str
+                        Имя_конца_этапа_факт: str
+                        poki: None
+                        statistic_deficit_emploers_time_percent: float
+                        alias: str
+                        synthetic: int
+                        is_control: int
+                        default_hours_day_gant: float
+
+                    DICT_ALIASES = {
+                        "Пномер": "_Пномер",
+                        "Имя_поля": "Имя_поля",
+                        "Имя_первичного_поля": "Имя_первичного_поля",
+                        "Источник_первичного_поля_info_fields_kpl": "Источник_первичного_поля_info_fields_kpl",
+                        "Источник_ссылки_поля_info_fields_kpl": "Источник_ссылки_поля_info_fields_kpl",
+                        "Источник_для_join_поля_info_fields_kpl": "Источник_для_join_поля_info_fields_kpl",
+                        "join_order": "join_order",
+                        "Имя_начала_этапа": "Имя начала этапа",
+                        "Имя_конца_этапа": "Имя конца этапа",
+                        "Порядок": "Порядок",
+                        "Группа_для_расч_норм_и_ганта": "Группа_для_расч_норм_и_ганта",
+                        "Это_группа_сборки": "Это_группа_сборки",
+                        "Цвет": "_Цвет",
+                        "Наименование": "Наименование",
+                        "mnts_plan_names": "mnts_plan_names",
+                        "icon_flet": "icon_flet",
+                        "Наименование_СТО": "Наименование_СТО",
+                        "Сокращ_наименование": "Сокращ_наименование",
+                        "Наименование_ЕРП": "Наименование_ЕРП",
+                        "Наименование_rab_c": "Наименование_rab_c",
+                        "Имя_начала_этапа_факт": "Имя_начала_этапа_факт",
+                        "Имя_конца_этапа_факт": "Имя_конца_этапа_факт",
+                        "poki": "poki",
+                        "statistic_deficit_emploers_time_percent": "statistic_deficit_emploers_time_percent",
+                        "alias": "Прозвище",
+                        "synthetic": "synthetic",
+                        "is_control": "is_control",
+                        "default_hours_day_gant": "default_hours_day_gant"
+                    }
+                    row = t.get_row(i)
+                    def template_etaps()->tuple[list[dict],list[dict],dict]:
+                        filtered_etaps = [_ for _ in DTCLS.DICT_PODR_POKI.values() if not _['Группа_для_расч_норм_и_ганта'] == '']
+                        ordered_etaps_o = [SimpClsEtap_for_relate_kpl._from_dict(_) for _ in sorted(filtered_etaps, key=lambda x: x['Порядок'])]
+
+                        text_etaps = [
+                            {"Пномер":_.Пномер, "alias":_.alias,"Наименование":_.Наименование,
+                             "Цвет":_.Цвет,"Имя_начала_этапа":_.Имя_начала_этапа,"Имя_конца_этапа":_.Имя_конца_этапа} for _ in ordered_etaps_o
+                        ]
+                        data_etaps = None
+                        return text_etaps,data_etaps,DICT_ALIASES
+
+
+                    def func_oform_select_etap(tbl,*args):
+                        t = CQT.TableContext(tbl)
+                        t.hide_if_not_dev(CFG,forced_text=True)
+                        for row in t.rows():
+                            clr_str = row.value('Цвет')
+                            clr_o = CMS.Color(clr_str)
+                            if not clr_o.none:
+                                clr_o.align_colors()
+                                row.set_color_font(*clr_o.rgba)
+
+                    child_kpl = row.value('relate_kpl')
+                    if not child_kpl:
+                        CQT.msgbox('Не выбрана связанная КПЛ')
+                        return
+                    child_kpl = int(child_kpl)
+
+                    rows_text, rows_data, aliases = template_etaps()
+                    rez =CQT.msgboxg_get_table(self, 'Выбор Этапа',rows_text , selection_from_tbl=True, dict_or_list_user_data=rows_data,
+                                          styleSheet=CQT.MES_EDIT_CSS, selectionBehavior=CQT.SelectionBehaviors.SelectRows,
+                                          SelectionMode=CQT.SelectionModes.SingleSelection,
+                                          func_oform_tbl=func_oform_select_etap,aliases_header=aliases)
+                    if not rez:
+                        return
+                    selected_etap = int(rez[0]['Пномер'])
+                    selected_etap_name = rez[0]['alias']
+                    row.set_value('relate_kpl',str(selected_etap))
+                    lbl_o.set_text(selected_etap_name)
+                    DTCLS.zk_relations.set_child_etap(child_kpl,selected_etap)
+
+
+
+                t.hide_if_not_dev(CFG,forced_text=True)
+                for row in t.rows():
+                    type_row = row.value('',get_cust_content=True)
+                    if type_row == 'child':
+                        if not row.value('relate_kpl'):
+                            widg = CQT.add_interactive_label(t.tbl, row.i, t.nf['relate_kpl'], row.value('relate_kpl'),
+                                                             parent_self=self)
+                            widg.add_button('Выбор Позиции', on_clicked=fnc_select_relate_kpl,
+                                            cell_val=kpl, img_path=F.sep().join([F.path_to_execut_file_c(),
+                                                                                 'icons', 'btn_select']))
+
+                        if not row.value('etap'):
+                            widg = CQT.add_interactive_label(t.tbl, row.i, t.nf['etap'], row.value('etap'),
+                                                             parent_self=self)
+                            widg.add_button('Выбор этапа', on_clicked=fnc_select_etap,
+                                            cell_val=kpl, img_path=F.sep().join([F.path_to_execut_file_c(),
+                                                                                 'icons', 'btn_select']))
+
+
+            CQT.msgboxg_get_table_ok_inf(self,f'Связи по ЗК для КПЛ №{kpl}',text_row,dict_or_list_user_data = data_row,
+
+                                         aliases_header=aliases,styleSheet=CQT.MES_CSS,
+                                         func_oform_tbl=func_oform)
+
+            DTCLS.zk_relations.set_current_kpl()
+            with CQT.table_updating(t.tbl):
+                oforml_row_plan_tbl(row)
+
+
         def fnc_details_Дата_прих_ордера_гп(t: CQT.TableContext, i: int, name_clm: str, self: mywindow, *args):
             row = t.current_row()
             if row.no_selection:
@@ -2627,6 +2835,8 @@ def load_table_db(self, hook_prog_bar=None):
 
                         t.add_column_events(name, on_double_click=fnc_details_Дата_прих_ордера_гп, parent_self=self)
 
+                    if name == 'cust.relations' and field_o.accessed:
+                        t.add_column_events(name, on_double_click=fnc_details_relations, parent_self=self)
 
 
             hook_prog_bar.set(40 + round(it / t.tbl.rowCount() * 30))
@@ -2750,7 +2960,10 @@ def load_table_db(self, hook_prog_bar=None):
         rez = fill_kro(list_dict_from_db)
         if rez is not None:
             list_dict_from_db = rez
-
+    if 'cust.relations' in fields_from_db:
+        rez = fill_relations(list_dict_from_db)
+        if rez is not None:
+            list_dict_from_db = rez
 
     dict_fields_o = DTCLS.FIELDS_DB_INFO.dict_fields
     editeble_col_nomera = []
@@ -6680,7 +6893,7 @@ def select_poz_after_py(lblself:CQT.InteractiveLabelInstance,self, row, col,ref:
     refs = APIERP.Refs_wet(text)
     ref_obj = APIERP.Ref_wet('Ссылка', 'Документы.ЗаказНаПроизводство2_2', ref)
     refs.add_ref(ref_obj)
-    key, data_rez = APIERP.get_wet_request(text,refs)
+    key, data_rez = APIERP.get_wet_request(text,refs,lazy_method_huours=0.1)
     if key != 200:
         CQT.msgbox(f'Ошибка получения данных код ({key}) из ERP')
         return

@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import copy
+import pathlib
 import pprint
 
 import project_cust_38.Cust_Functions as F
@@ -41,10 +42,12 @@ import data_class
 import project_cust_38.api_erp_commands as APIERP
 import project_cust_38.Cust_emoji as CEMOJ
 import connects as CON
+
 from project_cust_38.Cust_application import SafeApplication, install_crash_guard
 from project_cust_38.sub_mes.kro.manage_kro import Kro_manager as MKRO
 from project_cust_38.sub_mes.cutting_segment_manager.main_cutting_mngr import CentralWindow as CUTMNGR
 from project_cust_38.sub_mes.product_structure_constructor.main_constructor import CentralWindow as STRUCTCONSTR
+from project_cust_38.Constants import CFG as CONST
 try:
     import pl_xl_loader as PXL
 except Exception as e:
@@ -5297,8 +5300,9 @@ SELECT
                     CQT.msgbox('Не найдена техкарта ' + ima + ' ' + nn)
                     return
                 nom_tk = self.DICT_DSE_save_mk[nn]['Номер_техкарты']
-                put_name_tk = F.scfg('add_docs') + os.sep + nom_tk + "_" + nn
-                tk = F.open_file_c(put_name_tk + '.txt', False, "|", True, True)
+                put_name_tk = F.scfg('add_docs') + os.sep + nom_tk + "_" + nn  + '.pickle'
+                put_name_tk = CMS.Techkards.resolve_path(put_name_tk)
+                tk = F.open_file_c(put_name_tk, False, "|", True, True)
                 if tk == ['']:
                     CQT.msgbox(f'Не найдена техкарта {put_name_tk}')
                     return
@@ -5804,7 +5808,7 @@ SELECT
                 return
             nom_jur_vnepl = int(self.ui.cmb_nom_jur_vneplan.currentText())
             CSQ.custom_request_c(self.bd_naryad,
-                                 f'''UPDATE jur_vnepl SET Номер_нов_мк = {nom} WHERE Пномер ={nom_jur_vnepl}''')
+                                 f'''UPDATE jur_vnepl SET "Номер_нов_мк" = {nom} WHERE "Пномер" ={nom_jur_vnepl}''')
 
         # nom = str(CSQ.find_in_db_c(self.bd_naryad, 'mk',{'Дата':data_sozd},['Пномер'])[0][0])
         if self.ui.tabWidget_2.currentIndex() == 0:
@@ -5829,11 +5833,9 @@ SELECT
                 if nn_dse not in self.DICT_DSE_save_mk:
                     CQT.msgbox(f'Не найден номер техкарты {nn_dse}')
                 ntk = self.DICT_DSE_save_mk[nn_dse]['Номер_техкарты']
-                # ntk = \
-                #    CSQ.find_in_db_c(self.bd_naryad, 'dse', {'Номенклатурный_номер': nn_dse, 'Наименование': naim_dse},
-                #                   ['Номер_техкарты'], all=False, conn=CONN)[0]
-                rez = F.copy_file_c(F.scfg('add_docs') + os.sep + ntk + "_" + nn_dse + '.pickle',
-                                    dir_tp + os.sep + ntk + "_" + nn_dse + '.pickle')
+                rez = F.copy_file_c(
+                    CMS.Techkards.resolve_path(F.scfg('add_docs') + os.sep + ntk + "_" + nn_dse + '.pickle'),
+                    CMS.Techkards.resolve_path(dir_tp + os.sep + ntk + "_" + nn_dse + '.pickle'))
                 if rez == False:
                     CQT.msgbox(f'Не удалось скопировать файл {ntk + "_" + nn_dse + ".pickle"}, не сохранено')
             spisok[i] = "|".join(spisok[i])
@@ -5841,7 +5843,7 @@ SELECT
         # =================KPLAN============================================
         if self.ui.cmb_tip_mk.currentText() == 'Плановая':
             CSQ.custom_request_c(self.db_kplan,
-                                 f"""UPDATE plan SET МК = {int(nom)} WHERE Пномер = {self.dict_cur_poz_cr_mk['Пномер']};""")
+                                 f"""UPDATE plan SET "МК" = {int(nom)} WHERE "Пномер" = {self.dict_cur_poz_cr_mk['Пномер']};""")
             # CSQ.custom_request_c(self.db_kplan,
             #                     f"""UPDATE пл_топ SET Дата_МК = {F.now("%Y-%m-%d")} WHERE НомПл = {self.dict_cur_poz_cr_mk['Пномер']};""")
         # ==================================================================
@@ -5904,8 +5906,6 @@ SELECT
             if s[i][nk_pki] != '+':
                 s[i][nk_pki] = s[i][nk_pki].replace('0', '')
                 s[i][nk_pki] = s[i][nk_pki].replace('1', '+')
-        # for j in range(nk_level_c, len(s[0])):
-        #    s = self.udal_kol(s, nk_level_c)
         for j in s:
             for i in range(nk_level_c, len(s[0])):
                 if '$' in str(j[i]):
@@ -6085,93 +6085,78 @@ SELECT
             # custom_request_c = f'SELECT * FROM dse WHERE Номенклатурный_номер = "{nn}" AND Наименование = "{ima}"'
             # query = CSQ.find_in_db_c(self.db_dse, siroy_custom_request_c=custom_request_c, conn=conn, cur=cur, hat_c=True, all=False)
             poki = USRCNF.Config.place.poki
-            query = CSQ.custom_request_c(self.db_dse,
-                                         f'SELECT * FROM dse WHERE Номенклатурный_номер = "{nn}" AND poki = {poki};',
+            query = CSQ.custom_request_c(
+                self.db_dse,
+                f"""SELECT * FROM dse WHERE "Номенклатурный_номер" = '{nn}' AND poki = {poki};""",
                                          conn=conn, cur=cur, hat_c=True,
                                          one=True)
             if len(query) == 1:
                 bd_tmp.append(
                     [nn, ima, '', prim, adres, '', '', '', '', '', '', mat, kod_erp, klass, nr, nv, self.place.poki])
                 # CSQ.add_line_into_db_sql_c(self.db_dse, 'dse', bd_tmp, conn=conn, cur=cur)
-                CSQ.custom_request_c(self.db_dse, f"""INSERT INTO dse(Номенклатурный_номер 
-                    ,Наименование 
-                    ,Номер_техкарты 
-                    ,Примечание 
-                    ,Путь_docs 
-                    ,Доступ 
-                    ,Процесс 
-                    ,Нормы 
-                    ,Материалы 
-                    ,Тех_заметки 
-                    ,Теги 
-                    ,Мат_кд 
-                    ,Код_ЕРП 
-                    ,Классификатор, 
-                    Нр_техн_дет, 
-                    Нв_техн_раскрой, 
-                    poki
+                CSQ.custom_request_c(self.db_dse, f"""INSERT INTO dse("Номенклатурный_номер" 
+                    ,"Наименование" 
+                    ,"Номер_техкарты" 
+                    ,"Примечание" 
+                    ,"Путь_docs" 
+                    ,"Доступ" 
+                    ,"Процесс" 
+                    ,"Нормы" 
+                    ,"Материалы" 
+                    ,"Тех_заметки" 
+                    ,"Теги" 
+                    ,"Мат_кд" 
+                    ,"Код_ЕРП" 
+                    ,"Классификатор", 
+                    "Нр_техн_дет", 
+                    "Нв_техн_раскрой", 
+                    "poki"
                     ) VALUES ({', '.join(['?'] * len(bd_tmp[-1]))});""",
                                      list_of_lists_c=bd_tmp,
                                      conn=conn, cur=cur)
                 n += 1
             else:
                 if ima != query[1][F.num_col_by_name_in_hat_c(query, 'Наименование')]:
-                    # CSQ.update_bd_sql(self.db_dse, 'dse', {'Примечание': prim},
-                    #                  {'Пномер': query[1][F.num_col_by_name_in_hat_c(query, 'Пномер')]}, conn=conn, cur=cur)
-                    CSQ.custom_request_c(self.db_dse, f"""UPDATE dse SET Наименование = '{ima}' WHERE
-                     Пномер = {query[1][F.num_col_by_name_in_hat_c(query, 'Пномер')]}; """, conn=conn, cur=cur)
+                    CSQ.custom_request_c(self.db_dse, f"""UPDATE dse SET "Наименование" = '{ima}' WHERE
+                     "Пномер" = {query[1][F.num_col_by_name_in_hat_c(query, 'Пномер')]}; """, conn=conn, cur=cur)
                     m += 1
                 if prim != query[1][F.num_col_by_name_in_hat_c(query, 'Примечание')]:
-                    # CSQ.update_bd_sql(self.db_dse, 'dse', {'Примечание': prim},
-                    #                  {'Пномер': query[1][F.num_col_by_name_in_hat_c(query, 'Пномер')]}, conn=conn, cur=cur)
-                    CSQ.custom_request_c(self.db_dse, f"""UPDATE dse SET Примечание = '{prim}' WHERE
-                     Пномер = {query[1][F.num_col_by_name_in_hat_c(query, 'Пномер')]}; """, conn=conn, cur=cur)
+                    CSQ.custom_request_c(self.db_dse, f"""UPDATE dse SET "Примечание" = '{prim}' WHERE
+                     "Пномер" = {query[1][F.num_col_by_name_in_hat_c(query, 'Пномер')]}; """, conn=conn, cur=cur)
                     m += 1
                 if adres != query[1][F.num_col_by_name_in_hat_c(query, 'Путь_docs')]:
-                    # CSQ.update_bd_sql(self.db_dse, 'dse', {'Путь_docs': adres},
-                    #                  {'Пномер': query[1][F.num_col_by_name_in_hat_c(query, 'Пномер')]}, conn=conn, cur=cur)
-                    CSQ.custom_request_c(self.db_dse, f"""UPDATE dse SET Путь_docs = '{adres}' WHERE
-                                         Пномер = {query[1][F.num_col_by_name_in_hat_c(query, 'Пномер')]}; """,
+                    CSQ.custom_request_c(self.db_dse, f"""UPDATE dse SET "Путь_docs" = '{adres}' WHERE
+                                         "Пномер" = {query[1][F.num_col_by_name_in_hat_c(query, 'Пномер')]}; """,
                                          conn=conn,
                                          cur=cur)
                     m += 1
                 if mat != query[1][F.num_col_by_name_in_hat_c(query, "Мат_кд")]:
-                    # CSQ.update_bd_sql(self.db_dse, 'dse', {'Мат_кд': mat},
-                    #                  {'Пномер': query[1][F.num_col_by_name_in_hat_c(query, 'Пномер')]}, conn=conn, cur=cur)
-                    CSQ.custom_request_c(self.db_dse, f"""UPDATE dse SET Мат_кд = '{mat}' WHERE
-                                                             Пномер = {query[1][F.num_col_by_name_in_hat_c(query, 'Пномер')]}; """,
+                    CSQ.custom_request_c(self.db_dse, f"""UPDATE dse SET "Мат_кд" = '{mat}' WHERE
+                                                             "Пномер" = {query[1][F.num_col_by_name_in_hat_c(query, 'Пномер')]}; """,
                                          conn=conn,
                                          cur=cur)
                     m += 1
                 if klass != query[1][F.num_col_by_name_in_hat_c(query, "Классификатор")]:
-                    # CSQ.update_bd_sql(self.db_dse, 'dse', {'Классификатор': klass},
-                    #                  {'Пномер': query[1][F.num_col_by_name_in_hat_c(query, 'Пномер')]}, conn=conn, cur=cur)
-                    CSQ.custom_request_c(self.db_dse, f"""UPDATE dse SET Классификатор = '{klass}' WHERE
-                                               Пномер = {query[1][F.num_col_by_name_in_hat_c(query, 'Пномер')]}; """,
+                    CSQ.custom_request_c(self.db_dse, f"""UPDATE dse SET "Классификатор" = '{klass}' WHERE
+                                               "Пномер" = {query[1][F.num_col_by_name_in_hat_c(query, 'Пномер')]}; """,
                                          conn=conn,
                                          cur=cur)
                     m += 1
                 if kod_erp != query[1][F.num_col_by_name_in_hat_c(query, "Код_ЕРП")]:
-                    # CSQ.update_bd_sql(self.db_dse, 'dse', {'Код_ЕРП': kod_erp},
-                    #                  {'Пномер': query[1][F.num_col_by_name_in_hat_c(query, 'Пномер')]}, conn=conn, cur=cur)
-                    CSQ.custom_request_c(self.db_dse, f"""UPDATE dse SET Код_ЕРП = '{kod_erp}' WHERE
-                                                Пномер = {query[1][F.num_col_by_name_in_hat_c(query, 'Пномер')]}; """,
+                    CSQ.custom_request_c(self.db_dse, f"""UPDATE dse SET "Код_ЕРП" = '{kod_erp}' WHERE
+                                                "Пномер" = {query[1][F.num_col_by_name_in_hat_c(query, 'Пномер')]}; """,
                                          conn=conn,
                                          cur=cur)
                     m += 1
                 if nr != query[1][F.num_col_by_name_in_hat_c(query, "Нр_техн_дет")]:
-                    # CSQ.update_bd_sql(self.db_dse, 'dse', {'Код_ЕРП': kod_erp},
-                    #                  {'Пномер': query[1][F.num_col_by_name_in_hat_c(query, 'Пномер')]}, conn=conn, cur=cur)
-                    CSQ.custom_request_c(self.db_dse, f"""UPDATE dse SET Нр_техн_дет = '{nr}' WHERE
-                                                Пномер = {query[1][F.num_col_by_name_in_hat_c(query, 'Пномер')]}; """,
+                    CSQ.custom_request_c(self.db_dse, f"""UPDATE dse SET "Нр_техн_дет" = '{nr}' WHERE
+                                                "Пномер" = {query[1][F.num_col_by_name_in_hat_c(query, 'Пномер')]}; """,
                                          conn=conn,
                                          cur=cur)
                     m += 1
                 if nv != query[1][F.num_col_by_name_in_hat_c(query, "Нв_техн_раскрой")]:
-                    # CSQ.update_bd_sql(self.db_dse, 'dse', {'Код_ЕРП': kod_erp},
-                    #                  {'Пномер': query[1][F.num_col_by_name_in_hat_c(query, 'Пномер')]}, conn=conn, cur=cur)
-                    CSQ.custom_request_c(self.db_dse, f"""UPDATE dse SET Нв_техн_раскрой = '{nv}' WHERE
-                                                Пномер = {query[1][F.num_col_by_name_in_hat_c(query, 'Пномер')]}; """,
+                    CSQ.custom_request_c(self.db_dse, f"""UPDATE dse SET "Нв_техн_раскрой" = '{nv}' WHERE
+                                                "Пномер" = {query[1][F.num_col_by_name_in_hat_c(query, 'Пномер')]}; """,
                                          conn=conn,
                                          cur=cur)
                     m += 1
@@ -6254,8 +6239,8 @@ SELECT
             nk_pnom = CQT.num_col_by_name_c(tbl, 'Пномер')
             nom_mk = int(tbl.item(row, nk_pnom).text())
             try:
-                query = f'''SELECT data, Head FROM xml 
-                                   WHERE Номер_мк = {nom_mk}
+                query = f'''SELECT data, "Head" FROM xml 
+                                   WHERE "Номер_мк" = {nom_mk}
                                                '''
                 rez_xml = CSQ.custom_request_c(self.db_resxml, query)
                 xml = rez_xml[-1][0]
@@ -6269,9 +6254,9 @@ SELECT
                 pass
 
         if vklad.currentIndex() == CQT.number_table_by_name_c(vklad, 'Просмотр структуры'):
-            self.glob_pre_csv_file_path = ''
 
             putt, spis_xml = select_and_load_file(self)
+            self.glob_pre_csv_file_path = str(pathlib.Path(putt).parent)
             if putt == None:
                 return
             if not check_file(spis_xml):
@@ -6421,11 +6406,11 @@ SELECT
         unavailable_types = CMS.XML_get_unavailable_xml_types(xml_head)
         s_bd = []
         spis_rc = self.SPIS_RC
-        custom_request_c = f'''SELECT * FROM nomen WHERE П5 = "1" '''
+        custom_request_c = f'''SELECT * FROM nomen WHERE "П5" = '1';'''
         nomenklatura = CSQ.custom_request_c(self.bd_nomen, custom_request_c)
         DICT_NN_NTK = CMS.load_dict_dse(self.db_dse)
 
-        custom_request_c = f""" SELECT Пномер, file_name FROM t_kards"""
+        custom_request_c = f""" SELECT "Пномер", file_name FROM t_kards"""
         query = CSQ.custom_request_c(self.bd_files, custom_request_c, '', hat_c=True, rez_dict=True)
         if query == False:
             CQT.msgbox(f'ОШИбка получения данных файлов с БД')
@@ -6663,7 +6648,7 @@ SELECT
             return
         bin_xml = F.load_file_convert_to_binary(path_file)
 
-        check_line_db = CSQ.custom_request_c(self.db_resxml, f"""SELECT * FROM xml WHERE Номер_мк = {pnom}""",
+        check_line_db = CSQ.custom_request_c(self.db_resxml, f"""SELECT * FROM xml WHERE "Номер_мк" = {pnom}""",
                                              one=True)
 
         if len(check_line_db) > 1:
@@ -6671,7 +6656,7 @@ SELECT
                                  list_of_lists_c=[[bin_xml]])
             CQT.msgbox(f'Успешно обновлено')
         else:
-            CSQ.custom_request_c(self.db_resxml, """INSERT INTO  xml(Номер_мк,data,Head) VALUES (?,?,?);""",
+            CSQ.custom_request_c(self.db_resxml, """INSERT INTO  xml("Номер_мк","data","Head") VALUES (?,?,?);""",
                                  list_of_lists_c=[[pnom, bin_xml, 1]])
             CQT.msgbox(f'Успешно добавлено')
     def is_main_mode(self)->bool:
@@ -6800,7 +6785,7 @@ myappid = 'Powerz.BAG.SustControlWork.0.0.0'  # !!!
 QtWin.setCurrentProcessExplicitAppUserModelID(myappid)
 app.setWindowIcon(QtGui.QIcon(os.path.join("icons", "icon.png")))
 
-S = F.scfg('Stile').split(",")
+S = CONST.Stile.split(",")
 app.setStyle(S[1])
 
 application = mywindow()

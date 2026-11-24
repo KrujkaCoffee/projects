@@ -23,7 +23,7 @@ def check_full_raskroy(self):
     fiels_in_dir = F.list_of_files_c(dir_xml)[0]
     list_files = []
     for file_name in fiels_in_dir[2]:
-        if len(file_name) > 8 and file_name[-8:] == '_AUT.txt':
+        if len(file_name) > 8 and file_name[-8:].lower() == '_aut.txt':
             list_files.append(fiels_in_dir[0] + F.sep() + file_name)
     for file_path_name in list_files:
         aut = aut_rasclad_into_dict(self, file_path_name)
@@ -58,7 +58,8 @@ def aut_rasclad_into_dict(self, path: str) -> dict:
         file_list = []
 
         for line in file:
-
+            if 'линза' in line.lower():
+                print()
             if ':' not in line:
                 continue
             line_list = line.split(':', 1)
@@ -164,6 +165,8 @@ def generate_precsv_tree(self,p=None,write = True, *args,**kwargs):
         CQT.msgbox(f'не загружена структура')
         return
     path_dir_xml = CMS.load_tmp_path("tmp_putt")
+    if not os.path.exists(path_dir_xml) and self.__dict__.get('glob_pre_csv_file_path'):
+        path_dir_xml = self.__dict__.get('glob_pre_csv_file_path')
 
     dict_tree =F.list_of_lists_to_list_of_dicts(CQT.list_from_tree_c(self.ui.tree_base_tree,True))
     set_segment = {"част", "сегм", "сект"}
