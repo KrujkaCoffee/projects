@@ -69,10 +69,13 @@ class SilencerReportCardTests(unittest.TestCase):
         def collect_card(title, rows, **kwargs):
             card = build_card(title, rows, **kwargs)
             for row in rows:
-                raw[row[0]] = (row[1], row[2])
+                if row[0]:
+                    raw[row[0]] = (row[1], row[2])
             for row in card.content.controls[1:]:
                 name, value, unit = row.controls
-                rendered[name.value] = (value.value, unit.value)
+                # Пустые строки выравнивают высоту карточек, это не параметры.
+                if name.value:
+                    rendered[name.value] = (value.value, unit.value)
             return card
 
         with patch.dict(self.web, {"build_card_component": collect_card}):

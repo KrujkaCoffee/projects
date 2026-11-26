@@ -32,6 +32,7 @@ BLANK_ZERO_INPUT_NAMES = calculation_core.BLANK_ZERO_INPUT_NAMES
 OUTPUT_PARAMS = calculation_core.OUTPUT_PARAMS
 CALC_FUNCTIONS = calculation_core.CALC_FUNCTIONS
 GROUPS = calculation_core.GROUPS
+HIDDEN_OUTPUT_GROUPS = calculation_core.HIDDEN_OUTPUT_GROUPS
 
 class Cust_module_params():
     def __init__(self):
@@ -439,6 +440,18 @@ def table_data_from_payload(payload: dict) -> CMF.Table_data:
     return table_data
 
 
+def _filter_hidden_output_groups(table_data: CMF.Table_data) -> CMF.Table_data:
+    """Скрывает группы ТЗ в отдельной модели, не изменяя исходную историю."""
+    if not any(getattr(row, 'group_name', None) in HIDDEN_OUTPUT_GROUPS for row in table_data.rows):
+        return table_data
+    payload = table_data_to_payload(table_data)
+    payload['rows'] = [
+        row for row in payload['rows']
+        if row.get('group_name') not in HIDDEN_OUTPUT_GROUPS
+    ]
+    return table_data_from_payload(payload)
+
+
 def build_history_blob(input_tbl: CMF.Table_data, output_tbl: CMF.Table_data) -> bytes:
     payload = {
         'schema_version': _HISTORY_SCHEMA_VERSION,
@@ -492,7 +505,8 @@ def load_from_db_history_calc(
     )
     if not data:
         return False
-    return decode_history_blob(data)
+    input_tbl, output_tbl = decode_history_blob(data)
+    return input_tbl, _filter_hidden_output_groups(output_tbl)
 
 
 def get_name_new_calc(input_vals: dict | None = None) -> str:
