@@ -1459,14 +1459,35 @@ def create_value_cell(cell_data: _Cell_data, visible: bool = True, width=None, h
         # Выпадающий список для параметров с множеством вариантов
         dropdown_type = ft.Dropdown
         option_type = ft.dropdown.Option
-        dropdown_params = {"on_select": fnc_on_change}
+        dropdown_params = {"on_select": fnc_on_change, "on_focus": cell_data.on_focus}
         if keyboard_navigation:
             # M2 допускает focus(); у Dropdown без editable внутреннее поле не принимает фокус.
             dropdown_type = ft.DropdownM2
             option_type = ft.dropdownm2.Option
+            select_icon = ft.Container(
+                content=ft.Icon(ft.Icons.ARROW_DROP_DOWN, size=24),
+                width=40,
+                height=40,
+                alignment=ft.Alignment.CENTER,
+                border_radius=20,
+                bgcolor=ft.Colors.TRANSPARENT,
+            )
+
+            def on_dropdown_focus(e):
+                cell_data.on_focus(e)
+                select_icon.bgcolor = ft.Colors.with_opacity(0.1, ft.Colors.ON_SURFACE_VARIANT)
+                select_icon.update()
+
+            def on_dropdown_blur(e):
+                cell_data.on_blur(e)
+                select_icon.bgcolor = ft.Colors.TRANSPARENT
+                select_icon.update()
+
             dropdown_params = {
                 "on_change": fnc_on_change,
-                "on_blur": cell_data.on_blur,
+                "on_focus": on_dropdown_focus,
+                "on_blur": on_dropdown_blur,
+                "select_icon": select_icon,
                 "focused_bgcolor": ft.Colors.PRIMARY_CONTAINER,
                 "filled": True,
             }
@@ -1484,7 +1505,6 @@ def create_value_cell(cell_data: _Cell_data, visible: bool = True, width=None, h
                             value=str(val),
                             data={"cell": cell_data},  # 🔑 привязка
                             **dropdown_params,
-                            on_focus=cell_data.on_focus,
                             tooltip=cell_data.description.comment,
                             border=ft.InputBorder.NONE,   # убираем рамку
                             width=width,
