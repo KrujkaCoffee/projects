@@ -157,6 +157,43 @@ class TableKeyboardNavigationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(calls, [])
         self.assertIs(table.current_row, first)
 
+    async def test_dropdown_menu_keeps_arrow_keys_until_field_regains_focus(self):
+        table, view, calls, add = self.make_table()
+        before, dropdown, after = [add(name) for name in ('before', 'dropdown', 'after')]
+        cell = dropdown.dict_cells()['val']
+        cell.description.min_max_list = ['unchanged', 'other']
+        self.select(dropdown)
+        cell.on_blur(None)
+
+        for key in ('Arrow Down', 'Arrow Up'):
+            await self.press(view, key)
+        self.assertEqual(calls, [])
+        self.assertIs(table.current_row, dropdown)
+        self.assertEqual(cell.val, 'unchanged')
+
+        # Закрытие меню/возврат по Tab восстанавливает нативный focus списка.
+        self.select(dropdown)
+        await self.press(view, 'Arrow Down')
+        self.assertIs(table.current_row, after)
+        self.select(dropdown)
+        await self.press(view, 'Arrow Up')
+        self.assertIs(table.current_row, before)
+        self.assertEqual(calls, ['after', 'before'])
+
+    async def test_delayed_dropdown_blur_does_not_reset_next_row_focus(self):
+        table, view, calls, add = self.make_table()
+        dropdown, after = add('dropdown'), add('after')
+        cell = dropdown.dict_cells()['val']
+        cell.description.min_max_list = ['unchanged', 'other']
+        self.select(dropdown)
+        await self.press(view, 'Arrow Down')
+        self.select(after)
+        cell.on_blur(None)
+        self.assertIs(table.current_row, after)
+        await self.press(view, 'Arrow Up')
+        self.assertIs(table.current_row, dropdown)
+        self.assertEqual(calls, ['after', 'dropdown'])
+
     async def test_no_available_cells_is_a_noop(self):
         table, view, calls, add = self.make_table()
         for key in ("Arrow Down", "Arrow Up"):
