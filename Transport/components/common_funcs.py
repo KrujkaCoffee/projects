@@ -175,13 +175,18 @@ class _Cell_data():
     # 🔑 ссылки на UI-элементы
         self.container_ref: ft.Ref[ft.Container] | None = None
         self.control_ref: ft.Ref[ft.Control] | None = None
+        self._has_focus = False
         """
         cell_data.set_value("123")                 # поменять значение
         cell_data.set_bgcolor(ft.Colors.ERROR)     # подсветить ошибку
         cell_data.set_disabled(True)               # сделать поле недоступным
         """
     def on_focus(self,e:ft.ControlEvent):
+        self._has_focus = True
         self.parent_row.current_cell = self
+
+    def on_blur(self,e:ft.ControlEvent):
+        self._has_focus = False
 
     def setFocus(self):
         focus_result = self.control_ref.current.focus()
@@ -968,7 +973,8 @@ class Table_view(ft.DataTable):
                         fnc_onchange=fnc_onchange,
                         width=cell_data.params_field.width,
                         visible=visible,
-                        height=row_height
+                        height=row_height,
+                        keyboard_navigation=keyboard_navigation,
                     )
                     list_cells.append(value_cell)
                 else:
@@ -1130,7 +1136,8 @@ class Table_view(ft.DataTable):
                                 fnc_onchange=fnc_onchange,
                                 width=cell_data.params_field.width,
                                 visible=visible,
-                                height=row_height
+                                height=row_height,
+                                keyboard_navigation=keyboard_navigation,
                             )
                             list_cells.append(value_cell)
                         else:
@@ -1253,6 +1260,12 @@ class Table_view(ft.DataTable):
     async def on_key(self, e: ft.KeyboardEvent):
         if not self.keyboard_navigation:
             return
+        current_row = self.table_data.current_row
+        if current_row is not None and current_row.current_cell is not None:
+            cell = current_row.current_cell
+            # В раскрытом списке стрелками управляет меню, а не таблица.
+            if isinstance(cell.description.min_max_list, list) and not getattr(cell, '_has_focus', False):
+                return
         if e.key == 'Arrow Down':
             focus_result = self.table_data.set_focus_next_row()
         elif e.key == 'Arrow Up':
@@ -1419,7 +1432,7 @@ def ip_to_hostname(ip_address):
 
 
 def create_value_cell(cell_data: _Cell_data, visible: bool = True, width=None, height=None,
-                      fnc_onchange=None
+                      fnc_onchange=None, keyboard_navigation: bool = False
                       ) -> ft.DataCell:
     width = 100 if width is None else width
 
@@ -1444,7 +1457,20 @@ def create_value_cell(cell_data: _Cell_data, visible: bool = True, width=None, h
     fnc_on_change = fnc_onchange
     if isinstance(cell_data.description.min_max_list, list):
         # Выпадающий список для параметров с множеством вариантов
-        options = [ft.dropdown.Option(str(x)) for x in cell_data.description.min_max_list]
+        dropdown_type = ft.Dropdown
+        option_type = ft.dropdown.Option
+        dropdown_params = {"on_select": fnc_on_change}
+        if keyboard_navigation:
+            # M2 допускает focus(); у Dropdown без editable внутреннее поле не принимает фокус.
+            dropdown_type = ft.DropdownM2
+            option_type = ft.dropdownm2.Option
+            dropdown_params = {
+                "on_change": fnc_on_change,
+                "on_blur": cell_data.on_blur,
+                "focused_bgcolor": ft.Colors.PRIMARY_CONTAINER,
+                "filled": True,
+            }
+        options = [option_type(str(x)) for x in cell_data.description.min_max_list]
 
         return ft.DataCell(
                     ft.Container(
@@ -1452,12 +1478,12 @@ def create_value_cell(cell_data: _Cell_data, visible: bool = True, width=None, h
                         bgcolor=ft.Colors.SECONDARY_CONTAINER,
                         margin=ft.margin.all(1),          # просвет для бордера
                         padding=ft.padding.symmetric(horizontal=12),  # имитируем padding как у TextField
-                        content=ft.Dropdown(
+                        content=dropdown_type(
                             ref=control_ref,
                             options=options,
                             value=str(val),
                             data={"cell": cell_data},  # 🔑 привязка
-                            on_select=fnc_on_change,
+                            **dropdown_params,
                             on_focus=cell_data.on_focus,
                             tooltip=cell_data.description.comment,
                             border=ft.InputBorder.NONE,   # убираем рамку
@@ -1789,7 +1815,7 @@ def datatable_to_dicts(table: ft.DataTable) -> list[dict]:
                     cell_value = content.value
                 elif isinstance(content, ft.TextField):
                     cell_value = content.value
-                elif isinstance(content, ft.Dropdown):
+                elif isinstance(content, (ft.Dropdown, ft.DropdownM2)):
                     cell_value = content.value
                 elif isinstance(content, ft.Checkbox):
                     cell_value = content.value
