@@ -90,7 +90,8 @@ def _fmt(value: Any, accuracy: int = 1, empty: str = "—") -> str:
 def _fmt_cell(value: Any, accuracy: int = 1, empty: str = "—") -> str:
     num = _as_float(value)
     if num is not None:
-        return _fmt(num, accuracy=accuracy, empty=empty)
+        text = _fmt(num, accuracy=accuracy, empty=empty)
+        return text.rstrip("0").rstrip(",") if "," in text else text
     if value is None:
         return empty
     text = str(value).strip()
@@ -309,7 +310,7 @@ def build_silencer_report(
                 [
                     ("Среда", _value(input_values, "sreda", default="—"), ""),
                     (f"Расход, {_value(input_values, 'edinica_rashoda', default='')}", _value(input_values, "rashod"), ""),
-                    ("Давление на входе в ШГ", _value(input_values, "davlenie_na_vhode_v_shg_ri_abs_mpa"), "МПа", 2),
+                    ("Давление до клапана", _value(input_values, "ak_produvka_davlenie_v_nachale_truby_mpa_davlenie_do_klapana_mpa"), "МПа", 3),
                     ("Температура", _value(input_values, "temperatura_sredy_s"), "°C", 1),
                 ],
                 width=360,
@@ -317,11 +318,11 @@ def build_silencer_report(
             build_card_component(
                 "Результаты аэродинамического расчёта",
                 [
-                    ("Давление на входе", _value(input_values, "davlenie_na_vhode_v_shg_ri_abs_mpa"), "МПа", 2),
+                    ("Давление на входе (абс.)", _value(input_values, "davlenie_na_vhode_v_shg_ri_abs_mpa"), "МПа", 3),
                     ("Давление на выходе", _value(calculated, "davlenie_na_vyhode_iz_shg_pe_mpa"), "МПа", 3),
                     ("Реактивная сила", _value(calculated, "r_reaktivnye_sily_n"), "Н", 1),
                     ("Скорость на выходе ШГ", _value(calculated, "skorost_na_vyhode_shg_m_s"), "м/с", 1),
-                    ("Удельный объём на выходе", _value(calculated, "udelnyj_obem_m3_kg_out"), "м³/кг", 3),
+                    ("Удельный объём при pатм", _value(calculated, "udelnyj_obem_m3_kg_out"), "м³/кг", 3),
                     ("Массовый расход", _value(calculated, "massovyj_rashod_kg_s_out"), "кг/с", 2),
                     ("Диаметр в расчёте силы", _value(calculated, "diametr_shg_m_out"), "м", 3),
                 ],
@@ -360,8 +361,12 @@ def build_silencer_report(
             ft.Container(
                 content=ft.Text(
                     "Расчёт скорости и силы: A = πD²/4; w = G·v/A; "
-                    "R = w²·A/v = G·w. G — массовый расход, v — удельный "
-                    "объём, D — показанный диаметр.",
+                    "R = w²·A/v = G·w. D — заданный внутренний диаметр корпуса.\n"
+                    "v = Rг·(T + 273,15)/pатм — удельный объём при атмосферном давлении, "
+                    "введённой температуре T (°C) и газовой постоянной выбранной среды Rг.\n"
+                    "G — массовый расход: т/ч × 1000/3600 с округлением вверх до 0,01 кг/с; "
+                    "при вводе кг/с — без пересчёта.\n"
+                    "В формулах используются расчётные значения до округления для отображения в карточках.",
                     size=12,
                     opacity=0.78,
                 ),

@@ -534,7 +534,7 @@ def generate_rezult_data_for_save(name: str, input_tbl: ft.DataTable, output_tbl
 def get_vals_from_input_data_tbl(tbl: ft.DataTable):
     table_data = getattr(tbl, 'table_data', None)
     if isinstance(table_data, CMF.Table_data):
-        if table_data.sync_ui_to_data('val') is False:
+        if not table_data.sync_ui_to_data('val'):
             raise ValueError('Не удалось синхронизировать входную таблицу')
         data_params = table_data.to_dict_by_unique()
         return {

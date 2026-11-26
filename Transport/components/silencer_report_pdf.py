@@ -265,20 +265,24 @@ def draw_section_header(c, x: float, y: float, w: float, h: float, title: str, *
     draw_cell(c, x, y, w, h, title, font=font, bold_font=bold_font, size=8.5, bold=True, align="center", fill=colors.HexColor("#EDEDED"))
 
 
-def draw_column_table(c, x: float, y: float, w: float, rows: list[tuple[str, Any, str]], *, font: str, bold_font: str,
+def draw_column_table(c, x: float, y: float, w: float, rows: list[tuple[str, Any, str] | tuple[str, Any, str, int]], *, font: str, bold_font: str,
                       title: str, row_h: float = 15.5) -> float:
     draw_section_header(c, x, y + len(rows) * row_h, w, 17, title, font=font, bold_font=bold_font)
     label_w = w * 0.66
     val_w = w * 0.22
     dim_w = w - label_w - val_w
-    for i, (label, val, dim) in enumerate(rows):
+    for i, row in enumerate(rows):
+        label, val, dim = row[:3]
+        accuracy = row[3] if len(row) == 4 else 1
         yy = y + (len(rows) - 1 - i) * row_h
-        size_value = 5
-        if F.valm(val):
-            size_value = 7
+        num = convert_html_float(val)
+        value_text = format_num(val, accuracy=accuracy)
+        if num is not None and "," in value_text:
+            value_text = value_text.rstrip("0").rstrip(",")
+        size_value = 7 if num is not None else 5
         draw_cell(c, x, yy, label_w, row_h, label, font=font, bold_font=bold_font, size=6.8)
-        draw_cell(c, x + label_w, yy, val_w, row_h, format_num(val), font=font, bold_font=bold_font, size=size_value, bold=True, align="center")
-        draw_cell(c, x + label_w + val_w, yy, dim_w, row_h, dim, font=font, bold_font=bold_font, size=6.8, align="center")
+        draw_cell(c, x + label_w, yy, val_w, row_h, value_text, font=font, bold_font=bold_font, size=size_value, bold=True, align="center")
+        draw_cell(c, x + label_w + val_w, yy, dim_w, row_h, dim, font=font, bold_font=bold_font, size=6.8, align="center", pad=1)
     return 17 + len(rows) * row_h
 
 
@@ -523,27 +527,41 @@ def build_silencer_report_pdf(
     rows_nominal = [
         ("Среда", unpack_value_by_key(input_values, "sreda", default="-"), ""),
         (f"Расход, {unpack_value_by_key(input_values, 'edinica_rashoda', default='')}", unpack_value_by_key(input_values, "rashod"), ""),
-        ("Давление до клапана", unpack_value_by_key(input_values, "ak_produvka_davlenie_v_nachale_truby_mpa_davlenie_do_klapana_mpa", "davlenie_na_vhode_v_shg_ri_abs_mpa"), "МПа"),
+        ("Давление до клапана", unpack_value_by_key(input_values, "ak_produvka_davlenie_v_nachale_truby_mpa_davlenie_do_klapana_mpa"), "МПа", 3),
         ("Температура", unpack_value_by_key(input_values, "temperatura_sredy_s"), "°C"),
     ]
     rows_aero = [
-        ("Давление на входе", unpack_value_by_key(input_values, "davlenie_na_vhode_v_shg_ri_abs_mpa"), "МПа"),
-        ("Давление на выходе", unpack_value_by_key(calculated, "davlenie_na_vyhode_iz_shg_pe_mpa"), "МПа"),
-        ("Реактивные силы", unpack_value_by_key(calculated, "r_reaktivnye_sily_n"), "Н"),
-        ("Скорость на выходе ШГ", unpack_value_by_key(calculated, "skorost_na_vyhode_shg_m_s"), "м/с"),
+        ("Давление на входе (абс.)", unpack_value_by_key(input_values, "davlenie_na_vhode_v_shg_ri_abs_mpa"), "МПа", 3),
+        ("Давление на выходе", unpack_value_by_key(calculated, "davlenie_na_vyhode_iz_shg_pe_mpa"), "МПа", 3),
+        ("Реактивная сила", unpack_value_by_key(calculated, "r_reaktivnye_sily_n"), "Н", 1),
+        ("Скорость на выходе ШГ", unpack_value_by_key(calculated, "skorost_na_vyhode_shg_m_s"), "м/с", 1),
+        ("Удельный объём при pатм", unpack_value_by_key(calculated, "udelnyj_obem_m3_kg_out"), "м³/кг", 3),
+        ("Массовый расход", unpack_value_by_key(calculated, "massovyj_rashod_kg_s_out"), "кг/с", 2),
+        ("Диаметр в расчёте силы", unpack_value_by_key(calculated, "diametr_shg_m_out"), "м", 3),
     ]
     rows_elements = [
         ("Тип дроссельного блока", "Ступенчатый", ""),
         ("Ступеней дросселирования", unpack_value_by_key(input_values, "kolichestvo_stupenej_drosselirovaniya_sht"), "шт"),
-        ("Наличие кассет", unpack_value_by_key(input_values, "nalichie_kasset", default="-"), ""),
-        ("Внутренний диаметр корпуса", unpack_value_by_key(input_values, "vnutrennij_diametr_shumoglushitelya_korpus_m"), "м"),
+        ("Заданный внутренний диаметр корпуса", unpack_value_by_key(input_values, "vnutrennij_diametr_shumoglushitelya_korpus_m"), "м", 3),
     ]
-    h_cards = 17 + 4 * 15.5
-    y -= h_cards
-    draw_column_table(c, main_x, y, card_w, rows_nominal, font=font, bold_font=bold_font, title="Номинальные параметры среды")
-    draw_column_table(c, main_x + card_w + col_gap, y, card_w, rows_aero, font=font, bold_font=bold_font, title="Аэродинамический расчет")
-    draw_column_table(c, main_x + 2 * (card_w + col_gap), y, card_w, rows_elements, font=font, bold_font=bold_font, title="Элементы шумоглушителя")
-    y -= 12
+    card_row_h = 20
+    for i, (title, rows) in enumerate((
+        ("Номинальные параметры среды", rows_nominal),
+        ("Аэродинамический расчет", rows_aero),
+        ("Элементы шумоглушителя", rows_elements),
+    )):
+        draw_column_table(c, main_x + i * (card_w + col_gap), y - 17 - len(rows) * card_row_h,
+                          card_w, rows, font=font, bold_font=bold_font, title=title, row_h=card_row_h)
+    y -= 17 + max(len(rows_nominal), len(rows_aero), len(rows_elements)) * card_row_h + 12
+    for note in (
+        "Расчёт скорости и силы: A = πD²/4; w = G·v/A; R = w²·A/v = G·w. D - заданный внутренний диаметр корпуса.",
+        "v = Rг·(T + 273,15)/pатм: T - температура (°C), Rг - постоянная выбранной среды, pатм - атмосферное давление.",
+        "G - массовый расход: т/ч × 1000/3600 с округлением вверх до 0,01 кг/с; при вводе кг/с - без пересчёта.",
+        "В формулах используются расчётные значения до округления для отображения в карточках.",
+    ):
+        draw_text(c, note, main_x, y, font=font, size=7, max_width=table_w)
+        y -= 10
+    y -= 4
 
     tube_power = get_num_series(calculated, POWER_TUBE_KEYS)
     silencer_power = get_num_series(calculated, POWER_SILENCER_KEYS)
