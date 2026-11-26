@@ -6,6 +6,7 @@ import unittest
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 try:
     import flet as ft
@@ -117,20 +118,68 @@ class TableDropdownFocusTests(unittest.TestCase):
                     data = self.definitions.datatable_to_dicts(view)
                     self.assertEqual(data, [{"Имя": "choice", "Значение": selected}])
 
-    def test_m2_uses_native_focus_state_with_a_distinct_filled_background(self):
+    def test_select_arrow_highlights_only_after_native_focus_and_resets_on_blur(self):
         table, _, cell, control = self.make_view(navigation=True)
         self.assertEqual(control.focused_bgcolor, ft.Colors.PRIMARY_CONTAINER)
         self.assertEqual(control.bgcolor, ft.Colors.SECONDARY_CONTAINER)
         self.assertNotEqual(control.focused_bgcolor, control.bgcolor)
         self.assertIs(control.filled, True)
-        self.assertEqual(control.on_focus, cell.on_focus)
-        self.assertEqual(control.on_blur, cell.on_blur)
-        control.on_focus(SimpleNamespace(control=control))
-        self.assertIs(table.current_row.current_cell, cell)
-        self.assertTrue(cell._has_focus)
-        control.on_blur(SimpleNamespace(control=control))
-        self.assertFalse(cell._has_focus)
+        arrow = control.select_icon
+        self.assertIs(type(arrow), ft.Container)
+        self.assertIs(type(arrow.content), ft.Icon)
+        self.assertIsNone(arrow.on_click)
+        self.assertFalse(arrow.ink)
+        self.assertIsNone(arrow.content.color)
+        self.assertIs(cell.control_ref.current, control)
+        self.assertEqual((arrow.width, arrow.height, arrow.border_radius), (40, 40, 20))
+        with patch.object(arrow, "update") as pushed:
+            focus_request = cell.setFocus()
+            try:
+                self.assertTrue(inspect.iscoroutine(focus_request))
+                self.assertFalse(cell._has_focus)
+                self.assertEqual(arrow.bgcolor, ft.Colors.TRANSPARENT)
+                pushed.assert_not_called()
+            finally:
+                focus_request.close()  # No mounted client to execute the focus request.
+
+            control.on_focus(SimpleNamespace(control=control))
+            self.assertIs(table.current_row.current_cell, cell)
+            self.assertTrue(cell._has_focus)
+            self.assertEqual(arrow.bgcolor, ft.Colors.with_opacity(0.1, ft.Colors.ON_SURFACE_VARIANT))
+            pushed.assert_called_once_with()
+            control.on_blur(SimpleNamespace(control=control))
+            self.assertFalse(cell._has_focus)
+            self.assertEqual(arrow.bgcolor, ft.Colors.TRANSPARENT)
+            self.assertEqual(pushed.call_count, 2)
         self.assertEqual(control.value, "1")
+
+    def test_delayed_blur_repaints_only_its_own_select_arrow(self):
+        table, view, first_cell, first = self.make_view(navigation=True)
+        row = self.definitions.Row_data()
+        row.append("second", self.definitions.Cell_description())
+        second_cell = row.append(1, self.definitions.Cell_description([1, 2, 3], data_type=int))
+        table.add_row(row)
+        view.rows.append(view._build_data_row(row))
+        second = view.rows[-1].cells[1].content.content
+        self.assertIsNot(first.select_icon, second.select_icon)
+        with patch.object(first.select_icon, "update") as first_push, patch.object(second.select_icon, "update") as second_push:
+            first.on_focus(SimpleNamespace(control=first))
+            self.assertEqual(second.select_icon.bgcolor, ft.Colors.TRANSPARENT)
+            second_push.assert_not_called()
+            second.on_focus(SimpleNamespace(control=second))
+            first.on_blur(SimpleNamespace(control=first))
+            self.assertFalse(first_cell._has_focus)
+            self.assertTrue(second_cell._has_focus)
+            self.assertIs(table.current_row.current_cell, second_cell)
+            self.assertEqual(first.select_icon.bgcolor, ft.Colors.TRANSPARENT)
+            self.assertEqual(second.select_icon.bgcolor, ft.Colors.with_opacity(0.1, ft.Colors.ON_SURFACE_VARIANT))
+            self.assertEqual(first_push.call_count, 2)
+            self.assertEqual(second_push.call_count, 1)
+            second.on_blur(SimpleNamespace(control=second))
+            self.assertEqual(second.select_icon.bgcolor, ft.Colors.TRANSPARENT)
+            self.assertEqual(first_push.call_count, 2)
+            self.assertEqual(second_push.call_count, 2)
+        self.assertEqual((first.value, second.value), ("1", "1"))
 
 
 if __name__ == "__main__":
