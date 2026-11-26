@@ -51,9 +51,12 @@ for _meta in OUTPUT_PARAMS.values():
     if _meta.get("group_name") in _LEVEL_GROUPS:
         _meta["dimension"] = "дБА" if _meta.get("header") == "Полоса А" else "дБ"
 
-# Группа содержит тысячи промежуточных строк и в ТЗ явно исключена из
-# стартового раскрытого набора результатов.
-GROUPS["Исходный уровень звуковой мощности на входе в глушитель"] = False
+# По ТЗ группа исключена из пользовательской таблицы вместе с заголовком.
+# Её девять параметров продолжают участвовать в расчёте.
+HIDDEN_OUTPUT_GROUPS = frozenset({
+    "Исходный уровень звуковой мощности на входе в глушитель",
+})
+GROUPS.update({group: False for group in HIDDEN_OUTPUT_GROUPS})
 
 OPERATORS = {
     "<=": operator.le,
