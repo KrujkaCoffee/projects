@@ -397,6 +397,12 @@ async def gen_page(page):
             cell:CMF._Cell_data = meta['cell']
             row_data: CMF.Row_data = cell.parent_row
             param_name = row_data.get_cell_unique().val
+            try:
+                Data.Data_module.cust_data.last_calculated = None
+                Data.Data_module.cust_data.last_input_vals = None
+                Data.Data_module.cust_data.last_calc_errors = []
+            except Exception:
+                pass
             new_val = e.data
             new_val = cell.description.cast_type(new_val)
             cell.val = new_val
@@ -408,11 +414,6 @@ async def gen_page(page):
             if param_name == 'edinica_rashoda' and cell.params_field.name == 'val':
                 calc_silencer_back.oform_edinica_rashoda(cell, new_val)
 
-            try:
-                Data.Data_module.cust_data.last_calculated = None
-                Data.Data_module.cust_data.last_calc_errors = []
-            except Exception:
-                pass
             values_by_row = Data.Data_module.cust_data.input_tbl_editbl.to_dict_by_unique()
             _schedule_draft_save(
                 e.page,
@@ -480,6 +481,7 @@ async def gen_page(page):
                 Data.Data_module.cust_data.last_input_vals = input_vals
             except Exception:
                 input_vals = {}
+                Data.Data_module.cust_data.last_input_vals = None
             tbl_rez = table_data.table_view
             if tbl_rez == None:
                 return
@@ -500,17 +502,14 @@ async def gen_page(page):
                 return
 
             input_vals = getattr(Data.Data_module.cust_data, "last_input_vals", None)
-            if not isinstance(input_vals, dict):
+            calculated = getattr(Data.Data_module.cust_data, "last_calculated", None)
+            if not isinstance(input_vals, dict) or not isinstance(calculated, dict):
+                Data.Data_module.cust_data.last_input_vals = None
+                Data.Data_module.cust_data.last_calculated = None
+                Data.Data_module.cust_data.last_calc_errors = []
                 try:
                     input_vals = calc_silencer_back.get_vals_from_input_data_tbl(refs.input_table.current)
                 except Exception:
-                    input_vals = {}
-
-            calculated = getattr(Data.Data_module.cust_data, "last_calculated", None)
-            if not isinstance(calculated, dict):
-                input_rows = CMF.datatable_to_dicts(refs.input_table.current)
-                calculated, errors, _success = calc_silencer_back.prepare_calc_new_data(input_rows, Data)
-                if calculated is None:
                     CMF.message_dialog(
                         e.page,
                         body_icon=ft.Icons.ERROR,
@@ -518,6 +517,9 @@ async def gen_page(page):
                         message="Не удалось подготовить данные для отчёта"
                     )
                     return
+                # Карточки и формулы используют один снимок, без повторного чтения UI.
+                calculated, errors, _success = calc_silencer_back.calc_new_data(input_vals)
+                Data.Data_module.cust_data.last_input_vals = input_vals
                 Data.Data_module.cust_data.last_calculated = calculated
                 Data.Data_module.cust_data.last_calc_errors = errors
 
