@@ -553,14 +553,7 @@ def build_silencer_report_pdf(
         draw_column_table(c, main_x + i * (card_w + col_gap), y - 17 - len(rows) * card_row_h,
                           card_w, rows, font=font, bold_font=bold_font, title=title, row_h=card_row_h)
     y -= 17 + max(len(rows_nominal), len(rows_aero), len(rows_elements)) * card_row_h + 12
-    for note in (
-        "Расчёт скорости и силы: A = πD²/4; w = G·v/A; R = w²·A/v = G·w. D - заданный внутренний диаметр корпуса.",
-        "v = Rг·(T + 273,15)/pатм: T - температура (°C), Rг - постоянная выбранной среды, pатм - атмосферное давление.",
-        "G - массовый расход: т/ч × 1000/3600 с округлением вверх до 0,01 кг/с; при вводе кг/с - без пересчёта.",
-        "В формулах используются расчётные значения до округления для отображения в карточках.",
-    ):
-        draw_text(c, note, main_x, y, font=font, size=7, max_width=table_w)
-        y -= 10
+
     y -= 4
 
     tube_power = get_num_series(calculated, POWER_TUBE_KEYS)

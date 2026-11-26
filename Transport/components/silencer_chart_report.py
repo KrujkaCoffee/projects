@@ -312,8 +312,12 @@ def build_silencer_report(
                     (f"Расход, {_value(input_values, 'edinica_rashoda', default='')}", _value(input_values, "rashod"), ""),
                     ("Давление до клапана", _value(input_values, "ak_produvka_davlenie_v_nachale_truby_mpa_davlenie_do_klapana_mpa"), "МПа", 3),
                     ("Температура", _value(input_values, "temperatura_sredy_s"), "°C", 1),
+                    ("", "", "", 1),
+                    ("", "", "", 1),
+                    ("", "", "", 1),
                 ],
                 width=360,
+
             ),
             build_card_component(
                 "Результаты аэродинамического расчёта",
@@ -334,6 +338,11 @@ def build_silencer_report(
                     ("Тип дроссельного блока", "Ступенчатый", ""),
                     ("Ступеней дросселирования", _value(input_values, "kolichestvo_stupenej_drosselirovaniya_sht"), "шт"),
                     ("Заданный внутренний диаметр корпуса", _value(input_values, "vnutrennij_diametr_shumoglushitelya_korpus_m"), "м", 3),
+
+                    ("", "", "", 3),
+                    ("", "", "", 3),
+                    ("", "", "", 3),
+                    ("", "", "", 3),
                 ],
                 width=390,
             ),
@@ -358,20 +367,6 @@ def build_silencer_report(
                 opacity=0.78,
             ),
             top_cards,
-            ft.Container(
-                content=ft.Text(
-                    "Расчёт скорости и силы: A = πD²/4; w = G·v/A; "
-                    "R = w²·A/v = G·w. D — заданный внутренний диаметр корпуса.\n"
-                    "v = Rг·(T + 273,15)/pатм — удельный объём при атмосферном давлении, "
-                    "введённой температуре T (°C) и газовой постоянной выбранной среды Rг.\n"
-                    "G — массовый расход: т/ч × 1000/3600 с округлением вверх до 0,01 кг/с; "
-                    "при вводе кг/с — без пересчёта.\n"
-                    "В формулах используются расчётные значения до округления для отображения в карточках.",
-                    size=12,
-                    opacity=0.78,
-                ),
-                padding=ft.padding.symmetric(horizontal=4),
-            ),
             column_table(
                 "Уровни звуковой мощности, дБ",
                 "Труба без ШГ",
