@@ -1846,7 +1846,14 @@ class mywindow(QtWidgets.QMainWindow):
                 WHERE plan.poki = {CFG.Config.place.poki} 
                     and mk.Прогресс != "Завершено" 
                     AND mk.Статус != "НаУдаление" 
-                    AND INSTR(res.data, ?) > 0
+                    AND CASE
+                        WHEN LENGTH(?1) < 2
+                             OR SUBSTR(?1, 1, 1) NOT IN (X'D0', X'D1')
+                            THEN INSTR(res.data, ?1)
+                        WHEN INSTR(res.data, SUBSTR(?1, 2)) > 0
+                            THEN INSTR(res.data, ?1)
+                        ELSE 0
+                    END > 0
             '''
             spis_mk = CSQ.custom_request_c(
                 self.db_naryad,custom_request_c,
@@ -2138,7 +2145,8 @@ class mywindow(QtWidgets.QMainWindow):
 
         if po_mk == False:
             spisok_tk = F.open_file_c(F.scfg("add_docs") + os.sep + ima, False, '|', pickl=True, propuski=True)
-            where = f'WHERE "Номенклатурный_номер" = {n_dse.text()!r} AND poki = {self.place.poki}'
+            where = f'WHERE TRIM("Номенклатурный_номер") = {n_dse.text()!r} AND poki = {self.place.poki}'
+
             if spisok_tk == ['']:
                 rez = CQT.msgboxgYN('Не найдена ТК, Создать техкарту заново?')
                 if rez:
@@ -3083,6 +3091,9 @@ class mywindow(QtWidgets.QMainWindow):
             fill_for_new(self)
             return
         ima = nom_tk + '_' + nom_dse + ".txt"
+        folder = Path(F.scfg("add_docs")) if po_mk == False else Path(F.scfg("Mk")) / str(po_mk)
+        path = (folder / ima).with_suffix('.pickle')
+        ima = Path(CMS.Techkards.resolve_path(str(path))).with_suffix('.txt').name
         if po_mk == False:
             if not F.existence_file_c(F.scfg("add_docs") + os.sep + ima.replace('.txt','.pickle')):
                 if not CQT.msgboxgYN(f'Файл с ТК не найден.\nСоздать новую?'):
