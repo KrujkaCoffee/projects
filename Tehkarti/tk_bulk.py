@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import math
 from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
 
 from PyQt5 import QtCore, QtWidgets, Qt, QtGui
 
@@ -188,7 +189,7 @@ def collect_parameter_uses(window):
                     if not name:
                         continue
                     uses.append(ParamUse(item, names, values[:], index, item_label(item), item.text(14), kind,
-                                         enabled=';' not in values[index], choices=choices.get(name, {}),
+                                         choices=choices.get(name, {}),
                                          name=name, symbol=symbols.get(name, '')))
             except (ValueError, KeyError, IndexError, TypeError) as exc:
                 warnings.append(f'{item_label(item)}: {exc}')
@@ -245,6 +246,58 @@ def display_current(use):
     return f'{option.label} [{value}]' if option else value
 
 
+def numeric_meaning(value):
+    text = value.strip()
+    if len(text) >= 2 and text[0] == text[-1] and text[0] in ("'", '"'):
+        text = text[1:-1].strip()
+    integer_part = text.lstrip('+-').split('.', 1)[0].split(',', 1)[0]
+    if len(integer_part) > 1 and integer_part.startswith('0') and integer_part.isdigit():
+        return None  # Preserve identifiers such as 007.
+    try:
+        number = Decimal(text.replace(',', '.'))
+        if number.is_finite() and math.isfinite(float(number)):
+            return number
+    except (InvalidOperation, OverflowError, ValueError):
+        pass
+    return None
+
+
+def comparable_current(use):
+    if use.value in ('', '-'):
+        return None
+    if use.choices:
+        return ('choice', use.value)
+    def cell(value):
+        number = numeric_meaning(value)
+        return ('number', number) if number is not None else ('text', value)
+    parts = use.value.split(';')
+    cells = tuple(cell(part) for part in parts)
+    if len(cells) == 1 or all(part == cells[0] for part in cells):
+        return ('single', cells[0])
+    return ('rows', cells)
+
+
+def compatible_kinds(group, current_keys):
+    kinds = group.kinds
+    if len(kinds) <= 1 or all(numeric_kind(kind) for kind in kinds):
+        return True
+    text_kinds = ('', 'str', 'string', 'text', "<class 'str'>")
+    if not all(numeric_kind(kind) or kind in text_kinds for kind in kinds):
+        return False
+    return bool(current_keys) and all(
+        key[1][0] == 'number' if key[0] == 'single' else
+        key[0] == 'rows' and all(cell[0] == 'number' for cell in key[1])
+        for key in current_keys)
+
+
+def column_row_count(value):
+    return 1 if value.startswith("f'") else len(value.split(';'))
+
+
+def row_count(values):
+    return max(map(column_row_count, values))
+
+
 def numeric_kind(kind):
     return kind in ('int', 'float', "<class 'float'>", "<class 'int'>")
 
@@ -254,9 +307,15 @@ def validate_value(value, kind):
     if not value or any(char in value for char in '$|;\r\n') or value in ('-', '+') or value.startswith("f'"):
         raise ValueError('Укажите одно значение без разделителей $, |, ;')
     if numeric_kind(kind):
-        number = float(value.replace(',', '.'))
-        if not math.isfinite(number) or ('int' in kind and not number.is_integer()):
+        try:
+            number = Decimal(value.replace(',', '.'))
+            valid = number.is_finite() and math.isfinite(float(number))
+        except (InvalidOperation, OverflowError, ValueError):
+            valid = False
+        if not valid or ('int' in kind and number != number.to_integral_value()):
             raise ValueError('Требуется корректное число указанного типа')
+        if 'int' in kind:
+            return str(int(number))
         return value.replace(',', '.')
     return value
 
@@ -278,7 +337,11 @@ class BulkParametersDialog(QtWidgets.QDialog):
         mode_line.addWidget(self.mode_selector)
         mode_line.addStretch()
         layout.addLayout(mode_line)
-        layout.addWidget(QtWidgets.QLabel('Выберите параметры и места применения. Разные текущие значения не заменяются автоматически.'))
+        hint = QtWidgets.QLabel(
+            'Выберите параметры и места применения. Одно новое значение заполнит все строки выбранного параметра. '
+            'Разные текущие значения не заменяются автоматически.')
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
         self.table = QtWidgets.QTableWidget(0, 5, self)
         self.table.setHorizontalHeaderLabels(['Применить', 'Параметр', 'Новое значение', 'Текущие значения', 'Операции / переходы'])
         self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
@@ -289,7 +352,7 @@ class BulkParametersDialog(QtWidgets.QDialog):
         self.table.setColumnWidth(3, 175)
 
         layout.addWidget(self.table)
-        layout.addWidget(QtWidgets.QLabel('Места применения выбранного параметра (многозначные параметры недоступны для общей замены):'))
+        layout.addWidget(QtWidgets.QLabel('Места применения выбранного параметра (снимите галку, чтобы пропустить операцию или переход):'))
         self.targets = QtWidgets.QTreeWidget(self)
         self.targets.setHeaderLabels(['Операция / переход', 'Сейчас'])
         self.targets.header().setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
@@ -321,12 +384,12 @@ class BulkParametersDialog(QtWidgets.QDialog):
         self.table.setRowCount(len(groups))
         for row, group in enumerate(groups):
             values = {display_current(use) for use in group.uses if use.value not in ('', '-')}
-            kinds = group.kinds
-            incompatible = len(kinds) > 1 and not all(numeric_kind(kind) for kind in kinds)
+            current_keys = {key for use in group.uses if (key := comparable_current(use)) is not None}
+            incompatible = not compatible_kinds(group, current_keys)
             variants = {frozenset((key, option.label) for key, option in use.choices.items())
                         for use in group.uses}
             choices = group_choices(group)
-            conflict = len(values) > 1 or incompatible or (bool(choices) and len(variants) > 1)
+            conflict = len(current_keys) > 1 or incompatible or (bool(choices) and len(variants) > 1)
             toggle = QtWidgets.QTableWidgetItem()
             toggle.setFlags(QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsUserCheckable)
             toggle.setCheckState(QtCore.Qt.Unchecked if conflict else QtCore.Qt.Checked)
@@ -346,10 +409,19 @@ class BulkParametersDialog(QtWidgets.QDialog):
                 self.table.setCellWidget(row, 2, selector)
             else:
                 self.table.setItem(row, 2, QtWidgets.QTableWidgetItem(''))
-            current = 'РАЗЛИЧАЮТСЯ: ' + ', '.join(sorted(values)) if len(values) > 1 else (next(iter(values)) if values else 'не заполнено')
+            if len(current_keys) > 1:
+                current = 'РАЗЛИЧАЮТСЯ: ' + ', '.join(sorted(values))
+            elif len(values) > 1:
+                current = 'СОВПАДАЮТ ПО ЗНАЧЕНИЮ: ' + ', '.join(sorted(values))
+            else:
+                current = next(iter(values)) if values else 'не заполнено'
+            if incompatible:
+                current += '; типы различаются — проверьте места применения'
             if choices and len(variants) > 1:
                 current += '; варианты различаются — проверьте места применения'
-            self.table.setItem(row, 3, QtWidgets.QTableWidgetItem(current))
+            current_item = QtWidgets.QTableWidgetItem(current)
+            current_item.setToolTip(current)
+            self.table.setItem(row, 3, current_item)
             self.table.setItem(row, 4, QtWidgets.QTableWidgetItem('; '.join(self.use_label(use) for use in group.uses)))
 
         for row in range(self.table.rowCount()):
@@ -391,14 +463,14 @@ class BulkParametersDialog(QtWidgets.QDialog):
         if row >= 0:
             for use in self.groups[row].uses:
                 typed_value = display_current(use)
+                count = row_count(use.values)
+                if count > 1:
+                    typed_value += f' (строк: {count})'
                 if use.kind:
                     typed_value += f' ({use.kind})'
                 item = QtWidgets.QTreeWidgetItem(self.targets, [self.use_label(use), typed_value])
                 item.setFlags(QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsUserCheckable)
                 item.setCheckState(0, QtCore.Qt.Checked if use.enabled else QtCore.Qt.Unchecked)
-                if ';' in use.value:
-                    item.setFlags(QtCore.Qt.ItemIsEnabled)
-                    item.setToolTip(0, 'Многозначный параметр меняется в диалоге отдельной операции')
         self.targets.blockSignals(False)
 
     def target_changed(self, item, column):
@@ -418,6 +490,10 @@ class BulkParametersDialog(QtWidgets.QDialog):
                 raw_value = self.table.item(row, 2).text().strip() if selector is None else ''
                 if selected is None and not raw_value:
                     continue
+                if selector is None and len(raw_value) >= 2 and raw_value[0] == raw_value[-1] \
+                        and raw_value[0] in ("'", '"') and numeric_meaning(raw_value) is not None \
+                        and any(use.enabled and numeric_kind(use.kind) for use in group.uses):
+                    raw_value = raw_value[1:-1].strip()
                 for use in group.uses:
                     if not use.enabled:
                         continue
@@ -430,6 +506,12 @@ class BulkParametersDialog(QtWidgets.QDialog):
                     else:
                         option = None
                         value = validate_value(raw_value, use.kind)
+                    count = row_count(use.values)
+                    if count > 1:
+                        if option is not None and option.show is not None:
+                            raise ValueError(f'{use.label}: варианты со скрытием полей для нескольких строк '
+                                             'меняйте в редакторе операции')
+                        value = ';'.join([value] * count)
                     key = id(use.item)
                     if key not in changes:
                         changes[key] = (use.item, use.names, use.values[:])
@@ -451,6 +533,17 @@ class BulkParametersDialog(QtWidgets.QDialog):
                         values[index] = '+'
                     elif values[index] == '+':
                         values[index] = '-'
+            for item, names, values in changes.values():
+                count = row_count(values)
+                if count > 1:
+                    for index, value in enumerate(values):
+                        if value in ('+', '-'):
+                            values[index] = ';'.join([value] * count)
+                lengths = {column_row_count(value) for value in values}
+                if len(lengths) > 1:
+                    raise ValueError(f'{item_label(item)}: число строк параметров различается '
+                                     f'({", ".join(map(str, sorted(lengths)))}). '
+                                     'Исправьте строки в редакторе операции или перехода')
             for item, names, values in changes.values():
                 originals = [use.original_raw for group in self.groups for use in group.uses if use.item is item]
                 if not originals or any(item.text(14) != raw for raw in originals):
